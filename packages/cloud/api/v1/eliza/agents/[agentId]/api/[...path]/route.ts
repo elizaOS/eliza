@@ -100,6 +100,28 @@ function pushTokenDeleteTarget(path: string): string | null {
   }
 }
 
+function isPersonalSharedAgent(
+  value: Awaited<ReturnType<typeof resolveSharedAgent>>,
+): boolean {
+  return (
+    !("error" in value) &&
+    "agentKind" in value &&
+    value.agentKind === "personal"
+  );
+}
+
+function personalPushUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      error: "Mobile push is available only for Personal Shared agents",
+      code: "resource_not_found",
+    },
+    404,
+  );
+}
+
 /**
  * LifeOps activity-signal ingestion requires the personal-assistant plugin's
  * scheduled-task runtime, which only a dedicated agent runs. Returning a typed
@@ -214,6 +236,7 @@ app.get("/", async (c) => {
     return json(c, { success: false, error: r.error }, r.status);
   }
   if (path === "notifications/push-tokens") {
+    if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
     if ("error" in worker) return json(c, worker, worker.status);
     const tokens = await coordinateSharedPushList(r.agentId, {
@@ -277,6 +300,7 @@ app.post("/", async (c) => {
   }
   const path = shellPath(c);
   if (path === "notifications/push-tokens") {
+    if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
     if ("error" in worker) return json(c, worker, worker.status);
     const contentLength = Number(c.req.header("content-length") ?? 0);
@@ -301,7 +325,7 @@ app.post("/", async (c) => {
     }
     const platform = body?.platform;
     const token = typeof body?.token === "string" ? body.token.trim() : "";
-    if ((platform !== "ios" && platform !== "android") || !token) {
+    if (platform !== "ios" || !token) {
       return json(
         c,
         { success: false, error: "Invalid mobile push registration" },
@@ -363,7 +387,20 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
     return json(c, { success: false, error: r.error }, r.status);
   }
   if (c.req.method === "DELETE") {
-    const token = pushTokenDeleteTarget(shellPath(c));
+    const path = shellPath(c);
+    if (path === "notifications/push-tokens" && !isPersonalSharedAgent(r)) {
+      return personalPushUnavailable(c);
+    }
+    let token = pushTokenDeleteTarget(path);
+    if (path === "notifications/push-tokens") {
+      let body: { token?: unknown } | null = null;
+      try {
+        body = (await c.req.json()) as { token?: unknown };
+      } catch {
+        // error-policy:J3 malformed client JSON is an explicit invalid request.
+      }
+      token = typeof body?.token === "string" ? body.token.trim() : "";
+    }
     if (token !== null) {
       if (!token)
         return json(

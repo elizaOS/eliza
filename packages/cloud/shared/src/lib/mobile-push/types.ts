@@ -16,5 +16,8 @@ export interface MobilePushMessage {
 
 export type MobilePushDeliveryResult =
   | { outcome: "accepted"; apnsId?: string }
-  | { outcome: "unregistered"; reason: "Unregistered" | "BadDeviceToken" }
+  | {
+      outcome: "unregistered";
+      reason: "Unregistered" | "BadDeviceToken" | "ExpiredToken";
+    }
   | { outcome: "rejected"; status: number; reason?: string };

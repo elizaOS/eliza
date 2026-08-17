@@ -3,10 +3,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const listDueScheduledTaskRefs = mock(async () => [
-  { agentId: "personal:owner", taskId: "reminder-1" },
+  {
+    agentId: "personal:00000000-0000-5000-8000-000000000000",
+    taskId: "reminder-1",
+  },
 ]);
 const listRecoverableScheduledTaskRefs = mock(async () => []);
 const claims = new Set<string>();
+const coordinateSharedPushDispatch = mock(async () => {});
 const createSharedScheduledTaskRunner = mock(
   (
     agentId: string,
@@ -60,6 +64,9 @@ mock.module("./shared-scheduling", () => ({
   createSharedScheduledTaskRunner,
   executeSharedSchedulingSql: mock(async () => []),
 }));
+mock.module("./conversation-coordinator", () => ({
+  coordinateSharedPushDispatch,
+}));
 
 const { processDueSharedReminders, sharedReminderDispatcher } = await import(
   "./shared-reminder-cron"
@@ -72,6 +79,7 @@ afterEach(() => {
   listDueScheduledTaskRefs.mockClear();
   listRecoverableScheduledTaskRefs.mockClear();
   createSharedScheduledTaskRunner.mockClear();
+  coordinateSharedPushDispatch.mockClear();
   mock.restore();
 });
 
@@ -79,6 +87,7 @@ const env = {
   ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example/",
   ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL: "https://gateway-discord.example/",
   GATEWAY_INTERNAL_SECRET: "internal-secret",
+  SHARED_RUNTIME_CONVERSATIONS: { getByName: mock() },
 } as never;
 
 describe("Shared reminder cron", () => {
@@ -119,6 +128,21 @@ describe("Shared reminder cron", () => {
       text: "time to stand up and stretch",
       idempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
     });
+    expect(coordinateSharedPushDispatch).toHaveBeenCalledWith(
+      "personal:00000000-0000-5000-8000-000000000000",
+      {
+        title: "Reminder",
+        body: "time to stand up and stretch",
+        data: {
+          notificationId: "reminder-1:2026-08-14T20:00:00.000Z",
+          category: "reminder",
+          deepLink: "/chat",
+          taskId: "reminder-1",
+          firedAtIso: "2026-08-14T20:00:00.000Z",
+        },
+      },
+      { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+    );
   });
 
   test("fails closed before egress when trusted delivery metadata is absent", async () => {

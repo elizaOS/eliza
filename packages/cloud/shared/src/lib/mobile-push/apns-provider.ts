@@ -5,6 +5,8 @@ import type { MobilePushDeliveryResult, MobilePushMessage } from "./types";
 const APNS_SANDBOX_ORIGIN = "https://api.sandbox.push.apple.com";
 const APNS_PRODUCTION_ORIGIN = "https://api.push.apple.com";
 const APNS_PROVIDER_TOKEN_TTL_MS = 50 * 60 * 1000;
+const APNS_REQUEST_TIMEOUT_MS = 10_000;
+const APNS_MAX_PAYLOAD_BYTES = 4_096;
 export const ELIZA_IOS_BUNDLE_ID = "ai.elizaos.app";
 
 export interface CloudApnsBindings {
@@ -65,6 +67,8 @@ function pkcs8Bytes(pem: string): Uint8Array {
 
 export class CloudApnsProvider {
   private cachedToken?: CachedProviderToken;
+  private importedKey?: Promise<CryptoKey>;
+  private pendingToken?: Promise<CachedProviderToken>;
 
   constructor(
     private readonly config: CloudApnsConfig,
@@ -75,24 +79,32 @@ export class CloudApnsProvider {
     if (this.cachedToken && now - this.cachedToken.mintedAt < APNS_PROVIDER_TOKEN_TTL_MS) {
       return this.cachedToken.value;
     }
-    const key = await crypto.subtle.importKey(
-      "pkcs8",
-      Uint8Array.from(pkcs8Bytes(this.config.key)).buffer,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["sign"],
-    );
-    const signingInput = `${base64url(JSON.stringify({ alg: "ES256", kid: this.config.keyId }))}.${base64url(
-      JSON.stringify({ iss: this.config.teamId, iat: Math.floor(now / 1000) }),
-    )}`;
-    const signature = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      key,
-      new TextEncoder().encode(signingInput),
-    );
-    const value = `${signingInput}.${base64url(new Uint8Array(signature))}`;
-    this.cachedToken = { value, mintedAt: now };
-    return value;
+    this.pendingToken ??= (async () => {
+      this.importedKey ??= crypto.subtle.importKey(
+        "pkcs8",
+        Uint8Array.from(pkcs8Bytes(this.config.key)).buffer,
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["sign"],
+      );
+      const key = await this.importedKey;
+      const signingInput = `${base64url(JSON.stringify({ alg: "ES256", kid: this.config.keyId }))}.${base64url(
+        JSON.stringify({ iss: this.config.teamId, iat: Math.floor(now / 1000) }),
+      )}`;
+      const signature = await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        key,
+        new TextEncoder().encode(signingInput),
+      );
+      return { value: `${signingInput}.${base64url(new Uint8Array(signature))}`, mintedAt: now };
+    })();
+    const pendingToken = this.pendingToken;
+    try {
+      this.cachedToken = await pendingToken;
+      return this.cachedToken.value;
+    } finally {
+      if (this.pendingToken === pendingToken) this.pendingToken = undefined;
+    }
   }
 
   async send(
@@ -101,6 +113,16 @@ export class CloudApnsProvider {
     now = Date.now(),
   ): Promise<MobilePushDeliveryResult> {
     const origin = this.config.production ? APNS_PRODUCTION_ORIGIN : APNS_SANDBOX_ORIGIN;
+    const body = JSON.stringify({
+      ...(message.data ?? {}),
+      aps: {
+        alert: { title: message.title, ...(message.body ? { body: message.body } : {}) },
+        sound: "default",
+      },
+    });
+    if (new TextEncoder().encode(body).length > APNS_MAX_PAYLOAD_BYTES) {
+      return { outcome: "rejected", status: 413, reason: "PayloadTooLarge" };
+    }
     const response = await this.request(`${origin}/3/device/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: {
@@ -109,19 +131,19 @@ export class CloudApnsProvider {
         "apns-push-type": "alert",
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        aps: {
-          alert: { title: message.title, ...(message.body ? { body: message.body } : {}) },
-          sound: "default",
-        },
-        ...(message.data ?? {}),
-      }),
+      body,
+      signal: AbortSignal.timeout(APNS_REQUEST_TIMEOUT_MS),
     });
     const apnsId = response.headers.get("apns-id") ?? undefined;
     if (response.status === 200) return { outcome: "accepted", ...(apnsId ? { apnsId } : {}) };
-    const errorBody = (await response.json().catch(() => null)) as { reason?: unknown } | null;
+    let errorBody: { reason?: unknown } | null = null;
+    try {
+      errorBody = (await response.json()) as { reason?: unknown };
+    } catch {
+      // error-policy:J3 an unreadable APNs rejection body has no typed reason.
+    }
     const reason = typeof errorBody?.reason === "string" ? errorBody.reason : undefined;
-    if (reason === "Unregistered" || reason === "BadDeviceToken") {
+    if (reason === "Unregistered" || reason === "BadDeviceToken" || reason === "ExpiredToken") {
       return { outcome: "unregistered", reason };
     }
     return { outcome: "rejected", status: response.status, ...(reason ? { reason } : {}) };

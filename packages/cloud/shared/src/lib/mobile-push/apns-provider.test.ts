@@ -90,12 +90,12 @@ describe("CloudApnsProvider", () => {
     ).resolves.toBe(true);
   });
 
-  test.each(["Unregistered", "BadDeviceToken"] as const)(
+  test.each(["Unregistered", "BadDeviceToken", "ExpiredToken"] as const)(
     "classifies %s as durable-token cleanup",
     async (reason) => {
       const { config } = await fixture(true);
       const provider = new CloudApnsProvider(config, async () =>
-        Response.json({ reason }, { status: reason === "Unregistered" ? 410 : 400 }),
+        Response.json({ reason }, { status: reason === "BadDeviceToken" ? 400 : 410 }),
       );
       await expect(provider.send("dead", { title: "x" })).resolves.toEqual({
         outcome: "unregistered",
@@ -103,6 +103,24 @@ describe("CloudApnsProvider", () => {
       });
     },
   );
+
+  test("single-flights provider-token minting across concurrent sends", async () => {
+    const { config } = await fixture();
+    const authorizations: string[] = [];
+    const provider = new CloudApnsProvider(config, async (_url, init) => {
+      authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
+      return new Response(null, { status: 200 });
+    });
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        provider.send(`device-${index}`, { title: "Ready" }, 1_800_000_000_000),
+      ),
+    );
+
+    expect(authorizations).toHaveLength(8);
+    expect(new Set(authorizations).size).toBe(1);
+  });
 
   test("preserves non-token rejection status and reason", async () => {
     const { config } = await fixture();
@@ -114,5 +132,20 @@ describe("CloudApnsProvider", () => {
       status: 429,
       reason: "TooManyRequests",
     });
+  });
+
+  test("rejects an oversized alert locally before APNs egress", async () => {
+    const { config } = await fixture();
+    let calls = 0;
+    const provider = new CloudApnsProvider(config, async () => {
+      calls += 1;
+      return new Response(null, { status: 200 });
+    });
+    await expect(provider.send("live", { title: "x", body: "y".repeat(4_096) })).resolves.toEqual({
+      outcome: "rejected",
+      status: 413,
+      reason: "PayloadTooLarge",
+    });
+    expect(calls).toBe(0);
   });
 });

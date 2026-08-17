@@ -701,6 +701,32 @@ jobs:
             exit 1
           fi
 
+          apns_config_names=(
+            ELIZA_APNS_KEY
+            ELIZA_APNS_KEY_ID
+            ELIZA_APNS_TEAM_ID
+            ELIZA_APNS_TOPIC
+            ELIZA_APNS_PRODUCTION
+          )
+          apns_configured_count=0
+          for name in "${apns_config_names[@]}"; do
+            has_nonblank_value "${!name:-}" && apns_configured_count=$((apns_configured_count + 1))
+          done
+          if [ "$apns_configured_count" -ne 0 ] && [ "$apns_configured_count" -ne "${#apns_config_names[@]}" ]; then
+            echo "::error::Personal Shared APNs bindings must be configured all-or-none"
+            exit 1
+          fi
+          if [ "$apns_configured_count" -gt 0 ]; then
+            if [ "$ELIZA_APNS_TOPIC" != "ai.elizaos.app" ]; then
+              echo "::error::ELIZA_APNS_TOPIC must match the signed iOS bundle id"
+              exit 1
+            fi
+            if [ "$ELIZA_APNS_PRODUCTION" != "0" ] && [ "$ELIZA_APNS_PRODUCTION" != "1" ]; then
+              echo "::error::ELIZA_APNS_PRODUCTION must be exactly 0 or 1"
+              exit 1
+            fi
+          fi
+
           declare -a worker_secret_names=()
           declare -A queued_worker_secret_names=()
 
@@ -1093,6 +1119,18 @@ jobs:
                 "VOICE_REALTIME_ELIZA_AUTHORIZATION",
                 "VOICE_REALTIME_ELIZA_ENDPOINT",
               );
+            }
+            const apns = [
+              "ELIZA_APNS_KEY",
+              "ELIZA_APNS_KEY_ID",
+              "ELIZA_APNS_TEAM_ID",
+              "ELIZA_APNS_TOPIC",
+              "ELIZA_APNS_PRODUCTION",
+            ];
+            const presentApns = apns.filter((name) => present.has(name));
+            if (presentApns.length !== 0 && presentApns.length !== apns.length) {
+              console.error(`::error::Personal Shared APNs bindings are partial: ${presentApns.join(" ")}`);
+              process.exit(1);
             }
             const missing = required.filter((name) => !present.has(name));
             if (missing.length > 0) {

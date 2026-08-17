@@ -43,6 +43,10 @@ let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
   outcome: "accepted",
 };
 const apnsSentTokens: string[] = [];
+const apnsOutcomes = new Map<
+  string,
+  { outcome: string; reason?: string; status?: number } | Error
+>();
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -243,7 +247,9 @@ mock.module("@/lib/mobile-push/apns-provider", () => ({
   CloudApnsProvider: class {
     async send(token: string) {
       apnsSentTokens.push(token);
-      return apnsOutcome;
+      const outcome = apnsOutcomes.get(token) ?? apnsOutcome;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
     }
   },
 }));
@@ -270,6 +276,7 @@ beforeEach(() => {
   lastBridgeAgent = undefined;
   apnsOutcome = { outcome: "accepted" };
   apnsSentTokens.length = 0;
+  apnsOutcomes.clear();
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -380,42 +387,45 @@ async function pushOperation(
   );
 }
 
-test("mobile push registration is durable, idempotent, and removable", async () => {
+test("mobile push registration is durable, idempotent, iOS-only, and removable", async () => {
   const data = new Map<string, unknown>();
   const object = new SharedRuntimeConversation(
     makeState(data, []) as never,
     {} as never,
   );
-  for (const platform of ["ios", "ios", "android"] as const) {
+  for (const platform of ["ios", "ios"] as const) {
     const response = await pushOperation(object, {
       operation: "push-register",
       platform,
-      token: platform === "ios" ? "ios-token" : "android-token",
+      token: "ios-token",
     });
     expect(response.status).toBe(201);
     await response.arrayBuffer();
   }
   const list = await pushOperation(object, { operation: "push-list" });
   expect(await list.json()).toMatchObject({
-    tokens: [
-      { token: "ios-token", platform: "ios" },
-      { token: "android-token", platform: "android" },
-    ],
+    tokens: [{ token: "ios-token", platform: "ios" }],
   });
+  const android = await pushOperation(object, {
+    operation: "push-register",
+    platform: "android",
+    token: "android-token",
+  });
+  expect(android.status).toBe(400);
+  await android.arrayBuffer();
   const removed = await pushOperation(object, {
     operation: "push-unregister",
     token: "ios-token",
   });
   expect((await removed.json()) as unknown).toEqual({ removed: true });
-  expect(data.get("mobile-push-tokens")).toEqual([
-    expect.objectContaining({ token: "android-token", platform: "android" }),
-  ]);
+  expect(data.has("mobile-push-tokens")).toBe(false);
 });
 
 test("notification dispatch sends iOS tokens and removes APNs-dead records", async () => {
   const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
   const object = new SharedRuntimeConversation(
-    makeState(data, []) as never,
+    makeState(data, background) as never,
     { ELIZA_APNS_KEY: "configured" } as never,
   );
   await (
@@ -426,9 +436,54 @@ test("notification dispatch sends iOS tokens and removes APNs-dead records", asy
     })
   ).arrayBuffer();
   apnsOutcome = { outcome: "unregistered", reason: "BadDeviceToken" };
-  await makeInvoke(object)("push-event");
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder", body: "Time to leave" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
   expect(apnsSentTokens).toEqual(["dead-token"]);
   expect(data.has("mobile-push-tokens")).toBe(false);
+});
+
+test("notification dispatch settles every device when one APNs request fails", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["live-token", "dead-token", "network-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set("dead-token", {
+    outcome: "unregistered",
+    reason: "ExpiredToken",
+  });
+  apnsOutcomes.set("network-token", new Error("APNs timeout"));
+
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
+
+  expect(new Set(apnsSentTokens)).toEqual(
+    new Set(["live-token", "dead-token", "network-token"]),
+  );
+  expect(data.get("mobile-push-tokens")).toEqual([
+    expect.objectContaining({ token: "live-token" }),
+    expect.objectContaining({ token: "network-token" }),
+  ]);
 });
 
 test("prewarm joins cold hydration without writing a conversation turn", async () => {

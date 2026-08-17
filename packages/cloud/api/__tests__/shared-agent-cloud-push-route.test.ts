@@ -49,6 +49,8 @@ beforeEach(() => {
     agentId,
     orgId: "org-1",
     agentName: "Eliza",
+    agentKind: "personal",
+    createdAt: new Date(),
   });
   coordinateSharedPushList.mockReset();
   coordinateSharedPushRegister.mockReset();
@@ -93,14 +95,12 @@ test("reports platform counts without returning raw tokens", async () => {
   expect(JSON.stringify(body)).not.toContain("secret-ios");
 });
 
-test("unregisters an encoded token through the same agent authority", async () => {
+test("unregisters a body token without placing the device identifier in the URL", async () => {
   coordinateSharedPushUnregister.mockResolvedValue(true);
-  const response = await request(
-    "notifications/push-tokens/tok%2Fwith%2Bslash",
-    {
-      method: "DELETE",
-    },
-  );
+  const response = await request("notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token: "tok/with+slash" }),
+  });
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toEqual({ ok: true });
   expect(coordinateSharedPushUnregister).toHaveBeenCalledWith(
@@ -108,6 +108,30 @@ test("unregisters an encoded token through the same agent authority", async () =
     "tok/with+slash",
     { namespace },
   );
+});
+
+test("rejects Android registration until Shared has an FCM sender", async () => {
+  const response = await request("notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform: "android", token: "fcm-token" }),
+  });
+  expect(response.status).toBe(400);
+  expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
+});
+
+test("does not expose agent-wide push registration on ordinary shared agents", async () => {
+  resolveSharedAgent.mockResolvedValue({
+    agent: { id: agentId, execution_tier: "shared" },
+    agentId,
+    orgId: "org-1",
+    agentName: "Team Eliza",
+  });
+  const response = await request("notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform: "ios", token: "device-token" }),
+  });
+  expect(response.status).toBe(404);
+  expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
 });
 
 test("rejects invalid registration before durable mutation", async () => {

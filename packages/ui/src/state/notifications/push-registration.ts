@@ -99,14 +99,34 @@ let startPromise: Promise<void> | null = null;
 let listenerPromise: Promise<void> | null = null;
 /** The most recent token we POSTed, so a re-fired `registration` is a no-op. */
 let activeAuthorityKey: string | null = null;
+let authorityEpoch = 0;
 let authorityTransition: Promise<void> = Promise.resolve();
 let registeredToken: {
   value: string;
   authorityKey: string;
   unregister: PushRegistrationDeps["unregisterToken"];
+  sleep?: PushRegistrationDeps["sleep"];
 } | null = null;
 
 const TOKEN_POST_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
+
+async function unregisterWithRetry(
+  unregister: PushRegistrationDeps["unregisterToken"],
+  value: string,
+  sleep: PushRegistrationDeps["sleep"],
+): Promise<void> {
+  let lastError: unknown;
+  for (const delayMs of TOKEN_POST_RETRY_DELAYS_MS) {
+    if (delayMs > 0) await sleep?.(delayMs);
+    try {
+      await unregister(value);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
 
 /** Only the native mobile platforms carry a remote-push transport. */
 function pushPlatform(platform: FrontendPlatform): "ios" | "android" | null {
@@ -147,6 +167,7 @@ async function onRegistration(
     registerToken: deps.registerToken,
     unregisterToken: deps.unregisterToken,
   };
+  const epoch = authorityEpoch;
   if (
     registeredToken?.value === value &&
     registeredToken.authorityKey === authority.key
@@ -155,21 +176,44 @@ async function onRegistration(
   }
   let lastError: unknown;
   for (const delayMs of TOKEN_POST_RETRY_DELAYS_MS) {
+    if (epoch !== authorityEpoch || authority.key !== activeAuthorityKey)
+      return;
     if (delayMs > 0) {
       await (deps.sleep ?? defaultDeps.sleep)?.(delayMs);
     }
     try {
       await authority.registerToken(platform, value);
-      registeredToken = {
-        value,
-        authorityKey: authority.key,
-        unregister: authority.unregisterToken,
-      };
-      lastError = undefined;
-      break;
     } catch (error) {
       lastError = error;
+      continue;
     }
+    if (epoch !== authorityEpoch || authority.key !== activeAuthorityKey) {
+      await unregisterWithRetry(
+        authority.unregisterToken,
+        value,
+        deps.sleep ?? defaultDeps.sleep,
+      );
+      return;
+    }
+    const previous = registeredToken;
+    registeredToken = {
+      value,
+      authorityKey: authority.key,
+      unregister: authority.unregisterToken,
+      sleep: deps.sleep,
+    };
+    if (
+      previous &&
+      (previous.value !== value || previous.authorityKey !== authority.key)
+    ) {
+      await unregisterWithRetry(
+        previous.unregister,
+        previous.value,
+        previous.sleep ?? defaultDeps.sleep,
+      );
+    }
+    lastError = undefined;
+    break;
   }
   if (lastError !== undefined) throw lastError;
   logger.info(
@@ -284,8 +328,12 @@ export async function unregisterPushToken(
 ): Promise<void> {
   const token = registeredToken;
   if (!token) return;
-  registeredToken = null;
-  await token.unregister(token.value);
+  await unregisterWithRetry(
+    token.unregister,
+    token.value,
+    token.sleep ?? defaultDeps.sleep,
+  );
+  if (registeredToken === token) registeredToken = null;
 }
 
 /** Revoke the prior authority's token, then acquire it for the current target. */
@@ -293,6 +341,13 @@ export function refreshPushRegistrationAuthority(
   deps: PushRegistrationDeps = defaultDeps,
   force = false,
 ): Promise<void> {
+  const requestedAuthorityKey = (
+    deps.captureAuthority?.() ?? { key: "default" }
+  ).key;
+  if (!force && requestedAuthorityKey === activeAuthorityKey) {
+    return authorityTransition;
+  }
+  authorityEpoch += 1;
   const transition = authorityTransition
     .catch(() => undefined)
     .then(async () => {
@@ -313,6 +368,7 @@ export function __resetPushRegistrationForTests(): void {
   startPromise = null;
   listenerPromise = null;
   activeAuthorityKey = null;
+  authorityEpoch = 0;
   authorityTransition = Promise.resolve();
   registeredToken = null;
 }

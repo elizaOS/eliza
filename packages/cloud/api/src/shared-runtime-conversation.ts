@@ -84,6 +84,7 @@ type ConversationRequest =
       token: string;
     }
   | { operation: "push-unregister"; agentId: string; token: string }
+  | { operation: "push-dispatch"; agentId: string; message: MobilePushMessage }
   | {
       operation: "cutover-seal";
       agentId: string;
@@ -519,28 +520,68 @@ export class SharedRuntimeConversation {
     return true;
   }
 
+  private async unregisterMobilePushTokens(
+    tokens: ReadonlySet<string>,
+  ): Promise<void> {
+    if (tokens.size === 0) return;
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => !tokens.has(record.token));
+    if (next.length === current.length) return;
+    if (next.length > 0)
+      await this.state.storage.put(MOBILE_PUSH_TOKENS_KEY, next);
+    else await this.state.storage.delete(MOBILE_PUSH_TOKENS_KEY);
+  }
+
   private async dispatchMobilePush(message: MobilePushMessage): Promise<void> {
     const config = resolveCloudApnsConfig(this.env);
     if (!config) return;
     this.apnsProvider ??= new CloudApnsProvider(config);
+    const provider = this.apnsProvider;
+    const records = (await this.mobilePushTokens()).filter(
+      (record) => record.platform === "ios",
+    );
+    const attempts = await Promise.allSettled(
+      records.map((record) => provider.send(record.token, message)),
+    );
+    const staleTokens = new Set<string>();
     const rejections: string[] = [];
-    for (const record of await this.mobilePushTokens()) {
-      if (record.platform !== "ios") continue;
-      const result = await this.apnsProvider.send(record.token, message);
-      if (result.outcome === "unregistered") {
-        await this.unregisterMobilePushToken(record.token);
+    for (const [index, attempt] of attempts.entries()) {
+      if (attempt.status === "rejected") {
+        rejections.push(
+          attempt.reason instanceof Error
+            ? attempt.reason.message
+            : String(attempt.reason),
+        );
+        continue;
       }
-      if (result.outcome === "rejected") {
+      const result = attempt.value;
+      if (result.outcome === "unregistered") {
+        staleTokens.add(records[index].token);
+      } else if (result.outcome === "rejected") {
         rejections.push(
           `${result.status}${result.reason ? ` ${result.reason}` : ""}`,
         );
       }
     }
+    await this.unregisterMobilePushTokens(staleTokens);
     if (rejections.length > 0) {
       throw new Error(
         `[SharedRuntimeConversation] APNs rejected ${rejections.length} notification delivery attempt(s): ${rejections.join(", ")}`,
       );
     }
+  }
+
+  private enqueueMobilePush(message: MobilePushMessage): void {
+    this.state.waitUntil(
+      this.dispatchMobilePush(message).catch(async (error: unknown) => {
+        // error-policy:J7 APNs fan-out is observed after the owning response;
+        // it must not hold the conversation's serialization lock.
+        const { logger } = await import("@/lib/utils/logger");
+        logger.warn("[SharedRuntimeConversation] mobile push dispatch failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
+    );
   }
 
   private async mirrorConversation(
@@ -876,11 +917,7 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "push-register") {
       const token = payload.token?.trim();
-      if (
-        (payload.platform !== "ios" && payload.platform !== "android") ||
-        !token ||
-        token.length > 4096
-      ) {
+      if (payload.platform !== "ios" || !token || token.length > 4096) {
         return Response.json(
           { success: false, error: "Invalid mobile push registration" },
           { status: 400 },
@@ -900,6 +937,20 @@ export class SharedRuntimeConversation {
       return Response.json({
         removed: await this.unregisterMobilePushToken(token),
       });
+    }
+    if (payload.operation === "push-dispatch") {
+      if (
+        !payload.message ||
+        typeof payload.message.title !== "string" ||
+        !payload.message.title.trim()
+      ) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push message" },
+          { status: 400 },
+        );
+      }
+      this.enqueueMobilePush(payload.message);
+      return Response.json({ success: true }, { status: 202 });
     }
     const personal =
       payload.operation === "personal-bridge" ||
@@ -1444,9 +1495,11 @@ export class SharedRuntimeConversation {
           trustedMessageRole: payload.trustedMessageRole,
           trustedUserUtterance: payload.trustedUserUtterance,
           executionEngine,
-          mobilePushDispatch: async (message: MobilePushMessage) => {
-            await this.dispatchMobilePush(message);
-          },
+          mobilePushDispatch: personal
+            ? async (message: MobilePushMessage) => {
+                this.enqueueMobilePush(message);
+              }
+            : undefined,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
@@ -1457,9 +1510,11 @@ export class SharedRuntimeConversation {
         trustedMessageRole: payload.trustedMessageRole,
         trustedUserUtterance: payload.trustedUserUtterance,
         executionEngine,
-        mobilePushDispatch: async (message: MobilePushMessage) => {
-          await this.dispatchMobilePush(message);
-        },
+        mobilePushDispatch: personal
+          ? async (message: MobilePushMessage) => {
+              this.enqueueMobilePush(message);
+            }
+          : undefined,
       });
       return Response.json(result);
     });

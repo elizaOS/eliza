@@ -8,7 +8,11 @@
 
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
-import type { MobilePushPlatform, MobilePushTokenRecord } from "../../mobile-push/types";
+import type {
+  MobilePushMessage,
+  MobilePushPlatform,
+  MobilePushTokenRecord,
+} from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
@@ -47,9 +51,9 @@ export interface SharedMobilePushRegistration {
 
 async function coordinateSharedPushOperation<T>(
   agentId: string,
-  operation: "push-list" | "push-register" | "push-unregister",
+  operation: "push-list" | "push-register" | "push-unregister" | "push-dispatch",
   options: SharedConversationHistoryCoordinatorOptions,
-  value?: SharedMobilePushRegistration | { token: string },
+  value?: SharedMobilePushRegistration | { token: string } | { message: MobilePushMessage },
 ): Promise<T> {
   const namespace = requireHistoryCoordinator(options);
   const response = await coordinatorStub(namespace, agentId, agentId).fetch(
@@ -96,6 +100,14 @@ export async function coordinateSharedPushUnregister(
     { token },
   );
   return result.removed;
+}
+
+export async function coordinateSharedPushDispatch(
+  agentId: string,
+  message: MobilePushMessage,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  await coordinateSharedPushOperation(agentId, "push-dispatch", options, { message });
 }
 
 export interface SharedCutoverSeal {
