@@ -244,10 +244,16 @@ jobs:
 
       - name: Verify release source before first pack
         if: inputs.candidate_run_id == 0
+        env:
+          # verify's default typecheck fan-out (8 concurrent tsc processes)
+          # exceeds hosted-runner memory and gets the step SIGTERMed; cap it.
+          RUN_TURBO_CONCURRENCY: "3"
         run: bun run verify
 
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0
+        env:
+          RUN_TURBO_CONCURRENCY: "3"
         run: bun run test
 
       - name: Rebind source immediately before pack
@@ -265,6 +271,8 @@ jobs:
 
       - name: Build and pack once
         if: inputs.candidate_run_id == 0
+        env:
+          RUN_TURBO_CONCURRENCY: "3"
         run: >-
           node packages/scripts/release-candidate.mjs candidate
           --cohort packages/scripts/release-cohort.json
