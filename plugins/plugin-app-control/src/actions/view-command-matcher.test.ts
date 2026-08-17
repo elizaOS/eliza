@@ -223,6 +223,9 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"go back over the paragraph",
 		"go back and explain what changed",
 		"when I go back to school",
+		"do not open settings",
+		"don't open settings",
+		"never open settings",
 		"",
 		"   ",
 	];

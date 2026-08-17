@@ -980,6 +980,10 @@ function nounAlt(items: readonly string[]): string {
 const VERB_ALT = alt(NAV_VERBS);
 const VW_ALT = alt(VIEW_WORDS);
 const POSS_ALT = alt(POSSESSIVES);
+const NEGATED_NAVIGATION_RE = new RegExp(
+  `(?:${alt(["do not", "don't", "dont", "never"])})[\\s\\p{P}]+(?:${VERB_ALT})`,
+  "iu",
+);
 const CLOUD_APPS_VIEW_ID = "cloud-apps";
 const CLOUD_APPS_STRONG_NAV_VERBS = [
   // en
@@ -1191,6 +1195,7 @@ export function matchViewCommand(text: string | undefined): string | null {
   if (!raw || raw.length > 160) return null; // commands are short
   const lower = raw.toLowerCase();
   if (looksLikeCompanionActionRequest(lower)) return null;
+  if (NEGATED_NAVIGATION_RE.test(lower)) return null;
   if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
   const variants = [lower, stripDiacritics(lower)];
   if (variants.some((variant) => CLOUD_APPS_COMMAND_RE.test(variant))) {
