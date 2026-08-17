@@ -157,6 +157,15 @@ jobs:
       - name: Build Vite config package deps
         run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
+      # npm's Darwin static probes are x86-only and can stall under Rosetta on
+      # hosted arm64 runners. Native Homebrew probes keep evidence validation
+      # deterministic and provide both ffmpeg frame decode and ffprobe metadata.
+      - name: Install native media probes
+        run: |
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          echo "ELIZA_FFMPEG_BIN=$(brew --prefix)/bin/ffmpeg" >> "$GITHUB_ENV"
+          echo "ELIZA_FFPROBE_BIN=$(brew --prefix)/bin/ffprobe" >> "$GITHUB_ENV"
+
       # ios-e2e.mjs owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.
       - name: iOS device-bundle run

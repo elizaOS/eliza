@@ -36,6 +36,14 @@ describe("Android device-e2e host-agent contract", () => {
     );
   });
 
+  it("provisions native media probes for iOS evidence validation", () => {
+    expect(workflow).toContain("brew install ffmpeg");
+    expect(workflow).toContain("ELIZA_FFMPEG_BIN=$(brew --prefix)/bin/ffmpeg");
+    expect(workflow).toContain(
+      "ELIZA_FFPROBE_BIN=$(brew --prefix)/bin/ffprobe",
+    );
+  });
+
   it("starts the required real host agent on the Android loopback port", () => {
     expect(runner).toContain(
       'process.env.ELIZA_ANDROID_MANAGE_HOST_AGENT === "1"',

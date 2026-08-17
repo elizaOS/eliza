@@ -11,6 +11,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const verifiedCommands = new Set();
 const MEDIA_PROBE_TIMEOUT_MS = 30_000;
+export const MIN_EVIDENCE_VIDEO_DURATION_SECONDS = 2;
+export const MIN_EVIDENCE_VIDEO_FRAMES = 2;
 
 function isNonEmptyFile(filePath) {
   try {
@@ -103,7 +105,8 @@ function hasRenderableH264Stream(
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=codec_name,width,height,duration:format=duration",
+      "stream=codec_name,width,height,duration,nb_frames,nb_read_frames:format=duration",
+      "-count_frames",
       "-of",
       "json",
       filePath,
@@ -116,12 +119,22 @@ function hasRenderableH264Stream(
     const stream = parsed?.streams?.[0];
     const duration = [stream?.duration, parsed?.format?.duration]
       .map(Number)
-      .find((value) => Number.isFinite(value) && value > 0);
+      .find(
+        (value) =>
+          Number.isFinite(value) &&
+          value >= MIN_EVIDENCE_VIDEO_DURATION_SECONDS,
+      );
+    const frameCount = [stream?.nb_read_frames, stream?.nb_frames]
+      .map(Number)
+      .find(
+        (value) => Number.isFinite(value) && value >= MIN_EVIDENCE_VIDEO_FRAMES,
+      );
     return (
       stream?.codec_name === "h264" &&
       Number(stream?.width) > 0 &&
       Number(stream?.height) > 0 &&
-      duration !== undefined
+      duration !== undefined &&
+      frameCount !== undefined
     );
   } catch {
     return false;

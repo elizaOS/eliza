@@ -77,9 +77,9 @@ function writePlayableH264Mp4(outputPath) {
       "-f",
       "lavfi",
       "-i",
-      "color=c=black:s=16x16:r=25:d=0.08",
+      "color=c=black:s=16x16:r=1:d=3",
       "-frames:v",
-      "2",
+      "3",
       "-c:v",
       "libx264",
       "-pix_fmt",
@@ -375,12 +375,14 @@ describe("device-e2e bundle assembly", () => {
   });
 
   it.each([
-    ["a non-H.264 stream", "hevc", 0.08, 16, 16],
-    ["a zero-duration stream", "h264", 0, 16, 16],
-    ["a zero-width stream", "h264", 0.08, 0, 16],
+    ["a non-H.264 stream", "hevc", 3, 3, 16, 16],
+    ["a zero-duration stream", "h264", 0, 3, 16, 16],
+    ["a too-short stream", "h264", 0.067, 3, 16, 16],
+    ["a one-frame stream", "h264", 3, 1, 16, 16],
+    ["a zero-width stream", "h264", 3, 3, 0, 16],
   ])(
     "rejects %s even when a decoder would return success",
-    (_case, codecName, duration, width, height) => {
+    (_case, codecName, duration, frameCount, width, height) => {
       const root = tempRoot();
       const video = path.join(root, "metadata-only.mp4");
       fs.writeFileSync(video, "non-empty");
@@ -395,6 +397,7 @@ describe("device-e2e bundle assembly", () => {
                 {
                   codec_name: codecName,
                   duration: String(duration),
+                  nb_read_frames: String(frameCount),
                   width,
                   height,
                 },
@@ -432,11 +435,12 @@ describe("device-e2e bundle assembly", () => {
                 {
                   codec_name: "h264",
                   duration: "N/A",
+                  nb_read_frames: "3",
                   width: 16,
                   height: 16,
                 },
               ],
-              format: { duration: "0.08" },
+              format: { duration: "3" },
             }),
           }
         : { status: 0 };

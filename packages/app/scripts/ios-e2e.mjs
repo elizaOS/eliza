@@ -152,17 +152,28 @@ function captureSimulatorScreenshot(bundle, udid) {
   return outPath;
 }
 
-async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
+async function recordSimulatorVideo(bundle, udid, appId, durationSeconds = 3) {
   const recording = startIosSimulatorVideo({
     target: udid,
     artifactDir: bundle.rawDir,
     filename: "ios-final.mp4",
     log,
   });
+  // A completely static Simulator screen is encoded as one 0.067s frame even
+  // when recordVideo runs for several wall-clock seconds. Drive a real app
+  // lifecycle so the evidence has activity at both ends of the capture and is
+  // a genuine multi-second walkthrough rather than a mislabeled still image.
+  trySimctl(["terminate", udid, appId]);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  simctl(["launch", udid, appId]);
   await new Promise((resolve) =>
     setTimeout(resolve, Math.max(1, durationSeconds) * 1000),
   );
-  return recording.stop();
+  trySimctl(["terminate", udid, appId]);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const video = await recording.stop();
+  trySimctl(["launch", udid, appId]);
+  return video;
 }
 
 function captureSimulatorLog(bundle, udid, appId) {
@@ -465,7 +476,7 @@ async function main() {
         );
       }
       try {
-        const video = await recordSimulatorVideo(bundle, udid);
+        const video = await recordSimulatorVideo(bundle, udid, appId);
         if (video) recordBundleArtifact(bundle, video, "video");
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
