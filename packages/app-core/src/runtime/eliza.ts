@@ -93,6 +93,7 @@ export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
 export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
+  installAgentHostBridge();
   const bootResources = createRuntimeBootResources();
   // Eagerly download the embedding model before the full runtime boot.
   // This way the TUI loading screen (or server logs) can show download
@@ -154,12 +155,6 @@ export interface StartElizaOptionsExt extends StartElizaOptions {
 async function upstreamStartElizaWithPgliteCompat(
   options?: StartElizaOptions,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
-  // Inject the app-core host capabilities (vault, account pool, wallet-key
-  // hydration, build variant, cloud-pair route) into the agent runtime before
-  // it boots. Every app-core agent boot funnels through here, and this is the
-  // sole caller of `upstreamStartEliza`, so the bridge is always installed
-  // before agent code that reads it runs. See install-agent-host-bridge.ts.
-  installAgentHostBridge();
   ensureBundledFusedLibDir();
   try {
     return await upstreamStartEliza(options);
@@ -175,6 +170,9 @@ export { attemptPgliteAutoReset, getPgliteRecoveryRetrySkipPlugins };
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  // The API binds before the deferred runtime boot, so host-owned HTTP routes
+  // must exist before server construction rather than arriving with the model.
+  installAgentHostBridge();
   const bootResources = createRuntimeBootResources();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
   const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
