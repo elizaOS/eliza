@@ -96,7 +96,10 @@ describe("GET /api/v1/apps/:id/analytics/requests view identity", () => {
   test.each(["", "?view="])("accepts %s as stats", async (query) => {
     const response = await request(query);
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { success: boolean; stats: unknown };
+    const body = (await response.json()) as {
+      success: boolean;
+      stats: unknown;
+    };
     expect(body.success).toBe(true);
     expect(body.stats).toEqual({ hits: 1 });
     expect(getRequestStats).toHaveBeenCalledTimes(1);
@@ -109,7 +112,10 @@ describe("GET /api/v1/apps/:id/analytics/requests view identity", () => {
   test("accepts view=logs as the request log", async () => {
     const response = await request("?view=logs");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { success: boolean; requests: unknown };
+    const body = (await response.json()) as {
+      success: boolean;
+      requests: unknown;
+    };
     expect(body.success).toBe(true);
     expect(body.requests).toEqual([]);
     expect(getRecentRequests).toHaveBeenCalledTimes(1);
