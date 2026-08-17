@@ -323,6 +323,7 @@ async function wakeServer(
   try {
     const res = await fetch(apiUrl, {
       method: "PATCH",
+      signal: AbortSignal.timeout(15_000),
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/strategic-merge-patch+json",
