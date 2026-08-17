@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { AdPlatformSchema } from "@/lib/services/advertising/schemas";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -64,12 +65,15 @@ describe("GET /api/v1/advertising/accounts platform identity", () => {
     },
   );
 
-  test("accepts platform=meta as the Meta ad-account catalog", async () => {
-    const response = await request("?platform=meta");
-    expect(response.status).toBe(200);
-    expect(listAccounts).toHaveBeenCalledTimes(1);
-    expect(listAccounts).toHaveBeenCalledWith("org-1", { platform: "meta" });
-  });
+  test.each([...AdPlatformSchema.options])(
+    "accepts platform=%s as an ad-account catalog",
+    async (platform) => {
+      const response = await request(`?platform=${platform}`);
+      expect(response.status).toBe(200);
+      expect(listAccounts).toHaveBeenCalledTimes(1);
+      expect(listAccounts).toHaveBeenCalledWith("org-1", { platform });
+    },
+  );
 
   test.each(["META", "facebook", "foo", "1e2"])(
     "rejects platform=%s before listAccounts",
