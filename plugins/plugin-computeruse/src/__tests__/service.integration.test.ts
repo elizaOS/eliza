@@ -113,6 +113,7 @@ describe("parseComputerUseActionTimeoutMs", () => {
     expect(parseComputerUseActionTimeoutMs("1")).toBe(1);
     expect(parseComputerUseActionTimeoutMs("5000")).toBe(5000);
     expect(parseComputerUseActionTimeoutMs("10000")).toBe(10000);
+    expect(parseComputerUseActionTimeoutMs("2147483647")).toBe(2_147_483_647);
     expect(parseComputerUseActionTimeoutMs(" 2500 ")).toBe(2500);
   });
 
@@ -126,6 +127,8 @@ describe("parseComputerUseActionTimeoutMs", () => {
       "-1",
       "0x10",
       "1.5",
+      "2147483648",
+      "9007199254740991",
       " ",
       "",
     ]) {
