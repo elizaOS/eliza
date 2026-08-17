@@ -410,6 +410,11 @@ describe("WorkflowEditor", () => {
     render(<WorkflowEditor initial={workflow()} />);
     fireEvent.click(screen.getByRole("button", { name: "Runs" }));
     expect(await screen.findByText("Publish the release?")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "Inspect node.waiting-approval event",
+      }),
+    ).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
     await waitFor(() =>
       expect(api.decideWorkflowApproval).toHaveBeenCalledWith(
@@ -451,6 +456,7 @@ describe("WorkflowEditor", () => {
     const inspect = await screen.findByRole("button", {
       name: "Inspect NodeFinished event",
     });
+    expect(inspect.className).toContain("min-h-11");
     expect(screen.queryByText(/"result": "ready"/)).toBeNull();
     fireEvent.click(inspect);
     expect(await screen.findByText(/"result": "ready"/)).toBeTruthy();
