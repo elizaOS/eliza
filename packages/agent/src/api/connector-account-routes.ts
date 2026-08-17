@@ -235,19 +235,34 @@ function hasPrivacyConfirmation(
   return phrase === "SHARE";
 }
 
-function parseConnectorScopedPath(pathname: string): {
+interface ConnectorScopedPath {
   provider: string;
   namespace: "accounts" | "oauth" | "audit";
   rest: string[];
-} | null {
+}
+
+const INVALID_CONNECTOR_SCOPED_PATH = Symbol("invalid-connector-scoped-path");
+
+function parseConnectorScopedPath(
+  pathname: string,
+): ConnectorScopedPath | typeof INVALID_CONNECTOR_SCOPED_PATH | null {
   if (!pathname.startsWith(CONNECTORS_PREFIX)) {
     return null;
   }
-  const segments = pathname
+  const encodedSegments = pathname
     .slice(CONNECTORS_PREFIX.length)
     .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment));
+    .filter(Boolean);
+  const segments: string[] = [];
+  for (const segment of encodedSegments) {
+    try {
+      segments.push(decodeURIComponent(segment));
+    } catch {
+      // error-policy:J3 untrusted connector path segments with malformed
+      // percent-encoding are explicit invalid input, never dispatcher errors.
+      return INVALID_CONNECTOR_SCOPED_PATH;
+    }
+  }
   if (segments.length < 2) return null;
   const provider = segments[0]?.trim().toLowerCase() ?? "";
   const namespace = segments[1];
@@ -265,7 +280,7 @@ function parseConnectorScopedPath(pathname: string): {
 }
 
 function isUnauthenticatedOAuthCallback(
-  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  parsedPath: ConnectorScopedPath,
   method: string,
 ): boolean {
   return (
@@ -276,7 +291,7 @@ function isUnauthenticatedOAuthCallback(
 }
 
 function authorizationRequestForPath(
-  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  parsedPath: ConnectorScopedPath,
   method: string,
   pathname: string,
 ): ConnectorAccountRouteAuthorizationRequest {
@@ -662,6 +677,10 @@ export async function handleConnectorAccountRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, json, error, readJsonBody } = ctx;
   const parsedPath = parseConnectorScopedPath(pathname);
+  if (parsedPath === INVALID_CONNECTOR_SCOPED_PATH) {
+    error(res, "Invalid connector route encoding", 400);
+    return true;
+  }
   if (!parsedPath) {
     return false;
   }
