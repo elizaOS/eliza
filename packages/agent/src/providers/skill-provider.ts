@@ -391,9 +391,10 @@ export function createDynamicSkillProvider(): Provider {
         const instructions = service.getSkillInstructions(topMatch.slug);
         let body = "";
         if (instructions?.body) {
+          const suffix = "\n\n...[truncated — use USE_SKILL for full instructions]";
           body =
             instructions.body.length > MAX_INSTRUCTION_CHARS
-              ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
+              ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS - suffix.length)}${suffix}`
               : instructions.body;
         }
 
