@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/utils/logger", () => ({
@@ -21,15 +22,28 @@ const ORG_A = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "agent-provision-1";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
-const getAgentForWrite = mock(async () => ({
-  id: AGENT_ID,
-  organization_id: ORG_A,
-  agent_name: "already-up",
-  execution_tier: "dedicated-always",
-  status: "running",
-  bridge_url: "https://bridge.example.test",
-  health_url: "https://health.example.test",
-}));
+type ProvisionAgentFixture = Pick<
+  AgentSandbox,
+  | "id"
+  | "organization_id"
+  | "agent_name"
+  | "execution_tier"
+  | "status"
+  | "bridge_url"
+  | "health_url"
+>;
+
+const getAgentForWrite = mock(
+  async (): Promise<ProvisionAgentFixture> => ({
+    id: AGENT_ID,
+    organization_id: ORG_A,
+    agent_name: "already-up",
+    execution_tier: "dedicated-always",
+    status: "running",
+    bridge_url: "https://bridge.example.test",
+    health_url: "https://health.example.test",
+  }),
+);
 const provision = mock(async () => ({
   success: true,
   bridgeUrl: "https://bridge.example.test",
