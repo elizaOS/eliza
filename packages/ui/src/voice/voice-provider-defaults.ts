@@ -85,7 +85,7 @@ export function pickDefaultVoiceProvider(
   const { platform, runtimeMode } = input;
 
   // Cloud / remote: the agent isn't on this machine, so speech can't run
-  // on-device. Default to the measured free cloud Kokoro path for TTS and route
+  // on-device. Default to managed cloud voice for TTS and route
   // ASR to Eliza Cloud. The user can still opt into ElevenLabs or Edge in
   // advanced settings.
   if (runtimeMode === "cloud" || runtimeMode === "remote") {
@@ -105,13 +105,13 @@ export function pickDefaultVoiceProvider(
   }
 
   // Web shell hosting a local agent: no on-device audio runtime, so use the
-  // measured free cloud Kokoro path for TTS and Eliza Cloud for ASR.
+  // managed cloud voice for TTS and Eliza Cloud for ASR.
   return { tts: "eliza-cloud", asr: "eliza-cloud" };
 }
 
 /**
  * Runtime capabilities observed at resolution time. `pickDefaultVoiceProvider`
- * expresses the *preferred* Kokoro path per platform/mode; this fills in whether
+ * expresses the preferred voice path per platform/mode; this fills in whether
  * that path can actually run right now, so the default can fall through instead
  * of pinning a backend that will 503/401 on the first utterance.
  */
@@ -191,7 +191,7 @@ export function resolveDefaultTtsProvider(
     return "eliza-cloud";
   }
 
-  // On-device Kokoro is still preferable to ElevenLabs/browser even when the
+  // On-device Kokoro is still preferable to ElevenLabs/browser when the
   // platform preferred the cloud path but no cloud session is available — a
   // staged local voice beats a key-gated remote one.
   if (capabilities.localInferenceTtsReady) {
@@ -199,7 +199,7 @@ export function resolveDefaultTtsProvider(
   }
 
   // ElevenLabs only with a configured key. Never a silent default (slow + gated)
-  // — reached only when no Kokoro transport is available.
+  // — reached only when neither managed nor on-device voice is available.
   if (capabilities.elevenLabsKeyConfigured) {
     return "elevenlabs";
   }

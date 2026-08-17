@@ -5,7 +5,7 @@
  * Drives the real `useResolvedTtsDefault` hook + `useDefaultProviderPresets` +
  * `resolveDefaultTtsProvider` against a mocked runtime-mode snapshot and a
  * mocked on-device readiness probe. Asserts the capability-aware default chain
- * per platform/config: on-device Kokoro when staged, else Eliza Cloud Kokoro,
+ * per platform/config: managed cloud voice when connected, else on-device Kokoro,
  * else ElevenLabs (key), else browser SpeechSynthesis — and that the probe only
  * fires when the platform/mode would use an on-device voice.
  */
@@ -88,7 +88,7 @@ describe("useResolvedTtsDefault", () => {
     expect(last.provider).toBe("eliza-cloud");
   });
 
-  it("desktop-local without a staged voice falls to Eliza Cloud Kokoro", async () => {
+  it("desktop-local without a staged voice uses managed cloud voice", async () => {
     const last = await resolveOnce(
       {
         platformOverride: "desktop",
@@ -106,7 +106,7 @@ describe("useResolvedTtsDefault", () => {
     expect(last.provider).toBe("eliza-cloud");
   });
 
-  it("cloud agent with a session resolves to Eliza Cloud Kokoro", async () => {
+  it("cloud agent with a session resolves to managed cloud voice", async () => {
     const last = await resolveOnce(
       {
         platformOverride: "web",

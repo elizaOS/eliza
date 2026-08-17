@@ -65,13 +65,13 @@ describe("pickDefaultVoiceProvider", () => {
     ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
   });
 
-  it("web + local agent uses cloud Kokoro TTS with Cloud ASR (no on-device audio)", () => {
+  it("web + local agent uses managed cloud TTS with Cloud ASR", () => {
     expect(
       pickDefaultVoiceProvider({ platform: "web", runtimeMode: "local" }),
     ).toEqual({ tts: "eliza-cloud", asr: "eliza-cloud" });
   });
 
-  it("cloud agent defaults to cloud Kokoro TTS + Cloud ASR, never slow ElevenLabs", () => {
+  it("cloud agent defaults to managed cloud TTS + Cloud ASR", () => {
     const platforms: PresetPlatform[] = ["desktop", "mobile", "web"];
     for (const platform of platforms) {
       expect(
@@ -80,7 +80,7 @@ describe("pickDefaultVoiceProvider", () => {
     }
   });
 
-  it("remote-controller surfaces default to cloud Kokoro TTS + Cloud ASR", () => {
+  it("remote-controller surfaces default to managed cloud TTS + Cloud ASR", () => {
     const platforms: PresetPlatform[] = ["desktop", "mobile", "web"];
     for (const platform of platforms) {
       expect(
@@ -138,7 +138,7 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
     ).toBe("eliza-cloud");
   });
 
-  it("desktop-local falls to Eliza Cloud Kokoro when the on-device engine is NOT staged", () => {
+  it("desktop-local uses managed cloud voice when the on-device engine is not staged", () => {
     expect(
       resolveDefaultTtsProvider(
         { platform: "desktop", runtimeMode: "local" },
@@ -164,7 +164,7 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
     ).toBe("local-inference");
   });
 
-  it("web/cloud uses Eliza Cloud Kokoro when a cloud session exists", () => {
+  it("web/cloud uses managed cloud voice when a cloud session exists", () => {
     for (const platform of ["web", "desktop", "mobile"] as PresetPlatform[]) {
       expect(
         resolveDefaultTtsProvider(
@@ -194,7 +194,7 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
     ).toBe("local-inference");
   });
 
-  it("uses ElevenLabs only when a key is configured and no Kokoro transport is available", () => {
+  it("uses ElevenLabs only when no managed or on-device voice is available", () => {
     expect(
       resolveDefaultTtsProvider(
         { platform: "web", runtimeMode: "cloud" },
@@ -278,10 +278,8 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
     }
   });
 
-  it("the chain strictly prefers Kokoro (either transport) over ElevenLabs", () => {
-    // Whenever ANY Kokoro transport is available and a key is also configured,
-    // ElevenLabs must not win — Kokoro is the default, ElevenLabs is opt-in.
-    const kokoroCapable: VoiceCapabilitySnapshot[] = [
+  it("prefers managed or on-device product voice over ElevenLabs", () => {
+    const productVoiceCapable: VoiceCapabilitySnapshot[] = [
       {
         localInferenceTtsReady: true,
         cloudVoiceAvailable: false,
@@ -293,7 +291,7 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
         elevenLabsKeyConfigured: true,
       },
     ];
-    for (const caps of kokoroCapable) {
+    for (const caps of productVoiceCapable) {
       for (const platform of ["desktop", "mobile", "web"] as PresetPlatform[]) {
         for (const runtimeMode of [
           "local",
