@@ -303,15 +303,36 @@ async function handleScheduledTasks(
 
   // List.
   if (method === "GET" && pathname === PATH_PREFIX) {
+    const url = ctx.url;
+    // Scheduled-task owner-visible list identity, leftover tax after
+    // lifeops inbox bools (#20930). ownerVisibleOnly=true used to
+    // silently list hidden tasks instead of a 400. kind / status /
+    // source / firedSince parsers stay untouched.
+    const requestedOwnerVisibleValues = url.searchParams.getAll(
+      "ownerVisibleOnly",
+    );
+    const requestedOwnerVisible = requestedOwnerVisibleValues[0];
+    if (
+      requestedOwnerVisibleValues.length > 1 ||
+      (requestedOwnerVisible != null &&
+        requestedOwnerVisible !== "" &&
+        requestedOwnerVisible !== "1")
+    ) {
+      error(
+        res,
+        'ownerVisibleOnly must be specified at most once as "1".',
+        400,
+      );
+      return true;
+    }
     const runner = await deps.resolveRunner(ctx);
     if (!runner) return true;
-    const url = ctx.url;
     const filterParse = scheduledTaskFilterSchema.safeParse({
       kind: url.searchParams.get("kind") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
       source: url.searchParams.get("source") ?? undefined,
       firedSince: url.searchParams.get("firedSince") ?? undefined,
-      ownerVisibleOnly: url.searchParams.get("ownerVisibleOnly") === "1",
+      ownerVisibleOnly: requestedOwnerVisible === "1",
     });
     if (!filterParse.success) {
       error(
