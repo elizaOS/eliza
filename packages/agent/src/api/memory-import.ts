@@ -24,13 +24,13 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  canonicalSharedMemoryJson,
   computeSharedMemoryTransferDigest,
   type SealedImportConflict,
   type SealedImportResponse,
   type SealedMemoryImportRequest,
   SealedMemoryImportRequestSchema,
   SHARED_MEMORY_TRANSFER_SOURCE,
-  sharedMemoryContentHash,
 } from "@elizaos/shared/contracts/shared-memory-transfer";
 import type { MemoryRouteContext } from "./memory-routes.ts";
 
@@ -40,6 +40,43 @@ export const MEMORY_IMPORT_MAX_BODY_BYTES = 16 * 1024 * 1024;
 export type SealedImportOutcome =
   | { status: 200; body: SealedImportResponse }
   | { status: 400 | 409; body: { ok: false; error: string; code: string } };
+
+function targetMemory(
+  runtime: AgentRuntime,
+  request: SealedMemoryImportRequest,
+  row: SealedMemoryImportRequest["rows"][number],
+): Memory {
+  const sourceAgentId = request.seal.source_agent_id;
+  return {
+    id: row.id as UUID,
+    agentId: runtime.agentId,
+    entityId: (row.entity_id === sourceAgentId || row.entity_id === null
+      ? runtime.agentId
+      : row.entity_id) as UUID,
+    roomId: (row.room_id ?? undefined) as UUID,
+    worldId: (row.world_id ??
+      (row.room_id ? `${runtime.agentId}` : undefined)) as UUID | undefined,
+    content: row.content as Memory["content"],
+    metadata: row.metadata as Memory["metadata"],
+    createdAt: Date.parse(row.created_at),
+    ...(row.embedding ? { embedding: row.embedding.dim_384 } : {}),
+  } as Memory;
+}
+
+function storedRowFingerprint(memory: Memory, tableName: string): string {
+  return canonicalSharedMemoryJson({
+    id: memory.id ?? null,
+    agentId: memory.agentId ?? null,
+    entityId: memory.entityId ?? null,
+    roomId: memory.roomId ?? null,
+    worldId: memory.worldId ?? null,
+    type: tableName,
+    createdAt: memory.createdAt ?? null,
+    content: memory.content,
+    metadata: memory.metadata ?? {},
+    embedding: memory.embedding ?? null,
+  });
+}
 
 function failure(
   status: 400 | 409,
@@ -158,20 +195,25 @@ export async function importSealedMemories(
   const conflicts: SealedImportConflict[] = [];
   const toImport: typeof request.rows = [];
   let skippedExisting = 0;
+  let skippedExistingEmbeddings = 0;
   for (const row of request.rows) {
     const existing = await runtime.getMemoryById(row.id as UUID);
     if (!existing) {
       toImport.push(row);
       continue;
     }
+    const expected = targetMemory(runtime, request, row);
+    const existingType = (existing as Memory & { type?: string }).type;
     if (
-      sharedMemoryContentHash(existing.content) ===
-      sharedMemoryContentHash(row.content)
+      existingType === row.type &&
+      storedRowFingerprint(existing, existingType) ===
+        storedRowFingerprint(expected, row.type)
     ) {
       skippedExisting += 1;
+      if (row.embedding) skippedExistingEmbeddings += 1;
       continue;
     }
-    conflicts.push({ id: row.id, reason: "content-mismatch" });
+    conflicts.push({ id: row.id, reason: "stored-row-mismatch" });
   }
   if (conflicts.length > 0) {
     return {
@@ -186,22 +228,8 @@ export async function importSealedMemories(
 
   await ensureScaffoldingIfAbsent(runtime, request);
 
-  const sourceAgentId = request.seal.source_agent_id;
   const batch = toImport.map((row) => ({
-    memory: {
-      id: row.id as UUID,
-      agentId: runtime.agentId,
-      entityId: (row.entity_id === sourceAgentId || row.entity_id === null
-        ? runtime.agentId
-        : row.entity_id) as UUID,
-      roomId: (row.room_id ?? undefined) as UUID,
-      worldId: (row.world_id ??
-        (row.room_id ? `${runtime.agentId}` : undefined)) as UUID | undefined,
-      content: row.content as Memory["content"],
-      metadata: row.metadata as Memory["metadata"],
-      createdAt: Date.parse(row.created_at),
-      ...(row.embedding ? { embedding: row.embedding.dim_384 } : {}),
-    } as Memory,
+    memory: targetMemory(runtime, request, row),
     tableName: row.type,
     unique: true,
   }));
@@ -210,7 +238,46 @@ export async function importSealedMemories(
   // verbatim and skips the runtime wrapper's redaction and fact dedupe, which
   // would mutate transferred history.
   if (batch.length > 0) {
-    await runtime.adapter.createMemories(batch);
+    try {
+      await runtime.adapter.createMemories(batch, { onIdConflict: "error" });
+    } catch (cause) {
+      // A racing identical request may have committed between the pre-read and
+      // the strict transaction. Certify every row from storage before calling
+      // that race an idempotent replay; divergent or partial state never gets
+      // fabricated as success.
+      let identicalRace = true;
+      let observedConflictingRow = false;
+      for (const row of toImport) {
+        const existing = await runtime.getMemoryById(row.id as UUID);
+        const existingType = (existing as (Memory & { type?: string }) | null)
+          ?.type;
+        if (
+          !existing ||
+          existingType !== row.type ||
+          storedRowFingerprint(existing, existingType) !==
+            storedRowFingerprint(targetMemory(runtime, request, row), row.type)
+        ) {
+          identicalRace = false;
+          observedConflictingRow ||= existing !== null;
+          break;
+        }
+      }
+      if (identicalRace) {
+        skippedExisting += batch.length;
+        skippedExistingEmbeddings += toImport.filter(
+          (row) => row.embedding,
+        ).length;
+        batch.length = 0;
+      } else if (observedConflictingRow) {
+        return failure(
+          409,
+          "IMPORT_ID_CONFLICT",
+          "Import refused: an id was concurrently written with different stored fields",
+        );
+      } else {
+        throw cause;
+      }
+    }
   }
 
   return {
@@ -221,6 +288,9 @@ export async function importSealedMemories(
       skipped_existing: skippedExisting,
       embeddings_written: batch.filter((entry) => entry.memory.embedding)
         .length,
+      // Count only embeddings whose skipped rows passed full stored-row
+      // equality. The pusher combines this with newly written embeddings.
+      embeddings_skipped_verified: skippedExistingEmbeddings,
       conflicts: [],
       digest_verified: true,
     },

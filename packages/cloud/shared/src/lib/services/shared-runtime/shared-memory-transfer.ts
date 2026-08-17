@@ -18,6 +18,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   computeSharedMemoryTransferDigest,
   type SealedImportResponse,
+  SealedImportResponseSchema,
   type SealedMemoryExportRow,
   SHARED_MEMORY_TRANSFER_MAX_ROWS,
 } from "@elizaos/shared/contracts/shared-memory-transfer";
@@ -123,9 +124,9 @@ function validateBatchResponse(
     response.conflicts.length === 0 &&
     response.imported + response.skipped_existing === rows.length &&
     response.embeddings_written <= batchEmbeddings &&
-    // Fresh-container case (the actual promotion path): nothing pre-existed,
-    // so every batch embedding must have been written.
-    (response.skipped_existing > 0 || response.embeddings_written === batchEmbeddings);
+    response.embeddings_written <= response.imported &&
+    response.embeddings_skipped_verified <= response.skipped_existing &&
+    response.embeddings_written + response.embeddings_skipped_verified === batchEmbeddings;
   if (!conserves) {
     throw new ElizaError("Dedicated container import response failed conservation validation", {
       code: SHARED_MEMORY_TRANSFER_FAILED,
@@ -133,6 +134,7 @@ function validateBatchResponse(
         imported: response.imported,
         skippedExisting: response.skipped_existing,
         embeddingsWritten: response.embeddings_written,
+        embeddingsSkippedVerified: response.embeddings_skipped_verified,
         batchRows: rows.length,
         batchEmbeddings,
         ok: response.ok,
@@ -149,23 +151,62 @@ async function postBatch(
   fetchImpl: typeof fetch,
 ): Promise<SealedImportResponse> {
   const base = assertTransferTargetAllowed(target.baseUrl);
-  const response = await fetchImpl(new URL("/api/memories/import", base).toString(), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${target.apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ seal, rows }),
-    signal: AbortSignal.timeout(transferTimeoutMs()),
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(new URL("/api/memories/import", base).toString(), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${target.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ seal, rows }),
+      signal: AbortSignal.timeout(transferTimeoutMs()),
+      // Memory payloads and bearer credentials must never be replayed to a
+      // redirect-selected authority or path.
+      redirect: "error",
+    });
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — provisioning must distinguish
+    // retryable transfer transport failure from a completed promotion.
+    throw new ElizaError("Dedicated container memory import transport failed", {
+      code: SHARED_MEMORY_TRANSFER_FAILED,
+      cause,
+      context: { batchSize: rows.length },
+      severity: "ephemeral",
+    });
+  }
   if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).slice(0, 300);
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 300);
+    } catch {
+      // error-policy:J1 the status remains the authoritative transport error;
+      // an unreadable optional response body must not replace it.
+    }
     throw new ElizaError("Dedicated container rejected a memory import batch", {
       code: SHARED_MEMORY_TRANSFER_FAILED,
       context: { status: response.status, detail, batchSize: rows.length },
     });
   }
-  return (await response.json()) as SealedImportResponse;
+  let receipt: unknown;
+  try {
+    receipt = await response.json();
+  } catch (cause) {
+    // error-policy:J2 malformed transport data is a typed transfer failure.
+    throw new ElizaError("Dedicated container returned unreadable import JSON", {
+      code: SHARED_MEMORY_TRANSFER_FAILED,
+      cause,
+      context: { batchSize: rows.length },
+    });
+  }
+  const parsed = SealedImportResponseSchema.safeParse(receipt);
+  if (!parsed.success) {
+    throw new ElizaError("Dedicated container returned an invalid import receipt", {
+      code: SHARED_MEMORY_TRANSFER_FAILED,
+      context: { issue: parsed.error.issues[0]?.message ?? "invalid receipt" },
+    });
+  }
+  return parsed.data;
 }
 
 /**

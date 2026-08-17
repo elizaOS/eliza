@@ -338,9 +338,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   async createMemories(
-    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+    options: { onIdConflict?: "ignore" | "error" } = {}
   ): Promise<UUID[]> {
-    const ids = await super.createMemories(memories);
+    const ids = await super.createMemories(memories, options);
     for (let index = 0; index < memories.length; index++) {
       const memory = memories[index].memory;
       this.manager.notifyWrite("memories", "insert", {

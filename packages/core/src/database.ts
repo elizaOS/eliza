@@ -400,6 +400,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────
 	abstract createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+		options?: { onIdConflict?: "ignore" | "error" },
 	): Promise<UUID[]>;
 	abstract updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,

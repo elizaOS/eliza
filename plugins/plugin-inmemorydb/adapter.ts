@@ -974,8 +974,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createMemories(
-    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+    options: { onIdConflict?: "ignore" | "error" } = {}
   ): Promise<UUID[]> {
+    if (options.onIdConflict === "error") {
+      throw new Error(
+        "Strict atomic memory creation is unavailable for the non-transactional in-memory adapter"
+      );
+    }
     const ids: UUID[] = [];
     for (const { memory, tableName, unique = false } of memories) {
       const id = (memory.id ?? randomUUID()) as UUID;

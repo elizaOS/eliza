@@ -126,7 +126,10 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
-import { transferSharedMemoriesToDedicated } from "./shared-runtime/shared-memory-transfer";
+import {
+  SHARED_MEMORY_TRANSFER_FAILED,
+  transferSharedMemoriesToDedicated,
+} from "./shared-runtime/shared-memory-transfer";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   formatWakeRestoreIntegrityError,
@@ -3541,31 +3544,21 @@ export class ElizaSandboxService {
           const transferToken = (
             (rec.environment_vars ?? {}) as Record<string, string>
           ).ELIZA_API_TOKEN?.trim();
-          try {
-            if (!transferToken) {
-              throw new Error("agent ELIZA_API_TOKEN is unavailable for the memory transfer");
-            }
-            const transfer = await transferSharedMemoriesToDedicated(
-              { id: rec.id, organization_id: rec.organization_id, user_id: rec.user_id },
-              { baseUrl: handle.bridgeUrl, apiToken: transferToken },
-            );
-            if (transfer.rows > 0) {
-              logger.info("[agent-sandbox] Shared memory history transferred", {
-                agentId: rec.id,
-                ...transfer,
-              });
-            }
-          } catch (error) {
-            // error-policy:J4 designed degrade — the history copy is additive
-            // and re-runnable against the sealed idempotent importer; failing
-            // the provision would trade a booting agent for a memory copy.
-            logger.warn(
-              "[agent-sandbox] Shared memory transfer failed; container boots without transferred history",
-              {
-                agentId: rec.id,
-                error: error instanceof Error ? error.message : String(error),
-              },
-            );
+          if (!transferToken) {
+            throw new Error("agent ELIZA_API_TOKEN is unavailable for the memory transfer");
+          }
+          // Feature-enabled promotion is fail-closed. Once this provision is
+          // committed as running it is no longer an empty boot, so swallowing
+          // a failure here would permanently strand the Shared history.
+          const transfer = await transferSharedMemoriesToDedicated(
+            { id: rec.id, organization_id: rec.organization_id, user_id: rec.user_id },
+            { baseUrl: handle.bridgeUrl, apiToken: transferToken },
+          );
+          if (transfer.rows > 0) {
+            logger.info("[agent-sandbox] Shared memory history transferred", {
+              agentId: rec.id,
+              ...transfer,
+            });
           }
         }
 
@@ -3660,6 +3653,15 @@ export class ElizaSandboxService {
             error: `Replacement cleanup is still pending: ${
               stopErr instanceof Error ? stopErr.message : String(stopErr)
             }`,
+          };
+        }
+
+        if (err instanceof ElizaError && err.code === SHARED_MEMORY_TRANSFER_FAILED) {
+          return {
+            success: false,
+            retryable: true,
+            sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+            error: msg,
           };
         }
 

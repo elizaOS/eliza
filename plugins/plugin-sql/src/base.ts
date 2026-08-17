@@ -2795,6 +2795,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const row = result[0];
       return {
         id: row.memory.id as UUID,
+        type: row.memory.type,
         createdAt: row.memory.createdAt.getTime(),
         content:
           typeof row.memory.content === "string"
@@ -3615,7 +3616,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     tx: DrizzleDatabase,
     memory: Memory & { metadata?: MemoryMetadata },
     tableName: string,
-    memoryId: UUID
+    memoryId: UUID,
+    onIdConflict: "ignore" | "error" = "ignore"
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
@@ -3625,24 +3627,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const metadataToInsert =
       typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    const inserted = await tx
-      .insert(memoryTable)
-      .values([
-        {
-          id: memoryId,
-          type: tableName,
-          content: sql`${contentToInsert}::jsonb`,
-          metadata: sql`${metadataToInsert}::jsonb`,
-          entityId: memory.entityId,
-          roomId: memory.roomId,
-          worldId: memory.worldId,
-          agentId: memory.agentId || this.agentId,
-          unique: memory.unique,
-          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-        },
-      ])
-      .onConflictDoNothing()
-      .returning();
+    const insert = tx.insert(memoryTable).values([
+      {
+        id: memoryId,
+        type: tableName,
+        content: sql`${contentToInsert}::jsonb`,
+        metadata: sql`${metadataToInsert}::jsonb`,
+        entityId: memory.entityId,
+        roomId: memory.roomId,
+        worldId: memory.worldId,
+        agentId: memory.agentId || this.agentId,
+        unique: memory.unique,
+        createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+      },
+    ]);
+    const inserted = await (onIdConflict === "ignore"
+      ? insert.onConflictDoNothing().returning()
+      : insert.returning());
 
     if (inserted.length === 0) {
       return;
@@ -6373,7 +6374,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   // ── Memory batch methods ──────────────────────────────────────────────
 
   async createMemories(
-    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+    options: { onIdConflict?: "ignore" | "error" } = {}
   ): Promise<UUID[]> {
     if (memories.length === 0) return [];
 
@@ -6396,7 +6398,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     await this.withEntityContext(entityContext, async (tx) => {
       for (const entry of prepared) {
-        await this.insertMemoryInTransaction(tx, entry.memory, entry.tableName, entry.id);
+        await this.insertMemoryInTransaction(
+          tx,
+          entry.memory,
+          entry.tableName,
+          entry.id,
+          options.onIdConflict
+        );
       }
     });
 

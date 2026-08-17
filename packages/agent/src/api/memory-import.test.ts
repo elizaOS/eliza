@@ -25,6 +25,7 @@ const WORLD = "d04cf4d3-a60e-4209-ad78-d67d6a38ff95";
 interface RecordedRuntime {
   runtime: AgentRuntime;
   batches: Array<Array<{ memory: Memory; tableName: string }>>;
+  batchConflictPolicies: Array<string | undefined>;
   worldsCreated: string[];
   roomsCreated: string[];
   entitiesCreated: string[];
@@ -38,6 +39,7 @@ function recorderRuntime(): RecordedRuntime {
   const state: RecordedRuntime = {
     runtime: undefined as unknown as AgentRuntime,
     batches: [],
+    batchConflictPolicies: [],
     worldsCreated: [],
     roomsCreated: [],
     entitiesCreated: [],
@@ -68,8 +70,10 @@ function recorderRuntime(): RecordedRuntime {
         ids.filter((id) => state.existingWorlds.has(id)).map((id) => ({ id })),
       createMemories: async (
         batch: Array<{ memory: Memory; tableName: string }>,
+        options?: { onIdConflict?: string },
       ) => {
         state.batches.push(batch);
+        state.batchConflictPolicies.push(options?.onIdConflict);
         return batch.map((entry) => entry.memory.id as UUID);
       },
     },
@@ -132,9 +136,11 @@ describe("sealed memory import", () => {
       imported: 2,
       skipped_existing: 0,
       embeddings_written: 2,
+      embeddings_skipped_verified: 0,
       digest_verified: true,
     });
     expect(state.batches).toHaveLength(1);
+    expect(state.batchConflictPolicies).toEqual(["error"]);
     const [user, agent] = state.batches[0] ?? [];
     expect(user?.memory.id).toBe(rows[0]?.id as UUID);
     expect(user?.memory.createdAt).toBe(Date.parse("2026-08-17T03:44:45.770Z"));
@@ -206,7 +212,15 @@ describe("sealed memory import", () => {
       rows[0]?.id as string,
       {
         id: rows[0]?.id,
+        type: rows[0]?.type,
+        agentId: LOCAL_AGENT,
+        entityId: rows[0]?.entity_id,
+        roomId: rows[0]?.room_id,
+        worldId: rows[0]?.world_id,
+        createdAt: Date.parse(rows[0]?.created_at as string),
         content: rows[0]?.content,
+        metadata: rows[0]?.metadata,
+        embedding: rows[0]?.embedding?.dim_384,
       } as Memory,
     );
 
@@ -220,9 +234,37 @@ describe("sealed memory import", () => {
       imported: 1,
       skipped_existing: 1,
       embeddings_written: 1,
+      embeddings_skipped_verified: 1,
     });
     expect(state.batches[0]).toHaveLength(1);
     expect(state.batches[0]?.[0]?.memory.id).toBe(rows[1]?.id as UUID);
+  });
+
+  it("refuses same-content replays when any persisted field differs", async () => {
+    const state = recorderRuntime();
+    const transferred = exportRow(0);
+    state.existingMemories.set(transferred.id, {
+      id: transferred.id as UUID,
+      type: transferred.type,
+      agentId: LOCAL_AGENT,
+      entityId: transferred.entity_id as UUID,
+      roomId: transferred.room_id as UUID,
+      worldId: transferred.world_id as UUID,
+      createdAt: Date.parse(transferred.created_at),
+      content: transferred.content as Memory["content"],
+      metadata: transferred.metadata as Memory["metadata"],
+      embedding: transferred.embedding?.dim_384.map((value, index) =>
+        index === 0 ? value + 0.01 : value,
+      ),
+    } as Memory);
+
+    const outcome = await importSealedMemories(
+      state.runtime,
+      sealedRequest([transferred]),
+    );
+    expect(outcome.status).toBe(409);
+    expect(outcome.body).toMatchObject({ code: "IMPORT_ID_CONFLICT" });
+    expect(state.batches).toHaveLength(0);
   });
 
   it("never overwrites existing scaffolding; absent scaffolding is created", async () => {

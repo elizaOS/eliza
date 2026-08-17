@@ -202,6 +202,30 @@ describe("Memory Integration Tests", () => {
     expect(await adapter.getMemoryById(rolledBack[0].id as UUID)).toBeNull();
   });
 
+  it("strict overlapping batches never partially commit around a shared id", async () => {
+    const sharedId = v4() as UUID;
+    const leftOnly = createTestMemory({ text: "left only" });
+    const rightOnly = createTestMemory({ text: "right only" });
+    const leftShared = { ...createTestMemory({ text: "left shared" }), id: sharedId };
+    const rightShared = { ...createTestMemory({ text: "right shared" }), id: sharedId };
+
+    const outcomes = await Promise.allSettled([
+      adapter.createMemories(
+        [leftOnly, leftShared].map((memory) => ({ memory, tableName: "messages" })),
+        { onIdConflict: "error" }
+      ),
+      adapter.createMemories(
+        [rightShared, rightOnly].map((memory) => ({ memory, tableName: "messages" })),
+        { onIdConflict: "error" }
+      ),
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const leftCommitted = (await adapter.getMemoryById(leftOnly.id as UUID)) !== null;
+    const rightCommitted = (await adapter.getMemoryById(rightOnly.id as UUID)) !== null;
+    expect([leftCommitted, rightCommitted].filter(Boolean)).toHaveLength(1);
+  });
+
   afterEach(async () => {
     // Clean up memories after each test to ensure isolation
     const db = adapter.getDatabase() as DrizzleDatabase;

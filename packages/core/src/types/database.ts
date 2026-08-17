@@ -1272,9 +1272,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Changed from boolean return which was ambiguous (false = failed OR already exists?).
 	 *
 	 * @returns Array of created memory IDs (in same order as input)
+	 * @param options.onIdConflict `error` makes a batch reject and roll back when
+	 * any requested ID already exists; adapters with transactions must apply it
+	 * atomically. The default preserves replay-tolerant legacy behavior.
 	 */
 	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+		options?: { onIdConflict?: "ignore" | "error" },
 	): Promise<UUID[]>;
 	/**
 	 * Batch update memories

@@ -28,7 +28,9 @@ export const SealedMemoryExportRowSchema = z.object({
   entity_id: UuidSchema.nullable(),
   room_id: UuidSchema.nullable(),
   world_id: UuidSchema.nullable(),
-  metadata: z.record(z.string(), z.unknown()),
+  metadata: z
+    .object({ source: z.literal(SHARED_MEMORY_TRANSFER_SOURCE) })
+    .catchall(z.unknown()),
   embedding: z
     .object({
       dim_384: z
@@ -63,7 +65,7 @@ export type SealedMemoryImportRequest = z.infer<
 /** A same-id row whose stored content differs from the transferred row. */
 export interface SealedImportConflict {
   id: string;
-  reason: "content-mismatch";
+  reason: "stored-row-mismatch";
 }
 
 /**
@@ -76,13 +78,49 @@ export interface SealedImportResponse {
   imported: number;
   skipped_existing: number;
   embeddings_written: number;
+  embeddings_skipped_verified: number;
   conflicts: SealedImportConflict[];
   digest_verified: boolean;
 }
 
+export const SealedImportResponseSchema = z.object({
+  ok: z.literal(true),
+  imported: z.number().int().min(0),
+  skipped_existing: z.number().int().min(0),
+  embeddings_written: z.number().int().min(0),
+  embeddings_skipped_verified: z.number().int().min(0),
+  conflicts: z.array(
+    z.object({
+      id: UuidSchema,
+      reason: z.literal("stored-row-mismatch"),
+    }),
+  ),
+  digest_verified: z.literal(true),
+});
+
+/** Canonical JSON used by seals and replay checks, independent of jsonb key order. */
+export function canonicalSharedMemoryJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalSharedMemoryJson(entry)).join(",")}]`;
+  }
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(
+      ([key, entry]) =>
+        `${JSON.stringify(key)}:${canonicalSharedMemoryJson(entry)}`,
+    )
+    .join(",")}}`;
+}
+
 function rowDigestLine(row: SealedMemoryExportRow): string {
   const contentHash = createHash("sha256")
-    .update(JSON.stringify(row.content))
+    .update(canonicalSharedMemoryJson(row.content))
+    .digest("hex");
+  const metadataHash = createHash("sha256")
+    .update(canonicalSharedMemoryJson(row.metadata))
     .digest("hex");
   const vectorHash = row.embedding
     ? createHash("sha256").update(row.embedding.dim_384.join(",")).digest("hex")
@@ -93,7 +131,9 @@ function rowDigestLine(row: SealedMemoryExportRow): string {
     row.type,
     row.entity_id ?? "-",
     row.room_id ?? "-",
+    row.world_id ?? "-",
     contentHash,
+    metadataHash,
     vectorHash,
   ].join("|");
 }
@@ -109,9 +149,4 @@ export function computeSharedMemoryTransferDigest(
   for (const row of rows) chain.update(rowDigestLine(row)).update("\n");
   chain.update(String(rows.length));
   return chain.digest("hex");
-}
-
-/** Stable per-row content hash used for id-conflict comparison on import. */
-export function sharedMemoryContentHash(content: unknown): string {
-  return createHash("sha256").update(JSON.stringify(content)).digest("hex");
 }

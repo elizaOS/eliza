@@ -1217,8 +1217,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// Batch memory methods
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+		options: { onIdConflict?: "ignore" | "error" } = {},
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
+		if (options.onIdConflict === "error") {
+			const conflict = memories.find(({ memory }) =>
+				memory.id ? this.memoriesById.has(String(memory.id)) : false,
+			);
+			if (conflict?.memory.id) {
+				throw new Error(`Memory id already exists: ${conflict.memory.id}`);
+			}
+		}
 		for (const { memory, tableName, unique } of memories) {
 			const gen =
 				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"

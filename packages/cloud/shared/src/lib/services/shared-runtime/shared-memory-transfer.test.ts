@@ -56,13 +56,19 @@ function sealedExport(rows: SealedMemoryExportRow[]): SealedMemoryExport {
 function recordingFetch(
   respond: (body: { seal: { row_count: number }; rows: unknown[] }) => unknown,
 ) {
-  const calls: Array<{ url: string; signal: AbortSignal | undefined; auth: string }> = [];
+  const calls: Array<{
+    url: string;
+    signal: AbortSignal | undefined;
+    auth: string;
+    redirect: RequestRedirect | undefined;
+  }> = [];
   const impl = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
     calls.push({
       url: String(url),
       signal: init?.signal ?? undefined,
       auth: (init?.headers as Record<string, string>)?.Authorization ?? "",
+      redirect: init?.redirect,
     });
     return Response.json(respond(body));
   }) as typeof fetch;
@@ -75,6 +81,7 @@ function okResponse(body: { rows: unknown[] }) {
     imported: body.rows.length,
     skipped_existing: 0,
     embeddings_written: body.rows.length,
+    embeddings_skipped_verified: 0,
     conflicts: [],
     digest_verified: true,
   };
@@ -136,6 +143,25 @@ describe("transferSharedMemoriesToDedicated", () => {
     expect(net.calls[0]?.url).toBe("http://100.64.0.10:2138/api/memories/import");
     expect(net.calls[0]?.auth).toBe("Bearer tok");
     expect(net.calls[0]?.signal).toBeInstanceOf(AbortSignal);
+    expect(net.calls[0]?.redirect).toBe("error");
+  });
+
+  test("the seal binds metadata and world identity", () => {
+    const original = row(0);
+    const metadataChanged = {
+      ...original,
+      metadata: { ...original.metadata, source: "tampered" },
+    };
+    const worldChanged = {
+      ...original,
+      world_id: "11111111-1111-4111-8111-111111111111",
+    };
+    expect(computeSharedMemoryTransferDigest([metadataChanged])).not.toBe(
+      computeSharedMemoryTransferDigest([original]),
+    );
+    expect(computeSharedMemoryTransferDigest([worldChanged])).not.toBe(
+      computeSharedMemoryTransferDigest([original]),
+    );
   });
 
   test("a bare-2xx response failing conservation is a typed failure", async () => {
@@ -146,6 +172,7 @@ describe("transferSharedMemoriesToDedicated", () => {
       imported: body.rows.length - 1,
       skipped_existing: 0,
       embeddings_written: body.rows.length - 1,
+      embeddings_skipped_verified: 0,
       conflicts: [],
       digest_verified: true,
     }));
@@ -173,6 +200,22 @@ describe("transferSharedMemoriesToDedicated", () => {
     }
   });
 
+  test("rejects malformed or negative receipts before conservation arithmetic", async () => {
+    const rows = [row(0)];
+    for (const bad of [
+      { ...okResponse({ rows }), imported: -1, skipped_existing: 2 },
+      { ...okResponse({ rows }), imported: "1" },
+    ]) {
+      const net = recordingFetch(() => bad);
+      await expect(
+        transferSharedMemoriesToDedicated(AGENT, TARGET, {
+          exportImpl: (async () => sealedExport(rows)) as never,
+          fetchImpl: net.impl,
+        }),
+      ).rejects.toMatchObject({ code: "SHARED_MEMORY_TRANSFER_FAILED" });
+    }
+  });
+
   test("a fresh container must write every batch embedding", async () => {
     const rows = [row(0), row(1)];
     const net = recordingFetch((body) => ({
@@ -181,6 +224,45 @@ describe("transferSharedMemoriesToDedicated", () => {
       skipped_existing: 0,
       // Silently dropped vectors on a fresh container must not pass.
       embeddings_written: body.rows.length - 1,
+      embeddings_skipped_verified: 0,
+      conflicts: [],
+      digest_verified: true,
+    }));
+    await expect(
+      transferSharedMemoriesToDedicated(AGENT, TARGET, {
+        exportImpl: (async () => sealedExport(rows)) as never,
+        fetchImpl: net.impl,
+      }),
+    ).rejects.toMatchObject({ code: "SHARED_MEMORY_TRANSFER_FAILED" });
+  });
+
+  test("one skipped row cannot excuse missing embeddings on newly imported rows", async () => {
+    const rows = [row(0), row(1), row(2)];
+    const net = recordingFetch(() => ({
+      ok: true,
+      imported: 2,
+      skipped_existing: 1,
+      embeddings_written: 0,
+      embeddings_skipped_verified: 1,
+      conflicts: [],
+      digest_verified: true,
+    }));
+    await expect(
+      transferSharedMemoriesToDedicated(AGENT, TARGET, {
+        exportImpl: (async () => sealedExport(rows)) as never,
+        fetchImpl: net.impl,
+      }),
+    ).rejects.toMatchObject({ code: "SHARED_MEMORY_TRANSFER_FAILED" });
+  });
+
+  test("skipped rows cannot be misreported as newly written embeddings", async () => {
+    const rows = [row(0), row(1)];
+    const net = recordingFetch(() => ({
+      ok: true,
+      imported: 0,
+      skipped_existing: 2,
+      embeddings_written: 2,
+      embeddings_skipped_verified: 0,
       conflicts: [],
       digest_verified: true,
     }));
