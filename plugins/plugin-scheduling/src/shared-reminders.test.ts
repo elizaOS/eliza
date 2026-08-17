@@ -291,6 +291,62 @@ describe("Shared reminders edge plugin", () => {
     expect(result?.text).not.toMatch(/reminder-1|scheduled|2026-08-14T/);
   });
 
+  it("uses a persisted snooze override for replay copy", async () => {
+    const { options, scheduleWithResult } = harness();
+    scheduleWithResult.mockImplementationOnce(
+      async (input: ScheduledTaskInput) => ({
+        task: {
+          ...scheduledTask({
+            ...input,
+            promptInstructions: "Persisted Stretch",
+            trigger: {
+              kind: "cron",
+              expression: "0 9 * * 1",
+              tz: "America/Los_Angeles",
+            },
+            output: {
+              destination: "channel",
+              target: "current_dm",
+              fallback: { body: "Persisted Stretch" },
+            },
+          }),
+          state: {
+            status: "scheduled" as const,
+            followupCount: 0,
+            firedAt: "2026-08-14T20:32:59.999Z",
+          },
+        },
+        commit: {
+          logId: "scheduled-log-1",
+          taskId: "reminder-1",
+          agentId: "personal:user-1",
+          occurredAtIso: NOW,
+          transition: "scheduled" as const,
+          rolledUp: false,
+        },
+        replayed: true,
+      }),
+    );
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-replayed-snooze" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Conflicting retry",
+          inMinutes: 2,
+        },
+      },
+    );
+
+    expect(result?.text).toBe(
+      "That reminder is already set on Aug 14, 2026 at 8:32:59.999 PM UTC: Persisted Stretch",
+    );
+    expect(result?.text).not.toMatch(/every Monday|9:00 AM|2026-08-14T/);
+  });
+
   it("lists one-off, interval, and cron reminders without storage internals", async () => {
     const { options, list } = harness();
     const stored = [
@@ -372,6 +428,56 @@ describe("Shared reminders edge plugin", () => {
         { taskId: "reminder-3" },
       ],
     });
+  });
+
+  it("lists effective snooze times for one-off and recurring reminders", async () => {
+    const { options, list } = harness();
+    list.mockResolvedValueOnce([
+      {
+        ...scheduledTask(
+          reminderInput("Stretch", {
+            kind: "once",
+            atIso: "2026-08-14T20:02:00.000Z",
+          }),
+        ),
+        state: {
+          status: "scheduled" as const,
+          followupCount: 0,
+          firedAt: "2026-08-14T20:32:00.000Z",
+        },
+      },
+      {
+        ...scheduledTask(
+          reminderInput("Weekly planning", {
+            kind: "cron",
+            expression: "0 9 * * 1",
+            tz: "America/Los_Angeles",
+          }),
+        ),
+        taskId: "reminder-2",
+        state: {
+          status: "scheduled" as const,
+          followupCount: 0,
+          firedAt: "2026-08-14T20:45:59.999Z",
+        },
+      },
+    ]);
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-list-snoozed" } as Memory,
+      undefined,
+      { parameters: { operation: "list" } },
+    );
+
+    expect(result?.text).toBe(
+      "Your reminders:\n" +
+        "• Stretch — on Aug 14, 2026 at 8:32 PM UTC\n" +
+        "• Weekly planning — on Aug 14, 2026 at 8:45:59.999 PM UTC",
+    );
+    expect(result?.text).not.toMatch(
+      /8:02 PM|every Monday|9:00 AM|2026-08-14T/,
+    );
   });
 
   it("keeps lifecycle acknowledgements user-facing while structured data retains the task id", async () => {

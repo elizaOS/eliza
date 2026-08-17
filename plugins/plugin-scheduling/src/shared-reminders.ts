@@ -220,8 +220,16 @@ function formatUtcInstant(atIso: string): string {
   const hour = instant.getUTCHours();
   const hour12 = hour % 12 || 12;
   const minute = String(instant.getUTCMinutes()).padStart(2, "0");
+  const seconds = instant.getUTCSeconds();
+  const milliseconds = instant.getUTCMilliseconds();
+  const preciseTime =
+    seconds === 0 && milliseconds === 0
+      ? `${hour12}:${minute}`
+      : `${hour12}:${minute}:${String(seconds).padStart(2, "0")}${
+          milliseconds === 0 ? "" : `.${String(milliseconds).padStart(3, "0")}`
+        }`;
   const meridiem = hour < 12 ? "AM" : "PM";
-  return `on ${UTC_MONTHS[instant.getUTCMonth()]} ${instant.getUTCDate()}, ${instant.getUTCFullYear()} at ${hour12}:${minute} ${meridiem} UTC`;
+  return `on ${UTC_MONTHS[instant.getUTCMonth()]} ${instant.getUTCDate()}, ${instant.getUTCFullYear()} at ${preciseTime} ${meridiem} UTC`;
 }
 
 function formatDuration(milliseconds: number): string {
@@ -328,7 +336,14 @@ function requestedScheduleDescription(
 }
 
 function taskSummary(task: ScheduledTask): string {
-  return `${reminderText(task)} — ${scheduleDescription(task.trigger)}`;
+  return `${reminderText(task)} — ${taskScheduleDescription(task)}`;
+}
+
+function taskScheduleDescription(task: ScheduledTask): string {
+  if (task.state.status === "scheduled" && task.state.firedAt) {
+    return formatUtcInstant(task.state.firedAt);
+  }
+  return scheduleDescription(task.trigger);
 }
 
 function creationReceipt(args: {
@@ -557,7 +572,7 @@ export function createSharedRemindersEdgeAction(
           executionProfile: "notify-only",
         });
         const schedule = scheduled.replayed
-          ? scheduleDescription(scheduled.task.trigger)
+          ? taskScheduleDescription(scheduled.task)
           : requestedScheduleDescription(
               input,
               scheduled.task.trigger,
