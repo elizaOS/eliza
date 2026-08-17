@@ -127,7 +127,7 @@ export function buildResumeContext(
     changedFiles: changed && changed.length > 0 ? changed : undefined,
     lastProgress:
       progress && progress.length > MAX_RESUME_PROGRESS_CHARS
-        ? `${progress.slice(0, MAX_RESUME_PROGRESS_CHARS)}…`
+        ? `${progress.slice(0, MAX_RESUME_PROGRESS_CHARS - 1)}…`
         : progress,
     capturedAt:
       typeof input.now === "number" && Number.isFinite(input.now)
