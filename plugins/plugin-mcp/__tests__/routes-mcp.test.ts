@@ -126,13 +126,12 @@ describe("handleMcpRoutes", () => {
   });
 
   it.each([
-    ["10junk", 30],
-    ["999", 50],
-    ["0", 1],
+    ["", 30],
     ["12", 12],
-  ])("sanitizes marketplace search limit %s to %s", async (rawLimit, expectedLimit) => {
+    ["999", 50],
+  ])("accepts marketplace search limit %s as %s", async (rawLimit, expectedLimit) => {
     const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
-      query: `?q=files&limit=${encodeURIComponent(rawLimit)}`,
+      query: rawLimit === "" ? "?q=files" : `?q=files&limit=${encodeURIComponent(rawLimit)}`,
     });
 
     await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
@@ -143,6 +142,37 @@ describe("handleMcpRoutes", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     expect(ctx.response).toEqual({ status: 200, body: { ok: true, results: [] } });
+  });
+
+  it.each(["10junk", "1e2", "12px", "007", "0x10", "0", "-1", "foo", "Infinity"])(
+    "rejects marketplace search limit %s before the registry",
+    async (rawLimit) => {
+      const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+        query: `?q=files&limit=${encodeURIComponent(rawLimit)}`,
+      });
+
+      await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+      expect(searchMcpMarketplace).not.toHaveBeenCalled();
+      expect(ctx.response).toEqual({
+        status: 400,
+        body: { ok: false, error: "Invalid limit" },
+      });
+    }
+  );
+
+  it("rejects duplicate marketplace search limit values before the registry", async () => {
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+      query: "?q=files&limit=12&limit=12",
+    });
+
+    await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+    expect(searchMcpMarketplace).not.toHaveBeenCalled();
+    expect(ctx.response).toEqual({
+      status: 400,
+      body: { ok: false, error: "Invalid limit" },
+    });
   });
 
   it("rejects oversized marketplace search queries before hitting the registry", async () => {

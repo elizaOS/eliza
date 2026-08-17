@@ -62,13 +62,9 @@ export interface McpRouteConfig {
   };
 }
 
-interface ParseClampedIntegerOptions {
-  min?: number;
-  max?: number;
-  fallback?: number;
-}
-
 const MCP_MARKETPLACE_QUERY_MAX_LENGTH = 200;
+const DEFAULT_MARKETPLACE_LIMIT = 30;
+const MAX_MARKETPLACE_LIMIT = 50;
 const MCP_MARKETPLACE_SERVER_NAME_MAX_LENGTH = 200;
 const MCP_MARKETPLACE_DETAILS_PREFIX = "/api/mcp/marketplace/details/";
 const MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX = "/api/mcp/marketplace/";
@@ -140,25 +136,37 @@ function createRequestAbortTracker(
   };
 }
 
-function parseClampedInteger(
-  value: string | null | undefined,
-  options: ParseClampedIntegerOptions = {}
-): number | undefined {
-  const raw = value == null ? "" : value.trim();
-  if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
-
-  if (!/^[+-]?\d+$/.test(raw)) {
-    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+class McpMarketplaceLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "McpMarketplaceLimitError";
   }
+}
 
+/**
+ * GET /api/mcp/marketplace/search `limit` is registry page-size identity,
+ * leftover tax after gallery explore / inbox limits. Stock develop used
+ * parseClampedInteger, which treated `1e2` / `12px` / `10junk` as the
+ * default 30 instead of a 400. Missing / empty still means 30. Exact
+ * integers clamp at 50. q stays untouched.
+ */
+function parseMarketplaceLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new McpMarketplaceLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_MARKETPLACE_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new McpMarketplaceLimitError();
+  }
   const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed)) {
-    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new McpMarketplaceLimitError();
   }
-
-  if (options.min !== undefined && parsed < options.min) return options.min;
-  if (options.max !== undefined && parsed > options.max) return options.max;
-  return parsed;
+  return Math.min(parsed, MAX_MARKETPLACE_LIMIT);
 }
 
 function normalizeBoundedString(value: string, maxLength: number, label: string): string {
@@ -197,8 +205,16 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       error(res, err instanceof Error ? err.message : String(err), 400);
       return true;
     }
-    const limitStr = url.searchParams.get("limit");
-    const limit = limitStr ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 }) : 30;
+    let limit: number;
+    try {
+      limit = parseMarketplaceLimitQuery(url.searchParams);
+    } catch (limitError) {
+      if (limitError instanceof McpMarketplaceLimitError) {
+        error(res, limitError.message, 400);
+        return true;
+      }
+      throw limitError;
+    }
     const abortTracker = createRequestAbortTracker(req, res, "MCP marketplace search");
     // error-policy:J1 marketplace boundary failures are translated to a 502 response.
     try {
