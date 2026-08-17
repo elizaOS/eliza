@@ -7,7 +7,7 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const twilioInboundCalls = pgTable(
   "twilio_inbound_calls",
@@ -22,6 +22,11 @@ export const twilioInboundCalls = pgTable(
     raw_payload: jsonb("raw_payload").notNull().default({}),
     raw_payload_storage: text("raw_payload_storage").notNull().default("inline"),
     raw_payload_key: text("raw_payload_key"),
+    // Null is the rollout/unclaimed sentinel; false is a claimed first contact.
+    opening_returning_caller: boolean("opening_returning_caller"),
+    opening_previous_interaction_at: timestamp("opening_previous_interaction_at", {
+      withTimezone: true,
+    }),
     received_at: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
