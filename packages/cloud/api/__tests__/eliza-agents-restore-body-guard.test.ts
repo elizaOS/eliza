@@ -94,8 +94,11 @@ beforeAll(async () => {
     const { organizations } = await import("@/db/schemas/organizations");
     const { users } = await import("@/db/schemas/users");
     const { userCharacters } = await import("@/db/schemas/user-characters");
-    const { agentSandboxes, agentSandboxBackups, agentBackupCatalogAuthorities } =
-      await import("@/db/schemas/agent-sandboxes");
+    const {
+      agentSandboxes,
+      agentSandboxBackups,
+      agentBackupCatalogAuthorities,
+    } = await import("@/db/schemas/agent-sandboxes");
     const { agentBackupObjects } = await import(
       "@/db/schemas/agent-backup-catalog"
     );
