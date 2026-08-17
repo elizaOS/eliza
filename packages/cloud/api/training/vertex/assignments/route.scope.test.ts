@@ -32,17 +32,20 @@ describe("GET /api/training/vertex/assignments scope identity", () => {
     listVisibleAssignments.mockClear();
   });
 
-  test.each(["", "?scope="])("accepts %s as the unfiltered list", async (query) => {
-    const response = await app.request(`/${query}`);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { assignments: { id: string }[] };
-    expect(body.assignments).toEqual([{ id: "asg-1" }]);
-    expect(listVisibleAssignments).toHaveBeenCalledTimes(1);
-    const filter = listVisibleAssignments.mock.calls[0][1] as {
-      scope?: string;
-    };
-    expect(filter.scope).toBeUndefined();
-  });
+  test.each(["", "?scope="])(
+    "accepts %s as the unfiltered list",
+    async (query) => {
+      const response = await app.request(`/${query}`);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { assignments: { id: string }[] };
+      expect(body.assignments).toEqual([{ id: "asg-1" }]);
+      expect(listVisibleAssignments).toHaveBeenCalledTimes(1);
+      const filter = listVisibleAssignments.mock.calls[0][1] as {
+        scope?: string;
+      };
+      expect(filter.scope).toBeUndefined();
+    },
+  );
 
   test.each(["global", "organization", "user"] as const)(
     "accepts scope=%s as that tenant",
