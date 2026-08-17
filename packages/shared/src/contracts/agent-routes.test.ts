@@ -41,24 +41,26 @@ describe("PostAgentAutonomyRequestSchema", () => {
 });
 
 describe("PostAgentExportRequestSchema", () => {
-  it("accepts a 4+ char password", () => {
-    expect(PostAgentExportRequestSchema.parse({ password: "1234" })).toEqual({
-      password: "1234",
+  it("accepts a 12+ char password", () => {
+    expect(
+      PostAgentExportRequestSchema.parse({ password: "123456789012" }),
+    ).toEqual({
+      password: "123456789012",
     });
   });
 
   it("accepts includeLogs flag", () => {
     expect(
       PostAgentExportRequestSchema.parse({
-        password: "1234",
+        password: "123456789012",
         includeLogs: true,
       }),
-    ).toEqual({ password: "1234", includeLogs: true });
+    ).toEqual({ password: "123456789012", includeLogs: true });
   });
 
-  it("rejects short password", () => {
+  it("rejects an 11-char password just below the minimum", () => {
     expect(() =>
-      PostAgentExportRequestSchema.parse({ password: "12" }),
+      PostAgentExportRequestSchema.parse({ password: "12345678901" }),
     ).toThrow(
       new RegExp(
         `at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required`,
@@ -72,7 +74,10 @@ describe("PostAgentExportRequestSchema", () => {
 
   it("rejects extra fields", () => {
     expect(() =>
-      PostAgentExportRequestSchema.parse({ password: "1234", verbose: true }),
+      PostAgentExportRequestSchema.parse({
+        password: "123456789012",
+        verbose: true,
+      }),
     ).toThrow();
   });
 });
