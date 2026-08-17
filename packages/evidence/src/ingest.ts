@@ -1,13 +1,13 @@
 /**
  * Silo ingestors: pure discovery + copy from the repo's existing evidence
- * silos into a bundle, with provenance stamped at ingest time. Producers are
- * never touched (#14552 hard constraint — `packages/app/scripts/**` is a hot
- * zone); each ingestor maps a silo's on-disk shape to `addArtifact` calls with
- * the correct kind/source/lane. An ingestor reports `absent` when none of its
- * roots exist and `ingested` (possibly with zero artifacts) when a root exists
- * but is empty — absent and empty are different results and are never
- * conflated. Silo roots mirror `scripts/evidence-review/generate.mjs`
- * DEFAULT_SCAN_DIRS so the bundle sees the same evidence the dashboard does.
+ * silos into a bundle, with provenance stamped at ingest time. Producers keep
+ * their native output layouts; each ingestor maps one named producer family to
+ * `addArtifact` calls with the correct kind/source/lane. An ingestor reports
+ * `absent` when none of its roots exist and `ingested` (possibly with zero
+ * artifacts) when a root exists but is empty — absent and empty are different
+ * results and are never conflated. This list is the sole normal-path producer
+ * inventory. The reviewer consumes the resulting verified bundle rather than
+ * independently crawling these roots.
  */
 
 import fs from "node:fs";
@@ -140,31 +140,35 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     source: "device-e2e",
     producedBy: "packages/app/scripts/lib/device-e2e-bundle.mjs",
     lane: "native",
-    roots: [
-      { label: "repo", dir: "device-e2e-output" },
-      { label: "app", dir: "packages/app/device-e2e-output" },
-    ],
+    roots: [{ label: "app", dir: "packages/app/device-e2e-output" }],
   },
   {
     silo: "playwright-test-results",
-    source: "playwright",
-    producedBy: "packages/app test:e2e",
+    source: "app-test-results",
+    producedBy: "packages/app Playwright and native test lanes",
     lane: "e2e",
     roots: [{ label: "app", dir: "packages/app/test-results" }],
+  },
+  {
+    silo: "ios-device-capture",
+    source: "ios-device-capture",
+    producedBy: "packages/app iOS capture and device-log lanes",
+    lane: "native",
+    roots: [
+      { label: "boot-capture", dir: "packages/app/ios/build/boot-capture" },
+      { label: "device-logs", dir: "packages/app/ios/build/device-logs" },
+    ],
   },
   {
     silo: "walkthrough-reports",
     source: "walkthrough",
     producedBy: "walkthrough capture lanes",
-    roots: [
-      { label: "repo", dir: "reports/walkthrough" },
-      { label: "app", dir: "packages/app/reports/walkthrough" },
-    ],
+    roots: [{ label: "repo", dir: "reports/walkthrough" }],
   },
   {
     silo: "live-test-runs",
     source: "live-test-runs",
-    producedBy: "reports/live-test-runs producers",
+    producedBy: "packages/scripts/run-live-test-with-artifacts.mjs",
     roots: [{ label: "repo", dir: "reports/live-test-runs" }],
   },
   {
@@ -172,10 +176,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     source: "scenario-runner",
     producedBy: "packages/scenario-runner/bin/eliza-scenarios",
     lane: "scenario",
-    roots: [
-      { label: "runner", dir: "packages/scenario-runner/reports" },
-      { label: "repo", dir: "reports/scenarios" },
-    ],
+    roots: [{ label: "repo", dir: "reports/scenarios" }],
   },
 ];
 

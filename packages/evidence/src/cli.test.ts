@@ -105,7 +105,7 @@ describe("runCli create", () => {
       "cli test",
     );
     expect(manifest.artifacts.map((entry) => entry.path)).toEqual([
-      "trajectories/scenario-runner/repo/live/native.jsonl",
+      "trajectories/scenario-runner/live/native.jsonl",
       "visual/aesthetic-audit/desktop/home--hover.png",
       "visual/aesthetic-audit/desktop/home.png",
     ]);
@@ -130,6 +130,96 @@ describe("runCli create", () => {
     expect(report.verifiedCount).toBe(3);
   });
 
+  it("emits one stable machine-readable object with --json", async () => {
+    const repo = initFixtureRepo();
+    const captured = capture();
+    expect(
+      await runCli(
+        [
+          "create",
+          "--tier",
+          "cpu",
+          "--out",
+          tmpDir(),
+          "--repo-root",
+          repo,
+          "--json",
+        ],
+        captured.io,
+      ),
+    ).toBe(0);
+    expect(captured.outLines).toHaveLength(1);
+    expect(JSON.parse(captured.outLines[0])).toMatchObject({
+      schema: 1,
+      command: "bundle:create",
+      artifactCount: 3,
+    });
+  });
+
+  it("adds an explicit matrix lane report to the verified bundle", async () => {
+    const repo = initFixtureRepo();
+    const out = tmpDir();
+    const report = path.join(tmpDir(), "matrix.json");
+    fs.writeFileSync(report, '{"status":"passed"}\n');
+    const captured = capture();
+    expect(
+      await runCli(
+        [
+          "create",
+          "--tier",
+          "cpu",
+          "--out",
+          out,
+          "--repo-root",
+          repo,
+          "--lane-report",
+          `matrix=${report}`,
+        ],
+        captured.io,
+      ),
+    ).toBe(0);
+    const dir = bundleDirFrom(captured.outLines);
+    const manifest = parseManifest(
+      JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")),
+      "lane report test",
+    );
+    expect(
+      manifest.artifacts.find(
+        (entry) => entry.path === "lanes/matrix/matrix-run.json",
+      ),
+    ).toMatchObject({
+      kind: "report",
+      source: "test-matrix",
+      lane: "matrix",
+      producedBy: "bundle:create --lane-report",
+    });
+    expect(await verifyBundle(dir)).toMatchObject({ ok: true });
+  });
+
+  it("rejects a malformed explicit lane report before finalizing", async () => {
+    const repo = initFixtureRepo();
+    const report = path.join(tmpDir(), "broken.json");
+    fs.writeFileSync(report, "not json\n");
+    const captured = capture();
+    expect(
+      await runCli(
+        [
+          "create",
+          "--tier",
+          "cpu",
+          "--out",
+          tmpDir(),
+          "--repo-root",
+          repo,
+          "--lane-report",
+          `matrix=${report}`,
+        ],
+        captured.io,
+      ),
+    ).toBe(1);
+    expect(captured.errLines.join("\n")).toContain("CLI_INPUT_INVALID");
+  });
+
   it("fails loud outside a git repository", async () => {
     const notRepo = tmpDir();
     const { io, errLines } = capture();
@@ -146,6 +236,10 @@ describe("runCli create", () => {
     ["bad tier", ["create", "--tier", "quantum"]],
     ["unknown flag", ["create", "--tier", "cpu", "--wat"]],
     ["unknown command", ["bogus"]],
+    [
+      "malformed lane report",
+      ["create", "--tier", "cpu", "--lane-report", "Bad Lane=/tmp/x"],
+    ],
   ])("exits non-zero on %s", async (_label, argv) => {
     const { io } = capture();
     expect(await runCli(argv, io)).toBe(1);

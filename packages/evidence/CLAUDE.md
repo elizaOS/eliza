@@ -26,9 +26,10 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   (`meta-mismatch`). A verified bundle contains no symlinks anywhere —
   verification is lstat-based and reports `symlink` findings instead of
   following links (mutable-after-signing / unswept-tree exploits).
-- **Producers are not touched.** Ingestors (`src/ingest.ts`) only discover and
-  copy. `packages/app/scripts/**` and `scripts/evidence-review/**` are hot
-  zones with in-flight PRs; this package deliberately lives outside them.
+- **One producer inventory.** Ingestors (`src/ingest.ts`) name every canonical
+  producer root and only discover + copy. Normal review verifies and reads the
+  resulting bundle; raw directory crawling exists only behind explicit
+  `--source` compatibility.
 - **Absent ≠ empty.** An ingestor returns `status: 'absent'` when no silo root
   exists and `status: 'ingested'` with `artifactCount: 0` when a root exists
   but is empty. Never conflate them and never fabricate an empty success.
@@ -104,6 +105,7 @@ bun run --cwd packages/evidence typecheck    # tsc --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
+bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 bun run --cwd packages/evidence certify:keygen -- [--print-private-key]
 bun run --cwd packages/evidence certify:rollup -- --bundle <dir> [--requirements <file>] [--out <file>]
 bun run --cwd packages/evidence certify:sign -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>

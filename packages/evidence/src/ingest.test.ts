@@ -2,7 +2,8 @@
  * Silo-ingestor tests against fixture trees replicating each silo's real
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
  * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
- * test-results, walkthrough/live-run reports, scenario-runner reports). Also
+ * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
+ * scenario-runner reports). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
  * empty silo reports `ingested` with zero artifacts — never the same result.
  */
@@ -75,13 +76,23 @@ function buildFixtureRepo(): string {
     "png-f",
   );
   write(repo, "packages/app/test-results/.last-run.json", "{}");
-  // Walkthrough reports exist under BOTH roots — exercises namespacing.
+  // iOS device/simulator capture lanes.
+  write(
+    repo,
+    "packages/app/ios/build/boot-capture/run-1/shards/chat/screen.png",
+    "ios-png",
+  );
+  write(
+    repo,
+    "packages/app/ios/build/boot-capture/run-1/test-summary.json",
+    "{}",
+  );
+  write(repo, "packages/app/ios/build/device-logs/device.log", "ios-log");
+  // Canonical walkthrough output is repo-root reports/walkthrough.
   write(repo, "reports/walkthrough/desktop.mp4", "mp4-repo");
-  write(repo, "packages/app/reports/walkthrough/mobile.mp4", "mp4-app");
   // Live test runs.
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
-  // scenario-runner reports + repo-level scenario reports.
-  write(repo, "packages/scenario-runner/reports/report.json", "{}");
+  // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
@@ -137,10 +148,15 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 2,
       },
+      "ios-device-capture": {
+        silo: "ios-device-capture",
+        status: "ingested",
+        artifactCount: 3,
+      },
       "walkthrough-reports": {
         silo: "walkthrough-reports",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 1,
       },
       "live-test-runs": {
         silo: "live-test-runs",
@@ -150,7 +166,7 @@ describe("ingestAllSilos", () => {
       "scenario-runner": {
         silo: "scenario-runner",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 1,
       },
     });
   });
@@ -182,30 +198,37 @@ describe("ingestAllSilos", () => {
       source: "e2e-recordings",
     });
     expect(
-      byPath["trajectories/scenario-runner/repo/live/native.jsonl"],
+      byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
-    expect(byPath["lanes/scenario/runner/report.json"]).toMatchObject({
-      kind: "report",
-      source: "scenario-runner",
-    });
     expect(
-      byPath["lanes/native/app/android-2026-07-05T01-02-03-004Z/summary.json"],
+      byPath["lanes/native/android-2026-07-05T01-02-03-004Z/summary.json"],
     ).toMatchObject({ kind: "report", source: "device-e2e" });
     expect(
       byPath[
-        "visual/device-e2e/app/android-2026-07-05T01-02-03-004Z/inline/screen.jpg"
+        "visual/device-e2e/android-2026-07-05T01-02-03-004Z/inline/screen.jpg"
       ],
     ).toMatchObject({ kind: "screenshot", lane: "native" });
     expect(
-      byPath["visual/playwright/chat-smoke/test-failed-1.png"],
+      byPath["visual/app-test-results/chat-smoke/test-failed-1.png"],
     ).toMatchObject({
       kind: "screenshot",
       lane: "e2e",
     });
+    expect(
+      byPath[
+        "visual/ios-device-capture/boot-capture/run-1/shards/chat/screen.png"
+      ],
+    ).toMatchObject({
+      kind: "screenshot",
+      source: "ios-device-capture",
+      lane: "native",
+    });
+    expect(byPath["lanes/native/logs/device-logs/device.log"]).toMatchObject({
+      kind: "log",
+      source: "ios-device-capture",
+    });
 
-    // Multi-root walkthrough silo namespaces by root label.
-    expect(byPath["video/walkthrough/repo/desktop.mp4"]).toBeDefined();
-    expect(byPath["video/walkthrough/app/mobile.mp4"]).toBeDefined();
+    expect(byPath["video/walkthrough/desktop.mp4"]).toBeDefined();
 
     // node_modules content is never evidence.
     expect(artifacts.some((entry) => entry.path.includes("node_modules"))).toBe(
