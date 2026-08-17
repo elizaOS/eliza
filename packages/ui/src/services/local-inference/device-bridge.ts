@@ -29,7 +29,7 @@
  * non-blocking — failures fall back to in-memory only.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
@@ -50,6 +50,21 @@ const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const PENDING_LOG_FILENAME = "pending-requests.json";
+
+/**
+ * Constant-time pairing-token comparison. The bridge fails closed when no
+ * token is configured (the caller checks `expectedPairingToken` first), so an
+ * unset `ELIZA_DEVICE_PAIRING_TOKEN` can never silently authenticate (W1-011).
+ */
+function pairingTokenMatches(
+  expected: string,
+  provided: string | null | undefined,
+): boolean {
+  if (!provided) return false;
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(provided, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web" | "electrobun" | "desktop";
@@ -500,7 +515,10 @@ export class DeviceBridge {
     url: URL,
   ): void {
     const queryToken = url.searchParams.get("token")?.trim();
-    if (this.expectedPairingToken && queryToken !== this.expectedPairingToken) {
+    if (
+      !this.expectedPairingToken ||
+      !pairingTokenMatches(this.expectedPairingToken, queryToken)
+    ) {
       logger.warn("[device-bridge] Rejecting connection: bad query token");
       socket.close(4001, "unauthorized");
       return;
@@ -526,8 +544,11 @@ export class DeviceBridge {
           return;
         }
         if (
-          this.expectedPairingToken &&
-          msg.payload.pairingToken !== this.expectedPairingToken
+          !this.expectedPairingToken ||
+          !pairingTokenMatches(
+            this.expectedPairingToken,
+            msg.payload.pairingToken,
+          )
         ) {
           logger.warn("[device-bridge] Rejecting register: bad pairing token");
           socket.close(4001, "unauthorized");
