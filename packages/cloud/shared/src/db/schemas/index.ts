@@ -24,6 +24,7 @@ export * from "./agent-phone-contacts";
 export * from "./agent-phone-numbers";
 export * from "./agent-sandboxes";
 export * from "./agent-server-wallets";
+export * from "./agent-vault-key-authority";
 export * from "./ai-billing-records";
 export * from "./ai-pricing";
 export * from "./alb-priorities";

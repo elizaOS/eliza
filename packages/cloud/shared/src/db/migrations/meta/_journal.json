@@ -1646,6 +1646,76 @@
       "when": 1789416000000,
       "tag": "0235_agent_backup_rpo_scheduler",
       "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1789502400000,
+      "tag": "0236_agent_sandbox_activation_quarantine",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1789588800000,
+      "tag": "0237_agent_restore_authority_prerequisites",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1789675200000,
+      "tag": "0238_agent_backup_restore_lease_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1789761600000,
+      "tag": "0239_agent_backup_restore_lease_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1789848000000,
+      "tag": "0240_agent_vault_key_generations",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1789934400000,
+      "tag": "0241_agent_vault_key_current_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1790020800000,
+      "tag": "0242_agent_vault_key_backup_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1790107200000,
+      "tag": "0243_agent_backup_catalog_authority_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1790193600000,
+      "tag": "0244_agent_backup_restore_lease_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1790280000000,
+      "tag": "0245_agent_vault_key_topology_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -88,6 +88,16 @@ describe("migrations/meta/_journal.json registration", () => {
       "0233_agent_backup_catalog_manifest_v3_columns",
       "0234_agent_backup_catalog_manifest_v3_shape",
       "0235_agent_backup_rpo_scheduler",
+      "0236_agent_sandbox_activation_quarantine",
+      "0237_agent_restore_authority_prerequisites",
+      "0238_agent_backup_restore_lease_core",
+      "0239_agent_backup_restore_lease_authority",
+      "0240_agent_vault_key_generations",
+      "0241_agent_vault_key_current_authority",
+      "0242_agent_vault_key_backup_bindings",
+      "0243_agent_backup_catalog_authority_guard",
+      "0244_agent_backup_restore_lease_guard",
+      "0245_agent_vault_key_topology_guard",
     ];
     const tail = journalEntries().slice(-tags.length);
 
@@ -98,9 +108,9 @@ describe("migrations/meta/_journal.json registration", () => {
     );
   });
 
-  test("each capture migration remains below the review-size ceiling", () => {
+  test("each capture and restore-foundation migration remains below the review-size ceiling", () => {
     const captureTags = journalEntries()
-      .filter(({ idx }) => idx >= 223 && idx <= 228)
+      .filter(({ idx }) => idx >= 223 && idx <= 244)
       .map(({ tag }) => tag);
 
     for (const tag of captureTags) {

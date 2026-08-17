@@ -17,6 +17,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -272,9 +273,97 @@ export const agentBackupGcOutbox = pgTable(
   }),
 );
 
+/** Exact, owner-bound lease over one immutable restore source. */
+export const agentBackupRestoreLeases = pgTable(
+  "agent_backup_restore_leases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    agent_id: uuid("agent_id").notNull(),
+    backup_id: uuid("backup_id").notNull(),
+    operation_id: uuid("operation_id").notNull(),
+    activation_generation: uuid("activation_generation").notNull(),
+    lifecycle_revision: numeric("lifecycle_revision", {
+      precision: 20,
+      scale: 0,
+      mode: "bigint",
+    }).notNull(),
+    expected_manifest_sha256: text("expected_manifest_sha256").notNull(),
+    copy_role: text("copy_role").$type<AgentBackupCopyRole>().notNull(),
+    restore_attempt_id: uuid("restore_attempt_id").notNull(),
+    owner_id: text("owner_id").notNull(),
+    generation: uuid("generation").notNull(),
+    catalog_epoch: bigint("catalog_epoch", { mode: "bigint" }).notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    released_at: timestamp("released_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    backup_authority_fk: foreignKey({
+      name: "agent_backup_restore_leases_backup_authority_fkey",
+      columns: [
+        table.backup_id,
+        table.organization_id,
+        table.agent_id,
+        table.operation_id,
+        table.activation_generation,
+        table.lifecycle_revision,
+        table.expected_manifest_sha256,
+      ],
+      foreignColumns: [
+        agentSandboxBackups.id,
+        agentSandboxBackups.catalog_organization_id,
+        agentSandboxBackups.catalog_agent_id,
+        agentSandboxBackups.backup_operation_id,
+        agentSandboxBackups.lifecycle_generation,
+        agentSandboxBackups.lifecycle_revision,
+        agentSandboxBackups.manifest_digest,
+      ],
+    }).onDelete("restrict"),
+    catalog_authority_fk: foreignKey({
+      name: "agent_backup_restore_leases_catalog_authority_fkey",
+      columns: [table.organization_id, table.agent_id],
+      foreignColumns: [
+        agentBackupCatalogAuthorities.organization_id,
+        agentBackupCatalogAuthorities.agent_id,
+      ],
+    }).onDelete("restrict"),
+    generation_uidx: uniqueIndex("agent_backup_restore_leases_generation_uidx").on(
+      table.organization_id,
+      table.backup_id,
+      table.generation,
+    ),
+    attempt_uidx: uniqueIndex("agent_backup_restore_leases_attempt_uidx").on(
+      table.organization_id,
+      table.restore_attempt_id,
+    ),
+    one_unreleased_uidx: uniqueIndex("agent_backup_restore_leases_one_unreleased_uidx")
+      .on(table.organization_id, table.backup_id)
+      .where(sql`${table.released_at} IS NULL`),
+    active_idx: index("agent_backup_restore_leases_active_idx")
+      .on(table.backup_id, table.expires_at)
+      .where(sql`${table.released_at} IS NULL`),
+    shape_check: check(
+      "agent_backup_restore_leases_shape_check",
+      sql`(${table.owner_id} = btrim(${table.owner_id})
+        AND octet_length(${table.owner_id}) BETWEEN 1 AND 255
+        AND ${table.lifecycle_revision} BETWEEN 0 AND 18446744073709551615
+        AND ${table.catalog_epoch} >= 0
+        AND ${table.expected_manifest_sha256} ~ '^[0-9a-f]{64}$'
+        AND ${table.copy_role} IN ('primary', 'secondary')
+        AND ${table.expires_at} > ${table.created_at}
+        AND (${table.released_at} IS NULL OR ${table.released_at} >= ${table.created_at})) IS TRUE`,
+    ),
+  }),
+);
+
 export type AgentBackupObject = InferSelectModel<typeof agentBackupObjects>;
 export type AgentBackupCatalogAuthority = InferSelectModel<typeof agentBackupCatalogAuthorities>;
 export type NewAgentBackupCatalogAuthority = InferInsertModel<typeof agentBackupCatalogAuthorities>;
 export type NewAgentBackupObject = InferInsertModel<typeof agentBackupObjects>;
 export type AgentBackupGcOutboxRow = InferSelectModel<typeof agentBackupGcOutbox>;
 export type NewAgentBackupGcOutboxRow = InferInsertModel<typeof agentBackupGcOutbox>;
+export type AgentBackupRestoreLease = InferSelectModel<typeof agentBackupRestoreLeases>;
+export type NewAgentBackupRestoreLease = InferInsertModel<typeof agentBackupRestoreLeases>;
