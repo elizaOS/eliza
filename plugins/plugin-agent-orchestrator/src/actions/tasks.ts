@@ -1099,12 +1099,12 @@ async function runCreateLegacy(
       // create must run in a CLONE, not the cwd fallback (live 2026-08-17:
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
-      const createRequestedRepo =
-        typeof (params as Record<string, unknown>).repo === "string"
-          ? normalizeRepositoryInput(
-              (params as Record<string, unknown>).repo as string,
-            )
-          : undefined;
+      let createProvisionedWorkspaceId: string | undefined;
+      const createRequestedRepo = await resolveRequestedRepo(
+        runtime,
+        params as Record<string, unknown>,
+        [task, requestText(message)],
+      );
       if (createRequestedRepo && !route && !explicitWorkdir) {
         const createWorkspaceService = getCodingWorkspaceService(runtime);
         if (createWorkspaceService) {
@@ -1804,6 +1804,86 @@ async function resolveTaskProjectBinding(
   return detail?.projectId ?? undefined;
 }
 
+
+/** Cached login of the configured GITHUB_TOKEN's account (module-lifetime). */
+let cachedTokenOwner: string | null | undefined;
+async function githubTokenOwner(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  if (cachedTokenOwner !== undefined) return cachedTokenOwner;
+  try {
+    const token = runtime.getSetting?.("GITHUB_TOKEN");
+    if (typeof token !== "string" || !token.trim()) {
+      cachedTokenOwner = null;
+      return null;
+    }
+    const res = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `token ${token.trim()}`,
+        "User-Agent": "eliza-orchestrator",
+      },
+    });
+    const body = (await res.json()) as { login?: string };
+    cachedTokenOwner =
+      typeof body.login === "string" && body.login ? body.login : null;
+  } catch {
+    // error-policy:J4 owner lookup is best-effort sugar for possessive repo
+    // names; failing it just means the ask needs an explicit owner/URL.
+    cachedTokenOwner = null;
+  }
+  return cachedTokenOwner;
+}
+
+/**
+ * Resolve the repo a spawn/create should provision, tolerant of how humans
+ * actually ask: an explicit `repo` param, a URL anywhere in the request, an
+ * `owner/name` form, or a possessive bare name ("my eliza-code-sandbox
+ * repo") whose owner is the configured GitHub identity. Returns a
+ * normalized repository input or undefined.
+ */
+async function resolveRequestedRepo(
+  runtime: IAgentRuntime,
+  params: Record<string, unknown>,
+  requestTexts: ReadonlyArray<string | undefined>,
+): Promise<string | undefined> {
+  const paramRepo =
+    typeof params.repo === "string" && params.repo.trim()
+      ? params.repo.trim()
+      : undefined;
+  const text = requestTexts.filter(Boolean).join("\n");
+  let candidate = paramRepo;
+  if (!candidate) {
+    const url = text.match(
+      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
+    );
+    if (url) candidate = url[0];
+  }
+  if (!candidate) {
+    const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^\/]|$)/);
+    if (slug && /\brepo(?:sitory)?\b/i.test(text)) {
+      candidate = `${slug[1]}/${slug[2]}`;
+    }
+  }
+  // Possessive bare name: "my <name> repo" / "<name> repo" + a param repo
+  // that is a bare name — owner defaults to the configured token's account.
+  const bare =
+    candidate && !candidate.includes("/")
+      ? candidate
+      : (text.match(/\bmy\s+([\w.-]+)\s+repo\b/i)?.[1] ?? undefined);
+  if (bare && (!candidate || !candidate.includes("/"))) {
+    const owner = await githubTokenOwner(runtime);
+    if (owner) candidate = `${owner}/${bare}`;
+    else return undefined;
+  }
+  if (!candidate) return undefined;
+  try {
+    return normalizeRepositoryInput(candidate);
+  } catch {
+    // error-policy:J3 an unparseable candidate is not a repo request.
+    return undefined;
+  }
+}
+
 async function runSpawnAgent(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1995,12 +2075,12 @@ async function runSpawnAgent(
     // created files). When no route/explicit workdir claimed the spawn and a
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
-    const requestedRepo =
-      typeof (params as Record<string, unknown>).repo === "string"
-        ? normalizeRepositoryInput(
-            (params as Record<string, unknown>).repo as string,
-          )
-        : undefined;
+    let provisionedWorkspaceId: string | undefined;
+    const requestedRepo = await resolveRequestedRepo(
+      runtime,
+      params as Record<string, unknown>,
+      [task, requestText(message)],
+    );
     if (requestedRepo && !effectiveRoute && !explicitWorkdir) {
       const workspaceService = getCodingWorkspaceService(runtime);
       if (workspaceService) {
