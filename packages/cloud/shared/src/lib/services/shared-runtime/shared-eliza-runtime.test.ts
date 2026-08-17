@@ -841,7 +841,8 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toMatch(/^Reminder set for shared-reminder-1:/);
+    expect(result.reply).toBe("Got it — I'll remind you in 2 minutes: stand up and stretch");
+    expect(result.reply).not.toMatch(/shared-reminder-1|scheduled|\d{4}-\d{2}-\d{2}T/);
     expect(result.reply).not.toContain("couldn't verify");
     expect(scheduledInputs).toHaveLength(1);
     expect(scheduledInputs[0]).toMatchObject({

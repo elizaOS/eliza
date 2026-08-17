@@ -181,16 +181,82 @@ function reminderTrigger(
   return undefined;
 }
 
+const UTC_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function reminderText(task: ScheduledTask): string {
+  return task.output?.fallback?.body ?? task.promptInstructions;
+}
+
+function formatUtcInstant(atIso: string): string {
+  const instant = new Date(atIso);
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error("Shared reminder has an invalid one-off schedule");
+  }
+  const hour = instant.getUTCHours();
+  const hour12 = hour % 12 || 12;
+  const minute = String(instant.getUTCMinutes()).padStart(2, "0");
+  const meridiem = hour < 12 ? "AM" : "PM";
+  return `on ${UTC_MONTHS[instant.getUTCMonth()]} ${instant.getUTCDate()}, ${instant.getUTCFullYear()} at ${hour12}:${minute} ${meridiem} UTC`;
+}
+
+function formatDuration(milliseconds: number): string {
+  const totalSeconds = Math.max(1, Math.round(milliseconds / 1_000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (minutes > 0)
+    parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+  if (seconds > 0)
+    parts.push(`${seconds} ${seconds === 1 ? "second" : "seconds"}`);
+  return parts.join(" and ");
+}
+
+function scheduleDescription(trigger: ScheduledTaskTrigger): string {
+  if (trigger.kind === "once") return formatUtcInstant(trigger.atIso);
+  if (trigger.kind === "interval") {
+    return `every ${trigger.everyMinutes} ${trigger.everyMinutes === 1 ? "minute" : "minutes"}`;
+  }
+  if (trigger.kind === "cron") {
+    return `on its recurring schedule in ${trigger.tz}`;
+  }
+  if (trigger.kind === "event") return "when its scheduled event occurs";
+  if (trigger.kind === "after_task") return "after its linked task";
+  if (trigger.kind === "manual") return "when you ask it to run";
+  if (trigger.kind === "relative_to_anchor") {
+    return "relative to its scheduled anchor";
+  }
+  return "during its scheduled window";
+}
+
+function requestedScheduleDescription(
+  input: Record<string, unknown>,
+  trigger: ScheduledTaskTrigger,
+  explicitDelayMilliseconds?: number,
+): string {
+  if (explicitDelayMilliseconds !== undefined) {
+    return `in ${formatDuration(explicitDelayMilliseconds)}`;
+  }
+  const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
+  return inMinutes === undefined
+    ? scheduleDescription(trigger)
+    : `in ${formatDuration(inMinutes * 60_000)}`;
+}
+
 function taskSummary(task: ScheduledTask): string {
-  const when =
-    task.trigger.kind === "once"
-      ? task.trigger.atIso
-      : task.trigger.kind === "interval"
-        ? `every ${task.trigger.everyMinutes} minutes`
-        : task.trigger.kind === "cron"
-          ? `${task.trigger.expression} (${task.trigger.tz})`
-          : task.trigger.kind;
-  return `${task.taskId}: ${task.output?.fallback?.body ?? task.promptInstructions} — ${when} [${task.state.status}]`;
+  return `${reminderText(task)} — ${scheduleDescription(task.trigger)}`;
 }
 
 function creationReceipt(args: {
@@ -339,7 +405,7 @@ export function createSharedRemindersEdgeAction(
         const text =
           tasks.length === 0
             ? "You have no reminders."
-            : tasks.map(taskSummary).join("\n");
+            : `Your reminders:\n${tasks.map((task) => `• ${taskSummary(task)}`).join("\n")}`;
         await callback?.({ text });
         return {
           success: true,
@@ -399,9 +465,18 @@ export function createSharedRemindersEdgeAction(
           metadata: { delivery },
           executionProfile: "notify-only",
         });
+        const schedule = scheduled.replayed
+          ? scheduleDescription(scheduled.task.trigger)
+          : requestedScheduleDescription(
+              input,
+              scheduled.task.trigger,
+              explicitDelay.kind === "resolved"
+                ? explicitDelay.milliseconds
+                : undefined,
+            );
         const text = scheduled.replayed
-          ? `Reminder already set for ${taskSummary(scheduled.task)}`
-          : `Reminder set for ${taskSummary(scheduled.task)}`;
+          ? `That reminder is already set ${schedule}: ${body}`
+          : `Got it — I'll remind you ${schedule}: ${body}`;
         const receipt = creationReceipt(scheduled);
         await callback?.({ text });
         return {
@@ -431,7 +506,7 @@ export function createSharedRemindersEdgeAction(
           );
         }
         const task = await options.runner.apply(taskId, "snooze", { minutes });
-        const text = `Reminder ${task.taskId} snoozed for ${minutes} minutes.`;
+        const text = `Reminder snoozed for ${formatDuration(minutes * 60_000)}: ${reminderText(task)}`;
         await callback?.({ text });
         return {
           success: true,
@@ -448,7 +523,7 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         const task = await options.runner.apply(taskId, operation);
-        const text = `Reminder ${task.taskId} ${operation === "complete" ? "completed" : "dismissed"}.`;
+        const text = `Reminder ${operation === "complete" ? "completed" : "dismissed"}: ${reminderText(task)}`;
         await callback?.({ text });
         return {
           success: true,
