@@ -35,7 +35,19 @@ const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 const getById = mock(async (id: string) =>
   id === APP_ID ? { id: APP_ID, organization_id: ORG_A } : null,
 );
-const getRecentRequests = mock(async () => ({ requests: [], total: 0 }));
+const getRecentRequests = mock(
+  async (
+    _appId: string,
+    _options?: {
+      limit?: number;
+      offset?: number;
+      requestType?: string;
+      source?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ) => ({ requests: [], total: 0 }),
+);
 const getTopVisitors = mock(async () => []);
 const getRequestsOverTime = mock(async () => []);
 const getRequestStats = mock(async () => ({}));
@@ -173,8 +185,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
-    expect(getRecentRequests.mock.calls[0][1].offset).toBe(10);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50, offset: 10 }),
+    );
   });
   test("missing → 50,0", async () => {
     const res = await buildAnalyticsApp().request(
@@ -183,8 +197,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
-    expect(getRecentRequests.mock.calls[0][1].offset).toBe(0);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50, offset: 0 }),
+    );
   });
   test('"5junk" limit → 50', async () => {
     const res = await buildAnalyticsApp().request(
@@ -193,7 +209,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50 }),
+    );
   });
   test('"1e4" limit → 50', async () => {
     const res = await buildAnalyticsApp().request(
@@ -202,7 +221,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50 }),
+    );
   });
   test('"5.5" limit → 50', async () => {
     const res = await buildAnalyticsApp().request(
@@ -211,7 +233,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50 }),
+    );
   });
   test('"0" limit → 50', async () => {
     const res = await buildAnalyticsApp().request(
@@ -220,7 +245,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(50);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 50 }),
+    );
   });
   test("999 → 100 (clamped)", async () => {
     const res = await buildAnalyticsApp().request(
@@ -229,7 +257,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].limit).toBe(100);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ limit: 100 }),
+    );
   });
   test('"5junk" offset → 0', async () => {
     const res = await buildAnalyticsApp().request(
@@ -238,7 +269,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].offset).toBe(0);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ offset: 0 }),
+    );
   });
   test('"1e4" offset → 0', async () => {
     const res = await buildAnalyticsApp().request(
@@ -247,7 +281,10 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].offset).toBe(0);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ offset: 0 }),
+    );
   });
   test("valid offset 20 → 20", async () => {
     const res = await buildAnalyticsApp().request(
@@ -256,6 +293,9 @@ describe("apps analytics requests — strict limit (50, max 100) + offset (0)", 
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(getRecentRequests.mock.calls[0][1].offset).toBe(20);
+    expect(getRecentRequests).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({ offset: 20 }),
+    );
   });
 });
