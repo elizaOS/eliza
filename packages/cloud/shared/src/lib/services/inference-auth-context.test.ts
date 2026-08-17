@@ -102,6 +102,7 @@ mock.module("./inference-credential-revocation", () => ({
   revokeInferenceApiKey: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
   setInferenceOrganizationActive: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
   setInferenceSubjectActive: async () => undefined,
 }));
 
@@ -682,6 +683,35 @@ describe("isInferenceAuthContext shape guard", () => {
         admission: ADMISSION,
       }),
     ).toBe(true);
+  });
+});
+
+describe("inference-credential-revocation mock namespace completeness (#20976)", () => {
+  // Regression guard: users.ts (pulled into this suite's transitive import
+  // graph via admin.ts / inference-auth-context.ts) does NAMED imports of the
+  // session-binding collaborators. Bun validates the mocked namespace against
+  // those named imports, so an omitted export aborts the whole batch before
+  // any test in this file runs. Assert every collaborator the production graph
+  // imports by name is present and callable on the mock.
+  test("exposes every session-binding collaborator users.ts imports by name", async () => {
+    const revocation = await import("./inference-credential-revocation");
+    for (const name of [
+      "assertInferenceCredentialActive",
+      "revokeInferenceApiKey",
+      "revokeInferenceSessionsThrough",
+      "setInferenceOrganizationActive",
+      "setInferenceSessionBindingActive",
+      "setInferenceSubjectActive",
+    ] as const) {
+      expect(typeof (revocation as Record<string, unknown>)[name]).toBe("function");
+    }
+  });
+
+  test("setInferenceSessionBindingActive resolves without throwing", async () => {
+    const { setInferenceSessionBindingActive } = await import("./inference-credential-revocation");
+    await expect(
+      setInferenceSessionBindingActive("org-1", "user-1", "steward-1", false),
+    ).resolves.toBeUndefined();
   });
 });
 

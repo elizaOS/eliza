@@ -68,6 +68,7 @@ mock.module("./inference-credential-revocation", () => ({
   revokeInferenceApiKey: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
   setInferenceOrganizationActive: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
   setInferenceSubjectActive: async () => undefined,
 }));
 
