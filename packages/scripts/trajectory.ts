@@ -277,7 +277,7 @@ function formatDuration(ms: number): string {
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
-  return `${text.slice(0, max)}${c.dim("…")}`;
+  return `${text.slice(0, max - 1)}${c.dim("…")}`;
 }
 
 function stageHeader(stage: RecordedStage, index: number): string {
