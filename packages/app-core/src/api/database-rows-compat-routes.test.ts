@@ -392,3 +392,121 @@ describe("GET /api/database/tables/:name/rows OWNER gate", () => {
     });
   });
 });
+
+describe("GET /api/database/tables/:name/rows limit/offset query", () => {
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "-1",
+    "50abc",
+    "0",
+    "0x10",
+    "50.5",
+    "+5",
+    " 5",
+    "5 ",
+    "Infinity",
+    "NaN",
+    "9007199254740992",
+  ])("rejects malformed limit %j before any SQL", async (raw) => {
+    const req = makeReq(
+      {},
+      `/api/database/tables/secrets/rows?schema=public&limit=${encodeURIComponent(raw)}`,
+    );
+    const res = fakeRes();
+    const ensureOwner = vi.fn(async () => true);
+
+    await expect(
+      handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+        ensureOwner,
+      }),
+    ).resolves.toBe(true);
+
+    expect(res.status()).toBe(400);
+    expect(res.json()).toEqual({ error: "limit must be a positive integer" });
+    expect(mocks.executeRawSql).not.toHaveBeenCalled();
+  });
+
+  it.each(["1e2", "12px", "007", "-1", "0x10", "1.5", "+0", " 0"])(
+    "rejects malformed offset %j before any SQL",
+    async (raw) => {
+      const req = makeReq(
+        {},
+        `/api/database/tables/secrets/rows?schema=public&offset=${encodeURIComponent(raw)}`,
+      );
+      const res = fakeRes();
+      const ensureOwner = vi.fn(async () => true);
+
+      await expect(
+        handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+          ensureOwner,
+        }),
+      ).resolves.toBe(true);
+
+      expect(res.status()).toBe(400);
+      expect(res.json()).toEqual({
+        error: "offset must be a non-negative integer",
+      });
+      expect(mocks.executeRawSql).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [undefined, 50, 0],
+    ["", 50, 0],
+    ["25", 25, 0],
+    ["500", 500, 0],
+    ["501", 500, 0],
+  ] as const)("accepts limit %j as %s", async (raw, expectedLimit, expectedOffset) => {
+    stubReadableTable();
+    const query =
+      raw === undefined
+        ? "/api/database/tables/secrets/rows?schema=public"
+        : `/api/database/tables/secrets/rows?schema=public&limit=${encodeURIComponent(raw)}`;
+    const req = makeReq({}, query);
+    const res = fakeRes();
+    const ensureOwner = vi.fn(async () => true);
+
+    await expect(
+      handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+        ensureOwner,
+      }),
+    ).resolves.toBe(true);
+
+    expect(res.status()).toBe(200);
+    expect(res.json()).toMatchObject({
+      limit: expectedLimit,
+      offset: expectedOffset,
+    });
+    expect(
+      mocks.executeRawSql.mock.calls.some(([, sql]) =>
+        String(sql).includes(`LIMIT ${expectedLimit}`),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts canonical offset 0 and 10", async () => {
+    stubReadableTable();
+    const req = makeReq(
+      {},
+      "/api/database/tables/secrets/rows?schema=public&limit=25&offset=10",
+    );
+    const res = fakeRes();
+    const ensureOwner = vi.fn(async () => true);
+
+    await expect(
+      handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+        ensureOwner,
+      }),
+    ).resolves.toBe(true);
+
+    expect(res.status()).toBe(200);
+    expect(res.json()).toMatchObject({ limit: 25, offset: 10 });
+    expect(
+      mocks.executeRawSql.mock.calls.some(([, sql]) =>
+        String(sql).includes("OFFSET 10"),
+      ),
+    ).toBe(true);
+  });
+});
