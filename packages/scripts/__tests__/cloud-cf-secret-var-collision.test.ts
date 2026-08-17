@@ -58,10 +58,55 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   // The staging cutover uses a fresh secret name because keep_vars preserved
   // the legacy plaintext binding on the served Worker (run 31970252094).
   { name: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED", envs: ["staging"] },
+  // The production cutover has a separate environment-pinned secret name. It
+  // is reserved here before activation so a future tracked var cannot collide
+  // with the protected workflow's secret mutation.
+  {
+    name: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED",
+    envs: ["production"],
+  },
   // Self-hosted TEI sidecar bearer key, published by cloud-cf-release; must
   // never appear as a [vars] entry anywhere.
   { name: "LOCAL_EMBEDDINGS_API_KEY", envs: ["staging"] },
 ];
+
+function findUnmappedWorkflowSecretNames(
+  source: string,
+  mapped: ReadonlySet<string>,
+): string[] {
+  const unmapped = new Set<string>();
+  for (const match of source.matchAll(
+    /secret\s+put\s+"?\$?\{?\{?\s*([A-Z][A-Z0-9_]+)/g,
+  )) {
+    const token = match[1];
+    // Resolve trusted selector variables such as EDGE_SECRET_NAME through
+    // their quoted literal alternatives. This preserves discovery for
+    // environment-selected names instead of treating the selector itself as a
+    // Worker binding or silently exempting it.
+    const selector = source.match(new RegExp(`^\\s*${token}:\\s*(.+)$`, "m"));
+    const selectedNames = selector
+      ? [...selector[1].matchAll(/["']([A-Z][A-Z0-9_]+)["']/g)].map(
+          (selected) => selected[1],
+        )
+      : [];
+    if (selectedNames.length > 0) {
+      for (const selectedName of selectedNames) {
+        if (!mapped.has(selectedName)) unmapped.add(selectedName);
+      }
+      continue;
+    }
+    if (token === "SECRET_NAME" || token === "GITHUB" || token === "INPUT") {
+      continue;
+    }
+    if (!mapped.has(token)) unmapped.add(token);
+  }
+  for (const match of source.matchAll(
+    /SECRET_NAME:\s*"?([A-Z][A-Z0-9_]+)"?/g,
+  )) {
+    if (!mapped.has(match[1])) unmapped.add(match[1]);
+  }
+  return [...unmapped].sort();
+}
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
   const vars = parseWranglerVars(wranglerSource);
@@ -91,44 +136,47 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
     for (const file of readdirSync(workflowsDir)) {
       if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
       const source = readFileSync(new URL(file, workflowsDir), "utf8");
-      for (const match of source.matchAll(
-        /secret\s+put\s+"?\$?\{?\{?\s*([A-Z][A-Z0-9_]+)/g,
-      )) {
-        const token = match[1];
-        // Indirect names (secret put "$SECRET_NAME") resolve through workflow
-        // env vars; capture the literal env-var values on SECRET_NAME-style
-        // assignments instead.
-        if (
-          token === "SECRET_NAME" ||
-          token === "GITHUB" ||
-          token === "INPUT"
-        ) {
-          continue;
-        }
-        if (!mapped.has(token)) unmapped.add(token);
-      }
-      for (const match of source.matchAll(
-        /SECRET_NAME:\s*"?([A-Z][A-Z0-9_]+)"?/g,
-      )) {
-        if (!mapped.has(match[1])) unmapped.add(match[1]);
+      for (const name of findUnmappedWorkflowSecretNames(source, mapped)) {
+        unmapped.add(name);
       }
     }
     expect([...unmapped].sort()).toEqual([]);
   });
 
-  test("keeps production fail-closed while the replacement name stays unreserved", () => {
-    // Production has no activation workflow. Its tracked legacy false remains
-    // explicit, while the replacement is absent so a future protected cutover
-    // can choose its own secret contract without another type collision.
+  test("resolves environment-selected secret names without exempting unknown literals", () => {
+    const selectedWorkflow = [
+      "env:",
+      "  EDGE_SECRET_NAME: $" +
+        "{{ inputs.environment == 'production' && 'PRODUCTION_EDGE_SECRET' || 'STAGING_EDGE_SECRET' }}",
+      'run: wrangler secret put "$EDGE_SECRET_NAME"',
+    ].join("\n");
+    expect(
+      findUnmappedWorkflowSecretNames(
+        selectedWorkflow,
+        new Set(["PRODUCTION_EDGE_SECRET", "STAGING_EDGE_SECRET"]),
+      ),
+    ).toEqual([]);
+    expect(
+      findUnmappedWorkflowSecretNames(
+        selectedWorkflow,
+        new Set(["STAGING_EDGE_SECRET"]),
+      ),
+    ).toEqual(["PRODUCTION_EDGE_SECRET"]);
+  });
+
+  test("keeps production fail-closed while reserving its cutover secret namespace", () => {
+    // Production's tracked legacy binding stays explicitly false. Its fresh
+    // environment-pinned cutover name must remain absent from every vars block
+    // so the protected workflow can own it as a secret without CF error 10053.
     expect(
       vars.get("production")?.has("PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED") ??
         false,
     ).toBe(true);
-    expect(
-      vars
-        .get("production")
-        ?.has("PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED") ?? false,
-    ).toBe(false);
+    for (const names of vars.values()) {
+      expect(
+        names.has("PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED"),
+      ).toBe(false);
+    }
   });
 
   test("configures authenticated local embeddings only in staging", () => {
