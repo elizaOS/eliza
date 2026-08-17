@@ -10,7 +10,19 @@ import { Hono } from "hono";
 
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 
-const executeWithBody = mock(async () => Response.json({ success: true }));
+interface ProxyBody {
+  method: string;
+  params: Record<string, string>;
+}
+
+const executeWithBody = mock(
+  async (
+    _config: unknown,
+    _handler: unknown,
+    _request: Request,
+    _body: ProxyBody,
+  ) => Response.json({ success: true }),
+);
 
 mock.module("@/lib/services/proxy/engine", () => ({
   executeWithBody,
@@ -28,16 +40,11 @@ mock.module("@/lib/services/proxy/services/market-data", () => ({
   marketDataHandler: {},
 }));
 
-const route = (await import("./route")).default;
-const app = new Hono().route(
-  "/api/v1/market/candles/:chain/:address",
-  route,
-);
+const { default: route, OHLCV_TYPES } = await import("./route");
+const app = new Hono().route("/api/v1/market/candles/:chain/:address", route);
 
 function candles(query = "") {
-  return app.request(
-    `/api/v1/market/candles/solana/${SOLANA_TOKEN}${query}`,
-  );
+  return app.request(`/api/v1/market/candles/solana/${SOLANA_TOKEN}${query}`);
 }
 
 describe("GET /api/v1/market/candles OHLCV interval identity", () => {
@@ -51,33 +58,24 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
       const response = await candles(query);
       expect(response.status).toBe(200);
       expect(executeWithBody).toHaveBeenCalledTimes(1);
-      const body = executeWithBody.mock.calls[0][3] as {
-        method: string;
-        params: Record<string, string>;
-      };
+      const body = executeWithBody.mock.calls[0][3];
       expect(body.method).toBe("getOHLCV");
       expect(body.params.address).toBe(SOLANA_TOKEN);
       expect(body.params.type).toBeUndefined();
     },
   );
 
-  test("accepts type=1H as the hourly OHLCV interval", async () => {
-    const response = await candles("?type=1H");
-    expect(response.status).toBe(200);
-    expect(executeWithBody).toHaveBeenCalledTimes(1);
-    const body = executeWithBody.mock.calls[0][3] as {
-      params: Record<string, string>;
-    };
-    expect(body.params.type).toBe("1H");
-  });
-
-  test("accepts type=1D as the daily OHLCV interval", async () => {
-    const response = await candles("?type=1D");
-    expect(response.status).toBe(200);
-    expect(executeWithBody.mock.calls[0][3]).toMatchObject({
-      params: { type: "1D" },
-    });
-  });
+  test.each([...OHLCV_TYPES])(
+    "accepts type=%s as a canonical OHLCV interval",
+    async (type) => {
+      const response = await candles(`?type=${type}`);
+      expect(response.status).toBe(200);
+      expect(executeWithBody).toHaveBeenCalledTimes(1);
+      expect(executeWithBody.mock.calls[0][3]).toMatchObject({
+        params: { type },
+      });
+    },
+  );
 
   test.each(["1h", "1d", "HOUR", "daily", "foo", "1e2"])(
     "rejects type=%s before executeWithBody",

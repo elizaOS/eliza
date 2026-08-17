@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 market candles chain address route traffic with route-local auth expectations.
+/** Proxies validated public candle requests to the paid market-data provider. */
 import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
@@ -13,6 +13,24 @@ import {
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
+export const OHLCV_TYPES = [
+  "1m",
+  "3m",
+  "5m",
+  "15m",
+  "30m",
+  "1H",
+  "2H",
+  "4H",
+  "6H",
+  "8H",
+  "12H",
+  "1D",
+  "3D",
+  "1W",
+  "1M",
+] as const;
+const OHLCV_TYPE_SET = new Set<string>(OHLCV_TYPES);
 
 async function __hono_OPTIONS() {
   return handleCorsOptions(CORS_METHODS);
@@ -55,38 +73,17 @@ async function __hono_GET(
 
   const requestParams: Record<string, string> = { address };
 
-  // OHLCV interval identity, not leftover tax on analytics periods,
-  // analytics export type, or token-lookup chain. Unknown tokens
-  // (1h / 1d / HOUR) used to be forwarded to the paid provider.
-  const OHLCV_TYPES = [
-    "1m",
-    "3m",
-    "5m",
-    "15m",
-    "30m",
-    "1H",
-    "2H",
-    "4H",
-    "6H",
-    "8H",
-    "12H",
-    "1D",
-    "3D",
-    "1W",
-    "1M",
-  ] as const;
   const requestedType = searchParams.get("type");
   if (
     requestedType != null &&
     requestedType !== "" &&
-    !(OHLCV_TYPES as readonly string[]).includes(requestedType)
+    !OHLCV_TYPE_SET.has(requestedType)
   ) {
     return applyCorsHeaders(
       Response.json(
         {
           error: "Invalid type",
-          details:
-            "type must be a canonical Birdeye OHLCV interval (1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 8H, 12H, 1D, 3D, 1W, 1M).",
+          details: `type must be a canonical Birdeye OHLCV interval (${OHLCV_TYPES.join(", ")}).`,
         },
         { status: 400 },
       ),
