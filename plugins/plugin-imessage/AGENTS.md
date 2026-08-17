@@ -91,7 +91,7 @@ All read via `runtime.getSetting(key)` with `process.env[key]` fallback. None re
 | `IMESSAGE_DB_PATH` | `~/Library/Messages/chat.db` | Override chat.db path |
 | `IMESSAGE_POLL_INTERVAL_MS` | `5000` | How often (ms) to poll chat.db for new rows; `0` disables polling |
 | `IMESSAGE_HEARTBEAT_INTERVAL_MS` | `60000` | How often (ms) to run the heartbeat health check against chat.db |
-| `IMESSAGE_DM_POLICY` | `"pairing"` | `open` / `pairing` / `allowlist` / `disabled` |
+| `IMESSAGE_DM_POLICY` | `"pairing"` | `open` / `pairing` / `allowlist` / `disabled` — `pairing` holds unknown senders through the core PairingService code handshake; it never defaults open |
 | `IMESSAGE_GROUP_POLICY` | `"allowlist"` | `open` / `allowlist` / `disabled` |
 | `IMESSAGE_ALLOW_FROM` | `""` | Comma-separated E.164 phones or iCloud emails for allowlist |
 | `IMESSAGE_ENABLED` | `"true"` | Set to `"false"` to disable |
@@ -141,6 +141,7 @@ Config block in character settings:
 - **Bun:sqlite / node:sqlite dual runtime.** `chatdb-reader.ts` tries `bun:sqlite` first, then `node:sqlite`. Neither runtime ships both. If chat.db can't be opened, the service degrades silently (logs a warning, returns send-only status).
 - **Single macOS account model.** `DEFAULT_ACCOUNT_ID = "default"`. `assertLocalIMessageAccount` throws if a caller passes any other accountId. `accounts.ts` exposes connector-account inventory and config merging for the local Messages account; run separate agent processes for separate macOS user sessions.
 - **Polling reentrancy guard.** `pollInFlight` prevents concurrent ticks from racing on the same cursor. If dispatch takes longer than `IMESSAGE_POLL_INTERVAL_MS`, ticks are dropped (not queued). This is intentional.
+- **DM `pairing` uses the core PairingService.** The connector has no pairing handshake of its own; unknown DM senders are held until the owner approves their pairing code. The pairing-code reply is an autonomous outbound text, so it is only sent when `IMESSAGE_AUTO_REPLY=true` (the same consent gate as agent-generated replies); pending requests are always visible in the pairing UI.
 - **Message chunking.** Messages over 4000 chars (`MAX_IMESSAGE_MESSAGE_LENGTH`) are split at newlines or spaces and sent as sequential AppleScript calls.
 - **BlueBubbles support.** `src/api/bluebubbles-routes.ts` exports a webhook handler for BlueBubbles (a third-party iMessage relay). It is exported from the plugin index but not auto-registered as a `Route[]`; the agent must mount it manually.
 - **No npm build deps.** Only `@elizaos/core` and `zod` at runtime. The build uses `build.ts` (not a tsdown config file) invoked via `bun run build.ts`.
