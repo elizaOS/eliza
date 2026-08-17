@@ -1646,6 +1646,27 @@
       "when": 1789416000000,
       "tag": "0235_agent_backup_rpo_scheduler",
       "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1789502400000,
+      "tag": "0236_org_storage_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1789588800000,
+      "tag": "0237_org_storage_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1789675200000,
+      "tag": "0238_org_storage_immutable_provider_keys",
+      "breakpoints": true
     }
   ]
 }

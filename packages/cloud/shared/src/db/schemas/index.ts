@@ -74,6 +74,8 @@ export * from "./moderation-violations";
 export * from "./oauth-success-proof-tickets";
 export * from "./oidc";
 export * from "./org-rate-limit-overrides";
+export * from "./org-storage-objects";
+export * from "./org-storage-operations";
 export * from "./org-storage-quota";
 export * from "./organization-billing";
 export * from "./organization-config";

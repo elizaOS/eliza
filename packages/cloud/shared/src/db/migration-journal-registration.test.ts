@@ -89,11 +89,14 @@ describe("migrations/meta/_journal.json registration", () => {
       "0234_agent_backup_catalog_manifest_v3_shape",
       "0235_agent_backup_rpo_scheduler",
     ];
-    const tail = journalEntries().slice(-tags.length);
+    const entries = journalEntries();
+    const start = entries.findIndex(({ tag }) => tag === tags[0]);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const stack = entries.slice(start, start + tags.length);
 
-    expect(tail.map(({ tag }) => tag)).toEqual(tags);
-    expect(tail.map(({ idx }) => idx)).toEqual(tags.map((_, offset) => 217 + offset));
-    expect(tail.map(({ when }) => when)).toEqual(
+    expect(stack.map(({ tag }) => tag)).toEqual(tags);
+    expect(stack.map(({ idx }) => idx)).toEqual(tags.map((_, offset) => 217 + offset));
+    expect(stack.map(({ when }) => when)).toEqual(
       tags.map((_, offset) => 1787947200000 + offset * 86_400_000),
     );
   });
