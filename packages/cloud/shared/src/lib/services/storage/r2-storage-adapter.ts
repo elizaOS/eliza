@@ -79,11 +79,6 @@ export class R2StorageAdapter {
       absolute: false,
     });
   }
-
-  /** Creates a short-lived URL authorizing GET access to one object. */
-  async presignGet(key: string, expiresIn: number): Promise<string> {
-    return this.storage.presign(key, { expiresIn });
-  }
 }
 
 interface R2Config {

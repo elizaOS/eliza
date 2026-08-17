@@ -15,27 +15,53 @@ import { logger } from "./logger";
  * Parse an integer from environment variable with validation.
  * Throws if the value is not a valid integer to fail fast on misconfiguration.
  */
-function parseIntEnv(name: string, defaultValue: number): number {
+export function parseIntEnv(
+  name: string,
+  defaultValue: number,
+  minValue: number,
+  maxValue: number,
+): number {
   const value = process.env[name];
   if (value === undefined) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
+  const parsed = /^\d+$/.test(value.trim()) ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < minValue || parsed > maxValue) {
     throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
+      `Invalid ${name} environment variable: expected an integer from ${minValue} through ${maxValue}`,
     );
   }
   return parsed;
 }
 
-const VOICE_AUDIO_TTL_SECONDS = parseIntEnv("VOICE_AUDIO_TTL_SECONDS", 3600);
+const VOICE_AUDIO_TTL_SECONDS = parseIntEnv(
+  "VOICE_AUDIO_TTL_SECONDS",
+  3600,
+  60,
+  3600,
+);
 
-const CLEANUP_INTERVAL_MS = parseIntEnv("VOICE_CLEANUP_INTERVAL_MS", 900_000); // 15 minutes
+const CLEANUP_INTERVAL_MS = parseIntEnv(
+  "VOICE_CLEANUP_INTERVAL_MS",
+  900_000,
+  1_000,
+  86_400_000,
+); // 15 minutes
 
 const MAX_VOICE_FILE_SIZE = 25 * 1024 * 1024; // 25MB Discord limit
 
 /** Timeout for Discord CDN fetch operations */
 const DISCORD_CDN_TIMEOUT_MS = 30_000; // 30 seconds
 const STORAGE_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Cover both bounded storage calls between object modification and capability
+ * minting, plus one complete cleanup interval.
+ */
+export function computeVoiceCleanupSafetyMs(cleanupIntervalMs: number): number {
+  return cleanupIntervalMs + 2 * STORAGE_FETCH_TIMEOUT_MS;
+}
+
+const VOICE_CLEANUP_SAFETY_MS =
+  computeVoiceCleanupSafetyMs(CLEANUP_INTERVAL_MS);
 const VOICE_STORAGE_PREFIX = "voice";
 
 export interface VoiceAttachmentResult {
@@ -127,10 +153,7 @@ async function uploadVoiceObject(
     signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
-    const body = await parseJsonResponse(response);
-    throw new Error(
-      `Voice upload failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
-    );
+    throw new Error(`Voice upload failed with status ${response.status}`);
   }
 }
 
@@ -156,9 +179,7 @@ async function presignVoiceObject(
   );
   const body = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new Error(
-      `Voice presign failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
-    );
+    throw new Error(`Voice presign failed with status ${response.status}`);
   }
   if (
     !body ||
@@ -233,10 +254,6 @@ export class VoiceMessageHandler {
     }
 
     logger.info("Processing voice message", {
-      connectionId,
-      messageId,
-      attachmentId: attachment.id,
-      filename: attachment.name,
       size: attachment.size,
       contentType: attachment.contentType,
     });
@@ -267,9 +284,6 @@ export class VoiceMessageHandler {
     const downloadDuration = Date.now() - downloadStart;
 
     logger.debug("Downloaded voice attachment", {
-      connectionId,
-      messageId,
-      attachmentId: attachment.id,
       size: audioBuffer.length,
       downloadDurationMs: downloadDuration,
     });
@@ -290,10 +304,8 @@ export class VoiceMessageHandler {
       );
       const signed = await presignVoiceObject(storageConfig, objectKey);
       logger.info("Uploaded voice attachment to managed storage", {
-        connectionId,
-        messageId,
-        attachmentId: attachment.id,
-        objectKey,
+        size: audioBuffer.length,
+        contentType,
       });
       return {
         audioUrl: signed.url,
@@ -305,11 +317,6 @@ export class VoiceMessageHandler {
 
     logger.warn(
       "Voice storage proxy not configured; returning Discord CDN URL",
-      {
-        connectionId,
-        messageId,
-        attachmentId: attachment.id,
-      },
     );
     return {
       audioUrl: attachment.url,
@@ -345,8 +352,6 @@ export class VoiceMessageHandler {
     }
 
     logger.info("Processing voice attachments", {
-      connectionId,
-      messageId,
       count: voiceAttachments.length,
     });
 
@@ -357,7 +362,7 @@ export class VoiceMessageHandler {
     );
 
     const successful: VoiceAttachmentMetadata[] = [];
-    const failed: Array<{ attachmentId: string; error: string }> = [];
+    let failed = 0;
 
     results.forEach((result, index) => {
       if (result.status === "fulfilled") {
@@ -371,28 +376,18 @@ export class VoiceMessageHandler {
             `voice-${voiceAttachments[index].id}.ogg`,
         });
       } else {
-        const attachmentId = voiceAttachments[index].id;
-        const errorMessage =
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason);
-        failed.push({ attachmentId, error: errorMessage });
+        failed += 1;
         logger.error("Failed to process voice attachment", {
-          connectionId,
-          messageId,
-          attachmentId,
-          error: errorMessage,
+          stage: "voice_attachment_processing",
+          reason: "operation_failed",
         });
       }
     });
 
-    if (failed.length > 0) {
+    if (failed > 0) {
       logger.warn("Some voice attachments failed to process", {
-        connectionId,
-        messageId,
         successful: successful.length,
-        failed: failed.length,
-        errors: failed,
+        failed,
       });
     }
 
@@ -422,7 +417,7 @@ export class VoiceMessageHandler {
     const body = await parseJsonResponse(response);
     if (!response.ok) {
       throw new Error(
-        `Voice cleanup list failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
+        `Voice cleanup list failed with status ${response.status}`,
       );
     }
     if (
@@ -433,7 +428,8 @@ export class VoiceMessageHandler {
       throw new Error("Voice cleanup list response missing items");
     }
 
-    const cutoff = Date.now() - VOICE_AUDIO_TTL_SECONDS * 1000;
+    const cutoff =
+      Date.now() - VOICE_AUDIO_TTL_SECONDS * 1000 - VOICE_CLEANUP_SAFETY_MS;
     let deleted = 0;
     for (const item of (body as { items: unknown[] }).items) {
       if (!item || typeof item !== "object") continue;
@@ -451,11 +447,10 @@ export class VoiceMessageHandler {
         signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
       });
       if (!deleteResponse.ok) {
-        const deleteBody = await parseJsonResponse(deleteResponse);
         logger.warn("Failed to delete expired voice object", {
-          key,
           status: deleteResponse.status,
-          body: deleteBody,
+          stage: "expired_voice_object_delete",
+          reason: "provider_rejected",
         });
         continue;
       }
@@ -482,8 +477,13 @@ export class VoiceMessageHandler {
     });
 
     const runCleanup = () => {
-      this.cleanupExpiredAudio().catch((error) => {
-        logger.error("Error in voice audio cleanup job", { error });
+      this.cleanupExpiredAudio().catch(() => {
+        // error-policy:J6 periodic cleanup remains retryable on the next tick;
+        // raw provider errors may contain object keys and are never logged.
+        logger.error("Error in voice audio cleanup job", {
+          stage: "voice_audio_cleanup",
+          reason: "operation_failed",
+        });
       });
     };
 

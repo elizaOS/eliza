@@ -17,6 +17,7 @@ import cloudApiWorker, {
   TwitterOAuthRefreshCoordinator,
 } from "./index";
 import { resetProvidersResponseCacheForTests } from "./steward/embedded";
+import { mintStorageReadCapabilityUrl } from "./storage-read-capability";
 
 test("exports the shared-runtime conversation Durable Object", () => {
   expect(typeof SharedRuntimeConversation).toBe("function");
@@ -500,6 +501,44 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
 });
 
 describe("cloud-api worker entrypoint", () => {
+  test("rejects storage capabilities on a legacy blob host without redirecting or reading R2", async () => {
+    const rawSecrets = "0123456789abcdef0123456789abcdef";
+    const canonicalUrl = await mintStorageReadCapabilityUrl({
+      rawSecrets,
+      host: "blob.eliza.app",
+      scopedKey: "org/org-1/voice/message.ogg",
+      issuedAt: 1_786_968_000,
+      expiresAt: 1_786_968_600,
+    });
+    const legacyUrl = new URL(canonicalUrl);
+    legacyUrl.hostname = "blob.elizacloud.ai";
+    let r2Accesses = 0;
+
+    const response = await cloudApiWorker.fetch(
+      new Request(legacyUrl),
+      {
+        R2_PUBLIC_HOST: "blob.eliza.app",
+        STORAGE_READ_SIGNING_SECRETS: rawSecrets,
+        BLOB: {
+          async get() {
+            r2Accesses += 1;
+            return null;
+          },
+          async head() {
+            r2Accesses += 1;
+            return null;
+          },
+        },
+      } as never,
+      {} as never,
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("location")).toBeNull();
+    expect(r2Accesses).toBe(0);
+  });
+
   test("redirects the canonical www host to the marketing apex", () => {
     const response = redirectFrontendHost(
       new URL("https://www.eliza.app/downloads?platform=mac#install"),

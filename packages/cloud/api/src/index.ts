@@ -32,6 +32,7 @@ import { serveBlobHostRequest } from "./blob-host";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
+import { STORAGE_READ_CAPABILITY_PATH_PREFIX } from "./storage-read-capability";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
@@ -791,6 +792,15 @@ export default {
     ctx: ExecutionContext,
   ) => {
     const url = new URL(request.url);
+    if (url.pathname.startsWith(STORAGE_READ_CAPABILITY_PATH_PREFIX)) {
+      const capabilityResponse = await serveBlobHostRequest(request, url, env);
+      if (capabilityResponse) return capabilityResponse;
+      return Response.json(
+        { success: false, error: "Not found", code: "resource_not_found" },
+        { status: 404, headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
     const frontendAliasApiTarget = getFrontendAliasApiProxyTarget(url);
     if (frontendAliasApiTarget) {
       if (frontendAliasApiTarget.pathname === "/api/health") {
