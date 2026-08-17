@@ -34,16 +34,9 @@ export const DEFAULT_PTY_DISCONNECT_GRACE_MS = 30_000;
 export const MAX_PTY_DISCONNECT_GRACE_MS = 2_147_483_647;
 
 /**
- * Parses `ELIZA_PTY_WS_DISCONNECT_GRACE_MS`-style overrides. Empty/absent or
- * unparseable/negative values fall back to the default; `0` is honored as
- * "no grace" (legacy stop-on-close behavior).
- *
- * Only a canonical non-negative decimal integer is accepted. Prefix-coercing
- * spellings (`1e4`, `12px`, `007`) must not become a 1–12ms reap window —
- * `Number.parseInt("1e4", 10) === 1` would kill the dashboard terminal on the
- * first phone-lock blip the grace was added to survive. Values above the Node
- * timer ceiling (`2_147_483_647`) also keep the default: `setTimeout` would
- * otherwise schedule them at approximately 1ms.
+ * Parses a canonical non-negative decimal disconnect-grace override. Invalid
+ * values and values above Node's timer ceiling retain the documented default;
+ * `0` explicitly requests stop-on-close behavior.
  */
 export function resolvePtyDisconnectGraceMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") {
