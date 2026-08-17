@@ -55,6 +55,9 @@ jobs:
       # coverage against the host-run agent; the LOCAL arm64 route stays on
       # self-hosted device runners.
       ELIZA_ANDROID_BACKEND: "host"
+      # The bundle-owning runner starts, health-checks, logs, and tears down the
+      # pairing-disabled real host agent that global setup requires on :31337.
+      ELIZA_ANDROID_MANAGE_HOST_AGENT: "1"
       ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -129,6 +132,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+
+      # The simulator build compiles the MTP native artifact from the canonical
+      # pinned llama.cpp fork. Avoid cloning unrelated large submodules.
+      - name: Initialize iOS native inference source
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:

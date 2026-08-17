@@ -126,6 +126,7 @@ matching build IDs or filename extensions alone are not sufficient.
 | `--cloud` | Also run the real Cloud runtime probe (shared by default; not dedicated/Hetzner ingress proof) |
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
+| `ELIZA_ANDROID_MANAGE_HOST_AGENT=1` | Have `android-e2e.mjs` start, health-check, log, and stop the pairing-disabled host agent on port 31337 |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
 ## CI device lanes
