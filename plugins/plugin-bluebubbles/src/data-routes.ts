@@ -112,19 +112,14 @@ async function handleChats(
 	if (limit === null) {
 		res
 			.status(400)
-			.json(
-				buildSetupError("bad_request", "limit must be a positive integer"),
-			);
+			.json(buildSetupError("bad_request", "limit must be a positive integer"));
 		return;
 	}
 	if (offset === null) {
 		res
 			.status(400)
 			.json(
-				buildSetupError(
-					"bad_request",
-					"offset must be a non-negative integer",
-				),
+				buildSetupError("bad_request", "offset must be a non-negative integer"),
 			);
 		return;
 	}
@@ -191,19 +186,14 @@ async function handleMessages(
 	if (limit === null) {
 		res
 			.status(400)
-			.json(
-				buildSetupError("bad_request", "limit must be a positive integer"),
-			);
+			.json(buildSetupError("bad_request", "limit must be a positive integer"));
 		return;
 	}
 	if (offset === null) {
 		res
 			.status(400)
 			.json(
-				buildSetupError(
-					"bad_request",
-					"offset must be a non-negative integer",
-				),
+				buildSetupError("bad_request", "offset must be a non-negative integer"),
 			);
 		return;
 	}
