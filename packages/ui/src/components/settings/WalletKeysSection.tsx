@@ -89,12 +89,18 @@ function tryExtractAgentAddress(rawValue: string): string | null {
   return null;
 }
 
-function entryDisplayLabel(meta: VaultEntryMeta): string {
+export function entryDisplayLabel(meta: VaultEntryMeta): string {
   if (meta.label && meta.label !== meta.key) return meta.label;
   // Make the per-agent agent.<id>.wallet.<chain> shape human-friendly.
   const parts = meta.key.split(".");
   if (parts.length === 4 && parts[0] === "agent" && parts[2] === "wallet") {
-    const agentId = decodeURIComponent(parts[1] ?? "");
+    let agentId = parts[1] ?? "";
+    try {
+      agentId = decodeURIComponent(agentId);
+    } catch {
+      // error-policy:J3 malformed vault-key encoding keeps the raw segment
+      // rather than crashing the wallet-keys panel.
+    }
     return `${agentId} (${parts[3]})`;
   }
   return meta.key;
