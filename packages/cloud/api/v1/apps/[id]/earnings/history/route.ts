@@ -8,8 +8,45 @@ import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const DEFAULT_EARNINGS_HISTORY_LIMIT = 50;
+const MAX_EARNINGS_HISTORY_LIMIT = 100;
+
+class EarningsHistoryLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "EarningsHistoryLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/apps/[id]/earnings/history `limit` is ledger-page size
+ * identity, leftover tax after earnings `days` (#20672). Stock develop
+ * used z.coerce.number(), which treated `1e2` / `007` / `0x10` as a
+ * page size instead of a 400. offset / type stay untouched. Missing /
+ * empty still means 50. Exact integers clamp at 100.
+ */
+function parseEarningsHistoryLimitQuery(
+  searchParams: URLSearchParams,
+): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new EarningsHistoryLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_EARNINGS_HISTORY_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new EarningsHistoryLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new EarningsHistoryLimitError();
+  }
+  return Math.min(parsed, MAX_EARNINGS_HISTORY_LIMIT);
+}
+
 const QuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
   type: z
     .enum(["inference_markup", "purchase_share", "withdrawal", "adjustment"])
@@ -41,11 +78,21 @@ async function __hono_GET(
 
     // Parse query params (filter out nulls to use defaults)
     const searchParams = new URL(request.url).searchParams;
+    let limit: number;
+    try {
+      limit = parseEarningsHistoryLimitQuery(searchParams);
+    } catch (limitError) {
+      if (limitError instanceof EarningsHistoryLimitError) {
+        return Response.json(
+          { success: false, error: limitError.message },
+          { status: 400 },
+        );
+      }
+      throw limitError;
+    }
     const queryInput: Record<string, string> = {};
-    const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     const typeParam = searchParams.get("type");
-    if (limitParam) queryInput.limit = limitParam;
     if (offsetParam) queryInput.offset = offsetParam;
     if (typeParam) queryInput.type = typeParam;
 
@@ -62,7 +109,7 @@ async function __hono_GET(
       );
     }
 
-    const { limit, offset, type } = queryResult.data;
+    const { offset, type } = queryResult.data;
 
     // Verify the app exists and belongs to the user's organization
     const app = await appsService.getById(id);
