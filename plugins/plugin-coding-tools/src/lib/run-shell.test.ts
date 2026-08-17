@@ -364,6 +364,88 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
     },
   );
 
+  itWithBubblewrap(
+    "fails non-scratch writes outside the workspace while keeping workspace and ephemeral scratch writable",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      // Keep this fixture outside /tmp so it exercises the synthetic root
+      // ancestors that bubblewrap creates for an absolute workspace bind.
+      // /tmp is a deliberately writable, per-command scratch mount and has a
+      // separate contract below.
+      const fixture = mkdtempSync(
+        join(process.cwd(), ".eliza-bwrap-write-contract-"),
+      );
+      const workspace = join(fixture, "workspace");
+      const outsideWrite = join(fixture, "outside-write.txt");
+      const outsideSentinel = join(fixture, "outside-sentinel.txt");
+      const insideAbsolute = join(workspace, "inside-absolute.txt");
+      const scratch = `/tmp/eliza-scratch-${process.pid}.txt`;
+      mkdirSync(workspace, { recursive: true });
+      writeFileSync(outsideSentinel, "preserve-me", "utf8");
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        const insideResult = await runShell(runtime, {
+          command: [
+            "set -e",
+            "printf relative > inside-relative.txt",
+            `printf absolute > ${quoteShellArg(insideAbsolute)}`,
+            `printf scratch > ${quoteShellArg(scratch)}`,
+          ].join("; "),
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+        expect(insideResult, JSON.stringify(insideResult)).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+        expect(
+          readFileSync(join(workspace, "inside-relative.txt"), "utf8"),
+        ).toBe("relative");
+        expect(readFileSync(insideAbsolute, "utf8")).toBe("absolute");
+
+        const outsideWriteResult = await runShell(runtime, {
+          command: `printf escaped > ${quoteShellArg(outsideWrite)}`,
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+        expect(outsideWriteResult.sandbox).toBe("bubblewrap");
+        expect(outsideWriteResult.exitCode).not.toBe(0);
+        expect(() => readFileSync(outsideWrite, "utf8")).toThrow();
+
+        const outsideDeleteResult = await runShell(runtime, {
+          command: `rm ${quoteShellArg(outsideSentinel)}`,
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+        expect(outsideDeleteResult.sandbox).toBe("bubblewrap");
+        expect(outsideDeleteResult.exitCode).not.toBe(0);
+        expect(readFileSync(outsideSentinel, "utf8")).toBe("preserve-me");
+
+        const freshScratchResult = await runShell(runtime, {
+          command: `test ! -e ${quoteShellArg(scratch)}`,
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+        expect(
+          freshScratchResult,
+          JSON.stringify(freshScratchResult),
+        ).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("fails closed without a managed sandbox or an explicit workspace root", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     delete process.env.CODING_TOOLS_WORKSPACE_ROOTS;
