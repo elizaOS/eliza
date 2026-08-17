@@ -103,6 +103,26 @@ describe("App standalone chat-overlay wiring", () => {
     expect(OVERLAY_TSX).not.toContain("<ServingProviderChip");
   });
 
+  it("keeps provider truth out of compact chat and in exactly one expanded header", () => {
+    const providerIndicators = APP_TSX.match(/<ServingProviderChip/g) ?? [];
+    expect(providerIndicators).toHaveLength(1);
+    expect(APP_TSX).toContain(
+      '<ServingProviderChip className="pointer-events-none text-muted-strong" />',
+    );
+    expect(OVERLAY_TSX).not.toContain("ServingProviderChip");
+  });
+
+  it("makes Home hidden and inert while the chat sheet or keyboard owns the viewport", () => {
+    const homeMount = APP_TSX.slice(
+      APP_TSX.indexOf("function HomeScreenMount"),
+      APP_TSX.indexOf("function AppContent"),
+    );
+    expect(homeMount).toContain("shellController?.isOpen === true");
+    expect(homeMount).toContain("aria-hidden={chatOwnsViewport");
+    expect(homeMount).toContain("inert={chatOwnsViewport || undefined}");
+    expect(homeMount).toContain("data-chat-overlay-hidden={chatOwnsViewport");
+  });
+
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
     // shouldStartBottomBar defaults ON, so createMainWindow boots the MAIN
     // window with ?shellMode=chat-overlay — that branch must mount the

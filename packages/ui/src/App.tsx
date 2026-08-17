@@ -2323,6 +2323,8 @@ function HomeScreenMount({
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
   const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
+  const shellController = useShellControllerContext();
+  const chatOwnsViewport = firstRunOpen || shellController?.isOpen === true;
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -2356,15 +2358,19 @@ function HomeScreenMount({
   // to registered runtime views; the dedicated `/apps` page remains the full
   // installable catalog and is where discovery belongs.
   const launcher = useMemo(() => <LauncherSurface catalogMode="demo" />, []);
-  // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // launcher so the onboarding overlay reveals only the shared wallpaper.
+  // Keep Home warm behind chat, but never expose two interactive reading
+  // layers. A raised keyboard opens the shared chat controller before its
+  // viewport settles, so the same authority hides Home for both sheet and
+  // keyboard presentation without duplicating keyboard geometry here.
   return (
     <div
-      aria-hidden={firstRunOpen ? "true" : undefined}
+      aria-hidden={chatOwnsViewport ? "true" : undefined}
       data-onboarding-hidden={firstRunOpen ? "true" : undefined}
+      data-chat-overlay-hidden={chatOwnsViewport ? "true" : undefined}
+      inert={chatOwnsViewport || undefined}
       className={cn(
         "relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden",
-        firstRunOpen && "invisible",
+        chatOwnsViewport && "invisible",
       )}
     >
       <HomeLauncherSurface
