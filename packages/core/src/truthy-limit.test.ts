@@ -109,16 +109,19 @@ describe("truthy limit batch (ship 14) — CO-1, CO-4", () => {
 	it("ship14 sibling proof: files contain `!= null` guard and not bare truthy", async () => {
 		const fs = await import("node:fs");
 		// Resolve from this test file, not the process cwd: the core lane runs
-		// with cwd=packages/core (`bun run --cwd packages/core test`), where a
-		// repo-root-relative path does not exist.
-		const mem = fs.readFileSync(
-			new URL("./database/inMemoryAdapter.ts", import.meta.url).pathname,
-			"utf8",
+		// with cwd=packages/core (`bun run --cwd packages/core test`). Pass file
+		// URLs directly so Node handles Windows drive letters and percent-decoding
+		// instead of treating URL.pathname as a platform-native path.
+		const memorySourceUrl = new URL(
+			"./database/%69nMemoryAdapter.ts",
+			import.meta.url,
 		);
+		expect(memorySourceUrl.pathname).toContain("%69nMemoryAdapter.ts");
+		const mem = fs.readFileSync(memorySourceUrl, "utf8");
 		expect(mem).toContain("if (params.limit != null)");
 		expect(mem).not.toMatch(/\n\t\tif \(params\.limit\) \{/); // old truthy must be gone
 		const traj = fs.readFileSync(
-			new URL("./runtime/trajectory-recorder.ts", import.meta.url).pathname,
+			new URL("./runtime/trajectory-recorder.ts", import.meta.url),
 			"utf8",
 		);
 		expect(traj).toContain(
