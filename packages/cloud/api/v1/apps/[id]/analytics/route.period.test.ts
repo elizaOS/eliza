@@ -1,9 +1,6 @@
 /**
- * GET /api/v1/apps/:id/analytics `period` is app-analytics grain
- * identity, not leftover tax on analytics projections periods,
- * analytics requests view, or admin metrics timeRange. Stock develop
- * cast unknown tokens and date_trunc'd them as day, so
- * `period=MONTHLY` / `HOURLY` silently returned daily buckets.
+ * Exercises app-analytics period validation through the HTTP route with mocked
+ * authentication and service boundaries.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
