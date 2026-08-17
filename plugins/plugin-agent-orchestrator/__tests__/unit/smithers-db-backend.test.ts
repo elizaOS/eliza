@@ -61,19 +61,12 @@ describe("resolveSmithersDbConfig", () => {
     );
   });
 
-  it("fails closed with a typed incompatibility before selecting Smithers.pglite", () => {
+  it("returns provider=pglite and dataDir when SMITHERS_DB_PROVIDER=pglite", () => {
     process.env.SMITHERS_DB_PROVIDER = "pglite";
     process.env.SMITHERS_DB_DATA_DIR = "/tmp/pglite-data";
-    expect.assertions(2);
-    try {
-      resolveSmithersDbConfig();
-    } catch (error) {
-      expect(error).toMatchObject({ code: "SMITHERS_PGLITE_INCOMPATIBLE" });
-      expect(error).toHaveProperty(
-        "message",
-        expect.stringContaining("temporarily unsupported"),
-      );
-    }
+    const config = resolveSmithersDbConfig();
+    expect(config.provider).toBe("pglite");
+    expect(config.dataDir).toBe("/tmp/pglite-data");
   });
 
   it("rejects an unknown SMITHERS_DB_PROVIDER value", () => {
@@ -88,6 +81,14 @@ describe("resolveSmithersDbConfig", () => {
     delete process.env.SMITHERS_DB_URL;
     expect(() => resolveSmithersDbConfig()).toThrow(
       "SMITHERS_DB_URL is required",
+    );
+  });
+
+  it("requires a data directory for pglite", () => {
+    process.env.SMITHERS_DB_PROVIDER = "pglite";
+    delete process.env.SMITHERS_DB_DATA_DIR;
+    expect(() => resolveSmithersDbConfig()).toThrow(
+      "SMITHERS_DB_DATA_DIR is required",
     );
   });
 });
@@ -248,7 +249,7 @@ describe("Smithers worker isolation", () => {
  * string does:
  *
  *   const provider = dbConfig.provider ?? 'sqlite';
- *   sqlite → Smithers.sqlite; configured remote backends must exist or throw.
+ *   sqlite → Smithers.sqlite; configured alternate backends must exist or throw.
  */
 function selectSmithersLayer(
   Smithers: Record<string, unknown>,
@@ -268,6 +269,9 @@ function selectSmithersLayer(
       method: "postgres",
       arg: { connectionString: dbConfig.connectionString },
     };
+  }
+  if (provider === "pglite" && typeof Smithers.pglite === "function") {
+    return { method: "pglite", arg: { dataDir: dbConfig.dataDir } };
   }
   throw new Error(`Configured Smithers backend is unavailable: ${provider}`);
 }
@@ -309,23 +313,18 @@ describe("subprocess layer-selection logic", () => {
     });
   });
 
-  it("never calls Smithers.pglite even if the dependency exports it", () => {
-    let calls = 0;
+  it("selects pglite when provider=pglite and Smithers.pglite is a function", () => {
     const Smithers = {
       sqlite: () => "sqlite-layer",
-      pglite: () => {
-        calls += 1;
-        return "pglite-layer";
-      },
+      pglite: () => "pglite-layer",
     };
-    expect(() =>
-      selectSmithersLayer(
-        Smithers,
-        { provider: "pglite", dataDir: "/tmp/pglite" },
-        DB_PATH,
-      ),
-    ).toThrow("Configured Smithers backend is unavailable");
-    expect(calls).toBe(0);
+    const result = selectSmithersLayer(
+      Smithers,
+      { provider: "pglite", dataDir: "/tmp/pglite" },
+      DB_PATH,
+    );
+    expect(result.method).toBe("pglite");
+    expect(result.arg).toEqual({ dataDir: "/tmp/pglite" });
   });
 
   it("fails when provider=postgres but Smithers.postgres is absent", () => {
