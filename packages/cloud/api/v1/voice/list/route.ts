@@ -24,6 +24,16 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
+type VoiceCloneType = "instant" | "professional";
+
+function parseVoiceCloneType(
+  raw: string | undefined,
+): VoiceCloneType | undefined | null {
+  if (!raw) return undefined;
+  if (raw === "instant" || raw === "professional") return raw;
+  return null;
+}
+
 interface VoiceListItem {
   id: string;
   elevenlabsVoiceId: string;
@@ -59,11 +69,10 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const includeInactive = c.req.query("includeInactive") === "true";
-    const cloneTypeParam = c.req.query("cloneType");
-    const cloneType: "instant" | "professional" | undefined =
-      cloneTypeParam === "instant" || cloneTypeParam === "professional"
-        ? cloneTypeParam
-        : undefined;
+    const cloneType = parseVoiceCloneType(c.req.query("cloneType"));
+    if (cloneType === null) {
+      return c.json({ error: "Invalid cloneType" }, 400);
+    }
 
     const limit = parseClampedLimit(
       c.req.query("limit"),
