@@ -165,6 +165,7 @@ export class NewsDataService extends Service {
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; SpartanBot/1.0)",
         },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {
