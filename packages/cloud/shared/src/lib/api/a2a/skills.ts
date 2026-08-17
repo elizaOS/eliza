@@ -449,7 +449,7 @@ export async function executeSkillGetUsage(
   dataContent: Record<string, unknown>,
   ctx: A2AContext,
 ): Promise<UsageResult> {
-  const limit = Math.min(50, (dataContent.limit as number) || 10);
+  const limit = Math.min(50, (dataContent.limit as number) ?? 10);
   const records = await usageService.listByOrganization(ctx.user.organization_id, limit);
   return {
     usage: records.map((r) => ({
@@ -472,7 +472,7 @@ export async function executeSkillListAgents(
   dataContent: Record<string, unknown>,
   ctx: A2AContext,
 ): Promise<ListAgentsResult> {
-  const limit = (dataContent.limit as number) || 20;
+  const limit = (dataContent.limit as number) ?? 20;
   const chars = await charactersService.listByOrganization(ctx.user.organization_id);
   return {
     agents: chars.slice(0, limit).map((c) => ({
@@ -563,7 +563,7 @@ export async function executeSkillRetrieveMemories(
   const roomId = dataContent.roomId as string | undefined;
   const type = dataContent.type as string[] | undefined;
   const tags = dataContent.tags as string[] | undefined;
-  const limit = Math.min(50, (dataContent.limit as number) || 10);
+  const limit = Math.min(50, (dataContent.limit as number) ?? 10);
   const sortBy = (dataContent.sortBy as "relevance" | "recent" | "importance") || "relevance";
 
   const memories = await memoryService.retrieveMemories({

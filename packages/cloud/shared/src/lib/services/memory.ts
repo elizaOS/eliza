@@ -283,7 +283,7 @@ export class MemoryService {
         memories = await runtime.searchMemories({
           embedding,
           tableName: "memories",
-          limit: input.limit || 10,
+          limit: input.limit ?? 10,
           roomId: input.roomId as UUID,
           match_threshold: 0.7,
         });
@@ -297,7 +297,7 @@ export class MemoryService {
             and(eq(memoryTable.roomId, input.roomId), eq(memoryTable.agentId, runtime.agentId)),
           )
           .orderBy(desc(memoryTable.createdAt))
-          .limit(input.limit || 10);
+          .limit(input.limit ?? 10);
 
         memories = results.map(
           (row) =>
@@ -329,7 +329,7 @@ export class MemoryService {
         return [];
       }
 
-      const limit = input.limit || 10;
+      const limit = input.limit ?? 10;
       const roomIdArray = Array.from(allowedRoomIds);
 
       // PERFORMANCE FIX: Use single batched query with IN clause instead of N+1 queries
