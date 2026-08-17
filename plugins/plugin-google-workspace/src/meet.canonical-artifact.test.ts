@@ -306,4 +306,74 @@ describe("Google Meet canonical artifact mapping", () => {
       pageToken: undefined,
     });
   });
+
+  it("rejects repeated Google Meet transcript page tokens", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          transcripts: [{ name: TRANSCRIPT }],
+          nextPageToken: "repeated-token",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          transcripts: [{ name: `${CONFERENCE_RECORD}/transcripts/transcript_2` }],
+          nextPageToken: "repeated-token",
+        },
+      })
+      .mockResolvedValueOnce({ data: {} });
+    const fakeMeet = {
+      conferenceRecords: {
+        transcripts: { list },
+      },
+    };
+    const factory = { meet: vi.fn(async () => fakeMeet) } as unknown as GoogleApiClientFactory;
+    const client = new GoogleMeetClient(factory);
+
+    await expect(
+      client.listMeetingTranscripts({
+        accountId: "acct_google_1",
+        conferenceRecordName: CONFERENCE_RECORD,
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_MEET_REPEATED_PAGE_TOKEN" });
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns opaque Google Meet page tokens without rewriting them", async () => {
+    const opaqueToken = "  opaque-token-with-spaces  ";
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { transcripts: [], nextPageToken: opaqueToken } })
+      .mockResolvedValueOnce({ data: { transcripts: [] } });
+    const fakeMeet = { conferenceRecords: { transcripts: { list } } };
+    const factory = { meet: vi.fn(async () => fakeMeet) } as unknown as GoogleApiClientFactory;
+    const client = new GoogleMeetClient(factory);
+
+    await client.listMeetingTranscripts({
+      accountId: "acct_google_1",
+      conferenceRecordName: CONFERENCE_RECORD,
+    });
+
+    expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: opaqueToken }));
+  });
+
+  it("bounds Google Meet pagination with unique provider tokens", async () => {
+    let page = 0;
+    const list = vi.fn(async () => {
+      page += 1;
+      return { data: { transcripts: [], nextPageToken: `unique-token-${page}` } };
+    });
+    const fakeMeet = { conferenceRecords: { transcripts: { list } } };
+    const factory = { meet: vi.fn(async () => fakeMeet) } as unknown as GoogleApiClientFactory;
+    const client = new GoogleMeetClient(factory);
+
+    await expect(
+      client.listMeetingTranscripts({
+        accountId: "acct_google_1",
+        conferenceRecordName: CONFERENCE_RECORD,
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED" });
+    expect(list).toHaveBeenCalledTimes(1_000);
+  });
 });
