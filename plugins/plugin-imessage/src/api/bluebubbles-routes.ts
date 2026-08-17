@@ -7,6 +7,7 @@
  */
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
+import { parseClampedInteger } from "@elizaos/shared";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
@@ -105,11 +106,15 @@ export async function handleBlueBubblesRoute(
     }
 
     const url = new URL(req.url ?? pathname, "http://localhost");
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100),
-      500
-    );
-    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
+    const limit = parseClampedInteger(url.searchParams.get("limit"), {
+      min: 1,
+      max: 500,
+      fallback: 100,
+    });
+    const offset = parseClampedInteger(url.searchParams.get("offset"), {
+      min: 0,
+      fallback: 0,
+    });
 
     try {
       const chats = await client.listChats(limit, offset);
@@ -144,11 +149,15 @@ export async function handleBlueBubblesRoute(
       return true;
     }
 
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
-      500
-    );
-    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
+    const limit = parseClampedInteger(url.searchParams.get("limit"), {
+      min: 1,
+      max: 500,
+      fallback: 50,
+    });
+    const offset = parseClampedInteger(url.searchParams.get("offset"), {
+      min: 0,
+      fallback: 0,
+    });
 
     try {
       const messages = await client.getMessages(chatGuid, limit, offset);
