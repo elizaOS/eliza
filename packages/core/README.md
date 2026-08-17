@@ -22,20 +22,44 @@ devtools protocols; computer adapters use OS accessibility, capture, and input.
 Both planes expose the same session, surface, capability, observation, action,
 confirmation, lease, and result envelopes.
 
+The current wire contract is version 2. Version 1 was never released with an
+adapter and is rejected rather than compatibility-normalized because it did not
+bind confirmations, grants, leases, and mutation receipts strongly enough for a
+privileged input boundary. Adapters must normalize capabilities first, normalize
+stored session state separately from executable-session authorization, normalize
+the exact action, and validate results with a trusted clock plus the same
+session/capability/action context.
+
 Adapters must advertise capabilities before dispatch. Unsupported work returns
 `UNSUPPORTED`; stale observations and lease conflicts have separate outcomes;
 and a mutation whose effect cannot be proven returns non-retryable
 `UNCERTAIN_EFFECT`. Results reuse canonical `EffectReceipt` values instead of
 creating a second mutation-proof format. Existing signed-in profiles require an
-explicit grant, while genuinely concurrent pointer or keyboard work belongs in
-isolated sessions rather than competing for the shared physical input devices.
+explicit host-issued grant verified through `InteractionProfileGrantVerifier`.
+Confirmation previews bind to the domain-separated SHA-256 digest returned by
+`computeInteractionActionDigest`; `InteractionConfirmationCoordinator` issues
+and consumes matching grants once. Distributed hosts implement the async
+consumer as one durable atomic consume-if-current operation; a separate
+verify-then-delete sequence is not replay-safe across processes.
+
+Physical input and other shared resources use `InteractionLeaseCoordinator`.
+Exact acquisition replay is idempotent, renewal preserves the stored canonical
+lease, and `assertActionLeases` resolves action lease IDs against the session,
+owner, generation, and required resource before dispatch. Every dispatch must
+provide explicit lease requirements (including `[]` when no shared resource is
+needed), so policy omission cannot silently disable lease enforcement. Trace attributes are
+metadata-only: public scalar values are allowed, sensitive values must be null,
+and any correlation token is an opaque host-keyed token rather than a raw hash
+of personal data or credentials.
 
 Package-owned adapter tests can import
 `runInteractionAdapterConformance` from `@elizaos/core/testing`. The runner
 requires fixtures for success, no-effect failure, uncertain effect, policy
-block, confirmation, unsupported capability, stale observation, and lease
-conflict. Passing this deterministic contract suite does not replace the real
-browser or OS E2E evidence required by the adapter's package.
+block, confirmation, unsupported capability, and a genuinely stale observation;
+it separately exercises coordinator lease contention and expiry. These are
+envelope and invariant checks, not proof that a real adapter induced each OS or
+browser behavior. Every adapter package still needs stateful fault-injection
+tests plus real browser or OS E2E evidence.
 
 ### Bounded pairing operator reads
 

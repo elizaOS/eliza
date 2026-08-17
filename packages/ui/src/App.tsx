@@ -357,7 +357,7 @@ function ChatOverlayShell() {
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <ShellFoundationMount />
+        <ShellFoundationMount useWebChatPanel />
       </div>
     </>
   );
@@ -1798,11 +1798,18 @@ function SecretsManagerModalMount(): ReactNode {
   );
 }
 
-function ShellFoundationMount() {
+function ShellFoundationMount({
+  useWebChatPanel = false,
+}: {
+  /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
+  useWebChatPanel?: boolean;
+} = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
-  const shellNeedsAuth = controller?.phase === "needs-auth";
+  const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
+  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
+  const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1811,13 +1818,13 @@ function ShellFoundationMount() {
   // are mutually exclusive App surfaces, so the controller's single sink slot
   // is never contended.
   useEffect(() => {
-    if (!controller) return undefined;
+    if (!controller || useWebChatPanel) return undefined;
     controller.setDictationSink((text) => {
       const current = chatInputRef?.current ?? "";
       setChatInput(current ? `${current} ${text}` : text);
     });
     return () => controller.setDictationSink(null);
-  }, [controller, setChatInput, chatInputRef]);
+  }, [controller, setChatInput, chatInputRef, useWebChatPanel]);
 
   // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
   // key-up event reaches the renderer), so the hotkey drives the SAME ptt
@@ -1832,7 +1839,8 @@ function ShellFoundationMount() {
       const shell = controllerRef.current;
       if (!shell) return;
       if (shell.authGate.gated) {
-        shell.requestSignIn();
+        if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+        else shell.startRecording("ptt");
         return;
       }
       if (shell.recording) {
@@ -1865,7 +1873,8 @@ function ShellFoundationMount() {
       if (detail.held) {
         if (fnHoldActiveRef.current || shell.recording) return;
         if (shell.authGate.gated) {
-          shell.requestSignIn();
+          if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+          else shell.startRecording("ptt");
           return;
         }
         fnHoldActiveRef.current = true;
@@ -1889,22 +1898,67 @@ function ShellFoundationMount() {
   useEffect(() => {
     if (!hasController) return undefined;
     let cancelled = false;
+    setShellPreviewHostReady(false);
 
     void (async () => {
       if (cancelled) return;
       await invokeDesktopBridgeRequestWithTimeout<undefined>({
         rpcMethod: "desktopSetBottomBarExpanded",
         ipcChannel: "desktop:setBottomBarExpanded",
-        params: { expanded: shellIsOpen, chip: shellNeedsAuth },
+        params: {
+          expanded: shellIsOpen,
+          hovered: useWebChatPanel && shellPreviewHovered,
+        },
         timeoutMs: 1_000,
       });
+      if (
+        !cancelled &&
+        useWebChatPanel &&
+        shellPreviewHovered &&
+        !shellIsOpen
+      ) {
+        // Paint only after the native host is 600px wide. Before this
+        // acknowledgement, a wide DOM preview is clipped through the resting
+        // 96px WKWebView and appears as a narrow center slice.
+        setShellPreviewHostReady(true);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [hasController, shellIsOpen, shellNeedsAuth]);
+  }, [hasController, shellIsOpen, shellPreviewHovered, useWebChatPanel]);
+  useEffect(() => {
+    if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
+      return;
+    }
+    focusComposerOnOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-composer-textarea"]',
+        )
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [shellIsOpen, useWebChatPanel]);
+  const closeWebChatWhenPilled = useCallback(
+    (pilled: boolean) => {
+      if (pilled) controller?.close();
+    },
+    [controller],
+  );
   if (!controller) return null;
+
+  if (useWebChatPanel && shellIsOpen) {
+    return (
+      <ChatOverlayMount
+        releaseFirstRunToHalf={false}
+        onFirstRunReleaseHandled={() => {}}
+        onPilledChange={closeWebChatWhenPilled}
+      />
+    );
+  }
 
   return (
     <>
@@ -1912,11 +1966,18 @@ function ShellFoundationMount() {
         phase={controller.phase}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={controller.open}
+        onOpen={() => {
+          focusComposerOnOpenRef.current = useWebChatPanel;
+          controller.open();
+        }}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
-            controller.requestSignIn();
+            if (controller.authGate.phase === "needs-auth") {
+              controller.requestSignIn();
+            } else {
+              controller.startRecording("ptt");
+            }
             return;
           }
           // Audible mic-open ping BEFORE capture spins up: the cue is the
@@ -1930,32 +1991,38 @@ function ShellFoundationMount() {
           controller.stopRecording();
         }}
         onHoldCancel={controller.cancelRecording}
+        onPreviewHoverChange={
+          useWebChatPanel ? setShellPreviewHovered : undefined
+        }
+        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
-      <AssistantOverlay
-        phase={controller.phase}
-        onClose={controller.close}
-        open={controller.isOpen}
-      >
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
-            <ServingProviderChip className="pointer-events-none text-muted-strong" />
+      {!useWebChatPanel ? (
+        <AssistantOverlay
+          phase={controller.phase}
+          onClose={controller.close}
+          open={controller.isOpen}
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
+              <ServingProviderChip className="pointer-events-none text-muted-strong" />
+            </div>
+            <div className="min-h-0 flex-1">
+              <ChatSurface
+                messages={controller.messages}
+                onSend={controller.send}
+                canSend={controller.canSend}
+                greeting={greetingForTimeOfDay()}
+                recording={controller.recording}
+                onToggleRecording={controller.toggleRecording}
+                onDictateStart={() => controller.startRecording("dictate")}
+                onDictateEnd={controller.stopRecording}
+                onVision={controller.captureVision}
+                visionActive={controller.visionCapturing}
+              />
+            </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <ChatSurface
-              messages={controller.messages}
-              onSend={controller.send}
-              canSend={controller.canSend}
-              greeting={greetingForTimeOfDay()}
-              recording={controller.recording}
-              onToggleRecording={controller.toggleRecording}
-              onDictateStart={() => controller.startRecording("dictate")}
-              onDictateEnd={controller.stopRecording}
-              onVision={controller.captureVision}
-              visionActive={controller.visionCapturing}
-            />
-          </div>
-        </div>
-      </AssistantOverlay>
+        </AssistantOverlay>
+      ) : null}
     </>
   );
 }
@@ -1970,9 +2037,11 @@ function ShellFoundationMount() {
 function ChatOverlayMount({
   releaseFirstRunToHalf,
   onFirstRunReleaseHandled,
+  onPilledChange,
 }: {
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
+  onPilledChange?: (pilled: boolean) => void;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2004,6 +2073,7 @@ function ChatOverlayMount({
       firstRunOpen={firstRunComplete === false}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+      onPilledChange={onPilledChange}
     />
   );
 }
@@ -2825,6 +2895,7 @@ function AppContent() {
           <FirstRunConductorMount />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
+          <ShellOverlays actionNotice={actionNotice} />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

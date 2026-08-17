@@ -705,6 +705,25 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of [
+      "ELIZA_APNS_KEY",
+      "ELIZA_APNS_KEY_ID",
+      "ELIZA_APNS_TEAM_ID",
+      "ELIZA_APNS_TOPIC",
+      "ELIZA_APNS_PRODUCTION",
+    ]) {
+      expect(publish.env?.[name]).toBeDefined();
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.ELIZA_APNS_KEY).toContain("secrets.ELIZA_APNS_KEY");
+    expect(publish.env?.ELIZA_APNS_TOPIC).toContain("vars.ELIZA_APNS_TOPIC");
+    expect(publish.env?.ELIZA_APNS_PRODUCTION).toContain(
+      "vars.ELIZA_APNS_PRODUCTION",
+    );
+    expect(publish.run).toContain("verify_apns_binding_candidates");
+    expect(publish.run).toContain("partial existing or configured bindings");
+    expect(publish.run).toContain('ELIZA_APNS_TOPIC" != "ai.elizaos.app');
+    expect(publish.run).toContain('ELIZA_APNS_PRODUCTION" != "0"');
     for (const name of requiredAuthWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name} \\\n`);
@@ -747,6 +766,9 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(inventory?.run).toContain(
       "Missing required Worker secret binding name(s)",
+    );
+    expect(inventory?.run).toContain(
+      "Personal Shared APNs bindings are partial",
     );
     expect(inventory?.run).toContain("values were not read");
   });

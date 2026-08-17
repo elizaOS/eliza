@@ -1,4 +1,9 @@
-// Handles internal cloud API internal discord eliza app messages route traffic with service-to-service auth.
+/**
+ * Routes authenticated managed Discord messages to Dedicated or Personal
+ * Shared Eliza. A private Request-identity capability carries the verified
+ * gateway identity across the nested Shared dispatch exactly once.
+ */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -12,6 +17,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 import personalSharedMessagesApp from "../../../eliza-app/personal-shared/messages/route";
+import { markPreverifiedPersonalSharedRequest } from "../../../eliza-app/personal-shared/preverified-auth";
 
 const messageSchema = z.object({
   guildId: z.string().trim().min(1).optional(),
@@ -30,10 +36,15 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
+    const wrapperStartedAt = performance.now();
+    const authStartedAt = performance.now();
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
+    const authMs = performance.now() - authStartedAt;
 
+    const validationStartedAt = performance.now();
     const body = messageSchema.parse(await c.req.json());
+    const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {
       const result = await agentGatewayRouterService.routeDiscordMessage({
         guildId: body.guildId,
@@ -86,12 +97,11 @@ app.post("/", async (c) => {
       return c.json({ handled: true, ...shared });
     }
 
-    const response = await personalSharedMessagesApp.request(
-      "/",
+    const personalSharedRequest = new Request(
+      "https://personal-shared.internal/",
       {
         method: "POST",
         headers: {
-          authorization: c.req.header("authorization") ?? "",
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -104,15 +114,15 @@ app.post("/", async (c) => {
           message: body.content,
         }),
       },
+    );
+    markPreverifiedPersonalSharedRequest(personalSharedRequest, auth);
+    const innerStartedAt = performance.now();
+    const response = await personalSharedMessagesApp.fetch(
+      personalSharedRequest,
       c.env,
       c.executionCtx,
     );
-    const personalSharedTiming = response.headers.get("Server-Timing");
-    if (personalSharedTiming) {
-      // The Discord gateway cannot optimize a slow turn if the internal
-      // wrapper erases the account, prewarm, and Shared runtime split.
-      c.header("Server-Timing", personalSharedTiming);
-    }
+    const innerMs = performance.now() - innerStartedAt;
     const payload = (await response.json()) as {
       success?: boolean;
       error?: string;
@@ -123,6 +133,20 @@ app.post("/", async (c) => {
         reply: string;
       };
     };
+    const personalSharedTiming = response.headers.get("Server-Timing");
+    const wrapperMs = performance.now() - wrapperStartedAt;
+    c.header(
+      "Server-Timing",
+      [
+        `discord_auth;dur=${authMs.toFixed(1)}`,
+        `discord_validation;dur=${validationMs.toFixed(1)}`,
+        personalSharedTiming,
+        `discord_inner;dur=${innerMs.toFixed(1)}`,
+        `discord_wrapper;dur=${wrapperMs.toFixed(1)}`,
+      ]
+        .filter((metric): metric is string => metric !== null)
+        .join(", "),
+    );
     if (!response.ok || !payload.success || !payload.data) {
       return c.json(
         payload,

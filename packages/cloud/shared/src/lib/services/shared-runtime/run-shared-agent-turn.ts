@@ -24,6 +24,7 @@ import { type ActionResult, replaceNameTokens, type UUID } from "@elizaos/core/e
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { generateText, streamText } from "ai";
+import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getInteractiveCerebrasLanguageModel,
@@ -111,6 +112,9 @@ export interface RunSharedAgentTurnInput {
     reminders?: {
       delivery: SharedReminderDelivery;
       runner: ScheduledTaskRunner;
+    };
+    mobilePush?: {
+      dispatch: (message: MobilePushMessage) => Promise<void>;
     };
   };
 }
@@ -621,6 +625,42 @@ export async function runSharedAgentTurnStream(
     });
 
     const providerReader = result.fullStream.getReader();
+    // error-policy:J5 cancel(reason) rejects the SDK's pending result
+    // promises; the parts iterator below is the observed failure channel, so
+    // mark every promise-typed result property handled here to keep a
+    // barge-in from surfacing its cancellation reason as unhandled
+    // rejections on the event loop. Stream-typed getters (fullStream,
+    // textStream, ...) are deliberately NOT touched — accessing them tees or
+    // locks the provider stream.
+    const settledResultProps = [
+      "content",
+      "text",
+      "reasoning",
+      "reasoningText",
+      "files",
+      "sources",
+      "toolCalls",
+      "staticToolCalls",
+      "dynamicToolCalls",
+      "staticToolResults",
+      "dynamicToolResults",
+      "toolResults",
+      "finishReason",
+      "rawFinishReason",
+      "usage",
+      "totalUsage",
+      "warnings",
+      "steps",
+      "request",
+      "response",
+      "providerMetadata",
+    ] as const;
+    for (const prop of settledResultProps) {
+      const pending = (result as unknown as Record<string, unknown>)[prop];
+      if (pending && typeof (pending as PromiseLike<unknown>).then === "function") {
+        void Promise.resolve(pending as PromiseLike<unknown>).catch(() => {});
+      }
+    }
     let providerStreamDone = false;
     let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;

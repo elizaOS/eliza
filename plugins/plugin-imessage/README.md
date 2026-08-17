@@ -122,7 +122,7 @@ iMessage supports multiple target types:
 | Policy | Description |
 |--------|-------------|
 | `open` | Accept DMs from anyone |
-| `pairing` | Accept DMs and remember senders |
+| `pairing` (default) | Accept senders in `IMESSAGE_ALLOW_FROM` immediately; hold unknown senders through the core PairingService handshake — they are admitted once the owner approves their pairing code (`pairing approve imessage <code>` or the pairing UI). The pairing-code reply is only texted to the sender when `IMESSAGE_AUTO_REPLY=true` |
 | `allowlist` | Only accept from IMESSAGE_ALLOW_FROM list |
 | `disabled` | Don't accept any DMs |
 

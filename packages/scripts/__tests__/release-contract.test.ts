@@ -196,7 +196,7 @@ describe("release contract", () => {
         packageNames: ["@x/a"],
         version: "1.2.3-beta.4",
       }),
-    ).toThrow("targets a private package");
+    ).toThrow("must be a published semver range");
     expect(() =>
       resolveReleaseCohort({
         repoRoot: root,
@@ -237,49 +237,6 @@ describe("release contract", () => {
         version: "1.2.3-beta.4",
       }),
     ).toThrow("expected 1.2.3-beta.4");
-  });
-
-  test("accepts rewriteable workspace ranges and rejects unrewriteable ones", () => {
-    const root = makeRepo();
-    writePackage(
-      root,
-      "packages/a",
-      publicPackage("@x/a", {
-        dependencies: { "@x/b": "workspace:*" },
-        devDependencies: { "@x/c": "workspace:^" },
-      }),
-    );
-    writePackage(root, "packages/b", publicPackage("@x/b"));
-    writePackage(root, "packages/c", publicPackage("@x/c"));
-
-    const cohort = resolveReleaseCohort({
-      repoRoot: root,
-      packageNames: ["@x/a", "@x/b", "@x/c"],
-      version: "1.2.3-beta.4",
-    });
-    expect(
-      cohort.packages.find(({ name }) => name === "@x/a")?.internalDependencies,
-    ).toContainEqual({
-      name: "@x/b",
-      section: "dependencies",
-      range: "workspace:*",
-      targetVersion: "1.2.3-beta.4",
-      inCohort: true,
-    });
-    expect(cohort.dependencyGraph["@x/a"]).toEqual(["@x/b"]);
-
-    writePackage(
-      root,
-      "packages/a",
-      publicPackage("@x/a", { dependencies: { "@x/b": "workspace:2.x" } }),
-    );
-    expect(() =>
-      resolveReleaseCohort({
-        repoRoot: root,
-        packageNames: ["@x/a", "@x/b"],
-        version: "1.2.3-beta.4",
-      }),
-    ).toThrow("cannot be rewritten to workspace version");
   });
 
   test("requires runtime workspace dependency closure in the explicit cohort", () => {

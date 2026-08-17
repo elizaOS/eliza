@@ -37,9 +37,7 @@ async function fulfillJson(
 }
 
 function chatComposer(page: Page) {
-  return page
-    .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+  return page.getByTestId("chat-composer-textarea");
 }
 
 async function routeAuthStatus(

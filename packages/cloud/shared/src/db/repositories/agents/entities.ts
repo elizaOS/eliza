@@ -9,6 +9,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { sqlRows } from "../../execute-helpers";
 import { dbRead, dbWrite } from "../../helpers";
 import { entityTable } from "../../schemas/eliza";
+import { escapeLikePattern } from "../../utils/like-pattern";
 
 /**
  * Input for creating a new entity.
@@ -148,7 +149,7 @@ export class EntitiesRepository {
       WHERE agent_id = ${agentId}::uuid
         AND EXISTS (
           SELECT 1 FROM unnest(names) AS name
-          WHERE name ILIKE ${`%${namePattern}%`}
+          WHERE name ILIKE ${`%${escapeLikePattern(namePattern)}%`} ESCAPE '\\'
         )
       LIMIT ${limit}
     `,

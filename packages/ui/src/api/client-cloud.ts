@@ -82,7 +82,7 @@ import {
 // Module-level constants
 // ---------------------------------------------------------------------------
 
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
+const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
 
 type DirectCloudAgent = {

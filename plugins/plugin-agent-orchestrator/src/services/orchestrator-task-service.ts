@@ -237,7 +237,11 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
-import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import {
+  captureChangeSet,
+  subtractChangeSetBaseline,
+  type WorkspaceChangeSet,
+} from "./workspace-diff.js";
 import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
@@ -2392,7 +2396,32 @@ export class OrchestratorTaskService extends Service {
       (message) => message.sessionId === sessionId,
     );
 
-    const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    const rawChangeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    // Shared-workdir captures include OTHER apps' pre-existing dirty files;
+    // subtract the spawn-time baselines so the evidence shows the session's
+    // own work (velvet-moth live: an unrelated app's diff read as
+    // contradictory evidence).
+    const baselineSession = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    const baselineMeta = isRecord(baselineSession?.metadata)
+      ? baselineSession.metadata
+      : undefined;
+    const baselinePaths = [
+      ...(Array.isArray(baselineMeta?.codingBaselineDirty)
+        ? baselineMeta.codingBaselineDirty.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : []),
+      ...(Array.isArray(baselineMeta?.codingBaselineUntracked)
+        ? baselineMeta.codingBaselineUntracked.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : []),
+    ];
+    const changeSet = rawChangeSet
+      ? subtractChangeSetBaseline(rawChangeSet, baselinePaths)
+      : rawChangeSet;
     const diffSummary =
       changeSet && changeSet.changedFiles.length > 0
         ? renderChangeSetBody(changeSet)

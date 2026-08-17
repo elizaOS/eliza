@@ -77,7 +77,7 @@ bun run --cwd plugins/plugin-bluebubbles typecheck
 | `BLUEBUBBLES_PASSWORD` | yes | — | BlueBubbles server password |
 | `BLUEBUBBLES_WEBHOOK_SECRET` | recommended | — | Shared secret validated on every POST to `/webhooks/bluebubbles` (header `X-BlueBubbles-Webhook-Secret`). Webhook requests are rejected without it. |
 | `BLUEBUBBLES_WEBHOOK_PATH` | no | `/webhooks/bluebubbles` | Override inbound webhook path |
-| `BLUEBUBBLES_DM_POLICY` | no | `pairing` | `open` \| `pairing` \| `allowlist` \| `disabled` |
+| `BLUEBUBBLES_DM_POLICY` | no | `pairing` | `open` \| `pairing` \| `allowlist` \| `disabled` — `pairing` holds unknown senders through the core PairingService code handshake; it never defaults open |
 | `BLUEBUBBLES_GROUP_POLICY` | no | `allowlist` | `open` \| `allowlist` \| `disabled` |
 | `BLUEBUBBLES_ALLOW_FROM` | no | — | Comma-separated allowlist for DM senders |
 | `BLUEBUBBLES_GROUP_ALLOW_FROM` | no | — | Comma-separated allowlist for group senders |
@@ -120,6 +120,13 @@ blocks under `character.settings.bluebubbles.accounts.<id>`.
 - **Webhook secret is enforced.** Every POST to `/webhooks/bluebubbles` is
   rejected with 401 if `BLUEBUBBLES_WEBHOOK_SECRET` is not set. Configure it
   in both the BlueBubbles server app and the agent env.
+- **DM `pairing` uses the core PairingService.** The connector has no pairing
+  handshake of its own; unknown DM senders get a one-time pairing code and
+  are held until the owner approves. An empty `BLUEBUBBLES_ALLOW_FROM` never
+  means "allow everyone".
+- **No credentials in stored attachment URLs.** Memories carry the bare
+  `/api/v1/attachment/<guid>` capability URL; the server password is appended
+  only at fetch time via `BlueBubblesClient.getAttachmentUrl()`.
 - **Private API required for edit/unsend.** `BlueBubblesClient.editMessage()`
   and `.unsendMessage()` require the BlueBubbles Private API to be enabled.
   Check `probeResult.privateApiEnabled` before using those paths.

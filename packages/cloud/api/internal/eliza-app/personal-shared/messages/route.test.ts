@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
 import { logger } from "@/lib/utils/logger";
+import { markPreverifiedPersonalSharedRequest } from "../preverified-auth";
 
 let activeTarget: {
   id: string;
@@ -224,6 +225,74 @@ describe("personal Shared messaging deliveries", () => {
 
   test("requires internal gateway authentication", async () => {
     expect((await request(valid, "")).status).toBe(401);
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  test("accepts an in-isolate preverified identity at the real route boundary", async () => {
+    const preverifiedRequest = new Request("http://localhost/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    markPreverifiedPersonalSharedRequest(preverifiedRequest, {
+      podName: "gateway-1",
+      service: "discord-gateway",
+    });
+    const env = {
+      INTERNAL_SECRET: "test-secret",
+      SHARED_RUNTIME_CONVERSATIONS: namespace,
+      WHISPER_STT_URL: "https://whisper.test",
+    } as never;
+
+    expect(
+      (
+        await app.request(
+          preverifiedRequest,
+          undefined,
+          env,
+          executionCtx as never,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(
+          new Request("http://localhost/", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(valid),
+          }),
+          undefined,
+          env,
+          executionCtx as never,
+        )
+      ).status,
+    ).toBe(401);
+  });
+
+  test("keeps the caller allowlist fail-closed for a preverified identity", async () => {
+    const preverifiedRequest = new Request("http://localhost/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    markPreverifiedPersonalSharedRequest(preverifiedRequest, {
+      podName: "agent-server-1",
+      service: "agent-server",
+    });
+
+    const response = await app.request(
+      preverifiedRequest,
+      undefined,
+      {
+        INTERNAL_SECRET: "test-secret",
+        SHARED_RUNTIME_CONVERSATIONS: namespace,
+        WHISPER_STT_URL: "https://whisper.test",
+      } as never,
+      executionCtx as never,
+    );
+
+    expect(response.status).toBe(403);
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 

@@ -15,6 +15,7 @@ import {
   type RouteRequestMeta,
 } from "@elizaos/core";
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
+import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
 
 function parseOptionalBooleanQuery(
   raw: string | null,
@@ -96,6 +97,14 @@ export async function handleModelsRoutes(
   }
 
   if (specificProvider) {
+    // The provider id becomes a filesystem path segment in providerCachePath,
+    // so reject anything outside the canonical id grammar before the cache
+    // bust or fetch runs — `../` ids would otherwise traverse the unlink/read
+    // out of the models cache dir (W1-024).
+    if (!MODEL_PROVIDER_ID_PATTERN.test(specificProvider)) {
+      json(res, { error: "Invalid provider id" }, 400);
+      return true;
+    }
     if (force) {
       try {
         unlinkFile(providerCachePath(specificProvider));

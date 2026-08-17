@@ -66,6 +66,7 @@ import type {
   WhatsAppMessageResponse,
   WhatsAppWebhookEvent,
 } from "./types";
+import { timingSafeEqualSecretString } from "./webhook-auth";
 
 type RuntimeServiceConfig =
   | {
@@ -1019,7 +1020,9 @@ export class WhatsAppConnectorService extends Service {
     if (
       mode === "subscribe" &&
       challenge &&
-      expectedTokens.some((expectedToken) => expectedToken && token === expectedToken)
+      expectedTokens.some(
+        (expectedToken) => expectedToken && timingSafeEqualSecretString(token, expectedToken)
+      )
     ) {
       return challenge;
     }

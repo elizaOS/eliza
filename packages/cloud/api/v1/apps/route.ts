@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { isSafeRegistrationUrl } from "@/lib/security/outbound-url";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appFactoryService } from "@/lib/services/app-factory";
 import {
@@ -22,10 +23,21 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CreateAppSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().optional(),
-  app_url: z.string().url(),
+  // Screened at registration so charge-callback delivery (which is confined
+  // to these URLs) can never be aimed at localhost/private targets; fetch-time
+  // safeFetch re-validates with DNS.
+  app_url: z.string().url().refine(isSafeRegistrationUrl, {
+    message: "app_url must be a public http(s) URL",
+  }),
   website_url: z.string().url().optional(),
   contact_email: z.string().email().optional(),
-  allowed_origins: z.array(z.string()).optional(),
+  allowed_origins: z
+    .array(
+      z.string().refine(isSafeRegistrationUrl, {
+        message: "allowed_origins entries must be public http(s) origins",
+      }),
+    )
+    .optional(),
   logo_url: z.string().url().optional(),
   skipGitHubRepo: z.boolean().optional(),
   // Optional monetization config applied immediately after creation. A `true`

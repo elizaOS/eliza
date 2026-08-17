@@ -1237,8 +1237,13 @@ describe("ElizaSandboxService wake", () => {
       // content_hash passes verification for real (legacy-row passthrough).
       const storedBackup: StoredAgentSandboxBackup = {
         ...backup,
+        // Explicit nulls: the legacy-verification predicate compares against
+        // null, so an absent catalog field would classify the row as
+        // catalogue-managed and reject the legacy lane.
+        catalog_version: null,
+        catalog_state: null,
         state_data: { memories: [], config: {}, workspaceFiles: {} },
-      };
+      } as StoredAgentSandboxBackup;
       const provider: SandboxProvider = {
         create: mock(async () => ({
           sandboxId: "agent-e06bb509",
@@ -1272,6 +1277,7 @@ describe("ElizaSandboxService wake", () => {
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
       const originalGetBackupById = agentSandboxesRepository.getBackupById;
       const originalGetLatestStoredBackup = agentSandboxesRepository.getLatestStoredBackup;
+      const originalListBackupMetadata = agentSandboxesRepository.listBackupMetadata;
       const originalStampBackupVerification = agentSandboxesRepository.stampBackupVerification;
       const originalGetReconstructedBackupState =
         agentSandboxesRepository.getReconstructedBackupState;
@@ -1289,6 +1295,27 @@ describe("ElizaSandboxService wake", () => {
       // from-backup override, so provision fetches it by id, not "latest".
       agentSandboxesRepository.getBackupById = mock(async () => backup);
       agentSandboxesRepository.getLatestStoredBackup = mock(async () => storedBackup);
+      agentSandboxesRepository.listBackupMetadata = mock(async () => [
+        {
+          id: backup.id,
+          sandbox_record_id: backup.sandbox_record_id,
+          snapshot_type: backup.snapshot_type,
+          state_data_storage: backup.state_data_storage,
+          state_data_key: backup.state_data_key,
+          size_bytes: backup.size_bytes,
+          backup_kind: backup.backup_kind,
+          parent_backup_id: backup.parent_backup_id,
+          content_hash: backup.content_hash,
+          verification_status: backup.verification_status,
+          verified_at: backup.verified_at,
+          verification_error: backup.verification_error,
+          recovery_organization_id: null,
+          recovery_agent_id: null,
+          recovery_deletion_attempt_id: null,
+          recovery_expires_at: null,
+          created_at: backup.created_at,
+        },
+      ]);
       agentSandboxesRepository.stampBackupVerification = mock(async () => {});
       agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
         memories: [],
@@ -1331,6 +1358,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
         agentSandboxesRepository.getBackupById = originalGetBackupById;
         agentSandboxesRepository.getLatestStoredBackup = originalGetLatestStoredBackup;
+        agentSandboxesRepository.listBackupMetadata = originalListBackupMetadata;
         agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();

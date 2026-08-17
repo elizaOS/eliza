@@ -296,7 +296,11 @@ describe("media-store", () => {
     const out = get();
     expect(out.status).toBe(200);
     expect(out.headers["Content-Type"]).toBe("image/png");
-    expect(String(out.headers["Cache-Control"])).toContain("immutable");
+    const cacheControl = String(out.headers["Cache-Control"]);
+    expect(cacheControl).toContain("immutable");
+    // Pre-auth capability URLs must not be persisted by shared/proxy caches.
+    expect(cacheControl).toContain("private");
+    expect(cacheControl).not.toContain("public");
     expect(Number(out.headers["Content-Length"])).toBe(
       Buffer.from("served-bytes").length,
     );
@@ -367,6 +371,21 @@ describe("serve-path security headers (stored-XSS defence)", () => {
     expect(String(headers["Content-Disposition"])).toContain("attachment");
   });
 
+  it("forces PDF to download (attachment) — never inline-rendered", () => {
+    // Parity with SVG: inline plugin/viewer rendering of a pre-auth capability
+    // URL must never execute active content on this origin.
+    const { url, fileName } = persistMediaBytes(
+      Buffer.from("%PDF-1.4\nfake"),
+      "application/pdf",
+    );
+    expect(fileName.endsWith(".pdf")).toBe(true);
+    const { res, get } = makeRes();
+    serveMediaFile({ method: "HEAD", headers: {} } as never, res, url);
+    const { headers } = get();
+    expect(headers["Content-Type"]).toBe("application/pdf");
+    expect(String(headers["Content-Disposition"])).toContain("attachment");
+  });
+
   it("reconciles markup masquerading as a PNG → stored + served as a download", () => {
     // Bytes are really an SVG but the caller declared image/png.
     const { fileName } = persistMediaBytes(
@@ -388,7 +407,7 @@ describe("serve-path security headers (stored-XSS defence)", () => {
     expect(isInlineSafeMime("image/png")).toBe(true);
     expect(isInlineSafeMime("audio/mpeg")).toBe(true);
     expect(isInlineSafeMime("video/mp4")).toBe(true);
-    expect(isInlineSafeMime("application/pdf")).toBe(true);
+    expect(isInlineSafeMime("application/pdf")).toBe(false);
     expect(isInlineSafeMime("image/svg+xml")).toBe(false);
     expect(isInlineSafeMime("text/html")).toBe(false);
     expect(isInlineSafeMime("application/octet-stream")).toBe(false);
@@ -915,6 +934,18 @@ describe("readStoredMediaBytes fast-fail (#12265)", () => {
     expect(readStoredMediaBytes("../../etc/passwd")).toBeNull();
   });
 
+  it("returns null for a sibling ledger name that exists in the store dir", () => {
+    // background-pins.json / audio-redactions.json live next to the media
+    // objects and pass a bare dirname check; the strict name pattern must
+    // reject them before the helper ever resolves the path.
+    fs.writeFileSync(mediaPath("background-pins.json"), "[]");
+    try {
+      expect(readStoredMediaBytes("background-pins.json")).toBeNull();
+    } finally {
+      fs.rmSync(mediaPath("background-pins.json"), { force: true });
+    }
+  });
+
   it("throws MEDIA_STORE_READ_FAILED when a stored entry is unreadable", () => {
     // A directory sitting where the bytes should be makes readFileSync throw
     // EISDIR — a real I/O failure distinct from absence, and root-independent.
@@ -942,6 +973,15 @@ describe("writeStoredMediaFile fast-fail (#12265)", () => {
     expect(writeStoredMediaFile(name, Buffer.from("ok"))).toBe(true);
     expect(readStoredMediaBytes(name)?.toString()).toBe("ok");
     expect(writeStoredMediaFile("../escape.bin", Buffer.from("x"))).toBe(false);
+  });
+
+  it("returns false for a sibling ledger name without writing it", () => {
+    // audio-redactions.json lives next to the media objects and passes a bare
+    // dirname check; the strict name pattern must reject it before any write.
+    expect(
+      writeStoredMediaFile("audio-redactions.json", Buffer.from("{}")),
+    ).toBe(false);
+    expect(fs.existsSync(mediaPath("audio-redactions.json"))).toBe(false);
   });
 
   it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(

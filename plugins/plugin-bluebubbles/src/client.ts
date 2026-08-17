@@ -85,6 +85,15 @@ export class BlueBubblesClient {
 	}
 
 	/**
+	 * Returns the authenticated fetch URL for an attachment. The server
+	 * password is appended only here, at fetch time — attachment URLs persisted
+	 * on memories are bare capability URLs without the credential.
+	 */
+	getAttachmentUrl(attachmentGuid: string): string {
+		return `${this.baseUrl}/api/v1/attachment/${encodeURIComponent(attachmentGuid)}?password=${encodeURIComponent(this.password)}`;
+	}
+
+	/**
 	 * Sends a text message
 	 */
 	async sendMessage(

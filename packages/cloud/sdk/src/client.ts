@@ -352,28 +352,35 @@ export class ElizaCloudClient {
   startCliLogin(
     options: CliLoginStartOptions = {},
   ): Promise<CliLoginStartResponse> {
-    const sessionId = options.sessionId ?? getCryptoRandomUuid();
+    // The server mints the session id (client-chosen ids are ignored — they
+    // allowed id squatting and unauthenticated row-spam). A locally generated
+    // id is still sent for backward compatibility with pre-hardening servers,
+    // but the RESPONSE id is authoritative on both old and new servers.
+    const requestedSessionId = options.sessionId ?? getCryptoRandomUuid();
     const query = options.returnTo
       ? `?returnTo=${encodeURIComponent(options.returnTo)}`
       : "";
-    const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
-    const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
-      sessionId,
-    )}${query}`;
 
-    return this.request<{ status?: string; expiresAt?: string }>(
-      "POST",
-      "/api/auth/cli-session",
-      {
-        json: { sessionId },
-        skipAuth: true,
-      },
-    ).then((response) => ({
-      sessionId,
-      browserUrl,
-      status: response.status,
-      expiresAt: response.expiresAt,
-    }));
+    return this.request<{
+      sessionId: string;
+      status?: string;
+      expiresAt?: string;
+    }>("POST", "/api/auth/cli-session", {
+      json: { sessionId: requestedSessionId },
+      skipAuth: true,
+    }).then((response) => {
+      const sessionId = response.sessionId ?? requestedSessionId;
+      const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
+      const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
+        sessionId,
+      )}${query}`;
+      return {
+        sessionId,
+        browserUrl,
+        status: response.status,
+        expiresAt: response.expiresAt,
+      };
+    });
   }
 
   pollCliLogin(sessionId: string): Promise<CliLoginPollResponse> {

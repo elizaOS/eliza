@@ -15,6 +15,8 @@ mock.module("@/lib/utils/logger", () => ({
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const APP_ID = "99999999-9999-4999-8999-000000000001";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+type DeleteAppWithCleanup =
+  typeof import("@/lib/services/app-cleanup").deleteAppWithCleanup;
 
 const getById = mock(async (id: string) =>
   id === APP_ID
@@ -22,7 +24,9 @@ const getById = mock(async (id: string) =>
     : null,
 );
 const deleteAppWithCleanup = mock(
-  async (_appId: string, _options: { deleteGitHubRepo?: boolean } = {}) => ({
+  async (
+    ..._args: Parameters<DeleteAppWithCleanup>
+  ): Promise<Awaited<ReturnType<DeleteAppWithCleanup>>> => ({
     success: true,
     errors: [],
     cleaned: {
@@ -30,6 +34,7 @@ const deleteAppWithCleanup = mock(
       githubRepoDeleted: true,
       secretBindingsRemoved: 0,
       managedDomainsUnlinked: 0,
+      containersTornDown: 0,
     },
   }),
 );

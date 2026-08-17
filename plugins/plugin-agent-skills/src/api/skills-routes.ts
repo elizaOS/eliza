@@ -153,6 +153,15 @@ export interface SkillsRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   readBody: (req: http.IncomingMessage) => Promise<string>;
+  /**
+   * @deprecated Retained for source compatibility with older Agent hosts.
+   * Route identifiers are decoded internally and this callback is ignored.
+   */
+  decodePathComponent?: (
+    raw: string,
+    res: http.ServerResponse,
+    fieldName: string,
+  ) => string | null;
   // Functions from server.ts that skills routes need
   discoverSkills: (
     workspaceDir: string,
@@ -180,6 +189,7 @@ function validateSkillId(
 ): string | null {
   if (
     !skillId ||
+    skillId.length > SKILL_NAME_MAX_LENGTH ||
     !SAFE_SKILL_ID_RE.test(skillId) ||
     skillId === "." ||
     skillId.includes("..")

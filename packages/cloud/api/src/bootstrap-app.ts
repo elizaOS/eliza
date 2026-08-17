@@ -37,6 +37,7 @@ import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
+import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
@@ -327,7 +328,12 @@ export function createApp(): Hono<AppEnv> {
     }
   });
 
-  app.use("*", honoLogger());
+  app.use(
+    "*",
+    honoLogger((message) => {
+      logger.info({ src: "cloud-http" }, redactSensitiveRequestPath(message));
+    }),
+  );
   app.use("*", async (c, next) => {
     c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
     c.set("user", undefined);
@@ -343,7 +349,7 @@ export function createApp(): Hono<AppEnv> {
         id: requestId,
         traceId,
         method: c.req.method,
-        path: new URL(c.req.url).pathname,
+        path: redactSensitiveRequestPath(new URL(c.req.url).pathname),
       },
       async () => {
         await next();

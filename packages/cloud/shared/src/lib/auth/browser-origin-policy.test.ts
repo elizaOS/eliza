@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import {
   browserOriginHost,
   checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
   isPermittedElizaBrowserOrigin,
 } from "./browser-origin-policy";
 
@@ -74,5 +75,36 @@ describe("Steward browser origin policy", () => {
         true,
       ),
     ).toEqual({ ok: true });
+  });
+
+  it("accepts the custom CSRF header or a JSON content type as the non-simple marker", () => {
+    expect(hasElizaNonSimpleRequestMarker(headers({ "x-eliza-csrf": "1" }))).toBe(true);
+    expect(
+      hasElizaNonSimpleRequestMarker(
+        headers({ "content-type": "application/json; charset=utf-8" }),
+      ),
+    ).toBe(true);
+    expect(hasElizaNonSimpleRequestMarker(headers({ "content-type": "Application/JSON" }))).toBe(
+      true,
+    );
+  });
+
+  it("rejects simple-request shapes that a cross-origin form/fetch can produce", () => {
+    // No headers at all (curl-style or header-less simple request).
+    expect(hasElizaNonSimpleRequestMarker(headers({}))).toBe(false);
+    // CORS-safelisted content types never force a preflight.
+    expect(hasElizaNonSimpleRequestMarker(headers({ "content-type": "text/plain" }))).toBe(false);
+    expect(
+      hasElizaNonSimpleRequestMarker(
+        headers({ "content-type": "application/x-www-form-urlencoded" }),
+      ),
+    ).toBe(false);
+    expect(
+      hasElizaNonSimpleRequestMarker(
+        headers({ "content-type": "multipart/form-data; boundary=x" }),
+      ),
+    ).toBe(false);
+    // An empty marker value is not a marker.
+    expect(hasElizaNonSimpleRequestMarker(headers({ "x-eliza-csrf": "  " }))).toBe(false);
   });
 });

@@ -29,6 +29,7 @@ import {
 } from "../../lib/floating-layers";
 import { useAppSelector } from "../../state";
 import type { DynamicValue } from "../../types";
+import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -1524,17 +1525,24 @@ function processInline(text: string): React.ReactNode {
     if (linkMatch) {
       const before = remaining.substring(0, linkMatch.index);
       if (before) parts.push(processSimpleInline(before, key++));
-      parts.push(
-        <a
-          key={key++}
-          href={linkMatch[2]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-accent underline"
-        >
-          {linkMatch[1]}
-        </a>,
-      );
+      if (isSafeAttachmentUrl(linkMatch[2])) {
+        parts.push(
+          <a
+            key={key++}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline"
+          >
+            {linkMatch[1]}
+          </a>,
+        );
+      } else {
+        // A markdown URL that fails the attachment scheme allowlist
+        // (`javascript:`, `data:text/html`, arbitrary `foo://`, …) never
+        // reaches an href — render the raw markdown as plain text instead.
+        parts.push(processSimpleInline(linkMatch[0], key++));
+      }
       const linkIndex = linkMatch.index ?? 0;
       remaining = remaining.substring(linkIndex + linkMatch[0].length);
       continue;

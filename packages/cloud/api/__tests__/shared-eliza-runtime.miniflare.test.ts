@@ -622,7 +622,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       scheduledTasks: Array<Record<string, unknown>>;
     };
     expect(payload.result).toMatchObject({
-      reply: "i'll remind you in two minutes",
+      reply: "Got it — I'll remind you in 2 minutes: stretch",
       degraded: false,
     });
     expect(payload.result.actionResults).toHaveLength(1);
@@ -648,7 +648,11 @@ describe("Shared Eliza runtime in Workerd", () => {
         },
       },
     });
-    expect(modelRequests.length - requestsBefore).toBe(3);
+    // Two model calls only: triage plus the REMINDERS tool call. The action's
+    // deterministic acknowledgement completes the turn, so no finish
+    // round-trip happens (plugin-scheduling shared-reminders acknowledgement
+    // contract).
+    expect(modelRequests.length - requestsBefore).toBe(2);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

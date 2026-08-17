@@ -13,6 +13,20 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 
 **Full guide (WHYs for signals, `detached`, HMR vs Rollup watch, multiple `bun` PIDs):** [Desktop local development](../docs/apps/desktop-local-development.md)
 
+### Production and staging Cloud targets
+
+Desktop builds use production Eliza Cloud by default. To bake the staging
+control plane into the renderer, pass the explicit build target:
+
+```bash
+node packages/app-core/scripts/desktop-build.mjs build --cloud-only --cloud-target staging
+```
+
+CI can set `ELIZA_DESKTOP_CLOUD_TARGET=staging` instead. Accepted values are
+`production` and `staging`; any other value fails the build. The staging target
+starts from `https://staging.eliza.app`, and the shared domain contract derives
+the matching staging API and authenticated Cloud app hosts.
+
 ### Bun Version (Windows)
 
 - Recommended: **Bun 1.3.x stable** for `dev:win` flows.

@@ -119,11 +119,11 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-[14px] font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
-          <span className="inline-flex min-w-0 items-center justify-center gap-2">
+          <span className="flex w-full min-w-0 items-center justify-center gap-2">
             {isSelected ? (
               <Check className="h-4 w-4 shrink-0" aria-hidden />
             ) : null}
-            <span className="min-w-0 text-center [overflow-wrap:anywhere]">
+            <span className="min-w-0 flex-1 text-center [overflow-wrap:anywhere]">
               {soleOption.label}
             </span>
           </span>

@@ -10,6 +10,7 @@ import {
   ChannelType,
   type Content,
   ContentType,
+  checkPairingAllowed,
   createUniqueUuid,
   type Entity,
   type EventPayload,
@@ -1429,8 +1430,23 @@ export class IMessageService extends Service implements IIMessageService {
         continue;
       }
 
-      // Policy gate: DM allowlist, group allowlist, disabled, etc.
-      if (!this.isAllowed(row.handle)) {
+      // Policy gate: DM allowlist, pairing handshake, disabled, etc.
+      const dmAccess = await this.checkDmAccess(row.handle);
+      if (!dmAccess.allowed) {
+        // A fresh pairing request carries a code for the owner-approval
+        // handshake. Delivering it is an autonomous outbound text, so it
+        // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
+        if (dmAccess.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          const sendResult = await this.sendViaAppleScript(
+            row.handle,
+            dmAccess.pairingReplyMessage
+          );
+          if (!sendResult.success) {
+            logger.warn(
+              `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
+            );
+          }
+        }
         continue;
       }
 
@@ -1771,12 +1787,7 @@ export class IMessageService extends Service implements IIMessageService {
     // auto-generates a reply when IMESSAGE_AUTO_REPLY is explicitly enabled —
     // default-off prevents the runtime from speaking on the user's behalf to
     // real iMessage contacts.
-    const autoReplyRaw = this.runtime.getSetting("IMESSAGE_AUTO_REPLY");
-    const autoReply =
-      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-      (autoReplyRaw === true || autoReplyRaw === "true");
-
-    if (!autoReply) {
+    if (!this.isAutoReplyEnabled()) {
       // Persist the inbound memory so LifeOps and history views still see it.
       try {
         await this.runtime.createMemory(memory, "messages");
@@ -1872,27 +1883,69 @@ export class IMessageService extends Service implements IIMessageService {
     }
   }
 
-  private isAllowed(handle: string): boolean {
-    if (!this.settings) {
+  /**
+   * Whether the connector may autonomously send iMessages on the user's
+   * behalf. Default-off: requires IMESSAGE_AUTO_REPLY=true and LifeOps
+   * passive connectors disabled. Gates both agent-generated replies and the
+   * pairing-code reply sent to unpaired DM senders.
+   */
+  private isAutoReplyEnabled(): boolean {
+    if (!this.runtime) {
       return false;
+    }
+    const autoReplyRaw = this.runtime.getSetting("IMESSAGE_AUTO_REPLY");
+    return (
+      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+      (autoReplyRaw === true || autoReplyRaw === "true")
+    );
+  }
+
+  /**
+   * Evaluates the DM access policy for an inbound sender handle. The
+   * "pairing" policy has no connector-local handshake, so it delegates to the
+   * core PairingService: approved senders pass, everyone else is held with a
+   * pairing request (the reply message carries the one-time code when a new
+   * request was created) instead of being silently allowed through.
+   */
+  private async checkDmAccess(
+    handle: string
+  ): Promise<{ allowed: boolean; pairingReplyMessage?: string }> {
+    if (!this.settings) {
+      return { allowed: false };
     }
 
     if (this.settings.dmPolicy === "open") {
-      return true;
+      return { allowed: true };
     }
 
     if (this.settings.dmPolicy === "disabled") {
-      return false;
+      return { allowed: false };
     }
+
+    const inStaticAllowlist = this.settings.allowFrom.some(
+      (allowed) => allowed.toLowerCase() === handle.toLowerCase()
+    );
 
     if (this.settings.dmPolicy === "allowlist") {
-      return this.settings.allowFrom.some(
-        (allowed) => allowed.toLowerCase() === handle.toLowerCase()
-      );
+      return { allowed: inStaticAllowlist };
     }
 
-    // pairing - allow and track
-    return true;
+    // pairing — static allowlist entries pass directly, otherwise the core
+    // PairingService code handshake decides.
+    if (inStaticAllowlist) {
+      return { allowed: true };
+    }
+    if (!this.runtime) {
+      return { allowed: false };
+    }
+    const pairing = await checkPairingAllowed(this.runtime, {
+      channel: "imessage",
+      senderId: handle,
+    });
+    return {
+      allowed: pairing.allowed,
+      ...(pairing.replyMessage ? { pairingReplyMessage: pairing.replyMessage } : {}),
+    };
   }
 
   /**

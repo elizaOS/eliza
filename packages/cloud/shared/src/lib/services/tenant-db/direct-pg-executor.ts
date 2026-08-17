@@ -9,8 +9,58 @@
  * validated against a real Postgres (integration), not mocked.
  */
 
-import { Client } from "pg";
+import { readFileSync } from "node:fs";
+import { Client, type ClientConfig } from "pg";
+import { logger } from "../../utils/logger";
 import type { TenantDbSqlExecutor } from "./tenant-db-provisioner";
+
+let warnedUnverifiedTls = false;
+
+/**
+ * Read the operator-pinned CA anchor for the tenant cluster: `TENANT_DB_TLS_CA`
+ * (inline PEM) or `PGSSLROOTCERT` (path to the PEM, the standard libpq name).
+ * An unreadable configured file throws — provisioning must fail fast rather
+ * than silently fall back to an unverified connection.
+ */
+function readPinnedClusterCa(): string | null {
+  const inline = process.env.TENANT_DB_TLS_CA;
+  if (inline && inline.trim().length > 0) return inline;
+  const caPath = process.env.PGSSLROOTCERT?.trim();
+  if (!caPath) return null;
+  return readFileSync(caPath, "utf8");
+}
+
+/**
+ * TLS config for the tenant-cluster connection.
+ *
+ * The cluster is a self-managed node on the PRIVATE apps network (10.30.x)
+ * serving a self-signed cert, so a public-CA chain check can never pass.
+ * Verification is therefore PINNED: when the operator configures the cluster
+ * cert or internal CA, the server certificate is verified against exactly that
+ * anchor (`rejectUnauthorized: true`), so an interposer on the private segment
+ * presenting its own cert is detected instead of silently trusted. Hostname
+ * checking is relaxed (libpq `verify-ca` semantics): the pinned anchor IS the
+ * identity, and the self-signed cert carries no SAN for the private IP.
+ *
+ * Without a pinned CA there is nothing to verify against: the connection stays
+ * encrypted but unverified, and a one-time warning keeps that residual visible
+ * to operators instead of silent.
+ */
+function tenantClusterSsl(): ClientConfig["ssl"] {
+  const ca = readPinnedClusterCa();
+  if (ca) {
+    return { ca, rejectUnauthorized: true, checkServerIdentity: () => undefined };
+  }
+  if (!warnedUnverifiedTls) {
+    warnedUnverifiedTls = true;
+    logger.warn(
+      "[DirectPgExecutor] No pinned tenant-cluster CA (TENANT_DB_TLS_CA / PGSSLROOTCERT): " +
+        "provisioning connections are TLS-encrypted but NOT certificate-verified. " +
+        "Pin the cluster CA to make interposition on the private network detectable.",
+    );
+  }
+  return { rejectUnauthorized: false };
+}
 
 export class DirectPgExecutor implements TenantDbSqlExecutor {
   private readonly adminDsn: string;
@@ -27,15 +77,13 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     // self-signed chain ("self-signed certificate") — which would fail EVERY
     // tenant-DB provision in prod. Strip `sslmode` from the DSN textually (NOT
     // via `new URL().toString()`, which re-encodes the userinfo and can corrupt
-    // the admin password) and set `ssl` explicitly: still TLS in-transit, but
-    // skip CA-chain verification (safe — already private-network isolated). A
-    // DSN-level `sslmode` would otherwise win over an explicit `ssl` object.
-    // Verified live against the prod tenant DB (10.30.1.10) via the apps-control
-    // node e2e (connection reaches auth; the self-signed reject is gone).
+    // the admin password) and set `ssl` explicitly. A DSN-level `sslmode` would
+    // otherwise win over an explicit `ssl` object. See tenantClusterSsl() for
+    // the pinned-CA verification policy.
     // A local/CI throwaway Postgres has no TLS at all. When the DSN explicitly
     // opts out (`sslmode=disable`) or PGSSLMODE=disable is set, connect in
-    // plaintext. Prod sets neither, so the TLS-with-skip-verify path is
-    // preserved for the self-signed private-network tenant cluster.
+    // plaintext. Prod sets neither, so the TLS path is preserved for the
+    // self-signed private-network tenant cluster.
     const noSsl =
       /[?&]sslmode=disable/i.test(connectionString) || process.env.PGSSLMODE === "disable";
     const cleaned = connectionString
@@ -43,7 +91,7 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
       .replace(/\?$/, "");
     const client = new Client({
       connectionString: cleaned,
-      ...(noSsl ? {} : { ssl: { rejectUnauthorized: false } }),
+      ...(noSsl ? {} : { ssl: tenantClusterSsl() }),
     });
     await client.connect();
     return client;

@@ -233,7 +233,9 @@ export function detectCheckSurfaces(
 }
 
 const MAX_CONTENT_FILES = 3;
-const MAX_CONTENT_CHARS = 2_000;
+// Typical quick-app files run 6-8KB; a 2KB cap cut them exactly where the
+// judged content lived (velvet-moth live park). 8KB covers the class whole.
+const MAX_CONTENT_CHARS = 8_000;
 /** Text-asset extensions worth showing the judge verbatim. */
 const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
 

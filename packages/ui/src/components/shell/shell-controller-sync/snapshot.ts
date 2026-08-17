@@ -80,6 +80,7 @@ export function parseShellControllerSnapshot(
     typeof authGate.gated !== "boolean" ||
     !(
       authGate.phase === "checking" ||
+      authGate.phase === "unavailable" ||
       authGate.phase === "needs-auth" ||
       authGate.phase === "clear"
     ) ||

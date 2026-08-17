@@ -1,10 +1,16 @@
 {
-  "note": "Pre-existing dangling publish-graph edges present before #15833 and tracked as follow-up. The guard (packages/scripts/publish-graph-guard.mjs) fails on any workspace:* edge from a published package to an unpublishable target that is NOT listed here, and also fails when an entry here no longer dangles (ratchet down: remove it, never add new entries to silence a regression — fix the edge instead).",
+  "note": "Pre-existing dangling publish-graph edges present before #15833 and tracked as follow-up. The guard (packages/scripts/publish-graph-guard.mjs) fails on any workspace:* edge from a published package to an unpublishable target that is NOT listed here, and also fails when an entry here no longer dangles (ratchet down: remove it, never add new entries to silence a regression \u2014 fix the edge instead).",
   "edges": [
     {
       "from": "@elizaos/agent-server",
       "field": "dependencies",
       "dependency": "@elizaos/cloud-services-common",
+      "reason": "private"
+    },
+    {
+      "from": "@elizaos/container-control-plane",
+      "field": "dependencies",
+      "dependency": "@elizaos/cloud-shared",
       "reason": "private"
     },
     {
@@ -17,6 +23,12 @@
       "from": "@elizaos/gateway-webhook",
       "field": "dependencies",
       "dependency": "@elizaos/cloud-services-common",
+      "reason": "private"
+    },
+    {
+      "from": "@elizaos/ui",
+      "field": "dependencies",
+      "dependency": "@elizaos/cloud-shared",
       "reason": "private"
     }
   ]

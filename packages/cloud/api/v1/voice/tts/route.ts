@@ -181,6 +181,7 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
+        awaitWarmingMs: 1500,
       });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();

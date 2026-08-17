@@ -12,22 +12,27 @@ import {
 	runInteractionAdapterConformance,
 } from "../testing/computer-use-conformance.ts";
 import {
+	assertInteractionSessionExecutable,
 	assertInteractionSurfaceCurrent,
+	authorizeInteractionDispatch,
+	computeInteractionActionDigest,
 	INTERACTION_CONTRACT_VERSION,
 	type InteractionAction,
 	type InteractionActionResult,
 	type InteractionAdapter,
 	type InteractionCapabilitySet,
+	InteractionConfirmationCoordinator,
 	InteractionLeaseCoordinator,
 	type InteractionObservation,
 	type InteractionOutcomeStatus,
 	type InteractionSession,
 	type InteractionSurfaceRef,
-	interactionActionDigest,
+	normalizeInteractionAction,
 	normalizeInteractionActionResult,
 	normalizeInteractionCapabilitySet,
 	normalizeInteractionConfirmationPreview,
 	normalizeInteractionObservation,
+	normalizeInteractionSession,
 } from "./computer-use.ts";
 
 const adapterId = "deterministic-computer-use";
@@ -56,6 +61,7 @@ const session: InteractionSession = {
 	createdAt: now,
 	updatedAt: now,
 	expiresAt: null,
+	profileGrant: null,
 	surfaces: [surface],
 };
 
@@ -104,6 +110,7 @@ const observation: InteractionObservation = {
 	viewport: { x: 0, y: 0, width: 1440, height: 900 },
 	cursor: { x: 20, y: 30 },
 	redactions: [],
+	traceEvents: [],
 };
 
 function action(actionId: string, kind: "observe" | "evaluate" = "observe") {
@@ -119,6 +126,8 @@ function action(actionId: string, kind: "observe" | "evaluate" = "observe") {
 			observationId: observation.observationId,
 			observationSequence: observation.sequence,
 			requestedAt: now,
+			confirmationGrant: null,
+			leaseIds: [],
 		} satisfies InteractionAction;
 	}
 	return {
@@ -130,8 +139,13 @@ function action(actionId: string, kind: "observe" | "evaluate" = "observe") {
 		kind,
 		payload: {},
 		observationId: observation.observationId,
-		observationSequence: observation.sequence,
+		observationSequence:
+			actionId === "case-stale_observation"
+				? observation.sequence - 1
+				: observation.sequence,
 		requestedAt: now,
+		confirmationGrant: null,
+		leaseIds: [],
 	} satisfies InteractionAction;
 }
 
@@ -158,7 +172,7 @@ function resultFor(input: InteractionAction): InteractionActionResult {
 		sessionId,
 		adapterId,
 		status,
-		startedAt: now,
+		startedAt: later,
 		completedAt: later,
 		error: needsError
 			? {
@@ -176,7 +190,7 @@ function resultFor(input: InteractionAction): InteractionActionResult {
 					destination: "https://recipient.test",
 					disclosures: ["draft text"],
 					consequence: "Sends a message to the configured recipient.",
-					actionDigest: interactionActionDigest(input),
+					actionDigest: computeInteractionActionDigest(input),
 					requestedAt: now,
 					expiresAt: "2026-01-01T00:05:00.000Z",
 				}
@@ -208,20 +222,25 @@ function resultFor(input: InteractionAction): InteractionActionResult {
 					]
 				: [],
 		observation: status === "SUCCEEDED" ? observation : null,
-	};
+		traceEvents: [],
+	} as InteractionActionResult;
 }
 
 const adapter: InteractionAdapter = {
 	id: adapterId,
 	capabilities: async () => capabilities,
 	observe: async () => observation,
-	execute: async (input) => {
-		if (input.actionId === "case-invalid_payload") {
-			return { invalid: true } as unknown as InteractionActionResult;
-		}
-		return resultFor(input);
-	},
+	execute: async (input) => resultFor(input),
 };
+
+function authorize(value: unknown) {
+	return authorizeInteractionDispatch(value, {
+		session,
+		capabilities,
+		now: Date.parse(now),
+		leaseRequirements: [],
+	});
+}
 
 describe("computer-use interaction contracts", () => {
 	it("normalizes and freezes capability declarations", () => {
@@ -292,14 +311,56 @@ describe("computer-use interaction contracts", () => {
 		);
 	});
 
-	it("reuses canonical effect receipts in successful action results", () => {
-		const succeededAction = action("case-success");
+	it("keeps sensitive trace values structurally redacted", () => {
+		const traceEvent = {
+			eventId: "event-1",
+			sessionId,
+			adapterId,
+			surfaceId: surface.surfaceId,
+			actionId: null,
+			observationId: observation.observationId,
+			sequence: 1,
+			occurredAt: now,
+			kind: "observation_captured",
+			status: null,
+			attributes: [
+				{
+					classification: "credential",
+					name: "password",
+					value: null,
+					opaqueToken: "host-hmac-token-1",
+					reason: "credential",
+				},
+			],
+		};
+		const normalized = normalizeInteractionObservation({
+			...observation,
+			traceEvents: [traceEvent],
+		});
+		expect(normalized.traceEvents[0]?.attributes[0]?.value).toBeNull();
+		expect(() =>
+			normalizeInteractionObservation({
+				...observation,
+				traceEvents: [
+					{
+						...traceEvent,
+						attributes: [{ ...traceEvent.attributes[0], value: "raw-secret" }],
+					},
+				],
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("reuses canonical effect receipts in successful action results", async () => {
+		const input = await authorize(action("case-success"));
 		const normalized = normalizeInteractionActionResult(
 			{
-				...resultFor(succeededAction),
+				...resultFor(input),
 				ignored: "discard me",
 			},
-			succeededAction,
+			{ action: input, session, capabilities, now: Date.parse(later) },
 		);
 		expect(normalized.status).toBe("SUCCEEDED");
 		expect(normalized.effectReceipts).toHaveLength(1);
@@ -307,16 +368,16 @@ describe("computer-use interaction contracts", () => {
 		expect(normalized).not.toHaveProperty("ignored");
 	});
 
-	it("forbids automatic retry after an uncertain effect", () => {
-		const uncertainAction = action("case-uncertain_effect");
-		const uncertain = resultFor(uncertainAction);
+	it("forbids automatic retry after an uncertain effect", async () => {
+		const input = await authorize(action("case-uncertain_effect"));
+		const uncertain = resultFor(input);
 		expect(() =>
 			normalizeInteractionActionResult(
 				{
 					...uncertain,
 					error: { ...uncertain.error, retryable: true },
 				},
-				uncertainAction,
+				{ action: input, session, capabilities, now: Date.parse(later) },
 			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
@@ -332,7 +393,7 @@ describe("computer-use interaction contracts", () => {
 			destination: "https://merchant.test/checkout",
 			disclosures: ["shipping address"],
 			consequence: "Places the order.",
-			actionDigest: `sha256:${"a".repeat(64)}`,
+			actionDigest: "a".repeat(64),
 			requestedAt: now,
 			expiresAt: later,
 		});
@@ -347,28 +408,12 @@ describe("computer-use interaction contracts", () => {
 		);
 	});
 
-	it("rejects impossible calendar timestamps", () => {
-		expect(() =>
-			normalizeInteractionConfirmationPreview({
-				confirmationId: "confirmation-1",
-				actionId: "action-1",
-				taxonomy: "purchase",
-				origin: null,
-				destination: null,
-				disclosures: [],
-				consequence: "Places the order.",
-				actionDigest: `sha256:${"a".repeat(64)}`,
-				requestedAt: "2026-02-30T00:00:00.000Z",
-				expiresAt: later,
-			}),
-		).toThrowError(
-			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
-		);
-	});
-
-	it("binds confirmation and observation evidence to the result action", () => {
-		const confirmationAction = action("case-confirmation");
+	it("binds confirmations and effect receipts to the exact action outcome", async () => {
+		const confirmationAction = await authorize(action("case-confirmation"));
 		const confirmationResult = resultFor(confirmationAction);
+		if (confirmationResult.status !== "NEEDS_CONFIRMATION") {
+			throw new Error("expected confirmation fixture");
+		}
 		expect(() =>
 			normalizeInteractionActionResult(
 				{
@@ -378,59 +423,403 @@ describe("computer-use interaction contracts", () => {
 						actionId: "another-action",
 					},
 				},
-				confirmationAction,
+				{
+					action: confirmationAction,
+					session,
+					capabilities,
+					now: Date.parse(later),
+				},
 			),
 		).toThrowError(
-			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+			expect.objectContaining({ code: "INTERACTION_CONFIRMATION_MISMATCH" }),
 		);
-		expect(() =>
+
+		const coordinator = new InteractionConfirmationCoordinator();
+		const preview = coordinator.register(
+			confirmationResult.confirmation,
+			confirmationAction,
+			Date.parse(later),
+		);
+		const grant = coordinator.issue(
+			preview.confirmationId,
+			confirmationAction,
+			later,
+			Date.parse(later),
+		);
+		const confirmedAction = await authorizeInteractionDispatch(
+			{ ...confirmationAction, confirmationGrant: grant },
+			{
+				session,
+				capabilities,
+				now: Date.parse(later),
+				confirmationGrantConsumer: coordinator,
+				leaseRequirements: [],
+			},
+		);
+		await expect(
+			authorizeInteractionDispatch(
+				{ ...confirmationAction, confirmationGrant: grant },
+				{
+					session,
+					capabilities,
+					now: Date.parse(later),
+					confirmationGrantConsumer: coordinator,
+					leaseRequirements: [],
+				},
+			),
+		).rejects.toThrowError(
+			expect.objectContaining({ code: "STALE_INTERACTION_CONFIRMATION" }),
+		);
+		expect(
 			normalizeInteractionActionResult(
 				{
-					...confirmationResult,
-					confirmation: {
-						...confirmationResult.confirmation,
-						actionDigest: `sha256:${"b".repeat(64)}`,
+					...resultFor(confirmedAction),
+					startedAt: later,
+					completedAt: later,
+				},
+				{
+					action: confirmedAction,
+					session,
+					capabilities,
+					now: Date.parse(later),
+				},
+			).actionId,
+		).toBe(confirmedAction.actionId);
+
+		const concurrentCoordinator = new InteractionConfirmationCoordinator();
+		const concurrentPreview = concurrentCoordinator.register(
+			confirmationResult.confirmation,
+			confirmationAction,
+			Date.parse(later),
+		);
+		const concurrentGrant = concurrentCoordinator.issue(
+			concurrentPreview.confirmationId,
+			confirmationAction,
+			later,
+			Date.parse(later),
+		);
+		const concurrentValue = {
+			...confirmationAction,
+			confirmationGrant: concurrentGrant,
+		};
+		const attempts = await Promise.allSettled([
+			authorizeInteractionDispatch(concurrentValue, {
+				session,
+				capabilities,
+				now: Date.parse(later),
+				confirmationGrantConsumer: concurrentCoordinator,
+				leaseRequirements: [],
+			}),
+			authorizeInteractionDispatch(concurrentValue, {
+				session,
+				capabilities,
+				now: Date.parse(later),
+				confirmationGrantConsumer: concurrentCoordinator,
+				leaseRequirements: [],
+			}),
+		]);
+		expect(
+			attempts.filter((attempt) => attempt.status === "fulfilled"),
+		).toHaveLength(1);
+		expect(
+			attempts.filter((attempt) => attempt.status === "rejected"),
+		).toHaveLength(1);
+
+		let dispatchClock = Date.parse(later);
+		const leaseCoordinator = new InteractionLeaseCoordinator(
+			() => dispatchClock,
+		);
+		const expiringLease = leaseCoordinator.acquire({
+			leaseId: "confirmation-pointer-lease",
+			sessionId,
+			ownerId: session.ownerId,
+			resourceKind: "physical_pointer",
+			resourceId: "local",
+			generation: session.generation,
+			ttlMs: 100,
+		});
+		const deferredCoordinator = new InteractionConfirmationCoordinator();
+		const deferredPreview = deferredCoordinator.register(
+			confirmationResult.confirmation,
+			confirmationAction,
+			dispatchClock,
+		);
+		const deferredGrant = deferredCoordinator.issue(
+			deferredPreview.confirmationId,
+			confirmationAction,
+			later,
+			dispatchClock,
+		);
+		let releaseConsume: (() => void) | undefined;
+		const consumeGate = new Promise<void>((resolve) => {
+			releaseConsume = resolve;
+		});
+		const deferredAuthorization = authorizeInteractionDispatch(
+			{
+				...confirmationAction,
+				confirmationGrant: deferredGrant,
+				leaseIds: [expiringLease.leaseId],
+			},
+			{
+				session,
+				capabilities,
+				clock: () => dispatchClock,
+				confirmationGrantConsumer: {
+					consume: async (grant, candidate, consumedAt) => {
+						await consumeGate;
+						await deferredCoordinator.consume(grant, candidate, consumedAt);
 					},
 				},
-				confirmationAction,
-			),
-		).toThrowError(
+				leaseCoordinator,
+				leaseRequirements: [
+					{ resourceKind: "physical_pointer", resourceId: "local" },
+				],
+			},
+		);
+		dispatchClock += 200;
+		leaseCoordinator.acquire({
+			leaseId: "replacement-pointer-lease",
+			sessionId: "other-session",
+			ownerId: "other-owner",
+			resourceKind: "physical_pointer",
+			resourceId: "local",
+			generation: session.generation,
+			ttlMs: 1_000,
+		});
+		releaseConsume?.();
+		await expect(deferredAuthorization).rejects.toEqual(
+			expect.objectContaining({ code: "INTERACTION_LEASE_CONFLICT" }),
+		);
+
+		const stoppedSession = { ...session };
+		const stateCoordinator = new InteractionConfirmationCoordinator();
+		const statePreview = stateCoordinator.register(
+			confirmationResult.confirmation,
+			confirmationAction,
+			Date.parse(later),
+		);
+		const stateGrant = stateCoordinator.issue(
+			statePreview.confirmationId,
+			confirmationAction,
+			later,
+			Date.parse(later),
+		);
+		const stoppedAuthorization = authorizeInteractionDispatch(
+			{ ...confirmationAction, confirmationGrant: stateGrant },
+			{
+				session: stoppedSession,
+				capabilities,
+				clock: () => Date.parse(later),
+				confirmationGrantConsumer: {
+					consume: async (grant, candidate, consumedAt) => {
+						stoppedSession.state = "stopped";
+						await stateCoordinator.consume(grant, candidate, consumedAt);
+					},
+				},
+				leaseRequirements: [],
+			},
+		);
+		await expect(stoppedAuthorization).rejects.toEqual(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
 
-		const succeeded = resultFor(action("case-success"));
-		const succeededAction = action("case-success");
+		const failedAction = await authorize(action("case-failed_no_effect"));
 		expect(() =>
 			normalizeInteractionActionResult(
 				{
-					...succeeded,
-					evidence: {
-						...succeeded.evidence,
-						afterObservationId: "another-observation",
-					},
+					...resultFor(failedAction),
+					effectReceipts: resultFor(
+						normalizeInteractionAction(action("case-success"), { session }),
+					).effectReceipts,
 				},
-				succeededAction,
+				{
+					action: failedAction,
+					session,
+					capabilities,
+					now: Date.parse(later),
+				},
 			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
 	});
 
-	it("rejects committed effect proof on non-success outcomes", () => {
-		const failedAction = action("case-failed_no_effect");
-		const failed = resultFor(failedAction);
-		const applied = resultFor(action("case-success")).effectReceipts;
+	it("digests normalized action semantics and rejects half-bound observations", () => {
+		const first = normalizeInteractionAction(
+			action("digest-action", "evaluate"),
+			{
+				session,
+			},
+		);
+		const reordered = normalizeInteractionAction(
+			{
+				...action("digest-action", "evaluate"),
+				payload: { expression: "document.title" },
+			},
+			{ session },
+		);
+		expect(computeInteractionActionDigest(first)).toBe(
+			computeInteractionActionDigest(reordered),
+		);
+		const changed = normalizeInteractionAction(
+			{
+				...action("digest-action", "evaluate"),
+				payload: { expression: "document.URL" },
+			},
+			{ session },
+		);
+		expect(computeInteractionActionDigest(changed)).not.toBe(
+			computeInteractionActionDigest(first),
+		);
 		expect(() =>
-			normalizeInteractionActionResult(
-				{
-					...failed,
-					effectReceipts: applied,
-				},
-				failedAction,
+			normalizeInteractionAction(
+				{ ...action("bad-binding"), observationSequence: null },
+				{ session },
 			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
+	});
+
+	it("preserves semantic text and rejects targetless actions", () => {
+		const setValue = normalizeInteractionAction(
+			{
+				...action("set-value"),
+				kind: "set_value",
+				payload: {
+					text: "  secret with spaces  ",
+					elementId: null,
+					sensitive: true,
+				},
+			},
+			{ session },
+		);
+		expect(setValue.kind === "set_value" && setValue.payload.text).toBe(
+			"  secret with spaces  ",
+		);
+		const clearClipboard = normalizeInteractionAction(
+			{
+				...action("clear-clipboard"),
+				kind: "set_clipboard",
+				payload: { text: "", sensitive: false },
+			},
+			{ session },
+		);
+		expect(
+			clearClipboard.kind === "set_clipboard" && clearClipboard.payload.text,
+		).toBe("");
+		expect(() =>
+			normalizeInteractionAction(
+				{
+					...action("targetless"),
+					kind: "click",
+					payload: { elementId: null, point: null },
+				},
+				{ session },
+			),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("separates lifecycle normalization from execution authorization", () => {
+		const paused = normalizeInteractionSession(
+			{ ...session, state: "paused" },
+			{ capabilities },
+		);
+		expect(paused.state).toBe("paused");
+		expect(() =>
+			assertInteractionSessionExecutable(paused, {
+				capabilities,
+				now: Date.parse(later),
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("rejects backdated results and uncertain no-effect receipts", async () => {
+		const input = await authorize(action("case-failed_no_effect"));
+		expect(() =>
+			normalizeInteractionActionResult(resultFor(input), {
+				action: input,
+				session,
+				capabilities,
+				now: Date.parse(now),
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+		expect(() =>
+			normalizeInteractionActionResult(
+				{
+					...resultFor(input),
+					effectReceipts: [
+						{
+							receiptId: "unknown-effect",
+							operation: "computer.click",
+							resource: { kind: "browser.tab", id: surface.surfaceId },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: later,
+							outcome: "failed",
+							failure: {
+								code: "UNKNOWN",
+								retryable: false,
+								acceptance: "unknown",
+							},
+						},
+					],
+				},
+				{
+					action: input,
+					session,
+					capabilities,
+					now: Date.parse(later),
+				},
+			),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("requires a current explicit grant for existing signed-in profiles", () => {
+		const explicitCapabilities = normalizeInteractionCapabilitySet({
+			...capabilities,
+			profileAccess: {
+				modes: ["existing_explicit"],
+				requiresExplicitGrant: true,
+			},
+		});
+		expect(() =>
+			normalizeInteractionSession(
+				{ ...session, profileMode: "existing_explicit", profileGrant: null },
+				{ capabilities: explicitCapabilities, now: Date.parse(now) },
+			),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+		const granted = assertInteractionSessionExecutable(
+			{
+				...session,
+				profileMode: "existing_explicit",
+				profileGrant: {
+					grantId: "grant-1",
+					sessionId,
+					ownerId: session.ownerId,
+					adapterId,
+					profileHandle: "profile-1",
+					issuedAt: now,
+					expiresAt: "2026-01-01T01:00:00.000Z",
+				},
+			},
+			{
+				capabilities: explicitCapabilities,
+				now: Date.parse(later),
+				profileGrantVerifier: { verify: () => true },
+			},
+		);
+		expect(granted.profileGrant?.grantId).toBe("grant-1");
 	});
 
 	it("rejects stale and cross-session surface references", () => {
@@ -453,12 +842,26 @@ describe("computer-use interaction contracts", () => {
 			}),
 		);
 		expect(() =>
-			assertInteractionSurfaceCurrent(session, {
-				...surface,
-				parentSurfaceId: "forged-parent",
-			}),
+			normalizeInteractionSession(
+				{
+					...session,
+					surfaces: [
+						{
+							...surface,
+							surfaceId: "surface-a",
+							parentSurfaceId: "surface-b",
+						},
+						{
+							...surface,
+							surfaceId: "surface-b",
+							parentSurfaceId: "surface-a",
+						},
+					],
+				},
+				{ capabilities },
+			),
 		).toThrowError(
-			expect.objectContaining({ code: "INTERACTION_SURFACE_NOT_FOUND" }),
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
 	});
 
@@ -474,6 +877,30 @@ describe("computer-use interaction contracts", () => {
 			generation: 1,
 			ttlMs: 100,
 		});
+		expect(
+			coordinator.acquire({
+				leaseId: "lease-1",
+				sessionId,
+				ownerId: "owner-1",
+				resourceKind: "physical_pointer",
+				resourceId: " local ",
+				generation: 1,
+				ttlMs: 100,
+			}),
+		).toBe(first);
+		expect(() =>
+			coordinator.acquire({
+				leaseId: "lease-other",
+				sessionId,
+				ownerId: "owner-1",
+				resourceKind: "physical_pointer",
+				resourceId: "local",
+				generation: 1,
+				ttlMs: 100,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INTERACTION_LEASE_CONFLICT" }),
+		);
 		expect(() =>
 			coordinator.acquire({
 				leaseId: "lease-2",
@@ -503,15 +930,45 @@ describe("computer-use interaction contracts", () => {
 		expect(coordinator.release(second)).toBe(true);
 		expect(() =>
 			coordinator.acquire({
-				leaseId: "lease-overflow",
+				leaseId: "overflow",
 				sessionId,
 				ownerId: "owner-1",
-				resourceKind: "clipboard",
-				resourceId: "overflow",
+				resourceKind: "physical_pointer",
+				resourceId: "local",
 				generation: 1,
 				ttlMs: Number.MAX_VALUE,
 			}),
 		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+
+		let actionClock = Date.parse(now);
+		const actionLeases = new InteractionLeaseCoordinator(() => actionClock);
+		const actionLease = actionLeases.acquire({
+			leaseId: "action-pointer",
+			sessionId,
+			ownerId: session.ownerId,
+			resourceKind: "physical_pointer",
+			resourceId: "local",
+			generation: session.generation,
+			ttlMs: 1_000,
+		});
+		const leasedAction = normalizeInteractionAction(
+			{ ...action("case-success"), leaseIds: [actionLease.leaseId] },
+			{ session },
+		);
+		expect(
+			actionLeases.assertActionLeases(leasedAction, session, [
+				{ resourceKind: "physical_pointer", resourceId: " local " },
+			]),
+		).toEqual([actionLease]);
+		const renewed = actionLeases.renew(
+			{ ...actionLease, acquiredAt: "1999-01-01T00:00:00.000Z" },
+			500,
+		);
+		expect(renewed.acquiredAt).toBe(actionLease.acquiredAt);
+		actionClock = Number.NaN;
+		expect(() => actionLeases.assertHeld(renewed)).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
 	});
@@ -523,6 +980,7 @@ describe("computer-use adapter conformance", () => {
 			adapter,
 			session,
 			surface,
+			now: Date.parse(later),
 			fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
 				name,
 				action: action(
@@ -541,12 +999,117 @@ describe("computer-use adapter conformance", () => {
 		]);
 	});
 
+	it("rejects advertised unsupported and non-stale observation fixtures", async () => {
+		const fixtures = REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
+			name,
+			action: action(
+				`case-${name}`,
+				name === "unsupported" ? "evaluate" : "observe",
+			),
+		}));
+		await expect(
+			runInteractionAdapterConformance({
+				adapter,
+				session,
+				surface,
+				now: Date.parse(later),
+				fixtures: fixtures.map((fixture) =>
+					fixture.name === "unsupported"
+						? { ...fixture, action: action("case-unsupported") }
+						: fixture,
+				),
+			}),
+		).rejects.toEqual(
+			expect.objectContaining({
+				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+			}),
+		);
+		await expect(
+			runInteractionAdapterConformance({
+				adapter,
+				session,
+				surface,
+				now: Date.parse(later),
+				fixtures: fixtures.map((fixture) =>
+					fixture.name === "stale_observation"
+						? {
+								...fixture,
+								action: {
+									...fixture.action,
+									observationSequence: observation.sequence,
+								},
+							}
+						: fixture,
+				),
+			}),
+		).rejects.toEqual(
+			expect.objectContaining({
+				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+			}),
+		);
+	});
+
+	it("forwards explicit-profile verification through conformance", async () => {
+		const profileCapabilities: InteractionCapabilitySet = {
+			...capabilities,
+			profileAccess: {
+				modes: ["existing_explicit"],
+				requiresExplicitGrant: true,
+			},
+		};
+		const profileSession: InteractionSession = {
+			...session,
+			profileMode: "existing_explicit",
+			profileGrant: {
+				grantId: "profile-conformance-grant",
+				sessionId,
+				ownerId: session.ownerId,
+				adapterId,
+				profileHandle: "signed-in-profile",
+				issuedAt: now,
+				expiresAt: "2026-01-01T00:05:00.000Z",
+			},
+		};
+		const profileAdapter: InteractionAdapter = {
+			...adapter,
+			capabilities: async () => profileCapabilities,
+		};
+		const fixtures = REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
+			name,
+			action: action(
+				`case-${name}`,
+				name === "unsupported" ? "evaluate" : "observe",
+			),
+		}));
+		await expect(
+			runInteractionAdapterConformance({
+				adapter: profileAdapter,
+				session: profileSession,
+				surface,
+				now: Date.parse(later),
+				fixtures,
+			}),
+		).rejects.toEqual(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+		const report = await runInteractionAdapterConformance({
+			adapter: profileAdapter,
+			session: profileSession,
+			surface,
+			now: Date.parse(later),
+			fixtures,
+			profileGrantVerifier: { verify: () => true },
+		});
+		expect(report.passed).toBe(true);
+	});
+
 	it("fails closed when a required scenario is missing", async () => {
 		await expect(
 			runInteractionAdapterConformance({
 				adapter,
 				session,
 				surface,
+				now: Date.parse(later),
 				fixtures: [],
 			}),
 		).rejects.toEqual(
@@ -569,6 +1132,7 @@ describe("computer-use adapter conformance", () => {
 				adapter: lyingAdapter,
 				session,
 				surface,
+				now: Date.parse(later),
 				fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
 					name,
 					action: action(
@@ -584,15 +1148,23 @@ describe("computer-use adapter conformance", () => {
 		);
 	});
 
-	it("requires the unsupported scenario to exercise an unadvertised action", async () => {
+	it("fails closed when observations exceed advertised capabilities", async () => {
+		const lyingAdapter: InteractionAdapter = {
+			...adapter,
+			observe: async () => ({ ...observation, channels: ["ocr"] }),
+		};
 		await expect(
 			runInteractionAdapterConformance({
-				adapter,
+				adapter: lyingAdapter,
 				session,
 				surface,
+				now: Date.parse(later),
 				fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
 					name,
-					action: action(`case-${name}`),
+					action: action(
+						`case-${name}`,
+						name === "unsupported" ? "evaluate" : "observe",
+					),
 				})),
 			}),
 		).rejects.toEqual(

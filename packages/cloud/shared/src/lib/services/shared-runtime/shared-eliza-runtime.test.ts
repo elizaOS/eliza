@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AgentRuntime } from "@elizaos/core/edge";
+import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 
@@ -366,6 +367,10 @@ describe("Shared Eliza Workerd runtime", () => {
     const iterator = result.parts?.[Symbol.asyncIterator]();
     if (!iterator || !result.cancel) throw new Error("Expected a cancellable runtime stream");
     const nextPart = iterator.next();
+    // error-policy:J5 the same rejection is asserted via expect(...).rejects
+    // below; this early observer only prevents the abort's same-tick rejection
+    // from surfacing as an unhandled error on slower runners.
+    nextPart.catch(() => {});
     const providerSignal = await providerStarted.promise;
 
     await result.cancel("confirmed caller speech");
@@ -469,6 +474,118 @@ describe("Shared Eliza Workerd runtime", () => {
         (tool) => tool.function?.name === "HANDLE_RESPONSE",
       ),
     ).toBe(true);
+  });
+
+  test("awaits notification hydration before inference and dispatches through the genuine runtime", async () => {
+    const hydrationEntered = Promise.withResolvers<void>();
+    const releaseHydration = Promise.withResolvers<void>();
+    const originalStart = NotificationService.start;
+    let notificationService: NotificationService | undefined;
+    const startSpy = spyOn(NotificationService, "start").mockImplementation(async (runtime) => {
+      hydrationEntered.resolve();
+      await releaseHydration.promise;
+      const service = await originalStart(runtime);
+      notificationService = service as NotificationService;
+      return service;
+    });
+    const mobilePushDispatches: Array<Record<string, unknown>> = [];
+    let providerCalls = 0;
+    globalThis.fetch = (async () => {
+      providerCalls += 1;
+      if (!notificationService) {
+        throw new Error("Provider inference started before notification hydration completed");
+      }
+      await notificationService.notify({
+        title: "Runtime-ready reminder",
+        body: "Notification services are hydrated",
+        category: "reminder",
+        priority: "high",
+        source: "scheduling",
+        deepLink: "/automations/runtime-ready",
+      });
+      return Response.json({
+        id: "chatcmpl-shared-notification-ready",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-notification-ready-response",
+                  type: "function",
+                  function: {
+                    name: "HANDLE_RESPONSE",
+                    arguments: JSON.stringify({
+                      shouldRespond: "RESPOND",
+                      thought: "The notification services are ready.",
+                      contexts: ["simple"],
+                      intents: [],
+                      candidateActionNames: [],
+                      replyText: "notification runtime ready",
+                      replyEffectStatus: "none",
+                      facts: [],
+                      relationships: [],
+                      addressedTo: [],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      });
+    }) as typeof fetch;
+
+    try {
+      const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
+      const turn = runSharedElizaRuntimeTurn({
+        character: {
+          name: "Shared Eliza",
+          system: "You are Eliza.",
+          model: "gemma-4-31b",
+        },
+        history: [],
+        message: "run an ordinary shared turn",
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        model: "gemma-4-31b",
+        execution: {
+          engine: "eliza-runtime",
+          agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          mobilePush: {
+            dispatch: async (message) => {
+              mobilePushDispatches.push(message);
+            },
+          },
+        },
+      });
+
+      await hydrationEntered.promise;
+      expect(providerCalls).toBe(0);
+      releaseHydration.resolve();
+      const result = await turn;
+
+      expect(result.reply).toBe("notification runtime ready");
+      expect(providerCalls).toBe(1);
+      expect(mobilePushDispatches).toHaveLength(1);
+      expect(mobilePushDispatches[0]).toMatchObject({
+        title: "Runtime-ready reminder",
+        body: "Notification services are hydrated",
+        data: {
+          category: "reminder",
+          deepLink: "/automations/runtime-ready",
+        },
+      });
+    } finally {
+      releaseHydration.resolve();
+      startSpy.mockRestore();
+    }
   });
 
   test("projects durable history into RECENT_MESSAGES in chronological order", async () => {

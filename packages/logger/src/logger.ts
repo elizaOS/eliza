@@ -2,11 +2,16 @@
  * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
  * interface and the `createLogger` factory (plus the default `logger` /
  * `elizaLogger` singletons) as a Pino-shaped API extended with custom
- * `success`/`progress` levels. Redacts sensitive fields via fast-redact, keeps
+ * `success`/`progress` levels. Redacts sensitive fields with a deep-walk
+ * redactor that deep-clones log context objects (callers keep their live
+ * objects unmutated) and masks every value under a credential-named key at any
+ * nesting depth, matched case-insensitively. String messages are passed through
+ * unredacted — value-shape scanning of free text is `@elizaos/core`'s
+ * security/redact.ts job, which the model-bound sinks apply downstream. Keeps
  * an in-memory ring buffer with real-time listeners for WebSocket streaming,
  * and lazily opens optional file sinks (`output.log`, `prompts.log`,
- * `chat.log`) with prompt/response/chat instrumentation helpers. Adapts between
- * node and a console-based browser path.
+ * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
+ * Adapts between node and a console-based browser path.
  */
 // Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
@@ -38,8 +43,6 @@ interface AdzeLogMethods {
   debug(...args: unknown[]): void;
   verbose(...args: unknown[]): void;
 }
-
-import fastRedact from "fast-redact";
 
 // ============================================================================
 // Type Definitions
@@ -301,46 +304,175 @@ const serverId =
     ? `process-${process.pid}`
     : "edge-runtime");
 
-// Configure sensitive data redaction
-// fast-redact requires bracket notation for top-level keys or wildcard paths for nested
-// Using wildcard paths that match both top-level and nested objects
-let redact: ReturnType<typeof fastRedact>;
-try {
-  redact = fastRedact({
-    paths: [
-      // Wildcard paths for nested objects (also catches some top-level in object context)
-      "*.password",
-      "*.passwd",
-      "*.secret",
-      "*.token",
-      "*.apiKey",
-      "*.api_key",
-      "*.apiSecret",
-      "*.api_secret",
-      "*.authorization",
-      "*.auth",
-      "*.credential",
-      "*.credentials",
-      "*.privateKey",
-      "*.private_key",
-      "*.accessToken",
-      "*.access_token",
-      "*.refreshToken",
-      "*.refresh_token",
-      "*.cookie",
-      "*.session",
-      "*.jwt",
-      "*.bearer",
-    ],
-    serialize: false, // Don't stringify, just redact in place
-    censor: "[REDACTED]",
-  });
-} catch {
-  // Fallback for environments where fast-redact fails (e.g., browser extensions)
-  redact = ((obj: unknown) => obj) as ReturnType<typeof fastRedact>;
-  (redact as { restore?: (obj: unknown) => unknown }).restore = (
-    obj: unknown,
-  ) => obj;
+// ============================================================================
+// Sensitive-data redaction
+// ============================================================================
+
+const REDACTED_VALUE = "[REDACTED]";
+/** Bound on recursion so a pathological payload cannot hang the process. */
+const MAX_REDACT_DEPTH = 8;
+
+/**
+ * Separator-free substrings that mark an object key as holding a credential.
+ * Compared against the lowercased key with `_-. ` stripped, so `apiKey`,
+ * `OPENAI_API_KEY`, and `api.key` all match `apikey`. Mirrors the name policy
+ * of `@elizaos/core`'s security/redact.ts — this leaf package cannot import
+ * it, so the two lists must be kept in sync by hand.
+ */
+const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
+  "password",
+  "passwd",
+  "passphrase",
+  "secret",
+  "mnemonic",
+  "seedphrase",
+  "privatekey",
+  "apikey",
+  "accesstoken",
+  "refreshtoken",
+  "authkey",
+  "credential",
+  "authorization",
+  "sessionkey",
+];
+
+/** Whole-key names (normalized) too generic for substring matching. */
+const SENSITIVE_KEY_EXACT: ReadonlySet<string> = new Set([
+  "auth",
+  "session",
+  "jwt",
+  "bearer",
+  "cookie",
+  "dsn",
+]);
+
+/**
+ * Telemetry/schema keys whose names contain "token" but whose values are
+ * counts, budgets, or correlation ids rather than credentials. Closed list,
+ * mirroring core's NON_SECRET_TOKEN_METADATA_KEYS.
+ */
+const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "cachecreationinputtokens",
+  "cachereadinputtokens",
+  "completiontokens",
+  "compactionthresholdtokens",
+  "contextwindowtokens",
+  "estimatedinputtokens",
+  "inputtokens",
+  "maxtokens",
+  "maxtokensomitted",
+  "outputtokens",
+  "prompttokens",
+  "reasoningtokens",
+  "reservetokens",
+  "tokencount",
+  "tokencountestimated",
+  "tokenid",
+  "totaltokens",
+]);
+
+/**
+ * Whether an object key names a credential whose value must be masked.
+ * Case-insensitive and depth-independent — the walker applies it to every key
+ * at every level, so top-level and deeply nested secrets are treated alike.
+ */
+function isSensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[_\-. ]/g, "");
+  if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) return false;
+  if (SENSITIVE_KEY_EXACT.has(normalized)) return true;
+  if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => normalized.includes(needle))) {
+    return true;
+  }
+  if (normalized.includes("token")) return true;
+  // Generic `*key` forms (encryptionKey, masterKey, sshKey, OPENAI_KEY) need a
+  // word boundary before "key" so monkey/turnkey/hotkey stay visible.
+  if (/(?:^|[_\-. ])key$/i.test(key) || /[a-z]Key$/.test(key)) return true;
+  // Same boundary treatment for the exact names in suffixed form
+  // (sessionCookie, SESSION_JWT, x-bearer).
+  if (
+    /(?:^|[_\-. ])(jwt|bearer|cookie)$/i.test(key) ||
+    /[a-z](Jwt|Bearer|Cookie)$/.test(key)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Deep-clone a log argument, masking every value under a credential-named key
+ * at any depth. The clone is what gets logged, so redaction never mutates the
+ * caller's live objects (previously a shallow copy let the redactor overwrite
+ * nested credentials in place, corrupting e.g. a provider config mid-use).
+ * Cycles and over-depth payloads collapse to a marker instead of recursing
+ * forever. Error instances keep their name/message/stack shape (Adze renders
+ * it) but their own enumerable properties — axios-style `err.config.headers`
+ * and the like — are walked and masked.
+ */
+function redactLogValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
+  seen.add(value);
+
+  if (value instanceof Error) {
+    const clone = new Error(value.message);
+    clone.name = value.name;
+    if (value.stack) clone.stack = value.stack;
+    if (value.cause !== undefined) {
+      clone.cause = redactLogValue(value.cause, seen, depth + 1);
+    }
+    const target = clone as unknown as Record<string, unknown>;
+    for (const [key, entry] of Object.entries(value)) {
+      target[key] = isSensitiveLogKey(key)
+        ? REDACTED_VALUE
+        : redactLogValue(entry, seen, depth + 1);
+    }
+    return clone;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactLogValue(item, seen, depth + 1));
+  }
+
+  // Opaque built-ins have no enumerable credential keys to mask and are never
+  // mutated by the walker, so returning them by reference is safe.
+  if (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof Map ||
+    value instanceof Set ||
+    value instanceof WeakMap ||
+    value instanceof WeakSet ||
+    value instanceof Promise ||
+    ArrayBuffer.isView(value) ||
+    value instanceof ArrayBuffer
+  ) {
+    return value;
+  }
+
+  // Class instances are cloned into plain objects: JSON serialization only
+  // ever emits own enumerable properties anyway, and walking them here masks
+  // credentials stashed on config/response wrappers (axios-style).
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    result[key] = isSensitiveLogKey(key)
+      ? REDACTED_VALUE
+      : redactLogValue(entry, seen, depth + 1);
+  }
+  return result;
+}
+
+/** Redact every object in a trailing-args list; strings pass through. */
+function redactTrailingArgs(args: readonly unknown[]): unknown[] {
+  return args.map((arg) =>
+    arg !== null && typeof arg === "object"
+      ? redactLogValue(arg, new WeakSet<object>(), 0)
+      : arg,
+  );
 }
 
 // ============================================================================
@@ -392,6 +524,26 @@ function stripAnsi(str: string): string {
 }
 
 /**
+ * Open a log sink for appending with owner-only permissions. The `0o600` mode
+ * only applies when the file is first created, so fchmod heals files left
+ * world-readable by older builds. Prompt and chat logs routinely contain
+ * user-pasted secrets, so the sinks must never be group/other-readable.
+ */
+function openLogFilePrivate(
+  fs: typeof import("node:fs"),
+  path: string,
+): number {
+  const fd = fs.openSync(path, "a", 0o600);
+  try {
+    fs.fchmodSync(fd, 0o600);
+  } catch {
+    // error-policy:J6 best-effort permission heal on an already-open sink;
+    // platforms without POSIX chmod semantics keep the creation-time mode.
+  }
+  return fd;
+}
+
+/**
  * Lazily open the log files on the first write.
  * Returns true if the files are ready for writing.
  */
@@ -434,9 +586,9 @@ function ensureFileLog(): boolean {
     const promptLogPath = pathMod.join(logDir, "prompts.log");
     const chatLogPath = pathMod.join(logDir, "chat.log");
 
-    _fileLogFd = fs.openSync(logFilePath, "a");
-    _promptLogFd = fs.openSync(promptLogPath, "a");
-    _chatLogFd = fs.openSync(chatLogPath, "a");
+    _fileLogFd = openLogFilePrivate(fs, logFilePath);
+    _promptLogFd = openLogFilePrivate(fs, promptLogPath);
+    _chatLogFd = openLogFilePrivate(fs, chatLogPath);
     _fileLogState = "active";
 
     process.on("exit", () => {
@@ -1062,10 +1214,14 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       obj: Record<string, unknown>,
     ): Record<string, unknown> => {
       try {
-        const copy = { ...obj };
-        redact(copy);
-        return copy;
+        return redactLogValue(obj, new WeakSet<object>(), 0) as Record<
+          string,
+          unknown
+        >;
       } catch {
+        // error-policy:J7 logging must never break the runtime; a redactor
+        // failure degrades to the unredacted object, matching the historical
+        // fast-redact fallback behavior.
         return obj;
       }
     };
@@ -1075,24 +1231,28 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       msg?: string,
       ...args: unknown[]
     ): unknown[] => {
+      // `msg` is typed string but runtime callers pass objects in that slot;
+      // fold it into the trailing args so objects always hit the redactor.
       if (typeof obj === "string") {
-        return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
+        const rest = msg !== undefined ? [msg, ...args] : args;
+        return [obj, ...redactTrailingArgs(rest)];
       }
       if (obj instanceof Error) {
-        return msg !== undefined
-          ? [obj.message, msg, ...args]
-          : [obj.message, ...args];
+        const rest = msg !== undefined ? [msg, ...args] : args;
+        return [obj.message, ...redactTrailingArgs(rest)];
       }
       // Redact sensitive data from objects
       const redactedObj = safeRedact(obj);
       if (msg !== undefined) {
         // Browser is always pretty mode - format as compact single line
         const formatted = formatPrettyLog(redactedObj, msg, false);
-        return [formatted, ...args];
+        return [formatted, ...redactTrailingArgs(args)];
       }
       // No message - format context only
       const formatted = formatPrettyLog(redactedObj, "", false);
-      return formatted ? [formatted, ...args] : [...args];
+      return formatted
+        ? [formatted, ...redactTrailingArgs(args)]
+        : [...redactTrailingArgs(args)];
     };
 
     return {
@@ -1205,21 +1365,21 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   };
 
   /**
-   * Safely redact sensitive data from an object
-   * Creates a shallow copy to avoid mutating the original
+   * Safely redact sensitive data from an object.
+   * Deep-clones first so redaction never mutates the caller's live objects.
    */
   const safeRedact = (
     obj: Record<string, unknown>,
   ): Record<string, unknown> => {
     try {
-      // Create a shallow copy to avoid mutating original
-      const copy = { ...obj };
-      // fast-redact returns the redacted string when serialize:false
-      // but mutates the object in place, so we use the copy
-      redact(copy);
-      return copy;
+      return redactLogValue(obj, new WeakSet<object>(), 0) as Record<
+        string,
+        unknown
+      >;
     } catch {
-      // If redaction fails, return original (don't break logging)
+      // error-policy:J7 logging must never break the runtime; a redactor
+      // failure degrades to the unredacted object, matching the historical
+      // fast-redact fallback behavior.
       return obj;
     }
   };
@@ -1236,15 +1396,19 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     msg?: string,
     ...args: unknown[]
   ): unknown[] => {
-    // String first argument - no context object
+    // String first argument - no context object. `msg` is typed string but
+    // runtime callers do pass objects in that slot; fold it into the trailing
+    // args so anything object-shaped still goes through the redactor.
     if (typeof obj === "string") {
-      return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
+      const rest = msg !== undefined ? [msg, ...args] : args;
+      return [obj, ...redactTrailingArgs(rest)];
     }
-    // Error object
+    // Error object - the wrapper must be redacted too: error instances can
+    // carry credentials on enumerable properties (request config, headers).
     if (obj instanceof Error) {
-      return msg !== undefined
-        ? [obj.message, { error: obj }, msg, ...args]
-        : [obj.message, { error: obj }, ...args];
+      const errorWrapper = safeRedact({ error: obj });
+      const rest = msg !== undefined ? [msg, ...args] : args;
+      return [obj.message, errorWrapper, ...redactTrailingArgs(rest)];
     }
 
     // Object (context) - redact sensitive data
@@ -1254,19 +1418,21 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       // Pretty mode: format as compact single line
       if (!raw) {
         const formatted = formatPrettyLog(redactedObj, msg, raw);
-        return [formatted, ...args];
+        return [formatted, ...redactTrailingArgs(args)];
       }
       // JSON mode: keep structured object for machine parsing
-      return [msg, redactedObj, ...args];
+      return [msg, redactedObj, ...redactTrailingArgs(args)];
     }
 
     // No message provided - just context object
     if (!raw) {
       // Pretty mode: format the object as a simple string
       const formatted = formatPrettyLog(redactedObj, "", raw);
-      return formatted ? [formatted, ...args] : [...args];
+      return formatted
+        ? [formatted, ...redactTrailingArgs(args)]
+        : [...redactTrailingArgs(args)];
     }
-    return [redactedObj, ...args];
+    return [redactedObj, ...redactTrailingArgs(args)];
   };
 
   // Create log methods

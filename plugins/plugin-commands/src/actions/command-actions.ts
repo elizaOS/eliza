@@ -11,7 +11,7 @@
 
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
-import { findCommandByKey } from "../registry";
+import { findCommandByKey, useRuntime } from "../registry";
 import { resolveCommand } from "./dispatch";
 import { isDeterministicCommand } from "./handlers";
 
@@ -51,7 +51,8 @@ function buildAction(
 		similes: aliases,
 		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
-		validate: async (_runtime: IAgentRuntime, message: Memory) => {
+		validate: async (runtime: IAgentRuntime, message: Memory) => {
+			useRuntime(runtime.agentId);
 			const text = message.content.text ?? "";
 			if (!hasCommand(text)) return false;
 			const detection = detectCommand(text);

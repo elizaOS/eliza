@@ -20,6 +20,7 @@ import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
+import { isSafeNavigationUrl } from "../lib/navigation-url";
 import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
@@ -279,7 +280,11 @@ export default function GetStartedPage(): React.JSX.Element {
                   "Head back to your chat — your agent will pick up right where you left off. Setup finishes in the background.",
               })}
             </p>
-            {platformIdentity?.returnUrl ? (
+            {platformIdentity?.returnUrl &&
+            // The return link is a server-supplied wire value rendered into an
+            // href — http(s) only, plus the `sms:` deep link the onboarding
+            // service issues for phone gateways (buildMessagingReturnUrl).
+            isSafeNavigationUrl(platformIdentity.returnUrl, ["sms:"]) ? (
               <Button
                 asChild
                 className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"

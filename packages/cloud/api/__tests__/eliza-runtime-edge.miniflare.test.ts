@@ -39,6 +39,7 @@ describe("Eliza runtime Cloudflare entry", () => {
       new URL("../test/fixtures/eliza-runtime-edge-worker.ts", import.meta.url),
     );
     const outputPath = join(buildDirectory, "worker.mjs");
+    const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
     const buildProcess = Bun.spawn({
       cmd: [
         process.execPath,
@@ -51,6 +52,18 @@ describe("Eliza runtime Cloudflare entry", () => {
 					conditions: ["worker"],
 					external: ["node:*"],
 					minify: true,
+					plugins: [{
+						name: "eliza-core-edge-boundary",
+						setup(build) {
+							// Pin the published edge artifact this suite just built. Without
+							// the pin, the cloud tsconfig "paths" alias resolves
+							// @elizaos/core/edge to core src, whose node-oriented feature
+							// graph (fs-extra and friends) cannot even evaluate in Workerd.
+							build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
+								path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
+							}));
+						},
+					}],
 				});
 				if (!result.success) {
 					for (const log of result.logs) console.error(log);
@@ -63,6 +76,7 @@ describe("Eliza runtime Cloudflare entry", () => {
       cwd: coreDirectory,
       env: {
         ...process.env,
+        ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
         ELIZA_EDGE_ENTRY: entrypoint,
         ELIZA_EDGE_OUTPUT: outputPath,
       },
@@ -92,7 +106,7 @@ describe("Eliza runtime Cloudflare entry", () => {
         },
       ],
     });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await miniflare?.dispose();

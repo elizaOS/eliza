@@ -26,6 +26,12 @@ export type RuntimeTarget =
 export interface PlatformPolicy {
   /** Can this platform run a local embedded agent? */
   supportsLocalRuntime: boolean;
+  /**
+   * Whether a connection-level failure against a saved remote may abandon it
+   * for the page's local origin. Cloud-only desktop builds set this false:
+   * their loopback origin serves renderer assets only and has no agent.
+   */
+  allowLocalOriginRecovery?: boolean;
   /** Backend poll timeout (ms) — desktop gets longer */
   backendTimeoutMs: number;
   /** Agent ready timeout (ms) — initial, before sliding extensions */
@@ -364,7 +370,19 @@ export const INITIAL_STARTUP_STATE: StartupState = {
 
 // ── Policy factories ─────────────────────────────────────────────────
 
-export function createDesktopPolicy(): PlatformPolicy {
+export function createDesktopPolicy(options?: {
+  cloudOnly?: boolean;
+}): PlatformPolicy {
+  if (options?.cloudOnly === true) {
+    return {
+      supportsLocalRuntime: false,
+      allowLocalOriginRecovery: false,
+      backendTimeoutMs: 180_000,
+      agentReadyTimeoutMs: 180_000,
+      probeForExistingInstall: false,
+      defaultTarget: "cloud-managed",
+    };
+  }
   return {
     supportsLocalRuntime: true,
     backendTimeoutMs: 180_000,

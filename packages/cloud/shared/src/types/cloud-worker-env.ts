@@ -310,6 +310,10 @@ export interface Bindings {
   STEWARD_JWT_SECRET?: string;
   /** HS256 service-account bridge secret; must never equal the staging QA signer. */
   ELIZA_SERVICE_JWT_SECRET?: string;
+  /** Optional issuer pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_ISSUER?: string;
+  /** Optional audience pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_AUDIENCE?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
@@ -410,6 +414,16 @@ export interface Bindings {
   ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY?: string;
   /** VAPID contact subject sent to push services, e.g. `mailto:ops@example.com`. */
   ELIZA_WEB_PUSH_VAPID_SUBJECT?: string;
+  /** APNs provider key contents; secret and never returned to clients. */
+  ELIZA_APNS_KEY?: string;
+  /** APNs provider key id used as the ES256 JWT kid. */
+  ELIZA_APNS_KEY_ID?: string;
+  /** Apple Developer team id used as the ES256 JWT issuer. */
+  ELIZA_APNS_TEAM_ID?: string;
+  /** Must equal the signed iOS bundle id, ai.elizaos.app. */
+  ELIZA_APNS_TOPIC?: string;
+  /** Explicit APNs host selection: 0 sandbox, 1 production. */
+  ELIZA_APNS_PRODUCTION?: string;
   AGENT_ROUTER_ORIGIN_HOST?: string;
   /**
    * When `"true"`/`"1"`, the agent-router reaches a running sandbox through the

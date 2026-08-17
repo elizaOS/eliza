@@ -72,6 +72,7 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
@@ -336,7 +337,10 @@ const CLOUD_ONLY_ERROR_CHOICE = [
  * detail for context. The recovery framing tracks the runtime chooser: with the
  * chooser off there is no "different way to run" to offer.
  */
-function finishErrorMessage(message: string): string {
+function finishErrorMessage(
+  message: string,
+  runtimeChooserEnabled: boolean,
+): string {
   const detail = message.trim();
   const isTerse = /^(not found|failed to fetch|forbidden|unauthorized)$/i.test(
     detail,
@@ -344,7 +348,7 @@ function finishErrorMessage(message: string): string {
   const lead = isTerse
     ? `I couldn't finish setting up your agent (${detail}).`
     : `I couldn't finish setting up your agent: ${detail}`;
-  const recovery = isRuntimeChooserEnabled()
+  const recovery = runtimeChooserEnabled
     ? "You can try again, pick a different way to run your agent, or configure a model provider yourself in Settings."
     : "You can try again, or configure a model provider yourself in Settings.";
   return `${lead}\n\n${recovery}`;
@@ -407,14 +411,17 @@ interface FirstRunTurnWriter {
   replaceTurn(id: string, next: ConversationMessage): void;
 }
 
-export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
+export function surfaceCloudLoginRetryTurn(
+  writer: FirstRunTurnWriter,
+  runtimeChooserEnabled = isRuntimeChooserEnabled(),
+): void {
   // Replacing the turn re-parses its CHOICE block, so the re-offered runtime
   // buttons arrive unlocked even when an earlier pick locked the originals —
   // without this the "pick again" instruction is a dead end (every prior
   // runtime widget locked itself on first tap). In cloud-only mode there is no
   // runtime to re-pick: the retry turn re-offers the single sign-in button
   // (whose tap re-enters the cloud flow with a fresh user gesture).
-  const retryText = isRuntimeChooserEnabled()
+  const retryText = runtimeChooserEnabled
     ? `Sign in to Eliza Cloud to continue. You can also pick how to run your agent again.\n\n${runtimeChoiceBlock()}`
     : CLOUD_SIGN_IN_CHOICE;
   const connectTurn = makeTurn("first-run:cloud-oauth", retryText);
@@ -423,6 +430,8 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
 }
 
 export function useFirstRunConductor(): void {
+  const { cloudOnly } = useBranding();
+  const runtimeChooserEnabled = isRuntimeChooserEnabled(cloudOnly === true);
   const {
     firstRunComplete,
     firstRunName,
@@ -618,7 +627,7 @@ export function useFirstRunConductor(): void {
       },
       setTab,
       completeFirstRun: () => {
-        if (isRuntimeChooserEnabled()) {
+        if (runtimeChooserEnabled) {
           seedTutorial();
           return;
         }
@@ -649,6 +658,7 @@ export function useFirstRunConductor(): void {
       seedTutorial,
       completeCloudOnly,
       seedTurn,
+      runtimeChooserEnabled,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -669,11 +679,11 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,
-          `${finishErrorMessage(message)}\n\n${isRuntimeChooserEnabled() ? ERROR_CHOICE : CLOUD_ONLY_ERROR_CHOICE}`,
+          `${finishErrorMessage(message, runtimeChooserEnabled)}\n\n${runtimeChooserEnabled ? ERROR_CHOICE : CLOUD_ONLY_ERROR_CHOICE}`,
         ),
       );
     },
-    [seedTurn],
+    [runtimeChooserEnabled, seedTurn],
   );
 
   // Explicit, non-finish escape hatch out of onboarding: flip the real gate and
@@ -701,7 +711,7 @@ export function useFirstRunConductor(): void {
       );
       // Cloud-only mode has no runtime to go back to; only offer the back
       // affordance when the chooser owns this flow.
-      if (isRuntimeChooserEnabled()) {
+      if (runtimeChooserEnabled) {
         lines.push(BACK_TO_RUNTIME_OPTION);
       }
       seedFreshChoiceTurn(
@@ -709,7 +719,7 @@ export function useFirstRunConductor(): void {
         `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
       );
     },
-    [seedFreshChoiceTurn],
+    [runtimeChooserEnabled, seedFreshChoiceTurn],
   );
 
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
@@ -737,7 +747,7 @@ export function useFirstRunConductor(): void {
           // provisioning's completeFirstRun port already ran the wrap-up
           // (tutorial offer, or the cloud-only real completion).
           if (!provisionedRef.current) {
-            if (isRuntimeChooserEnabled()) seedTutorial();
+            if (runtimeChooserEnabled) seedTutorial();
             else completeCloudOnly();
           }
           return;
@@ -749,7 +759,7 @@ export function useFirstRunConductor(): void {
           // Compatibility path for any legacy/stale picker outcome. The main
           // Cloud first-run path now binds the best healthy agent directly so
           // onboarding stays a single sign-in flow.
-          if (!isRuntimeChooserEnabled()) {
+          if (!runtimeChooserEnabled) {
             const first = outcome.agents[0]?.agent_id;
             if (outcome.agents.length === 1 && first) {
               bindCloudAgentByIdRef.current?.(first);
@@ -780,7 +790,10 @@ export function useFirstRunConductor(): void {
           // Asking for a sign-in ends a silent entry: the session turned out
           // not to be usable, so the flow is back to the visible ask path.
           silentCloudEntryRef.current = false;
-          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
+          surfaceCloudLoginRetryTurn(
+            { seedTurn, replaceTurn },
+            runtimeChooserEnabled,
+          );
           return;
         }
         case "error":
@@ -795,6 +808,7 @@ export function useFirstRunConductor(): void {
       seedTurn,
       replaceTurn,
       seedError,
+      runtimeChooserEnabled,
     ],
   );
 
@@ -1056,7 +1070,7 @@ export function useFirstRunConductor(): void {
       // can only be a stale widget from a chooser-mode transcript (or
       // garbage) — consume those untouched so they can't start a local/remote
       // flow (there is no runtime chooser to go "back" to).
-      if (!isRuntimeChooserEnabled()) {
+      if (!runtimeChooserEnabled) {
         if (
           group === "provider" ||
           group === "backup-restore" ||
@@ -1294,7 +1308,7 @@ export function useFirstRunConductor(): void {
           exitToSettings();
           return true;
         }
-        if (id === "restart" && isRuntimeChooserEnabled()) {
+        if (id === "restart" && runtimeChooserEnabled) {
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
           // how their agent runs after a failed finish — unwinding whatever
           // the failed local path committed first (#14390), so switching to
@@ -1355,6 +1369,7 @@ export function useFirstRunConductor(): void {
       startCloudProvisionFlow,
       startProviderFinish,
       setUiAccent,
+      runtimeChooserEnabled,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
@@ -1381,7 +1396,7 @@ export function useFirstRunConductor(): void {
             ? FIRST_RUN_TEXT_REPLY.wrapUp
             : erroredRef.current
               ? FIRST_RUN_TEXT_REPLY.error
-              : isRuntimeChooserEnabled()
+              : runtimeChooserEnabled
                 ? FIRST_RUN_TEXT_REPLY.choosing
                 : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
@@ -1396,7 +1411,7 @@ export function useFirstRunConductor(): void {
       seedTurn(makeTurn(`first-run:reply:${seq}`, reply));
       return true;
     },
-    [seedTurn],
+    [runtimeChooserEnabled, seedTurn],
   );
   const handleTextRef = React.useRef(handleFirstRunText);
   handleTextRef.current = handleFirstRunText;
@@ -1445,7 +1460,7 @@ export function useFirstRunConductor(): void {
     // is needed — any stale chooser-mode marker is dropped. The local-backup
     // restore probe is skipped: restoring a local agent is a chooser-mode
     // concept.
-    if (!isRuntimeChooserEnabled()) {
+    if (!runtimeChooserEnabled) {
       clearCloudLoginPending();
       draftRef.current = {
         ...draftRef.current,
@@ -1622,6 +1637,7 @@ export function useFirstRunConductor(): void {
     seedRuntimeChoice,
     seedTurn,
     setConversationMessages,
+    runtimeChooserEnabled,
   ]);
 }
 

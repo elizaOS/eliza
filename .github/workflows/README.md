@@ -39,10 +39,21 @@ Representative examples:
   WebKit fixture gates when `packages/ui/src/**` changes.
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
   device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
-  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route.
+  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route,
+  and a weekly cadence hard-gates the explicit host-safe Android subset.
+  [![scheduled device e2e](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule)](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml?query=event%3Aschedule)
   Both jobs run the bundle-owning runners with `--output` and upload the full
   bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
   failure, without reading any repository secret.
+- `android-arm64-local-e2e.yml` is the separate weekly, schedule-only
+  self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
+  `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
+  contract: the job stays queued until such a runner is online, then fails
+  closed unless both the host and attached Android target pass ARM64 and pinned
+  toolchain preflight. It runs local chat plus local-runtime/route WebView
+  probes; on-device voice remains separately qualified. Manual arbitrary-ref
+  dispatch is intentionally unavailable because this runner persists and owns
+  a physical device.
 
 ## Manual operations
 
@@ -57,7 +68,12 @@ Representative examples:
   The stable tag then triggers `release-electrobun.yml`, which resolves and
   checks out the peeled tag commit, verifies the existing release is bound to
   that commit, and uploads signed desktop assets without creating or replacing
-  the release. `snap-publish.yml` owns Snap Store publication.
+  the release. Because branch protection does not cover tags, the workflow
+  also requires the tagged commit to be an ancestor of `main` or `develop`
+  and gates every signing, release-upload, and OTA-publish job behind the
+  reviewer-approved `production-release` environment; a tag protection
+  ruleset restricting `v*` creation completes that boundary.
+  `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

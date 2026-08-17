@@ -204,9 +204,20 @@ describe("isHandleAllowed", () => {
 		).toBe(true);
 	});
 
-	it("keeps disabled and empty allowlist policies restrictive except pairing", () => {
+	it("fails closed for disabled, allowlist, and pairing policies with an empty allow list", () => {
 		expect(isHandleAllowed("+14155552671", [], "disabled")).toBe(false);
 		expect(isHandleAllowed("+14155552671", [], "allowlist")).toBe(false);
-		expect(isHandleAllowed("+14155552671", [], "pairing")).toBe(true);
+		// Pairing must not default-open: unpaired first contact is gated by the
+		// service through the core PairingService handshake instead.
+		expect(isHandleAllowed("+14155552671", [], "pairing")).toBe(false);
+	});
+
+	it("treats pairing like allowlist for statically approved handles", () => {
+		expect(isHandleAllowed("+14155552671", ["+14155552671"], "pairing")).toBe(
+			true,
+		);
+		expect(isHandleAllowed("+14155559999", ["+14155552671"], "pairing")).toBe(
+			false,
+		);
 	});
 });

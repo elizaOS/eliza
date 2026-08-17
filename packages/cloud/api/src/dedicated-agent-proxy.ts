@@ -698,18 +698,19 @@ export function handleDedicatedAgentProxy(
       handleManagedPairAtEdge(request, env, url, agentId),
     );
   }
-  if (!isDedicatedProxyBrowserOriginAllowed(request, url)) {
-    return Promise.resolve(
-      new Response(null, {
+  // The whole browser-policy path runs inside the bindings context so
+  // isFirstPartyOrigin reads THIS request's ENVIRONMENT binding — outside it
+  // would fall back to process.env and silently evaluate as non-production.
+  return runWithCloudBindingsAsync(env, async () => {
+    if (!isDedicatedProxyBrowserOriginAllowed(request, url)) {
+      return new Response(null, {
         status: 403,
         headers: { "cache-control": "no-store" },
-      }),
-    );
-  }
-  if (request.method === "OPTIONS") {
-    return Promise.resolve(dedicatedProxyPreflight(request, url));
-  }
-  return runWithCloudBindingsAsync(env, async () => {
+      });
+    }
+    if (request.method === "OPTIONS") {
+      return dedicatedProxyPreflight(request, url);
+    }
     const response = await proxyDedicatedAgent(request, env, url, agentId);
     return withDedicatedProxyBrowserPolicy(request, url, response);
   });

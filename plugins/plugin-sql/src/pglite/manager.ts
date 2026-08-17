@@ -10,6 +10,7 @@
  * always stale.
  */
 import {
+  chmodSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -52,6 +53,22 @@ type PglitePidFileStatus =
   | "cleared-stale"
   | "cleared-malformed"
   | "check-failed";
+
+/**
+ * Create the PGlite data directory (and parents) owner-only, then heal the
+ * mode on directories left behind by older installs. The memory DB tree holds
+ * full agent history and connector ciphertext, and PGlite creates its files
+ * 0644 — a 0700 root keeps the whole tree unreachable for other local users.
+ */
+export function ensurePrivateDir(dataDir: string): void {
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  try {
+    chmodSync(dataDir, 0o700);
+  } catch {
+    // error-policy:J6 best-effort heal for directories created by older
+    // installs; platforms without POSIX chmod semantics skip.
+  }
+}
 
 interface PgliteDataDirLockInfo {
   pid: number | null;
@@ -691,7 +708,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       return;
     }
 
-    mkdirSync(dataDir, { recursive: true });
+    ensurePrivateDir(dataDir);
     const lockPath = this.getDataDirLockPath(dataDir);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
