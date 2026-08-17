@@ -537,9 +537,11 @@ describe("canonical cloud deployment environment contract", () => {
     ]) {
       expect(outputCheck.run).toContain(`terraform output -json ${output}`);
     }
-    expect(outputCheck.run).toContain("requireProxiedRecords");
-    expect(outputCheck.run).toContain("requireDnsOnlyRecords");
-    expect(outputCheck.run).toContain("requireActivePacks");
+    expect(outputCheck.run).toContain(
+      "validate-terraform-pages-domain-state.mjs",
+    );
+    expect(outputCheck.run).toContain('"$TF_VAR_environment"');
+    expect(outputCheck.run).not.toContain("node -e '");
     expect(infraSource).not.toContain("staging_agent_edge");
     expect(infraSource).not.toContain(
       "CANONICAL_STAGING_AGENT_CERTIFICATE_HOSTS_JSON",
