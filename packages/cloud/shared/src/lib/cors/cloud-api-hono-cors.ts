@@ -35,6 +35,7 @@ import {
   CORS_ALLOW_METHOD_NAMES,
   CORS_EXPOSE_HEADER_NAMES,
 } from "../cors-constants";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
@@ -93,18 +94,43 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
 ]);
 
 /**
+ * Exact Capacitor WebView origin (`iosScheme="https"`, no port — see
+ * packages/app/capacitor.config.ts). A browser page cannot mint a portless
+ * loopback origin for a credentialed cross-origin request, so this one stays
+ * first-party in every environment.
+ */
+const CAPACITOR_WEBVIEW_ORIGIN = "https://localhost";
+
+/**
+ * Loopback http(s) origins with an explicit port (`http://localhost:5173`,
+ * `http://127.0.0.1:3000`, the https and `[::1]` variants). Any local process
+ * can serve one of these, so in production reflecting them WITH
+ * `Access-Control-Allow-Credentials: true` would let a hostile local page ride
+ * a user's cloud session cookies against the API. They are a local-dev
+ * convenience and stay first-party only outside production.
+ */
+function isLoopbackDevOrigin(origin: string): boolean {
+  return (
+    origin.startsWith("http://localhost:") ||
+    origin.startsWith("http://127.0.0.1:") ||
+    APP_LOCAL_ORIGIN_RE.test(origin)
+  );
+}
+
+/**
  * First-party origins that may use cookie/session credentials. These get
  * `Access-Control-Allow-Credentials: true` with the origin reflected.
  */
 export function isFirstPartyOrigin(origin: string): boolean {
   if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
-  if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
+  // Electrobun, other native app schemes) — credentialed SSE reads need
+  // origin-reflected CORS, and a browser page cannot mint these origins.
+  if (origin === CAPACITOR_WEBVIEW_ORIGIN || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
-  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
-  // Electrobun, local dev) — credentialed SSE reads need origin-reflected CORS.
-  if (APP_LOCAL_ORIGIN_RE.test(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
-    return true;
+  if (isLoopbackDevOrigin(origin)) {
+    return getCloudAwareEnv().ENVIRONMENT !== "production";
   }
   return false;
 }
