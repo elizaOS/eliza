@@ -32,9 +32,34 @@ app.post("/", async (c) => {
     }
 
     const rawBody = await c.req.json().catch(() => ({}));
+    // Role identity leftover after twitter-status (#21151) /
+    // twitter-disconnect (#21144) / x-dms-digest (#21143). safeParse
+    // failure used to collapse to {} and the ternary then mapped every
+    // non-"agent" token — AGENT, owner-typos, 1e2 — onto the personal
+    // owner OAuth connect. Missing/empty still defaults to owner.
+    // Garbage 400s before generateAuthLink.
+    const requestedRole =
+      rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
+        ? (rawBody as { connectionRole?: unknown }).connectionRole
+        : undefined;
+    if (
+      requestedRole !== undefined &&
+      requestedRole !== "" &&
+      requestedRole !== "agent" &&
+      requestedRole !== "owner"
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
     const parsedBody = ConnectBody.safeParse(rawBody);
     const body = parsedBody.success ? parsedBody.data : {};
-    const connectionRole = body.connectionRole === "agent" ? "agent" : "owner";
+    const connectionRole = requestedRole === "agent" ? "agent" : "owner";
     const baseUrl =
       c.env?.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
