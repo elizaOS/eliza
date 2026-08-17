@@ -407,6 +407,16 @@ export class MemoryService {
     organizationId: string,
     depth: number = 20,
   ): Promise<MemoryRoomContext> {
+    if (depth === 0) {
+      return {
+        roomId,
+        messages: [],
+        participants: [],
+        metadata: {},
+        depth: 0,
+        timestamp: new Date(),
+      };
+    }
     const cached = await memoryCache.getRoomContext(roomId, organizationId);
     if (cached && cached.depth >= depth) {
       logger.debug(`[Memory Service] Cache HIT for room context: ${roomId}`);
@@ -449,6 +459,12 @@ export class MemoryService {
   async summarizeConversation(
     input: SummarizeConversationInput,
   ): Promise<SummarizeConversationResult> {
+    // Zero-summary contract: lastN=0 means empty result regardless of cache history.
+    // Bypass both summary-cache and room-context cache so warm-cache (depth 20)
+    // and cold-cache both return empty without invoking the summarizer.
+    if (input.lastN === 0) {
+      return { summary: "", tokenCount: 0, keyTopics: [], participants: [] };
+    }
     const cacheKey = `${input.roomId}:${input.lastN}:${input.style}`;
     const cached = await memoryCache.getMemory(
       CacheKeys.memory.conversationSummary(input.organizationId, cacheKey),

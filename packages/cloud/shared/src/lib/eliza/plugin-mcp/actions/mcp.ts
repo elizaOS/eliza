@@ -13,6 +13,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
@@ -276,6 +277,34 @@ async function handleReadResource(
   }
 }
 
+function parseMcpLimit(value: unknown): number {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) return 10;
+    return Math.min(Math.max(value, 1), 20);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 10;
+    const parsed = parseClampedInteger(trimmed, { fallback: 10, min: 1, max: 20 });
+    return parsed ?? 10;
+  }
+  return 10;
+}
+
+function parseMcpOffset(value: unknown): number {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) return 0;
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const parsed = parseClampedInteger(trimmed, { fallback: 0, min: 0 });
+    return parsed ?? 0;
+  }
+  return 0;
+}
+
 async function handleSearchActions(
   runtime: IAgentRuntime,
   message: Memory,
@@ -290,11 +319,8 @@ async function handleSearchActions(
   const content = message.content as Record<string, unknown>;
   const query = (params.query as string) || (content.text as string) || "";
   const platform = (params.platform as string) || undefined;
-  const parsedLimit = Number(params.limit);
-  const rawLimit = Number.isFinite(parsedLimit) ? parsedLimit : 10;
-  const limit = Math.min(Math.max(rawLimit, 1), 20);
-  const parsedOffset = Number(params.offset);
-  const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
+  const limit = parseMcpLimit(params.limit);
+  const offset = parseMcpOffset(params.offset);
 
   if (!query.trim()) {
     return { success: false, error: "A search query is required" };
