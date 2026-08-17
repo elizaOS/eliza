@@ -102,7 +102,7 @@ describe("GET /api/v1/ballots/:id public visibility identity", () => {
     expect(getMock).not.toHaveBeenCalled();
   });
 
-  test.each(["true", "yes", "TRUE", "0", "foo", "1e2"])(
+  test.each(["true", "yes", "TRUE", "0", "foo", "1e2", "1.0", "+1", " 1"])(
     "rejects public=%s before public or creator lookup",
     async (token) => {
       const response = await app.request(
@@ -114,4 +114,15 @@ describe("GET /api/v1/ballots/:id public visibility identity", () => {
       expectNoLookup();
     },
   );
+
+  test.each([
+    "?public=1&public=1",
+    "?public=1&public=",
+    "?public=&public=1",
+    "?public=foo&public=1",
+  ])("rejects duplicate public values in %s before lookup", async (query) => {
+    const response = await app.request(`/${BALLOT_ID}${query}`);
+    expect(response.status).toBe(400);
+    expectNoLookup();
+  });
 });

@@ -35,17 +35,20 @@ app.get("/", async (c) => {
     // DTO. Missing or empty selects the authenticated creator view; any
     // other token is leftover identity after payment-request public
     // (#20954) and must fail before authentication or lookup.
-    const requestedPublic = c.req.query("public");
+    const requestedPublicValues = c.req.queries("public") ?? [];
+    const requestedPublic = requestedPublicValues[0];
     if (
-      requestedPublic !== undefined &&
-      requestedPublic !== "" &&
-      requestedPublic !== "1"
+      requestedPublicValues.length > 1 ||
+      (requestedPublic !== undefined &&
+        requestedPublic !== "" &&
+        requestedPublic !== "1")
     ) {
       return c.json(
         {
           success: false,
           error: "invalid_public",
-          message: 'public must be "1" for the redacted ballot view.',
+          message:
+            'public must be specified at most once as "1" for the redacted ballot view.',
         },
         400,
       );
