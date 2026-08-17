@@ -71,12 +71,27 @@ interface ScheduledTaskRouteDeps {
 const PATH_PREFIX = "/api/lifeops/scheduled-tasks";
 const DEV_REGISTRIES_PATH = "/api/lifeops/dev/scheduling/registries";
 
+class ScheduledTaskPathEncodingError extends Error {
+  constructor() {
+    super("task id is not valid percent-encoding");
+    this.name = "ScheduledTaskPathEncodingError";
+  }
+}
+
+function decodeTaskId(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new ScheduledTaskPathEncodingError();
+  }
+}
+
 function matchTaskVerb(pathname: string): { id: string; verb: string } | null {
   const m = /^\/api\/lifeops\/scheduled-tasks\/([^/]+)\/([^/]+)\/?$/.exec(
     pathname,
   );
   if (!m) return null;
-  return { id: decodeURIComponent(m[1] ?? ""), verb: m[2] ?? "" };
+  return { id: decodeTaskId(m[1] ?? ""), verb: m[2] ?? "" };
 }
 
 function matchTaskFire(pathname: string): { id: string } | null {
@@ -84,7 +99,7 @@ function matchTaskFire(pathname: string): { id: string } | null {
     pathname,
   );
   if (!m) return null;
-  return { id: decodeURIComponent(m[1] ?? "") };
+  return { id: decodeTaskId(m[1] ?? "") };
 }
 
 /** JSON-safe projection of the runner's typed fire outcome. */
@@ -176,7 +191,7 @@ function matchTaskHistory(pathname: string): { id: string } | null {
     pathname,
   );
   if (!m) return null;
-  return { id: decodeURIComponent(m[1] ?? "") };
+  return { id: decodeTaskId(m[1] ?? "") };
 }
 
 function matchDevLog(pathname: string): { id: string } | null {
@@ -184,7 +199,7 @@ function matchDevLog(pathname: string): { id: string } | null {
     pathname,
   );
   if (!m) return null;
-  return { id: decodeURIComponent(m[1] ?? "") };
+  return { id: decodeTaskId(m[1] ?? "") };
 }
 
 function applyVerbToString(verb: string): string | null {
@@ -205,6 +220,22 @@ export function makeScheduledTasksRouteHandler(
   deps: ScheduledTaskRouteDeps,
 ): (ctx: SchedulingRouteContext) => Promise<boolean> {
   return async (ctx) => {
+    try {
+      return await handleScheduledTasks(ctx, deps);
+    } catch (err) {
+      if (err instanceof ScheduledTaskPathEncodingError) {
+        ctx.error(ctx.res, err.message, 400);
+        return true;
+      }
+      throw err;
+    }
+  };
+}
+
+async function handleScheduledTasks(
+  ctx: SchedulingRouteContext,
+  deps: ScheduledTaskRouteDeps,
+): Promise<boolean> {
     const { method, pathname, json, error, readJsonBody, req, res } = ctx;
 
     // Spine registry introspection — loopback only.
@@ -480,7 +511,6 @@ export function makeScheduledTasksRouteHandler(
     }
 
     return false;
-  };
 }
 
 export const SCHEDULED_TASKS_ROUTE_PATHS = [
