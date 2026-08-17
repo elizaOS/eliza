@@ -67,7 +67,7 @@ export function ttsDebugTextPreview(
 ): string {
   const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
   if (singleLine.length <= maxChars) return singleLine;
-  return `${singleLine.slice(0, maxChars)}…`;
+  return `${singleLine.slice(0, maxChars - 1)}…`;
 }
 
 // The logger drops entries below its LOG_LEVEL threshold, so an opted-in
