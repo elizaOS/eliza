@@ -85,6 +85,78 @@ describe("ToolCallCache", () => {
     expect(calls).toBe(1);
   });
 
+  it("deduplicates concurrent misses for the same key", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const execute = async () => {
+      calls += 1;
+      await gate;
+      return { result: "shared" };
+    };
+    const first = cache.run(desc, { q: "same" }, execute);
+    const second = cache.run(desc, { q: "same" }, execute);
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { result: "shared" },
+      { result: "shared" },
+    ]);
+    expect(calls).toBe(1);
+  });
+
+  it("does not share in-flight results across tool versions", async () => {
+    const cache = makeCache();
+    const args = { q: "same" };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+
+    const first = cache.run(
+      { name: "web_search", version: "1", ttlMs: 1_000, cacheable: true },
+      args,
+      async () => {
+        calls += 1;
+        await gate;
+        return "v1";
+      },
+    );
+    const second = cache.run(
+      { name: "web_search", version: "2", ttlMs: 1_000, cacheable: true },
+      args,
+      async () => {
+        calls += 1;
+        return "v2";
+      },
+    );
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["v1", "v2"]);
+    expect(calls).toBe(2);
+  });
+
+  it("allows a retry after an in-flight execution rejects", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const args = { q: "retry" };
+
+    await expect(
+      cache.run(desc, args, async () => {
+        throw new Error("temporary failure");
+      }),
+    ).rejects.toThrow("temporary failure");
+    await expect(cache.run(desc, args, async () => "recovered")).resolves.toBe(
+      "recovered",
+    );
+  });
+
   it("expires entries after TTL", async () => {
     let now = 1_000;
     const cache = makeCache(() => now);

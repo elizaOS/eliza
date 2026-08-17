@@ -32,8 +32,6 @@ interface PerToolOverride {
   version?: string;
 }
 
-type CachedActionResult = ActionResult & { [key: string]: ToolOutput };
-
 export interface ToolCacheConfig {
   enabled?: boolean;
   memoryCapacity?: number;
@@ -106,15 +104,6 @@ function isToolOutput(
   return Object.values(value).every((entry) => isToolOutput(entry, seen));
 }
 
-function isCachedActionResult(value: ToolOutput): value is CachedActionResult {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof value.success === "boolean"
-  );
-}
-
 /**
  * Wrap an Action's handler so cacheable tools route through the cache.
  * Non-cacheable actions are returned unchanged.
@@ -136,14 +125,18 @@ export function wrapActionWithCache(
     ...rest
   ) => {
     const args = extractArgs(options);
-    const hit = cache.get(descriptor, args);
-    if (hit && isCachedActionResult(hit.output)) return hit.output;
-
-    const result = await original(runtime, message, state, options, ...rest);
-    if (result !== undefined && isToolOutput(result)) {
-      cache.set(descriptor, args, result);
-    }
-    return result;
+    return cache.run(
+      descriptor,
+      args,
+      async () => original(runtime, message, state, options, ...rest),
+      (result): result is ActionResult & ToolOutput =>
+        typeof result === "object" &&
+        result !== null &&
+        !Array.isArray(result) &&
+        "success" in result &&
+        typeof result.success === "boolean" &&
+        isToolOutput(result),
+    );
   };
 
   return { ...action, handler: wrapped };
