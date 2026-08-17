@@ -132,6 +132,7 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { TrayLauncher } from "./components/shell/TrayLauncher";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
+import type { ShellController } from "./components/shell/useShellController";
 import { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud";
 import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
@@ -328,6 +329,7 @@ function ChatOverlayShell() {
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
+  useShellPushToTalkEvents(controller);
   const [windowExpanded, setWindowExpanded] = useState(
     controller?.isOpen ?? false,
   );
@@ -1926,6 +1928,66 @@ function SecretsManagerModalMount(): ReactNode {
   );
 }
 
+/** Routes native global push-to-talk events through the shared chat authority. */
+function useShellPushToTalkEvents(controller: ShellController | null): void {
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onToggle = () => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      if (shell.authGate.gated) {
+        shell.requestSignIn();
+        return;
+      }
+      if (shell.recording) {
+        playCaptureSendCue();
+        shell.stopRecording();
+        return;
+      }
+      playCaptureStartCue();
+      shell.startRecording("ptt");
+    };
+    document.addEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+    return () =>
+      document.removeEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+  }, []);
+
+  const fnHoldActiveRef = useRef(false);
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onHold = (event: Event) => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      const detail = (event as CustomEvent<PushToTalkHoldDetail>).detail;
+      if (!detail || typeof detail.held !== "boolean") return;
+      if (detail.held) {
+        if (fnHoldActiveRef.current || shell.recording) return;
+        if (shell.authGate.gated) {
+          shell.requestSignIn();
+          return;
+        }
+        fnHoldActiveRef.current = true;
+        playCaptureStartCue();
+        shell.startRecording("ptt");
+        return;
+      }
+      if (!fnHoldActiveRef.current) return;
+      fnHoldActiveRef.current = false;
+      if (detail.cancelled) {
+        shell.cancelRecording();
+        return;
+      }
+      playCaptureSendCue();
+      shell.stopRecording();
+    };
+    document.addEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
+    return () => document.removeEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
+  }, []);
+}
+
 function ShellFoundationMount({
   useWebChatPanel = false,
 }: {
@@ -2180,15 +2242,29 @@ function ShellFoundationMount({
  * provider is present.
  */
 function ChatOverlayMount({
-  releaseFirstRunToHalf,
+  releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
+  initialMode = "input",
+  requestedOpen,
+  onRequestedOpenChange,
+  onWindowExpandedChange,
+  onWindowSizeClassChange,
+  onWindowMaterialSizeChange,
+  desktopOverlayHost = false,
 }: {
-  releaseFirstRunToHalf: boolean;
-  onFirstRunReleaseHandled: () => void;
+  releaseFirstRunToHalf?: boolean;
+  onFirstRunReleaseHandled?: () => void;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
+  initialMode?: "pill" | "input";
+  requestedOpen?: boolean;
+  onRequestedOpenChange?: (open: boolean) => void;
+  onWindowExpandedChange?: (expanded: boolean) => void;
+  onWindowSizeClassChange?: (sizeClass: ChatOverlayWindowSizeClass) => void;
+  onWindowMaterialSizeChange?: (size: ChatOverlayMaterialSize) => void;
+  desktopOverlayHost?: boolean;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2220,8 +2296,17 @@ function ChatOverlayMount({
       firstRunOpen={firstRunComplete === false}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
-      onPilledChange={onPilledChange}
       onDetentChange={onDetentChange}
+      initialMode={initialMode}
+      requestedOpen={requestedOpen}
+      onRequestedOpenChange={(open) => {
+        onRequestedOpenChange?.(open);
+        onPilledChange?.(!open);
+      }}
+      onWindowExpandedChange={onWindowExpandedChange}
+      onWindowSizeClassChange={onWindowSizeClassChange}
+      onWindowMaterialSizeChange={onWindowMaterialSizeChange}
+      desktopOverlayHost={desktopOverlayHost}
     />
   );
 }
