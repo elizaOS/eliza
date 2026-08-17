@@ -37,18 +37,34 @@ function presentMetadata(input: Record<string, string | undefined>) {
   );
 }
 
+/**
+ * Canonical decimal conversion amounts only. Number("1e2") === 100 used to
+ * become a real tracked value on the public pixel query string.
+ */
+export function parseConversionQueryValue(
+  raw: string | undefined,
+): number | undefined | "invalid" {
+  if (raw === undefined || raw === "") return undefined;
+  if (!/^(0|[1-9]\d*)(\.\d+)?$/.test(raw)) return "invalid";
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : "invalid";
+}
+
 app.get("/", async (c) => {
   try {
     const token = c.req.query("token");
     const dedupeKey = c.req.query("dedupeKey") ?? c.req.query("eventId");
     const eventType = c.req.query("eventType") ?? "conversion";
-    const value = c.req.query("value");
+    const value = parseConversionQueryValue(c.req.query("value"));
+    if (value === "invalid") {
+      return c.json({ success: false, error: "Invalid conversion event" }, 400);
+    }
     const sourceUrl = c.req.query("sourceUrl");
     const parsed = RecordConversionSchema.safeParse({
       token,
       dedupeKey,
       eventType,
-      value: value === undefined ? undefined : Number(value),
+      value,
       currency: c.req.query("currency") ?? "USD",
       sourceUrl,
       metadata: presentMetadata({
