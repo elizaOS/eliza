@@ -8,7 +8,7 @@
  *   - mode 0o600 on the written file (secret-grade)
  *   - dir mode 0o700 when the parent has to be created
  *   - JSON 2-space indent, no trailing newline
- *   - tmp filename `${filePath}.tmp-${pid}-${Date.now()}` (multi-process safe)
+ *   - tmp filename `${filePath}.tmp-${pid}-${Date.now()}-${sequence}`
  *   - parent directory created with mkdir recursive
  *
  * On failure, the temp file is best-effort removed.
@@ -52,8 +52,11 @@ function normalizeOptions(
 	};
 }
 
+let tmpSequenceCounter = 0n;
+
 function tmpPathFor(filePath: string): string {
-	return `${filePath}.tmp-${process.pid}-${Date.now()}`;
+	tmpSequenceCounter += 1n;
+	return `${filePath}.tmp-${process.pid}-${Date.now()}-${tmpSequenceCounter}`;
 }
 
 function serialize(value: unknown, opts: NormalizedWriteOptions): string {
@@ -61,11 +64,18 @@ function serialize(value: unknown, opts: NormalizedWriteOptions): string {
 	return opts.trailingNewline ? `${body}\n` : body;
 }
 
+function assertFilePath(filePath: string): void {
+	if (typeof filePath !== "string" || filePath.trim().length === 0) {
+		throw new TypeError("filePath must be a non-empty string");
+	}
+}
+
 export async function writeJsonAtomic(
 	filePath: string,
 	value: unknown,
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
+	assertFilePath(filePath);
 	const o = normalizeOptions(opts);
 	if (!o.skipMkdir) {
 		await fsp.mkdir(path.dirname(filePath), {
@@ -78,6 +88,7 @@ export async function writeJsonAtomic(
 		await fsp.writeFile(tmp, serialize(value, o), {
 			encoding: "utf-8",
 			mode: o.mode,
+			flag: "wx",
 		});
 		await fsp.rename(tmp, filePath);
 	} finally {
@@ -102,6 +113,7 @@ export function writeJsonAtomicSync(
 	value: unknown,
 	opts?: WriteJsonAtomicOptions,
 ): void {
+	assertFilePath(filePath);
 	const o = normalizeOptions(opts);
 	if (!o.skipMkdir) {
 		fs.mkdirSync(path.dirname(filePath), {
@@ -114,6 +126,7 @@ export function writeJsonAtomicSync(
 		fs.writeFileSync(tmp, serialize(value, o), {
 			encoding: "utf-8",
 			mode: o.mode,
+			flag: "wx",
 		});
 		fs.renameSync(tmp, filePath);
 	} finally {
@@ -137,6 +150,7 @@ export function writeJsonAtomicSync(
  * JSON and filesystem failures surface to the caller.
  */
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
+	assertFilePath(filePath);
 	try {
 		const raw = await fsp.readFile(filePath, "utf-8");
 		return JSON.parse(raw) as T;
@@ -155,6 +169,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
  * malformed JSON and filesystem failures surface to the caller.
  */
 export function readJsonFileSync<T>(filePath: string): T | null {
+	assertFilePath(filePath);
 	try {
 		const raw = fs.readFileSync(filePath, "utf-8");
 		return JSON.parse(raw) as T;
