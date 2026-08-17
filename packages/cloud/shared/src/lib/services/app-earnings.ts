@@ -7,6 +7,7 @@ import {
   appEarningsRepository,
   type NewAppEarningsTransaction,
 } from "../../db/repositories/app-earnings";
+import { parseEarningsNumber } from "../../db/repositories/app-earnings-numeric";
 import { appsRepository } from "../../db/repositories/apps";
 import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
@@ -45,14 +46,29 @@ export class AppEarningsService {
       return null;
     }
 
+    // Corrupt NUMERIC must throw, not render as NaN: the summary feeds the
+    // creator's withdrawable balance and payout threshold, and a NaN here
+    // would present a broken row as a healthy-looking $NaN account.
     return {
-      totalLifetimeEarnings: Number(earnings.total_lifetime_earnings),
-      totalInferenceEarnings: Number(earnings.total_inference_earnings),
-      totalPurchaseEarnings: Number(earnings.total_purchase_earnings),
-      pendingBalance: Number(earnings.pending_balance),
-      withdrawableBalance: Number(earnings.withdrawable_balance),
-      totalWithdrawn: Number(earnings.total_withdrawn),
-      payoutThreshold: Number(earnings.payout_threshold),
+      totalLifetimeEarnings: parseEarningsNumber(
+        earnings.total_lifetime_earnings,
+        "total_lifetime_earnings",
+      ),
+      totalInferenceEarnings: parseEarningsNumber(
+        earnings.total_inference_earnings,
+        "total_inference_earnings",
+      ),
+      totalPurchaseEarnings: parseEarningsNumber(
+        earnings.total_purchase_earnings,
+        "total_purchase_earnings",
+      ),
+      pendingBalance: parseEarningsNumber(earnings.pending_balance, "pending_balance"),
+      withdrawableBalance: parseEarningsNumber(
+        earnings.withdrawable_balance,
+        "withdrawable_balance",
+      ),
+      totalWithdrawn: parseEarningsNumber(earnings.total_withdrawn, "total_withdrawn"),
+      payoutThreshold: parseEarningsNumber(earnings.payout_threshold, "payout_threshold"),
     };
   }
 
@@ -167,8 +183,11 @@ export class AppEarningsService {
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
-    if (threshold < 1) {
-      throw new Error("Payout threshold must be at least $1.00");
+    // `threshold < 1` alone lets NaN and Infinity through (both comparisons are
+    // false), and Postgres NUMERIC accepts the literal strings 'NaN' and
+    // 'Infinity' — a poisoned row would then fail every later withdrawal parse.
+    if (!Number.isFinite(threshold) || threshold < 1) {
+      throw new Error("Payout threshold must be a finite amount of at least $1.00");
     }
 
     await appEarningsRepository.updatePayoutThreshold(appId, threshold);
@@ -193,6 +212,18 @@ export class AppEarningsService {
     amount: number,
     idempotencyKey?: string,
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
+    // Refuse non-finite and non-positive amounts before any write. The
+    // repository's minimum-payout gate (`amount < threshold`) is bypassed by
+    // NaN (comparison is false), and a NaN amount would otherwise be recorded
+    // as a 'NaN'::numeric transaction row that poisons every SUM aggregate
+    // over this app's earnings history.
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return {
+        success: false,
+        message: "Withdrawal amount must be a positive, finite number",
+      };
+    }
+
     // Idempotent fast path: return the prior transaction if this key already ran.
     if (idempotencyKey) {
       const existing = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
@@ -319,7 +350,7 @@ export class AppEarningsService {
     });
     return {
       success: true,
-      message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+      message: `$${Math.abs(parseEarningsNumber(existing.amount, "withdrawal_amount")).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
       transactionId: existing.id,
     };
   }
