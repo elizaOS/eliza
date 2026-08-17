@@ -192,6 +192,22 @@ function staticOnlyDeliverable(facts: DeterministicEvidenceFacts): boolean {
   );
 }
 
+/**
+ * A check is vacuous when the verified deliverable provably cannot run it:
+ * either every verified file is a static asset, or the deliverable's own
+ * directories carry no tooling manifest for that check class (a vanilla
+ * browser script.js with no tsconfig/lint/test surface — the dawn-mesa
+ * shape). Absent surface facts mean unknown, which stays strict.
+ */
+function checkInapplicable(
+  facts: DeterministicEvidenceFacts,
+  check: "typecheck" | "lint" | "test",
+): boolean {
+  if (facts.ledgerVerifiedFiles.length === 0) return false;
+  if (staticOnlyDeliverable(facts)) return true;
+  return facts.checkSurfaces ? facts.checkSurfaces[check] === false : false;
+}
+
 /** Deterministic facts the orchestrator already holds at completion. */
 export interface DeterministicEvidenceFacts {
   /** Router-probed URLs that answered, non-loopback only. */
@@ -202,6 +218,10 @@ export interface DeterministicEvidenceFacts {
   hasChangeSet: boolean;
   /** Mined green output present per check class. */
   greenChecks: { test: boolean; build: boolean; lint: boolean };
+  /** Which check classes are RUNNABLE where the verified deliverable lives
+   *  (tooling manifests observed in the deliverable's own directories — see
+   *  detectCheckSurfaces). Absent = unknown = strict. */
+  checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
 }
 
 export interface DeterministicCriterionResult {
@@ -273,12 +293,13 @@ export function deterministicCriterionCheck(
       : { criterion, status: "undetermined" };
   }
   if (TEST_CRITERION_RE.test(criterion)) {
-    if (!facts.greenChecks.test && staticOnlyDeliverable(facts)) {
+    if (!facts.greenChecks.test && checkInapplicable(facts, "test")) {
       return {
         criterion,
         status: "met",
-        basis:
-          "inapplicable: verified deliverable contains only static assets (no test surface)",
+        basis: staticOnlyDeliverable(facts)
+          ? "inapplicable: verified deliverable contains only static assets (no test surface)"
+          : "inapplicable: no test tooling in the deliverable's directories",
       };
     }
     return facts.greenChecks.test
@@ -286,12 +307,13 @@ export function deterministicCriterionCheck(
       : { criterion, status: "undetermined" };
   }
   if (BUILD_CRITERION_RE.test(criterion)) {
-    if (!facts.greenChecks.build && staticOnlyDeliverable(facts)) {
+    if (!facts.greenChecks.build && checkInapplicable(facts, "typecheck")) {
       return {
         criterion,
         status: "met",
-        basis:
-          "inapplicable: verified deliverable contains only static assets (no build surface)",
+        basis: staticOnlyDeliverable(facts)
+          ? "inapplicable: verified deliverable contains only static assets (no build surface)"
+          : "inapplicable: no typecheck tooling in the deliverable's directories",
       };
     }
     return facts.greenChecks.build
@@ -303,12 +325,13 @@ export function deterministicCriterionCheck(
       : { criterion, status: "undetermined" };
   }
   if (LINT_CRITERION_RE.test(criterion)) {
-    if (!facts.greenChecks.lint && staticOnlyDeliverable(facts)) {
+    if (!facts.greenChecks.lint && checkInapplicable(facts, "lint")) {
       return {
         criterion,
         status: "met",
-        basis:
-          "inapplicable: verified deliverable contains only static assets (no lint surface)",
+        basis: staticOnlyDeliverable(facts)
+          ? "inapplicable: verified deliverable contains only static assets (no lint surface)"
+          : "inapplicable: no lint tooling in the deliverable's directories",
       };
     }
     return facts.greenChecks.lint

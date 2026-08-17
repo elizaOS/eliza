@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
+  detectCheckSurfaces,
   mineCandidatePaths,
   probeMappedUrls,
 } from "../services/quick-app-evidence.js";
@@ -104,5 +105,53 @@ describe("probeMappedUrls", () => {
       fetchImpl,
     );
     expect(verified).toEqual(["https://a.example/good/"]);
+  });
+});
+
+describe("detectCheckSurfaces (dawn-mesa boundary)", () => {
+  it("a vanilla script.js app dir with no tooling has no check surfaces (real fs)", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "surface-"));
+    try {
+      const appDir = path.join(workdir, "data", "apps", "dawn-mesa");
+      fs.mkdirSync(appDir, { recursive: true });
+      fs.writeFileSync(path.join(appDir, "index.html"), "<html></html>");
+      fs.writeFileSync(path.join(appDir, "script.js"), "console.log(1)");
+      // Root tooling exists (the static SERVER's) — must NOT count for the app.
+      fs.writeFileSync(path.join(workdir, "package.json"), "{}");
+      fs.writeFileSync(path.join(workdir, "tsconfig.json"), "{}");
+
+      const surfaces = detectCheckSurfaces(workdir, [
+        "data/apps/dawn-mesa/index.html",
+        "data/apps/dawn-mesa/script.js",
+      ]);
+      expect(surfaces).toEqual({ typecheck: false, lint: false, test: false });
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("a deliverable AT a tooling boundary detects runnable checks (real fs)", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "surface-"));
+    try {
+      fs.writeFileSync(path.join(workdir, "package.json"), "{}");
+      fs.writeFileSync(path.join(workdir, "tsconfig.json"), "{}");
+      fs.writeFileSync(path.join(workdir, "biome.json"), "{}");
+      fs.writeFileSync(path.join(workdir, "calc.js"), "console.log(1)");
+
+      const surfaces = detectCheckSurfaces(workdir, ["calc.js"]);
+      expect(surfaces).toEqual({ typecheck: true, lint: true, test: true });
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("a test file among the deliverable implies a test surface", () => {
+    const surfaces = detectCheckSurfaces(
+      "/nonexistent-root",
+      ["pkg/thing.test.ts"],
+      () => false,
+    );
+    expect(surfaces.test).toBe(true);
+    expect(surfaces.typecheck).toBe(false);
   });
 });
