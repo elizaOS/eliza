@@ -657,10 +657,7 @@ export async function runSharedAgentTurnStream(
     ] as const;
     for (const prop of settledResultProps) {
       const pending = (result as unknown as Record<string, unknown>)[prop];
-      if (
-        pending &&
-        typeof (pending as PromiseLike<unknown>).then === "function"
-      ) {
+      if (pending && typeof (pending as PromiseLike<unknown>).then === "function") {
         void Promise.resolve(pending as PromiseLike<unknown>).catch(() => {});
       }
     }
