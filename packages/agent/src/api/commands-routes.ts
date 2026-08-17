@@ -31,6 +31,28 @@ const VALID_SURFACES: ReadonlySet<string> = new Set([
 
 type CommandSurface = "gui" | "tui" | "discord" | "telegram";
 
+const SURFACE_ERROR =
+  "surface must be one of: gui, tui, discord, telegram";
+
+/**
+ * Parse the slash-command catalog `surface` query. Omitted/empty keeps the
+ * historical GUI default (response `surface` stays null). A known surface
+ * filters the catalog. Any other token used to fall through to that same GUI
+ * catalog, so `surface=DISCORD` or `surface=web` silently served GUI-only
+ * commands.
+ */
+export function parseCommandSurface(
+  raw: string | null,
+):
+  | { ok: true; surface: CommandSurface | null }
+  | { ok: false; message: string } {
+  if (raw === null || raw === "") return { ok: true, surface: null };
+  if (VALID_SURFACES.has(raw)) {
+    return { ok: true, surface: raw as CommandSurface };
+  }
+  return { ok: false, message: SURFACE_ERROR };
+}
+
 export interface CommandsRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -52,11 +74,12 @@ export async function handleCommandsRoutes(
     return true;
   }
 
-  const surfaceParam = url.searchParams.get("surface");
-  const surface: CommandSurface | null =
-    surfaceParam && VALID_SURFACES.has(surfaceParam)
-      ? (surfaceParam as CommandSurface)
-      : null;
+  const parsedSurface = parseCommandSurface(url.searchParams.get("surface"));
+  if (!parsedSurface.ok) {
+    error(res, parsedSurface.message, 400);
+    return true;
+  }
+  const surface = parsedSurface.surface;
 
   // View-scoped commands (#8798) appear only when their view is foreground.
   // Prefer an explicit ?view= (the client knows what it is rendering), else fall
