@@ -16,13 +16,21 @@ import {
   OAuthError,
   oauthService,
 } from "@/lib/services/oauth";
+import { getProvider } from "@/lib/services/oauth/provider-registry";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
-  const platform = c.req.query("platform") || undefined;
+  // OAuth-connection catalog identity, not leftover tax on ad-account
+  // platform, promote-assets platform, or X connectionRole. The prior
+  // raw `platform` pass-through sent GOOGLE / gmail / foo into
+  // getAdapter, which either missed the static map or minted a
+  // wrong-cased generic adapter, so operators asking for Google
+  // received an empty connection catalog. Missing / empty still means
+  // unfiltered. Garbage 400s before listConnections.
+  const requestedPlatform = c.req.query("platform");
   const rawConnectionRole = c.req.query("connectionRole");
   const connectionRole =
     rawConnectionRole === "owner" || rawConnectionRole === "agent"
@@ -43,6 +51,23 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     organizationId = user.organization_id;
+
+    if (
+      requestedPlatform != null &&
+      requestedPlatform !== ""
+    ) {
+      const provider = getProvider(requestedPlatform);
+      if (!provider || provider.id !== requestedPlatform) {
+        return c.json(
+          {
+            error: "INVALID_PLATFORM",
+            message: "platform must be a registered OAuth provider id",
+          },
+          400,
+        );
+      }
+    }
+    const platform = requestedPlatform || undefined;
 
     logger.debug("[API] GET /api/v1/oauth/connections", {
       organizationId,
