@@ -1043,14 +1043,13 @@ describe("runOnboardingChat", () => {
       expect(copiedTranscript).toContain("Platform display name: not provided");
       expect(copiedTranscript).toContain("Verified identity link status: linked");
       expect(copiedTranscript).toContain(
-        "Original onboarding session: platform:blooio:+14155550123",
-      );
-      expect(copiedTranscript).toContain(
         `First message timestamp: ${result.session.history[0]?.createdAt}`,
       );
       expect(copiedTranscript).toContain(
         `Last message timestamp: ${result.session.history[0]?.createdAt}`,
       );
+      expect(copiedTranscript).not.toContain(result.session.id);
+      expect(copiedTranscript).not.toContain("+14155550123");
       expect(copiedTranscript).not.toContain(continuationToken(result));
 
       readManagedElizaAgentConnection.mockClear();

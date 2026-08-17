@@ -1224,7 +1224,6 @@ function transcriptText(session: OnboardingSession): string {
     `Source platform: ${session.platform ?? "web"}`,
     `Platform display name: ${session.platformDisplayName ?? "not provided"}`,
     `Verified identity link status: ${identityLinkStatus}`,
-    `Original onboarding session: ${session.id}`,
     `First message timestamp: ${firstMessageAt}`,
     `Last message timestamp: ${lastMessageAt}`,
     "",
