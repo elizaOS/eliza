@@ -29,8 +29,22 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Invalid session" }, 401);
     }
 
-    const body = (await c.req.json()) as { session_id?: string };
-    const sessionId = body?.session_id;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted CLI-auth complete body; syntax errors are
+      // caller garbage, not a server fault that completes CLI login.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const sessionIdRaw = (body as { session_id?: unknown }).session_id;
+    const sessionId =
+      typeof sessionIdRaw === "string" && sessionIdRaw
+        ? sessionIdRaw
+        : undefined;
     if (!sessionId) {
       return c.json({ success: false, error: "Missing session_id" }, 400);
     }

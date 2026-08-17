@@ -13,7 +13,7 @@
  * same honest pattern as `container-billing-idempotency.test.ts`. It seeds a real
  * `organizations` row + `credit_transactions` table and asserts the observable
  * effects on the DB, so each test FAILS if the real logic regresses. The only
- * things stubbed are the fire-and-forget, non-billing side-effects on the success
+ * things stubbed are the deferred, non-billing side effects on the success
  * path (email/webhook/auto-top-up) — never the deduct/guard arithmetic itself.
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
@@ -29,7 +29,7 @@ process.env.NODE_ENV ||= "test";
 // Redis (deterministic + offline).
 process.env.MOCK_REDIS ||= "1";
 
-// Stub the non-billing fire-and-forget side-effects the success path kicks off.
+// Stub the non-billing deferred side effects the success path kicks off.
 // These are NOT the code under test — they are downstream notifications. Leaving
 // them real would make the test depend on email/webhook/auto-top-up infra. The
 // deduct + guard SQL in credits.ts runs entirely real against PGlite below.
@@ -45,7 +45,7 @@ mock.module("../waifu-webhook", () => ({
 }));
 mock.module("../auto-top-up", () => ({
   autoTopUpService: {
-    executeAutoTopUp: mock(async () => undefined),
+    executeAutoTopUpForOrganization: mock(async () => undefined),
   },
 }));
 
@@ -101,6 +101,8 @@ beforeAll(async () => {
         slug text NOT NULL,
         credit_balance numeric(12,6) NOT NULL DEFAULT '0',
         balance_revision bigint NOT NULL DEFAULT 0,
+        balance_decrease_revision bigint NOT NULL DEFAULT 0,
+        auto_top_up_covered_balance_decrease_revision bigint,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -486,6 +488,56 @@ describe("reconcile() — settle reserved vs actual", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+describe("reserveAndDeductCredits non-finite amount guard", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    await seedOrg("10.000000");
+  });
+
+  // These calls exercise the authoritative mutation rather than the reserve
+  // wrapper and prove the database is untouched on rejection.
+  for (const [label, amount] of [
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ] as const) {
+    test(
+      `rejects a ${label} amount with no balance movement and no ledger row`,
+      async () => {
+        if (!pgliteReady) return;
+
+        await expect(
+          creditsService.reserveAndDeductCredits({
+            organizationId: ORG_ID,
+            amount,
+            description: `non-finite guard (${label})`,
+            metadata: { user_id: USER_ID },
+          }),
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
+
+        // The deductCredits delegate funnels through the same guard.
+        await expect(
+          creditsService.deductCredits({
+            organizationId: ORG_ID,
+            amount,
+            description: `non-finite guard via deductCredits (${label})`,
+            metadata: { user_id: USER_ID },
+          }),
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
+
+        expect(await readBalance()).toBeCloseTo(10, 6);
+        expect(await listDebits()).toHaveLength(0);
+      },
+      PGLITE_TIMEOUT,
+    );
+  }
 });
 
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.

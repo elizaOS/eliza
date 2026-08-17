@@ -50,7 +50,7 @@ function formatAttachmentUrlForPrompt(url: string | undefined): string {
 		const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? "binary";
 		return `[inline ${mime} data, ${url.length} chars]`;
 	}
-	return url.length > 512 ? `${url.slice(0, 509)}…` : url;
+	return url.length > 512 ? `${url.slice(0, 511)}…` : url;
 }
 
 function contentString(message: Memory, key: string): string {

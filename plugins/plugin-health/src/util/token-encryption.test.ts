@@ -79,6 +79,18 @@ describe("authenticated decryption", () => {
     ).toThrow();
   });
 
+  it("rejects a valid tag truncated below 128 bits", () => {
+    const env = encryptTokenPayload("secret", KEY);
+    const truncatedTag = Buffer.from(env.tag, "base64").subarray(0, 4);
+
+    expect(() =>
+      decryptTokenEnvelope(
+        { ...env, tag: truncatedTag.toString("base64") },
+        KEY,
+      ),
+    ).toThrow();
+  });
+
   it("fails with the wrong key", () => {
     expect(() => decryptTokenEnvelope(env, crypto.randomBytes(32))).toThrow();
   });

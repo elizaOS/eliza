@@ -31,8 +31,8 @@ mock.module("@/lib/utils/logger", () => ({
 
 const registryRoute = (await import("../mcp/registry/route")).default;
 
-async function getRegistry() {
-  return await registryRoute.request("/", undefined, {
+async function getRegistry(path = "/") {
+  return await registryRoute.request(path, undefined, {
     NEXT_PUBLIC_APP_URL: "https://app.example.test",
   });
 }
@@ -69,4 +69,35 @@ test("keeps empty community registry distinct from a failed community lookup", a
 
   expect(body.communityMcps).toBe(0);
   expect(body.communityRegistryAvailable).toBe(true);
+});
+
+test("rejects non-canonical or out-of-range limit values before catalog lookup", async () => {
+  for (const limit of [
+    "5junk",
+    "1e4",
+    "5.5",
+    "-1",
+    "0",
+    "101",
+    "9007199254740992",
+  ]) {
+    listPublic.mockClear();
+
+    const response = await getRegistry(`/?limit=${limit}`);
+
+    expect(response.status).toBe(400);
+    expect(listPublic).not.toHaveBeenCalled();
+  }
+});
+
+test("accepts a canonical registry limit and reports the applied value", async () => {
+  listPublic.mockResolvedValueOnce([]);
+
+  const response = await getRegistry("/?limit=25");
+
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    appliedFilters: { limit: number };
+  };
+  expect(body.appliedFilters.limit).toBe(25);
 });

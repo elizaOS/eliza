@@ -1425,6 +1425,19 @@ export type ElizaDesktopRPCSchema = {
         params: { accelerator: string };
         response: { registered: boolean };
       };
+      /** Fn-hold push-to-talk (#20483), macOS direct builds only.
+       *  `permission-missing` means Accessibility/Input Monitoring trust is
+       *  absent; `fnSystemUsageType` mirrors the "Press 🌐 key to..." system
+       *  setting (0 none / 1 input source / 2 emoji / 3 dictation) so the
+       *  renderer can advise setting it to Do Nothing. */
+      desktopStartFnHoldMonitor: {
+        params: undefined;
+        response: {
+          status: "started" | "permission-missing" | "failed" | "unavailable";
+          fnSystemUsageType: number;
+        };
+      };
+      desktopStopFnHoldMonitor: { params: undefined; response: undefined };
 
       // ---- Desktop: Auto Launch ----
       desktopSetAutoLaunch: {
@@ -1441,7 +1454,7 @@ export type ElizaDesktopRPCSchema = {
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
       desktopSetBottomBarExpanded: {
-        params: { expanded: boolean };
+        params: { expanded: boolean; chip?: boolean };
         response: undefined;
       };
       desktopMinimizeWindow: { params: undefined; response: undefined };
@@ -2253,6 +2266,10 @@ export type ElizaDesktopRPCSchema = {
 
       // Desktop: Shortcut events
       desktopShortcutPressed: { id: string; accelerator: string };
+      /** Fn (Globe) key hold transition (#20483). `cancelled` is true when a
+       *  release must NOT send: the user typed an fn-chord during the hold,
+       *  or the monitor stopped/resynced mid-hold. */
+      desktopFnHoldChanged: { held: boolean; cancelled: boolean };
 
       // Desktop: Window events
       desktopWindowFocus: undefined;
@@ -2420,6 +2437,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:unregisterShortcut": "desktopUnregisterShortcut",
   "desktop:unregisterAllShortcuts": "desktopUnregisterAllShortcuts",
   "desktop:isShortcutRegistered": "desktopIsShortcutRegistered",
+  "desktop:startFnHoldMonitor": "desktopStartFnHoldMonitor",
+  "desktop:stopFnHoldMonitor": "desktopStopFnHoldMonitor",
 
   // Desktop: Auto Launch
   "desktop:setAutoLaunch": "desktopSetAutoLaunch",
@@ -2714,6 +2733,7 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:trayMenuClick": "desktopTrayMenuClick",
   "desktop:trayClick": "desktopTrayClick",
   "desktop:shortcutPressed": "desktopShortcutPressed",
+  "desktop:fnHoldChanged": "desktopFnHoldChanged",
   "desktop:windowFocus": "desktopWindowFocus",
   "desktop:windowBlur": "desktopWindowBlur",
   "desktop:windowMaximize": "desktopWindowMaximize",

@@ -27,7 +27,7 @@ const ENCRYPTION_PREFIX = "enc";
 const FORMAT_VERSION = "v1";
 const ALGORITHM = "aes-256-gcm";
 const NONCE_LENGTH = 12;
-const _AUTH_TAG_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 const DEK_LENGTH = 32; // 256 bits
 
 /**
@@ -166,7 +166,9 @@ export class FieldEncryptionService {
     // Decrypt with AES-256-GCM. `coords` must match the AAD used at encrypt
     // time; a mismatch (or a ciphertext moved to a different row/column) makes
     // `decipher.final()` throw an auth-tag error.
-    const decipher = crypto.createDecipheriv(ALGORITHM, dek, parsed.nonce);
+    const decipher = crypto.createDecipheriv(ALGORITHM, dek, parsed.nonce, {
+      authTagLength: AUTH_TAG_LENGTH,
+    });
     if (coords) decipher.setAAD(aadForCoords(coords));
     decipher.setAuthTag(parsed.authTag);
 
@@ -362,7 +364,9 @@ export class FieldEncryptionService {
     const authTag = Buffer.from(authTagB64, "base64");
     const encrypted = Buffer.from(encryptedB64, "base64");
 
-    const decipher = crypto.createDecipheriv(ALGORITHM, this.masterKey!, nonce);
+    const decipher = crypto.createDecipheriv(ALGORITHM, this.masterKey!, nonce, {
+      authTagLength: AUTH_TAG_LENGTH,
+    });
     decipher.setAuthTag(authTag);
 
     return Buffer.concat([decipher.update(encrypted), decipher.final()]);

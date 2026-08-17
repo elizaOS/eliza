@@ -9,6 +9,7 @@
 import crypto from "node:crypto";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
+import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
   RateLimitError,
@@ -57,12 +58,24 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
-import { navIntentActionResult } from "./shared-nav-intent";
+import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
+import {
+  buildSharedRecallContext,
+  embedTextsViaSidecar,
+  embedTextViaSidecar,
+  SHARED_RECALL_DEFAULT_TOP_K,
+  SHARED_RECALL_EMBEDDING_MODEL,
+} from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
+import {
+  buildTurnSummary,
+  recordSharedTurnTrace,
+  type SharedTurnSummaryResult,
+} from "./shared-turn-trace-recorder";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -70,6 +83,24 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
+
+function elapsedTurnMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 10) / 10;
+}
+
+function withTurnTimingHeaders(response: Response, timings: Record<string, number>): Response {
+  const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
+  if (entries.length === 0) return response;
+  const headers = new Headers(response.headers);
+  const existing = headers.get("Server-Timing");
+  const current = entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", ");
+  headers.set("Server-Timing", existing ? `${existing}, ${current}` : current);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
@@ -84,19 +115,52 @@ export interface SharedRuntimeHistoryStore {
   ): Promise<SharedTurnMessage[]>;
 }
 
-function turnActionResults(
-  turn: Pick<RunSharedAgentTurnResult, "actionResults" | "navIntent" | "capabilityWall">,
-): unknown[] | undefined {
-  if (turn.actionResults?.length) return turn.actionResults;
-  if (turn.capabilityWall) return [capabilityWallActionResult(turn.capabilityWall)];
-  if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
-  return undefined;
+/**
+ * P5 sampled turn trace, recorded strictly off the response path. The recorder
+ * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
+ * and never throws, so this adds zero turn latency and zero failure surface.
+ */
+function recordTurnTraceOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  agent: SharedRuntimeAgent,
+  channelId: string,
+  traceId: string,
+  startedAt: number,
+  result: SharedTurnSummaryResult,
+): void {
+  void settleOffResponsePath(executionCtx, async () => {
+    await recordSharedTurnTrace(
+      { insertTrace: (row) => sharedTurnTracesRepository.insertTrace(row) },
+      buildTurnSummary({
+        result,
+        organizationId: agent.organization_id,
+        userId: agent.user_id,
+        agentId: agent.id,
+        channelId,
+        traceId,
+        startedAt,
+        completedAt: Date.now(),
+      }),
+    );
+  });
 }
 
-function isDeterministicFreeTurn(
-  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
-): boolean {
-  return Boolean(turn.navIntent || turn.capabilityWall);
+function turnActionResults(
+  turn: Pick<
+    RunSharedAgentTurnResult,
+    "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
+  >,
+): unknown[] | undefined {
+  const results: unknown[] = [...(turn.actionResults ?? [])];
+  if (turn.capabilityWall) results.push(capabilityWallActionResult(turn.capabilityWall));
+  for (const wall of turn.blockedSecondaryCapabilities ?? []) {
+    results.push(capabilityWallActionResult(wall));
+  }
+  return results.length ? results : undefined;
+}
+
+function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall">): boolean {
+  return Boolean(turn.capabilityWall);
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
@@ -147,6 +211,8 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Server-authenticated raw utterance when the model message includes connector context. */
+  trustedUserUtterance?: string;
   /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
   executionEngine?: "direct-model" | "eliza-runtime";
 }
@@ -199,6 +265,97 @@ function sharedElizaRuntimeExecution(
         }
       : {}),
   };
+}
+
+/**
+ * Flag-gated durable memory mirror for one turn (P2 edge memory store). Null
+ * while `SHARED_MEMORY_TABLES_ENABLED !== "true"`. Tenant scope comes from the
+ * server-resolved agent row, so a client can never choose the tenant; storage
+ * uuids reuse the Todo scope so memory rows line up with the runtime's
+ * projected identities.
+ */
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
+  const embed =
+    sharedRecallEnabled() && embedBase
+      ? {
+          embedTexts: (texts: string[]) =>
+            embedTextsViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, texts),
+          model: SHARED_RECALL_EMBEDDING_MODEL,
+        }
+      : undefined;
+  return createSharedMemoryStore(
+    {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      agentKey: agent.id,
+      storage: sharedTodoStorageScope({
+        sourceAgentId: agent.id,
+        ownerId: agent.user_id,
+      }),
+    },
+    embed,
+  );
+}
+
+/**
+ * P3 rollout gate: semantic recall exists only while this is exactly "true"
+ * AND the sidecar base URL is configured. Off (the default) leaves every turn
+ * byte-identical to the pre-recall path.
+ */
+function sharedRecallEnabled(): boolean {
+  return (
+    process.env.SHARED_RECALL_ENABLED === "true" && Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
+  );
+}
+
+/**
+ * Compose the recall block for one turn, or undefined when recall contributes
+ * nothing. Recall is an enhancement: a typed embed/search failure is warned
+ * and the turn proceeds without it rather than failing a healthy reply.
+ * `hadKeywordHit` is pinned false for the rollout phase — the lexical-salience
+ * signal is not yet surfaced from the history store, so flag-on turns pay one
+ * sidecar embed each; the short-circuit lands when that signal is plumbed.
+ */
+async function sharedTurnRecallContext(
+  store: SharedMemoryStore | null,
+  queryText: string,
+  history: SharedTurnMessage[],
+): Promise<string | undefined> {
+  if (!store || !sharedRecallEnabled()) return undefined;
+  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
+  if (!embedBase) return undefined;
+  try {
+    const block = await buildSharedRecallContext({
+      flagEnabled: true,
+      hadKeywordHit: false,
+      queryText,
+      history,
+      embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
+      storeSearch: async (vector) => {
+        const hits = await store.searchByEmbedding(vector, SHARED_RECALL_DEFAULT_TOP_K);
+        return hits.map((hit) => ({
+          id: hit.id,
+          role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
+          content:
+            typeof (hit.content as { text?: unknown })?.text === "string"
+              ? (hit.content as { text: string }).text
+              : "",
+          createdAt: hit.created_at ? new Date(hit.created_at).getTime() : undefined,
+        }));
+      },
+    });
+    return block ?? undefined;
+  } catch (error) {
+    // error-policy:J4 recall loss degrades to a recall-free turn; the warn is
+    // the visible signal and the reply itself stays healthy.
+    logger.warn(
+      `[shared-runtime-chat] semantic recall unavailable this turn: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
 }
 
 function stableUuid(raw: string): string {
@@ -817,16 +974,22 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
+    const memoryStore = sharedTurnMemoryStore(agent);
+    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const turnStartedAtEpochMs = Date.now();
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
         character,
         history,
         message: text,
+        ...(recallContext ? { recallContext } : {}),
+        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(memoryStore ? { memory: memoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(agent, params, options.funding),
@@ -844,10 +1007,18 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
+    recordTurnTraceOffPath(
+      options.executionCtx,
+      agent,
+      roomId,
+      messageIds.assistant,
+      turnStartedAtEpochMs,
+      turn,
+    );
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
-      turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
+      turnIsProvablyFree = turn.degraded || isProviderFreeTurn(turn);
       const actionResults = turnActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
@@ -879,7 +1050,7 @@ export class SharedRuntimeChatService {
         if (claimKey && options.turnClaims) {
           await options.turnClaims.complete(claimKey, result);
         }
-        if (isDeterministicFreeTurn(turn)) {
+        if (isProviderFreeTurn(turn)) {
           await billing?.settle(0);
         } else if (billing) {
           await settleOffResponsePath(options.executionCtx, () =>
@@ -915,6 +1086,7 @@ export class SharedRuntimeChatService {
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<Response> {
+    const timings: Record<string, number> = {};
     const params = record(rpc.params) ?? {};
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
@@ -922,28 +1094,34 @@ export class SharedRuntimeChatService {
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
+      const claimStartedAt = performance.now();
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
-        return new Response(
-          chatSseFrame("chunk", {
-            messageId: replay.messageId,
-            userMessageId: replay.userMessageId,
-            chunk: replay.text,
-            text: replay.text,
-            fullText: replay.text,
-            timestamp: Date.now(),
-          }) +
-            chatSseFrame("done", {
+        return withTurnTimingHeaders(
+          new Response(
+            chatSseFrame("chunk", {
               messageId: replay.messageId,
               userMessageId: replay.userMessageId,
+              chunk: replay.text,
               text: replay.text,
               fullText: replay.text,
-              ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
-            }),
-          { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+              timestamp: Date.now(),
+            }) +
+              chatSseFrame("done", {
+                messageId: replay.messageId,
+                userMessageId: replay.userMessageId,
+                text: replay.text,
+                fullText: replay.text,
+                ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
+              }),
+            { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+          ),
+          timings,
         );
       }
     }
+    const hydrateStartedAt = performance.now();
     const [character, history] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
@@ -951,7 +1129,9 @@ export class SharedRuntimeChatService {
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
+    const admissionStartedAt = performance.now();
     try {
       billing = await admitTurn(
         agent,
@@ -972,6 +1152,7 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
+    timings.turn_admission = elapsedTurnMs(admissionStartedAt);
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
@@ -987,12 +1168,18 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
+    const streamMemoryStore = sharedTurnMemoryStore(agent);
+    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const streamTurnStartedAtEpochMs = Date.now();
+    const providerSetupStartedAt = performance.now();
     try {
       turn = await runSharedAgentTurnStream({
         abortSignal: generationAbort.signal,
         character,
         history,
         message: text,
+        ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
+        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
@@ -1014,29 +1201,33 @@ export class SharedRuntimeChatService {
       );
       throw error;
     }
+    timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
-      return new Response(
-        chatSseFrame("chunk", {
-          messageId: messageIds.assistant,
-          userMessageId: messageIds.user,
-          chunk: reply,
-          text: reply,
-          fullText: reply,
-          timestamp: Date.now(),
-        }) +
-          chatSseFrame("done", {
+      return withTurnTimingHeaders(
+        new Response(
+          chatSseFrame("chunk", {
             messageId: messageIds.assistant,
             userMessageId: messageIds.user,
+            chunk: reply,
             text: reply,
             fullText: reply,
-          }),
-        {
-          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-        },
+            timestamp: Date.now(),
+          }) +
+            chatSseFrame("done", {
+              messageId: messageIds.assistant,
+              userMessageId: messageIds.user,
+              text: reply,
+              fullText: reply,
+            }),
+          {
+            headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+          },
+        ),
+        timings,
       );
     }
     if (!turn.parts) {
@@ -1047,7 +1238,7 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         "stream returned without a provider body",
       );
-      return sseError("Shared runtime stream did not start");
+      return withTurnTimingHeaders(sseError("Shared runtime stream did not start"), timings);
     }
 
     const encoder = new TextEncoder();
@@ -1076,7 +1267,7 @@ export class SharedRuntimeChatService {
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
-      if (isDeterministicFreeTurn(turn)) {
+      if (isProviderFreeTurn(turn)) {
         await billing?.settle(0);
         return;
       }
@@ -1096,7 +1287,31 @@ export class SharedRuntimeChatService {
           makeTurnMessages(reply, interrupted),
           options.historyStore,
         );
+        if (streamMemoryStore && !isProviderFreeTurn(turn)) {
+          await streamMemoryStore.recordTurnPair({
+            userMessage: text.trim(),
+            assistantReply: reply,
+            messageIds,
+            messageRole,
+            interrupted,
+          });
+        }
         await afterWrite?.();
+        // Stream traces omit usage (it lives on the finish frame, not the
+        // stream result); the recorder treats it as optional.
+        recordTurnTraceOffPath(
+          options.executionCtx,
+          agent,
+          roomId,
+          messageIds.assistant,
+          streamTurnStartedAtEpochMs,
+          {
+            model: turn.model,
+            degraded: turn.degraded,
+            ...(turn.actionResults ? { actionResults: turn.actionResults } : {}),
+            ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
+          },
+        );
         finalized = true;
       })().catch((error) => {
         finalizationPromise = null;
@@ -1148,9 +1363,10 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = part.actionResults?.length
-              ? part.actionResults
-              : turnActionResults(turn);
+            const actionResults = turnActionResults({
+              ...turn,
+              ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
+            });
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of
@@ -1169,7 +1385,7 @@ export class SharedRuntimeChatService {
                   ...(actionResults ? { actionResults } : {}),
                 });
               }
-              if (isDeterministicFreeTurn(turn)) {
+              if (isProviderFreeTurn(turn)) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);
               } else if (billing) {
@@ -1266,12 +1482,15 @@ export class SharedRuntimeChatService {
         );
       },
     });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-      },
-    });
+    return withTurnTimingHeaders(
+      new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      }),
+      timings,
+    );
   }
 }
 

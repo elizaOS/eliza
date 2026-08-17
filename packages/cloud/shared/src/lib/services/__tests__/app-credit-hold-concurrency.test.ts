@@ -45,7 +45,7 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-// Stub the non-billing fire-and-forget side-effects the successful-debit path
+// Stub the non-billing deferred side effects the successful-debit path
 // kicks off (low-credit email / webhook / auto-top-up). These are downstream
 // notifications, NOT the code under test — the hold/refund/earnings SQL below
 // runs entirely real against PGlite. Mirrors credits-deduct-guard.test.ts.
@@ -61,7 +61,7 @@ mock.module("../waifu-webhook", () => ({
 }));
 mock.module("../auto-top-up", () => ({
   autoTopUpService: {
-    executeAutoTopUp: mock(async () => undefined),
+    executeAutoTopUpForOrganization: mock(async () => undefined),
   },
 }));
 

@@ -137,11 +137,14 @@ describe("app analytics sessions route (#11349)", () => {
     );
   });
 
-  test("rejects unparseable date bounds before any read", async () => {
+  test("rejects invalid date bounds before any read", async () => {
     const app = buildApp();
     for (const [param, expected] of [
       ["start_date=not-a-date", "Invalid start_date"],
       ["end_date=not-a-date", "Invalid end_date"],
+      ["start_date=2026-02-29", "Invalid start_date"],
+      ["start_date=2026-02-31", "Invalid start_date"],
+      ["end_date=2026-04-31", "Invalid end_date"],
     ]) {
       const res = await app.request(
         `/api/v1/apps/${APP_ID}/analytics/requests?${param}`,
@@ -149,8 +152,8 @@ describe("app analytics sessions route (#11349)", () => {
         ENV,
       );
 
-      // An Invalid Date reaches Drizzle's timestamp serializer and throws, so
-      // without this guard a caller typo answers 500 instead of 400.
+      // Invalid or overflow-normalized dates otherwise reach the service layer,
+      // where malformed ranges can answer 500 or query the wrong calendar days.
       expect(res.status).toBe(400);
       expect((await res.json()) as { success: boolean; error: string }).toEqual(
         {
@@ -182,20 +185,25 @@ describe("app analytics sessions route (#11349)", () => {
 
   test("passes valid supplied bounds unchanged", async () => {
     const app = buildApp();
-    const res = await app.request(
-      `/api/v1/apps/${APP_ID}/analytics/requests?view=sessions&start_date=2026-07-01T12:30:00.000Z&end_date=2026-07-02T15:45:00.000Z`,
-      {},
-      ENV,
-    );
+    for (const [startDate, endDate] of [
+      ["2024-02-29", "2024-03-01"],
+      ["2026-07-01T12:30:00.000Z", "2026-07-02T15:45:00.000Z"],
+    ]) {
+      const res = await app.request(
+        `/api/v1/apps/${APP_ID}/analytics/requests?view=sessions&start_date=${startDate}&end_date=${endDate}`,
+        {},
+        ENV,
+      );
 
-    expect(res.status).toBe(200);
-    expect(getSessionAnalytics).toHaveBeenCalledWith(
-      APP_ID,
-      expect.objectContaining({
-        startDate: new Date("2026-07-01T12:30:00.000Z"),
-        endDate: new Date("2026-07-02T15:45:00.000Z"),
-      }),
-    );
+      expect(res.status).toBe(200);
+      expect(getSessionAnalytics).toHaveBeenLastCalledWith(
+        APP_ID,
+        expect.objectContaining({
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+        }),
+      );
+    }
   });
 
   test("denies another org before reading session analytics", async () => {

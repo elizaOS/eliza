@@ -24,43 +24,48 @@ function hasInsufficientCreditsSignal(input: string): boolean {
  * error — these are noisy but not fatal, so callers should warn instead of crash.
  */
 export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
-  const formatted = formatUncaughtError(reason);
-  if (
-    !/AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
-      formatted,
-    )
-  ) {
-    return false;
-  }
-
-  if (hasInsufficientCreditsSignal(formatted)) {
-    return true;
-  }
-
   const seen = new Set<unknown>();
-  let current: unknown = reason;
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-
-    const statusCode = (current as { statusCode?: number }).statusCode;
-    if (statusCode === 402) return true;
-
-    const responseBody = (current as { responseBody?: unknown }).responseBody;
-    if (
-      typeof responseBody === "string" &&
-      hasInsufficientCreditsSignal(responseBody)
-    ) {
-      return true;
+  const pending: unknown[] = [reason];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    const isObject = current !== null && typeof current === "object";
+    if (isObject) {
+      if (seen.has(current)) continue;
+      seen.add(current);
     }
 
-    const errors = (current as { errors?: unknown }).errors;
-    if (Array.isArray(errors)) {
-      for (const inner of errors) {
-        if (shouldIgnoreUnhandledRejection(inner)) return true;
+    const formatted = formatUncaughtError(current);
+    const isProviderError =
+      /AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
+        formatted,
+      );
+    if (isProviderError) {
+      if (hasInsufficientCreditsSignal(formatted)) return true;
+
+      const statusCode = isObject
+        ? (current as { statusCode?: number }).statusCode
+        : undefined;
+      if (statusCode === 402) return true;
+
+      const responseBody = isObject
+        ? (current as { responseBody?: unknown }).responseBody
+        : undefined;
+      if (
+        typeof responseBody === "string" &&
+        hasInsufficientCreditsSignal(responseBody)
+      ) {
+        return true;
       }
     }
 
-    current = (current as { cause?: unknown }).cause;
+    if (!isObject) continue;
+
+    const errors = (current as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) {
+      pending.push(...errors);
+    }
+
+    pending.push((current as { cause?: unknown }).cause);
   }
 
   return false;

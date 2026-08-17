@@ -88,6 +88,16 @@ test("landing stays a static surface with no animation-framework dependencies", 
     /const ShaderBackground = lazy\(/,
     "the shader background must stay behind a lazy boundary",
   );
+  assert.match(
+    landing,
+    /function DeferredShaderBackground\(\)/,
+    "the shader must not compete with the first useful hero paint",
+  );
+  assert.match(
+    landing,
+    /requestAnimationFrame\(\(\) => setReady\(true\)\)/,
+    "the shader import must begin only after the static hero has painted",
+  );
   for (const script of ["dev", "build", "preview", "deploy:production"]) {
     assert.equal(packageJson.scripts[script], undefined);
   }

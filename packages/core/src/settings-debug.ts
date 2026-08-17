@@ -12,7 +12,7 @@ const SENSITIVE_KEY_RE =
 
 const MAX_DEPTH = 14;
 const MAX_ARRAY = 40;
-const MAX_STRING = 120;
+export const MAX_STRING = 120;
 
 /**
  * True when settings debug is enabled (Node: process.env; browser: import.meta.env from Vite define).
@@ -50,14 +50,15 @@ function maskString(s: string): string {
 	return `${t.slice(0, 4)}…${t.slice(-2)} (${t.length} chars)`;
 }
 
-function sanitizeDebugString(value: string): string {
+export function sanitizeDebugString(value: string): string {
 	const trimmed = value.trim();
 	if (trimmed.length === 0) return "";
 	if (trimmed.toUpperCase() === "[REDACTED]") return "[REDACTED]";
 	if (trimmed.length > 48 || /^(sk-|pk_|Bearer\s)/i.test(trimmed)) {
 		return maskString(trimmed);
 	}
-	if (trimmed.length > MAX_STRING) return `${trimmed.slice(0, MAX_STRING)}…`;
+	if (trimmed.length > MAX_STRING)
+		return `${trimmed.slice(0, MAX_STRING - 1)}…`;
 	return trimmed;
 }
 

@@ -34,6 +34,16 @@ describe("runShell", () => {
   let oldStateDir: string | undefined;
 
   beforeEach(async () => {
+    // The host tests below spawn `process.execPath`. The boot PATH authority
+    // only admits executables whose directory is on the captured PATH, and on
+    // hosts where `node` is a PATH symlink into an off-PATH install prefix
+    // (version managers), execPath's real directory is NOT on PATH. Make the
+    // fixture assumption explicit before the (process-global, memoized)
+    // baseline capture so the suite tests ROUTING, not the host's node layout.
+    const execDir = path.dirname(process.execPath);
+    if (!(process.env.PATH ?? "").split(path.delimiter).includes(execDir)) {
+      process.env.PATH = `${execDir}${path.delimiter}${process.env.PATH ?? ""}`;
+    }
     captureHostExecutionBaseline();
     tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-shell-router-"));
     oldStateDir = process.env.ELIZA_STATE_DIR;

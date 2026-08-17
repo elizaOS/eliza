@@ -7134,7 +7134,7 @@
   "cloud.billingTab.amountHint": "追加する金額を入力してください。最小: ${{min}}、最大: ${{max}}",
   "cloud.billingTab.card": "カード",
   "cloud.billingTab.crypto": "暗号資産",
-  "cloud.billingTab.redirecting": "リダイレクト中...",
+  "cloud.billingTab.processing": "処理中…",
   "cloud.billingTab.payWithCrypto": "暗号資産で支払う",
   "cloud.billingTab.buyCredits": "クレジットを購入",
   "cloud.billingTab.willBeAdded": "${{amount}} が残高に追加されます",

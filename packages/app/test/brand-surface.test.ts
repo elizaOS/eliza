@@ -4,15 +4,12 @@
  * color for their lifetime, so the user never sees a foreign color — or a
  * glowing orange band — behind or after the home background paints.
  *
- * Three colors, kept deliberately separate (issue #9565):
- *  - LAUNCH_BLACK (#000000) — every PERSISTENT host-chrome surface: the
- *    index.html FOUC background (html/body/#root stays the page background
- *    under the app forever — it bleeds through the iOS home-indicator
- *    safe-area and overscroll zones), the PWA <meta theme-color> and manifest
- *    colors (iOS standalone paints the home-indicator inset with it). This
- *    MUST equal DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/
- *    ui-preferences.ts) — the brand-orange field of the default home
- *    ShaderBackground — so any bleed-through is invisible against the app.
+ * Four colors, kept deliberately separate (issue #9565):
+ *  - LAUNCH_BLACK (#000000) — the default PERSISTENT agent-app host chrome.
+ *    It MUST equal DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/
+ *    ui-preferences.ts) so safe-area and overscroll bleed-through is invisible.
+ *  - PUBLIC_MARKETING_WHITE (#fdfaf7) — the synchronous host-specific launch
+ *    override for public landing pages; it matches the landing page background.
  *  - SPLASH_BLACK (#000000) — native boot splash surfaces (capacitor splash,
  *    Android splash resources, iOS LaunchScreen). Currently the same hex as
  *    LAUNCH_BLACK, but kept a separate constant: splash tracks the boot
@@ -26,6 +23,10 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud/domain-contract";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
@@ -36,6 +37,7 @@ const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 const BRAND_ORANGE = "#FF5800";
 const LAUNCH_BLACK = "#000000";
 const LAUNCH_FOREGROUND = "#fdfaf7";
+const PUBLIC_MARKETING_WHITE = "#fdfaf7";
 const SPLASH_BLACK = "#000000";
 const SPLASH_BLACK_RGB = [0, 0, 0];
 const ANDROID_SPLASH_TEMPLATE_FILES = [
@@ -202,6 +204,54 @@ describe("brand surfaces", () => {
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
+  it("seeds public marketing hosts with a white first paint before the dark app theme", () => {
+    const html = read("index.html");
+    const marketingSeed = html.indexOf(
+      'root.setAttribute("data-public-marketing", "true")',
+    );
+    const foucStyles = html.indexOf("/* FOUC guard");
+
+    expect(marketingSeed).toBeGreaterThan(-1);
+    expect(marketingSeed).toBeLessThan(foucStyles);
+    expect(html).toContain(
+      `root.style.setProperty("--launch-bg", "${PUBLIC_MARKETING_WHITE}")`,
+    );
+    expect(html).toContain(
+      `themeColor.setAttribute("content", "${PUBLIC_MARKETING_WHITE}")`,
+    );
+    expect(html).toContain(
+      "root.getAttribute('data-public-marketing') === 'true'",
+    );
+    expect(html).toContain(
+      'document.documentElement.getAttribute("data-public-marketing") === "true"',
+    );
+
+    const hostnameBlock = html.match(
+      /const marketingHostnames = \[([\s\S]*?)\];/,
+    );
+    expect(hostnameBlock).not.toBeNull();
+    const inlineHostnames = [
+      ...(hostnameBlock?.[1].matchAll(/"([^"]+)"/g) ?? []),
+    ].map((match) => match[1]);
+    const canonicalHostname = (origin: string) => new URL(origin).hostname;
+    const expectedHostnames = [
+      canonicalHostname(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin),
+      `www.${canonicalHostname(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)}`,
+      canonicalHostname(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin),
+      ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames,
+      ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames,
+    ];
+    expect(new Set(inlineHostnames)).toEqual(new Set(expectedHostnames));
+  });
+
+  it("preloads the above-the-fold desktop marketing marks from the document head", () => {
+    const html = read("index.html");
+    expect(html).toContain('window.matchMedia("(min-width: 641px)").matches');
+    expect(html).toContain('"/brand/logos/logo_white_orangebg.svg"');
+    expect(html).toContain('"/brand/logos/eliza_text_black.svg"');
+    expect(html).toContain('preload.setAttribute("fetchpriority", "high")');
+  });
+
   it("keeps the branded preboot status visible until React takes over", () => {
     const html = read("index.html");
     expect(html).toContain('class="eliza-preboot-shell__mark"');
@@ -218,9 +268,7 @@ describe("brand surfaces", () => {
     const html = read("index.html");
     expect(html).toMatch(/<div id="root"><\/div>/);
     expect(html).toMatch(/<div id="eliza-preboot-shell"/);
-    expect(html).toMatch(
-      /\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s,
-    );
+    expect(html).toMatch(/\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s);
     expect(html).toContain("new MutationObserver");
     expect(html).toContain("hasMeaningfulContent");
   });

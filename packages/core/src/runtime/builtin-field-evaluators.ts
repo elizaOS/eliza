@@ -26,6 +26,7 @@
  * for runtime init to consume.
  */
 
+import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
 import type { JSONSchema } from "../types/model";
 import { stripJsonStructuralJunkReply } from "./json-output";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
@@ -69,15 +70,14 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "shouldRespond",
 	description:
-		"RESPOND if addressed to you, helpful question, or active conversation. IGNORE if others talking, unaddressed small-talk, not yours. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
+		'RESPOND if addressed to you, asked a helpful question, needed to act, active in the conversation, or able to usefully add to substantive ambient chatter. IGNORE pure content-free acknowledgements/reactions ("lol", "ok", "nice", "same", "haha", "brb"), bot/webhook/status feeds, or people clearly talking to each other. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.',
 	descriptionCompressed:
-		"RESPOND if asked/active conversation; IGNORE if not yours; STOP only explicit stop.",
+		"RESPOND if asked, active in the conversation, or able to usefully add to substantive ambient chatter; IGNORE content-free reactions, feeds, or others' conversation; STOP only explicit stop.",
 	priority: 5,
 	schema: {
 		type: "string",
 		enum: ["RESPOND", "IGNORE", "STOP"],
-		description:
-			"RESPOND=reply/run actions. IGNORE=silent. STOP=explicit user stop.",
+		description: SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 	},
 	parse(value) {
 		const normalized =

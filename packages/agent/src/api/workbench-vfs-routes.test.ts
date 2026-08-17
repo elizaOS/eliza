@@ -132,6 +132,58 @@ describe("workbench VFS routes", () => {
     });
   });
 
+  it("rejects a non-enum GET file encoding before reading bytes", async () => {
+    await callRoute("POST", "/api/workbench/vfs/projects", {
+      projectId: "encoding-vfs",
+    });
+    const bytes = Buffer.from([0xff, 0x00, 0x80]);
+    const written = await callRoute(
+      "PUT",
+      "/api/workbench/vfs/projects/encoding-vfs/file",
+      {
+        path: "bin/payload.bin",
+        encoding: "base64",
+        content: bytes.toString("base64"),
+      },
+    );
+    expect(written.status).toBe(200);
+
+    const omitted = await callRoute(
+      "GET",
+      "/api/workbench/vfs/projects/encoding-vfs/file?path=bin/payload.bin",
+    );
+    expect(omitted.status).toBe(200);
+    expect(omitted.body).toMatchObject({ encoding: "utf-8" });
+
+    const utf8 = await callRoute(
+      "GET",
+      "/api/workbench/vfs/projects/encoding-vfs/file?path=bin/payload.bin&encoding=utf-8",
+    );
+    expect(utf8.status).toBe(200);
+    expect(utf8.body).toMatchObject({ encoding: "utf-8" });
+
+    const base64 = await callRoute(
+      "GET",
+      "/api/workbench/vfs/projects/encoding-vfs/file?path=bin/payload.bin&encoding=base64",
+    );
+    expect(base64.status).toBe(200);
+    expect(base64.body).toMatchObject({
+      encoding: "base64",
+      content: bytes.toString("base64"),
+    });
+
+    for (const bad of ["latin1", "hex", "BASE64", "utf8", "base64 ", "1"]) {
+      const rejected = await callRoute<ErrorResponse>(
+        "GET",
+        `/api/workbench/vfs/projects/encoding-vfs/file?path=bin/payload.bin&encoding=${encodeURIComponent(bad)}`,
+      );
+      expect(rejected.status, `encoding=${bad}`).toBe(400);
+      expect(rejected.body.error).toMatch(/encoding must be utf-8 or base64/);
+      expect(rejected.body).not.toHaveProperty("content");
+      expect(rejected.body).not.toHaveProperty("encoding");
+    }
+  });
+
   it("does not expose host filesystem paths in public VFS views", async () => {
     const create = await callRoute<ProjectResponse>(
       "POST",

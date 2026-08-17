@@ -26,7 +26,10 @@ mock.module("../../db/client", () => ({
     query: {
       userModerationStatus: { findFirst: async () => existingStatus },
       users: {
-        findFirst: async () => ({ steward_user_id: "steward-user-1" }),
+        findFirst: async () => ({
+          steward_user_id: "steward-user-1",
+          organization_id: "org-1",
+        }),
       },
     },
   },
@@ -46,9 +49,15 @@ mock.module("../../db/repositories", () => ({
 
 const invalidateSpy = mock(async (_hashes: readonly string[]) => undefined);
 const invalidateSessionSpy = mock(async (_ids: readonly string[]) => undefined);
+const subjectFenceSpy = mock(
+  async (_orgId: string, _userId: string, _active: boolean, _reason: string) => undefined,
+);
 mock.module("./inference-auth-cache", () => ({
   invalidateInferenceAuthContextsByKeyHashes: invalidateSpy,
   invalidateInferenceSessionAuthContexts: invalidateSessionSpy,
+}));
+mock.module("./inference-credential-revocation", () => ({
+  setInferenceSubjectActive: subjectFenceSpy,
 }));
 
 const { adminService } = await import("./admin");
@@ -66,6 +75,7 @@ async function recordRefusal(userId = "user-1") {
 beforeEach(() => {
   invalidateSpy.mockClear();
   invalidateSessionSpy.mockClear();
+  subjectFenceSpy.mockClear();
 });
 
 describe("moderation auto-suspension invalidates IAC", () => {
@@ -81,6 +91,7 @@ describe("moderation auto-suspension invalidates IAC", () => {
     expect(invalidateSpy).toHaveBeenCalledTimes(1);
     expect(invalidateSpy).toHaveBeenCalledWith(["hash-1", "hash-2"]);
     expect(invalidateSessionSpy).toHaveBeenCalledWith(["steward-user-1"]);
+    expect(subjectFenceSpy).toHaveBeenCalledWith("org-1", "user-1", false, "moderation");
   });
 
   test("an already-blocking user does not re-invalidate (transition-only)", async () => {
@@ -93,6 +104,7 @@ describe("moderation auto-suspension invalidates IAC", () => {
     };
     await recordRefusal();
     expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(subjectFenceSpy).not.toHaveBeenCalled();
   });
 
   test("a violation below the blocking threshold does not invalidate", async () => {
@@ -105,11 +117,13 @@ describe("moderation auto-suspension invalidates IAC", () => {
     };
     await recordRefusal();
     expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(subjectFenceSpy).not.toHaveBeenCalled();
   });
 
   test("a brand-new violator (no prior row) does not invalidate", async () => {
     existingStatus = undefined;
     await recordRefusal();
     expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(subjectFenceSpy).not.toHaveBeenCalled();
   });
 });

@@ -1355,14 +1355,24 @@ const KNOWN_WIDGET_MARKER_NAMES = new Set([
 ]);
 
 /** A fabricated marker invocation: a paired uppercase bracket tag whose name is
- * not a known widget marker. `[DOCUMENT_SEARCH] … [/DOCUMENT_SEARCH]`, but not
- * `[CHECKLIST] … [/CHECKLIST]`. */
+ * not a known widget marker and whose body is a JSON-shaped action payload.
+ * Literal bracket-tag examples and fenced code are user-visible content, not
+ * planner control flow. */
 function containsFabricatedMarkerInvocation(text: string): boolean {
-	for (const match of text.matchAll(
-		/\[([A-Z][A-Z0-9_]{2,})\][\s\S]*?\[\/\1\]/g,
+	const prose = text
+		.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "")
+		.replace(/`[^`\r\n]*`/g, "");
+	for (const match of prose.matchAll(
+		/\[[ \t]*([A-Z][A-Z0-9_]{2,})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*\1[ \t]*\]/g,
 	)) {
 		const name = match[1];
-		if (name && !KNOWN_WIDGET_MARKER_NAMES.has(name)) {
+		if (!name || KNOWN_WIDGET_MARKER_NAMES.has(name)) continue;
+		const body = match[2]?.trim();
+		if (!body) continue;
+		if (
+			(body.startsWith("{") && body.endsWith("}")) ||
+			(body.startsWith("[") && body.endsWith("]"))
+		) {
 			return true;
 		}
 	}

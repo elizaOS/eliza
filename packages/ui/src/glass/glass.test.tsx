@@ -23,7 +23,7 @@ import {
   setNativeWallpaperSource,
 } from "./native-backdrop";
 import { resetGlassBridgeForTests } from "./native-bridge";
-import { GLASS_RECIPES, type GlassVariant } from "./tokens";
+import { GLASS_RECIPES, GLASS_SHEET_FILL, type GlassVariant } from "./tokens";
 
 type CapGlobal = { Capacitor?: unknown };
 
@@ -108,6 +108,12 @@ describe("glass tokens", () => {
     }
   });
 
+  it("keeps the large sheet dark enough to isolate conversation text", () => {
+    expect(GLASS_SHEET_FILL).toBe(
+      "color-mix(in srgb, var(--bg) 88%, transparent)",
+    );
+  });
+
   it("keeps the sheet saturate-free (saturate reads brown over the warm theme)", () => {
     expect(GLASS_RECIPES.sheet.backdropFilter).not.toMatch(/saturate/);
     expect(GLASS_RECIPES.sheet.refraction).toBeNull();
@@ -121,9 +127,17 @@ describe("glass tokens", () => {
   });
 });
 
-function AnchorHarness({ enabled }: { enabled: boolean }) {
+function AnchorHarness({
+  enabled,
+  colorScheme,
+  tintColor,
+}: {
+  enabled: boolean;
+  colorScheme?: "light" | "dark" | "system";
+  tintColor?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const tier = useNativeGlassAnchor(ref, { enabled });
+  const tier = useNativeGlassAnchor(ref, { enabled, colorScheme, tintColor });
   return <div ref={ref} data-testid="anchor" data-glass-tier={tier} />;
 }
 
@@ -200,6 +214,78 @@ describe("GlassSurface", () => {
     });
     await waitFor(() =>
       expect(getByTestId("anchor").dataset.glassTier).toBe("native"),
+    );
+  });
+
+  it("forwards a surface-owned appearance and tint to native material", async () => {
+    const bridge = fakeBridge();
+    installCapacitor(bridge);
+    seedWallpaper();
+    const { getByTestId, unmount } = render(
+      <AnchorHarness enabled colorScheme="dark" tintColor="#16090DD9" />,
+    );
+
+    await waitFor(() =>
+      expect(getByTestId("anchor").dataset.glassTier).toBe("native"),
+    );
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorScheme: "dark",
+        tintColor: "#16090DD9",
+      }),
+    );
+    unmount();
+    await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledOnce());
+  });
+
+  it("keeps the newest native appearance when an older attach resolves late", async () => {
+    let resolveOldAttach: (value: { attached: boolean }) => void = () => {};
+    const bridge = fakeBridge({
+      attachGlass: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<{ attached: boolean }>((resolve) => {
+              resolveOldAttach = resolve;
+            }),
+        )
+        .mockResolvedValue({ attached: true }),
+    });
+    installCapacitor(bridge);
+    seedWallpaper();
+    const { getByTestId, rerender, unmount } = render(
+      <AnchorHarness enabled colorScheme="light" tintColor="#FFFFFF22" />,
+    );
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <AnchorHarness enabled colorScheme="dark" tintColor="#16090DD9" />,
+    );
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(getByTestId("anchor").dataset.glassTier).toBe("native"),
+    );
+    const [oldCall, currentCall] = bridge.attachGlass.mock.calls as Array<
+      [{ id: string }]
+    >;
+    const oldId = oldCall[0].id;
+    const currentId = currentCall[0].id;
+    expect(oldId).toBeTruthy();
+    expect(currentId).toBeTruthy();
+    expect(currentId).not.toBe(oldId);
+
+    await act(async () => {
+      resolveOldAttach({ attached: true });
+    });
+    await waitFor(() =>
+      expect(bridge.detachGlass).toHaveBeenCalledWith({ id: oldId }),
+    );
+    expect(getByTestId("anchor").dataset.glassTier).toBe("native");
+    expect(bridge.detachGlass).not.toHaveBeenCalledWith({ id: currentId });
+
+    unmount();
+    await waitFor(() =>
+      expect(bridge.detachGlass).toHaveBeenCalledWith({ id: currentId }),
     );
   });
 

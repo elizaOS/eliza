@@ -7,6 +7,7 @@ import {
   ArchiveRestore,
   Braces,
   Check,
+  ChevronRight,
   CircleStop,
   FileInput,
   FileOutput,
@@ -61,7 +62,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="New workflow">
-    <Task id="run" output={outputs.output} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent} retries={2}>
       Complete the requested workflow and return a concise result.
     </Task>
   </Workflow>
@@ -328,6 +329,7 @@ export function WorkflowEditor({
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
   const [cancelArmedId, setCancelArmedId] = useState<string | null>(null);
   const [restoreArmedId, setRestoreArmedId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   useEffect(() => {
     const next = initial ?? newWorkflow();
@@ -341,6 +343,9 @@ export function WorkflowEditor({
   const dirty = JSON.stringify(workflow) !== savedVersion;
   const selectedRun =
     executions.find((run) => run.id === selectedRunId) ?? executions[0] ?? null;
+  const pendingApproval = selectedRun?.approvals?.find(
+    (approval) => approval.status === "pending",
+  );
 
   const refreshRuns = useCallback(async () => {
     if (!workflow.id) return;
@@ -772,29 +777,68 @@ export function WorkflowEditor({
                     aria-label="Events"
                   />
                   <div className="space-y-0">
-                    {(selectedRun.events ?? []).map((event) => (
-                      <div
-                        key={event.id}
-                        className="grid grid-cols-[22px_70px_minmax(0,1fr)] gap-2 border-l border-border pb-3 text-xs last:pb-0"
-                      >
-                        <div className="-ml-[5px] mt-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
-                        <span className="font-mono text-[10px] text-muted-foreground/70">
-                          {new Date(event.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </span>
-                        <div>
-                          <p className="font-medium">{event.type}</p>
-                          {event.nodeId ? (
-                            <p className="mt-0.5 text-muted-foreground">
-                              {event.nodeId}
-                            </p>
-                          ) : null}
+                    {(selectedRun.events ?? []).map((event) => {
+                      const inspectable = hasObjectValues(event.payload);
+                      const selected = selectedEventId === event.id;
+                      return (
+                        <div
+                          key={event.id}
+                          className="grid grid-cols-[22px_70px_minmax(0,1fr)] gap-2 border-l border-border pb-3 text-xs last:pb-0"
+                        >
+                          <div className="-ml-[5px] mt-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
+                          <span className="font-mono text-[10px] text-muted-foreground/70">
+                            {new Date(event.timestamp).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })}
+                          </span>
+                          <div className="min-w-0">
+                            {inspectable ? (
+                              <button
+                                type="button"
+                                className="flex min-h-11 w-full items-start gap-1 text-left"
+                                aria-label={`Inspect ${event.type} event`}
+                                aria-expanded={selected}
+                                onClick={() =>
+                                  setSelectedEventId(selected ? null : event.id)
+                                }
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate font-medium">
+                                    {event.type}
+                                  </span>
+                                  {event.nodeId ? (
+                                    <span className="mt-0.5 block truncate text-muted-foreground">
+                                      {event.nodeId}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <ChevronRight
+                                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
+                                />
+                              </button>
+                            ) : (
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">
+                                  {event.type}
+                                </span>
+                                {event.nodeId ? (
+                                  <span className="mt-0.5 block truncate text-muted-foreground">
+                                    {event.nodeId}
+                                  </span>
+                                ) : null}
+                              </span>
+                            )}
+                            {selected ? (
+                              <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/40 p-2 text-[10px] leading-4">
+                                {pretty(event.payload)}
+                              </pre>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {(selectedRun.events ?? []).length === 0 ? (
                       <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
                     ) : null}
@@ -806,16 +850,26 @@ export function WorkflowEditor({
                       <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                       <p className="text-sm font-semibold">Approval required</p>
                     </div>
+                    {pendingApproval?.prompt ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {pendingApproval.prompt}
+                      </p>
+                    ) : null}
                     <div className="mt-3 flex gap-2">
                       {(() => {
-                        const waiting = [...(selectedRun.events ?? [])]
+                        const fallback = [...(selectedRun.events ?? [])]
                           .reverse()
                           .find(
                             (event) =>
                               event.nodeId &&
                               /approval|waiting/i.test(event.type),
                           );
-                        const nodeId = waiting?.nodeId;
+                        const nodeId =
+                          pendingApproval?.nodeId ?? fallback?.nodeId;
+                        const iteration =
+                          pendingApproval?.iteration ??
+                          fallback?.iteration ??
+                          0;
                         if (!nodeId)
                           return (
                             <span className="text-xs text-muted-foreground">
@@ -833,7 +887,7 @@ export function WorkflowEditor({
                                   .decideWorkflowApproval(
                                     selectedRun.id,
                                     nodeId,
-                                    waiting.iteration ?? 0,
+                                    iteration,
                                     true,
                                   )
                                   .then(refreshRuns)
@@ -851,7 +905,7 @@ export function WorkflowEditor({
                                   .decideWorkflowApproval(
                                     selectedRun.id,
                                     nodeId,
-                                    waiting.iteration ?? 0,
+                                    iteration,
                                     false,
                                   )
                                   .then(refreshRuns)

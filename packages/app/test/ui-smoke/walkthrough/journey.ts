@@ -32,6 +32,10 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import {
+  DEFAULT_NETWORK_POLICY_PREFERENCES,
+  VOICE_MODEL_VERSIONS,
+} from "@elizaos/shared";
 import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
@@ -47,6 +51,17 @@ export type Lane = "mock" | "live";
 export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
   providers: [],
 } satisfies AccountsListResponse;
+
+const WALKTHROUGH_VOICE_MODEL_INSTALLATIONS = Array.from(
+  new Set(VOICE_MODEL_VERSIONS.map((version) => version.id)),
+)
+  .sort()
+  .map((id) => ({
+    id,
+    installedVersion: null,
+    pinned: false,
+    lastError: null,
+  }));
 
 export interface ViewportProfile {
   id: "desktop" | "mobile";
@@ -645,6 +660,59 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   await page.route("**/api/accounts", async (route) => {
     if (route.request().method() === "GET") {
       await fulfillJson(route, 200, WALKTHROUGH_ACCOUNTS_RESPONSE);
+      return;
+    }
+    await route.fallback();
+  });
+  // Settings mounts local-device, voice-update, and consumer-key panels in
+  // parallel. They are optional on a fresh zero-key runtime, but the fallback
+  // server's 501 responses are real diagnostics failures. Return each route's
+  // canonical empty/default contract so the walkthrough still exercises the
+  // panels' designed zero states instead of hiding errors in the gate.
+  await page.route("**/api/local-inference/device/stream**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `retry: 60000\ndata: ${JSON.stringify({
+          type: "status",
+          status: {
+            connected: false,
+            devices: [],
+            primaryDeviceId: null,
+            pendingRequests: 0,
+            deviceId: null,
+            capabilities: null,
+            loadedPath: null,
+            connectedSince: null,
+          },
+        })}\n\n`,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/local-inference/voice-models**", async (route) => {
+    if (route.request().method() === "GET") {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === "/api/local-inference/voice-models") {
+        await fulfillJson(route, 200, {
+          installations: WALKTHROUGH_VOICE_MODEL_INSTALLATIONS,
+        });
+        return;
+      }
+      if (pathname === "/api/local-inference/voice-models/preferences") {
+        await fulfillJson(route, 200, {
+          preferences: DEFAULT_NETWORK_POLICY_PREFERENCES,
+        });
+        return;
+      }
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/accounts/consumer-keys", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { keys: [] });
       return;
     }
     await route.fallback();

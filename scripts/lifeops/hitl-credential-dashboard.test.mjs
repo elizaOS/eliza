@@ -140,3 +140,58 @@ test("credential dashboard rejects cross-site writes and requires its page sessi
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("discord loopback OAuth surfaces fail closed without registration or a known state", async () => {
+  const home = tempDir("hitl-dashboard-home-");
+  const child = spawn(
+    "node",
+    ["scripts/lifeops/hitl-credential-dashboard.mjs"],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
+        XDG_CACHE_HOME: join(home, ".cache"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const envPath = join(home, ".eliza", ".env");
+  try {
+    const baseUrl = await waitForDashboard(child);
+    const sameOrigin = new URL(baseUrl).origin;
+    const pageHtml = await (await fetch(baseUrl)).text();
+    const tokenMatch = /var SESSION_TOKEN = "([^"]+)";/.exec(pageHtml);
+    assert.ok(tokenMatch);
+
+    // No Discord OAuth app registered in the isolated HOME: the start
+    // endpoint is the designed needs-owner-setup state, not a broken flow.
+    const start = await fetch(`${baseUrl}api/oneclick/discord-oauth/start`, {
+      method: "POST",
+      headers: {
+        Origin: sameOrigin,
+        "Content-Type": "application/json",
+        "X-HITL-Session": tokenMatch[1],
+      },
+      body: JSON.stringify({ target: "home" }),
+    });
+    assert.equal(start.status, 409);
+    const startPayload = await start.json();
+    assert.match(startPayload.error, /needs owner setup/);
+
+    // A forged callback state is rejected without any credential write and
+    // without echoing anything sensitive.
+    const callback = await fetch(
+      `${baseUrl}oauth/discord/callback?state=forged&code=x`,
+    );
+    assert.equal(callback.status, 400);
+    const callbackHtml = await callback.text();
+    assert.match(callbackHtml, /unknown or expired/);
+    assert.equal(existsSync(envPath), false);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    rmSync(home, { recursive: true, force: true });
+  }
+});

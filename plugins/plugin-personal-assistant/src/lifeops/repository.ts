@@ -306,6 +306,24 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Owner-identity scope for definition reads and mutations. When supplied,
+ * every predicate binds `subject_type + subject_id` alongside `agent_id` so
+ * one subject can never read or mutate another subject's definitions under
+ * the same agent.
+ */
+export type LifeOpsDefinitionScope = {
+  subjectType: LifeOpsTaskDefinition["subjectType"];
+  subjectId: string;
+};
+
+function definitionScopePredicate(scope?: LifeOpsDefinitionScope): string {
+  if (!scope) return "";
+  return `
+          AND subject_type = ${sqlQuote(scope.subjectType)}
+          AND subject_id = ${sqlQuote(scope.subjectId)}`;
+}
+
 function parseOwnershipFields(row: Record<string, unknown>) {
   const subjectType =
     toText(row.subject_type, "owner") === "agent" ? "agent" : "owner";
@@ -2952,8 +2970,24 @@ export class LifeOpsRepository {
     );
   }
 
-  async updateDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
-    await executeRawSql(
+  /**
+   * Persist a definition mutation. The predicate binds the row to the
+   * definition's own subject identity so a write can never land on another
+   * subject's record, and an optional `expectedUpdatedAt` turns the write
+   * into an optimistic-concurrency mutation: when the stored revision has
+   * moved (or the row is gone / owned by another subject) exactly zero rows
+   * match and a typed `LIFEOPS_DEFINITION_CONFLICT` error is thrown for the
+   * caller to re-resolve.
+   */
+  async updateDefinition(
+    definition: LifeOpsTaskDefinition,
+    options?: { expectedUpdatedAt?: string },
+  ): Promise<void> {
+    const revisionPredicate = options?.expectedUpdatedAt
+      ? `
+         AND updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_task_definitions
          SET domain = ${sqlQuote(definition.domain)},
@@ -2981,32 +3015,53 @@ export class LifeOpsRepository {
              metadata_json = ${sqlJson(definition.metadata)},
              updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
-         AND agent_id = ${sqlQuote(definition.agentId)}`,
+         AND agent_id = ${sqlQuote(definition.agentId)}
+         AND subject_type = ${sqlQuote(definition.subjectType)}
+         AND subject_id = ${sqlQuote(definition.subjectId)}${revisionPredicate}
+       RETURNING id`,
     );
+    if (rows.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] definition update matched no row for this subject and revision",
+        {
+          code: "LIFEOPS_DEFINITION_CONFLICT",
+          context: {
+            definitionId: definition.id,
+            agentId: definition.agentId,
+            subjectType: definition.subjectType,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+          },
+        },
+      );
+    }
   }
 
   async getDefinition(
     agentId: string,
     definitionId: string,
+    scope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsTaskDefinition | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(definitionId)}
+          AND id = ${sqlQuote(definitionId)}${definitionScopePredicate(scope)}
         LIMIT 1`,
     );
     const row = rows[0];
     return row ? parseTaskDefinition(row) : null;
   }
 
-  async listDefinitions(agentId: string): Promise<LifeOpsTaskDefinition[]> {
+  async listDefinitions(
+    agentId: string,
+    scope?: LifeOpsDefinitionScope,
+  ): Promise<LifeOpsTaskDefinition[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_task_definitions
-        WHERE agent_id = ${sqlQuote(agentId)}
+        WHERE agent_id = ${sqlQuote(agentId)}${definitionScopePredicate(scope)}
         ORDER BY created_at ASC`,
     );
     return rows.map(parseTaskDefinition);
@@ -3014,19 +3069,60 @@ export class LifeOpsRepository {
 
   async listActiveDefinitions(
     agentId: string,
+    scope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsTaskDefinition[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND status = 'active'
+          AND status = 'active'${definitionScopePredicate(scope)}
         ORDER BY created_at ASC`,
     );
     return rows.map(parseTaskDefinition);
   }
 
-  async deleteDefinition(agentId: string, definitionId: string): Promise<void> {
+  /**
+   * Destructive removal of a definition and its dependents. The definition
+   * row is deleted first under the subject-scope and optional revision
+   * predicates; when it does not match exactly one row the whole operation
+   * aborts with a typed `LIFEOPS_DEFINITION_CONFLICT` before any dependent
+   * (reminder plans, goal links, occurrences) is touched, so a stale or
+   * cross-subject delete can never cascade.
+   */
+  async deleteDefinition(
+    agentId: string,
+    definitionId: string,
+    options?: {
+      scope?: LifeOpsDefinitionScope;
+      expectedUpdatedAt?: string;
+    },
+  ): Promise<void> {
+    const revisionPredicate = options?.expectedUpdatedAt
+      ? `
+          AND updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const deleted = await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_task_definitions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(definitionId)}${definitionScopePredicate(options?.scope)}${revisionPredicate}
+        RETURNING id`,
+    );
+    if (deleted.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] definition delete matched no row for this subject and revision",
+        {
+          code: "LIFEOPS_DEFINITION_CONFLICT",
+          context: {
+            definitionId,
+            agentId,
+            subjectType: options?.scope?.subjectType ?? null,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+          },
+        },
+      );
+    }
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_reminders.life_reminder_plans
@@ -3046,12 +3142,6 @@ export class LifeOpsRepository {
       `DELETE FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}`,
-    );
-    await executeRawSql(
-      this.runtime,
-      `DELETE FROM app_lifeops.life_task_definitions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(definitionId)}`,
     );
   }
 

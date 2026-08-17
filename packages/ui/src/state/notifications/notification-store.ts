@@ -40,6 +40,10 @@ import {
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
+import {
+  isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
+} from "../../utils/cloud-agent-base";
 
 /**
  * Notification center store.
@@ -114,13 +118,25 @@ let notificationEventUnsub: (() => void) | null = null;
 
 /**
  * Whether the inbox hydrate may hit the protected `GET /api/notifications` now.
- * Same origin-aware gate the React shell hooks use, read without a hook so the
- * store can consult it from its module-scope hydrate path.
+ * Starts with the shell's auth/origin gate, then requires an active authority
+ * that implements the standalone-agent inbox API. Read without a hook so the
+ * module-scope hydrate path can re-evaluate on auth/base changes.
  */
 function notificationProbesEnabled(): boolean {
-  return protectedAgentProbesEnabled(
-    isAuthenticatedNow(),
-    typeof window !== "undefined" ? window.location.origin : null,
+  const origin = typeof window !== "undefined" ? window.location.origin : null;
+  if (!protectedAgentProbesEnabled(isAuthenticatedNow(), origin)) return false;
+
+  // Shared Cloud agents expose the conversation REST adapter, not the full
+  // standalone-agent inbox API. A bare Cloud base has no selected agent at all.
+  // Probing either authority produces a deterministic resource_not_found and a
+  // permanent failure card after every login/refresh. Use the effective base
+  // (the client stores an empty string for same-origin) so later switches to a
+  // Dedicated/local authority re-enable hydration through reconcileAuthority.
+  const configuredBase = client.getBaseUrl().trim();
+  const effectiveBase = configuredBase || origin || "";
+  return (
+    !isElizaCloudControlPlaneAgentlessBase(effectiveBase) &&
+    !isManagedCloudSharedAgentBase(effectiveBase)
   );
 }
 
@@ -670,10 +686,23 @@ async function runHydrationAttempt(generation: number): Promise<void> {
 
 function requestHydration(): Promise<void> {
   if (!notificationProbesEnabled()) {
-    // No session yet on the shared Cloud app — skip the protected fetch (it
-    // would 401 and Chromium logs the console error). initNotifications()'s
-    // persistent auth-status subscription re-triggers this once a session
-    // lands post-sign-in via reconcileAuthority() (#16242).
+    // No session yet on the shared Cloud app, or the selected Cloud authority
+    // has no standalone-agent inbox capability. Keep this distinct from an
+    // in-flight load/error; auth/base subscriptions re-evaluate after sign-in
+    // and on every authority switch.
+    if (
+      state.hydrated ||
+      state.hydrationStatus !== "disabled" ||
+      state.hydrationAttempts !== 0 ||
+      state.hydrationError !== null
+    ) {
+      setState({
+        hydrated: false,
+        hydrationStatus: "disabled",
+        hydrationAttempts: 0,
+        hydrationError: null,
+      });
+    }
     return Promise.resolve();
   }
   if (hydrationInFlight) return hydrationInFlight;

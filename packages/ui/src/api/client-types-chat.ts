@@ -859,6 +859,19 @@ export interface WorkflowRunEvent {
   payload: Record<string, unknown>;
 }
 
+export interface WorkflowApproval {
+  runId: string;
+  workflowId: string;
+  nodeId: string;
+  iteration: number;
+  status: "pending" | "approved" | "denied";
+  prompt?: string;
+  requestedAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  decision?: unknown;
+}
+
 export interface WorkflowExecution {
   id: string;
   status:
@@ -884,7 +897,10 @@ export interface WorkflowExecution {
   output?: unknown;
   error?: { message: string; stack?: string };
   events?: WorkflowRunEvent[];
+  approvals?: WorkflowApproval[];
+  parentRunId?: string | null;
   nextRunId?: string;
+  idempotencyKey?: string;
 }
 
 export interface WorkflowEvaluationSampleNode {

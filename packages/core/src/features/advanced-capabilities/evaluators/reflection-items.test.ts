@@ -476,6 +476,40 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 		expect(prompt).toContain(entityId);
 	});
 
+	it("keeps a truncated entity name within its budget and Unicode-well-formed", async () => {
+		const longNameEntityId = subAgentEntityId(999);
+		const entities = roomEntities(0);
+		entities.push({
+			id: longNameEntityId,
+			agentId,
+			names: [`${"x".repeat(227)}🤖${"y".repeat(20)}`],
+			metadata: {},
+		});
+		const runtime = contextRuntime(entities);
+		const prepared = await prepareContext(runtime);
+
+		const prompt = relationshipEvaluator.prompt({
+			runtime,
+			message: message(),
+			state: { values: {}, data: {}, text: "" },
+			options: {},
+			evaluatorName: "relationships",
+			prepared,
+		});
+		const line = prompt
+			.split("\n")
+			.find(
+				(candidate) =>
+					candidate.startsWith("- ") &&
+					candidate.includes(`(ID: ${longNameEntityId})`),
+			);
+		if (!line) throw new Error("long-name entity was not rendered");
+		const renderedName = line.slice(2, line.indexOf(" (ID:"));
+		expect(renderedName.length).toBeLessThanOrEqual(240);
+		expect(renderedName.endsWith("…[truncated]")).toBe(true);
+		expect(renderedName.isWellFormed()).toBe(true);
+	});
+
 	it("passes rooms under the cap through untouched", async () => {
 		const entities = roomEntities(3);
 		const runtime = contextRuntime(entities);

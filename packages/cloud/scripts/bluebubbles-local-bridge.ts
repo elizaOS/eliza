@@ -1681,13 +1681,15 @@ function filteredInboundDeliveries(url: URL): InboundDeliveryRecord[] {
   const sender = url.searchParams.get("sender")?.trim().toLowerCase();
   const sinceRaw = url.searchParams.get("since")?.trim();
   const since = sinceRaw ? Date.parse(sinceRaw) : Number.NaN;
-  const requestedLimit = Number.parseInt(
-    url.searchParams.get("limit") ?? "20",
-    10,
-  );
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.min(Math.max(requestedLimit, 1), MAX_RECENT_INBOUND_DELIVERIES)
-    : 20;
+  const rawLimit = url.searchParams.get("limit")?.trim() ?? "";
+  const limit = (() => {
+    if (!rawLimit) return 20;
+    if (!/^\d+$/.test(rawLimit)) return 20;
+    const parsed = Number(rawLimit);
+    return Number.isSafeInteger(parsed) && parsed > 0
+      ? Math.min(parsed, MAX_RECENT_INBOUND_DELIVERIES)
+      : 20;
+  })();
 
   return recentInboundDeliveries
     .filter((event) => {
@@ -1852,7 +1854,15 @@ async function handleRequest(
   }
 
   if (req.method === "POST" && url.pathname === "/pending-replies/retry") {
-    const limit = Number.parseInt(url.searchParams.get("limit") ?? "10", 10);
+    const rawLimit = url.searchParams.get("limit")?.trim() ?? "";
+    const limit = (() => {
+      if (!rawLimit) return 10;
+      if (!/^\d+$/.test(rawLimit)) return 10;
+      const parsed = Number(rawLimit);
+      return Number.isSafeInteger(parsed) && parsed > 0
+        ? Math.min(parsed, 50)
+        : 10;
+    })();
     json(res, 200, await retryPendingReplies(limit, "manual"));
     return;
   }

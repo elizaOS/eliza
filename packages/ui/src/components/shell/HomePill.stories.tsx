@@ -32,6 +32,14 @@ export const Idle: Story = {
 };
 
 export const Booting: Story = { args: { phase: "booting" } };
+export const NeedsAuth: Story = { args: { phase: "needs-auth" } };
+export const NeedsAuthSigningIn: Story = {
+  args: { phase: "needs-auth", signingIn: true },
+};
 export const Summoned: Story = { args: { phase: "summoned" } };
 export const Listening: Story = { args: { phase: "listening" } };
+export const Processing: Story = { args: { phase: "processing" } };
 export const Responding: Story = { args: { phase: "responding" } };
+export const Speaking: Story = {
+  args: { phase: "responding", speaking: true },
+};

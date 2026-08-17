@@ -7134,7 +7134,7 @@
   "cloud.billingTab.amountHint": "추가할 금액을 입력하세요. 최소: ${{min}}, 최대: ${{max}}",
   "cloud.billingTab.card": "카드",
   "cloud.billingTab.crypto": "암호화폐",
-  "cloud.billingTab.redirecting": "이동 중...",
+  "cloud.billingTab.processing": "처리 중…",
   "cloud.billingTab.payWithCrypto": "암호화폐로 결제",
   "cloud.billingTab.buyCredits": "크레딧 구매",
   "cloud.billingTab.willBeAdded": "${{amount}}이 잔액에 추가됩니다",

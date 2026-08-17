@@ -1,41 +1,13 @@
 /**
- * Default acceptance-criteria generation for durable orchestrator tasks.
- *
- * The auto goal-verifier (see {@link verifyGoalCompletion}) only grills a
- * completed sub-agent when the task carries acceptance criteria — a task with
- * `acceptanceCriteria.length === 0` fast-paths to "pass" (or, in
- * {@link OrchestratorTaskService.autoVerifyCompletion}, simply parks in
- * `validating`). The common case — a task minted from a plain request like
- * "fix this bug" — has no criteria, so the verifier never fires and the whole
- * grill-until-truly-done loop is skipped.
- *
- * This module closes that gap: when a durable task is created with EMPTY
- * criteria and a non-trivial goal, it generates 3-5 measurable criteria and
- * stores them on the task so the verifier always has something to grill
- * against.
- *
- * Two layers:
- *
- *   1. **Static templates per task type** ({@link detectTaskType} +
- *      {@link DEFAULT_CRITERIA_TEMPLATES}) — deterministic, model-free, and
- *      always the fallback.
- *   2. **Optional model refinement** ({@link generateDefaultAcceptanceCriteria})
- *      — a cheap `ModelType.TEXT_SMALL` call (matching the rest of this plugin)
- *      that turns the goal + template into concrete, measurable criteria. The
- *      model call is fully defensive: on ANY failure (no `useModel`, throw,
- *      malformed JSON, too-few criteria) it falls back to the static set and
- *      never throws.
- *
- * Gated by `ELIZA_REQUIRE_GOAL_CONTRACT` (default ON; only `"0"` disables),
- * mirroring the {@link shouldAutoVerifyGoal} convention.
- *
- * Refs: elizaOS/eliza#8896
- *
- * @module services/acceptance-criteria
+ * Generates measurable acceptance criteria for durable orchestrator tasks.
+ * Static task-type templates provide the model-free fallback, while optional
+ * model refinement specializes them without weakening validation. Goal
+ * contracts are enabled unless `ELIZA_REQUIRE_GOAL_CONTRACT=0`.
  */
 
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
+import { stripInventedArtifactCriteria } from "./producible-evidence.js";
 
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
@@ -75,7 +47,7 @@ export const DEFAULT_CRITERIA_TEMPLATES: Readonly<
   Record<OrchestratorTaskType, readonly string[]>
 > = {
   coding: CODING_CRITERIA,
-  "app-build": [...CODING_CRITERIA, "the live URL returns HTTP 200"],
+  "app-build": [...CODING_CRITERIA, "the live URL is reachable"],
   "view-create": [
     "a Plugin.views entry is declared with a viewKind",
     "the view appears in /api/views",
@@ -108,8 +80,8 @@ const DEPLOY_RE =
 // Deliberately does NOT match a bare "app"/"application": "refactor the app" or
 // "fix the application startup" is coding, not an app-BUILD. Only web-app /
 // site / landing-page phrasing — or an explicit build/create/make-a(n)-…-app —
-// qualifies, which is what gates the app-build-only "the live URL returns
-// HTTP 200" criterion. The verb branch accepts "a" OR "an" plus up to two
+// qualifies, which is what gates the app-build-only live-URL criterion. The
+// verb branch accepts "a" OR "an" plus up to two
 // intervening words so canonical phrasing like "build an app" and
 // "create a checklist app" classifies correctly (a bare `build\s+a\s+app` never
 // matches grammatical English and silently regressed those to coding).
@@ -192,6 +164,7 @@ function buildRefinePrompt(
     "You are setting the acceptance criteria a coding sub-agent must PROVE before its task is accepted.",
     "Turn the goal below into 3-5 concrete, measurable, independently-verifiable criteria.",
     "Each criterion must be checkable from concrete evidence (a passing build/test/typecheck line, a diff hunk, a reachable URL, a screenshot) — never a vague aspiration.",
+    "NEVER invent concrete file paths, filenames, or directory names the goal does not state verbatim — the worker legitimately chooses its own layout. When the goal names no path, express the criterion as an observable outcome (a file exists in the workdir, a URL serves the requested content).",
     "",
     `Detected task type: ${type}`,
     "Goal:",
@@ -253,7 +226,11 @@ export async function generateDefaultAcceptanceCriteria(
     if (!parsed) return fallback;
     const candidates = extractCriteriaArray(parsed);
     if (candidates.length === 0) return fallback;
-    const refined = normalizeCriteria(candidates, fallback);
+    // The prompt forbids invented paths, but the filter is the enforcement:
+    // a criterion pinning a path the goal never named is unsatisfiable by
+    // design (#20794), so it is dropped and the template tops the set back up.
+    const producible = stripInventedArtifactCriteria(candidates, goal).kept;
+    const refined = normalizeCriteria(producible, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
   } catch {
     // error-policy:J4 optional model refinement of an external dep; any failure degrades to the designed deterministic static template

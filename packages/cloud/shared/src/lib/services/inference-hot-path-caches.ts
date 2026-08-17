@@ -13,6 +13,7 @@
  */
 
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { isInferenceStrongRevocationEnabled } from "./inference-credential-revocation";
 
 type EnvLike = Record<string, unknown>;
 
@@ -28,5 +29,7 @@ export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boole
  */
 export function isInferenceAuthCacheEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
   const flag = env.INFERENCE_AUTH_CACHE_ENABLED;
-  return typeof flag === "string" && flag.trim() === "true";
+  return (
+    typeof flag === "string" && flag.trim() === "true" && isInferenceStrongRevocationEnabled(env)
+  );
 }

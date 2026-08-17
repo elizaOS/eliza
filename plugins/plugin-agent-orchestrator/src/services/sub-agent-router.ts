@@ -2214,6 +2214,46 @@ export class SubAgentRouter extends Service {
     if (!sendToTarget) return undefined;
     const source = origin.source;
     if (!source) return undefined;
+    // A nested swarm child's origin is the parent's TASK ROOM with source
+    // `sub_agent` — a synthetic room no connector owns, so a connector send
+    // can only fail ("no conversation available to deliver message", live
+    // 2026-08-17) and the planner's reply to the child's completion was
+    // dropped. Deliver it internally instead: persist the reply into the task
+    // room, where the parent session already reads its swarm traffic.
+    if (source === MESSAGE_SOURCE_SUB_AGENT) {
+      return async (response: Content): Promise<Memory[]> => {
+        const text =
+          typeof response.text === "string" ? response.text.trim() : "";
+        if (!text) return [];
+        const memory: Memory = {
+          id: randomUUID() as UUID,
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId: origin.roomId as UUID,
+          content: {
+            text,
+            source: ACPX_ROUTER_SOURCE,
+            ...(origin.parentMessageId
+              ? { inReplyTo: origin.parentMessageId }
+              : {}),
+          },
+          createdAt: Date.now(),
+        };
+        try {
+          await this.runtime.createMemory(memory, "messages");
+          return [memory];
+        } catch (err) {
+          // error-policy:J1 internal reply-delivery boundary: warns and
+          // returns an honest empty delivery, mirroring the connector leg.
+          this.log("warn", "nested sub-agent reply persistence failed", {
+            sessionId,
+            roomId: origin.roomId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }
+      };
+    }
     return async (response: Content): Promise<Memory[]> => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";

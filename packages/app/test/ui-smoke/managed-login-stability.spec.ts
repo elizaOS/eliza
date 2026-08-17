@@ -3,6 +3,8 @@
  * The fixture proxies the local renderer behind the canonical app hostname so
  * production hostname gates run unchanged while all application bytes remain
  * exact-head and local; network-bound auth provider discovery is deterministic.
+ * Authenticated Shared/agentless shells also prove unsupported standalone-agent
+ * notification routes stay capability-disabled instead of painting an error.
  */
 
 import { writeFile } from "node:fs/promises";
@@ -129,6 +131,7 @@ for (const surface of SURFACES) {
     const pageErrors: string[] = [];
     const requestFailures: string[] = [];
     const consoleMessages: Array<{ type: string; text: string }> = [];
+    let notificationRequests = 0;
     let releasePersonal: (() => void) | undefined;
     const personalGate = new Promise<void>((resolve) => {
       releasePersonal = resolve;
@@ -140,6 +143,9 @@ for (const surface of SURFACES) {
     );
 
     page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/notifications")) {
+        notificationRequests += 1;
+      }
       if (
         request.isNavigationRequest() &&
         request.frame() === page.mainFrame()
@@ -177,6 +183,8 @@ for (const surface of SURFACES) {
     expect(documentRequests).toHaveLength(1);
     expect(personalRequests()).toBe(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/join");
+    expect(notificationRequests).toBe(0);
+    await expect(page.getByText("Notifications unavailable")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
     expect(requestFailures).toEqual([]);
 
@@ -196,6 +204,7 @@ for (const surface of SURFACES) {
             finalUrl: page.url(),
             documentRequests,
             personalRequests: personalRequests(),
+            notificationRequests,
             pageErrors,
             requestFailures,
             consoleMessages,
@@ -466,6 +475,15 @@ for (const surface of SURFACES) {
       page,
       managedOrigin,
     );
+    let sessionSyncRequests = 0;
+    await page.route("**/api/auth/steward-session", async (route) => {
+      sessionSyncRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    });
     const documentRequests: string[] = [];
     const failures: string[] = [];
     page.on("request", (request) => {
@@ -483,7 +501,9 @@ for (const surface of SURFACES) {
       );
     });
 
-    await page.goto(`${managedOrigin}/auth/callback/email`);
+    await page.goto(
+      `${managedOrigin}/auth/callback/email?token=playwright-email-token&email=managed-handoff%40test.local`,
+    );
     await page.evaluate(() => {
       document.documentElement.dataset.emailCallbackDocument = "survived";
     });
@@ -497,6 +517,7 @@ for (const surface of SURFACES) {
 
     expect(documentRequests).toHaveLength(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/auth/callback/email");
+    expect(sessionSyncRequests).toBe(1);
     expect(personalRequests()).toBe(1);
     await expect(page.locator("html")).toHaveAttribute(
       "data-email-callback-document",
@@ -519,6 +540,7 @@ for (const surface of SURFACES) {
             entryPath: "/auth/callback/email",
             finalUrl: page.url(),
             documentRequests,
+            sessionSyncRequests,
             personalRequests: personalRequests(),
             failures,
             documentMarker: await page

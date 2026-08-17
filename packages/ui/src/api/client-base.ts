@@ -1962,7 +1962,46 @@ export class ElizaClient {
 
     let host: string;
     let wsProtocol: "ws:" | "wss:";
-    const wsBase = getInjectedWsBase();
+    let wsBase = getInjectedWsBase();
+    // #20342: the Vite dev server injects __ELIZA_WS_BASE__ unconditionally in
+    // serve mode (computed from the page origin) so tunnels can proxy /ws.
+    // That injection must be AMBIENT — it cannot override an HTTP(S) agent the
+    // user explicitly selected after boot. Rule: when a user-pinned HTTP(S)
+    // base exists and the injected WS base merely normalizes to the current
+    // page origin, derive realtime from the selected base instead. A genuinely
+    // separate injected WS host (different origin) remains authoritative.
+    const explicitHttpBase =
+      this._userSetBase && this.baseUrl
+        ? (() => {
+            try {
+              const protocol = new URL(this.baseUrl).protocol;
+              return protocol === "http:" || protocol === "https:";
+            } catch {
+              // error-policy:J3 malformed base URLs are explicitly ineligible
+              // for WS-base precedence; ambient derivation below still reads
+              // them exactly as before.
+              return false;
+            }
+          })()
+        : false;
+    if (wsBase && explicitHttpBase) {
+      try {
+        // Normalize ws/wss origins to their http/https equivalents for the
+        // comparison: same host+port+scheme means "just the dev origin".
+        // URL.origin keeps the ws/wss scheme, so map both spellings.
+        const toHttpOrigin = (value: string): string =>
+          value
+            .replace(/^wss:\/\//i, "https://")
+            .replace(/^ws:\/\//i, "http://");
+        const injectedOrigin = toHttpOrigin(new URL(wsBase).origin);
+        if (injectedOrigin === window.location.origin) {
+          wsBase = undefined; // fall through to the explicit client base
+        }
+      } catch {
+        // error-policy:J3 a malformed injected WS URL is not silently
+        // reinterpreted: the existing parse-and-throw below handles it.
+      }
+    }
     if (wsBase) {
       const parsed = new URL(wsBase);
       host = parsed.host;

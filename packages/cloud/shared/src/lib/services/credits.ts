@@ -2,6 +2,7 @@
  * Credits service for managing organization credit balances and transactions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
@@ -20,6 +21,7 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
+import { getRequestTaskDefer } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
@@ -77,6 +79,49 @@ export const RESERVATION_SWEEP_GRACE_MS =
 // Types
 // ============================================================================
 
+/**
+ * Thrown when a reconcile call names a reservation transaction that does not
+ * exist (or does not belong to the organization). Settling such a call through
+ * the legacy caller-trusted lane would mint a refund for a hold that was never
+ * verified, so the settlement is refused instead.
+ */
+export class ReservationNotFoundError extends ElizaError {
+  override readonly name = "ReservationNotFoundError";
+
+  constructor(
+    public readonly reservationTransactionId: string,
+    public readonly organizationId: string,
+  ) {
+    super(
+      `Reservation transaction ${reservationTransactionId} not found for organization ${organizationId}`,
+      {
+        code: "CREDIT_RESERVATION_NOT_FOUND",
+        context: { organizationId, reservationTransactionId },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
+/** Refuses malformed amounts before they can reach a credit-ledger mutation. */
+export class InvalidCreditAmountError extends ElizaError {
+  override readonly name = "InvalidCreditAmountError";
+
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+    const permitsZero = operation === "reserve";
+    super(
+      permitsZero
+        ? "Credit reservation amount must be a finite, non-negative number"
+        : "Credit deduction amount must be a positive, finite number",
+      {
+        code: "INVALID_CREDIT_AMOUNT",
+        context: { amount, operation, permitsZero },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 export class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -116,6 +161,67 @@ export interface CreditReconciliationResult {
 export interface OrganizationBalanceSnapshot {
   balanceUsd: number;
   revision: string;
+}
+
+/**
+ * Request-local operations triggered after a successful balance decrease.
+ * Kept as a typed seam so Worker lifetime behavior can be tested without
+ * reaching through private service methods.
+ */
+export interface PostDebitNotificationOperations {
+  checkAutoTopUp: () => Promise<unknown>;
+  queueLowCreditsEmail: () => Promise<unknown>;
+  notifyWaifuCredits: () => Promise<unknown>;
+}
+
+/**
+ * Run post-debit notifications under the current request lifetime contract.
+ * Worker callers register the exact observed aggregate with `waitUntil`;
+ * callers without a request runtime await that same aggregate inline.
+ */
+export async function runObservedPostDebitNotifications(
+  operations: PostDebitNotificationOperations,
+): Promise<void> {
+  const observe = (label: string, operation: () => Promise<unknown>): Promise<void> =>
+    Promise.resolve()
+      .then(operation)
+      .then(
+        () => undefined,
+        (error) => {
+          // error-policy:J5 Post-debit notifications are best effort, but every
+          // rejection is observed before the aggregate reaches waitUntil.
+          logger.error(`[CreditsService] ${label}:`, error);
+        },
+      );
+
+  const task = Promise.all([
+    observe("Failed to check auto top-up", operations.checkAutoTopUp),
+    observe("Failed to queue low credits email", operations.queueLowCreditsEmail),
+    observe("Failed to notify waifu credit webhook", operations.notifyWaifuCredits),
+  ]).then(() => undefined);
+
+  const defer = getRequestTaskDefer();
+  if (defer) {
+    // Register this exact observed Promise; wrapping it after registration
+    // would leave the actual notification work outside the Worker lifetime.
+    defer(task);
+    return;
+  }
+  await task;
+}
+
+/**
+ * Nudge the durable auto-top-up state machine after a balance decrease. The
+ * service rechecks eligibility under the organization write lock, avoiding a
+ * charge decision based on a stale post-debit snapshot.
+ */
+export async function triggerDurableAutoTopUpForBalanceDecrease(
+  organizationId: string,
+): Promise<void> {
+  const { autoTopUpService } = await import("./auto-top-up");
+  await autoTopUpService.executeAutoTopUpForOrganization(organizationId, {
+    source: "credit_deduction",
+  });
 }
 
 export interface ReserveCreditsParams {
@@ -251,40 +357,6 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
   if (!Number.isFinite(parsed)) {
     throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
-  }
-  return parsed;
-}
-
-/**
- * Parse the org's `auto_top_up_threshold` for the auto-top-up trigger gate.
- *
- * `auto_top_up_threshold` is a Drizzle `numeric` column, so it arrives at the
- * row boundary as a `string` (or `null` when the org never configured one). The
- * trigger previously coerced it with a bare `Number(org.auto_top_up_threshold ||
- * 0)`. That silently fails OPEN on a corrupt row: a `numeric` can legitimately
- * hold `'NaN'::numeric`, which reads back as the string `"NaN"`, and
- * `Number("NaN")` is `NaN`. Because `newBalance >= NaN` is `false`, the gate's
- * early-return never fires, so `executeAutoTopUp` (a REAL card charge) is
- * dispatched unconditionally regardless of the org's actual balance.
- *
- * Fail-closed semantics for this money-OUT trigger:
- *  - `null` / `undefined` (never configured) is a legitimate domain default of
- *    `0`, preserving the original `|| 0` behaviour (only trigger below $0).
- *  - a present-but-non-finite or partially numeric value (`"NaN"`, `""`,
- *    `"abc"`, `"10abc"`, `Infinity`) is a corrupt threshold we cannot reason
- *    about, so we throw and let the caller SKIP the charge rather than fire an
- *    unvalidatable auto-top-up.
- */
-function parseAutoTopUpThreshold(value: string | number | null | undefined): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  if (typeof value === "string" && value.trim() === "") {
-    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
-  }
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
   }
   return parsed;
 }
@@ -650,8 +722,13 @@ export class CreditsService {
       stripePaymentIntentId,
     } = params;
 
-    if (amount <= 0) {
-      throw new Error("Amount must be positive");
+    // Authoritative money-write guard: `<= 0` alone lets NaN through (the
+    // comparison is false), after which `String(amount)::numeric` would reach
+    // the balance/ledger CTE as 'NaN'. Every debit path funnels through here,
+    // so the finite check lives at this lowest shared boundary (the reserve()
+    // wrapper keeps its own guard as defense-in-depth).
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new InvalidCreditAmountError(amount, "reserve_and_deduct");
     }
 
     const committedKeyedDeduction = async (): Promise<{
@@ -835,7 +912,7 @@ export class CreditsService {
             });
         }
 
-        this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
+        await this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
       }
       return result;
     });
@@ -844,26 +921,25 @@ export class CreditsService {
   /**
    * Fire the post-debit notifications a balance decrease triggers: auto-top-up
    * check, low-credits email, and the waifu webhook that lets a hosted agent
-   * downgrade/pause itself when it runs low. Fire-and-forget — a notification
-   * failure must never block the billing path. Exposed (not inlined) so EVERY
-   * debit path stays at parity: the synchronous reserve calls it here, and the
-   * optimistic inference ledger (`inference-billing-ledger.ts`), which mutates the
-   * balance with its own transactional SQL rather than through `deductCredits`,
-   * calls it after a successful debit so its orgs still get low-balance warnings.
+   * downgrade/pause itself when it runs low. Worker requests register the
+   * observed aggregate with request-scoped `waitUntil`; non-Worker callers
+   * await the same aggregate. The periodic durable sweep remains the auto-top-up
+   * recovery backstop if a Worker reaches its post-response time limit. Exposed
+   * (not inlined) so EVERY debit path stays at parity: the synchronous reserve
+   * calls it here, and the optimistic inference ledger
+   * (`inference-billing-ledger.ts`), which mutates the balance with its own
+   * transactional SQL rather than through `deductCredits`, calls it after a
+   * successful debit so its orgs still get low-balance warnings.
    */
-  notifyBalanceDecrease(
+  async notifyBalanceDecrease(
     organizationId: string,
     newBalance: number,
     metadata?: Record<string, unknown>,
-  ): void {
-    this.checkAndTriggerAutoTopUp(organizationId, newBalance).catch((error) => {
-      logger.error("[CreditsService] Failed to check auto top-up:", error);
-    });
-    this.queueLowCreditsEmail(organizationId, newBalance).catch((error) => {
-      logger.error("[CreditsService] Failed to queue low credits email:", error);
-    });
-    this.notifyWaifuCredits(organizationId, newBalance, metadata).catch((error) => {
-      logger.error("[CreditsService] Failed to notify waifu credit webhook:", error);
+  ): Promise<void> {
+    await runObservedPostDebitNotifications({
+      checkAutoTopUp: () => triggerDurableAutoTopUpForBalanceDecrease(organizationId),
+      queueLowCreditsEmail: () => this.queueLowCreditsEmail(organizationId, newBalance),
+      notifyWaifuCredits: () => this.notifyWaifuCredits(organizationId, newBalance, metadata),
     });
   }
 
@@ -903,67 +979,6 @@ export class CreditsService {
       threshold,
       ...(cloudAgentId ? { cloudAgentId } : {}),
     });
-  }
-
-  /**
-   * Check if auto top-up should be triggered after credit deduction
-   * This is called automatically after every successful credit deduction
-   */
-  private async checkAndTriggerAutoTopUp(
-    organizationId: string,
-    newBalance: number,
-  ): Promise<void> {
-    try {
-      // Get organization details
-      const org = await organizationsRepository.findById(organizationId);
-      if (!org) {
-        return;
-      }
-
-      // Check if auto top-up is enabled
-      if (!org.auto_top_up_enabled) {
-        return;
-      }
-
-      // A corrupt `auto_top_up_threshold` NUMERIC (e.g. `'NaN'::numeric`) must
-      // NOT fall through and fire a real auto-top-up charge. Fail closed: skip
-      // the trigger and surface the bad row instead of paying on an
-      // unvalidatable threshold. (#13415)
-      let threshold: number;
-      try {
-        threshold = parseAutoTopUpThreshold(org.auto_top_up_threshold);
-      } catch (error) {
-        logger.error(
-          `[CreditsService] Skipping auto top-up for org ${organizationId}: corrupt auto_top_up_threshold (${String(
-            org.auto_top_up_threshold,
-          )})`,
-          error,
-        );
-        return;
-      }
-
-      // Check if balance is below threshold
-      if (newBalance >= threshold) {
-        return;
-      }
-
-      logger.info(
-        `[CreditsService] Auto top-up triggered: balance $${newBalance.toFixed(2)} < threshold $${threshold.toFixed(2)}`,
-      );
-
-      // Import auto top-up service dynamically for lazy loading (only when needed)
-      const { autoTopUpService } = await import("./auto-top-up");
-
-      // Execute auto top-up asynchronously (don't block the main operation)
-      autoTopUpService.executeAutoTopUp(org).catch((error) => {
-        logger.error(
-          `[CreditsService] Auto top-up execution failed for org ${organizationId}:`,
-          error,
-        );
-      });
-    } catch (error) {
-      logger.error(`[CreditsService] Error checking auto top-up for org ${organizationId}:`, error);
-    }
   }
 
   private async queueLowCreditsEmail(
@@ -1110,6 +1125,10 @@ export class CreditsService {
           UPDATE organizations AS o
           SET
             credit_balance = candidate.new_balance,
+            -- A Stripe refund/dispute must never look like fresh usage and
+            -- automatically charge the saved card again. Disable atomically
+            -- with the clawback; an operator/user can explicitly re-enable it.
+            auto_top_up_enabled = false,
             updated_at = NOW()
           FROM candidate
           WHERE o.id = candidate.id
@@ -1192,11 +1211,21 @@ export class CreditsService {
       const org = await organizationsRepository.findById(params.organizationId);
       if (existing && org) {
         const metadata = parseMetadata(existing.metadata);
+        // Fail-closed replay parse. A bare `Number(... ?? 0)` reported a
+        // corrupt row (`'NaN'::numeric` amount or shortfall) as "fully
+        // recovered, shortfall $0", so the caller never followed up the
+        // unrecovered amount. Absent shortfall metadata still settles as 0 to
+        // match the SQL path's `COALESCE(..., 0)`; only a present-but-corrupt
+        // value throws.
+        const rawShortfall = metadata.unrecovered_clawback_usd;
         return {
           transaction: existing,
-          newBalance: Number.parseFloat(String(org.credit_balance)),
-          appliedAmount: Math.abs(Number(existing.amount)),
-          shortfallAmount: Number(metadata.unrecovered_clawback_usd ?? 0),
+          newBalance: parseNumeric(org.credit_balance, "credit_balance"),
+          appliedAmount: Math.abs(parseNumeric(existing.amount, "clawback_amount")),
+          shortfallAmount:
+            rawShortfall === undefined || rawShortfall === null || rawShortfall === ""
+              ? 0
+              : parseNumeric(rawShortfall as string | number, "unrecovered_clawback_usd"),
           alreadyProcessed: true,
         };
       }
@@ -1617,7 +1646,11 @@ export class CreditsService {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
     if (result.balanceDecreaseMetadata && result.newBalance !== undefined) {
-      this.notifyBalanceDecrease(organizationId, result.newBalance, result.balanceDecreaseMetadata);
+      await this.notifyBalanceDecrease(
+        organizationId,
+        result.newBalance,
+        result.balanceDecreaseMetadata,
+      );
     }
     return result;
   }
@@ -1817,7 +1850,7 @@ export class CreditsService {
         // committed; this legacy cache eviction is separately observable.
         logger.error("[CreditsService] Failed to invalidate org cache:", error);
       });
-      this.notifyBalanceDecrease(params.organizationId, outcome.newBalance, {
+      await this.notifyBalanceDecrease(params.organizationId, outcome.newBalance, {
         requestId: params.requestId,
         model: params.model,
         source: "deferred_affiliate_fallback",
@@ -1917,10 +1950,18 @@ export class CreditsService {
           if (reservationResult.kind === "handled") {
             return reservationResult.result;
           }
-          break;
+          // A named reservation that matches no row means the hold was never
+          // verified. Falling through to the legacy lane would refund
+          // `reservedAmount - actualCost` keyed only on caller-supplied numbers
+          // — minting credit with no corresponding debit. Refuse instead.
+          throw new ReservationNotFoundError(reservationTxId, organizationId);
         } catch (error) {
           // error-policy:J2 retry the same transaction-scoped settlement, then
           // surface its failure so a durable reservation remains recoverable.
+          if (error instanceof ReservationNotFoundError) {
+            // Not transient: the row is absent, not busy. Retrying cannot help.
+            throw error;
+          }
           if (attempt === MAX_RETRIES) {
             logger.error("[Credits] Reservation reconciliation failed after retries", {
               organizationId,
@@ -2049,17 +2090,11 @@ export class CreditsService {
             difference,
             error: error instanceof Error ? error.message : "Unknown error",
           });
-          // Don't throw - operation completed, just log for manual review
-          return {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId:
-              typeof metadata?.reservation_transaction_id === "string"
-                ? metadata.reservation_transaction_id
-                : null,
-            settlementTransactionIds: [],
-            adjustmentType: difference < 0 ? "uncollected_overage" : "none",
-          };
+          // error-policy:J2 surface the exhausted settlement failure. The old
+          // behavior returned a success-shaped result (`adjustmentType:
+          // "none"`) here, which made a lost refund (org keeps overpaying) or
+          // an uncharged overage indistinguishable from a clean settle.
+          throw error;
         }
         logger.warn("[Credits] Reconciliation retry", {
           attempt,
@@ -2070,16 +2105,10 @@ export class CreditsService {
       }
     }
 
-    return {
-      reservedAmount,
-      actualCost,
-      reservationTransactionId:
-        typeof metadata?.reservation_transaction_id === "string"
-          ? metadata.reservation_transaction_id
-          : null,
-      settlementTransactionIds: [],
-      adjustmentType: "none",
-    };
+    // Unreachable: every retry-loop iteration either returns or throws, and
+    // the final attempt rethrows. Kept as a guard so a future refactor cannot
+    // silently reintroduce a success-shaped default.
+    throw new Error("[CreditsService] reconcile exited retry loop without settling");
   }
 
   async sweepStaleReservations(opts?: {
@@ -2397,8 +2426,10 @@ export class CreditsService {
     if (!description) {
       throw new Error("reserve() requires description");
     }
-    if (params.amount !== undefined && params.amount < 0) {
-      throw new Error("reserve() amount must be non-negative");
+    // `< 0` alone lets NaN through (the comparison is false), and a NaN
+    // reservation amount would be written as a 'NaN'::numeric debit row.
+    if (params.amount !== undefined && (!Number.isFinite(params.amount) || params.amount < 0)) {
+      throw new InvalidCreditAmountError(params.amount, "reserve");
     }
     if (
       params.estimatedCostMultiplier !== undefined &&

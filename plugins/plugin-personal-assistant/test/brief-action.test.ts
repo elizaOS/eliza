@@ -90,7 +90,10 @@ async function callBrief(
 describe("BRIEF umbrella action — Daily Operations", () => {
   beforeEach(() => {
     __resetBriefComposersForTests();
-    setBriefComposers({ loadEngagementSummaries: async () => [] });
+    setBriefComposers({
+      loadEngagementSummaries: async () => [],
+      recordRenderedImpressions: async () => 0,
+    });
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 
@@ -237,6 +240,79 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         expect.anything(),
         { surface: "brief-editorial-engagement" },
       );
+    });
+
+    it("surfaces regret-audited ledger commitments as a briefing section (#14864)", async () => {
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => [],
+        loadLife: async () => [],
+        loadMoney: async () => [],
+        loadCompletedToday: async () => [],
+        loadCommitments: async () => [
+          {
+            id: "commit-1",
+            kind: "commitment",
+            summary: "I'll send the deck Friday",
+            counterparty: "Dana",
+            dueAt: "2026-08-14T17:00:00.000Z",
+            status: "open",
+            regretScore: 1.19,
+            reasons: ["no scheduled tracker", "due within the regret horizon"],
+          },
+        ],
+      });
+      const result = await callBrief(makeRuntime(), makeMessage(), {
+        subaction: "compose_morning",
+        format: "json",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: {
+          sections: {
+            commitments?: readonly { id: string; regretScore: number }[];
+          };
+        };
+      };
+      expect(data.briefing.sections.commitments).toHaveLength(1);
+      expect(data.briefing.sections.commitments?.[0]).toMatchObject({
+        id: "commit-1",
+        regretScore: 1.19,
+      });
+    });
+
+    it("omits the commitments section when include.commitments is false", async () => {
+      const loadCommitments = vi.fn(async () => [
+        {
+          id: "commit-1",
+          kind: "commitment" as const,
+          summary: "I'll send the deck Friday",
+          counterparty: null,
+          dueAt: null,
+          status: "open" as const,
+          regretScore: 1.0,
+          reasons: ["no scheduled tracker"],
+        },
+      ]);
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => [],
+        loadLife: async () => [],
+        loadMoney: async () => [],
+        loadCompletedToday: async () => [],
+        loadCommitments,
+      });
+      const result = await callBrief(makeRuntime(), makeMessage(), {
+        subaction: "compose_morning",
+        format: "json",
+        include: { commitments: false },
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: { sections: { commitments?: unknown } };
+      };
+      expect(data.briefing.sections.commitments).toBeUndefined();
+      expect(loadCommitments).not.toHaveBeenCalled();
     });
 
     it("feeds the loader payload to the model and returns the trimmed narrative", async () => {

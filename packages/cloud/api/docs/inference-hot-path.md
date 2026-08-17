@@ -24,16 +24,17 @@ The synchronous Worker path is:
    scope may perform one additional Cloudflare KV read and hydrate Postgres
    under `waitUntil`; it never falls through to Postgres on the request promise.
    Affiliate and pooled-credential features retain conditional cache decisions.
-3. A per-organization Durable Object call that serializes the exact endpoint
-   rate decision.
-4. A call to the same object that durably leases the estimated charge.
-5. A final call that durably marks provider-dispatch intent immediately before
+3. A call to the per-organization Durable Object that verifies the immutable
+   credential identity and its user and organization denial fences.
+4. A call to the same object that serializes the exact endpoint rate decision.
+5. A call to the same object that durably leases the estimated charge.
+6. A final call that durably marks provider-dispatch intent immediately before
    the provider invocation.
-6. Provider dispatch.
+7. Provider dispatch.
 
 A steady-state base request therefore has one remote shared-cache read and
-three serial Durable Object calls before the provider. Keeping rate, money,
-and dispatch-intent transitions explicit
+four serial Durable Object calls before the provider. Keeping revocation,
+rate, money, and dispatch-intent transitions explicit
 makes the crash states independently testable. The repository benchmark measures
 those calls in-process; it is a regression tripwire, not evidence of deployed
 cross-isolate or regional network latency.
@@ -74,7 +75,7 @@ selected production architecture.
 
 | State | Synchronous owner | Durable/source-of-truth owner | Consistency |
 | --- | --- | --- | --- |
-| API-key and Steward-session authorization | One combined Cloudflare KV decision | Postgres/Steward | 60s physical bound; active entries refresh after 30s under `waitUntil` |
+| API-key and Steward-session authorization | Cloudflare KV projection plus per-org Durable Object check | Postgres/Steward + revocation Durable Object | Strong revoke/logout/suspension fence; KV refreshes after 30s and expires after 60s |
 | Moderation, balance, endpoint-rate policy, and app-key scope | Same combined decision | Postgres | Revisioned/bounded snapshot; refreshed off-response |
 | Model pricing | Cloudflare KV | Pricing tables | Revisioned cache; cold requests warm and retry |
 | Affiliate attribution | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
@@ -95,14 +96,14 @@ remain transactional in Postgres and publish monotonic cache revisions.
 
 ## Authorization and cold-cache behavior
 
-`INFERENCE_AUTH_CACHE_ENABLED` is enabled in staging and production. Warm API
+Once both authorization rollout flags are enabled, warm API
 keys and Steward sessions perform one combined remote decision read containing
 identity, organization, moderation, balance, rate policy, and API-key app scope.
 The physical TTL is 60 seconds;
 an active entry older than 30 seconds is served immediately while an
-authoritative refresh runs under `waitUntil`. This bounds a lost or
-eventually-consistent invalidation to the same one-minute horizon already used
-by moderation decisions without joining Postgres or Steward to dispatch.
+authoritative refresh runs under `waitUntil`. A following Durable Object check
+prevents a lost or eventually-consistent invalidation from extending
+authorization without joining Postgres or Steward to dispatch.
 
 The implementation accepts positive cache entries only for fully authorized
 credentials. API-key entries are keyed by the full credential hash. Steward
@@ -120,8 +121,24 @@ On a Worker cache miss:
   cache.
 
 When the gate is enabled, cache errors never fabricate authorization and never
-join a Postgres fallback to the request promise. Invalidation is only a cache
-hygiene mechanism; it is not the authorization revocation boundary.
+join a Postgres fallback to the request promise. Invalidation is only cache
+hygiene. The per-organization Durable Object is the revocation boundary: every
+positive API-key or Steward-session decision crosses it before provider
+dispatch, and an unavailable boundary fails closed.
+
+`INFERENCE_STRONG_REVOCATION_ENABLED` is an independent rollout control.
+`INFERENCE_AUTH_CACHE_ENABLED` cannot activate positive authorization caching
+unless the strong boundary flag is also true. API keys use their immutable row
+ID, Steward logout records the verified token `iat`, user lifecycle changes
+fence the immutable Cloud user ID, and organization suspension fences the
+organization object. Revocation mutations commit the fence before returning;
+reactivation clears only its reason-scoped account, moderation, or membership
+fence, while a revoked API-key identity can never be reused. Organization moves
+and local role or Steward-identity changes advance the session cutoff before the
+corresponding database mutation reports success. Steward-identity changes also
+disable the old `(Cloud user, Steward subject)` binding before mutation and
+enable only the post-commit binding, so a newly issued token cannot authorize
+through a stale pre-change identity projection.
 
 Pricing, affiliate attribution, app/agent policy, and uninitialized Durable
 Objects follow the same fail-closed warming pattern. Route-scope caches add no
@@ -260,8 +277,11 @@ Staging and production inference require:
 - `INFERENCE_DEFERRED_ADMISSION="true"`; and
 - `INFERENCE_HOT_PATH_CACHES="true"`.
 
-`INFERENCE_AUTH_CACHE_ENABLED="true"` and
-`THIN_INFERENCE_ENTRY_ENABLED="true"` are enabled in staging and production.
+`INFERENCE_AUTH_CACHE_ENABLED="true"` is inert unless
+`INFERENCE_STRONG_REVOCATION_ENABLED="true"`. The strong flag remains false in
+checked-in staging and production configuration until rollout evidence is
+approved, so authoritative authorization remains the default. The thin entry
+has its own `THIN_INFERENCE_ENTRY_ENABLED` rollout control.
 The thin entry lazily evaluates only the matched generative route module rather
 than the monolithic API router. Either flag remains an independent rollback
 control.

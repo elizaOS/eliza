@@ -7,6 +7,7 @@
  * Mirrors `_legacy_actions/gallery.ts → listExploreImages`.
  */
 
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
@@ -22,10 +23,7 @@ app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
 
 app.get("/", async (c) => {
   try {
-    const limitParam = c.req.query("limit");
-    const parsed = limitParam ? Number.parseInt(limitParam, 10) : 20;
-    const limit =
-      Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 20;
+    const limit = parseClampedLimit(c.req.query("limit"), 20, 100);
 
     const generations =
       await generationsService.listRandomPublicImageSummaries(limit);

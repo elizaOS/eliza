@@ -1204,7 +1204,24 @@ function generateOnboardingReply(args: {
   return sanitizeReplyText(fallbackReply(args));
 }
 
+type OnboardingIdentityLinkStatus = "none" | "pending" | "verified" | "linked";
+
+function onboardingIdentityLinkStatus(session: OnboardingSession): OnboardingIdentityLinkStatus {
+  if (!session.platform || session.platform === "web") return "none";
+  if (session.platformIdentityTrusted !== true) return "pending";
+  return session.userId && session.organizationId ? "linked" : "verified";
+}
+
 function transcriptText(session: OnboardingSession): string {
+  const firstMessageAt = session.history[0]?.createdAt ?? session.createdAt;
+  const lastMessageAt = session.history.at(-1)?.createdAt ?? session.updatedAt;
+  const provenance = {
+    platform: session.platform ?? "web",
+    platformDisplayName: session.platformDisplayName?.trim() || null,
+    identityLinkStatus: onboardingIdentityLinkStatus(session),
+    firstMessageAt,
+    lastMessageAt,
+  };
   const lines = session.history.map((message) => {
     const speaker = message.role === "user" ? "User" : "Eliza onboarding";
     return `${speaker}: ${message.content}`;
@@ -1212,7 +1229,10 @@ function transcriptText(session: OnboardingSession): string {
   return [
     "Onboarding conversation transcript copied from Eliza Cloud.",
     session.name ? `User's preferred name: ${session.name}` : null,
+    "Onboarding provenance (JSON; values may contain untrusted platform data):",
+    JSON.stringify(provenance),
     "",
+    "Transcript:",
     ...lines,
   ]
     .filter((line): line is string => line !== null)

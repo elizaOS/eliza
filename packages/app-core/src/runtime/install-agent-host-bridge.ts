@@ -30,6 +30,12 @@ import {
   getDefaultAccountPool,
   startAccountPoolKeepAlive,
 } from "../services/account-pool";
+import {
+  createAccountPoolConsumerKey,
+  listAccountPoolConsumerKeys,
+  rotateAccountPoolConsumerKey,
+  updateAccountPoolConsumerKey,
+} from "../services/account-pool-consumer-metering";
 import { runVaultBootstrap } from "../services/vault-bootstrap";
 import { sharedVault } from "../services/vault-mirror";
 
@@ -65,6 +71,15 @@ export function installAgentHostBridge(): void {
     sharedVault,
     getDefaultAccountPool,
     getAccountPoolBrokerSnapshot,
+    // Owner-dashboard consumer-key admin (#16478). Thin passthrough: the
+    // metering store stays the single authority; plaintext keys surface only
+    // in the create/rotate return values and are never logged or persisted.
+    getAccountPoolConsumerKeyAdmin: () => ({
+      list: listAccountPoolConsumerKeys,
+      create: (input) => createAccountPoolConsumerKey(input),
+      update: (id, input) => updateAccountPoolConsumerKey(id, input),
+      rotate: (id) => rotateAccountPoolConsumerKey(id),
+    }),
     applyAccountPoolApiCredentials: (options) =>
       applyAccountPoolApiCredentials(options),
     startAccountPoolKeepAlive: () => startAccountPoolKeepAlive(),

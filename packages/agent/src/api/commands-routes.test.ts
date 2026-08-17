@@ -7,7 +7,10 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { handleCommandsRoutes } from "./commands-routes.ts";
+import {
+  handleCommandsRoutes,
+  parseCommandSurface,
+} from "./commands-routes.ts";
 
 const res = {} as never;
 
@@ -148,22 +151,29 @@ describe("handleCommandsRoutes", () => {
     expect(keys.has("settings")).toBe(false); // app navigation is GUI-only
   });
 
-  it("ignores an invalid surface and serves the unscoped catalog", async () => {
-    const json = vi.fn();
-    const error = vi.fn();
-    await handleCommandsRoutes({
-      req: {} as never,
-      res,
-      method: "GET",
-      pathname: "/api/commands",
-      url: makeUrl("/api/commands?surface=bogus"),
-      json,
-      error,
-      runtime: null,
-    });
-    const payload = json.mock.calls[0][1] as { surface: string | null };
-    expect(payload.surface).toBeNull();
-  });
+  it.each(["bogus", "DISCORD", "GUI", "web", "slack", " Discord"])(
+    "rejects unknown surface %j with 400 before serving the catalog",
+    async (raw) => {
+      const json = vi.fn();
+      const error = vi.fn();
+      await handleCommandsRoutes({
+        req: {} as never,
+        res,
+        method: "GET",
+        pathname: "/api/commands",
+        url: makeUrl(`/api/commands?surface=${encodeURIComponent(raw)}`),
+        json,
+        error,
+        runtime: null,
+      });
+      expect(error).toHaveBeenCalledWith(
+        res,
+        "surface must be one of: gui, tui, discord, telegram",
+        400,
+      );
+      expect(json).not.toHaveBeenCalled();
+    },
+  );
 
   it("scopes the store to the runtime's agent id when present", async () => {
     const json = vi.fn();
@@ -296,5 +306,31 @@ describe("handleCommandsRoutes", () => {
       // Global navigation commands stay available.
       expect(keys.has("settings")).toBe(true);
     });
+  });
+});
+
+describe("parseCommandSurface", () => {
+  it("omitted and empty keep the historical GUI default", () => {
+    expect(parseCommandSurface(null)).toEqual({ ok: true, surface: null });
+    expect(parseCommandSurface("")).toEqual({ ok: true, surface: null });
+  });
+
+  it("accepts the catalog surface identities", () => {
+    expect(parseCommandSurface("gui")).toEqual({ ok: true, surface: "gui" });
+    expect(parseCommandSurface("tui")).toEqual({ ok: true, surface: "tui" });
+    expect(parseCommandSurface("discord")).toEqual({
+      ok: true,
+      surface: "discord",
+    });
+    expect(parseCommandSurface("telegram")).toEqual({
+      ok: true,
+      surface: "telegram",
+    });
+  });
+
+  it("rejects unknown tokens instead of returning the GUI catalog", () => {
+    expect(parseCommandSurface("DISCORD").ok).toBe(false);
+    expect(parseCommandSurface("web").ok).toBe(false);
+    expect(parseCommandSurface("bogus").ok).toBe(false);
   });
 });

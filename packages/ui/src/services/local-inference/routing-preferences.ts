@@ -1,13 +1,9 @@
 /**
- * Re-exports the inference routing-policy preferences (local vs cloud provider
- * selection) from the local-inference shared surface.
+ * Re-exports the browser-safe inference routing preference types used by the
+ * UI API client. Persistence remains server-owned because the shared runtime
+ * module imports Node filesystem, crypto, path, and host APIs.
  */
-export {
-  DEFAULT_ROUTING_POLICY,
-  type RoutingPolicy,
-  type RoutingPreferences,
-  readRoutingPreferences,
-  setPolicy,
-  setPreferredProvider,
-  writeRoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+export type {
+  RoutingPolicy,
+  RoutingPreferences,
+} from "@elizaos/shared/local-inference";

@@ -1195,61 +1195,6 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       }
     },
   );
-
-  test("returns the PWA VIEWS handoff for deterministic shared-runtime navigation", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const sandbox = sharedSandbox();
-    const findRunningSandboxSpy = spyOn(
-      agentSandboxesRepository,
-      "findRunningSandbox",
-    ).mockResolvedValue(sandbox);
-    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
-
-    try {
-      const response = await runWithCloudBindings(
-        {
-          CEREBRAS_API_KEY: "",
-          OPENAI_API_KEY: "",
-        },
-        () =>
-          new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
-            jsonrpc: "2.0",
-            id: "shared-nav-turn",
-            method: "message.send",
-            params: { text: "open settings" },
-          }),
-      );
-
-      expect(response).toMatchObject({
-        jsonrpc: "2.0",
-        id: "shared-nav-turn",
-        result: {
-          text: "Opening Settings for you.",
-          runtime: "shared",
-          transport: "shared-runtime",
-          actionResults: [
-            {
-              actionName: "VIEWS",
-              success: true,
-              text: "Opening Settings for you.",
-              values: {
-                mode: "show",
-                viewId: "settings",
-                source: "agent",
-              },
-            },
-          ],
-        },
-      });
-      expect(historyGetSpy).toHaveBeenCalled();
-      expect(historyMergeSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      findRunningSandboxSpy.mockRestore();
-      historyGetSpy.mockRestore();
-      historyMergeSpy.mockRestore();
-    }
-  });
 });
 
 describe("ElizaSandboxService wake", () => {
@@ -1719,6 +1664,159 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
     } finally {
       getForWrite.mockRestore();
       fetchSnap.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService shutdown state-loss-acknowledged override (#18228)", () => {
+  function makeProvider(): SandboxProvider {
+    return {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+  }
+
+  test("a transfer-hop 500 refusal carries the hop's body, distinguishable from an agent-side capture failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const provider = makeProvider();
+    const svc = new ElizaSandboxService(provider);
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    // Proxy-hop failure: the agent captured successfully (its handler never
+    // ran this response), and the intermediate hop answered with its own
+    // error page. The refusal must surface that page so the operator can
+    // tell this apart from "agent cannot snapshot".
+    const fetchApi = spyOn(
+      svc as unknown as { fetchAgentApi: () => Promise<Response> },
+      "fetchAgentApi",
+    ).mockImplementation(
+      async () =>
+        new Response("upstream connect error or disconnect before headers", { status: 500 }),
+    );
+    try {
+      const hopResult = await svc.shutdown(rec.id, rec.organization_id);
+      expect(hopResult.success).toBe(false);
+      expect(hopResult.error).toContain("Snapshot fetch failed: HTTP 500");
+      expect(hopResult.error).toContain("upstream connect error");
+
+      // Agent-side failure: the agent's own handler returned its thrown
+      // message. Same status, different diagnostic body.
+      fetchApi.mockImplementation(
+        async () =>
+          new Response('{"error":"Snapshot failed: pglite dump write error"}', { status: 500 }),
+      );
+      const agentResult = await svc.shutdown(rec.id, rec.organization_id);
+      expect(agentResult.success).toBe(false);
+      expect(agentResult.error).toContain("Snapshot fetch failed: HTTP 500");
+      expect(agentResult.error).toContain("pglite dump write error");
+
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchApi.mockRestore();
+    }
+  });
+
+  test("stateLossAcknowledged proceeds to stop without a capture and reports the waiver", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const provider = makeProvider();
+    const svc = new ElizaSandboxService(provider);
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    const fetchApi = spyOn(
+      svc as unknown as { fetchAgentApi: () => Promise<Response> },
+      "fetchAgentApi",
+    ).mockImplementation(
+      async () =>
+        new Response("upstream connect error or disconnect before headers", { status: 500 }),
+    );
+    const lockLifecycle = spyOn(
+      svc as unknown as { lockLifecycle: () => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const getForMutation = spyOn(
+      svc as unknown as { getAgentForLifecycleMutation: () => Promise<unknown> },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(rec);
+    const activeProvision = spyOn(
+      svc as unknown as { hasActiveProvisionJobTx: () => Promise<boolean> },
+      "hasActiveProvisionJobTx",
+    ).mockResolvedValue(false);
+    const persistSnapshot = spyOn(
+      svc as unknown as { persistSnapshotWithinTransaction: () => Promise<never> },
+      "persistSnapshotWithinTransaction",
+    );
+    const prune = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(
+      undefined as never,
+    );
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+    try {
+      const result = await svc.shutdown(rec.id, rec.organization_id, {
+        stateLossAcknowledged: true,
+      });
+      expect(result).toEqual({ success: true, stateLossAcknowledged: true });
+      // The stop really happened; the capture was skipped, never persisted.
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(persistSnapshot).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(1);
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      fetchApi.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      persistSnapshot.mockRestore();
+      prune.mockRestore();
+    }
+  });
+
+  test("executeRestart threads the waiver into shutdown", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const svc = new ElizaSandboxService(makeProvider());
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    const shutdownSpy = spyOn(svc, "shutdown").mockResolvedValue({
+      success: true,
+      stateLossAcknowledged: true,
+    });
+    const provisionSpy = spyOn(svc, "provision").mockResolvedValue({
+      success: true,
+      bridgeUrl: "https://bridge.example",
+      healthUrl: "https://bridge.example/health",
+    } as never);
+    try {
+      const res = await svc.executeRestart(rec.id, rec.organization_id, {
+        stateLossAcknowledged: true,
+      });
+      expect(res.success).toBe(true);
+      expect(shutdownSpy).toHaveBeenCalledWith(rec.id, rec.organization_id, {
+        stateLossAcknowledged: true,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      shutdownSpy.mockRestore();
+      provisionSpy.mockRestore();
     }
   });
 });

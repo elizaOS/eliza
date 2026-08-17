@@ -4,7 +4,7 @@
  * the `LIMIT ... OFFSET ...` clause. Deterministic, no server or DB.
  */
 import { describe, expect, it } from "vitest";
-import { parseRowsPagination } from "./database.ts";
+import { parseRowsPagination, parseRowsSortOrder } from "./database.ts";
 
 /**
  * GET /api/database/tables/:table/rows interpolates `offset`/`limit` straight
@@ -62,6 +62,34 @@ describe("parseRowsPagination", () => {
       expect(offset).toBeGreaterThanOrEqual(0);
       expect(limit).toBeGreaterThanOrEqual(1);
       expect(limit).toBeLessThanOrEqual(500);
+    }
+  });
+});
+
+describe("parseRowsSortOrder", () => {
+  it("defaults omitted and empty tokens to ASC", () => {
+    expect(parseRowsSortOrder(null)).toEqual({ ok: true, order: "ASC" });
+    expect(parseRowsSortOrder("")).toEqual({ ok: true, order: "ASC" });
+  });
+
+  it("accepts the Control UI identities", () => {
+    expect(parseRowsSortOrder("asc")).toEqual({ ok: true, order: "ASC" });
+    expect(parseRowsSortOrder("desc")).toEqual({ ok: true, order: "DESC" });
+  });
+
+  it("rejects SQL-case and garbage instead of silently sorting ASC", () => {
+    for (const raw of [
+      "DESC",
+      "ASC",
+      "descending",
+      "ascending",
+      "desc ",
+      " desc",
+      "1e2",
+      "foo",
+      "0",
+    ]) {
+      expect(parseRowsSortOrder(raw)).toEqual({ ok: false });
     }
   });
 });

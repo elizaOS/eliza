@@ -195,7 +195,7 @@ async function seedTaskWithSession(
     id: "row-1",
     taskId,
     sessionId,
-    framework: "opencode",
+    framework: "eliza-code",
     label: "Ada",
     originalTask: "do the thing",
     ...(opts.repo ? { repo: opts.repo } : {}),
@@ -881,7 +881,10 @@ describe("independent read-only verifier (#8898)", () => {
       character: { name: "Tester" },
       databaseAdapter: undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      getSetting: () => undefined,
+      // #20794: the verifier spawn is capability-gated; these tests exercise
+      // the verifier itself, so configure an envelope-capable backend.
+      getSetting: (key: string) =>
+        key === "ELIZA_ACP_DEFAULT_AGENT" ? "claude" : undefined,
       useModel,
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
@@ -924,7 +927,10 @@ describe("independent read-only verifier (#8898)", () => {
       character: { name: "Tester" },
       databaseAdapter: undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      getSetting: () => undefined,
+      // #20794: the verifier spawn is capability-gated; these tests exercise
+      // the verifier itself, so configure an envelope-capable backend.
+      getSetting: (key: string) =>
+        key === "ELIZA_ACP_DEFAULT_AGENT" ? "claude" : undefined,
       useModel,
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
@@ -941,9 +947,18 @@ describe("independent read-only verifier (#8898)", () => {
     );
 
     const doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("validating");
+    // Re-engage contract: an inconclusive verdict re-prompts the kept-alive
+    // worker under the bounded attempt cap (never a silent park, never a
+    // promotion) — so the task returns to `active`, not `done`.
+    expect(doc?.task.status).toBe("active");
     expect(doc?.task.status).not.toBe("done");
     expect(useModel).not.toHaveBeenCalled();
+    // #20794: the worker is an `eliza-code` session, which never emits a
+    // CompletionEnvelope — the correction must demand producible evidence,
+    // not the envelope contract.
+    const correction = fake.service.sendToSession.mock.calls.at(-1)?.[1] ?? "";
+    expect(correction).toContain("concrete evidence");
+    expect(correction).not.toContain("CompletionEnvelope");
   });
 
   it("does NOT spawn a verifier for a task with no code changes (gated)", async () => {
@@ -960,7 +975,10 @@ describe("independent read-only verifier (#8898)", () => {
       character: { name: "Tester" },
       databaseAdapter: undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      getSetting: () => undefined,
+      // #20794: the verifier spawn is capability-gated; these tests exercise
+      // the verifier itself, so configure an envelope-capable backend.
+      getSetting: (key: string) =>
+        key === "ELIZA_ACP_DEFAULT_AGENT" ? "claude" : undefined,
       useModel,
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
@@ -1713,7 +1731,10 @@ describe("validateTask transition + humanOverride rules", () => {
       character: { name: "Tester" },
       databaseAdapter: undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      getSetting: () => undefined,
+      // #20794: the verifier spawn is capability-gated; these tests exercise
+      // the verifier itself, so configure an envelope-capable backend.
+      getSetting: (key: string) =>
+        key === "ELIZA_ACP_DEFAULT_AGENT" ? "claude" : undefined,
       useModel,
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,

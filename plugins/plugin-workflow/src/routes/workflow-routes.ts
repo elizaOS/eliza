@@ -62,6 +62,15 @@ function pathFor(pathname: string): string {
   return pathname.replace(/^\/api\/workflow/, '') || '/';
 }
 
+function decodePathSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 malformed path segments become an explicit 400 response.
+    throw new WorkflowApiError('Path segment is not valid percent-encoding', 400);
+  }
+}
+
 async function readBody(
   req: http.IncomingMessage,
   limit = 2_000_000
@@ -100,7 +109,7 @@ function workflowFrom(body: Record<string, unknown>): WorkflowDefinition {
 
 function idMatch(path: string): { id: string; suffix: string } | null {
   const match = /^\/workflows\/([^/]+)(.*)$/.exec(path);
-  return match ? { id: decodeURIComponent(match[1]), suffix: match[2] || '' } : null;
+  return match ? { id: decodePathSegment(match[1]), suffix: match[2] || '' } : null;
 }
 
 async function streamEvents(
@@ -168,7 +177,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     const executionMatch = /^\/executions\/([^/]+)(?:\/(events|cancel))?$/.exec(path);
     if (executionMatch) {
-      const runId = decodeURIComponent(executionMatch[1]);
+      const runId = decodePathSegment(executionMatch[1]);
       const operation = executionMatch[2];
       if (ctx.method === 'GET' && operation === 'events') return streamEvents(ctx, runId, owner);
       if (ctx.method === 'POST' && operation === 'cancel') {
@@ -190,8 +199,8 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         ctx.res,
         {
           execution: await service.decideApproval(
-            decodeURIComponent(approvalMatch[1]),
-            decodeURIComponent(approvalMatch[2]),
+            decodePathSegment(approvalMatch[1]),
+            decodePathSegment(approvalMatch[2]),
             Number(approvalMatch[3]),
             body.approved,
             {
@@ -212,8 +221,8 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         ctx.res,
         {
           execution: await service.signalExecution(
-            decodeURIComponent(signalMatch[1]),
-            decodeURIComponent(signalMatch[2]),
+            decodePathSegment(signalMatch[1]),
+            decodePathSegment(signalMatch[2]),
             body.payload,
             owner
           ),
@@ -275,7 +284,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     if (ctx.method === 'POST' && restore) {
       ctx.json(
         ctx.res,
-        await service.restoreWorkflowRevision(match.id, decodeURIComponent(restore[1]), owner)
+        await service.restoreWorkflowRevision(match.id, decodePathSegment(restore[1]), owner)
       );
       return;
     }

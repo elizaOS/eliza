@@ -89,6 +89,7 @@ async function harness() {
       const index = tasks.findIndex((task) => task.id === id);
       if (index >= 0) tasks.splice(index, 1);
     },
+    emitEvent: async () => {},
   } as unknown as IAgentRuntime;
   return {
     service: await EmbeddedWorkflowService.start(runtime),
@@ -230,5 +231,84 @@ describe('embedded native workflow lifecycle', () => {
     await Bun.sleep(0);
 
     expect(resumedVersions).toEqual([workflow.versionId]);
+  }, 15_000);
+
+  test('persists authoritative pending approval details from Smithers events', async () => {
+    const { service, client, runtime } = await harness();
+    const workflow = await service.createWorkflow({
+      ...definition('Approval'),
+      id: 'approval',
+      schedule: undefined,
+    });
+    const execution: WorkflowExecution = {
+      id: 'approval-run',
+      workflowId: workflow.id,
+      workflowVersionId: workflow.versionId,
+      workflowName: workflow.name,
+      mode: 'manual',
+      status: 'waiting-approval',
+      finished: false,
+      startedAt: '2026-08-16T00:00:00.000Z',
+      input: {},
+      events: [],
+      approvals: [],
+    };
+    await client.query(
+      `INSERT INTO workflow.embedded_executions
+       (agent_id, id, workflow_id, status, mode, finished, started_at, execution)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+      [
+        runtime.agentId,
+        execution.id,
+        execution.workflowId,
+        execution.status,
+        execution.mode,
+        execution.finished,
+        execution.startedAt,
+        JSON.stringify(execution),
+      ]
+    );
+
+    const internals = service as unknown as {
+      recordEvent: (
+        execution: WorkflowExecution,
+        event: {
+          id: string;
+          sequence: number;
+          runId: string;
+          workflowId: string;
+          timestamp: string;
+          type: string;
+          nodeId: string;
+          iteration: number;
+          payload: Record<string, unknown>;
+        }
+      ) => Promise<void>;
+    };
+    await internals.recordEvent(execution, {
+      id: 'approval-run:1',
+      sequence: 1,
+      runId: execution.id,
+      workflowId: workflow.id,
+      timestamp: '2026-08-16T00:00:01.000Z',
+      type: 'ApprovalRequested',
+      nodeId: 'publish',
+      iteration: 2,
+      payload: {
+        request: { title: 'Publish', summary: 'Publish the release?' },
+      },
+    });
+
+    expect((await service.getExecution(execution.id)).approvals).toEqual([
+      {
+        runId: execution.id,
+        workflowId: workflow.id,
+        nodeId: 'publish',
+        iteration: 2,
+        status: 'pending',
+        prompt: 'Publish the release?',
+        requestedAt: '2026-08-16T00:00:01.000Z',
+      },
+    ]);
   }, 15_000);
 });

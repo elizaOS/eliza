@@ -79,8 +79,6 @@ app.post("/internal/deliver", async (c) => {
   }
   return deliverInternalMessage(c.req.raw, {
     redis,
-    cloudBaseUrl: ELIZA_CLOUD_URL,
-    getAuthHeader,
   });
 });
 

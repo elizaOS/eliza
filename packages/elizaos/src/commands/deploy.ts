@@ -235,8 +235,17 @@ function pollIntervalMs(): number {
 }
 
 function pollTimeoutMs(): number {
-  const value = Number(process.env.ELIZAOS_DEPLOY_TIMEOUT_MS);
-  return Number.isFinite(value) && value > 0 ? value : DEFAULT_POLL_TIMEOUT_MS;
+  const raw = process.env.ELIZAOS_DEPLOY_TIMEOUT_MS;
+  if (raw === undefined) return DEFAULT_POLL_TIMEOUT_MS;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_POLL_TIMEOUT_MS;
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      "ELIZAOS_DEPLOY_TIMEOUT_MS must be an integer from 1 through 2147483647 (any Number()-compatible spelling, e.g. decimal, 0x hex, 0b binary, 0o octal).",
+    );
+  }
+  return value;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -344,9 +353,9 @@ async function pollDeploymentStatus(
   apiKey: string,
   appId: string,
   intervalMs: number,
+  timeoutMs: number,
 ): Promise<DeployStatusResponse> {
   const startedAt = Date.now();
-  const timeoutMs = pollTimeoutMs();
   while (true) {
     const status = await cloudRequest<DeployStatusResponse>(
       apiBaseUrl,
@@ -409,6 +418,7 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
 
   try {
     const intervalMs = pollIntervalMs();
+    const timeoutMs = pollTimeoutMs();
     const apiKey = resolveApiKey();
     if (!apiKey) {
       throw new Error(
@@ -440,6 +450,7 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
       apiKey,
       appId,
       intervalMs,
+      timeoutMs,
     );
     if (finalStatus.status === "ERROR") {
       console.error(

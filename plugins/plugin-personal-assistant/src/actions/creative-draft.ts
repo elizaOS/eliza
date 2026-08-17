@@ -314,9 +314,30 @@ async function persistNewDraft(args: {
       .toLowerCase() || "creative-draft"
   }.creative-draft.json`;
   const content = serializeDraft(args.draft);
+  let resolvedWorldId = args.message.worldId as UUID | undefined;
+  if (!resolvedWorldId) {
+    let room: Awaited<ReturnType<typeof args.runtime.getRoom>>;
+    try {
+      room = await args.runtime.getRoom(args.message.roomId as UUID);
+    } catch (cause) {
+      // error-policy:J2 Draft persistence requires canonical room scope; preserve the adapter failure.
+      throw new ElizaError("Creative draft room lookup failed", {
+        code: "CREATIVE_DRAFT_ROOM_LOOKUP_FAILED",
+        context: { roomId: args.message.roomId },
+        cause,
+      });
+    }
+    if (!room?.worldId) {
+      throw new ElizaError("Creative draft world resolution failed", {
+        code: "CREATIVE_DRAFT_WORLD_MISSING",
+        context: { roomId: args.message.roomId },
+      });
+    }
+    resolvedWorldId = room.worldId as UUID;
+  }
   const stored = await args.documents.addDocument({
     agentId: args.runtime.agentId,
-    worldId: args.message.worldId ?? args.message.roomId,
+    worldId: resolvedWorldId,
     roomId: args.message.roomId,
     entityId: args.message.entityId,
     clientDocumentId: "" as UUID,

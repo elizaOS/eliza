@@ -86,11 +86,12 @@ function isLinkShareWithoutAsk(text: string): boolean {
 	);
 }
 
-function attachmentContentForAnswering(content: string): string {
+export function attachmentContentForAnswering(content: string): string {
 	if (content.length <= MAX_ATTACHMENT_ANSWER_CHARS) {
 		return content;
 	}
-	return `${content.slice(0, MAX_ATTACHMENT_ANSWER_CHARS)}\n\n[Attachment content truncated before answering because it exceeded ${MAX_ATTACHMENT_ANSWER_CHARS} characters.]`;
+	const suffix = `\n\n[Attachment content truncated before answering because it exceeded ${MAX_ATTACHMENT_ANSWER_CHARS} characters.]`;
+	return `${content.slice(0, MAX_ATTACHMENT_ANSWER_CHARS - suffix.length)}${suffix}`;
 }
 
 function attachmentAnswerTokenBudget(content: string): number {

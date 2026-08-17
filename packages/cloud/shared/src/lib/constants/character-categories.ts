@@ -85,6 +85,15 @@ export const CHARACTER_CATEGORIES: Record<Uppercase<CategoryId>, CategoryDefinit
   },
 } as const;
 
+export const CATEGORY_IDS = Object.values(CHARACTER_CATEGORIES).map((category) => category.id);
+
+const CATEGORY_ID_SET = new Set<CategoryId>(CATEGORY_IDS);
+
+/** Narrows an untrusted string to a canonical character category identifier. */
+export function isCategoryId(value: string): value is CategoryId {
+  return CATEGORY_ID_SET.has(value as CategoryId);
+}
+
 export const CATEGORY_ORDER: Array<keyof typeof CHARACTER_CATEGORIES> = [
   "ASSISTANT",
   "ANIME",

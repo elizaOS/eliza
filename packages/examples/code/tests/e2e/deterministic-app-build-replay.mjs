@@ -34,13 +34,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AcpService } from "../../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.js";
+import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../../../..");
 const proxy = join(here, "llm-record-replay-proxy.mjs");
 const fixture = join(here, "fixtures", "random-color-gemma-session.json");
 const acpEntry = resolve(here, "..", "..", "src", "acp.ts");
-const PORT = 8917;
 const MODE = process.env.LLM_MODE === "record" ? "record" : "replay";
 const KEY = process.env.CEREBRAS_API_KEY || process.env.LLM_KEY || "";
 // FIXED workdir (reset clean each run) — record and replay MUST share the same
@@ -59,20 +59,29 @@ if (MODE === "record" && !KEY) {
   process.exit(2);
 }
 
+// Kernel-assigned per run: the proxy binds port 0 and advertises the bound
+// port through this file, so concurrent CI jobs cannot collide and there is
+// no probe-then-release window (#18359).
+const proxyPortFile = join(
+  realpathSync(tmpdir()),
+  `eliza-det-replay-port-${process.pid}`,
+);
 const proxyProc = spawn("node", [proxy], {
   env: {
     ...process.env,
     MODE,
     LLM_RECORDING: fixture,
     LLM_REPLAY_WORKDIR: workdir,
-    PORT: String(PORT),
+    PORT: "0",
+    LLM_PROXY_PORT_FILE: proxyPortFile,
     ...(MODE === "record"
       ? { LLM_UPSTREAM: "https://api.cerebras.ai/v1", LLM_KEY: KEY }
       : {}),
   },
   stdio: ["ignore", "ignore", "inherit"],
 });
-await new Promise((r) => setTimeout(r, 1500));
+const PORT = await waitForAdvertisedPort(proxyPortFile, { child: proxyProc });
+rmSync(proxyPortFile, { force: true });
 
 rmSync(workdir, { recursive: true, force: true });
 mkdirSync(workdir, { recursive: true });

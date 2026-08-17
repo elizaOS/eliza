@@ -66,6 +66,28 @@ function activeSessionNames(sessions: readonly SessionInfo[]): string[] {
     );
 }
 
+const DEFAULT_OUTPUT_LINES = 100;
+const MAX_OUTPUT_LINES = 2_000;
+
+/**
+ * Untrusted `?lines=` for GET /api/coding-agents/:id/output.
+ * Number.parseInt("1e2", 10) === 1 would silently return 1 session line
+ * instead of 100. Omit/empty keeps the documented default 100.
+ */
+function parseOutputLines(raw: string | null): number | null {
+  if (raw === null || raw === "") return DEFAULT_OUTPUT_LINES;
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0 ||
+    parsed > MAX_OUTPUT_LINES
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
 async function resolveSafeVenvPath(
   workdir: string,
   venvDirRaw: string,
@@ -819,15 +841,22 @@ export async function handleAgentRoutes(
       return true;
     }
 
-    try {
-      const sessionId = outputMatch[1];
-      const url = new URL(req.url || "", `http://${req.headers.host}`);
-      // Guard against a non-numeric ?lines= (parseInt("abc") → NaN would reach
-      // getSessionOutput); fall back to the default 100 on anything invalid.
-      const parsedLines = parseInt(url.searchParams.get("lines") || "100", 10);
-      const lines =
-        Number.isFinite(parsedLines) && parsedLines > 0 ? parsedLines : 100;
+    const sessionId = outputMatch[1];
+    const url = new URL(
+      req.url || "",
+      `http://${req.headers?.host || "localhost"}`,
+    );
+    const lines = parseOutputLines(url.searchParams.get("lines"));
+    if (lines === null) {
+      sendError(
+        res,
+        `lines must be an integer from 1 to ${MAX_OUTPUT_LINES}`,
+        400,
+      );
+      return true;
+    }
 
+    try {
       const output = await ctx.acpService.getSessionOutput?.(sessionId, lines);
       sendJson(res, { sessionId, output });
     } catch (error) {

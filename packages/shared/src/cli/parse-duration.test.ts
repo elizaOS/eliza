@@ -1,8 +1,8 @@
 /**
  * Duration string parser used by CLI/config knobs. Unit suffixes must convert
  * to the right millisecond count, the default unit applies only when no suffix
- * is given, and malformed/negative input must throw rather than silently
- * yielding a bogus timeout.
+ * is given, and malformed, negative, or overflowing input must throw rather
+ * than silently yielding a bogus timeout.
  */
 import { describe, expect, it } from "vitest";
 import { parseDurationMs } from "./parse-duration";
@@ -25,8 +25,38 @@ describe("parseDurationMs", () => {
 
   it("throws on empty / malformed / negative input", () => {
     expect(() => parseDurationMs("")).toThrow();
+    expect(() => parseDurationMs("   ")).toThrow();
+    expect(() => parseDurationMs(null as unknown as string)).toThrow();
+    expect(() => parseDurationMs(undefined as unknown as string)).toThrow();
     expect(() => parseDurationMs("abc")).toThrow();
     expect(() => parseDurationMs("10x")).toThrow();
     expect(() => parseDurationMs("-5s")).toThrow();
+  });
+
+  it.each(["s", "m", "h", "d"] as const)(
+    "throws when %s conversion overflows milliseconds",
+    (unit) => {
+      expect(() => parseDurationMs(`1${"0".repeat(306)}${unit}`)).toThrow(
+        "invalid duration",
+      );
+    },
+  );
+
+  it("rejects values exceeding MAX_SAFE_INTEGER", () => {
+    expect(() => parseDurationMs("1000000000000000d")).toThrow(
+      "invalid duration",
+    );
+    expect(() => parseDurationMs("10000000000000000ms")).toThrow(
+      "invalid duration",
+    );
+    expect(parseDurationMs(`${Number.MAX_SAFE_INTEGER}ms`)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it("checks overflow after applying the default unit", () => {
+    expect(() =>
+      parseDurationMs(`1${"0".repeat(306)}`, { defaultUnit: "m" }),
+    ).toThrow("invalid duration");
   });
 });

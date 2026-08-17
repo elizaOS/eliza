@@ -15,6 +15,15 @@ export interface OAuthCallbackResult {
   state?: string;
 }
 
+export function assertOAuthState(
+  actualState: string | null | undefined,
+  expectedState: string,
+): void {
+  if (actualState !== expectedState) {
+    throw new Error("OAuth state mismatch");
+  }
+}
+
 function canPrompt(): boolean {
   return !!process.stdin && !!process.stdout && process.stdin.isTTY === true;
 }
@@ -109,10 +118,12 @@ export async function waitForLoopbackCallback(
           return;
         }
 
-        if (state && state !== expectedState) {
+        try {
+          assertOAuthState(state, expectedState);
+        } catch (error) {
           res.writeHead(400, { "content-type": "text/plain" });
           res.end("State mismatch");
-          finish(new Error("OAuth state mismatch"));
+          finish(error instanceof Error ? error : new Error(String(error)));
           return;
         }
 

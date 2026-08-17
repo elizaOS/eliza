@@ -278,8 +278,16 @@ export class DefinitionsDomain {
       "timezone",
       current.definition.timezone,
     );
+    const windowPolicyInput =
+      request.windowPolicy ??
+      (request.timezone === undefined
+        ? current.definition.windowPolicy
+        : {
+            ...current.definition.windowPolicy,
+            timezone: nextTimezone,
+          });
     const nextWindowPolicy = normalizeWindowPolicyInput(
-      request.windowPolicy ?? current.definition.windowPolicy,
+      windowPolicyInput,
       "windowPolicy",
       nextTimezone,
     );
@@ -353,7 +361,12 @@ export class DefinitionsDomain {
       request.reminderPlan,
       "update",
     );
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    // Optimistic concurrency: the first write-back must land on the exact
+    // revision this update was computed from; a concurrent mutation or delete
+    // surfaces as a typed LIFEOPS_DEFINITION_CONFLICT for re-resolution.
+    await this.ctx.repository.updateDefinition(nextDefinition, {
+      expectedUpdatedAt: current.definition.updatedAt,
+    });
     const reminderPlan = await this.deps.syncReminderPlan(
       nextDefinition,
       reminderPlanDraft,
@@ -408,6 +421,16 @@ export class DefinitionsDomain {
     if (!definition) {
       fail(404, "life-ops definition not found");
     }
+    // A definition whose subject is neither this runtime's agent nor its
+    // owner belongs to another identity; report it as absent rather than
+    // disclose or destroy it.
+    const expectedSubjectId =
+      definition.subjectType === "agent"
+        ? this.ctx.agentId()
+        : this.ctx.ownerEntityId();
+    if (definition.subjectId !== expectedSubjectId) {
+      fail(404, "life-ops definition not found");
+    }
     await this.deps.syncNativeAppleReminderForDefinition({
       definition: null,
       previousDefinition: definition,
@@ -415,6 +438,13 @@ export class DefinitionsDomain {
     await this.ctx.repository.deleteDefinition(
       this.ctx.agentId(),
       definitionId,
+      {
+        scope: {
+          subjectType: definition.subjectType,
+          subjectId: definition.subjectId,
+        },
+        expectedUpdatedAt: definition.updatedAt,
+      },
     );
     await this.ctx.recordAudit(
       "definition_deleted",

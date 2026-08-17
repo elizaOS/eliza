@@ -29,6 +29,12 @@ describe("parseEventCursor", () => {
     expect(parseEventCursor("")).toBeNull();
     expect(parseEventCursor("   ")).toBeNull();
     expect(parseEventCursor("not-a-number")).toBeNull();
+    expect(parseEventCursor("garbage999")).toBeNull();
+    expect(parseEventCursor("999garbage")).toBeNull();
+    expect(parseEventCursor("evt-42-extra")).toBeNull();
+    expect(parseEventCursor("evt--42")).toBeNull();
+    expect(parseEventCursor("+42")).toBeNull();
+    expect(parseEventCursor("42.5")).toBeNull();
   });
 
   it("parses a bare integer cursor", () => {
@@ -37,7 +43,7 @@ describe("parseEventCursor", () => {
     expect(parseEventCursor("  7 ")).toBe(7);
   });
 
-  it("parses a full evt-<n> cursor (trailing integer)", () => {
+  it("parses a full evt-<n> cursor", () => {
     expect(parseEventCursor("evt-42")).toBe(42);
     expect(parseEventCursor("evt-0")).toBe(0);
   });

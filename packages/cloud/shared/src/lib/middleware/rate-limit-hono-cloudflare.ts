@@ -20,6 +20,12 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyGenerator?: (c: AppContext) => string;
   /**
+   * Reuse a short-lived in-isolate Redis verdict when hot-path caches are
+   * enabled. Defaults to true. Set false when every request must observe the
+   * shared limiter, including immediately after a healthy check.
+   */
+  localLease?: boolean;
+  /**
    * Use an in-isolate fallback bucket when Redis cannot be constructed or
    * throws at request time.
    * This is weaker than the shared Redis limiter because every Worker isolate
@@ -594,7 +600,7 @@ export function rateLimit(
     let result: CheckResult;
     let policy = "redis";
     let headersConfig = effectiveConfig;
-    const leaseEnabled = isHotPathCachesEnabled(env);
+    const leaseEnabled = effectiveConfig.localLease !== false && isHotPathCachesEnabled(env);
     const leaseKey = honoLeaseKey(key, effectiveConfig);
     const now = Date.now();
     const lease = honoRateLimitLeases.get(leaseKey);

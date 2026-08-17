@@ -13,9 +13,11 @@ import type { StoryDefinition } from "../Story.tsx";
 
 const phases: readonly ShellPhase[] = [
   "booting",
+  "needs-auth",
   "idle",
   "summoned",
   "listening",
+  "processing",
   "responding",
 ];
 

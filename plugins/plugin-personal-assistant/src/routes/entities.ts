@@ -40,7 +40,27 @@ function makeStore(ctx: LifeOpsRouteContext): EntityStore | null {
   );
 }
 
-function parseEntityFilter(url: URL): EntityFilter {
+function parseEntityLimit(
+  raw: string | null,
+): { ok: true; limit?: number } | { ok: false; message: string } {
+  if (raw === null || raw === "") {
+    return { ok: true };
+  }
+  // Prefix coercion or leading zeros can turn a malformed paging request into
+  // an unintended unbounded knowledge-graph response.
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return { ok: false, message: "limit must be a positive integer" };
+  }
+  const limit = Number(raw);
+  if (!Number.isSafeInteger(limit)) {
+    return { ok: false, message: "limit must be a positive integer" };
+  }
+  return { ok: true, limit };
+}
+
+function parseEntityFilter(
+  url: URL,
+): { ok: true; filter: EntityFilter } | { ok: false; message: string } {
   const filter: EntityFilter = {};
   const type = url.searchParams.get("type");
   if (type) filter.type = type;
@@ -54,11 +74,14 @@ function parseEntityFilter(url: URL): EntityFilter {
   if (hasConnectorAccountId) {
     filter.hasConnectorAccountId = hasConnectorAccountId;
   }
-  const limit = url.searchParams.get("limit");
-  if (limit && /^\d+$/.test(limit)) {
-    filter.limit = Number.parseInt(limit, 10);
+  const parsedLimit = parseEntityLimit(url.searchParams.get("limit"));
+  if (!parsedLimit.ok) {
+    return parsedLimit;
   }
-  return filter;
+  if (parsedLimit.limit !== undefined) {
+    filter.limit = parsedLimit.limit;
+  }
+  return { ok: true, filter };
 }
 
 function asString(value: unknown, fallback = ""): string {
@@ -277,8 +300,12 @@ export async function handleEntityRoutes(
   if (method === "GET" && pathname === "/api/lifeops/entities") {
     const store = makeStore(ctx);
     if (!store) return true;
-    const filter = parseEntityFilter(url);
-    const entities = await store.list(filter);
+    const parsed = parseEntityFilter(url);
+    if (!parsed.ok) {
+      ctx.error(res, parsed.message, 400);
+      return true;
+    }
+    const entities = await store.list(parsed.filter);
     json(res, { entities });
     return true;
   }

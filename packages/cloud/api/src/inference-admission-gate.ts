@@ -1,11 +1,10 @@
 /**
- * Per-organization serialized admission controls for inference requests.
+ * Serialized admission controls for inference requests.
  *
- * The object never queries Postgres or Redis. It durably enforces exact
- * fixed-window endpoint limits and bounds concurrent provider dispatches to the
- * latest cached balance. Capacity can only increase from a cache snapshot
- * observed after the last accounting event, so stale KV values cannot
- * resurrect already-consumed spend.
+ * Billing leases retain one object identity per organization. Fixed-window
+ * limits use distinct rate-only identities after a globally coordinated window
+ * boundary, so their storage input gates cannot inherit ledger stalls without
+ * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
 import { runWithDbCacheAsync } from "@/db/client";
@@ -85,6 +84,60 @@ interface RateLimitRequest {
   endpointType: string;
   windowMs: number;
   maxRequests: number;
+  /** Fixed-window identity captured before this request enters a Durable Object queue. */
+  windowStartedAt?: number;
+}
+
+type CredentialCheckRequest =
+  | {
+      organizationId: string;
+      kind: "api_key";
+      credentialId: string;
+      userId: string;
+    }
+  | {
+      organizationId: string;
+      kind: "steward_session";
+      userId: string;
+      stewardUserId: string;
+      issuedAt: number;
+    };
+
+interface CredentialRevokeRequest {
+  organizationId: string;
+  kind: "api_key";
+  credentialId: string;
+}
+
+interface SubjectStateRequest {
+  organizationId: string;
+  userId: string;
+  active: boolean;
+  reason: SubjectDisableReason;
+}
+
+type SubjectDisableReason = "account" | "moderation" | "membership";
+
+interface SessionRevokeRequest {
+  organizationId: string;
+  userId: string;
+  issuedAt: number;
+}
+
+interface SessionBindingStateRequest {
+  organizationId: string;
+  userId: string;
+  stewardUserId: string;
+  active: boolean;
+}
+
+interface OrganizationStateRequest {
+  organizationId: string;
+  active: boolean;
+}
+
+interface RateLimitCutoverRequest {
+  windowMs: number;
 }
 
 interface RateLimitWindow {
@@ -101,6 +154,12 @@ const LEASE_KEY_PREFIX = "lease:";
 const LEASE_ACTIVE_KEY_PREFIX = "lease-active:";
 const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
+const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
+const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
+const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
+const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
+const RATE_LIMIT_CUTOVERS_KEY = "rate-limit-v2-cutovers";
+const REVOKED_SESSION_BINDING_PREFIX = "revocation:session-binding:";
 const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
@@ -126,6 +185,11 @@ const APP_REVIEW_STATUSES = new Set([
   "approved",
   "rejected",
 ]);
+const SUBJECT_DISABLE_REASONS: readonly SubjectDisableReason[] = [
+  "account",
+  "moderation",
+  "membership",
+];
 
 function nonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -146,6 +210,24 @@ function validRequestId(value: unknown): value is string {
 
 function validTrimmedId(value: unknown): value is string {
   return validId(value) && value.trim() === value;
+}
+
+function revocationStorageKey(prefix: string, id: string): string {
+  return `${prefix}${encodeURIComponent(id)}`;
+}
+
+function subjectRevocationStorageKey(
+  userId: string,
+  reason: SubjectDisableReason,
+): string {
+  return `${revocationStorageKey(DISABLED_SUBJECT_PREFIX, userId)}:${reason}`;
+}
+
+function sessionBindingStorageKey(
+  userId: string,
+  stewardUserId: string,
+): string {
+  return `${revocationStorageKey(REVOKED_SESSION_BINDING_PREFIX, userId)}:${encodeURIComponent(stewardUserId)}`;
 }
 
 function validRecoveryContext(
@@ -393,6 +475,9 @@ export class InferenceAdmissionGate {
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
+  // This queue orders calls within a rate-only identity. Cross-lane isolation
+  // comes from the distinct Durable Object identity selected by the caller.
+  private rateLimitOperationQueue: Promise<void> = Promise.resolve();
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -549,10 +634,59 @@ export class InferenceAdmissionGate {
     this.rateLimitWindows = snapshot;
   }
 
+  private async rateLimitCutover(
+    request: RateLimitCutoverRequest,
+  ): Promise<Response> {
+    if (!Number.isSafeInteger(request.windowMs) || request.windowMs <= 0) {
+      return jsonError("Invalid inference rate-limit cutover window", 400);
+    }
+    const key = String(request.windowMs);
+    const cutovers =
+      (await this.state.storage.get<Record<string, number>>(
+        RATE_LIMIT_CUTOVERS_KEY,
+      )) ?? {};
+    const existing = cutovers[key];
+    if (existing !== undefined) {
+      if (
+        !Number.isSafeInteger(existing) ||
+        existing <= 0 ||
+        existing % request.windowMs !== 0
+      ) {
+        throw new Error("Inference rate-limit cutover is corrupt");
+      }
+      return Response.json({ cutoverAt: existing });
+    }
+    const now = Date.now();
+    const cutoverAt =
+      (Math.floor(now / request.windowMs) + 1) * request.windowMs;
+    if (!Number.isSafeInteger(cutoverAt)) {
+      return jsonError("Invalid inference rate-limit cutover window", 400);
+    }
+    await this.state.storage.put(RATE_LIMIT_CUTOVERS_KEY, {
+      ...cutovers,
+      [key]: cutoverAt,
+    });
+    return Response.json({ cutoverAt });
+  }
+
   private async serialize<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.operationQueue;
     let release: () => void = () => undefined;
     this.operationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private async serializeRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.rateLimitOperationQueue;
+    let release: () => void = () => undefined;
+    this.rateLimitOperationQueue = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous;
@@ -855,12 +989,34 @@ export class InferenceAdmissionGate {
     ) {
       return jsonError("Invalid inference rate-limit request", 400);
     }
-
     const now = Date.now();
-    const windowStartedAt =
+    const currentWindowStartedAt =
       Math.floor(now / request.windowMs) * request.windowMs;
+    if (
+      request.windowStartedAt !== undefined &&
+      (!Number.isSafeInteger(request.windowStartedAt) ||
+        request.windowStartedAt < 0 ||
+        request.windowStartedAt % request.windowMs !== 0 ||
+        request.windowStartedAt > currentWindowStartedAt)
+    ) {
+      return jsonError("Invalid inference rate-limit request", 400);
+    }
+
+    const windowStartedAt = request.windowStartedAt ?? currentWindowStartedAt;
     const windows = cloneRateLimitWindows(await this.loadRateLimitWindows());
     const existing = windows[request.endpointType];
+    if (existing && existing.windowStartedAt > windowStartedAt) {
+      const resetAt = existing.windowStartedAt + existing.windowMs;
+      return Response.json(
+        {
+          allowed: false,
+          remaining: 0,
+          resetAt,
+          retryAfter: Math.max(1, Math.ceil((resetAt - now) / 1_000)),
+        },
+        { status: 429 },
+      );
+    }
     const current =
       existing &&
       existing.windowStartedAt === windowStartedAt &&
@@ -891,6 +1047,168 @@ export class InferenceAdmissionGate {
     );
   }
 
+  private async credentialCheck(
+    request: CredentialCheckRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      (request.kind === "api_key" && !validTrimmedId(request.credentialId)) ||
+      (request.kind === "steward_session" &&
+        (!validTrimmedId(request.stewardUserId) ||
+          !Number.isSafeInteger(request.issuedAt) ||
+          request.issuedAt <= 0))
+    ) {
+      return jsonError("Invalid inference credential check", 400);
+    }
+
+    const subjectKeys = SUBJECT_DISABLE_REASONS.map((reason) =>
+      subjectRevocationStorageKey(request.userId, reason),
+    );
+    const credentialKeys =
+      request.kind === "api_key"
+        ? [revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId)]
+        : [
+            sessionBindingStorageKey(request.userId, request.stewardUserId),
+            revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId),
+          ];
+    const revocations = await this.state.storage.get<boolean | number>([
+      ORGANIZATION_DISABLED_KEY,
+      ...subjectKeys,
+      ...credentialKeys,
+    ]);
+
+    if (revocations.get(ORGANIZATION_DISABLED_KEY) === true) {
+      return Response.json(
+        { allowed: false, reason: "organization_disabled" },
+        { status: 403 },
+      );
+    }
+    for (const [index, reason] of SUBJECT_DISABLE_REASONS.entries()) {
+      const key = subjectKeys[index];
+      if (key && revocations.get(key) === true) {
+        return Response.json(
+          { allowed: false, reason: `subject_${reason}_disabled` },
+          { status: 403 },
+        );
+      }
+    }
+
+    if (request.kind === "api_key") {
+      const revoked = revocations.get(credentialKeys[0] ?? "") === true;
+      return revoked
+        ? Response.json(
+            { allowed: false, reason: "credential_revoked" },
+            { status: 403 },
+          )
+        : Response.json({ allowed: true });
+    }
+
+    if (revocations.get(credentialKeys[0] ?? "") === true) {
+      return Response.json(
+        { allowed: false, reason: "session_binding_revoked" },
+        { status: 403 },
+      );
+    }
+
+    const cutoffValue = revocations.get(credentialKeys[1] ?? "");
+    const cutoff = typeof cutoffValue === "number" ? cutoffValue : undefined;
+    return cutoff !== undefined && request.issuedAt <= cutoff
+      ? Response.json(
+          { allowed: false, reason: "session_revoked" },
+          { status: 403 },
+        )
+      : Response.json({ allowed: true });
+  }
+
+  private async revokeCredential(
+    request: CredentialRevokeRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      request.kind !== "api_key" ||
+      !validTrimmedId(request.credentialId)
+    ) {
+      return jsonError("Invalid inference credential revocation", 400);
+    }
+    await this.state.storage.put(
+      revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
+      true,
+    );
+    return Response.json({ committed: true });
+  }
+
+  private async setSubjectActive(
+    request: SubjectStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      typeof request.active !== "boolean" ||
+      !SUBJECT_DISABLE_REASONS.includes(request.reason)
+    ) {
+      return jsonError("Invalid inference subject state", 400);
+    }
+    const key = subjectRevocationStorageKey(request.userId, request.reason);
+    if (request.active) await this.state.storage.delete(key);
+    else await this.state.storage.put(key, true);
+    return Response.json({ committed: true });
+  }
+
+  private async revokeSessionsThrough(
+    request: SessionRevokeRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      !Number.isSafeInteger(request.issuedAt) ||
+      request.issuedAt <= 0
+    ) {
+      return jsonError("Invalid inference session revocation", 400);
+    }
+    const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
+    const previous = (await this.state.storage.get<number>(key)) ?? 0;
+    await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    return Response.json({ committed: true });
+  }
+
+  private async setSessionBindingActive(
+    request: SessionBindingStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      !validTrimmedId(request.stewardUserId) ||
+      typeof request.active !== "boolean"
+    ) {
+      return jsonError("Invalid inference session binding revocation", 400);
+    }
+    const key = sessionBindingStorageKey(request.userId, request.stewardUserId);
+    if (request.active) await this.state.storage.delete(key);
+    else await this.state.storage.put(key, true);
+    return Response.json({ committed: true });
+  }
+
+  private async setOrganizationActive(
+    request: OrganizationStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      typeof request.active !== "boolean"
+    ) {
+      return jsonError("Invalid inference organization state", 400);
+    }
+    if (request.active)
+      await this.state.storage.delete(ORGANIZATION_DISABLED_KEY);
+    else await this.state.storage.put(ORGANIZATION_DISABLED_KEY, true);
+    return Response.json({ committed: true });
+  }
+
+  private async warmRateLimit(): Promise<Response> {
+    await this.loadRateLimitWindows();
+    return Response.json({ warmed: true });
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
@@ -900,14 +1218,28 @@ export class InferenceAdmissionGate {
       | HydrateRequest
       | SettleRequest
       | LeaseIdentityRequest
-      | RateLimitRequest;
+      | RateLimitRequest
+      | CredentialCheckRequest
+      | CredentialRevokeRequest
+      | SubjectStateRequest
+      | SessionRevokeRequest
+      | SessionBindingStateRequest
+      | OrganizationStateRequest
+      | RateLimitCutoverRequest;
     try {
       body = (await request.json()) as
         | LeaseRequest
         | HydrateRequest
         | SettleRequest
         | LeaseIdentityRequest
-        | RateLimitRequest;
+        | RateLimitRequest
+        | CredentialCheckRequest
+        | CredentialRevokeRequest
+        | SubjectStateRequest
+        | SessionRevokeRequest
+        | SessionBindingStateRequest
+        | OrganizationStateRequest
+        | RateLimitCutoverRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
       return jsonError("Invalid JSON body", 400);
@@ -934,8 +1266,46 @@ export class InferenceAdmissionGate {
       );
     }
     if (path === "/rate-limit") {
-      return await this.serialize(() =>
+      return await this.serializeRateLimit(() =>
         this.rateLimit(body as RateLimitRequest),
+      );
+    }
+    if (path === "/rate-limit-warm") {
+      return await this.serializeRateLimit(() => this.warmRateLimit());
+    }
+    if (path === "/rate-limit-v2-cutover") {
+      return await this.serializeRateLimit(() =>
+        this.rateLimitCutover(body as RateLimitCutoverRequest),
+      );
+    }
+    if (path === "/credential/check") {
+      return await this.serialize(() =>
+        this.credentialCheck(body as CredentialCheckRequest),
+      );
+    }
+    if (path === "/credential/revoke") {
+      return await this.serialize(() =>
+        this.revokeCredential(body as CredentialRevokeRequest),
+      );
+    }
+    if (path === "/subject/set-active") {
+      return await this.serialize(() =>
+        this.setSubjectActive(body as SubjectStateRequest),
+      );
+    }
+    if (path === "/session/revoke-through") {
+      return await this.serialize(() =>
+        this.revokeSessionsThrough(body as SessionRevokeRequest),
+      );
+    }
+    if (path === "/session/set-binding-active") {
+      return await this.serialize(() =>
+        this.setSessionBindingActive(body as SessionBindingStateRequest),
+      );
+    }
+    if (path === "/organization/set-active") {
+      return await this.serialize(() =>
+        this.setOrganizationActive(body as OrganizationStateRequest),
       );
     }
     return new Response("Not found", { status: 404 });

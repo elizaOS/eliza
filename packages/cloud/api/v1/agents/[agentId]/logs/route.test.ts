@@ -116,6 +116,54 @@ describe("service agent logs route", () => {
     });
   });
 
+  test.each(["", "1e3", "10junk", "0", "-1", "5001", "9007199254740992"])(
+    "rejects a non-canonical or out-of-range tail value %s",
+    async (tail) => {
+      const response = await app.fetch(
+        new Request(
+          `https://api.example.test/api/v1/agents/cloud-agent-1/logs?tail=${tail}`,
+          {
+            method: "GET",
+            headers: { "X-Service-Key": "svc" },
+          },
+        ),
+        { WAIFU_SERVICE_KEY: "svc" },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        success: false,
+        error: "tail must be a whole number between 1 and 5000",
+      });
+      expect(enqueueAgentLogsOnce).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    ["", 100],
+    ["?tail=5000", 5000],
+  ])("accepts the tail boundary %s", async (query, expectedTail) => {
+    const response = await app.fetch(
+      new Request(
+        `https://api.example.test/api/v1/agents/cloud-agent-1/logs${query}`,
+        {
+          method: "GET",
+          headers: { "X-Service-Key": "svc" },
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { tail: expectedTail },
+    });
+    expect(enqueueAgentLogsOnce).toHaveBeenCalledWith(
+      expect.objectContaining({ tail: expectedTail }),
+    );
+  });
+
   test("returns 404 before enqueueing when the agent id is unknown", async () => {
     getAgentById.mockResolvedValueOnce(null);
 

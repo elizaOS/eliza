@@ -71,6 +71,7 @@ mock.module("./credits", () => ({
     }),
   },
   InsufficientCreditsError: TestInsufficientCreditsError,
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
   MIN_RESERVATION: 0.000001,
 }));
 

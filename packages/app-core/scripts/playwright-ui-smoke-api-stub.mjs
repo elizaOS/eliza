@@ -242,15 +242,17 @@ function stubCatalogApp({
 }
 
 const stubCatalogApps = [
+  // No entry sets heroImage: the /app-heroes/*.png launcher art shipped only
+  // in the retired eliza-archive overlay (#16290), so the files do not exist
+  // in a clean checkout. The catalog renders the hero conditionally and falls
+  // back to derived hero art, so omitting the field avoids the 404 console
+  // errors the visual smoke asserts against.
   stubCatalogApp({
     name: "@elizaos/plugin-personal-assistant",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
-    // No heroImage: the lifeops surface was removed and /app-heroes/lifeops.png
-    // does not exist; the catalog renders the hero conditionally, so omitting it
-    // avoids the 404 console error (which the visual smoke asserts against).
   }),
   stubCatalogApp({
     name: "@elizaos/app-plugin-viewer",
@@ -258,35 +260,30 @@ const stubCatalogApps = [
     description:
       "Inspect installed plugins, connectors, and runtime feature flags.",
     capabilities: ["plugins", "connectors", "viewer"],
-    heroImage: "/app-heroes/plugin-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-skills-viewer",
     displayName: "Skills Viewer",
     description: "Create, enable, review, and install custom agent skills.",
     capabilities: ["skills", "viewer"],
-    heroImage: "/app-heroes/skills-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",
     description: "Inspect LLM call history, prompts, and execution traces.",
     capabilities: ["trajectories", "debug", "viewer"],
-    heroImage: "/app-heroes/trajectory-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-relationship-viewer",
     displayName: "Relationship Viewer",
     description: "Explore people, identities, and relationship graphs.",
     capabilities: ["relationships", "graph", "viewer"],
-    heroImage: "/app-heroes/relationship-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-memory-viewer",
     displayName: "Memory Viewer",
     description: "Browse memory, fact, and extraction activity.",
     capabilities: ["memory", "facts", "viewer"],
-    heroImage: "/app-heroes/memory-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-runtime-debugger",
@@ -294,21 +291,18 @@ const stubCatalogApps = [
     description:
       "Inspect runtime objects, plugin order, providers, and services.",
     capabilities: ["runtime", "debug", "viewer"],
-    heroImage: "/app-heroes/runtime-debugger.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-database-viewer",
     displayName: "Database Viewer",
     description: "Inspect tables, media, vectors, and ad-hoc SQL.",
     capabilities: ["database", "sql", "viewer"],
-    heroImage: "/app-heroes/database-viewer.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-log-viewer",
     displayName: "Log Viewer",
     description: "Search runtime and service logs.",
     capabilities: ["logs", "debug", "viewer"],
-    heroImage: "/app-heroes/log-viewer.png",
   }),
 ];
 

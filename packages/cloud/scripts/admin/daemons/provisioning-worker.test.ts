@@ -690,7 +690,7 @@ describe("readWorkerConfig (db liveness threshold)", () => {
     ).toBe(24);
   });
 
-  it("CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS overrides; garbage falls back to 24", () => {
+  it("CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS overrides; non-numeric garbage falls back to 24", () => {
     expect(
       readWorkerConfig(
         { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "72" } as NodeJS.ProcessEnv,
@@ -699,16 +699,74 @@ describe("readWorkerConfig (db liveness threshold)", () => {
     ).toBe(72);
     expect(
       readWorkerConfig(
-        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "-3" } as NodeJS.ProcessEnv,
-        [],
-      ).dbLivenessMaxAgeHours,
-    ).toBe(24);
-    expect(
-      readWorkerConfig(
         { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "soon" } as NodeJS.ProcessEnv,
         [],
       ).dbLivenessMaxAgeHours,
     ).toBe(24);
+  });
+
+  it("rejects prefix-coerced liveness hours instead of binding a different age", () => {
+    expect(() =>
+      readWorkerConfig(
+        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "-3" } as NodeJS.ProcessEnv,
+        [],
+      ),
+    ).toThrow(/canonical positive integer/);
+    expect(() =>
+      readWorkerConfig(
+        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "1e2" } as NodeJS.ProcessEnv,
+        [],
+      ),
+    ).toThrow(/canonical positive integer/);
+  });
+});
+
+describe("readWorkerConfig (canonical env ints)", () => {
+  it("WORKER_POLL_INTERVAL=5000 is 5000ms; omitted stays 30000", () => {
+    expect(readWorkerConfig({} as NodeJS.ProcessEnv, []).pollIntervalMs).toBe(
+      30_000,
+    );
+    expect(
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "5000" } as NodeJS.ProcessEnv,
+        [],
+      ).pollIntervalMs,
+    ).toBe(5000);
+  });
+
+  it("bounds the poll gap below the worker watchdog window", () => {
+    expect(
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "59999" } as NodeJS.ProcessEnv,
+        [],
+      ).pollIntervalMs,
+    ).toBe(59_999);
+    expect(() =>
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "60000" } as NodeJS.ProcessEnv,
+        [],
+      ),
+    ).toThrow(/no greater than 59999/);
+  });
+
+  it("throws on prefix-coerced WORKER_POLL_INTERVAL tokens (would have been a 1ms-class poll)", () => {
+    for (const token of ["1e4", "12px", "007", "0", "0x10", " 1e4", "\t12px"]) {
+      expect(() =>
+        readWorkerConfig(
+          { WORKER_POLL_INTERVAL: token } as NodeJS.ProcessEnv,
+          [],
+        ),
+      ).toThrow(/WORKER_POLL_INTERVAL must be a canonical positive integer/);
+    }
+  });
+
+  it("non-numeric WORKER_POLL_INTERVAL still falls back to 30000", () => {
+    expect(
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "nope" } as NodeJS.ProcessEnv,
+        [],
+      ).pollIntervalMs,
+    ).toBe(30_000);
   });
 });
 

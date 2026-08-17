@@ -37,7 +37,19 @@ app.post("/", async (c) => {
       return c.json({ error: "Organization not found" }, 400, corsHeaders);
     }
 
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      // Referral apply must not write an affiliate binding on garbage.
+      return c.json({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
     const validation = ApplySchema.safeParse(body);
     if (!validation.success) {
       return c.json(

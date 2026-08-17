@@ -60,6 +60,30 @@ describe("extractFirstSentence", () => {
 		expect(r.rest).toBe("Next one.");
 	});
 
+	it("includes trailing closing quotes and brackets in the first sentence", () => {
+		const quoted = extractFirstSentence('She said, "Hello." Then she left.');
+		expect(quoted.first).toBe('She said, "Hello."');
+		expect(quoted.rest).toBe("Then she left.");
+		expect(quoted.complete).toBe(true);
+
+		const shouted = extractFirstSentence('He shouted, "Stop!" Everyone froze.');
+		expect(shouted.first).toBe('He shouted, "Stop!"');
+		expect(shouted.rest).toBe("Everyone froze.");
+		expect(shouted.complete).toBe(true);
+
+		const paren = extractFirstSentence(
+			"(This is inside parentheses.) Outside text.",
+		);
+		expect(paren.first).toBe("(This is inside parentheses.)");
+		expect(paren.rest).toBe("Outside text.");
+		expect(paren.complete).toBe(true);
+
+		const nested = extractFirstSentence("She replied, ‘Done.’)] Next step.");
+		expect(nested.first).toBe("She replied, ‘Done.’)]");
+		expect(nested.rest).toBe("Next step.");
+		expect(nested.complete).toBe(true);
+	});
+
 	it("returns the whole text when there is no boundary", () => {
 		const r = extractFirstSentence("No boundary here");
 		expect(r.first).toBe("No boundary here");

@@ -1781,7 +1781,11 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		// string, and suppression compares against this set — recording only the
 		// sanitized form would deliver a duplicate bubble on every drift turn.
 		const rawPayload = '{"status":"ok","taskId":"abc123"}';
-		const driftedRewrite = "Task created: abc123.<tool_call>notify_owner";
+		// NOTE: the rewrite must not CLAIM a completed side effect ("Task created:")
+		// — the planned-reply egress gate fails such claims closed without a
+		// verified receipt. This test pins wire sanitization + suppression, so it
+		// uses a non-claiming phrasing.
+		const driftedRewrite = "Here's the task id: abc123.<tool_call>notify_owner";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
 		const action = makeMockAction({
@@ -1850,10 +1854,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 
 		// The connector saw ONLY the sanitized wire text.
-		expect(delivered).toEqual(["Task created: abc123."]);
+		expect(delivered).toEqual(["Here's the task id: abc123."]);
 		// Both forms were recorded: raw for suppression, sanitized as sent.
 		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
-		expect(deliveredVisibleTexts).toContain("task created: abc123.");
+		expect(deliveredVisibleTexts).toContain("here's the task id: abc123.");
 		// The planner's raw-drift echo was suppressed against the raw record.
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {

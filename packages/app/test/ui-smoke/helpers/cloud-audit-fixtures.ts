@@ -231,8 +231,7 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/apps/overlay-presence"),
     body: { ok: true, app: null, present: false },
   },
-  // instances/ — sandbox agents list + detail (use-sandbox-status-poll.ts,
-  // AgentsPage/AgentDetailPage read `json.data`).
+  // instances/ — canonical agent-list DTO plus detail.
   {
     match: path_("/api/v1/eliza/agents"),
     body: {
@@ -241,13 +240,20 @@ const STUB_RULES: StubRule[] = [
         {
           id: "agent-smoke-1",
           agentName: "Smoke Agent",
-          agent_name: "Smoke Agent",
           status: "running",
-          executionTier: "standard",
+          databaseStatus: "ready",
+          lastBackupAt: null,
+          lastHeartbeatAt: NOW_ISO,
+          errorMessage: null,
           createdAt: NOW_ISO,
-          created_at: NOW_ISO,
           updatedAt: NOW_ISO,
-          lastActiveAt: NOW_ISO,
+          token_address: null,
+          token_chain: null,
+          token_name: null,
+          token_ticker: null,
+          dockerImage: null,
+          executionTier: "dedicated-lazy",
+          webUiUrl: null,
         },
       ],
     },
@@ -259,17 +265,14 @@ const STUB_RULES: StubRule[] = [
       data: {
         id: "agent-smoke-1",
         agentName: "Smoke Agent",
-        agent_name: "Smoke Agent",
         status: "running",
-        executionTier: "standard",
+        executionTier: "dedicated-lazy",
         databaseStatus: "ready",
         webUiUrl: null,
         bridgeUrl: null,
         errorMessage: null,
         createdAt: NOW_ISO,
-        created_at: NOW_ISO,
         updatedAt: NOW_ISO,
-        lastActiveAt: NOW_ISO,
       },
     },
   },
@@ -327,6 +330,52 @@ const STUB_RULES: StubRule[] = [
   // billing/ — credits, settings, invoices, crypto (fail-soft), checkout.
   { match: path_("/api/v1/credits/balance"), body: { balance: 42 } },
   { match: path_("/api/credits/balance"), body: { balance: 42 } },
+  {
+    match: path_("/api/v1/billing/limits"),
+    body: {
+      success: true,
+      data: {
+        observedAt: NOW_ISO,
+        cloudCharacters: {
+          source: "cloud-character-quota",
+          state: "available",
+          used: 2,
+          limit: 5,
+        },
+        agentSandboxes: {
+          source: "agent-sandbox-quota",
+          used: 3,
+          nonEagerCreate: { state: "available", limit: 5 },
+          eagerManagedCreate: { state: "available", limit: 100 },
+          state: "available",
+        },
+        containers: {
+          source: "container-quota",
+          state: "available",
+          used: 1,
+          limit: 5,
+        },
+        apps: {
+          source: "apps-service",
+          state: "available",
+          used: 4,
+          limit: 25,
+        },
+        storage: {
+          source: "org-storage-quota",
+          state: "available",
+          bytesUsed: "1073741824",
+          bytesLimit: "5368709120",
+        },
+        inferenceRateLimits: {
+          source: "org-rate-limits",
+          state: "available",
+          completionsRpm: 120,
+          embeddingsRpm: 200,
+        },
+      },
+    },
+  },
   {
     // auto-top-up-card.tsx reads settings.autoTopUp.* + settings.limits.*;
     // pay-as-you-go-card.tsx reads settings.payAsYouGoFromEarnings.

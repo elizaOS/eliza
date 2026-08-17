@@ -1,14 +1,13 @@
 /**
- * Unit tests for the inference hot-path auth resolver + low-level cache (#9899).
- *
- * Uses the REAL CacheClient with MOCK_REDIS=1 (in-memory adapter) so the
- * read/write/invalidate round-trip is exercised end-to-end, and mocks only the
- * auth + moderation + api-key seams the resolver calls on a miss.
+ * Exercises the inference hot-path auth resolver and low-level cache with the
+ * real in-memory CacheClient. Authentication, moderation, API-key, admission,
+ * and revocation collaborators are deterministic mocks.
  */
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
+process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS = "60";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
@@ -22,6 +21,10 @@ type AuthImpl = () => Promise<{
 
 let authImpl: AuthImpl;
 let shouldBlock: (userId: string) => Promise<boolean>;
+let assertCredentialActive: (
+  organizationId: string,
+  credential: { kind: string; credentialId?: string; userId: string },
+) => Promise<void>;
 const incrementUsageCalls: string[] = [];
 const bypassCacheCalls: boolean[] = [];
 const moderationBypassCacheCalls: boolean[] = [];
@@ -81,6 +84,25 @@ mock.module("./inference-admission-snapshot", () => ({
 mock.module("./inference-app-key-scope", () => ({
   loadInferenceAppKeyScope: async () => null,
 }));
+mock.module("./inference-credential-revocation", () => ({
+  isInferenceStrongRevocationEnabled: () =>
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
+  InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {
+    constructor(readonly reason: string) {
+      super("Inference credential is revoked");
+      this.name = "InferenceCredentialRevokedError";
+    }
+  },
+  assertInferenceCredentialActive: (
+    organizationId: string,
+    credential: { kind: string; credentialId?: string; userId: string },
+  ) => assertCredentialActive(organizationId, credential),
+  revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
+  revokeInferenceSessionsThrough: async () => undefined,
+  setInferenceOrganizationActive: async () => undefined,
+  setInferenceSubjectActive: async () => undefined,
+}));
 
 const {
   __clearInferenceApiKeyHydrations,
@@ -112,6 +134,7 @@ beforeEach(async () => {
     apiKey: { id: "key-1" },
   });
   shouldBlock = async () => false;
+  assertCredentialActive = async () => undefined;
   incrementUsageCalls.length = 0;
   bypassCacheCalls.length = 0;
   moderationBypassCacheCalls.length = 0;
@@ -416,6 +439,24 @@ describe("resolveInferenceAuthContext", () => {
     expect(res.source).toBe("cache");
     expect(chainCalls).toBe(0); // zero auth/moderation DB work on warm hit
     expect(incrementUsageCalls).toContain("key-1"); // usage tracking preserved
+  });
+
+  test("warm positive is denied immediately when the strong boundary revokes it", async () => {
+    await resolveInferenceAuthContext(reqWithApiKey());
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      return { user: { id: "user-1", organization_id: "org-1" }, apiKey: { id: "key-1" } };
+    };
+    assertCredentialActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("credential_revoked");
+    };
+
+    const result = await resolveInferenceAuthContext(reqWithApiKey());
+
+    expect(result).toEqual({ kind: "rejected", status: 401 });
+    expect(chainCalls).toBe(0);
   });
 
   test("default-off auth-cache gate ignores a populated positive entry", async () => {

@@ -22,10 +22,20 @@ type StoredReturnTo = {
   expiresAt: number;
 };
 
-function sanitizeLoginReturnTo(
+export function sanitizeLoginReturnTo(
   value: string | null | undefined,
 ): string | null {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : null;
+  if (!value?.startsWith("/") || value.includes("\\")) return null;
+
+  try {
+    const base = new URL("https://eliza-login.invalid/");
+    const resolved = new URL(value, base);
+    return resolved.origin === base.origin ? value : null;
+  } catch {
+    // error-policy:J3 malformed or cross-origin destinations fail closed to
+    // the default post-login route.
+    return null;
+  }
 }
 
 export function resolveLoginReturnTo(

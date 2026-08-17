@@ -67,7 +67,7 @@ export function parseEventCursor(
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const match = /(\d+)\s*$/.exec(trimmed);
+  const match = /^(?:evt-)?(\d+)$/.exec(trimmed);
   if (!match) return null;
   const parsed = Number.parseInt(match[1], 10);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;

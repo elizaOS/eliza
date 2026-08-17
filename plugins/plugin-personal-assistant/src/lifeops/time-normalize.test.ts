@@ -10,7 +10,16 @@ import { getZonedDateParts } from "./time.js";
 
 describe("normalizeTimeZone (canonical)", () => {
   test("UTC spellings normalize to UTC, not the deployment default", () => {
-    for (const alias of ["Z", "z", "zulu", "UTC+0", "GMT+00", "+00:00", "-0000", "Etc/UTC"]) {
+    for (const alias of [
+      "Z",
+      "z",
+      "zulu",
+      "UTC+0",
+      "GMT+00",
+      "+00:00",
+      "-0000",
+      "Etc/UTC",
+    ]) {
       expect(normalizeTimeZone(alias)).toBe("UTC");
     }
   });

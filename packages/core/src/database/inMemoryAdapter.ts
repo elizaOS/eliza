@@ -1775,7 +1775,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// Paginate to bound result size.
 		const offset = params.offset ?? 0;
 		filtered = filtered.slice(offset);
-		if (params.limit) {
+		if (params.limit != null) {
 			filtered = filtered.slice(0, params.limit);
 		}
 

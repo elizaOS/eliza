@@ -2,6 +2,9 @@
  * Verifies TASKS:spawn_agent.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
@@ -396,6 +399,52 @@ describe("TASKS:spawn_agent", () => {
     } finally {
       if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
       else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
+    }
+  });
+
+  it("keeps an explicit nested workdir when reverse lookup attaches its route", async () => {
+    const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
+    const routeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "spawn-route-"));
+    const appDir = path.join(routeRoot, "data", "apps", "wind-chimes");
+    fs.mkdirSync(appDir, { recursive: true });
+    process.env.TASK_AGENT_WORKDIR_ROUTES = JSON.stringify([
+      {
+        id: "agent-home",
+        workdir: routeRoot,
+        matchAny: ["wording-that-does-not-match"],
+      },
+    ]);
+    try {
+      const svc = serviceMock();
+      const result = await spawnAgentAction.handler(
+        runtimeWith(svc),
+        memory({
+          task: "Polish the chimes.",
+          agentType: "opencode",
+          workdir: appDir,
+        }),
+        state,
+        spawnOptions,
+        callback(),
+      );
+
+      expect(result?.success).toBe(true);
+      const call = svc.spawnSession.mock.calls[0]?.[0] as {
+        initialTask?: string;
+        metadata?: Record<string, unknown>;
+        workdir?: string;
+      };
+      expect(call.workdir).toBe(fs.realpathSync(appDir));
+      expect(call.metadata?.workdirRouteId).toBe("agent-home");
+      expect(call.metadata?.workdirRoute).toMatchObject({
+        id: "agent-home",
+        workdir: fs.realpathSync(appDir),
+      });
+      expect(call.initialTask).toContain(`workdir: ${fs.realpathSync(appDir)}`);
+    } finally {
+      if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
+      else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
+      fs.rmSync(routeRoot, { recursive: true, force: true });
     }
   });
 

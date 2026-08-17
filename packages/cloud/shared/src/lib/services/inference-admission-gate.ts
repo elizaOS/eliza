@@ -2,10 +2,10 @@
  * Serialized organization admission controls for Worker inference.
  *
  * Cloudflare KV is eventually consistent and cannot safely decrement a cached
- * counter or balance under concurrency. A per-organization Durable Object
- * therefore enforces endpoint limits and leases estimated spend before provider
- * dispatch. Postgres accounting starts only after provider work or from an
- * expired-lease alarm.
+ * counter or balance under concurrency. Billing leases retain one Durable
+ * Object per organization, while endpoint limits move to rate-only identities
+ * at the next complete fixed-window boundary. This preserves quota without
+ * letting slow ledger storage block the rate-limit input gate.
  */
 
 import { sql } from "drizzle-orm";
@@ -23,10 +23,14 @@ import type { EndpointType } from "./org-rate-limits";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
+const RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
+const RATE_LIMIT_CUTOVER_GATE = "rate-limit:v2:cutover";
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
+const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
+const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
 
 interface LeaseResponse {
   admitted: boolean;
@@ -48,6 +52,14 @@ interface ReleaseResponse {
 
 interface HydrateResponse {
   hydrated: boolean;
+}
+
+interface RateLimitWarmResponse {
+  warmed: boolean;
+}
+
+interface RateLimitCutoverResponse {
+  cutoverAt: number;
 }
 
 export interface InferenceRateLimitDecision {
@@ -132,6 +144,26 @@ function gateStub(organizationId: string): RuntimeDurableObjectStub {
     );
   }
   return namespace.getByName(organizationId);
+}
+
+function rateLimitGateStub(organizationId: string): RuntimeDurableObjectStub {
+  const namespace = getCloudBinding<RuntimeDurableObjectNamespace>(GATE_BINDING);
+  if (!namespace) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission Durable Object binding is missing",
+    );
+  }
+  return namespace.getByName(`${RATE_LIMIT_GATE_PREFIX}${organizationId}`);
+}
+
+function rateLimitCutoverStub(): RuntimeDurableObjectStub {
+  const namespace = getCloudBinding<RuntimeDurableObjectNamespace>(GATE_BINDING);
+  if (!namespace) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission Durable Object binding is missing",
+    );
+  }
+  return namespace.getByName(RATE_LIMIT_CUTOVER_GATE);
 }
 
 async function gateFetch(
@@ -253,6 +285,55 @@ async function parseHydrateResponse(response: Response): Promise<HydrateResponse
   }
 }
 
+async function parseRateLimitWarmResponse(response: Response): Promise<RateLimitWarmResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>).warmed !== true
+    ) {
+      throw new TypeError("response does not match the rate-limit warm schema");
+    }
+    return value as RateLimitWarmResponse;
+  } catch (error) {
+    // error-policy:J3 malformed responses never become successful prewarm.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid rate-limit warm JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseRateLimitCutoverResponse(
+  response: Response,
+  windowMs: number,
+): Promise<RateLimitCutoverResponse> {
+  try {
+    const value = await response.json();
+    const cutoverAt =
+      value && typeof value === "object" ? (value as Record<string, unknown>).cutoverAt : undefined;
+    if (
+      !Number.isSafeInteger(cutoverAt) ||
+      (cutoverAt as number) <= 0 ||
+      (cutoverAt as number) % windowMs !== 0
+    ) {
+      throw new TypeError("response does not match the rate-limit cutover schema");
+    }
+    return { cutoverAt: cutoverAt as number };
+  } catch (error) {
+    // error-policy:J3 malformed cutover state never selects a second quota lane.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid rate-limit cutover JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
 async function parseRateLimitResponse(response: Response): Promise<InferenceRateLimitDecision> {
   try {
     const value = await response.json();
@@ -350,6 +431,96 @@ export async function warmInferenceAdmissionGate(organizationId: string): Promis
   await hydrateInferenceAdmissionGate(organizationId, gateStub(organizationId));
 }
 
+const rateLimitCutovers = new Map<number, Promise<number>>();
+const rateLimitWarms = new Map<string, { expiresAt: number; promise: Promise<void> }>();
+
+function rateLimitCutoverAt(windowMs: number): Promise<number> {
+  const existing = rateLimitCutovers.get(windowMs);
+  if (existing) return existing;
+  const cutover = gateFetch(
+    RATE_LIMIT_CUTOVER_GATE,
+    "/rate-limit-v2-cutover",
+    { windowMs },
+    rateLimitCutoverStub(),
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  )
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new InferenceAdmissionGateUnavailableError(
+          `Inference rate-limit cutover failed with status ${response.status}`,
+        );
+      }
+      return (await parseRateLimitCutoverResponse(response, windowMs)).cutoverAt;
+    })
+    .catch((error) => {
+      rateLimitCutovers.delete(windowMs);
+      throw error;
+    });
+  rateLimitCutovers.set(windowMs, cutover);
+  return cutover;
+}
+
+async function activeRateLimitGate(
+  organizationId: string,
+  windowMs: number,
+): Promise<{
+  stub: RuntimeDurableObjectStub;
+  windowStartedAt: number;
+}> {
+  const cutoverAt = await rateLimitCutoverAt(windowMs);
+  // Capture the fixed-window identity together with the lane decision. A
+  // legacy request can otherwise enter just before cutover, wait behind a
+  // ledger input gate, and start a second copy of the new window after v2 has
+  // already begun accepting traffic.
+  const now = Date.now();
+  return {
+    stub: now >= cutoverAt ? rateLimitGateStub(organizationId) : gateStub(organizationId),
+    windowStartedAt: Math.floor(now / windowMs) * windowMs,
+  };
+}
+
+/** Warm only the strongly ordered rate-limit window, without reading the balance database. */
+export async function warmInferenceRateLimitGate(
+  organizationId: string,
+  windowMs = 60_000,
+): Promise<void> {
+  const key = `${windowMs}:${organizationId}`;
+  const now = Date.now();
+  const existing = rateLimitWarms.get(key);
+  if (existing && existing.expiresAt > now) {
+    await existing.promise;
+    return;
+  }
+  if (rateLimitWarms.size >= RATE_LIMIT_WARM_MAX_ENTRIES) {
+    const oldest = rateLimitWarms.keys().next().value;
+    if (oldest !== undefined) rateLimitWarms.delete(oldest);
+  }
+  const warm = (async () => {
+    await rateLimitCutoverAt(windowMs);
+    const response = await gateFetch(
+      organizationId,
+      "/rate-limit-warm",
+      {},
+      rateLimitGateStub(organizationId),
+      AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
+    );
+    if (!response.ok) {
+      throw new InferenceAdmissionGateUnavailableError(
+        `Inference admission gate rate-limit warm failed with status ${response.status}`,
+      );
+    }
+    await parseRateLimitWarmResponse(response);
+  })().catch((error) => {
+    rateLimitWarms.delete(key);
+    throw error;
+  });
+  rateLimitWarms.set(key, {
+    expiresAt: now + RATE_LIMIT_WARM_TTL_MS,
+    promise: warm,
+  });
+  await warm;
+}
+
 function scheduleGateHydration(
   organizationId: string,
   stub: RuntimeDurableObjectStub,
@@ -389,6 +560,7 @@ export async function consumeInferenceRateLimit(params: {
     );
   }
 
+  const activeGate = await activeRateLimitGate(params.organizationId, params.windowMs);
   const response = await gateFetch(
     params.organizationId,
     "/rate-limit",
@@ -396,8 +568,9 @@ export async function consumeInferenceRateLimit(params: {
       endpointType: params.endpointType,
       windowMs: params.windowMs,
       maxRequests: params.maxRequests,
+      windowStartedAt: activeGate.windowStartedAt,
     },
-    undefined,
+    activeGate.stub,
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (response.status !== 200 && response.status !== 429) {

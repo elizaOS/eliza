@@ -22,7 +22,14 @@ const getById = mock(async (_id: string): Promise<UserCharacter | undefined> => 
 const warmInferenceAdmissionSnapshot = mock(async () => {
   calls.push("admission");
 });
+const warmInferenceAdmissionGate = mock(async () => {
+  calls.push("admission-gate");
+});
+const warmInferenceRateLimitGate = mock(async () => {
+  calls.push("rate-limit-gate");
+});
 const coordinateSharedHistory = mock(async () => [] as unknown[]);
+const coordinateSharedConversationPrewarm = mock(async () => undefined);
 const seedSharedAgentScopeCache = mock(async () => {
   calls.push("authorization-scope");
 });
@@ -35,7 +42,12 @@ mock.module("../../pricing", () => ({
 }));
 mock.module("../characters/characters", () => ({ charactersService: { getById } }));
 mock.module("../inference-admission-snapshot", () => ({ warmInferenceAdmissionSnapshot }));
+mock.module("../inference-admission-gate", () => ({
+  warmInferenceAdmissionGate,
+  warmInferenceRateLimitGate,
+}));
 mock.module("./conversation-coordinator", () => ({
+  coordinateSharedConversationPrewarm,
   coordinateSharedHistory,
 }));
 mock.module("./resolve-shared-agent", () => ({
@@ -48,7 +60,9 @@ mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: (preferred?: string) => preferred?.trim() || null,
 }));
 
-const { prewarmSharedAgentTurnCaches } = await import("./prewarm-shared-agent");
+const { prewarmPersonalSharedAgentTurnCaches, prewarmSharedAgentTurnCaches } = await import(
+  "./prewarm-shared-agent"
+);
 
 afterAll(() => {
   mock.module("../../utils/logger", () => realLogger);
@@ -71,8 +85,18 @@ beforeEach(() => {
   getById.mockClear();
   getById.mockImplementation(async () => undefined);
   warmInferenceAdmissionSnapshot.mockClear();
+  warmInferenceAdmissionGate.mockClear();
+  warmInferenceAdmissionGate.mockImplementation(async () => {
+    calls.push("admission-gate");
+  });
+  warmInferenceRateLimitGate.mockClear();
+  warmInferenceRateLimitGate.mockImplementation(async () => {
+    calls.push("rate-limit-gate");
+  });
   coordinateSharedHistory.mockClear();
   coordinateSharedHistory.mockImplementation(async () => []);
+  coordinateSharedConversationPrewarm.mockClear();
+  coordinateSharedConversationPrewarm.mockImplementation(async () => undefined);
   seedSharedAgentScopeCache.mockClear();
   seedSharedAgentScopeCache.mockImplementation(async () => {
     calls.push("authorization-scope");
@@ -81,6 +105,14 @@ beforeEach(() => {
 });
 
 describe("prewarmSharedAgentTurnCaches model pricing", () => {
+  test("warms billed ledger and rate-limit authorities beside the policy snapshot", async () => {
+    await prewarmSharedAgentTurnCaches(agent({}));
+
+    expect(warmInferenceAdmissionGate).toHaveBeenCalledWith("org-1");
+    expect(warmInferenceRateLimitGate).toHaveBeenCalledWith("org-1");
+    expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith("org-1");
+  });
+
   test("warms the nested agent_config.character.model pricing pair", async () => {
     await prewarmSharedAgentTurnCaches(
       agent({
@@ -173,6 +205,48 @@ describe("prewarmSharedAgentTurnCaches model pricing", () => {
         agentId: "agent-1",
         organizationId: "org-1",
         leg: "conversation-object",
+        error: error.message,
+      }),
+    );
+  });
+});
+
+describe("prewarmPersonalSharedAgentTurnCaches", () => {
+  test("warms a personal room and rate-limit state without balance hydration", async () => {
+    const namespace = { getByName: mock() } as never;
+    const personalAgent = {
+      id: "personal:user-1:org-1",
+      organization_id: "org-1",
+    };
+
+    await prewarmPersonalSharedAgentTurnCaches(personalAgent, namespace);
+
+    expect(warmInferenceRateLimitGate).toHaveBeenCalledWith("org-1");
+    expect(warmInferenceAdmissionGate).not.toHaveBeenCalled();
+    expect(coordinateSharedConversationPrewarm).toHaveBeenCalledWith(
+      personalAgent.id,
+      personalAgent.id,
+      { namespace, startEmpty: true },
+    );
+  });
+
+  test("keeps a failed personal prewarm observable and lets the typed retry path remain", async () => {
+    const error = new Error("admission gate unavailable");
+    warmInferenceRateLimitGate.mockRejectedValue(error);
+
+    await expect(
+      prewarmPersonalSharedAgentTurnCaches(
+        { id: "personal:user-1:org-1", organization_id: "org-1" },
+        {} as never,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[shared-runtime prewarm] leg failed; first turn falls back to warming 503s",
+      expect.objectContaining({
+        agentId: "personal:user-1:org-1",
+        organizationId: "org-1",
+        leg: "rate-limit-gate",
         error: error.message,
       }),
     );

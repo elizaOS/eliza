@@ -17,6 +17,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -27,6 +28,50 @@ const AdminActionSchema = z.object({
   reason: z.string().max(1000).optional(),
 });
 
+const ADMIN_REDEMPTION_STATUSES: TokenRedemptionStatus[] = [
+  "pending",
+  "approved",
+  "processing",
+  "completed",
+  "failed",
+  "rejected",
+  "expired",
+];
+
+function parseAdminRedemptionStatusFilter(
+  raw: string | undefined,
+): TokenRedemptionStatus[] | null {
+  const statusFilter = raw || "pending";
+  if (statusFilter === "all") return ADMIN_REDEMPTION_STATUSES;
+  if (statusFilter === "review") return ["pending"];
+  if ((ADMIN_REDEMPTION_STATUSES as readonly string[]).includes(statusFilter)) {
+    return [statusFilter as TokenRedemptionStatus];
+  }
+  return null;
+}
+
+const ADMIN_REDEMPTION_NETWORKS = [
+  "ethereum",
+  "base",
+  "bnb",
+  "solana",
+] as const;
+type AdminRedemptionNetwork = (typeof ADMIN_REDEMPTION_NETWORKS)[number];
+
+function parseAdminRedemptionNetworkFilter(
+  raw: string | undefined,
+): AdminRedemptionNetwork | "all" | null {
+  const networkFilter = raw || "all";
+  if (networkFilter === "all") return "all";
+  if (networkFilter === "bsc") return "bnb";
+  if (
+    (ADMIN_REDEMPTION_NETWORKS as readonly string[]).includes(networkFilter)
+  ) {
+    return networkFilter as AdminRedemptionNetwork;
+  }
+  return null;
+}
+
 const app = new Hono<AppEnv>();
 
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
@@ -34,28 +79,32 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const { user: adminUser } = await requireAdmin(c);
 
     const statusFilter = c.req.query("status") || "pending";
-    const networkFilter = c.req.query("network") || "all";
+    const statusArray = parseAdminRedemptionStatusFilter(c.req.query("status"));
+    if (statusArray === null) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid status: ${statusFilter}. Must be one of: pending, approved, processing, completed, failed, rejected, expired, all, review`,
+        },
+        400,
+      );
+    }
+    const networkRaw = c.req.query("network") || "all";
+    const networkFilter = parseAdminRedemptionNetworkFilter(
+      c.req.query("network"),
+    );
+    if (networkFilter === null) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid network: ${networkRaw}. Must be one of: ethereum, base, bnb, solana, bsc, all`,
+        },
+        400,
+      );
+    }
     const searchQuery = c.req.query("search")?.trim().toLowerCase() || "";
     const limitParam = c.req.query("limit");
-    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 50;
-
-    const allowedStatuses: TokenRedemptionStatus[] = [
-      "pending",
-      "approved",
-      "processing",
-      "completed",
-      "failed",
-      "rejected",
-      "expired",
-    ];
-    const statusArray: TokenRedemptionStatus[] =
-      statusFilter === "all"
-        ? allowedStatuses
-        : statusFilter === "review"
-          ? ["pending"]
-          : allowedStatuses.includes(statusFilter as TokenRedemptionStatus)
-            ? [statusFilter as TokenRedemptionStatus]
-            : ["pending"];
+    const limit = parseClampedLimit(limitParam, 50);
 
     const [allRedemptions, counts] = await Promise.all([
       tokenRedemptionsRepository.listForAdmin(statusArray, limit),

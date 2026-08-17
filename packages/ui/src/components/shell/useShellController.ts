@@ -1,7 +1,7 @@
 /**
  * The single stateful engine behind the shell's chat + voice surface, exposed as
  * the `ShellController` returned by `useShellController`. It drives the shell
- * phase (booting → summoned → listening → responding), the rendered message
+ * phase (booting → needs-auth → idle → summoned → listening → responding), the rendered message
  * list, send + vision-capture, and the whole voice stack: mic capture (via the
  * voice-capture factory), wake-word listening, end-of-turn aggregation,
  * hands-free conversation looping, transcription-mode long-form recording, and
@@ -50,6 +50,7 @@ import {
 } from "../../state";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
@@ -95,7 +96,10 @@ import {
   type ConversationNavDirection,
   resolveAdjacentConversationId,
 } from "./conversation-nav";
+import type { ShellAuthGate } from "./shell-auth-gate";
+import { deriveShellPhase } from "./shell-auth-gate";
 import type { ShellMessage, ShellPhase } from "./shell-state";
+import { useShellAuthGate } from "./useShellAuthGate";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
 export type {
@@ -131,6 +135,12 @@ export type CaptureIntent = "converse" | "dictate" | "transcription" | "ptt";
 
 export interface ShellController {
   phase: ShellPhase;
+  /** Cloud-only auth gate. Local-runtime builds stay `{ gated: false }`. */
+  authGate: ShellAuthGate;
+  /** Launch Cloud sign-in. No-op unless `authGate.phase === "needs-auth"`. */
+  requestSignIn: () => void;
+  /** True while a pill-initiated Cloud sign-in is in flight. */
+  signingIn: boolean;
   /** Raw "a reply is in flight" predicate — text streaming OR being spoken aloud.
    *  Unlike `phase === "responding"`, stays true after the mic opens (which flips
    *  phase to "listening"), so the composer reads one honest busy signal: send
@@ -360,6 +370,17 @@ function describeCaptureFailure(err: unknown): string {
   ) {
     return "No microphone was found. Connect a microphone to use voice.";
   }
+  // Post-capture transcription failure (cloud/local STT): the mic worked and
+  // the utterance was recorded, but the words could not be transcribed — the
+  // honest message is "didn't catch that", not a microphone accusation.
+  if (
+    haystack.includes("cloudstterror") ||
+    haystack.includes("cloud asr") ||
+    haystack.includes("transcri") ||
+    haystack.includes("no microphone audio was captured")
+  ) {
+    return "Didn't catch that — voice transcription failed. Try again.";
+  }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
 
@@ -432,6 +453,7 @@ const selectShellController = (s: AppContextValue) => ({
   setActionNotice: s.setActionNotice,
   chatAgentVoiceMuted: s.chatAgentVoiceMuted,
   setState: s.setState,
+  handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
 });
 
 export function useShellController(): ShellController {
@@ -454,7 +476,38 @@ export function useShellController(): ShellController {
     setActionNotice,
     chatAgentVoiceMuted,
     setState,
+    handleInteractiveCloudLogin,
   } = useAppSelectorShallow(selectShellController);
+  const authGate = useShellAuthGate();
+  // Ref mirror for async continuations (permission probes, timers) that must
+  // read the gate as it is at fire time, not as it was when they were armed.
+  const authGateRef = React.useRef(authGate);
+  authGateRef.current = authGate;
+  const [signingIn, setSigningIn] = React.useState(false);
+  const signInInFlightRef = React.useRef(false);
+  const requestSignIn = React.useCallback(() => {
+    if (authGate.phase !== "needs-auth") return;
+    if (signInInFlightRef.current) return;
+    signInInFlightRef.current = true;
+    setSigningIn(true);
+    // Keep the popup on the click/key gesture. Effects must not call this.
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin()
+      .catch((error: unknown) => {
+        // error-policy:J4 sign-in failed; stay on the needs-auth chip
+        setActionNotice(
+          error instanceof Error
+            ? error.message
+            : "Could not start Cloud login.",
+          "error",
+          5000,
+        );
+      })
+      .finally(() => {
+        signInInFlightRef.current = false;
+        setSigningIn(false);
+      });
+  }, [authGate.phase, handleInteractiveCloudLogin, setActionNotice]);
   // The wake phrase for transcript-mode inline replies follows the character
   // name (issue #9880); falls back to the running agent name, then "eliza".
   const wakeCharacterName =
@@ -762,6 +815,10 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  // Post-release STT drain (#20483): the mic is closed but the utterance is
+  // still transcribing. Drives the pill's "processing" phase so the gap
+  // between hold-release and the send/turn never reads as a silent idle.
+  const [sttPending, setSttPending] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   // True when the most recent user turn was voice-originated (VOICE_DM). Gates
@@ -1028,32 +1085,55 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCaptureAndDrain = React.useCallback(async () => {
-    const handle = captureRef.current;
-    captureRef.current = null;
-    // Mark this as a user-initiated stop so the clean-auto-stop carryover does
-    // NOT fire — a toggle-off / barge-in / typing-pause must discard a
-    // half-finished utterance rather than carry or commit it.
-    explicitStopRef.current = true;
-    turnCarryoverRef.current = "";
-    turnAggregatorRef.current?.reset();
-    if (handle) {
-      try {
-        await handle.stop();
-      } catch {
-        /* stop is best-effort from UI controls */
-      } finally {
-        handle.dispose();
+  const stopCaptureAndDrain = React.useCallback(
+    async (options?: { immediateUiReset?: boolean }) => {
+      const handle = captureRef.current;
+      captureRef.current = null;
+      // Mark this as a user-initiated stop so the clean-auto-stop carryover does
+      // NOT fire — a toggle-off / barge-in / typing-pause must discard a
+      // half-finished utterance rather than carry or commit it.
+      explicitStopRef.current = true;
+      turnCarryoverRef.current = "";
+      turnAggregatorRef.current?.reset();
+      // Push-to-talk release (#20483): drop the listening UI state IMMEDIATELY.
+      // For the cloud backend `handle.stop()` includes the whole STT round trip
+      // (seconds), and the pill's hold release must visibly end the hot-mic
+      // state the instant the finger lifts — the mic hardware is already done
+      // capturing; only transcription remains. That remainder is surfaced as
+      // the `processing` phase via sttPending so the drain never reads as a
+      // silent idle. Opt-in only: the mode-handoff drains (hands-free →
+      // transcription) key their replacement-capture effects off `recording`,
+      // so flipping it early there would open the next recorder mid-drain.
+      if (options?.immediateUiReset) {
+        setAnalyser(null);
+        setRecording(false);
+        setTranscript("");
+        if (handle) setSttPending(true);
       }
-    }
-    setAnalyser(null);
-    setRecording(false);
-    setTranscript("");
-  }, []);
+      if (handle) {
+        try {
+          await handle.stop();
+        } catch {
+          /* stop is best-effort from UI controls; transcribe failures surface
+             through onStateChange("error") */
+        } finally {
+          handle.dispose();
+          if (options?.immediateUiReset) setSttPending(false);
+        }
+      }
+      setAnalyser(null);
+      setRecording(false);
+      setTranscript("");
+    },
+    [],
+  );
 
-  const stopCapture = React.useCallback(() => {
-    void stopCaptureAndDrain();
-  }, [stopCaptureAndDrain]);
+  const stopCapture = React.useCallback(
+    (options?: { immediateUiReset?: boolean }) => {
+      void stopCaptureAndDrain(options);
+    },
+    [stopCaptureAndDrain],
+  );
 
   // Hold-to-talk cancel (#20483): drop the capture WITHOUT the stop() drain, so
   // no STT round-trip runs and nothing is transcribed or sent. dispose() runs
@@ -1075,6 +1155,7 @@ export function useShellController(): ShellController {
     }
     setAnalyser(null);
     setRecording(false);
+    setSttPending(false);
     setTranscript("");
   }, []);
 
@@ -1126,6 +1207,10 @@ export function useShellController(): ShellController {
 
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
+      // Cloud-only, signed out: refuse capture. User-initiated paths call
+      // requestSignIn themselves; auto-engage must not pop a login from an
+      // effect (that would lose the gesture and fall into same-tab).
+      if (authGate.gated) return;
       // Cartesia realtime owns conversational Talk end to end. Every legacy
       // boot/re-listen/wake path converges here, so this guard is the hard
       // boundary that prevents an effect from silently reopening batch Cloud
@@ -1352,7 +1437,15 @@ export function useShellController(): ShellController {
             setTranscript(committed ? "" : aggregator.pending);
           }
         },
-        onStateChange: (state: VoiceCaptureState) => {
+        onStateChange: (state: VoiceCaptureState, error?: Error) => {
+          // A transcribe failure after a real utterance must be VISIBLE: the
+          // hold-to-talk contract is that a ghost hold costs nothing but a
+          // spoken turn never silently vanishes (#20483). Cloud STT throwing
+          // at stop() lands here as the error state; surface one actionable
+          // notice instead of letting the words evaporate.
+          if (state === "error" && error) {
+            setActionNotice(describeCaptureFailure(error), "error", 6000);
+          }
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
             // analyser so the shell phase returns to idle/summoned and a later
@@ -1428,6 +1521,7 @@ export function useShellController(): ShellController {
         });
     },
     [
+      authGate.gated,
       realtimeVoiceEnabled,
       send,
       stopCapture,
@@ -1539,6 +1633,10 @@ export function useShellController(): ShellController {
   );
 
   const toggleRecording = React.useCallback(() => {
+    if (authGate.gated) {
+      requestSignIn();
+      return;
+    }
     if (realtimeVoiceEnabled) {
       if (realtimeVoiceWantedRef.current) stopRealtimeVoiceRef.current();
       else startRealtimeVoiceRef.current();
@@ -1546,7 +1644,14 @@ export function useShellController(): ShellController {
     }
     if (recording) stopCapture();
     else startCapture();
-  }, [realtimeVoiceEnabled, recording, startCapture, stopCapture]);
+  }, [
+    authGate.gated,
+    realtimeVoiceEnabled,
+    recording,
+    requestSignIn,
+    startCapture,
+    stopCapture,
+  ]);
 
   React.useEffect(() => () => stopCapture(), [stopCapture]);
 
@@ -1563,6 +1668,9 @@ export function useShellController(): ShellController {
     // hands-free state while startCapture correctly refuses Cloud ASR.
     if (realtimeVoiceEnabled) return;
     if (autoEngagedHandsFreeRef.current) return;
+    // Cloud-only signed out: leave the ref unset so a later sign-in retries
+    // this restore; auto-engage must not light hands-free against the gate.
+    if (authGate.gated) return;
     // Defer while a reply is mid-flight (voice is gated while responding); the
     // ref stays unset so this retries the instant `chatSending` clears.
     if (!ready || recording || captureRef.current || handsFree || chatSending)
@@ -1587,7 +1695,10 @@ export function useShellController(): ShellController {
       }
       // The probe is async: re-check the gating state so a capture that opened
       // via another path (or a hands-free toggle) during the await isn't
-      // double-opened / overridden.
+      // double-opened / overridden. The auth gate is re-read through the ref —
+      // sign-out during the await must not light hands-free or summon the
+      // overlay against a startCapture that will refuse.
+      if (authGateRef.current.gated) return;
       if (captureRef.current || handsFreeRef.current) return;
       setHandsFree(true);
       setIsOpen(true);
@@ -1601,6 +1712,7 @@ export function useShellController(): ShellController {
     startCapture,
     recheckMicPermission,
     realtimeVoiceEnabled,
+    authGate.gated,
   ]);
 
   // Populate the mic-permission state once on mount so a shell surface can
@@ -1619,8 +1731,12 @@ export function useShellController(): ShellController {
   }, []);
 
   const open = React.useCallback(() => {
+    if (authGate.gated) {
+      requestSignIn();
+      return;
+    }
     setIsOpen(true);
-  }, []);
+  }, [authGate.gated, requestSignIn]);
   const close = React.useCallback(() => {
     setIsOpen(false);
     setHandsFree(false);
@@ -1718,17 +1834,17 @@ export function useShellController(): ShellController {
   // Opening the popup is independent of runtime readiness. The composer can
   // already queue/send while the server warms, so keeping an opened shell in
   // `booting` would make AssistantOverlay discard it even though `isOpen` is
-  // true. Reserve `booting` for the closed launcher state.
-  const phase: ShellPhase =
-    recording || realtimeVoiceListening
-      ? "listening"
-      : responding
-        ? "responding"
-        : isOpen
-          ? "summoned"
-          : ready
-            ? "idle"
-            : "booting";
+  // true. Reserve `booting` for the closed launcher state and for the
+  // cloud-only auth probe (`checking`).
+  const phase: ShellPhase = deriveShellPhase({
+    ready,
+    recording,
+    realtimeVoiceListening,
+    sttPending,
+    responding,
+    isOpen,
+    authGate: authGate.phase,
+  });
 
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still
@@ -1826,6 +1942,7 @@ export function useShellController(): ShellController {
   }, [stopCapture, voiceOutput.stopSpeaking]);
 
   const startRealtimeVoice = React.useCallback(async () => {
+    if (authGate.gated) return;
     if (!realtimeVoiceEnabled) return;
     if (
       realtimeVoiceWantedRef.current ||
@@ -1885,6 +2002,7 @@ export function useShellController(): ShellController {
     }
     setActionNotice(message, "error", 6000);
   }, [
+    authGate.gated,
     ensureActiveConversationForVoice,
     realtimeVoiceEnabled,
     setActionNotice,
@@ -1904,7 +2022,9 @@ export function useShellController(): ShellController {
       stopRealtimeVoice();
       return;
     }
-    stopCapture();
+    // Push-to-talk release: end the visible hot-mic state the instant the
+    // finger lifts — the STT drain continues in the background (#20483).
+    stopCapture({ immediateUiReset: true });
   }, [stopCapture, stopRealtimeVoice]);
 
   // A LIVE Talk session that dies past the client's reconnect budget (network
@@ -1954,6 +2074,10 @@ export function useShellController(): ShellController {
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
   // both the mic and any in-flight reply.
   const toggleHandsFree = React.useCallback(() => {
+    if (authGate.gated) {
+      requestSignIn();
+      return;
+    }
     if (realtimeVoiceEnabled) {
       if (
         realtimeVoiceWantedRef.current ||
@@ -2011,6 +2135,8 @@ export function useShellController(): ShellController {
       });
     }
   }, [
+    authGate.gated,
+    requestSignIn,
     responding,
     startCapture,
     stopCapture,
@@ -2450,8 +2576,43 @@ export function useShellController(): ShellController {
     if (visionCapturing && responding) setVisionCapturing(false);
   }, [visionCapturing, responding]);
 
+  // The auth boundary is terminal for the whole voice loop, not just the
+  // in-flight capture: hands-free and transcription state must fall too, or the
+  // re-listen loop / transcript-resume path silently reopens the mic the moment
+  // a later sign-in clears the gate — without a fresh voice gesture.
+  React.useEffect(() => {
+    if (!authGate.gated) return;
+    if (captureRef.current) cancelCapture();
+    if (isOpen) setIsOpen(false);
+    stopRealtimeVoiceRef.current();
+    if (handsFreeRef.current) {
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+    }
+    resumeHandsFreeAfterTranscriptRef.current = false;
+    if (transcriptionModeRef.current) {
+      setTranscriptionMode(false);
+      transcriptionModeRef.current = false;
+    }
+  }, [authGate.gated, cancelCapture, isOpen]);
+
+  const startRecording = React.useCallback(
+    (intent?: CaptureIntent) => {
+      if (authGate.gated) {
+        requestSignIn();
+        return;
+      }
+      startCapture(intent);
+    },
+    [authGate.gated, requestSignIn, startCapture],
+  );
+
   return {
     phase,
+    authGate,
+    requestSignIn,
+    signingIn,
     bootProgressSignal,
     responding,
     turnStatus,
@@ -2468,7 +2629,7 @@ export function useShellController(): ShellController {
     captureVision,
     visionCapturing,
     toggleRecording,
-    startRecording: startCapture,
+    startRecording,
     stopRecording,
     cancelRecording: cancelCapture,
     handsFree,

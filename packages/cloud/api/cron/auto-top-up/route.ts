@@ -1,10 +1,9 @@
 /**
- * GET /api/cron/auto-top-up
- * Periodic cron that processes auto top-up for orgs whose balance is below
- * threshold. Protected by CRON_SECRET.
+ * Runs a bounded recovery and claim sweep for durable auto-top-up attempts.
+ * The internal GET and scheduled POST boundary are protected by CRON_SECRET.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
@@ -12,52 +11,77 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+const AUTO_TOP_UP_CRON_LIMIT = 100;
 
-app.get("/", async (c) => {
+async function handleAutoTopUp(c: Context<AppEnv>) {
   const startTime = Date.now();
   try {
     requireCronSecret(c);
 
-    logger.info("auto-top-up-cron", "Starting auto top-up check");
+    const result = await autoTopUpService.checkAndExecuteAutoTopUps({
+      source: "cron",
+      limit: AUTO_TOP_UP_CRON_LIMIT,
+    });
+    const durationMs = Date.now() - startTime;
 
-    const result = await autoTopUpService.checkAndExecuteAutoTopUps();
-    const duration = Date.now() - startTime;
-
-    logger.info("auto-top-up-cron", "Auto top-up check completed", {
-      duration: `${duration}ms`,
+    logger.info("[AutoTopUp] Scheduled durable sweep completed", {
+      durationMs,
       checked: result.organizationsChecked,
       processed: result.organizationsProcessed,
       successful: result.successful,
       failed: result.failed,
+      recovered: result.recovered,
+      claimed: result.claimed,
+      skipped: result.skipped,
+      rolloutPaused: result.rolloutPaused,
+      cutoverPaused: result.cutoverPaused,
+      controlMode: result.controlMode,
     });
 
     return c.json({
       success: true,
       message: "Auto top-up check completed successfully",
+      cutoverPaused: result.cutoverPaused,
+      controlMode: result.controlMode,
       stats: {
         timestamp: result.timestamp.toISOString(),
-        duration: `${duration}ms`,
+        durationMs,
         organizationsChecked: result.organizationsChecked,
         organizationsProcessed: result.organizationsProcessed,
         successful: result.successful,
         failed: result.failed,
-        details: result.results.map((r) => ({
-          organizationId: r.organizationId,
-          success: r.success,
-          amount: r.amount,
-          newBalance: r.newBalance,
-          error: r.error,
+        limit: AUTO_TOP_UP_CRON_LIMIT,
+        recovered: result.recovered,
+        claimed: result.claimed,
+        skipped: result.skipped,
+        rolloutPaused: result.rolloutPaused,
+        cutoverPaused: result.cutoverPaused,
+        controlMode: result.controlMode,
+        details: result.results.map((item) => ({
+          organizationId: item.organizationId,
+          success: item.success,
+          amount: item.amount,
+          previousBalance: item.previousBalance,
+          newBalance: item.newBalance,
+          message: item.message,
+          error: item.error,
+          attemptId: item.attemptId,
+          status: item.status,
+          recovered: item.recovered,
         })),
       },
     });
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error("auto-top-up-cron", "Auto top-up check failed", {
+    // error-policy:J1 The internal HTTP boundary reports a retryable sweep failure.
+    logger.error("[AutoTopUp] Scheduled durable sweep failed", {
       error: error instanceof Error ? error.message : "Unknown error",
-      duration: `${duration}ms`,
+      durationMs: Date.now() - startTime,
     });
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handleAutoTopUp);
+app.post("/", handleAutoTopUp);
 
 export default app;

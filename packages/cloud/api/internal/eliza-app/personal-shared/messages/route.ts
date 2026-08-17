@@ -14,8 +14,10 @@ import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -269,6 +271,7 @@ app.post("/", async (c) => {
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
       | undefined;
+    let isNewPersonalAccount = false;
     if (parsed.data.platform === "telegram") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -286,6 +289,7 @@ app.post("/", async (c) => {
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
+      isNewPersonalAccount = delivery.isNew;
     } else if (parsed.data.platform === "discord") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -304,6 +308,7 @@ app.post("/", async (c) => {
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
+      isNewPersonalAccount = delivery.isNew;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
         parsed.data.phoneNumber,
@@ -312,6 +317,7 @@ app.post("/", async (c) => {
         userId: phoneAccount.user.id,
         organizationId: phoneAccount.organization.id,
       };
+      isNewPersonalAccount = phoneAccount.isNew;
     }
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
@@ -320,6 +326,18 @@ app.post("/", async (c) => {
       userId: account.userId,
       organizationId: account.organizationId,
     });
+    const personalPrewarm = dedicated
+      ? null
+      : (() => {
+          const startedAt = performance.now();
+          const timing = prewarmPersonalSharedAgentTurnCaches(
+            agent,
+            worker.namespace,
+            { warmConversation: isNewPersonalAccount },
+          ).then(() => performance.now() - startedAt);
+          worker.executionCtx.waitUntil(timing);
+          return timing;
+        })();
     let deliveryMessage = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
@@ -579,6 +597,10 @@ app.post("/", async (c) => {
       });
     }
     stage = "shared_runtime";
+    if (!personalPrewarm) {
+      throw new Error("Shared turn reached inference with a Dedicated target");
+    }
+    const prewarmMs = await personalPrewarm;
     const sharedStartedAt = performance.now();
     const trustedDelivery =
       parsed.data.platform === "telegram"
@@ -612,7 +634,7 @@ app.post("/", async (c) => {
     );
     c.header(
       "Server-Timing",
-      `${accountTiming}, shared;dur=${(
+      `${accountTiming}, prewarm;dur=${prewarmMs.toFixed(1)}, shared;dur=${(
         performance.now() - sharedStartedAt
       ).toFixed(1)}`,
     );
@@ -642,6 +664,18 @@ app.post("/", async (c) => {
     // provider/SQL payloads in its logs.
     c.header(FAILURE_STAGE_HEADER, stage);
     c.header(FAILURE_NAME_HEADER, errorName);
+    if (error instanceof SharedRuntimeCacheWarmingError) {
+      return c.json(
+        {
+          success: false,
+          error: "Shared Eliza is warming. Retry this turn shortly.",
+          code: "service_unavailable",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     return failureResponse(c, error);
   }
 });

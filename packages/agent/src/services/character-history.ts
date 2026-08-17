@@ -420,9 +420,8 @@ export async function listCharacterHistory(
   runtime: IAgentRuntime,
   limit = 20,
 ): Promise<CharacterHistoryEntry[]> {
-  const parsedLimit = Math.trunc(limit);
   const safeLimit = Math.min(
-    Math.max(Number.isNaN(parsedLimit) ? 20 : parsedLimit, 1),
+    Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 20),
     MAX_CHARACTER_HISTORY_LIMIT,
   );
 

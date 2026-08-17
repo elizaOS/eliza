@@ -201,6 +201,12 @@ export interface AgentRestartJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  /**
+   * Operator-acknowledged state loss (#18228): the pre-stop capture is waived
+   * when it fails, so the restart can free an agent whose snapshot transfer
+   * persistently fails. Never set by default; requires an explicit request.
+   */
+  stateLossAcknowledged?: boolean;
 }
 
 export interface AgentUpgradeJobData {
@@ -607,12 +613,15 @@ function readAgentWakeJobData(job: Job): AgentWakeJobData {
 }
 
 function isAgentRestartJobData(value: unknown): value is AgentRestartJobData {
+  const stateLossAcknowledged = (value as { stateLossAcknowledged?: unknown })
+    ?.stateLossAcknowledged;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean")
   );
 }
 
@@ -2000,6 +2009,8 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    /** Operator waiver for a persistently failing pre-stop capture (#18228). */
+    stateLossAcknowledged?: boolean;
   }): Promise<EnqueueAgentRestartResult> {
     return this.enqueueLifecycleJob<AgentRestartJobData>({
       jobType: JOB_TYPES.AGENT_RESTART,
@@ -2007,6 +2018,7 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        ...(params.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
       },
       toRecord: agentRestartJobDataToRecord,
       agentId: params.agentId,
@@ -4202,10 +4214,13 @@ export class ProvisioningJobService {
     logger.info("[provisioning-jobs] Executing agent_restart", {
       jobId: job.id,
       agentId: data.agentId,
+      stateLossAcknowledged: data.stateLossAcknowledged || undefined,
     });
 
     await this.assertExecutionMutationLease(job);
-    const result = await elizaSandboxService.executeRestart(data.agentId, data.organizationId);
+    const result = await elizaSandboxService.executeRestart(data.agentId, data.organizationId, {
+      stateLossAcknowledged: data.stateLossAcknowledged,
+    });
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 

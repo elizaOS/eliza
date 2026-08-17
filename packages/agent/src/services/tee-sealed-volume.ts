@@ -207,7 +207,9 @@ export function openSealedVolumeMetadata(
     if (iv.length !== 12) {
       throw new Error("AES-256-GCM IV must be 12 bytes.");
     }
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv, {
+      authTagLength: 16,
+    });
     decipher.setAuthTag(Buffer.from(sealed.authTagBase64, "base64"));
     // A key derived from tampered evidence (wrong measured identity) fails the
     // GCM tag check here rather than yielding usable plaintext.

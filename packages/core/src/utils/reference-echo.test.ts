@@ -88,7 +88,7 @@ describe("userReferenceLogView", () => {
 		expect(userReferenceLogView(exactly120)).toBe(exactly120);
 
 		const over = "a".repeat(121);
-		expect(userReferenceLogView(over)).toBe(`${"a".repeat(120)}…`);
+		expect(userReferenceLogView(over)).toBe(`${"a".repeat(119)}…`);
 	});
 
 	it("measures the boundary after collapsing, not before", () => {
@@ -105,8 +105,8 @@ describe("userReferenceLogView", () => {
 
 	it("appends exactly one ellipsis character when clamping", () => {
 		const clamped = userReferenceLogView("b".repeat(500));
-		expect(clamped).toHaveLength(121);
+		expect(clamped).toHaveLength(120);
 		expect(clamped.endsWith("…")).toBe(true);
-		expect(clamped.slice(0, 120)).toBe("b".repeat(120));
+		expect(clamped.slice(0, 119)).toBe("b".repeat(119));
 	});
 });

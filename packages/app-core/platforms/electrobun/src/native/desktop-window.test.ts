@@ -25,6 +25,12 @@ vi.mock("./mac-window-effects", () => ({
   setTrafficLightsPosition: vi.fn(),
   startAccessingSecurityScopedBookmark: vi.fn(() => false),
   stopAccessingSecurityScopedBookmarks: vi.fn(),
+  startFnMonitor: vi.fn(() => "unavailable" as const),
+  stopFnMonitor: vi.fn(),
+  pollFnMonitor: vi.fn(() => null),
+  isFnMonitorHealthy: vi.fn(() => false),
+  isFnKeyDown: vi.fn(() => false),
+  getFnSystemUsageType: vi.fn(() => 0),
 }));
 
 const electrobunMock = vi.hoisted(() => {
@@ -402,6 +408,9 @@ describe("DesktopManager main window controls", () => {
 
     await manager.setBottomBarExpanded({ expanded: false });
     expect(window.setFrame).toHaveBeenLastCalledWith(502, 694, 96, 56);
+
+    await manager.setBottomBarExpanded({ expanded: false, chip: true });
+    expect(window.setFrame).toHaveBeenLastCalledWith(430, 694, 240, 56);
     await manager.dispose();
   });
 

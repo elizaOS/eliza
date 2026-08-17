@@ -73,7 +73,7 @@ type GitHubIssueCommentResult = {
 
 type GitHubAddLabelsResult = Array<GitHubLabelSummary | null>;
 
-type GitHubNotificationSummary = {
+export type GitHubNotificationSummary = {
   id: string;
   reason?: string | null;
   repository?: {

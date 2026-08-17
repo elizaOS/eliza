@@ -183,12 +183,24 @@ new_sqlite_classes = ["PersonalTelegramDelivery"]
 # -----------------------------------------------------------------------------
 # Vars (non-secret build/runtime config — the rest live as wrangler secrets)
 # -----------------------------------------------------------------------------
+# AUTO_TOP_UP_DURABLE_ENABLED is deliberately absent from every vars block.
+# The checked-in dry-run-first cutover operator must inventory and reconcile
+# legacy Stripe PaymentIntents, prove its watermark and blockers, and move the
+# primary database control to durable before the exact string "true" may be
+# bound at 100%. A quiet timer is not a provider fence. For rollback, first
+# transition the database control durable -> paused, then remove/false this
+# secondary switch; keep the durable binary deployed so recovery can converge.
 [vars]
 # Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED are deliberately
+# absent from every [vars] block. The protected activation workflows own them
+# as environment-pinned secrets, while the legacy explicit-false binding stays
+# as the default guard.
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -260,6 +272,8 @@ INFERENCE_DEFERRED_ADMISSION = "true"
 INFERENCE_HOT_PATH_CACHES = "false"
 # Positive auth caching stays off until revocation is strongly consistent.
 INFERENCE_AUTH_CACHE_ENABLED = "false"
+# Strong revocation is staged independently; auth caching requires both flags.
+INFERENCE_STRONG_REVOCATION_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -460,13 +474,22 @@ SHARED_ELIZA_AGENT_RUNTIME = "true"
 # Staging exercises the strongly invalidated sender projection while default
 # and production stay on canonical resolution until the live latency matrix passes.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
-# Keep the edge connector fail-closed across the first deployment that creates
-# its Durable Object class. Activation requires a later protected deployment
-# after the post-migration version and live Telegram prerequisites are proven.
-PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
+# as a secret binding. It uses a fresh name because keep_vars preserved the old
+# staging plaintext binding; either binding must be exactly true to opt in.
 # Emit per-turn inference spans at info for the staging latency matrix without
 # changing production log volume or recording prompt content.
 ELIZA_INFERENCE_TIMING = "info"
+# Self-hosted TEI embeddings sidecar (packages/cloud/services/embeddings,
+# bge-small-en-v1.5, 384 dims). The sidecar requires a bearer credential —
+# LOCAL_EMBEDDINGS_API_KEY is published as a Worker secret by cloud-cf-release
+# and must never appear in a [vars] block.
+LOCAL_EMBEDDINGS_BASE_URL = "https://embeddings-staging-staging.up.railway.app"
+# Parity wave 2 (staging-only prove-out): durable tenant memory rows for every
+# Shared turn, plus flag-gated semantic recall over them via the sidecar.
+# Reversible: delete both lines to return to byte-identical pre-parity turns.
+SHARED_MEMORY_TABLES_ENABLED = "true"
+SHARED_RECALL_ENABLED = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
@@ -585,6 +608,8 @@ INFERENCE_HOT_PATH_CACHES = "true"
 # One combined auth+org+moderation read; authoritative refresh runs only under
 # waitUntil and the 60s physical TTL bounds lost invalidation.
 INFERENCE_AUTH_CACHE_ENABLED = "true"
+# Default authoritative until the Durable Object revocation lane is soaked.
+INFERENCE_STRONG_REVOCATION_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -732,6 +757,11 @@ NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# The protected production cutover owns
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED as a secret binding.
+# The name is fresh (never bound in production, so no plaintext collision) and
+# environment-pinned: the helper honors it only when ENVIRONMENT is production,
+# and it must be exactly true to opt in.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
@@ -831,6 +861,8 @@ INFERENCE_HOT_PATH_CACHES = "true"
 # One combined auth+org+moderation read; authoritative refresh runs only under
 # waitUntil and the 60s physical TTL bounds lost invalidation.
 INFERENCE_AUTH_CACHE_ENABLED = "true"
+# Default authoritative until the Durable Object revocation lane is soaked.
+INFERENCE_STRONG_REVOCATION_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding

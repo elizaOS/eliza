@@ -46,6 +46,9 @@ export {
   type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
+  PUSH_TO_TALK_HOLD_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
+  type PushToTalkHoldDetail,
   // Sidebar sync
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,

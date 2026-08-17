@@ -54,7 +54,6 @@ interface WorkerAgentRequestMessage {
   requestId: string;
   prompt: unknown;
   messages?: unknown;
-  structured: boolean;
 }
 
 type WorkerMessage =
@@ -75,7 +74,6 @@ export interface SmithersRunRequest {
   generate: (request: {
     prompt: unknown;
     messages?: unknown;
-    structured: boolean;
     signal: AbortSignal;
   }) => Promise<unknown>;
 }
@@ -222,9 +220,7 @@ export function createSmithersWorkerScript(): string {
           const text = typeof response.value === 'string'
             ? response.value
             : JSON.stringify(response.value);
-          pending.resolve(pending.structured
-            ? { text, _output: response.value, output: response.value }
-            : { text });
+          pending.resolve({ text });
         }
         else pending.reject(new Error(response.error?.message ?? 'elizaOS model request failed'));
       } catch (error) {
@@ -236,16 +232,14 @@ export function createSmithersWorkerScript(): string {
     globalThis.__elizaSmithers = {
       agent: {
         id: 'elizaos-runtime',
-        supportsNativeStructuredOutput: true,
         generate: (args = {}) => new Promise((resolve, reject) => {
           const requestId = String(++requestSequence);
-          responses.set(requestId, { resolve, reject, structured: Boolean(args.outputSchema) });
+          responses.set(requestId, { resolve, reject });
           emit({
             kind: 'agent-request',
             requestId,
             prompt: args.prompt,
             messages: args.messages,
-            structured: Boolean(args.outputSchema),
           });
         }),
       },
@@ -487,7 +481,6 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
           .generate({
             prompt: message.prompt,
             ...(message.messages !== undefined ? { messages: message.messages } : {}),
-            structured: message.structured,
             signal: protocolController.signal,
           })
           .then(

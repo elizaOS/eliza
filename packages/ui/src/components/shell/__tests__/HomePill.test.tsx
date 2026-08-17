@@ -54,9 +54,11 @@ describe("HomePill", () => {
 
   it.each<ShellPhase>([
     "booting",
+    "needs-auth",
     "idle",
     "summoned",
     "listening",
+    "processing",
     "responding",
   ])("renders a data-phase attribute for phase=%s", (phase) => {
     render(<HomePill phase={phase} onOpen={() => {}} onClose={() => {}} />);
@@ -90,14 +92,15 @@ describe("HomePill", () => {
     );
   });
 
-  it("grows into a dark red-ringed chip with waveform bars while listening", () => {
+  it("grows into a dark chip with waveform bars while listening", () => {
     render(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    // Wispr-style listening chip: larger dark capsule + red hot-mic ring.
+    // Wispr-style listening chip: larger dark capsule, no colored ring — the
+    // live bars alone carry the "mic is hot" signal.
     expect(mark.className).toContain("bg-neutral-900/95");
     expect(mark.className).toContain("h-7");
     expect(mark.className).toContain("w-20");
-    expect(mark.className).toContain("239,68,68");
+    expect(mark.className).not.toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
     expect(bars).toHaveLength(9);
@@ -131,6 +134,25 @@ describe("HomePill", () => {
     }
   });
 
+  it("keeps the dark chip with pulsing dots while processing", () => {
+    render(
+      <HomePill phase="processing" onOpen={() => {}} onClose={() => {}} />,
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.className).not.toContain("239,68,68");
+    const dots = screen.getAllByTestId("shell-home-pill-process-dot");
+    expect(dots).toHaveLength(3);
+    for (const dot of dots) {
+      expect(dot.className).toContain("home-pill-process-dot");
+      expect(dot.className).toContain("motion-reduce:animate-none");
+    }
+    expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: /transcribing your words/i }),
+    ).toBeTruthy();
+  });
+
   it("breathes a warm accent glow while responding", () => {
     render(
       <HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />,
@@ -139,6 +161,60 @@ describe("HomePill", () => {
     expect(mark.className).toContain("255,138,42");
     expect(mark.className).toContain("animate-pulse");
     expect(mark.className).toContain("motion-reduce:animate-none");
+  });
+
+  it("sharpens the glow and drops the pulse while speaking aloud", () => {
+    render(
+      <HomePill
+        phase="responding"
+        speaking
+        onOpen={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /is speaking/i });
+    expect(btn.getAttribute("data-speaking")).toBe("true");
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("0.85");
+    expect(mark.className).not.toContain("animate-pulse");
+  });
+
+  it("grows into a labeled sign-in chip while needs-auth and does not arm hold", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /sign in to eliza/i });
+    expect(btn.getAttribute("data-phase")).toBe("needs-auth");
+    expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
+      "Sign in to Eliza",
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.className).toContain("min-w-[11.5rem]");
+    expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
+    fireEvent.click(btn);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("pulses the sign-in chip while Cloud login is in flight", () => {
+    render(
+      <HomePill
+        phase="needs-auth"
+        signingIn
+        onOpen={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "animate-pulse",
+    );
   });
 
   it("stays available while booting and opens on click", () => {
@@ -246,6 +322,27 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     fireEvent.pointerCancel(btn);
     expect(hold.onHoldCancel).toHaveBeenCalledTimes(1);
     expect(hold.onHoldEnd).not.toHaveBeenCalled();
+  });
+
+  it("needs-auth never arms the hold, even when hold handlers are provided", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(HOLD_THRESHOLD_MS + 200);
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+    expect(hold.onHoldStart).not.toHaveBeenCalled();
+    expect(hold.onHoldEnd).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("a right-click press never arms the hold", () => {

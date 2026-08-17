@@ -19,6 +19,10 @@ const workflowPath = new URL(
   repoRoot,
 );
 const source = readFileSync(workflowPath, "utf8");
+const railwayManifest = readFileSync(
+  new URL("packages/cloud/services/gateway-webhook/railway.toml", repoRoot),
+  "utf8",
+);
 const workflowReadme = readFileSync(
   new URL(".github/workflows/README.md", repoRoot),
   "utf8",
@@ -33,16 +37,18 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  concurrency?: {
+    "cancel-in-progress"?: boolean;
+    group?: string;
+    queue?: string;
+  };
   env?: Record<string, string>;
   environment?: string;
+  needs?: string;
   steps?: WorkflowStep[];
 }
 
 interface Workflow {
-  concurrency?: {
-    "cancel-in-progress"?: boolean;
-    group?: string;
-  };
   jobs?: Record<string, WorkflowJob>;
   on?: {
     workflow_dispatch?: {
@@ -60,6 +66,7 @@ interface Workflow {
 
 const workflow = Bun.YAML.parse(source) as Workflow;
 const deploy = workflow.jobs?.deploy;
+const authorization = workflow.jobs?.["authorize-target"];
 const steps = deploy?.steps ?? [];
 
 function step(name: string): WorkflowStep {
@@ -183,7 +190,7 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
 }
 
 describe("protected gateway-webhook deployment workflow", () => {
-  test("is manual, least-privileged, protected, and serialized per environment", () => {
+  test("authorizes before the shared protected mutation lock", () => {
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
     expect(workflow.on?.workflow_dispatch?.inputs?.environment).toEqual({
       description: "Protected environment to deploy",
@@ -192,9 +199,17 @@ describe("protected gateway-webhook deployment workflow", () => {
       options: ["staging", "production"],
     });
     expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(authorization?.environment).toBe(
+      githubExpression("inputs.environment"),
+    );
+    expect(authorization?.concurrency).toBeUndefined();
     expect(deploy?.environment).toBe(githubExpression("inputs.environment"));
-    expect(workflow.concurrency?.group).toContain("inputs.environment");
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(deploy?.needs).toBe("authorize-target");
+    expect(deploy?.concurrency?.group).toBe(
+      ["cloud-cf-release-v6-", githubExpression("inputs.environment")].join(""),
+    );
+    expect(deploy?.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(deploy?.concurrency?.queue).toBe("max");
 
     expect(deploy?.env).toEqual(expectedJobEnvironment);
     expect(() => assertExactProtectedRouting(deploy)).not.toThrow();
@@ -336,6 +351,8 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(exactSource.run).toContain(
       "cp packages/cloud/services/gateway-webhook/railway.toml railway.toml",
     );
+    expect(railwayManifest).toContain("healthcheckTimeout = 90");
+    expect(railwayManifest).not.toContain("healthcheckTimeout = 30");
     expect(exactSource.run).toContain("cmp --silent");
     expect(exactSource.run).toContain('!= "?? railway.toml"');
     expect(exactSource.run).toContain('--project "$RAILWAY_PROJECT_ID"');
@@ -425,6 +442,18 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(verify.run).toContain(
       ".meta.fileServiceManifest.deploy.healthcheckPath",
     );
+    expect(verify.run).toContain(
+      ".meta.fileServiceManifest.deploy.healthcheckTimeout == 90",
+    );
+    expect(verify.run).toContain(
+      ".meta.serviceManifest.deploy.healthcheckTimeout == 90",
+    );
+    expect(verify.run).not.toContain(
+      ".meta.fileServiceManifest.deploy.healthcheckTimeout == 30",
+    );
+    expect(verify.run).not.toContain(
+      ".meta.serviceManifest.deploy.healthcheckTimeout == 30",
+    );
     expect(verify.run).toContain("railway service status");
     expect(
       verify.run?.match(/^assert_active_deployment (before|after)$/gm)?.length,
@@ -477,6 +506,29 @@ describe("protected gateway-webhook deployment workflow", () => {
       ),
     ).toThrow("forwarder readiness probe entered a forbidden path");
 
+    const receipt = step("Write exact deployment receipt");
+    expect(receipt.env?.DEPLOYMENT_ID).toContain(
+      "steps.railway_deploy.outputs.deployment_id",
+    );
+    expect(receipt.run).toContain('--arg sourceSha "$GITHUB_SHA"');
+    expect(receipt.run).toContain('--arg environment "$TARGET_ENVIRONMENT"');
+    expect(receipt.run).toContain('--arg deploymentId "$DEPLOYMENT_ID"');
+    expect(receipt.run).toContain('--arg service "$EXPECTED_SERVICE_NAME"');
+    expect(receipt.run).toContain("gateway-webhook-deployment.json");
+
+    const publish = steps.find(
+      (candidate) => candidate.name === "Publish exact deployment receipt",
+    );
+    expect(publish?.uses).toBe(
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    );
+    expect(publish?.with).toEqual({
+      name: "gateway-webhook-deployment-${{ inputs.environment }}-${{ github.sha }}",
+      path: "${{ runner.temp }}/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json",
+      "if-no-files-found": "error",
+      "retention-days": 30,
+    });
+
     const summary = step("Write deployment summary");
     expect(summary.run).toContain("$GITHUB_SHA");
     expect(summary.run).toContain("$DEPLOYMENT_ID");
@@ -492,6 +544,9 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(cleanup.run).toContain("gateway-webhook-railway-variables-raw.json");
     expect(cleanup.run).toContain(
       "gateway-webhook-postdeploy-variables-raw.json",
+    );
+    expect(cleanup.run).toContain(
+      "gateway-webhook-deployment-receipt/gateway-webhook-deployment.json",
     );
   });
 });

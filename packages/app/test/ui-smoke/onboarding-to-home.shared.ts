@@ -233,7 +233,7 @@ function notificationsPayload() {
   };
 }
 
-// A full-capability host (real API base + an Electrobun window id) so the
+// A full-capability host (real API base + an Electrobun bridge) so the
 // onboarding offers — and ENABLES — the Local runtime card. `__electrobunWindowId`
 // makes isElectrobunRuntime()→isDesktopPlatform() true, which is what
 // canSelectLocalRuntime() keys off (without it the Local card is rendered but
@@ -255,6 +255,15 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
+    win.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+      },
+      onMessage: () => {},
+      offMessage: () => {},
+    };
     // Production remains cloud-only by default (#13377). These helpers also run
     // against packaged builds where Vite's development default is absent, so
     // opt in explicitly; the production default is covered by
@@ -552,8 +561,7 @@ export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
 // origins are trusted cloud API bases), keeping the real agent surface live.
 export const PERSONAL_ELIZA_ID =
   "personal:11111111-1111-5111-8111-111111111111";
-export const PERSONAL_ACTIVE_AGENT_ID =
-  "22222222-2222-4222-8222-222222222222";
+export const PERSONAL_ACTIVE_AGENT_ID = "22222222-2222-4222-8222-222222222222";
 export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
 
 /** Inject the cloud session token before React boots (getCloudAuthToken reads

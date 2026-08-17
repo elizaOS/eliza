@@ -1,12 +1,15 @@
 /** Exercises desktop bottom bar config behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import {
+  AUTH_GATE_BOTTOM_BAR_HEIGHT,
+  AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
   DEFAULT_BOTTOM_BAR_WIDTH,
   EXPANDED_BOTTOM_BAR_HEIGHT,
   EXPANDED_BOTTOM_BAR_WIDTH,
+  resolveBottomBarFrameSize,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
   shouldStartBottomBar,
@@ -102,6 +105,25 @@ describe("desktop bottom-bar config", () => {
         { height: 1 },
       );
       expect(frame.height).toBe(48);
+    });
+
+    it("resolves rest, sign-in chip, and expanded sizes", () => {
+      expect(resolveBottomBarFrameSize({ expanded: false })).toEqual({
+        width: DEFAULT_BOTTOM_BAR_WIDTH,
+        height: DEFAULT_BOTTOM_BAR_HEIGHT,
+      });
+      expect(
+        resolveBottomBarFrameSize({ expanded: false, chip: true }),
+      ).toEqual({
+        width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+        height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+      });
+      expect(resolveBottomBarFrameSize({ expanded: true, chip: true })).toEqual(
+        {
+          width: EXPANDED_BOTTOM_BAR_WIDTH,
+          height: EXPANDED_BOTTOM_BAR_HEIGHT,
+        },
+      );
     });
 
     it("constrains the expanded chat hit area instead of spanning the display", () => {

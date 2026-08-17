@@ -631,6 +631,17 @@ export function validateAsrWordTimings(
   audioDurationMs = 0,
   toleranceMs = 1,
 ): WordTimingValidation {
+  if (!Number.isFinite(audioDurationMs) || audioDurationMs < 0) {
+    throw new RangeError(
+      `validateAsrWordTimings: audioDurationMs must be a non-negative finite number, got ${String(audioDurationMs)}`,
+    );
+  }
+  if (!Number.isFinite(toleranceMs) || toleranceMs < 0) {
+    throw new RangeError(
+      `validateAsrWordTimings: toleranceMs must be a non-negative finite number, got ${String(toleranceMs)}`,
+    );
+  }
+
   const violations: WordTimingViolation[] = [];
   let prevEndMs = 0;
   words.forEach((w, index) => {

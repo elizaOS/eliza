@@ -18,10 +18,13 @@ import {
 import {
   AlertCircle,
   CheckCircle,
+  Clock,
   CreditCard,
   Loader2,
   Wallet,
+  XCircle,
 } from "lucide-react";
+import type { ComponentType, FormEvent } from "react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -61,6 +64,33 @@ const AMOUNT_LIMITS = {
 
 type PaymentMethod = "card" | "crypto";
 
+const AMOUNT_HINT_ID = "purchase-amount-hint";
+const AMOUNT_ERROR_ID = "purchase-amount-error";
+
+// Status is never conveyed by color alone: every branch pairs a lucide glyph
+// with the verbatim status text so screen-reader and monochrome users read the
+// same state as sighted color users.
+function getInvoiceStatusPresentation(status: string): {
+  Icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  className: string;
+} {
+  const normalized = status.trim().toLowerCase();
+  if (["paid", "succeeded", "complete", "completed"].includes(normalized)) {
+    return { Icon: CheckCircle, className: "text-green-400" };
+  }
+  if (
+    ["failed", "uncollectible", "void", "canceled", "cancelled"].includes(
+      normalized,
+    )
+  ) {
+    return { Icon: XCircle, className: "text-red-400" };
+  }
+  if (["pending", "open", "processing", "draft"].includes(normalized)) {
+    return { Icon: Clock, className: "text-txt-strong" };
+  }
+  return { Icon: AlertCircle, className: "text-muted-strong" };
+}
+
 export function BillingTab({ user }: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
@@ -68,6 +98,10 @@ export function BillingTab({ user }: BillingTabProps) {
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState("");
+  // Tracks whether a submit has been attempted so an empty submission (which
+  // never populates purchaseAmount) still marks the field invalid and renders
+  // the adjacent inline error instead of only emitting a transient toast.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatusResponse | null>(
@@ -220,6 +254,16 @@ export function BillingTab({ user }: BillingTabProps) {
     }
   };
 
+  // Enter inside the amount field submits the form; keep the network call in
+  // handleBuyCredits so click and keyboard paths share one code path. Record
+  // the attempt first so an empty/invalid submit surfaces the inline error and
+  // aria-invalid even though handleBuyCredits returns before any checkout call.
+  const handleSubmitBuy = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitAttempted(true);
+    void handleBuyCredits();
+  };
+
   const handleViewInvoice = (invoice: InvoiceDisplay) => {
     navigate(`/cloud/invoices/${invoice.id}`);
   };
@@ -232,6 +276,11 @@ export function BillingTab({ user }: BillingTabProps) {
     amountValue !== null &&
     amountValue >= AMOUNT_LIMITS.MIN &&
     amountValue <= AMOUNT_LIMITS.MAX;
+  const showAmountError =
+    (purchaseAmount.length > 0 || submitAttempted) && !isValidAmount;
+  const amountDescribedBy = showAmountError
+    ? `${AMOUNT_HINT_ID} ${AMOUNT_ERROR_ID}`
+    : AMOUNT_HINT_ID;
 
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
@@ -253,7 +302,7 @@ export function BillingTab({ user }: BillingTabProps) {
             <div className="w-full lg:w-[400px] flex">
               <div className="bg-surface border border-brand-surface flex-1 flex items-center justify-center py-6 lg:py-8">
                 <div className="flex flex-col items-center justify-center gap-1 px-4">
-                  <p className="text-[40px] font-mono text-txt-strong tracking-tight">
+                  <p className="text-[40px] font-mono text-txt-strong tracking-tight tabular-nums">
                     ${balance.toFixed(2)}
                   </p>
                   <p className="text-sm text-muted text-center">
@@ -272,7 +321,7 @@ export function BillingTab({ user }: BillingTabProps) {
                     defaultValue: "Add credits to your account",
                   })}
                 </p>
-                <p className="text-sm text-muted">
+                <p id={AMOUNT_HINT_ID} className="text-sm text-muted-strong">
                   {t("cloud.billingTab.amountHint", {
                     min: AMOUNT_LIMITS.MIN,
                     max: AMOUNT_LIMITS.MAX,
@@ -317,18 +366,21 @@ export function BillingTab({ user }: BillingTabProps) {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-4">
+                <form
+                  onSubmit={handleSubmitBuy}
+                  className="flex flex-col sm:flex-row items-stretch sm:items-start gap-4"
+                >
                   <div className="flex-1 max-w-xs">
                     <Label
                       htmlFor="purchase-amount"
-                      className="mb-1.5 block text-muted font-mono text-xs"
+                      className="mb-1.5 block text-muted-strong font-mono text-xs"
                     >
                       {t("cloud.billingTab.amountLabel", {
                         defaultValue: "Amount (USD)",
                       })}
                     </Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted font-mono z-10 pointer-events-none">
+                      <span className="absolute left-3 top-[22px] -translate-y-1/2 text-muted-strong font-mono z-10 pointer-events-none">
                         $
                       </span>
                       <Input
@@ -338,28 +390,59 @@ export function BillingTab({ user }: BillingTabProps) {
                         min={AMOUNT_LIMITS.MIN}
                         max={AMOUNT_LIMITS.MAX}
                         value={purchaseAmount}
-                        onChange={(e) => setPurchaseAmount(e.target.value)}
-                        className="pl-7 bg-surface border border-border text-txt h-11 font-mono"
+                        onChange={(e) => {
+                          setPurchaseAmount(e.target.value);
+                          if (submitAttempted) setSubmitAttempted(false);
+                        }}
+                        className="pl-7 bg-surface border border-border text-txt h-11 font-mono tabular-nums"
                         placeholder="0.00"
                         disabled={isProcessingCheckout}
+                        aria-describedby={amountDescribedBy}
+                        aria-invalid={showAmountError}
                       />
                     </div>
+                    {showAmountError && (
+                      <div
+                        id={AMOUNT_ERROR_ID}
+                        role="alert"
+                        className="mt-1.5 flex items-center gap-2 text-sm text-red-400"
+                      >
+                        <AlertCircle
+                          className="h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span className="font-mono">
+                          {amountValue === null ||
+                          amountValue < AMOUNT_LIMITS.MIN
+                            ? t("cloud.billingTab.minAmount", {
+                                min: AMOUNT_LIMITS.MIN,
+                                defaultValue: "Minimum amount is $" + "{{min}}",
+                              })
+                            : t("cloud.billingTab.maxAmount", {
+                                max: AMOUNT_LIMITS.MAX,
+                                defaultValue: "Maximum amount is $" + "{{max}}",
+                              })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {(paymentMethod !== "crypto" ||
                     !cryptoStatus?.directWallet?.enabled) && (
                     <BrandButton
-                      type="button"
+                      type="submit"
                       variant="primary"
-                      onClick={handleBuyCredits}
-                      disabled={!isValidAmount || isProcessingCheckout}
-                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
+                      disabled={isProcessingCheckout}
+                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
                     >
                       {isProcessingCheckout ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          {t("cloud.billingTab.redirecting", {
-                            defaultValue: "Redirecting...",
+                          <Loader2
+                            className="h-4 w-4 animate-spin"
+                            aria-hidden="true"
+                          />
+                          {t("cloud.billingTab.processing", {
+                            defaultValue: "Processing\u2026",
                           })}
                         </>
                       ) : paymentMethod === "crypto" ? (
@@ -373,24 +456,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       )}
                     </BrandButton>
                   )}
-                </div>
-
-                {purchaseAmount && !isValidAmount && (
-                  <div className="flex items-center gap-2 text-sm text-red-400">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="font-mono">
-                      {amountValue === null || amountValue < AMOUNT_LIMITS.MIN
-                        ? t("cloud.billingTab.minAmount", {
-                            min: AMOUNT_LIMITS.MIN,
-                            defaultValue: "Minimum amount is $" + "{{min}}",
-                          })
-                        : t("cloud.billingTab.maxAmount", {
-                            max: AMOUNT_LIMITS.MAX,
-                            defaultValue: "Maximum amount is $" + "{{max}}",
-                          })}
-                    </span>
-                  </div>
-                )}
+                </form>
 
                 {isValidAmount && purchaseAmount && amountValue !== null && (
                   <div className="flex items-center gap-2 text-sm text-green-400">
@@ -451,82 +517,116 @@ export function BillingTab({ user }: BillingTabProps) {
             </p>
           </div>
 
-          <div className="w-full overflow-x-auto">
-            <div className="min-w-[600px]">
-              <div className="flex w-full">
-                <div className="bg-surface border border-brand-surface flex-[1.5] p-3 md:p-4">
-                  <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
-                    {t("cloud.billingTab.colDateTime", {
-                      defaultValue: "Date & Time",
+          {/* No fixed min-width scroller: rows reflow to a stacked card at
+              320px and only lay out as columns from `sm` up. */}
+          <div className="w-full">
+            <div className="hidden sm:flex w-full">
+              <div className="bg-surface border border-brand-surface flex-[1.5] p-3 md:p-4">
+                <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
+                  {t("cloud.billingTab.colDateTime", {
+                    defaultValue: "Date & Time",
+                  })}
+                </p>
+              </div>
+              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
+                  {t("cloud.billingTab.colTotal", { defaultValue: "Total" })}
+                </p>
+              </div>
+              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
+                  {t("cloud.billingTab.colStatus", {
+                    defaultValue: "Status",
+                  })}
+                </p>
+              </div>
+              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
+                  {t("cloud.billingTab.colActions", {
+                    defaultValue: "Actions",
+                  })}
+                </p>
+              </div>
+            </div>
+
+            {loadingInvoices ? (
+              <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
+                <Loader2 className="h-6 w-6 animate-spin text-muted" />
+              </div>
+            ) : invoicesError ? (
+              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-red-500/5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <div className="space-y-1">
+                  <p className="text-xs md:text-sm text-red-300 font-mono">
+                    {t("cloud.billingTab.invoiceLoadFailed", {
+                      defaultValue: "Invoice history could not be loaded",
                     })}
                   </p>
-                </div>
-                <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                  <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
-                    {t("cloud.billingTab.colTotal", { defaultValue: "Total" })}
-                  </p>
-                </div>
-                <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                  <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
-                    {t("cloud.billingTab.colStatus", {
-                      defaultValue: "Status",
-                    })}
-                  </p>
-                </div>
-                <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                  <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
-                    {t("cloud.billingTab.colActions", {
-                      defaultValue: "Actions",
-                    })}
+                  <p className="text-xs text-muted-strong font-mono">
+                    {invoicesError}
                   </p>
                 </div>
               </div>
-
-              {loadingInvoices ? (
-                <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted" />
-                </div>
-              ) : invoicesError ? (
-                <div className="flex items-start gap-3 p-8 border-l border-r border-b border-brand-surface bg-red-500/5">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                  <div className="space-y-1">
-                    <p className="text-xs md:text-sm text-red-300 font-mono">
-                      {t("cloud.billingTab.invoiceLoadFailed", {
-                        defaultValue: "Invoice history could not be loaded",
-                      })}
-                    </p>
-                    <p className="text-xs text-muted font-mono">
-                      {invoicesError}
-                    </p>
-                  </div>
-                </div>
-              ) : invoices.length === 0 ? (
-                <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
-                  <p className="text-xs md:text-sm text-muted font-mono">
-                    {t("cloud.billingTab.noInvoices", {
-                      defaultValue: "No invoices yet",
-                    })}
-                  </p>
-                </div>
-              ) : (
-                invoices.map((invoice) => (
-                  <div key={invoice.id} className="flex w-full">
-                    <div className="bg-surface border-l border-r border-b border-brand-surface flex-[1.5] p-3 md:p-4">
-                      <p className="text-xs md:text-sm font-mono text-txt-strong">
+            ) : invoices.length === 0 ? (
+              <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
+                <p className="text-xs md:text-sm text-muted-strong font-mono">
+                  {t("cloud.billingTab.noInvoices", {
+                    defaultValue: "No invoices yet",
+                  })}
+                </p>
+              </div>
+            ) : (
+              invoices.map((invoice) => {
+                const { Icon: StatusIcon, className: statusClassName } =
+                  getInvoiceStatusPresentation(invoice.status);
+                return (
+                  <div
+                    key={invoice.id}
+                    data-testid="invoice-row"
+                    className="flex flex-col sm:flex-row w-full border border-brand-surface sm:border-t-0"
+                  >
+                    <div className="flex-[1.5] p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0">
+                      <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
+                        {t("cloud.billingTab.colDateTime", {
+                          defaultValue: "Date & Time",
+                        })}
+                      </span>
+                      <p className="text-xs md:text-sm font-mono text-txt-strong tabular-nums text-right sm:text-left">
                         {invoice.date}
                       </p>
                     </div>
-                    <div className="bg-surface border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                      <p className="text-xs md:text-sm font-mono text-txt-strong uppercase">
+                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0 sm:border-l">
+                      <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
+                        {t("cloud.billingTab.colTotal", {
+                          defaultValue: "Total",
+                        })}
+                      </span>
+                      <p className="text-xs md:text-sm font-mono text-txt-strong uppercase tabular-nums">
                         {invoice.total}
                       </p>
                     </div>
-                    <div className="bg-surface border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                      <p className="text-xs md:text-sm font-mono text-txt-strong uppercase">
-                        {invoice.status}
-                      </p>
+                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0 sm:border-l">
+                      <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
+                        {t("cloud.billingTab.colStatus", {
+                          defaultValue: "Status",
+                        })}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs md:text-sm font-mono uppercase ${statusClassName}`}
+                      >
+                        <StatusIcon
+                          className="h-4 w-4 shrink-0"
+                          aria-hidden={true}
+                        />
+                        <span>{invoice.status}</span>
+                      </span>
                     </div>
-                    <div className="bg-surface border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 sm:border-l border-brand-surface">
+                      <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
+                        {t("cloud.billingTab.colActions", {
+                          defaultValue: "Actions",
+                        })}
+                      </span>
                       <Button
                         variant="ghost"
                         type="button"
@@ -537,9 +637,9 @@ export function BillingTab({ user }: BillingTabProps) {
                       </Button>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                );
+              })
+            )}
           </div>
         </div>
       </BrandCard>

@@ -105,6 +105,20 @@ describe("shared-agent shell startup probes", () => {
     await expect(response.json()).resolves.toEqual({ ok: true, settings: {} });
   });
 
+  test("POST /api/agent/start returns the canonical shared-runtime status", async () => {
+    const response = await request("agent/start", "POST");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      status: {
+        state: "running",
+        agentName: "Eliza",
+        canRespond: true,
+      },
+    });
+  });
+
   test("POST /api/apps/overlay-presence acks with no resolved app", async () => {
     const response = await request("apps/overlay-presence", "POST");
 
@@ -185,6 +199,7 @@ describe("shared-agent shell startup probes", () => {
       ["GET", "custom-actions"],
       ["GET", "agent/events"],
       ["GET", "stream/settings"],
+      ["POST", "agent/start"],
       ["POST", "apps/overlay-presence"],
       ["POST", "views/chat/navigate"],
       ["POST", "lifeops/activity-signals"],
@@ -237,6 +252,7 @@ describe("shared-agent shell startup probes", () => {
       ["GET", "custom-actions"],
       ["GET", "agent/events"],
       ["GET", "stream/settings"],
+      ["POST", "agent/start"],
       ["POST", "apps/overlay-presence"],
       ["POST", "views/chat/navigate"],
       ["POST", "lifeops/activity-signals"],

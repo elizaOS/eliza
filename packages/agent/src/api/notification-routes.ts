@@ -208,10 +208,13 @@ function respondServiceUnavailable(
   return true;
 }
 
-function parseLimit(raw: string | null): number | undefined {
-  if (!raw) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+function parseLimit(raw: string | null): number | null | undefined {
+  if (raw === null || raw === "") return undefined;
+  // Strict decimal digits only. Number.parseInt("1e2", 10) === 1 would
+  // silently under-read the notification-center page as 1 row.
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
 
@@ -278,18 +281,29 @@ export async function handleNotificationRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/notifications")) return false;
 
+  let listRequest: { url: URL; limit: number | undefined } | undefined;
+  if (method === "GET" && pathname === "/api/notifications") {
+    const url = new URL(req.url ?? pathname, "http://localhost");
+    const limit = parseLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
+    listRequest = { url, limit };
+  }
+
   const service = getService(state);
   if (!service) {
     return respondServiceUnavailable(res, state, method, pathname, helpers);
   }
 
   // ── GET /api/notifications ────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/notifications") {
-    const url = new URL(req.url ?? pathname, "http://localhost");
+  if (listRequest) {
+    const { url, limit } = listRequest;
     const notifications = service.list({
       unreadOnly: url.searchParams.get("unreadOnly") === "true",
       category: parseCategory(url.searchParams.get("category")),
-      limit: parseLimit(url.searchParams.get("limit")),
+      limit,
     });
     helpers.json(res, {
       notifications,
@@ -340,7 +354,15 @@ export async function handleNotificationRoute(
   // ── POST /api/notifications/:id/read ──────────────────────────────
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
   if (method === "POST" && readMatch) {
-    const ok = await service.markRead(decodeURIComponent(readMatch[1]));
+    let id: string;
+    try {
+      id = decodeURIComponent(readMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid notification id", 400);
+      return true;
+    }
+    const ok = await service.markRead(id);
     helpers.json(res, { ok });
     return true;
   }
@@ -355,7 +377,15 @@ export async function handleNotificationRoute(
   // ── DELETE /api/notifications/:id ─────────────────────────────────
   const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (method === "DELETE" && idMatch) {
-    const ok = await service.remove(decodeURIComponent(idMatch[1]));
+    let id: string;
+    try {
+      id = decodeURIComponent(idMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid notification id", 400);
+      return true;
+    }
+    const ok = await service.remove(id);
     helpers.json(res, { ok });
     return true;
   }

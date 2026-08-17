@@ -132,11 +132,19 @@ function collectViewTsx(dir: string): string[] {
 function readPluginEntry(pluginDir: string): string {
   // `ui/plugin.ts` first: plugins that merge a server surface and a UI surface
   // (e.g. plugin-wallet) keep the ViewDeclaration[] on the UI descriptor.
+  // Prefer the first candidate that actually CONTAINS a view declaration:
+  // some plugins (e.g. plugin-todos) have a server-side `plugin.ts` while the
+  // ViewDeclaration[] stays on `index.ts`, and a filename-priority pick alone
+  // would audit the wrong file.
+  let firstExisting = "";
   for (const name of ["ui/plugin.ts", "plugin.ts", "index.ts"]) {
     const candidate = path.join(repoRoot, "plugins", pluginDir, "src", name);
-    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
+    if (!existsSync(candidate)) continue;
+    const source = readFileSync(candidate, "utf8");
+    if (/\brelatedActions:/.test(source)) return source;
+    if (!firstExisting) firstExisting = source;
   }
-  return "";
+  return firstExisting;
 }
 
 // Interactive-control surface, both dialects — a conservative lower-bound proxy:

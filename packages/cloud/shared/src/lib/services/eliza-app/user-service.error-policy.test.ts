@@ -63,6 +63,7 @@ mock.module("../api-keys", () => ({ apiKeysService: { create: createApiKey } }))
 mock.module("../credits", () => ({
   creditsService: { addCredits },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
 }));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 

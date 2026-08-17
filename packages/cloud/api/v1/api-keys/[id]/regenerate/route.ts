@@ -33,35 +33,8 @@ app.post("/", async (c) => {
       c,
     });
 
-    // D-1: plaintext is no longer stored in a `key` column. We mint a new
-    // key, hash it, and persist the encrypted ciphertext + new hash/prefix.
-    const {
-      key: newKey,
-      hash: newHash,
-      prefix: newPrefix,
-    } = apiKeysService.generateApiKey();
-
-    const { encryptApiKey } = await import(
-      "@elizaos/cloud-shared/db/crypto/api-keys"
-    );
-    const encrypted = await encryptApiKey(
-      existingKey.organization_id,
-      existingKey.id,
-      newKey,
-    );
-
-    const updatedKey = await apiKeysService.update(id, {
-      key_hash: newHash,
-      key_prefix: newPrefix,
-      key_ciphertext: encrypted.ciphertext,
-      key_nonce: encrypted.nonce,
-      key_auth_tag: encrypted.auth_tag,
-      key_kms_key_id: encrypted.kms_key_id,
-      key_kms_key_version: encrypted.kms_key_version,
-      updated_at: new Date(),
-    });
-    if (!updatedKey)
-      return c.json({ error: "Failed to regenerate API key" }, 500);
+    const { apiKey: updatedKey, plainKey } =
+      await apiKeysService.regenerate(id);
 
     await getAuditDispatcher()
       .emit({
@@ -90,7 +63,7 @@ app.post("/", async (c) => {
         rate_limit: updatedKey.rate_limit,
         expires_at: updatedKey.expires_at,
       },
-      plainKey: newKey,
+      plainKey,
     });
   } catch (error) {
     logger.error("Error regenerating API key:", error);

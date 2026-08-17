@@ -40,7 +40,19 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     "Packaged launcher not built — bottom-bar e2e runs against a packaged build only.",
   );
 
-  const api = await startMockApiServer({ firstRunComplete: true, port: 0 });
+  const api = await startMockApiServer({
+    firstRunComplete: true,
+    port: 0,
+    assistantReplyText: [
+      "Time to stretch.",
+      "",
+      "[CHOICE:lifeops-reminder id=packaged-reminder]",
+      "done=Done",
+      "10 minutes=Snooze 10m",
+      "skip=Skip",
+      "[/CHOICE]",
+    ].join("\n"),
+  });
   const harness = new PackagedDesktopHarness({
     tempRoot,
     launcherPath: launcherPath as string,
@@ -95,6 +107,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
             markHeight: number | null;
             markPainted: boolean;
             pillVisible: boolean;
+            providerTruthVisible: boolean;
           }>(`(() => {
             const shell = document.querySelector('[data-testid="chat-overlay-shell"]');
             const pill = document.querySelector('[data-testid="shell-home-pill"]');
@@ -113,6 +126,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
                 getComputedStyle(pill).display !== 'none' &&
                 getComputedStyle(pill).visibility !== 'hidden' &&
                 Number(getComputedStyle(pill).opacity) > 0,
+              providerTruthVisible: Boolean(document.querySelector('[data-testid="serving-provider-chip"]')),
             };
           })()`),
         { timeout: process.env.CI ? 120_000 : 60_000 },
@@ -127,6 +141,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         markHeight: 10,
         markPainted: true,
         pillVisible: true,
+        providerTruthVisible: false,
       });
 
     // DOM state alone cannot prove a transparent native window actually
@@ -161,7 +176,10 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       });
     } else {
       const screenPng = Buffer.from(
-        (await harness.screenshot()).replace(/^data:image\/png;base64,/, ""),
+        (await harness.screenshot(30_000)).replace(
+          /^data:image\/png;base64,/,
+          "",
+        ),
         "base64",
       );
       const nativeBounds = (await harness.getState()).mainWindow.bounds;
@@ -255,6 +273,9 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
             radius: panel instanceof HTMLElement ? getComputedStyle(panel).borderRadius : null,
             background: panel instanceof HTMLElement ? getComputedStyle(panel).backgroundColor : null,
             textColor: panel instanceof HTMLElement ? getComputedStyle(panel).color : null,
+            backdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).backdropFilter : null,
+            webkitBackdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).webkitBackdropFilter : null,
+            providerLabel: document.querySelector('[data-testid="serving-provider-chip"]')?.textContent?.trim() ?? null,
             width: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().width) : null,
             height: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().height) : null,
             panelBottom: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().bottom) : null,
@@ -268,10 +289,15 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         present: true,
         placeholder: "Message Eliza…",
         glassTier: expect.stringMatching(/^css-/),
-        material: "light-frosted",
+        material: "dark-frosted",
         radius: "24px",
-        background: expect.stringMatching(/244|0\.956/),
-        textColor: expect.stringMatching(/23|0\.09/),
+        background: expect.stringMatching(/12|0\.047/),
+        textColor: expect.stringMatching(/rgb\(2\d{2}, 2\d{2}, 2\d{2}\)/),
+        backdropFilter: expect.stringContaining("blur(30px)"),
+        webkitBackdropFilter: expect.stringContaining("blur(30px)"),
+        // The mock advertises an Eliza Cloud route while deliberately staying
+        // disconnected, so the truthful serving result is its on-device fallback.
+        providerLabel: "On device",
         width: 560,
         height: 600,
       });
@@ -332,6 +358,55 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     expect(
       expandedGeometry.pillTop - expandedGeometry.panelBottom,
     ).toBeGreaterThanOrEqual(8);
+
+    const inputResult = await harness.eval<{
+      updated: boolean;
+      error?: string;
+    }>(`(() => {
+      const input = document.querySelector('[data-testid="shell-chat-surface"] input');
+      if (!(input instanceof HTMLInputElement)) {
+        return { updated: false, error: 'chat composer input not found' };
+      }
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      if (!setter) return { updated: false, error: 'native value setter missing' };
+      setter.call(input, 'show the packaged reminder');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return { updated: true };
+    })()`);
+    expect(inputResult).toEqual({ updated: true });
+    await expect
+      .poll(() =>
+        harness.eval(`(() => {
+          const send = document.querySelector('button[aria-label="Send message"]');
+          return send instanceof HTMLButtonElement && !send.disabled;
+        })()`),
+      )
+      .toBe(true);
+    await harness.eval(
+      `document.querySelector('button[aria-label="Send message"]')?.click()`,
+    );
+
+    await expect
+      .poll(() =>
+        harness.eval(`(() => {
+          const surface = document.querySelector('[data-testid="shell-chat-surface"]');
+          return {
+            transcript: surface?.textContent ?? '',
+            doneVisible: Boolean(surface?.querySelector('[data-testid="choice-done"]')),
+            snoozeVisible: Boolean(surface?.querySelector('[data-testid="choice-10 minutes"]')),
+            skipVisible: Boolean(surface?.querySelector('[data-testid="choice-skip"]')),
+          };
+        })()`),
+      )
+      .toMatchObject({
+        transcript: expect.stringContaining("Time to stretch."),
+        doneVisible: true,
+        snoozeVisible: true,
+        skipVisible: true,
+      });
 
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,

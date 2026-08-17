@@ -82,6 +82,24 @@ export class CloudSttError extends Error {
 const CLOUD_STT_STARTING_RETRY_LIMIT = 30;
 const CLOUD_STT_STARTING_RETRY_DELAY_MS = 1_000;
 
+/**
+ * Whether a Cloud STT failure is a self-healing warmup the client should wait
+ * out with the patient 1s×30 retry loop rather than the single transient
+ * retry. Two server shapes qualify: a dedicated runtime's `feature_starting`
+ * (deferred route registration) and the shared worker's warming 503
+ * (`service_unavailable` — "Authorization cache is warming; retry shortly",
+ * observed clearing within a few seconds). A single retry loses a real
+ * utterance to a warmup that would have succeeded moments later, which
+ * violates the hold-to-talk contract that a spoken turn must not silently
+ * vanish (#20483).
+ */
+function isCloudSttWarmup(err: CloudSttError): boolean {
+  return (
+    err.code === "feature_starting" ||
+    (err.status === 503 && err.code === "service_unavailable")
+  );
+}
+
 function readCloudSttErrorCode(body: string): string | undefined {
   try {
     const parsed = JSON.parse(body) as { code?: unknown; error?: unknown };
@@ -389,7 +407,7 @@ export async function transcribeCloudWav(
           cause: err,
         });
       }
-      if (err.code === "feature_starting") {
+      if (isCloudSttWarmup(err)) {
         if (startingRetries >= CLOUD_STT_STARTING_RETRY_LIMIT) throw err;
         startingRetries++;
         await waitForCloudSttStartup(callerSignal);

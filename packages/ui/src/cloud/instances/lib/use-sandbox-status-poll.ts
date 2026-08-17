@@ -8,7 +8,10 @@
  *   (no page reload) and firing a "now running" callback on transitions.
  */
 
+import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../../lib/api-client";
+import { parseAgentsResponse } from "./data/eliza-agents";
 
 export type SandboxStatus =
   | "pending"
@@ -146,30 +149,13 @@ export function useSandboxStatusPoll(
   return result;
 }
 
-/** Raw agent shape returned by the list endpoint (camelCase). */
-export interface SandboxListAgent {
-  id: string;
-  status: string;
-  agentName?: string;
-  agent_name?: string;
-  databaseStatus?: string;
-  errorMessage?: string;
-  dockerImage?: string | null;
-  executionTier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
-  webUiUrl?: string | null;
-  lastHeartbeatAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  [key: string]: unknown;
-}
-
 export function useSandboxListPoll(
   sandboxes: Array<{ id: string; status: string }>,
   options: {
     intervalMs?: number;
-    onTransitionToRunning?: (agentId: string, agentName?: string) => void;
+    onTransitionToRunning?: (agentId: string, agentName: string | null) => void;
     /** Called on every successful poll with the full agent list from the API. */
-    onDataRefresh?: (agents: SandboxListAgent[]) => void;
+    onDataRefresh?: (agents: AgentListItemDto[]) => void;
   } = {},
 ) {
   const { intervalMs = 10_000, onTransitionToRunning, onDataRefresh } = options;
@@ -218,6 +204,8 @@ export function useSandboxListPoll(
 
     setIsPolling(true);
     let cancelled = false;
+    let requestGeneration = 0;
+    let requestController: AbortController | null = null;
 
     const poll = async () => {
       if (cancelled) return;
@@ -227,12 +215,17 @@ export function useSandboxListPoll(
       )
         return;
 
-      try {
-        const res = await fetch("/api/v1/eliza/agents");
-        if (cancelled || !res.ok) return;
+      const generation = ++requestGeneration;
+      requestController?.abort();
+      const controller = new AbortController();
+      requestController = controller;
 
-        const json = await res.json();
-        const agents: SandboxListAgent[] = json?.data ?? [];
+      try {
+        const payload = await api<unknown>("/api/v1/eliza/agents", {
+          signal: controller.signal,
+        });
+        if (cancelled || generation !== requestGeneration) return;
+        const agents = parseAgentsResponse(payload);
 
         dataRefreshRef.current?.(agents);
 
@@ -245,16 +238,16 @@ export function useSandboxListPoll(
             ACTIVE_STATES.has(prevStatus as SandboxStatus) &&
             newStatus === "running"
           ) {
-            callbackRef.current?.(
-              agent.id,
-              agent.agentName ?? agent.agent_name,
-            );
+            callbackRef.current?.(agent.id, agent.agentName);
           }
 
           previousStatusesRef.current.set(agent.id, newStatus);
         }
-      } catch {
-        // silently retry on next interval
+      } catch (error) {
+        // error-policy:J4 a failed background refresh leaves the last visible
+        // authoritative list intact and retries on the next interval.
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
       }
     };
 
@@ -264,6 +257,8 @@ export function useSandboxListPoll(
 
     return () => {
       cancelled = true;
+      requestGeneration++;
+      requestController?.abort();
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;

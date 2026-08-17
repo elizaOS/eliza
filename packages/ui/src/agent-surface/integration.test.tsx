@@ -3,9 +3,10 @@
  * jsdom-rendered provider rather than registry-only mocks.
  */
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AgentElementOverlay } from "./AgentElementOverlay";
 import { AgentSurfaceProvider } from "./AgentSurfaceContext";
 import { handleAgentSurfaceCapability } from "./capabilities";
 import { AgentButton, AgentInput } from "./components";
@@ -205,6 +206,53 @@ describe("agent-surface render integration", () => {
 
     unmount();
     expect(getViewRegistry("overlap", "gui")).toBeUndefined();
+  });
+
+  // #20728 regression: navigating away from an instrumented view unmounts the
+  // whole provider subtree. React runs that deleted tree's passive cleanups
+  // parent-first, so the provider seals its registry before the descendant
+  // `useAgentElement` disposer mutates the store. The `AgentElementOverlay`
+  // subscribes through `useSyncExternalStore`; before the fix its listener was
+  // invoked during teardown, forcing a re-render on a fiber committed for
+  // deletion (React #185 / max-update-depth). This mirrors the real
+  // DynamicViewLoader tree: <Provider>{view w/ useAgentElement}{overlay}</>.
+  it("does not notify the overlay subscriber while the view subtree tears down", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { unmount } = render(
+        <AgentSurfaceProvider viewId="teardown" viewType="gui">
+          <AgentButton agentId="submit">Submit</AgentButton>
+          <AgentElementOverlay />
+        </AgentSurfaceProvider>,
+      );
+
+      const registry = getViewRegistry("teardown", "gui");
+      if (!registry) throw new Error("registry missing");
+      // Highlight on: the overlay is an active `useSyncExternalStore` subscriber,
+      // exactly the crashing subscriber from the report.
+      act(() => registry.setHighlight(true));
+      expect(registry.isNotifying()).toBe(true);
+
+      // Count listener notifications after teardown begins. React seals the
+      // registry (provider cleanup) before the button's `useAgentElement`
+      // disposer runs, so the delete/bump must reach zero subscribers.
+      const teardownListener = vi.fn();
+      registry.subscribe(teardownListener);
+
+      act(() => unmount());
+
+      expect(registry.isNotifying()).toBe(false);
+      expect(teardownListener).not.toHaveBeenCalled();
+      // No React "update on an unmounting component" / max-update-depth error.
+      const reactErrors = errorSpy.mock.calls.filter(([first]) =>
+        typeof first === "string"
+          ? /update|unmount|Maximum update depth/i.test(first)
+          : false,
+      );
+      expect(reactErrors).toEqual([]);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("toggles highlight mode via the set-highlight capability", () => {

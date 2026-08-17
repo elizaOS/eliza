@@ -67,7 +67,10 @@ import type {
   CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import {
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "../lifeops/defaults.js";
 import {
   formatCalendarEventDateTime,
   runLifeOpsJsonModel,

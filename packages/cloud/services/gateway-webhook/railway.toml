@@ -30,6 +30,9 @@ dockerfilePath = "packages/cloud/services/gateway-webhook/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+# JWT bootstrap is crash-only and may exhaust the bounded restart budget before
+# a replacement can become healthy; the platform health window must encompass
+# that budget without weakening startup authentication.
+healthcheckTimeout = 90
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
