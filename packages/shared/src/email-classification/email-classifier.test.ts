@@ -38,6 +38,7 @@ import {
 import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content";
 
 interface StubRuntimeOptions {
+  agentId?: string;
   settings?: Record<string, unknown>;
   useModel?: (modelType: string, args: { prompt: string }) => unknown;
 }
@@ -45,6 +46,7 @@ interface StubRuntimeOptions {
 function makeRuntime(opts: StubRuntimeOptions = {}) {
   const settings = opts.settings ?? {};
   const runtime = {
+    agentId: opts.agentId ?? "00000000-0000-0000-0000-000000000001",
     getSetting: (key: string) => settings[key],
     ...(opts.useModel ? { useModel: opts.useModel } : {}),
   };
@@ -206,6 +208,106 @@ describe("classifyEmail", () => {
       confidence: 0.81,
       signals: ["account alert"],
     });
+  });
+
+  it("does not share cached classifications between messages without ids", async () => {
+    const classifications = [
+      {
+        category: "transactional",
+        confidence: 0.81,
+        signals: ["account alert"],
+      },
+      {
+        category: "personal",
+        confidence: 0.92,
+        signals: ["human correspondence"],
+      },
+    ];
+    let callCount = 0;
+    const runtime = makeRuntime({
+      useModel: () => JSON.stringify(classifications[callCount++]),
+    });
+
+    const first = await classifyEmail(runtime, {
+      subject: "Security notice",
+      from: "service@example.com",
+    });
+    const second = await classifyEmail(runtime, {
+      subject: "Lunch tomorrow?",
+      from: "friend@example.com",
+    });
+
+    expect(first.category).toBe("transactional");
+    expect(second.category).toBe("personal");
+    expect(callCount).toBe(2);
+  });
+
+  it.each(["", "   "])("does not cache blank message id %j", async (id) => {
+    let callCount = 0;
+    const runtime = makeRuntime({
+      useModel: () =>
+        JSON.stringify({
+          category: callCount++ === 0 ? "transactional" : "personal",
+          confidence: 0.8,
+          signals: ["model"],
+        }),
+    });
+
+    const first = await classifyEmail(runtime, { id, subject: "First" });
+    const second = await classifyEmail(runtime, { id, subject: "Second" });
+
+    expect(first.category).toBe("transactional");
+    expect(second.category).toBe("personal");
+    expect(callCount).toBe(2);
+  });
+
+  it("retains cache hits only for the same agent, identity, and content", async () => {
+    let callCount = 0;
+    const useModel = () => {
+      callCount += 1;
+      return JSON.stringify({
+        category: "personal",
+        confidence: 0.9,
+        signals: ["model"],
+      });
+    };
+    const firstRuntime = makeRuntime({ agentId: "agent-one", useModel });
+    const secondRuntime = makeRuntime({ agentId: "agent-two", useModel });
+    const message = { id: "message-one", subject: "Hello" };
+
+    await classifyEmail(firstRuntime, message);
+    await classifyEmail(firstRuntime, message);
+    expect(callCount).toBe(1);
+
+    await classifyEmail(firstRuntime, { ...message, subject: "Updated" });
+    await classifyEmail(secondRuntime, message);
+    expect(callCount).toBe(3);
+  });
+
+  it("does not reuse classifications for content that collides under the former 32-bit hash", async () => {
+    const classifications = ["transactional", "personal"] as const;
+    let callCount = 0;
+    const runtime = makeRuntime({
+      useModel: () =>
+        JSON.stringify({
+          category: classifications[callCount++],
+          confidence: 0.9,
+          signals: ["model"],
+        }),
+    });
+
+    const first = await classifyEmail(runtime, {
+      id: "collision-message",
+      subject: "note-2dy4-14gu1cs",
+    });
+    const second = await classifyEmail(runtime, {
+      id: "collision-message",
+      subject: "note-3i9h-g5q4yt",
+    });
+
+    expect(first.category).toBe("transactional");
+    expect(second.category).toBe("personal");
+    expect(callCount).toBe(2);
   });
 
   it("falls back to personal when no runtime model is available", async () => {
