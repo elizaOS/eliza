@@ -100,8 +100,10 @@ Representative examples:
   source/environment/deployment-id receipt; the protected edge-activation
   workflow downloads that exact run receipt, revalidates the active Railway
   deployment before and after its probes and edge mutation, and shares this
-  workflow's per-environment concurrency key so canonical releases cannot race
-  a cutover. It also sends a headerless `GET` to the
+  workflow's per-environment concurrency key so gateway releases, canonical
+  Cloudflare releases, and cutovers cannot race. Protected-environment approval
+  completes before any of those jobs enters the shared mutation lock. It also
+  sends a headerless `GET` to the
   dedicated `/ready/forwarder-auth/eliza-app` contract and requires the exact
   enforced-gate 401 response before reasserting the active deployment. A
   disabled secret or mismatched forwarded project produces a distinct non-401

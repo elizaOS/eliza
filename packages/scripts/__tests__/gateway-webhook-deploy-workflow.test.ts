@@ -37,16 +37,17 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
-  env?: Record<string, string>;
-  environment?: string;
-  steps?: WorkflowStep[];
-}
-
-interface Workflow {
   concurrency?: {
     "cancel-in-progress"?: boolean;
     group?: string;
   };
+  env?: Record<string, string>;
+  environment?: string;
+  needs?: string;
+  steps?: WorkflowStep[];
+}
+
+interface Workflow {
   jobs?: Record<string, WorkflowJob>;
   on?: {
     workflow_dispatch?: {
@@ -64,6 +65,7 @@ interface Workflow {
 
 const workflow = Bun.YAML.parse(source) as Workflow;
 const deploy = workflow.jobs?.deploy;
+const authorization = workflow.jobs?.["authorize-target"];
 const steps = deploy?.steps ?? [];
 
 function step(name: string): WorkflowStep {
@@ -187,7 +189,7 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
 }
 
 describe("protected gateway-webhook deployment workflow", () => {
-  test("is manual, least-privileged, protected, and serialized per environment", () => {
+  test("authorizes before the shared protected mutation lock", () => {
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
     expect(workflow.on?.workflow_dispatch?.inputs?.environment).toEqual({
       description: "Protected environment to deploy",
@@ -196,9 +198,16 @@ describe("protected gateway-webhook deployment workflow", () => {
       options: ["staging", "production"],
     });
     expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(authorization?.environment).toBe(
+      githubExpression("inputs.environment"),
+    );
+    expect(authorization?.concurrency).toBeUndefined();
     expect(deploy?.environment).toBe(githubExpression("inputs.environment"));
-    expect(workflow.concurrency?.group).toContain("inputs.environment");
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(deploy?.needs).toBe("authorize-target");
+    expect(deploy?.concurrency?.group).toBe(
+      ["cloud-cf-release-v6-", githubExpression("inputs.environment")].join(""),
+    );
+    expect(deploy?.concurrency?.["cancel-in-progress"]).toBe(false);
 
     expect(deploy?.env).toEqual(expectedJobEnvironment);
     expect(() => assertExactProtectedRouting(deploy)).not.toThrow();

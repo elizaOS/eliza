@@ -49,23 +49,29 @@ interface Workflow {
     };
   };
   permissions?: Record<string, string>;
-  concurrency?: Record<string, string | boolean>;
   jobs?: Record<
     string,
     {
+      concurrency?: Record<string, string | boolean>;
       environment?: string;
       env?: Record<string, string>;
+      needs?: string;
       steps?: WorkflowStep[];
     }
   >;
 }
 
 const workflow = Bun.YAML.parse(source) as Workflow;
+const validation = workflow.jobs?.["validate-request"];
 const job = workflow.jobs?.cutover;
+const authorization = workflow.jobs?.["authorize-target"];
 const steps = job?.steps ?? [];
+const validationSteps = validation?.steps ?? [];
 
 function step(name: string): WorkflowStep {
-  const found = steps.find((candidate) => candidate.name === name);
+  const found = [...validationSteps, ...steps].find(
+    (candidate) => candidate.name === name,
+  );
   if (!found?.run) throw new Error(`Missing executable workflow step: ${name}`);
   return found;
 }
@@ -332,8 +338,51 @@ printf '200'`,
   }
 }
 
+function exerciseUnavailableDisableProof(): ReturnType<typeof Bun.spawnSync> {
+  const mockRoot = mkdtempSync(join(tmpdir(), "edge-disable-proof-"));
+  const removalMarker = join(mockRoot, "secret-removal-attempted");
+  const executable = (name: string, body: string): void => {
+    const path = join(mockRoot, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+  };
+  executable("node", 'touch "$MOCK_REMOVAL_MARKER"');
+  executable("curl", "exit 1");
+  executable("sleep", "exit 0");
+
+  try {
+    const result = Bun.spawnSync(
+      ["bash", "-c", step("Apply and verify served edge state").run ?? ""],
+      {
+        cwd: fileURLToPath(new URL("packages/cloud/api/", repoRoot)),
+        env: {
+          ...process.env,
+          DESIRED_ENABLED: "false",
+          EDGE_SECRET_NAME: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
+          EXPECTED_SOURCE_SHA: "a".repeat(40),
+          GITHUB_WORKSPACE: fileURLToPath(repoRoot),
+          HEALTH_URL: "https://api-staging.eliza.app/api/health",
+          MOCK_REMOVAL_MARKER: removalMarker,
+          PATH: `${mockRoot}:${process.env.PATH ?? ""}`,
+          TARGET_ENVIRONMENT: "staging",
+        },
+        stderr: "pipe",
+        stdout: "pipe",
+      },
+    );
+    if (!existsSync(removalMarker)) {
+      throw new Error(
+        "disable did not attempt secret removal before health proof",
+      );
+    }
+    return result;
+  } finally {
+    rmSync(mockRoot, { force: true, recursive: true });
+  }
+}
+
 describe("Personal Shared Telegram edge deploy", () => {
-  test("selects one protected environment, serialization key, and canonical endpoint set", () => {
+  test("authorizes before entering one protected mutation lock and canonical endpoint set", () => {
     const inputs = workflow.on?.workflow_dispatch?.inputs;
     expect(inputs?.environment).toEqual({
       description: "Protected environment whose edge gate will be changed",
@@ -343,18 +392,22 @@ describe("Personal Shared Telegram edge deploy", () => {
       options: ["staging", "production"],
     });
     expect(inputs?.production_approval_comment_url?.required).toBe(false);
-    expect(job?.environment).toBe(
-      "${{ inputs.environment == 'production' && 'production' || 'staging' }}",
-    );
+    const protectedEnvironment =
+      "${{ inputs.environment == 'production' && 'production' || 'staging' }}";
+    expect(authorization?.environment).toBe(protectedEnvironment);
+    expect(authorization?.concurrency).toBeUndefined();
+    expect(authorization?.needs).toBe("validate-request");
+    expect(job?.environment).toBe(protectedEnvironment);
+    expect(job?.needs).toBe("authorize-target");
     expect(workflow.permissions).toEqual({
       actions: "read",
       contents: "read",
       issues: "read",
     });
-    expect(workflow.concurrency?.group).toBe(
+    expect(job?.concurrency?.group).toBe(
       "cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}",
     );
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(job?.concurrency?.["cancel-in-progress"]).toBe(false);
     expect(job?.env?.REQUESTED_ENVIRONMENT).toBe("${{ inputs.environment }}");
     expect(job?.env?.TARGET_ENVIRONMENT).toBe(
       "${{ inputs.environment == 'production' && 'production' || 'staging' }}",
@@ -449,8 +502,7 @@ describe("Personal Shared Telegram edge deploy", () => {
 
   test("proves exact served Worker and same-environment gateway sources before enable", () => {
     const ordered = [
-      "Validate protected target and production approval",
-      "Validate exact served Worker source",
+      "Validate exact served Worker source before enable",
       "Install pinned Railway CLI",
       "Verify exact active gateway before enable",
       "Apply and verify served edge state",
@@ -459,7 +511,8 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(ordered.every((value) => value >= 0)).toBe(true);
     expect(ordered).toEqual([...ordered].sort((a, b) => a - b));
 
-    const worker = step("Validate exact served Worker source");
+    const worker = step("Validate exact served Worker source before enable");
+    expect(worker.if).toBe("inputs.enabled == true");
     expect(worker.run).toContain("git merge-base --is-ancestor");
     expect(worker.run).toContain("canonical $EXPECTED_BRANCH history");
     expect(worker.run).toContain(".commit == $sha");
@@ -538,6 +591,17 @@ describe("Personal Shared Telegram edge deploy", () => {
     const rollback = exerciseFailedActivationRollback();
     expect(rollback.exitCode).not.toBe(0);
     expect(rollback.stdout.toString()).toContain("staging was rolled back off");
+  });
+
+  test("authorized disable removes first and reports unavailable served-off proof distinctly", () => {
+    const worker = step("Validate exact served Worker source before enable");
+    expect(worker.if).toBe("inputs.enabled == true");
+
+    const unavailable = exerciseUnavailableDisableProof();
+    expect(unavailable.exitCode).not.toBe(0);
+    expect(unavailable.stdout.toString()).toContain(
+      "edge secret removal was confirmed, but served-off proof is unavailable",
+    );
   });
 
   test("keeps the legacy guard false and reserves both environment-pinned activation secret names", () => {

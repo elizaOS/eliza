@@ -14,16 +14,29 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-gateway-webhook-${{ inputs.environment }}
-  cancel-in-progress: false
-
 jobs:
+  authorize-target:
+    name: Authorize gateway webhook (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # Approval completes outside the shared mutation lock so a waiting review
+    # cannot block Cloudflare releases or edge rollback.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Record protected-environment authorization
+        run: echo "${{ inputs.environment }} gateway release authorized"
+
   deploy:
     name: Deploy gateway webhook (${{ inputs.environment }})
+    needs: authorize-target
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: ${{ inputs.environment }}
+    # The active deployment receipt is consumed by the edge cutover, so both
+    # mutations and the canonical Cloudflare release use one critical section.
+    concurrency:
+      group: cloud-cf-release-v6-${{ inputs.environment }}
+      cancel-in-progress: false
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}

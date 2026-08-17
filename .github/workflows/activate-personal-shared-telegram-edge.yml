@@ -30,17 +30,11 @@ permissions:
   contents: read
   issues: read
 
-concurrency:
-  # Secret mutation and the full Cloudflare release must never overlap.
-  group: cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}
-  cancel-in-progress: false
-
 jobs:
-  cutover:
-    name: Cut over Personal Shared Telegram edge (${{ inputs.environment == 'production' && 'production' || 'staging' }})
+  validate-request:
+    name: Validate Personal Shared Telegram edge request
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    environment: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+    timeout-minutes: 2
     env:
       REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
       TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
@@ -51,24 +45,8 @@ jobs:
       PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
       HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
       GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
-      EXPECTED_GATEWAY_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
-      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: "1.3.14"
-
       - name: Validate protected target and production approval
         run: |
           set -euo pipefail
@@ -126,7 +104,61 @@ jobs:
               ;;
           esac
 
-      - name: Validate exact served Worker source
+  authorize-target:
+    name: Authorize Personal Shared Telegram edge (${{ inputs.environment == 'production' && 'production' || 'staging' }})
+    needs: validate-request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # Approval must finish before the mutation job enters the shared release
+    # lock. Otherwise a waiting protected-environment review can block every
+    # Cloudflare or gateway release for this environment.
+    environment: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+    steps:
+      - name: Record protected-environment authorization
+        run: echo "${{ inputs.environment }} Telegram edge operation authorized"
+
+  cutover:
+    name: Cut over Personal Shared Telegram edge (${{ inputs.environment == 'production' && 'production' || 'staging' }})
+    needs: authorize-target
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+    # Cloudflare releases, gateway releases, and edge mutation share one
+    # post-authorization critical section. The gateway receipt therefore
+    # cannot become stale behind our final active-deployment check.
+    concurrency:
+      group: cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}
+      cancel-in-progress: false
+    env:
+      REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EDGE_SECRET_NAME: ${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}
+      EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
+      PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
+      HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
+      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      EXPECTED_GATEWAY_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate exact served Worker source before enable
+        if: inputs.enabled == true
         run: |
           set -euo pipefail
           if [[ ! "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -296,7 +328,7 @@ jobs:
              .status == "enforced"' \
             "$readiness" >/dev/null; then
             rm -f "$readiness"
-            echo "::error::Exact-source staging gateway forwarder gate is not enforced"
+            echo "::error::Exact-source $TARGET_ENVIRONMENT gateway forwarder gate is not enforced"
             exit 1
           fi
           rm -f "$readiness"
@@ -323,10 +355,9 @@ jobs:
               code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$HEALTH_URL" || echo '000')"
               if [ "$code" = "200" ] && jq -e \
                 --arg environment "$TARGET_ENVIRONMENT" \
-                --arg sha "$EXPECTED_SOURCE_SHA" \
                 '.status == "ok" and
                  .environment == $environment and
-                 .commit == $sha and
+                 (.commit | type == "string" and test("^[0-9a-f]{40}$")) and
                  .personalSharedTelegramEdge.enabled == false' \
                 "$health" >/dev/null; then
                 rm -f "$health"
@@ -341,6 +372,23 @@ jobs:
           disable_edge() {
             remove_edge_secret && prove_edge_disabled
           }
+
+          # Disable is the emergency-safe path: once the target and protected
+          # environment are authorized, remove the binding before consulting
+          # Worker health. A down or drifted Worker makes served-off proof
+          # unavailable, but must never prevent the deletion attempt.
+          if [ "$DESIRED_ENABLED" != "true" ]; then
+            if ! remove_edge_secret; then
+              echo "::error::$TARGET_ENVIRONMENT edge secret removal could not be confirmed"
+              exit 1
+            fi
+            if prove_edge_disabled; then
+              echo "Personal Shared Telegram edge is confirmed disabled in $TARGET_ENVIRONMENT."
+              exit 0
+            fi
+            echo "::error::$TARGET_ENVIRONMENT edge secret removal was confirmed, but served-off proof is unavailable"
+            exit 1
+          fi
 
           # A secret mutation can reach Cloudflare even when the CLI response is
           # ambiguous. Until the served health beacon proves the desired state,
@@ -390,21 +438,17 @@ jobs:
 
           assert_active_gateway before
 
-          if [ "$DESIRED_ENABLED" = "true" ]; then
-            activation_cli_confirmed=false
-            for attempt in 1 2 3; do
-              if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
-                "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"; then
-                activation_cli_confirmed=true
-                break
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
-            if [ "$activation_cli_confirmed" != "true" ]; then
-              echo "::warning::Telegram edge activation CLI result was ambiguous; requiring served-state proof"
+          activation_cli_confirmed=false
+          for attempt in 1 2 3; do
+            if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
+              "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"; then
+              activation_cli_confirmed=true
+              break
             fi
-          else
-            remove_edge_secret
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          if [ "$activation_cli_confirmed" != "true" ]; then
+            echo "::warning::Telegram edge activation CLI result was ambiguous; requiring served-state proof"
           fi
 
           for attempt in 1 2 3 4 5 6; do
