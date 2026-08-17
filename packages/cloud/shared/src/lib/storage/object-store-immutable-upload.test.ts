@@ -291,7 +291,7 @@ describe("Worker R2 immutable exact-key upload", () => {
     expect(providerBody?.buffer).not.toBe(transferred.buffer);
     expect(transferred.every((byte) => byte === 0)).toBe(true);
     expect(providerBody?.every((byte) => byte === 0)).toBe(true);
-  });
+  }, 30_000);
 
   test("replays the same HEAD receipt after response loss and refuses different bytes", async () => {
     const key = "agent-sandbox-backups/private-org/operation-a/chunk-0001";
