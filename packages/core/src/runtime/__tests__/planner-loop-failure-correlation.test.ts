@@ -813,6 +813,73 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 	});
 
+	it("does not claim no usable result when later coding tools succeeded", async () => {
+		await withCodingFullSurface(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(
+						plannerToolCall("bad-cwd", "SHELL", {
+							command: "node --test",
+							cwd: "/workspace/project-typo",
+						}),
+					)
+					.mockResolvedValueOnce(
+						plannerToolCall("write-test", "FILE", {
+							action: "write",
+							file_path: "/workspace/project/test/stats.test.mjs",
+							content: "test contents",
+						}),
+					)
+					.mockResolvedValueOnce(
+						plannerToolCall("correct-cwd", "SHELL", {
+							command: "node --test",
+							cwd: "/workspace/project",
+						}),
+					)
+					.mockResolvedValueOnce({
+						text: "Everything passed.",
+					}),
+			};
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						error: "invalid cwd",
+						text: "The requested cwd is outside the workspace roots.",
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "Wrote 902 bytes to test/stats.test.mjs",
+						userFacingText: "Wrote 902 bytes to test/stats.test.mjs",
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "node --test exited 0; 5 tests passed",
+					}),
+				evaluate: vi.fn(),
+			});
+
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toContain(
+				"I couldn't complete every requested runtime step.",
+			);
+			expect(result.finalMessage).toContain(
+				"Wrote 902 bytes to test/stats.test.mjs",
+			);
+			expect(result.finalMessage).toContain(
+				"node --test exited 0; 5 tests passed",
+			);
+			expect(result.finalMessage).not.toContain(
+				"failed before it produced a usable result",
+			);
+			expect(result.finalMessage).not.toContain("Everything passed.");
+		});
+	});
+
 	it("keeps failed entity A authoritative when a terminal REPLY follows successful entity B", async () => {
 		const runtime = runtimeForFailureThenSuccessThenReply();
 		const result = await runPlannerLoop({
