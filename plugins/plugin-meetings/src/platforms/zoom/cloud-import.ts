@@ -22,6 +22,7 @@ const ZOOM_API_BASE = "https://api.zoom.us/v2";
 const DEFAULT_JSON_LIMIT = 8 * 1024 * 1024;
 const DEFAULT_FILE_LIMIT = 256 * 1024 * 1024;
 const DEFAULT_TOTAL_LIMIT = 512 * 1024 * 1024;
+const MAX_PARTICIPANT_PAGES = 100;
 
 type FetchLike = (
   input: RequestInfo | URL,
@@ -255,8 +256,18 @@ async function requestAllParticipants(
   },
 ): Promise<ZoomParticipantResponse[]> {
   const participants: ZoomParticipantResponse[] = [];
+  const seenTokens = new Set<string>();
   let token: string | undefined;
+  let pageCount = 0;
   do {
+    pageCount += 1;
+    if (pageCount > MAX_PARTICIPANT_PAGES) {
+      throw new ZoomCloudImportError(
+        "invalid_response",
+        `Zoom participants pagination exceeded ${MAX_PARTICIPANT_PAGES} pages.`,
+        502,
+      );
+    }
     const url = new URL(
       `${ZOOM_API_BASE}/past_meetings/${encodedId}/participants`,
     );
@@ -273,6 +284,14 @@ async function requestAllParticipants(
       ),
     );
     token = page.next_page_token?.trim() || undefined;
+    if (token && seenTokens.has(token)) {
+      throw new ZoomCloudImportError(
+        "invalid_response",
+        "Zoom participants pagination repeated a page token.",
+        502,
+      );
+    }
+    if (token) seenTokens.add(token);
   } while (token);
   return participants;
 }
