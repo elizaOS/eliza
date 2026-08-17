@@ -66,7 +66,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("returns 400 for syntactically invalid JSON", async () => {
     const res = await post("{not-json");
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Invalid JSON body",
     });
@@ -77,7 +77,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("returns 400 for a JSON array", async () => {
     const res = await post('["session_id"]');
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Invalid JSON body",
     });
@@ -87,7 +87,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("returns 400 for a JSON primitive", async () => {
     const res = await post('"cli-session"');
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Invalid JSON body",
     });
@@ -97,7 +97,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("returns 400 for JSON null", async () => {
     const res = await post("null");
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Invalid JSON body",
     });
@@ -107,7 +107,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("keeps the missing-session_id 400 on a JSON object", async () => {
     const res = await post("{}");
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Missing session_id",
     });
@@ -117,7 +117,7 @@ describe("POST /api/eliza-app/cli-auth/complete JSON body", () => {
   test("keeps unauthorized before reading the body", async () => {
     const res = await post("{not-json", { authorization: "" });
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       success: false,
       error: "Unauthorized",
     });
