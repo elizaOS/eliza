@@ -17,7 +17,7 @@
  * Pricing: per-request charge (and per-byte for PUT) deducted via creditsService.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { orgStorageQuotaRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -193,6 +193,13 @@ app.put("/*", async (c) => {
 });
 
 app.get("/*", async (c) => {
+  // Hono dispatches HEAD through the matching GET route while preserving the
+  // original request method. Branch here so HEAD never enters the body-read
+  // path or uses GET pricing.
+  if (c.req.method === "HEAD") {
+    return handleLegacyStorageHead(c);
+  }
+
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
@@ -244,7 +251,7 @@ app.get("/*", async (c) => {
   }
 });
 
-app.on(["HEAD"], "/*", async (c) => {
+async function handleLegacyStorageHead(c: Context<AppEnv>) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
@@ -289,7 +296,7 @@ app.on(["HEAD"], "/*", async (c) => {
   } catch (error) {
     return failureResponse(c, error);
   }
-});
+}
 
 app.delete("/*", async (c) => {
   try {
