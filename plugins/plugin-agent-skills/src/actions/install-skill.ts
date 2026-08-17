@@ -25,7 +25,7 @@ const SKILL_INSTALL_TEXT_MAX_CHARS = 3_000;
 function truncateInstallSkillText(text: string): string {
 	return text.length <= SKILL_INSTALL_TEXT_MAX_CHARS
 		? text
-		: `${text.slice(0, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
+		: `${text.slice(0, SKILL_INSTALL_TEXT_MAX_CHARS - 28)}\n\n[truncated install result]`;
 }
 
 export const installSkillAction = {
