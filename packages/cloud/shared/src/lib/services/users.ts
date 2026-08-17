@@ -329,6 +329,9 @@ export class UsersService {
     }
     const result = await usersRepository.update(id, data);
     if (result?.organization_id && typeof data.steward_user_id === "string") {
+      // Repeat the activation even when the row already has this binding. A
+      // prior attempt can commit the database update and then fail while
+      // clearing the durable fence; the retry must finish that recovery.
       await setInferenceSessionBindingActive(
         result.organization_id,
         id,
@@ -363,6 +366,13 @@ export class UsersService {
     const existingIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
 
     if (existingIdentity?.steward_user_id === stewardUserId) {
+      const user = await usersRepository.findById(userId);
+      if (user?.organization_id) {
+        // The identity row may have committed before a prior attempt failed to
+        // clear the durable binding fence. Make the idempotent retry complete
+        // that activation before returning.
+        await setInferenceSessionBindingActive(user.organization_id, userId, stewardUserId, true);
+      }
       await Promise.all([
         cache.del(CacheKeys.user.byStewardId(stewardUserId)),
         cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)),
