@@ -25,6 +25,31 @@ import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";
 
 const CORS_METHODS = "GET, OPTIONS";
+const DEFAULT_TAIL = 100;
+const MAX_TAIL = 5000;
+const CANONICAL_POSITIVE_INTEGER = /^[1-9]\d*$/;
+
+/**
+ * Canonical compat `tail` at the HTTP boundary. Same contract as v1
+ * `GET /api/v1/agents/:agentId/logs`: omitted defaults to 100; any other
+ * token must be a complete ASCII decimal integer in [1, 5000]. Prefix-legal
+ * garbage must not coerce (`parseInt("1e4", 10)` is 1) into `docker logs --tail`.
+ */
+export function parseCompatLogsTail(
+  rawTail: string | null,
+): { ok: true; tail: number } | { ok: false } {
+  if (rawTail === null) {
+    return { ok: true, tail: DEFAULT_TAIL };
+  }
+  if (!CANONICAL_POSITIVE_INTEGER.test(rawTail)) {
+    return { ok: false };
+  }
+  const tail = Number(rawTail);
+  if (!Number.isSafeInteger(tail) || tail > MAX_TAIL) {
+    return { ok: false };
+  }
+  return { ok: true, tail };
+}
 
 async function __hono_GET(
   request: Request,
@@ -34,6 +59,21 @@ async function __hono_GET(
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
+
+    const url = new URL(request.url);
+    const parsedTail = parseCompatLogsTail(url.searchParams.get("tail"));
+    if (!parsedTail.ok) {
+      // error-policy:J3 reject malformed request input instead of coercing
+      // or clamping it into docker logs --tail.
+      return withCompatCors(
+        Response.json(
+          errorEnvelope(`tail must be a whole number between 1 and ${MAX_TAIL}`),
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    const { tail } = parsedTail;
 
     const agent = await elizaSandboxService.getAgent(
       agentId,
@@ -45,13 +85,6 @@ async function __hono_GET(
         CORS_METHODS,
       );
     }
-
-    const url = new URL(request.url);
-    const rawTail = parseInt(url.searchParams.get("tail") ?? "100", 10);
-    const tail = Math.max(
-      1,
-      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
-    );
 
     const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
       agentId,
