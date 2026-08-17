@@ -9,6 +9,7 @@ import type {
   VideoProvider,
 } from "./types";
 
+const ATLAS_FETCH_TIMEOUT_MS = 30_000;
 const ATLAS_POLL_INTERVAL_MS = 2_000;
 const ATLAS_POLL_TIMEOUT_MS = 180_000;
 
@@ -111,6 +112,7 @@ export async function generateAtlasCloudVideo(
     method: "POST",
     headers: { ...authHeader, "content-type": "application/json" },
     body: JSON.stringify(buildAtlasVideoInput(request)),
+    signal: AbortSignal.timeout(ATLAS_FETCH_TIMEOUT_MS),
   });
 
   const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
@@ -138,7 +140,10 @@ export async function generateAtlasCloudVideo(
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
 
-    const pollResponse = await fetch(pollUrl, { headers: authHeader });
+    const pollResponse = await fetch(pollUrl, {
+      headers: authHeader,
+      signal: AbortSignal.timeout(ATLAS_FETCH_TIMEOUT_MS),
+    });
     const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!pollResponse.ok) {
       throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
@@ -177,6 +182,7 @@ export async function getAtlasCloudVideoJobStatus(
   );
   const response = await fetch(`${baseUrl}/api/v1/model/prediction/${req.requestId}`, {
     headers: { authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(ATLAS_FETCH_TIMEOUT_MS),
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 

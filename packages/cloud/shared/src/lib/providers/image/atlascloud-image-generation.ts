@@ -145,6 +145,7 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
     method: "POST",
     headers: { ...authHeader, "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS),
   });
 
   const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
@@ -175,7 +176,10 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
 
-    const pollResponse = await fetch(pollUrl, { headers: authHeader });
+    const pollResponse = await fetch(pollUrl, {
+      headers: authHeader,
+      signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS),
+    });
     const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!pollResponse.ok) {
       throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
