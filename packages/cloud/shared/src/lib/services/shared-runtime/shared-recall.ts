@@ -6,12 +6,11 @@
  * Embeddings come from a sidecar exposing the OpenAI `/v1/embeddings` shape
  * with `bge-small-en-v1.5` (384 dimensions).
  *
- * Not wired into the live turn yet — the turn integration lands with the P2
- * tenant-store merge. `buildSharedRecallContext` is pure orchestration over
- * injected `embed`/`storeSearch` collaborators and owns no degrade policy:
- * failures propagate typed so the turn boundary decides whether recall loss is
- * survivable. `embedTextViaSidecar` is fail-fast with a single bounded attempt
- * (5s abort, no retries); the caller owns retry/backoff policy.
+ * `buildSharedRecallContext` is pure orchestration over injected
+ * `embed`/`storeSearch` collaborators and owns no degrade policy: failures
+ * propagate typed so the live turn boundary decides whether recall loss is
+ * survivable. Sidecar calls are fail-fast with a single bounded attempt (5s
+ * abort, no retries); the caller owns retry/backoff policy.
  */
 
 import { ElizaError } from "@elizaos/core/edge";
@@ -134,13 +133,41 @@ export async function embedTextsViaSidecar(
       context: { status: response.status },
     });
   }
-  const payload = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+  let payload: { data?: Array<{ embedding?: unknown }> };
+  try {
+    payload = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+  } catch (cause) {
+    // error-policy:J3 a non-JSON 2xx body becomes an explicit invalid-response
+    // failure so the memory store can degrade to vector-less rows.
+    throw new ElizaError("Embedding sidecar returned a non-JSON batch body", {
+      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+      cause,
+      context: { reason: "non-json-body" },
+      severity: "ephemeral",
+    });
+  }
   const data = Array.isArray(payload?.data) ? payload.data : [];
   const vectors = data.map((entry) => readSidecarEmbedding({ data: [entry] }));
-  if (vectors.length !== cleaned.length || vectors.some((vector) => vector === undefined)) {
+  const wrongDimensionIndex = vectors.findIndex(
+    (vector) => vector !== undefined && vector.length !== SHARED_RECALL_EMBEDDING_DIMENSIONS,
+  );
+  if (
+    vectors.length !== cleaned.length ||
+    vectors.some((vector) => vector === undefined) ||
+    wrongDimensionIndex !== -1
+  ) {
     throw new ElizaError("Embedding sidecar returned an invalid batch response", {
       code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
-      context: { expected: cleaned.length, received: vectors.length },
+      context:
+        wrongDimensionIndex === -1
+          ? { reason: "invalid-vector-count", expected: cleaned.length, received: vectors.length }
+          : {
+              reason: "wrong-dimensions",
+              index: wrongDimensionIndex,
+              expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
+              actual: vectors[wrongDimensionIndex]?.length,
+            },
+      severity: "ephemeral",
     });
   }
   return vectors as number[][];

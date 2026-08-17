@@ -128,6 +128,24 @@ describe("canonical cloud deployment environment contract", () => {
     expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
   });
 
+  test("enables Shared semantic memory only in the staging prove-out", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    for (const flag of [
+      "SHARED_MEMORY_TABLES_ENABLED",
+      "SHARED_RECALL_ENABLED",
+    ]) {
+      expect(staging).toContain(`${flag} = "true"`);
+      expect(production).not.toContain(flag);
+    }
+  });
+
   test("keeps Shared Discord reminder delivery bound across Worker deploys", () => {
     const staging = cloudApiWranglerSource.slice(
       cloudApiWranglerSource.indexOf("[env.staging.vars]"),
