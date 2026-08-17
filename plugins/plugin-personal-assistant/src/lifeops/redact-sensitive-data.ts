@@ -65,12 +65,13 @@ function isFullRedactKey(normalizedKey: string): boolean {
 
 function shortenSubject(value: string, max: number): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}…`;
+  return `${value.slice(0, max - 1).trimEnd()}…`;
 }
 
 function shortenBody(value: string, max: number): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}… [+${value.length - max} chars]`;
+  const suffix = `… [+${value.length - max} chars]`;
+  return `${value.slice(0, max - suffix.length).trimEnd()}${suffix}`;
 }
 
 function redactEmailAddresses(value: string): string {
