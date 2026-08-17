@@ -119,4 +119,23 @@ describe("handleMiscRoutes agent events", () => {
       vi.useRealTimers();
     }
   });
+
+  it("rejects malformed percent-encoded agent id on POST /api/agents/:agentId/event with 400", async () => {
+    const ctx = makeAgentEventContext({
+      type: "ping",
+      userId: "u-1",
+      payload: {},
+    });
+    ctx.pathname = "/api/agents/%/event";
+    ctx.url = new URL("http://localhost/api/agents/%/event");
+
+    const handled = await handleMiscRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(ctx.json).toHaveBeenCalledWith(
+      ctx.res,
+      { error: "Invalid agent id" },
+      400,
+    );
+  });
 });
