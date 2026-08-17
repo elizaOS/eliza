@@ -212,6 +212,16 @@ function parseEventPayload(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function decodePathComponent(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed path encoding is
+    // reported by the trigger route boundary instead of escaping as URIError.
+    return null;
+  }
+}
+
 async function findTask(
   runtime: IAgentRuntime,
   id: string,
@@ -420,12 +430,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
 
   const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(pathname);
   if (method === 'GET' && runsMatch) {
-    const task = await findTask(
-      runtime,
-      decodeURIComponent(runsMatch[1]),
-      listTriggerTasks,
-      readTriggerConfig
-    );
+    const triggerId = decodePathComponent(runsMatch[1]);
+    if (triggerId === null) {
+      error(res, 'Invalid trigger ID: malformed URL encoding', 400);
+      return true;
+    }
+    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -436,12 +446,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
 
   const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(pathname);
   if (method === 'POST' && execMatch) {
-    const task = await findTask(
-      runtime,
-      decodeURIComponent(execMatch[1]),
-      listTriggerTasks,
-      readTriggerConfig
-    );
+    const triggerId = decodePathComponent(execMatch[1]);
+    if (triggerId === null) {
+      error(res, 'Invalid trigger ID: malformed URL encoding', 400);
+      return true;
+    }
+    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -458,7 +468,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
 
   const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(pathname);
   if (method === 'POST' && eventMatch) {
-    const eventKind = decodeURIComponent(eventMatch[1] ?? '').trim();
+    const decodedEventKind = decodePathComponent(eventMatch[1] ?? '');
+    if (decodedEventKind === null) {
+      error(res, 'Invalid event kind: malformed URL encoding', 400);
+      return true;
+    }
+    const eventKind = decodedEventKind.trim();
     if (!eventKind) {
       error(res, 'event kind is required', 400);
       return true;
@@ -504,7 +519,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
 
   const itemMatch = /^\/api\/triggers\/([^/]+)$/.exec(pathname);
   if (!itemMatch) return false;
-  const triggerId = decodeURIComponent(itemMatch[1]);
+  const triggerId = decodePathComponent(itemMatch[1]);
+  if (triggerId === null) {
+    error(res, 'Invalid trigger ID: malformed URL encoding', 400);
+    return true;
+  }
 
   if (method === 'GET') {
     const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
