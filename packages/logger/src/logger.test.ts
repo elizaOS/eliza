@@ -399,3 +399,191 @@ describe("stripAnsi", () => {
     expect(stripAnsi("no ansi here")).toBe("no ansi here");
   });
 });
+
+/**
+ * Secret-redaction contract (W1-018/W1-019): the deep-walk redactor must mask
+ * credential-named keys at any depth, case-insensitively — including top-level
+ * keys, UPPERCASE env-style names, `Authorization` headers, and properties on
+ * Error wrappers — without mutating the caller's live objects. Observable
+ * surface is the in-memory ring buffer (`recentLogs`), the same text the
+ * `/api/logs` endpoints and WS stream serve.
+ */
+describe("secret redaction", () => {
+  const redactLogger = () => createLogger({ level: "trace" });
+
+  afterEach(() => {
+    redactLogger().clear();
+  });
+
+  it("masks top-level credential keys", () => {
+    const logger = redactLogger();
+    logger.info({ apiKey: "sk-top-level-secret" }, "ctx");
+    expect(recentLogs()).toContain("apiKey=[REDACTED]");
+    expect(recentLogs()).not.toContain("sk-top-level-secret");
+  });
+
+  it("masks UPPERCASE env-style keys case-insensitively", () => {
+    const logger = redactLogger();
+    logger.info({ OPENAI_API_KEY: "sk-uppercase-secret" }, "ctx");
+    expect(recentLogs()).toContain("OPENAI_API_KEY=[REDACTED]");
+    expect(recentLogs()).not.toContain("sk-uppercase-secret");
+  });
+
+  it("masks keys nested deeper than one level", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        provider: { config: { credentials: { clientSecret: "deep-secret" } } },
+      },
+      "ctx",
+    );
+    expect(recentLogs()).not.toContain("deep-secret");
+    expect(recentLogs()).toContain("[REDACTED]");
+  });
+
+  it("masks Authorization headers inside a headers object", () => {
+    const logger = redactLogger();
+    logger.info(
+      { headers: { Authorization: "Bearer header-secret-token" } },
+      "ctx",
+    );
+    expect(recentLogs()).not.toContain("header-secret-token");
+  });
+
+  it("masks the extended credential key variants", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        clientSecret: "v-client",
+        secretKey: "v-secret-key",
+        signingSecret: "v-signing",
+        botToken: "v-bot",
+        sessionKey: "v-session",
+        authToken: "v-auth",
+        encryptionKey: "v-encryption",
+        masterKey: "v-master",
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    for (const secret of [
+      "v-client",
+      "v-secret-key",
+      "v-signing",
+      "v-bot",
+      "v-session",
+      "v-auth",
+      "v-encryption",
+      "v-master",
+    ]) {
+      expect(logs).not.toContain(secret);
+    }
+  });
+
+  it("redacts credentials carried on an Error wrapper without mutating it", () => {
+    const logger = redactLogger();
+    const err = new Error("request failed");
+    (err as unknown as Record<string, unknown>).config = {
+      headers: { Authorization: "Bearer axios-style-secret" },
+    };
+
+    logger.error(err);
+
+    expect(recentLogs()).not.toContain("axios-style-secret");
+    // The caller's live error object keeps its original values (W1-019).
+    const config = (err as unknown as Record<string, unknown>).config as {
+      headers: { Authorization: string };
+    };
+    expect(config.headers.Authorization).toBe("Bearer axios-style-secret");
+  });
+
+  it("never mutates nested objects the caller keeps using", () => {
+    const logger = redactLogger();
+    const original = { provider: { apiKey: "live-provider-key" } };
+
+    logger.info(original, "ctx");
+
+    expect(original.provider.apiKey).toBe("live-provider-key");
+    expect(recentLogs()).not.toContain("live-provider-key");
+  });
+
+  it("redacts objects passed as trailing args", () => {
+    const logger = redactLogger();
+    logger.info("plain message", { token: "trailing-arg-secret" });
+    expect(recentLogs()).not.toContain("trailing-arg-secret");
+  });
+
+  it("keeps non-secret token-count and key-suffix lookalikes visible", () => {
+    const logger = redactLogger();
+    logger.info(
+      { maxTokens: 2048, monkey: "see", turnkey: "sol", keyboard: "esc" },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).toContain("maxTokens=2048");
+    expect(logs).toContain("monkey=see");
+    expect(logs).toContain("turnkey=sol");
+    expect(logs).toContain("keyboard=esc");
+  });
+
+  it("collapses cycles instead of recursing forever", () => {
+    const logger = redactLogger();
+    const cyclic: Record<string, unknown> = { name: "loop" };
+    cyclic.self = cyclic;
+    expect(() => logger.info(cyclic, "ctx")).not.toThrow();
+    expect(recentLogs()).toContain("[Circular]");
+  });
+});
+
+/**
+ * File-sink permission contract (W1-059): output.log/prompts.log/chat.log
+ * must be created 0600, and files left world-readable by older builds must be
+ * healed on first open. Needs a fresh module instance per case because the
+ * sink opens lazily once per process; LOG_FILE is restored afterwards.
+ */
+describe("file sink permissions", () => {
+  it.skipIf(process.platform === "win32")(
+    "creates sinks 0600 and heals a legacy 0644 output.log",
+    async () => {
+      const fs = await import("node:fs/promises");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-log-perm-"));
+      const logPath = path.join(dir, "output.log");
+
+      // Legacy sink from an older build: world-readable.
+      await fs.writeFile(logPath, "old line\n");
+      await fs.chmod(logPath, 0o644);
+
+      const previous = process.env.LOG_FILE;
+      process.env.LOG_FILE = logPath;
+      try {
+        vi.resetModules();
+        const fresh = await import("./logger");
+        fresh.logger.info("perm-test-entry");
+        fresh.logPrompt("text", "prompt-body");
+        fresh.logChatIn({
+          agentName: "Eliza",
+          agentId: "agent-1",
+          roomId: "room-123456789",
+          messageId: "message-123456789",
+          text: "hi",
+        });
+
+        const modeOf = async (name: string) =>
+          (await fs.stat(path.join(dir, name))).mode & 0o777;
+        expect(await modeOf("output.log")).toBe(0o600);
+        expect(await modeOf("prompts.log")).toBe(0o600);
+        expect(await modeOf("chat.log")).toBe(0o600);
+        // The legacy content survives the heal (append-only sink).
+        expect(await fs.readFile(logPath, "utf8")).toContain("old line");
+        expect(await fs.readFile(logPath, "utf8")).toContain("perm-test-entry");
+      } finally {
+        if (previous === undefined) delete process.env.LOG_FILE;
+        else process.env.LOG_FILE = previous;
+        vi.resetModules();
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});

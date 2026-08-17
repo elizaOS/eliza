@@ -17,6 +17,23 @@ function deletedCookieNames(res: Response): string[] {
 }
 
 describe("DELETE /api/auth/steward-session cookie clearing", () => {
+  it("rejects a simple request without the non-simple marker", async () => {
+    const res = await app.request(
+      "/",
+      {
+        method: "DELETE",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://staging.elizacloud.ai",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "test" },
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "csrf_marker_required" });
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  });
+
   it("staging clears only the staging-suffixed pair", async () => {
     const res = await app.request(
       "/",
@@ -25,6 +42,7 @@ describe("DELETE /api/auth/steward-session cookie clearing", () => {
         headers: {
           host: "api-staging.elizacloud.ai",
           origin: "https://staging.elizacloud.ai",
+          "x-eliza-csrf": "1",
         },
       },
       { ENVIRONMENT: "staging", NODE_ENV: "test" },
@@ -47,6 +65,7 @@ describe("DELETE /api/auth/steward-session cookie clearing", () => {
         headers: {
           host: "api.elizacloud.ai",
           origin: "https://elizacloud.ai",
+          "x-eliza-csrf": "1",
         },
       },
       { ENVIRONMENT: "production", NODE_ENV: "test" },

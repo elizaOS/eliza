@@ -50,6 +50,17 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 function isLocalDevAdminEnabled(c: AppContext): boolean {
+  // Hard fail in production, mirroring isLocalDevAdminRequest in the global
+  // middleware: NEVER grant the dev-admin bypass regardless of env vars, so
+  // both layers fail closed identically (SOC2 CC6.1).
+  if (c.env.NODE_ENV === "production") {
+    if (c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" || c.env.LOCAL_DEV === "true") {
+      logger.error("[Auth] Refusing dev-admin bypass in production — env var ignored", {
+        path: new URL(c.req.url).pathname,
+      });
+    }
+    return false;
+  }
   const explicit = c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
   const devMode = c.env.NODE_ENV !== "production" && c.env.LOCAL_DEV === "true";
   if (!explicit && !devMode) return false;

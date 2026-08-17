@@ -51,7 +51,7 @@ const CHATVIEW_TSX = readFileSync(
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(APP_TSX).toContain("<ShellFoundationMount />");
+    expect(APP_TSX).toContain("<ShellFoundationMount useWebChatPanel />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
@@ -65,20 +65,30 @@ describe("App standalone chat-overlay wiring", () => {
     );
   });
 
-  it("installs the glass recipe and provider truth in the packaged overlay tree", () => {
+  it("opens the packaged desktop pill into the shared web chat panel", () => {
     const overlayShell = APP_TSX.slice(
       APP_TSX.indexOf("function ChatOverlayShell()"),
       APP_TSX.indexOf("function TrayPopoverShell()"),
     );
     const foundation = APP_TSX.slice(
-      APP_TSX.indexOf("function ShellFoundationMount()"),
+      APP_TSX.indexOf("function ShellFoundationMount({"),
       APP_TSX.indexOf("function ChatOverlayMount("),
     );
 
     expect(overlayShell).toContain("<GlassStyles />");
-    expect(foundation).toContain("<ServingProviderChip");
-    expect(foundation.indexOf("<ServingProviderChip")).toBeLessThan(
-      foundation.indexOf("<ChatSurface"),
+    expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(overlayShell).not.toContain("<AppBackground");
+    expect(foundation).toContain("if (useWebChatPanel && shellIsOpen)");
+    expect(foundation).toContain("<ChatOverlayMount");
+    expect(foundation).toContain("onPilledChange={closeWebChatWhenPilled}");
+    expect(foundation).toContain(
+      "hovered: useWebChatPanel && shellPreviewHovered",
+    );
+    expect(foundation).toContain(
+      "useWebChatPanel ? setShellPreviewHovered : undefined",
+    );
+    expect(foundation).toContain(
+      "{!useWebChatPanel ? (\n        <AssistantOverlay",
     );
   });
 
@@ -95,6 +105,7 @@ describe("App standalone chat-overlay wiring", () => {
     );
     expect(branch).toContain("<ChatOverlayShell />");
     expect(branch).toContain("<FirstRunConductorMount />");
+    expect(branch).toContain("<ShellOverlays actionNotice={actionNotice} />");
   });
 
   it("renders a header-less app shell", () => {

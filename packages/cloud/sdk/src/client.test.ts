@@ -372,6 +372,34 @@ describe("ElizaCloudClient CLI login", () => {
       "https://eliza.app/auth/cli-login?session=cli-test-session",
     );
   });
+
+  it("honors the server-minted session id over the locally generated one", async () => {
+    const fetchImpl = (async (_input: unknown) => {
+      return new Response(
+        JSON.stringify({
+          sessionId: "11111111-2222-4333-8444-555555555555",
+          status: "pending",
+          expiresAt: "2026-05-14T08:00:00.000Z",
+        }),
+        {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://api.eliza.app",
+      fetchImpl,
+    });
+
+    const result = await client.startCliLogin();
+
+    expect(result.sessionId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(result.browserUrl).toBe(
+      "https://eliza.app/auth/cli-login?session=11111111-2222-4333-8444-555555555555",
+    );
+  });
 });
 
 describe("ElizaCloudClient web sign-in + app-credits affordances", () => {

@@ -40,29 +40,31 @@ export interface LifecycleState {
   systemWarnings: string[];
 }
 
-const INITIAL_LIFECYCLE_STATE: LifecycleState = {
-  connected: false,
-  agentStatus: null,
-  firstRunComplete: loadPersistedFirstRunComplete(),
-  firstRunUiRevealNonce: 0,
-  firstRunLoading: true,
-  startupError: null,
-  startupRetryNonce: 0,
-  authRequired: false,
-  actionNotice: null,
-  lifecycleBusy: false,
-  lifecycleAction: null,
-  pendingRestart: false,
-  pendingRestartReasons: [],
-  restartBannerDismissed: false,
-  backendConnection: {
-    state: "disconnected",
-    reconnectAttempt: 0,
-    maxReconnectAttempts: 15,
-    showDisconnectedUI: false,
-  },
-  systemWarnings: [],
-};
+function createInitialLifecycleState(cloudOnly?: boolean): LifecycleState {
+  return {
+    connected: false,
+    agentStatus: null,
+    firstRunComplete: loadPersistedFirstRunComplete(cloudOnly),
+    firstRunUiRevealNonce: 0,
+    firstRunLoading: true,
+    startupError: null,
+    startupRetryNonce: 0,
+    authRequired: false,
+    actionNotice: null,
+    lifecycleBusy: false,
+    lifecycleAction: null,
+    pendingRestart: false,
+    pendingRestartReasons: [],
+    restartBannerDismissed: false,
+    backendConnection: {
+      state: "disconnected",
+      reconnectAttempt: 0,
+      maxReconnectAttempts: 15,
+      showDisconnectedUI: false,
+    },
+    systemWarnings: [],
+  };
+}
 
 // ── Actions ────────────────────────────────────────────────────────────
 
@@ -220,10 +222,11 @@ export interface LifecycleStateHook {
   agentStatusRef: React.RefObject<AgentStatus | null>;
 }
 
-export function useLifecycleState(): LifecycleStateHook {
+export function useLifecycleState(cloudOnly?: boolean): LifecycleStateHook {
   const [state, dispatch] = useReducer(
     lifecycleReducer,
-    INITIAL_LIFECYCLE_STATE,
+    cloudOnly,
+    createInitialLifecycleState,
   );
 
   // Refs for synchronous checks (used by lifecycle actions to avoid race conditions)

@@ -257,6 +257,10 @@ describe("archive format", () => {
   });
   it("rejects a too-short password", () => {
     expect(() => buildElizaAgentArchive({ a: 1 }, "")).toThrow();
+    // 11 chars sits just below the 12-char minimum shared with importAgent.
+    expect(() => buildElizaAgentArchive({ a: 1 }, "12345678901")).toThrow(
+      /at least 12 characters/,
+    );
   });
 });
 
@@ -347,10 +351,10 @@ describe("firewall keeps the personal memory corpus out of a portable archive", 
       roomId: plan.ids.roomId,
       memories: plan.memories,
     });
-    const archive = buildElizaAgentArchive(payload, "fw-password");
+    const archive = buildElizaAgentArchive(payload, "fw-password-01");
     const { adapter, captured } = makeCapturingAdapter();
     const runtime = { adapter } as unknown as ImportRuntime;
-    const result = await importAgent(runtime, archive, "fw-password");
+    const result = await importAgent(runtime, archive, "fw-password-01");
     return { plan, result, captured };
   }
 

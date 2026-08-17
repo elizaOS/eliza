@@ -29,12 +29,14 @@ import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 
 import {
-  APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,
+  CAPACITOR_WEBVIEW_ORIGIN,
   CORS_ALLOW_HEADER_NAMES,
   CORS_ALLOW_METHOD_NAMES,
   CORS_EXPOSE_HEADER_NAMES,
+  isLocalDevLoopbackOrigin,
 } from "../cors-constants";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
@@ -98,13 +100,16 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
  */
 export function isFirstPartyOrigin(origin: string): boolean {
   if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
-  if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
+  // Electrobun, other native app schemes) — credentialed SSE reads need
+  // origin-reflected CORS, and a browser page cannot mint these origins.
+  if (origin === CAPACITOR_WEBVIEW_ORIGIN || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
-  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
-  // Electrobun, local dev) — credentialed SSE reads need origin-reflected CORS.
-  if (APP_LOCAL_ORIGIN_RE.test(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
-    return true;
+  // Any-port loopback origins are a local-dev convenience: any local process
+  // can serve one, so they stay first-party only outside production.
+  if (isLocalDevLoopbackOrigin(origin)) {
+    return getCloudAwareEnv().ENVIRONMENT !== "production";
   }
   return false;
 }

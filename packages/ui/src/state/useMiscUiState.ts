@@ -18,6 +18,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
 } from "../api";
+import { sanitizeGameViewerSandbox } from "../components/apps/viewer-auth";
 
 /**
  * Currently-selected connector chat in the messages sidebar.
@@ -103,9 +104,13 @@ export function useMiscUiState() {
   const activeGameApp = activeGameRun?.appName ?? "";
   const activeGameDisplayName = activeGameRun?.displayName ?? "";
   const activeGameViewerUrl = activeGameRun?.viewer?.url ?? "";
-  const activeGameSandbox =
-    activeGameRun?.viewer?.sandbox ??
-    "allow-scripts allow-same-origin allow-popups";
+  // The viewer sandbox is a server-supplied wire value: validate the token
+  // set (and refuse the sandbox-defeating allow-scripts + allow-same-origin
+  // pairing on same-origin viewers) before it reaches an iframe.
+  const activeGameSandbox = sanitizeGameViewerSandbox(
+    activeGameRun?.viewer?.sandbox,
+    activeGameViewerUrl,
+  );
   const activeGamePostMessageAuth = Boolean(
     activeGameRun?.viewer?.postMessageAuth,
   );

@@ -7,7 +7,9 @@ vi.mock("node:dns/promises", () => ({
   lookup: lookupMock,
 }));
 
-const { assertSafeOutboundUrl, isForbiddenIpAddress } = await import("./outbound-url");
+const { assertSafeOutboundUrl, isForbiddenIpAddress, isSafeRegistrationUrl } = await import(
+  "./outbound-url"
+);
 
 // `vi.mock("node:dns/promises")` is process-global in bun:test, so this stub
 // leaks into every suite loaded afterwards. Left in its reset (undefined-
@@ -117,5 +119,42 @@ describe("outbound URL SSRF validation", () => {
     await expect(assertSafeOutboundUrl("https://example.com/")).rejects.toThrow(
       "Unable to resolve endpoint hostname",
     );
+  });
+});
+
+describe("isSafeRegistrationUrl", () => {
+  beforeEach(() => {
+    lookupMock.mockReset();
+  });
+
+  test("passes null/empty values — presence is the schema's job", () => {
+    expect(isSafeRegistrationUrl(null)).toBe(true);
+    expect(isSafeRegistrationUrl(undefined)).toBe(true);
+    expect(isSafeRegistrationUrl("")).toBe(true);
+  });
+
+  test.each([
+    "https://my-app.example.com",
+    "https://my-app.example.com/path",
+    "http://placeholder.invalid",
+    "https://local-app.example.test",
+  ])("accepts public registration URL %s without resolving DNS", (url) => {
+    expect(isSafeRegistrationUrl(url)).toBe(true);
+    expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    "not-a-url",
+    "ftp://example.com/file",
+    "https://user:pass@example.com/",
+    "http://localhost:3000",
+    "https://localhost",
+    "http://127.0.0.1:8080",
+    "http://[::1]/",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://10.0.0.8/callback",
+    "http://192.168.1.1/callback",
+  ])("rejects unsafe registration URL %s", (url) => {
+    expect(isSafeRegistrationUrl(url)).toBe(false);
   });
 });

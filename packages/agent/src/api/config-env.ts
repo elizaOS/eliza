@@ -279,7 +279,15 @@ export async function persistConfigEnv(
   await serialise(async () => {
     const filePath = resolveConfigEnvPath(opts.stateDir);
     const dir = path.dirname(filePath);
-    await fs.mkdir(dir, { recursive: true });
+    // Owner-only dir (the file itself is written 0600 below); the chmod heals
+    // state dirs created world-readable by older installs.
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    try {
+      await fs.chmod(dir, 0o700);
+    } catch {
+      // error-policy:J6 best-effort heal for directories created by older
+      // installs; platforms without POSIX chmod semantics skip.
+    }
 
     const existing = (await readIfExists(filePath)) ?? "";
     const parsed = parseConfigEnv(existing);

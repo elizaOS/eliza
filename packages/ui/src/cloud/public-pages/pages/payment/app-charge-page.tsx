@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { ApiError, api } from "../../../lib/api-client";
+import { isSafeNavigationUrl } from "../../../lib/navigation-url";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { navigateToExternalPayment } from "./payment-navigation";
@@ -224,6 +225,16 @@ export default function AppChargePaymentPage() {
         throw new Error(
           t("cloud.appCharge.noCheckoutLink", {
             defaultValue: "Payment provider did not return a checkout link.",
+          }),
+        );
+      }
+
+      if (!isSafeNavigationUrl(checkoutUrl)) {
+        // The checkout link is a wire value assigned to the top window — only
+        // absolute http(s) may navigate; anything else is a visible error.
+        throw new Error(
+          t("cloud.appCharge.invalidCheckoutLink", {
+            defaultValue: "Payment provider returned an invalid checkout link.",
           }),
         );
       }

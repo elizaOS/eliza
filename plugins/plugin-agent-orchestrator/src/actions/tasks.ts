@@ -2920,6 +2920,28 @@ export function goalSimilarity(a: string, b: string): number {
 
 const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
 
+const SLUG_TOKEN_RE = /\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g;
+
+/**
+ * Distinct hyphenated slugs veto a near-duplicate match. Quick-app requests
+ * share nearly all their phrasing ("build a one-file page in the shared route
+ * workdir called <slug>") so token containment crosses the threshold on
+ * boilerplate alone — live: "tide-glass" matched a parked "ember-tide" on the
+ * shared "tide" token. When BOTH texts name slugs and NEITHER text mentions
+ * any of the other's, they are different deliverables, not a re-ask.
+ */
+export function hasDistinctSlugIdentity(a: string, b: string): boolean {
+  const slugsA = new Set(a.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  const slugsB = new Set(b.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  if (slugsA.size === 0 || slugsB.size === 0) return false;
+  // Boilerplate carries shared hyphenated tokens ("one-file"), so the veto
+  // requires each side to name a slug the other lacks — a mutual exclusive
+  // identity, not full disjointness.
+  const aOnly = [...slugsA].some((slug) => !slugsB.has(slug));
+  const bOnly = [...slugsB].some((slug) => !slugsA.has(slug));
+  return aOnly && bOnly;
+}
+
 /**
  * Cross-request near-duplicate guard for create/spawn. The per-origin spawn cap
  * only anchors ONE user request; a status-shaped follow-up ("so is my site
@@ -2946,6 +2968,7 @@ async function findNearDuplicateInFlightWork(args: {
       for (const task of tasks) {
         if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
         const existingText = `${task.title} ${task.originalRequest ?? ""}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
@@ -2969,6 +2992,7 @@ async function findNearDuplicateInFlightWork(args: {
             ? session.metadata.initialTask
             : "";
         const existingText = `${label ?? ""} ${initialTask}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD

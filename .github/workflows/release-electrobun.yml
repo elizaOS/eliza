@@ -27,6 +27,17 @@
 # Optional release-host upload secrets:
 #   RELEASE_UPLOAD_KEY           – SSH private key for releases server
 #   RELEASE_HOST_FINGERPRINT     – pinned SSH host key entry for releases host
+#
+# Required repo configuration (release integrity):
+#   - GitHub Environment `production-release` with required reviewers. The
+#     authorize-release job is the single human approval gate; no signing,
+#     release-upload, or OTA-publish job can start until it succeeds.
+#   - A tag protection ruleset restricting `v*` tag creation to release
+#     maintainers. Branch protection does not cover tags: without a ruleset,
+#     any account with repo write access could tag an unreviewed commit and
+#     run this pipeline against it. Defense in depth, the prepare job also
+#     requires the tagged commit to be an ancestor of origin/main or
+#     origin/develop before anything is built.
 name: Build & Release (Electrobun)
 
 on:
@@ -109,6 +120,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
+          # Full history so the protected-branch ancestry check below can
+          # resolve a merge base (same contract as deploy-aasa.yml).
+          fetch-depth: 0
           submodules: false
           persist-credentials: false
 
@@ -131,6 +145,25 @@ jobs:
             --event-name "$EVENT_NAME" \
             --event-sha "$GITHUB_SHA" \
             --github-output "$GITHUB_OUTPUT"
+
+      - name: Require tagged commit on a protected branch
+        env:
+          SOURCE_SHA: ${{ steps.version.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          # Branch protection does not cover tags, so a tag can point at any
+          # commit write access can reach. Refuse to sign and publish a commit
+          # that never landed on a reviewed branch (mirrors deploy-aasa.yml).
+          git fetch --force origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/develop:refs/remotes/origin/develop"
+          if git merge-base --is-ancestor "$SOURCE_SHA" origin/main || \
+             git merge-base --is-ancestor "$SOURCE_SHA" origin/develop; then
+            echo "Release commit $SOURCE_SHA is contained in origin/main or origin/develop."
+          else
+            echo "::error::Release tag commit $SOURCE_SHA is not contained in origin/main or origin/develop; refusing to build and publish an unreviewed commit." >&2
+            exit 1
+          fi
 
       - name: Select desktop platform matrix
         id: desktop-matrix
@@ -158,6 +191,20 @@ jobs:
 
           echo "desktop_matrix=$(tr -d '\n' < "$RUNNER_TEMP/desktop-matrix.json")" >> "$GITHUB_OUTPUT"
           cat "$RUNNER_TEMP/desktop-matrix.json"
+
+  authorize-release:
+    name: Authorize desktop release
+    needs: prepare
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    # Approval only, mirroring cloud-cf-deploy.yml's authorize-production: the
+    # protected `production-release` environment owns the required-reviewer
+    # gate, so no signing, release-upload, or OTA-publish job can start from an
+    # unreviewed tag push. This job must not join a mutation concurrency group.
+    environment: production-release
+    steps:
+      - name: Record release authorization
+        run: echo "production-release environment authorized for ${{ needs.prepare.outputs.tag }}"
 
   validate-release:
     name: Validate Release Inputs
@@ -314,8 +361,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.platform.name }}
-    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') }}
-    needs: [prepare, validate-release]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') && needs.authorize-release.result == 'success' }}
+    needs: [prepare, validate-release, authorize-release]
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 150
     defaults:

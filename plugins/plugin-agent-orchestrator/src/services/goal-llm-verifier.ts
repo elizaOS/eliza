@@ -299,7 +299,10 @@ const EMPTY_EVIDENCE_SUMMARY =
 const MALFORMED_RESPONSE_SUMMARY =
   "Verifier returned a response that could not be parsed; defaulting to fail.";
 
-const MAX_EVIDENCE_CHARS = 12_000;
+// Sized to admit the full evidence bundle (24KB cap) — trimming the middle
+// of it was cutting FS-VERIFIED FILE CONTENTS exactly where content criteria
+// were judged (velvet-moth live park).
+const MAX_EVIDENCE_CHARS = 28_000;
 
 function trimEvidence(evidence: string): string {
   if (evidence.length <= MAX_EVIDENCE_CHARS) return evidence;

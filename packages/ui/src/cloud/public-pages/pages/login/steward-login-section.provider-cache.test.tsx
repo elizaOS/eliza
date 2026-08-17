@@ -77,13 +77,23 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
+vi.mock("@elizaos/shared/steward-session-client", async () => {
+  const actual = await vi.importActual<
+    typeof import("@elizaos/shared/steward-session-client")
+  >("@elizaos/shared/steward-session-client");
+  return {
+    ...actual,
+    peekStewardOAuthState: () => "state-1",
+  };
+});
+
 vi.mock("../../lib/steward-oauth-url", async () => {
   const actual = await vi.importActual<
     typeof import("../../lib/steward-oauth-url")
   >("../../lib/steward-oauth-url");
   return {
     ...actual,
-    consumeStewardPkceVerifier: () => undefined,
+    consumeStewardPkceVerifier: () => "verifier-1",
     buildStewardOAuthRedirectUri: () => "https://app.example.test/login",
   };
 });
@@ -180,7 +190,7 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
     harness.code = "callback-code";
     const callsBefore = harness.getProvidersCalls;
 
-    renderSection("/login?code=callback-code");
+    renderSection("/login?code=callback-code&state=state-1");
 
     await waitFor(() =>
       expect(screen.getByText("Completing sign-in…")).toBeTruthy(),

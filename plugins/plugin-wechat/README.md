@@ -69,7 +69,8 @@ npx elizaos plugins add @elizaos/plugin-wechat
 ## How it works
 
 1. On agent startup the plugin reads config, spins up a local HTTP webhook
-   server (default port 18790), and connects to the proxy.
+   server (default port 18790, bound to `127.0.0.1` only), and connects to the
+   proxy.
 2. If the WeChat session is not active, it fetches a QR-code login URL and
    prints it to the terminal. Scan it with the WeChat mobile app.
 3. Once logged in, the proxy pushes inbound messages to the webhook server.
@@ -78,4 +79,17 @@ npx elizaos plugins add @elizaos/plugin-wechat
 4. Outgoing replies are chunked at 2 000 characters and sent back via the proxy.
 5. A background health check runs every 60 seconds and re-initiates login if
    the session expires.
+
+## Security model
+
+- The webhook receiver binds `127.0.0.1` and registers a
+  `http://127.0.0.1:<port>/webhook/wechat/<accountId>` URL with the proxy, so
+  the proxy must run on the same host. The static API key authenticates
+  webhook POSTs but travels over plaintext HTTP — loopback binding keeps it
+  off the LAN.
+- The proxy operator holds the API key and vouches for sender identities:
+  sender wxids in webhook payloads are trusted as delivered. Pairing your
+  owner account over WeChat therefore extends full OWNER trust to the proxy
+  operator — a forged POST naming the owner's wxid produces OWNER-role turns.
+  Only pair owners over WeChat with a proxy you control.
 

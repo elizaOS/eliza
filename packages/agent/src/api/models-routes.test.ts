@@ -123,6 +123,33 @@ describe("handleModelsRoutes catalog field", () => {
     }
   });
 
+  it("rejects traversal-shaped provider ids before any cache path is built (W1-024)", async () => {
+    for (const provider of [
+      "../eliza",
+      "../../etc/passwd",
+      "..\\eliza",
+      "a/b",
+      "openai.json",
+      "OPENAI",
+      "open ai",
+    ]) {
+      const unlinkFile = vi.fn();
+      const { ctx, json } = makeCtx(
+        `/api/models?provider=${encodeURIComponent(provider)}&refresh=true`,
+      );
+      ctx.unlinkFile = unlinkFile;
+      await expect(handleModelsRoutes(ctx as never)).resolves.toBe(true);
+      expect(json, provider).toHaveBeenCalledWith(
+        ctx.res,
+        { error: "Invalid provider id" },
+        400,
+      );
+      expect(unlinkFile, provider).not.toHaveBeenCalled();
+      expect(ctx.getOrFetchProvider, provider).not.toHaveBeenCalled();
+      expect(ctx.getOrFetchAllProviders, provider).not.toHaveBeenCalled();
+    }
+  });
+
   it("declines non-matching routes", async () => {
     const { ctx } = makeCtx("/api/models");
     ctx.pathname = "/api/models/config";

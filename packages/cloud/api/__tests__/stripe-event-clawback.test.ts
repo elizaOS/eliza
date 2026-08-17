@@ -93,6 +93,7 @@ mock.module("@/lib/services/credits", () => ({
     clawbackCredits,
     refundCredits,
   },
+  ReservationNotFoundError: class extends Error {},
 }));
 mock.module("@/lib/services/discord", () => ({
   discordService: {},

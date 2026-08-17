@@ -42,8 +42,8 @@ Body: `{ message, signature }` (full SIWE message string and hex signature). Ser
 - **X-Wallet-Address**: Ethereum address.
 - **X-Timestamp**: Unix time in milliseconds; must be within ±5 min of server time.
 - **X-Wallet-Signature**: Signature of  
-  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}`  
-  (so the signature is bound to this request).
+  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}\nPayload-SHA256: ${payloadHash}`  
+  (so the signature is bound to this request, including its query and body). `payloadHash` is the lowercase hex SHA-256 of `${canonicalQuery}\n${rawBody}`: `canonicalQuery` is the query string's decoded `key=value` pairs sorted by key then value, joined with `&`; `rawBody` is the exact request body. Both are empty strings when absent. The legacy message without `Payload-SHA256` is accepted only when the request has no query and no body.
 
 Any route that uses `requireAuthOrApiKey` accepts wallet-header auth. If the wallet is unknown, the account is created on first valid signature.
 

@@ -31,6 +31,7 @@ import { setCookie } from "hono/cookie";
 import {
   browserOriginHost,
   checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
   isPermittedElizaBrowserOrigin,
 } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
@@ -248,6 +249,12 @@ app.post("/", async (c) => {
     });
     return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
   }
+  // Same non-simple-marker CSRF layer as /api/auth/steward-session: forces a
+  // preflight that user-content origins cannot pass.
+  if (!hasElizaNonSimpleRequestMarker(c.req)) {
+    logExchange("csrf-marker-missing");
+    return c.json(errorBody("Forbidden", "csrf_marker_required"), 403);
+  }
 
   const body = (await c.req.json().catch(() => ({}))) as {
     code?: unknown;
@@ -282,8 +289,10 @@ app.post("/", async (c) => {
     rawTenant.length > 0 ? rawTenant : envTenant.length > 0 ? envTenant : null;
   // PKCE verifier for `response_type=code`. The SPA stashes it before the
   // /authorize redirect and replays it here; we forward it to Steward, which
-  // checks it against the challenge bound at /authorize. Absent for compatibility
-  // (pre-PKCE) and wallet flows — forward only when present.
+  // checks it against the challenge bound at /authorize. It is REQUIRED: the
+  // hosted login always starts the flow with a S256 challenge, so a
+  // verifier-less exchange can only be a pre-PKCE client or a planted
+  // callback — both must fail closed.
   const codeVerifier =
     typeof body.codeVerifier === "string"
       ? body.codeVerifier.trim()
@@ -301,6 +310,13 @@ app.post("/", async (c) => {
   if (!redirectUri) {
     logExchange("missing-redirect-uri");
     return c.json(errorBody("redirectUri required", "missing_code"), 400);
+  }
+  if (!codeVerifier) {
+    logExchange("missing-code-verifier");
+    return c.json(
+      errorBody("codeVerifier required", "missing_code_verifier"),
+      400,
+    );
   }
   if (body.telegramContinuation !== undefined && !telegramContinuation) {
     logExchange("telegram-claim-invalid");
@@ -338,7 +354,7 @@ app.post("/", async (c) => {
       code,
       redirect_uri: redirectUri,
       tenant_id: tenantId,
-      ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+      code_verifier: codeVerifier,
     },
     c.env.STEWARD_TENANT_ID,
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
@@ -457,16 +473,18 @@ app.post("/", async (c) => {
   });
 
   logExchange("ok");
-  // Returning `token` (and `refreshToken`) here so the SPA can mirror it into
-  // localStorage. The HttpOnly cookies above are the canonical session; the
-  // localStorage copy is what @stwd/react's `useAuth()` and the SPA's
+  // Returning `token` here so the SPA can mirror it into localStorage. The
+  // HttpOnly cookies above are the canonical session; the localStorage copy is
+  // what @stwd/react's `useAuth()` and the SPA's
   // `readStewardSessionFromStorage()` actually read on `/cloud` route
   // mount to decide `isAuthenticated`. Without this, OAuth users land back
   // on `/login` after a successful exchange (wallet/SIWE keeps working only
   // because the Steward SDK writes its own localStorage copy). The original
   // "tokens never enter JS" design intent is aspirational — until the SPA
   // auth check trusts the steward-authed marker cookie alone, the JWT has
-  // to be reachable from JS.
+  // to be reachable from JS. The long-lived refresh token is NOT mirrored:
+  // it stays in the HttpOnly cookie so a JS-readable token theft is bounded
+  // to the short-lived access token.
   return c.json({
     ok: true,
     userId: cloudUser.id,
@@ -478,9 +496,7 @@ app.post("/", async (c) => {
     welcomeBonusWithheld: cloudUser.welcomeBonusWithheld === true,
     welcomeBonusWithheldReason: cloudUser.welcomeBonusWithheldReason,
     welcomeBonusWithheldMessage: cloudUser.welcomeBonusWithheldMessage,
-    ...(shouldReturnClientToken(c, isProduction)
-      ? { token, refreshToken }
-      : {}),
+    ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
   });
 });
 

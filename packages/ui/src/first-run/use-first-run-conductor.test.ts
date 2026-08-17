@@ -137,6 +137,8 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
 });
 
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
+import { DEFAULT_BRANDING } from "../config/branding-base";
+import { BrandingContext } from "../config/branding-react.hooks";
 import { APP_RESUME_EVENT } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import {
@@ -253,7 +255,7 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
  * seeded onboarding turns are observable exactly as the overlay would render
  * them. `setConversationMessages` applies functional updaters for real.
  */
-function renderConductor() {
+function renderConductor(options?: { cloudOnly?: boolean }) {
   const transcript: { current: ConversationMessage[] } = { current: [] };
   const value: ConversationMessagesValue = {
     conversationMessages: [],
@@ -265,7 +267,20 @@ function renderConductor() {
     },
   };
   const wrapper = ({ children }: { children: React.ReactNode }) =>
-    React.createElement(ConversationMessagesCtx.Provider, { value }, children);
+    React.createElement(
+      BrandingContext.Provider,
+      {
+        value: {
+          ...DEFAULT_BRANDING,
+          cloudOnly: options?.cloudOnly === true,
+        },
+      },
+      React.createElement(
+        ConversationMessagesCtx.Provider,
+        { value },
+        children,
+      ),
+    );
   const utils = renderHook(() => useFirstRunConductor(), { wrapper });
   const turn = (id: string): ConversationMessage | undefined =>
     transcript.current.find((message) => message.id === id);
@@ -339,6 +354,20 @@ function writeTestCookie(value: string): void {
 }
 
 describe("useFirstRunConductor", () => {
+  it("keeps cloud-only onboarding locked when a stale developer override enables the chooser", async () => {
+    localStorage.removeItem("steward_session_token");
+    localStorage.setItem("eliza:enable-runtime-chooser", "1");
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn } = renderConductor({ cloudOnly: true });
+
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).not.toContain("where should your agent run?");
+    const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
+    expect(signIn.text).toContain("Sign in to Eliza Cloud");
+    expect(signIn.text).not.toContain("runtime:local");
+    expect(signIn.text).not.toContain("runtime:remote");
+  });
+
   it("drives the LOCAL path end to end: greeting → runtime → provider → tutorial → completeFirstRun, POSTing exactly once", async () => {
     const spies = seedAppStore();
     const { turn, unmount } = renderConductor();

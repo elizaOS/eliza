@@ -1,5 +1,11 @@
 // Provides cloud utility cors helpers shared by backend services.
-import { APP_LOCAL_ORIGIN_RE, APP_SCHEME_ORIGIN_RE, CORS_ALLOW_HEADERS } from "../cors-constants";
+import {
+  APP_SCHEME_ORIGIN_RE,
+  CAPACITOR_WEBVIEW_ORIGIN,
+  CORS_ALLOW_HEADERS,
+  isLocalDevLoopbackOrigin,
+} from "../cors-constants";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 const ALLOWED_ORIGINS = [
   process.env.NEXT_PUBLIC_APP_URL,
@@ -23,15 +29,24 @@ const ALLOWED_ORIGINS = [
   // Eliza + Eliza mobile apps load from these custom schemes and
   // call public auth endpoints directly from the WebView.
   "capacitor://localhost",
-  "http://localhost",
 ].filter(Boolean) as string[];
 
 function isAllowedOrigin(origin: string): boolean {
-  return (
-    ALLOWED_ORIGINS.includes(origin) ||
-    APP_LOCAL_ORIGIN_RE.test(origin) ||
-    APP_SCHEME_ORIGIN_RE.test(origin)
-  );
+  if (ALLOWED_ORIGINS.includes(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
+    return true;
+  }
+  // Portless https://localhost is the Capacitor WebView origin — first-party
+  // in every environment (a browser page cannot mint it).
+  if (origin === CAPACITOR_WEBVIEW_ORIGIN) {
+    return true;
+  }
+  // Any-port loopback origins (incl. portless http://localhost) are a
+  // local-dev convenience: credentialed reflection stays non-production only,
+  // matching isFirstPartyOrigin in lib/cors/cloud-api-hono-cors.ts.
+  if (isLocalDevLoopbackOrigin(origin)) {
+    return getCloudAwareEnv().ENVIRONMENT !== "production";
+  }
+  return false;
 }
 
 export function getCorsHeaders(origin: string | null): Record<string, string> {

@@ -43,6 +43,44 @@ function parseRequestBody(request: ReturnType<typeof vi.fn>): {
 }
 
 describe("delta-v2 chat stream client reducer", () => {
+  it("ignores malformed non-string token payloads at the SSE boundary", async () => {
+    const { client } = streamFromSse(
+      'data: {"type":"token","text":123}\n\n' +
+        'data: {"type":"token","text":{"value":"spoof"}}\n\n' +
+        'data: {"type":"token","text":false}\n\n' +
+        'data: {"type":"token","text":"valid"}\n\n' +
+        'data: {"type":"done","fullText":"valid","agentName":"Eliza"}\n\n',
+    );
+    const onToken = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/c/messages/stream",
+      "hi",
+      onToken,
+    );
+
+    expect(onToken).toHaveBeenCalledTimes(1);
+    expect(onToken).toHaveBeenCalledWith("valid", "valid", false);
+    expect(result.text).toBe("valid");
+  });
+
+  it("keeps a valid fullText snapshot when the optional delta is malformed", async () => {
+    const { client } = streamFromSse(
+      'data: {"type":"token","text":{"bad":true},"fullText":"snapshot"}\n\n' +
+        'data: {"type":"done","fullText":"snapshot","agentName":"Eliza"}\n\n',
+    );
+    const onToken = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/c/messages/stream",
+      "hi",
+      onToken,
+    );
+
+    expect(onToken).toHaveBeenCalledWith("", "snapshot", false);
+    expect(result.text).toBe("snapshot");
+  });
+
   it("appends a repeated multi-char delta instead of dropping it (mergeStreamingText regression)", async () => {
     const { client } = streamFromSse(
       'data: {"type":"token","text":"the "}\n\n' +

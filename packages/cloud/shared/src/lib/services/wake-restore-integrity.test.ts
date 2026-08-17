@@ -28,8 +28,10 @@ import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { agentBackupObjects } from "../../db/schemas/agent-backup-catalog";
 import {
   type AgentBackupStateData,
+  agentBackupCatalogAuthorities,
   agentSandboxBackups,
   agentSandboxes,
   type EncryptedAgentBackupStateData,
@@ -179,7 +181,15 @@ beforeAll(async () => {
     return;
   }
   try {
-    const schema = { organizations, users, userCharacters, agentSandboxes, agentSandboxBackups };
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      agentSandboxBackups,
+      agentBackupCatalogAuthorities,
+      agentBackupObjects,
+    };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
   } catch (error) {
