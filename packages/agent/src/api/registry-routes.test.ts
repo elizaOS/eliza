@@ -19,9 +19,14 @@ function createRegistryContext(
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
   getRegistryPlugin: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
 } {
   const req = { method, url: pathname } as http.IncomingMessage;
-  const res = {} as http.ServerResponse;
+  const end = vi.fn();
+  const res = {
+    setHeader: vi.fn(),
+    end,
+  } as unknown as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
   const getRegistryPlugin = vi.fn().mockResolvedValue({
@@ -49,12 +54,12 @@ function createRegistryContext(
     ...overrides,
   };
 
-  return { ctx, json, error, getRegistryPlugin };
+  return { ctx, json, error, getRegistryPlugin, end };
 }
 
 describe("handleRegistryRoutes path encoding validation", () => {
   it("rejects malformed percent-encoding on GET /api/registry/plugins/:name with 400", async () => {
-    const { ctx, error, getRegistryPlugin } = createRegistryContext(
+    const { ctx, end, error, getRegistryPlugin } = createRegistryContext(
       "GET",
       "/api/registry/plugins/%",
     );
@@ -62,11 +67,11 @@ describe("handleRegistryRoutes path encoding validation", () => {
     const handled = await handleRegistryRoutes(ctx);
 
     expect(handled).toBe(true);
-    expect(error).toHaveBeenCalledWith(
-      ctx.res,
-      "Invalid plugin name encoding",
-      400,
+    expect(ctx.res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({ error: "Invalid plugin name: malformed URL encoding" }),
     );
+    expect(error).not.toHaveBeenCalled();
     expect(getRegistryPlugin).not.toHaveBeenCalled();
   });
 

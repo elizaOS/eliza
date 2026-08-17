@@ -12,7 +12,10 @@ function makeAgentEventContext(
   body: Record<string, unknown>,
 ): MiscRouteContext {
   const req = { url: "/api/agent/event" } as http.IncomingMessage;
-  const res = {} as http.ServerResponse;
+  const res = {
+    setHeader: vi.fn(),
+    end: vi.fn(),
+  } as unknown as http.ServerResponse;
   const broadcastWs = vi.fn();
 
   return {
@@ -132,10 +135,26 @@ describe("handleMiscRoutes agent events", () => {
     const handled = await handleMiscRoutes(ctx);
 
     expect(handled).toBe(true);
+    expect(ctx.res.statusCode).toBe(400);
+    expect(ctx.res.end).toHaveBeenCalledWith(
+      JSON.stringify({ error: "Invalid agent id: malformed URL encoding" }),
+    );
+    expect(ctx.json).not.toHaveBeenCalled();
+    expect(ctx.state.broadcastWs).not.toHaveBeenCalled();
+  });
+
+  it("rejects a decoded non-UUID agent id before event dispatch", async () => {
+    const ctx = makeAgentEventContext({ type: "ping", payload: {} });
+    ctx.pathname = "/api/agents/not%2Da%2Duuid/event";
+    ctx.url = new URL("http://localhost/api/agents/not%2Da%2Duuid/event");
+
+    expect(await handleMiscRoutes(ctx)).toBe(true);
+
     expect(ctx.json).toHaveBeenCalledWith(
       ctx.res,
       { error: "Invalid agent id" },
       400,
     );
+    expect(ctx.state.broadcastWs).not.toHaveBeenCalled();
   });
 });

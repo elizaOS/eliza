@@ -12,6 +12,7 @@ import type {
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 interface InstalledRegistryPluginLike {
   name: string;
@@ -116,16 +117,12 @@ export async function handleRegistryRoutes(
     pathname.startsWith("/api/registry/plugins/") &&
     pathname.length > "/api/registry/plugins/".length
   ) {
-    let name: string;
-    try {
-      name = decodeURIComponent(
-        pathname.slice("/api/registry/plugins/".length),
-      );
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      error(res, "Invalid plugin name encoding", 400);
-      return true;
-    }
+    const name = decodePathComponent(
+      pathname.slice("/api/registry/plugins/".length),
+      res,
+      "plugin name",
+    );
+    if (name === null) return true;
     try {
       const pluginManager = getPluginManager();
       const info = await pluginManager.getRegistryPlugin(name);
