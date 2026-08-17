@@ -115,7 +115,17 @@ interface ParsedUrl {
   tls: boolean;
 }
 
-function parseRedisUrl(url: string): ParsedUrl {
+export function decodeRedisUrlPassword(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 malformed userinfo percent-escape is the literal
+    // password text, not a Worker crash.
+    return raw;
+  }
+}
+
+export function parseRedisUrl(url: string): ParsedUrl {
   const u = new URL(url);
   if (u.protocol !== "redis:" && u.protocol !== "rediss:") {
     throw new Error(`Unsupported Redis URL scheme: ${u.protocol}`);
@@ -124,7 +134,7 @@ function parseRedisUrl(url: string): ParsedUrl {
     hostname: u.hostname,
     port: u.port ? Number(u.port) : 6379,
     username: u.username || undefined,
-    password: u.password ? decodeURIComponent(u.password) : undefined,
+    password: u.password ? decodeRedisUrlPassword(u.password) : undefined,
     tls: u.protocol === "rediss:",
   };
 }
