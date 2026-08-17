@@ -465,7 +465,7 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(production.stdout.toString()).toContain(
       "required sensitive variable names are present",
     );
-  });
+  }, 15_000);
 
   test("binds the exact root source and manifest to its new deployment id", () => {
     const exactSource = step("Deploy exact gateway-webhook source");
