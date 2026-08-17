@@ -107,13 +107,16 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 }
 
 - (BOOL)materialCoversContentBounds {
-	NSView *contentView = self.window.contentView;
-	if (contentView == nil) {
+	NSWindow *window = self.window;
+	if (window == nil) {
 		return NO;
 	}
-	NSSize boundsSize = contentView.bounds.size;
-	return self.materialSize.width >= boundsSize.width &&
-		self.materialSize.height >= boundsSize.height;
+	// The WebView can expose its previous bounds until the next layout pass
+	// after setFrame. AppKit's frame-to-content conversion is synchronous, so
+	// the fitted auth chip becomes interactive in the same native transaction.
+	NSSize contentSize = [window contentRectForFrameRect:window.frame].size;
+	return self.materialSize.width >= contentSize.width &&
+		self.materialSize.height >= contentSize.height;
 }
 
 - (void)applyForScreenPoint:(NSPoint)screenPoint {
