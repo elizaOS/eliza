@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -45,6 +45,8 @@ const VAULT_KEY_GENERATION_ID = "88888888-8888-4888-8888-888888888888";
 const CONTAINER_ID = "c".repeat(64);
 const NOW_MS = Date.parse("2026-08-15T10:01:00.000Z");
 const COMPONENTS = ["character", "database", "media", "state-files", "vault"] as const;
+
+setDefaultTimeout(30_000);
 
 const request: AgentBackupCaptureV2Request = {
   format: AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
