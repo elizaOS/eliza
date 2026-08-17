@@ -212,6 +212,18 @@ function effectiveDirectConfig(
 }
 
 describe("detectRuntimeModel effective direct-provider status", () => {
+  it("does not misreport the generic OpenAI-compatible registration as the Cerebras model", () => {
+    const runtime = {
+      ...directRuntime({ CEREBRAS_SMALL_MODEL: "gemma-4-31b" }),
+      getLastResolvedModelProvider: () => "openai",
+    } as unknown as AgentRuntime;
+    const config = effectiveDirectConfig("cerebras", "gpt-oss-120b", {
+      CEREBRAS_SMALL_MODEL: "gemma-4-31b",
+    });
+
+    expect(detectRuntimeModel(runtime, config)).toBe("gemma-4-31b");
+  });
+
   it("reports the effective Cerebras small/response model over a stale route default", () => {
     const config = effectiveDirectConfig("cerebras", "gpt-oss-120b", {
       CEREBRAS_SMALL_MODEL: "gemma-4-31b",

@@ -1,10 +1,10 @@
 # @elizaos/plugin-embeddings
 
-Provider-agnostic ("bring your own") `TEXT_EMBEDDING` provider for elizaOS agents. Points a single set of `EMBEDDING_*` vars at any OpenAI-compatible `/embeddings` endpoint, independent of the chat brain.
+Canonical gte-small `TEXT_EMBEDDING` provider for elizaOS agents. Points `EMBEDDING_*` at an OpenAI-compatible endpoint serving the same 384-dimensional model as local inference and the managed Cloud sidecar.
 
 ## Purpose / role
 
-Decouples embeddings from text generation. A self-hosted bot whose chat provider serves no good embeddings — Claude (no embeddings API), Cerebras (no embeddings) — can still get high-quality vectors by setting `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` to a personal OpenAI key, an Eliza Cloud URL, Voyage, or a local TEI / Infinity / vLLM / LM Studio server.
+Decouples embeddings from text generation. A self-hosted bot whose chat provider serves no embeddings — Claude or Cerebras, for example — points `EMBEDDING_BASE_URL` at a local or hosted OpenAI-compatible endpoint serving `thenlper/gte-small`; changing model family or width is rejected.
 
 **Purely additive.** The plugin auto-enables **only** when `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is set (see `auto-enable.ts`). With neither set it never loads, so existing deployments — which use their chat provider's embedding slot, local inference, or Eliza Cloud — are unaffected.
 
@@ -77,25 +77,19 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 |---|---|---|---|
 | `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
 | `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
-| `EMBEDDING_MODEL` | no | `text-embedding-3-small` | Model id sent as the request `model` field. |
+| `EMBEDDING_MODEL` | no | `thenlper/gte-small` | Canonical model id; other model families fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
-| `EMBEDDING_DIMENSIONS` | no | `1536` | Vector width. When explicitly set, sent as the request `dimensions` field. |
+| `EMBEDDING_DIMENSIONS` | no | `384` | Canonical gte-small width; other values fail closed. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
 Fallback-only settings are inert until the primary plugin opt-in and primary base URL are configured.
 
-### Supported dimensions
+### Canonical model and dimensions
 
-`EMBEDDING_DIMENSIONS` must be one of the elizaOS `VECTOR_DIMS` (imported from `@elizaos/core`):
-
-```
-384, 512, 768, 1024, 1536, 2048, 3072
-```
-
-An unsupported value throws at boot and on every call.
+The first-party contract is `thenlper/gte-small` at 384 dimensions. Other configured models or widths throw at boot and on every call. `VECTOR_DIMS` still lists legacy SQL storage widths for migration and reconciliation; it is not permission to mix embedding spaces.
 
 ### Dimension-switch caveat
 

@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Control the Cloud API client the embeddings handlers use. requestRaw is the
@@ -15,12 +15,12 @@ vi.mock("../../src/utils/events", () => ({ emitModelUsageEvent }));
 const { handleTextEmbedding, handleBatchTextEmbedding, embeddingBackoffMs, EMBED_BACKOFF_CAP_MS } =
   await import("../../src/models/embeddings");
 
-const DIM = 1536;
+const DIM = 384;
 
 function makeRuntime(dimension = DIM): IAgentRuntime {
   return {
     getSetting: (key: string) => {
-      if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "text-embedding-3-small";
+      if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "thenlper/gte-small";
       if (key === "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS") return String(dimension);
       return undefined;
     },
@@ -138,9 +138,30 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
   });
 
   it("throws on a transport error instead of writing markers", async () => {
+    const errorSpy = vi.spyOn(logger, "error");
     requestRaw.mockRejectedValueOnce(new Error("network down"));
     await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(/network down/);
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("network down"));
+  });
+
+  it("preserves expected turn cancellation without logging a provider failure", async () => {
+    const errorSpy = vi.spyOn(logger, "error");
+    const debugSpy = vi.spyOn(logger, "debug");
+    const controller = new AbortController();
+    const cancellation = Object.assign(new Error("Turn aborted: voice-session-interrupt"), {
+      name: "TurnAbortedError",
+      code: "TURN_ABORTED",
+    });
+    controller.abort(cancellation);
+    requestRaw.mockRejectedValueOnce(cancellation);
+
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a"], controller.signal)).rejects.toBe(
+      cancellation
+    );
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalledWith("[BatchEmbeddings] Batch cancelled with its owning turn");
   });
 
   // Backoff is driven through vitest fake timers so the ~1s exponential sleep
@@ -305,7 +326,9 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
   });
 
   it("throws on a width mismatch (server returns 1536 for a 384-configured agent) and bills nothing", async () => {
-    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.5)])); // vec() is DIM(1536)-wide
+    requestRaw.mockResolvedValueOnce(
+      embeddingResponse([Array.from({ length: 1536 }, (_, i) => (i === 0 ? 0.5 : 0))])
+    );
     await expect(handleBatchTextEmbedding(makeRuntime(384), ["a"])).rejects.toThrow(
       /dimension mismatch: model returned 1536d but agent is configured for 384d/
     );

@@ -24,6 +24,11 @@ export * from "./connectors/account-manager";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export {
+	assertCanonicalEmbeddingConfig,
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_MODEL,
+	CANONICAL_LOCAL_EMBEDDING_MODEL,
+	CANONICAL_LOCAL_EMBEDDING_REPOSITORY,
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,
 	CHANNEL_OPTIONAL_SECRETS,
@@ -31,6 +36,7 @@ export {
 	getAllSecretsForChannel,
 	getProviderForApiKey,
 	getRequiredSecretsForChannel,
+	isCanonicalEmbeddingModel,
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,

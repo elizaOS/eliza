@@ -31,6 +31,14 @@ export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
+export {
+	assertCanonicalEmbeddingConfig,
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_MODEL,
+	CANONICAL_LOCAL_EMBEDDING_MODEL,
+	CANONICAL_LOCAL_EMBEDDING_REPOSITORY,
+	isCanonicalEmbeddingModel,
+} from "./constants";
 // Linked-account contract literals are pure data (no Node deps); browser
 // clients validate untrusted /api/accounts payloads against them.
 export {

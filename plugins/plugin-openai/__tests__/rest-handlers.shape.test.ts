@@ -18,6 +18,9 @@ function createRuntime(settings: Record<string, string> = {}) {
     getSetting: vi.fn((key: string) => {
       const values: Record<string, string> = {
         OPENAI_API_KEY: "test-key",
+        OPENAI_EMBEDDING_URL: "http://embedding-sidecar.test/v1",
+        OPENAI_EMBEDDING_MODEL: "thenlper/gte-small",
+        OPENAI_EMBEDDING_DIMENSIONS: "384",
         ...settings,
       };
       return values[key];
@@ -68,7 +71,7 @@ describe("OpenAI REST handler request shapes", () => {
           JSON.stringify({
             object: "list",
             data: [{ object: "embedding", embedding: new Array(384).fill(0.1), index: 0 }],
-            model: "text-embedding-3-small",
+            model: "thenlper/gte-small",
             usage: { prompt_tokens: 4, total_tokens: 4 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -91,7 +94,7 @@ describe("OpenAI REST handler request shapes", () => {
       unknown
     >;
     expect(requestBody).toMatchObject({
-      model: "text-embedding-3-small",
+      model: "thenlper/gte-small",
       input: "hello",
       dimensions: 384,
     });
@@ -105,7 +108,7 @@ describe("OpenAI REST handler request shapes", () => {
             JSON.stringify({
               object: "list",
               data: [{ object: "embedding", embedding: new Array(1536).fill(0.1), index: 0 }],
-              model: "text-embedding-3-small",
+              model: "thenlper/gte-small",
               usage: { prompt_tokens: 4, total_tokens: 4 },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -122,7 +125,7 @@ describe("OpenAI REST handler request shapes", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ object: "list", model: "text-embedding-3-small" }), {
+          new Response(JSON.stringify({ object: "list", model: "thenlper/gte-small" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           })
@@ -153,6 +156,22 @@ describe("OpenAI REST handler request shapes", () => {
     await expect(
       handleTextEmbedding(createRuntime({ OPENAI_EMBEDDING_DIMENSIONS: "999" }), "hello")
     ).rejects.toThrow("Invalid embedding dimension: 999");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without an explicit canonical endpoint instead of fabricating Cerebras vectors", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(
+        createRuntime({
+          CEREBRAS_API_KEY: "configured",
+          OPENAI_EMBEDDING_URL: "",
+        }),
+        "hello"
+      )
+    ).rejects.toThrow(/OPENAI_EMBEDDING_URL is required/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

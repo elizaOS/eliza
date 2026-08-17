@@ -30,7 +30,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
     json: async () => ({
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
-      model: "text-embedding-3-small",
+      model: "thenlper/gte-small",
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     text: async () => "",
@@ -52,26 +52,29 @@ afterEach(() => {
 });
 
 describe("plugin-embeddings handleTextEmbedding", () => {
-  it("returns an EMBEDDING_DIMENSIONS-wide vector for the null init-probe", async () => {
+  it("returns the canonical 384-wide vector for the null init-probe", async () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
-    const probe = await handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "768" }), null);
+    const probe = await handleTextEmbedding(createRuntime(), null);
 
-    expect(probe).toHaveLength(768);
+    expect(probe).toHaveLength(384);
     expect(probe[0]).toBeCloseTo(0.1);
     // The null probe must never hit the network — it only reports the width.
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("defaults the probe width to 1536 when EMBEDDING_DIMENSIONS is unset", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn() as typeof fetch);
-    const probe = await handleTextEmbedding(createRuntime(), null);
-    expect(probe).toHaveLength(1536);
+  it("rejects a noncanonical init-probe width before any network call", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+    await expect(
+      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "1536" }), null)
+    ).rejects.toThrow(/expected 384/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns the parsed vector from a wire-mocked /embeddings response", async () => {
-    const expected = vectorOf(1536);
+    const expected = vectorOf(384);
     const controller = new AbortController();
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([expected]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
@@ -89,11 +92,11 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
     const body = JSON.parse(init.body as string);
     expect(body.input).toBe("hello world");
-    expect(body.model).toBe("text-embedding-3-small");
+    expect(body.model).toBe("thenlper/gte-small");
   });
 
   it("uses the primary endpoint without touching fallback when primary succeeds", async () => {
-    const expected = vectorOf(1536);
+    const expected = vectorOf(384);
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([expected]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
@@ -101,7 +104,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       createRuntime({
         EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
         EMBEDDING_FALLBACK_API_KEY: "fallback-key",
-        EMBEDDING_FALLBACK_MODEL: "fallback-model",
+        EMBEDDING_FALLBACK_MODEL: "thenlper/gte-small",
       }),
       { text: "hello world" }
     );
@@ -111,11 +114,11 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://embeddings.example/v1/embeddings");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
-    expect(JSON.parse(init.body as string).model).toBe("text-embedding-3-small");
+    expect(JSON.parse(init.body as string).model).toBe("thenlper/gte-small");
   });
 
   it("retries once against fallback when the primary endpoint fails", async () => {
-    const expected = vectorOf(1536);
+    const expected = vectorOf(384);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(mockHttpError(503, "Service Unavailable", "local warming"))
@@ -126,7 +129,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       createRuntime({
         EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1/",
         EMBEDDING_FALLBACK_API_KEY: "fallback-key",
-        EMBEDDING_FALLBACK_MODEL: "fallback-model",
+        EMBEDDING_FALLBACK_MODEL: "thenlper/gte-small",
       }),
       { text: "hello world" }
     );
@@ -139,7 +142,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       "Bearer fallback-key"
     );
     const body = JSON.parse(fallbackInit.body as string);
-    expect(body.model).toBe("fallback-model");
+    expect(body.model).toBe("thenlper/gte-small");
     expect(body.input).toBe("hello world");
   });
 
@@ -153,12 +156,12 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     await expect(
       handleTextEmbedding(
         createRuntime({
-          EMBEDDING_DIMENSIONS: "1536",
+          EMBEDDING_DIMENSIONS: "384",
           EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
         }),
         { text: "hi" }
       )
-    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 1536/i);
+    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 384/i);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -184,7 +187,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
   });
 
   it("omits the dimensions field when EMBEDDING_DIMENSIONS is not explicitly set", async () => {
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await handleTextEmbedding(createRuntime(), { text: "hi" });
@@ -193,23 +196,23 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(body).not.toHaveProperty("dimensions");
   });
 
-  it("sends the dimensions field when EMBEDDING_DIMENSIONS is explicitly set", async () => {
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(512)]));
+  it("sends the canonical dimensions field when EMBEDDING_DIMENSIONS is explicitly set", async () => {
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
-    await handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "512" }), { text: "hi" });
+    await handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "384" }), { text: "hi" });
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(body.dimensions).toBe(512);
+    expect(body.dimensions).toBe(384);
   });
 
   it("throws on a dimension mismatch (never returns the wrong-width vector)", async () => {
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(768)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
-    await expect(
-      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "1536" }), { text: "hi" })
-    ).rejects.toThrow(/dimension mismatch/i);
+    await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(
+      /dimension mismatch/i
+    );
   });
 
   it("throws on empty text before calling the provider", async () => {
@@ -273,17 +276,20 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(/502/);
   });
 
-  it("emits the configured dimension as a member of VECTOR_DIMS (contract)", async () => {
+  it("emits only the canonical dimension and rejects every other supported storage width", async () => {
     const dims = Object.values(VECTOR_DIMS) as number[];
     for (const dim of dims) {
       const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(dim)]));
       vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
-      const result = await handleTextEmbedding(
-        createRuntime({ EMBEDDING_DIMENSIONS: String(dim) }),
-        { text: "contract" }
-      );
-      expect(result).toHaveLength(dim);
-      expect(dims).toContain(result.length);
+      const call = handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: String(dim) }), {
+        text: "contract",
+      });
+      if (dim === 384) {
+        await expect(call).resolves.toHaveLength(384);
+      } else {
+        await expect(call).rejects.toThrow(/expected 384/);
+        expect(fetchMock).not.toHaveBeenCalled();
+      }
       vi.restoreAllMocks();
     }
   });
@@ -291,8 +297,8 @@ describe("plugin-embeddings handleTextEmbedding", () => {
 
 describe("plugin-embeddings handleBatchTextEmbedding", () => {
   it("returns one vector per input in order from a single request", async () => {
-    const v0 = vectorOf(1536).map((x) => x * 0.5);
-    const v1 = vectorOf(1536);
+    const v0 = vectorOf(384).map((x) => x * 0.5);
+    const v1 = vectorOf(384);
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([v0, v1]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
@@ -332,10 +338,10 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
           json: async () => ({
             object: "list",
             data: [
-              { object: "embedding", embedding: vectorOf(1536), index: 0 },
-              { object: "embedding", embedding: vectorOf(1536), index: 0 },
+              { object: "embedding", embedding: vectorOf(384), index: 0 },
+              { object: "embedding", embedding: vectorOf(384), index: 0 },
             ],
-            model: "text-embedding-3-small",
+            model: "thenlper/gte-small",
           }),
           text: async () => "",
         }) as unknown as Response
@@ -357,10 +363,10 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
           json: async () => ({
             object: "list",
             data: [
-              { object: "embedding", embedding: vectorOf(1536), index: 0.5 },
-              { object: "embedding", embedding: vectorOf(1536), index: 1 },
+              { object: "embedding", embedding: vectorOf(384), index: 0.5 },
+              { object: "embedding", embedding: vectorOf(384), index: 1 },
             ],
-            model: "text-embedding-3-small",
+            model: "thenlper/gte-small",
           }),
           text: async () => "",
         }) as unknown as Response
@@ -380,7 +386,7 @@ describe("plugin-embeddings input truncation", () => {
     // The 😀 spans code units MAX-1..MAX, so a blind slice(0, MAX) would keep a
     // lone high surrogate — mojibake (U+FFFD) or a reject at the endpoint.
     const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 1)}😀tail`;
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await handleTextEmbedding(createRuntime(), text);
@@ -395,7 +401,7 @@ describe("plugin-embeddings input truncation", () => {
   it("keeps an astral char that fits entirely under the cap", async () => {
     // Here the pair ends exactly at the boundary — no back-off should occur.
     const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀tail`;
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await handleTextEmbedding(createRuntime(), text);

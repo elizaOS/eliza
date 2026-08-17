@@ -21,6 +21,8 @@ function makeRuntime(): AgentRuntime {
 describe("AgentRuntime.reportError", () => {
 	it("keeps queue-listener diagnostics observable without narrating them into chat", async () => {
 		const runtime = makeRuntime();
+		const errorSpy = vi.spyOn(runtime.logger, "error");
+		const debugSpy = vi.spyOn(runtime.logger, "debug");
 		runtime.roomHandlerQueue.onEvent(() => {
 			throw new Error("queue-listener-failed");
 		});
@@ -44,6 +46,8 @@ describe("AgentRuntime.reportError", () => {
 		);
 		expect(providerResult.text).toBe("");
 		expect(providerResult.data?.recentErrors).toEqual([]);
+		expect(errorSpy).not.toHaveBeenCalled();
+		expect(debugSpy).toHaveBeenCalled();
 	});
 
 	it("emits a typed ERROR_REPORTED payload derived from ElizaError", async () => {

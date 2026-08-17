@@ -3524,6 +3524,70 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("pins a voice memory route to MEMORY instead of exposing unrelated planner tools", async () => {
+		const memoryHandler = vi.fn(async () => ({
+			success: true,
+			text: "Found the founder post.",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["memory"],
+				intents: ["recall founder post"],
+				replyText: "checking memory for the founder post",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "memory-1",
+						name: "MEMORY",
+						arguments: { action: "search", query: "founder post" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Memory result answers the turn.",
+				messageToUser: "I found the founder post.",
+			}),
+		]);
+		const memoryAction = makeMemorySearchAction();
+		memoryAction.handler = memoryHandler;
+		runtime.actions = [
+			memoryAction,
+			{
+				name: "CONTACT_SEARCH",
+				description: "Search contacts and relationship records.",
+				contexts: ["memory"],
+				validate: async () => true,
+				handler: async () => ({ success: true, text: "contact" }),
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Just um, related to my post about a founder.",
+				channelType: ChannelType.VOICE_DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000016" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+		};
+		const plannerToolNames = (plannerParams.tools ?? []).map(
+			(tool) => tool.name,
+		);
+		expect(plannerToolNames).toContain("MEMORY");
+		expect(plannerToolNames).not.toContain("CONTACT_SEARCH");
+		expect(result.messageHandler.plan.candidateActions).toContain("MEMORY");
+	});
+
 	it("keeps the honest no-search denial when no memory context is registered", async () => {
 		// The no-memory branch preserves today's sentence byte-identically so
 		// minimal runtimes keep the 2026-05-25 fabricated-search guard

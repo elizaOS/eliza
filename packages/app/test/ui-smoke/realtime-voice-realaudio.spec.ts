@@ -180,6 +180,10 @@ test.describe("normal-chat realtime voice with real browser audio", () => {
         timeout: 150_000,
       });
       await expect(completedLine).toContainText("E→A", { timeout: 150_000 });
+      // Keep the exact content-free latency row in the terminal transcript so
+      // a passing live-provider run is measurable evidence, not just a green
+      // assertion whose timings disappear when Playwright cleans pass output.
+      console.info(`[live-voice-latency] ${await completedLine.innerText()}`);
       await expect(userMessageRows).toHaveCount(2);
       await expect(assistantMessageRows).toHaveCount(1);
 

@@ -48,8 +48,8 @@ describe("plugin-embeddings config", () => {
     expect(getEmbeddingApiKey(makeRuntime())).toBeUndefined();
   });
 
-  it("defaults the model to text-embedding-3-small", () => {
-    expect(getEmbeddingModel(makeRuntime())).toBe("text-embedding-3-small");
+  it("defaults the model to the canonical hosted gte-small id", () => {
+    expect(getEmbeddingModel(makeRuntime())).toBe("thenlper/gte-small");
     expect(getEmbeddingModel(makeRuntime({ EMBEDDING_MODEL: "voyage-3" }))).toBe("voyage-3");
   });
 
@@ -75,8 +75,8 @@ describe("plugin-embeddings config", () => {
     );
   });
 
-  it("defaults dimensions to 1536", () => {
-    expect(getEmbeddingDimensions(makeRuntime())).toBe(1536);
+  it("defaults dimensions to the canonical 384 width", () => {
+    expect(getEmbeddingDimensions(makeRuntime())).toBe(384);
     expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "768" }))).toBe(768);
   });
 

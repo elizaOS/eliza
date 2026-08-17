@@ -189,8 +189,22 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						llmCalls: [
 							{
 								callId: "c0",
-								model: "m",
+								timestamp: 600,
+								model: "openai",
+								modelType: "RESPONSE_HANDLER",
+								provider: "vercel-ai-sdk",
+								providerMetadata: {
+									modelName: "gemma-4-31b",
+									provider: "cerebras",
+									transport: "vercel-ai-sdk",
+								},
 								response: "RESPOND",
+								finishReason: "stop",
+								latencyMs: 91,
+								promptTokens: 80,
+								completionTokens: 4,
+								cacheReadInputTokens: 20,
+								modelSlot: "RESPONSE_HANDLER",
 								stepType: "should_respond",
 							},
 							{
@@ -201,7 +215,15 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 							},
 						],
 						providerAccesses: [
-							{ providerId: "p0", providerName: "facts", purpose: "ctx" },
+							{
+								providerId: "p0",
+								providerName: "facts",
+								purpose: "ctx",
+								startedAt: 520,
+								endedAt: 550,
+								durationMs: 30,
+								overlapsWith: [{ providerName: "recent", overlapMs: 12 }],
+							},
 						],
 						action: {
 							attemptId: "a0",
@@ -234,8 +256,8 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 				metadata: Record<string, unknown>;
 				llmCallCount: number;
 			};
-			llmCalls: Array<{ stepType: string }>;
-			providerAccesses: unknown[];
+			llmCalls: Array<Record<string, unknown> & { stepType: string }>;
+			providerAccesses: Array<Record<string, unknown>>;
 			toolEvents: Array<{ actionName: string; success: boolean }>;
 		};
 		expect(b.trajectory).toMatchObject({
@@ -251,7 +273,32 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			"should_respond",
 			"reasoning",
 		]);
+		expect(b.llmCalls[0]).toMatchObject({
+			id: "c0",
+			trajectoryId: "abc",
+			stepId: "s0",
+			timestamp: 600,
+			createdAt: new Date(600).toISOString(),
+			model: "gemma-4-31b",
+			modelType: "RESPONSE_HANDLER",
+			provider: "cerebras",
+			transport: "vercel-ai-sdk",
+			finishReason: "stop",
+			latencyMs: 91,
+			promptTokens: 80,
+			completionTokens: 4,
+			cacheReadInputTokens: 20,
+			modelSlot: "RESPONSE_HANDLER",
+		});
 		expect(b.providerAccesses).toHaveLength(1);
+		expect(b.providerAccesses[0]).toMatchObject({
+			trajectoryId: "abc",
+			stepId: "s0",
+			startedAt: 520,
+			endedAt: 550,
+			durationMs: 30,
+			overlapsWith: [{ providerName: "recent", overlapMs: 12 }],
+		});
 		expect(b.toolEvents[0]).toMatchObject({
 			actionName: "REPLY",
 			success: true,

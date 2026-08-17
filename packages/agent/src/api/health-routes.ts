@@ -18,6 +18,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
+  isSensitiveKeyName,
+  redactSensitiveText,
 } from "@elizaos/core";
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
@@ -238,11 +240,12 @@ function serializeForRuntimeDebug(
     const kind = typeof current;
 
     if (kind === "string") {
-      if ((current as string).length <= options.maxStringLength) return current;
+      const redacted = redactSensitiveText(current as string);
+      if (redacted.length <= options.maxStringLength) return redacted;
       return {
         __type: "string",
-        length: (current as string).length,
-        preview: `${(current as string).slice(0, options.maxStringLength)}...`,
+        length: redacted.length,
+        preview: `${redacted.slice(0, options.maxStringLength)}...`,
         truncated: true,
       };
     }
@@ -353,9 +356,13 @@ function serializeForRuntimeDebug(
       let i = 0;
       for (const [entryKey, entryValue] of obj.entries()) {
         if (i >= options.maxObjectEntries) break;
+        const sensitiveEntry =
+          typeof entryKey === "string" && isSensitiveKeyName(entryKey);
         entries.push({
           key: visit(entryKey, `${path}.<key:${i}>`, depth + 1),
-          value: visit(entryValue, `${path}.<value:${i}>`, depth + 1),
+          value: sensitiveEntry
+            ? "[REDACTED]"
+            : visit(entryValue, `${path}.<value:${i}>`, depth + 1),
         });
         i += 1;
       }
@@ -413,11 +420,9 @@ function serializeForRuntimeDebug(
       const descriptor = Object.getOwnPropertyDescriptor(obj, propertyKey);
       if (!descriptor) continue;
       if ("value" in descriptor) {
-        properties[keyLabel] = visit(
-          descriptor.value,
-          `${path}.${keyLabel}`,
-          depth + 1,
-        );
+        properties[keyLabel] = isSensitiveKeyName(keyLabel)
+          ? "[REDACTED]"
+          : visit(descriptor.value, `${path}.${keyLabel}`, depth + 1);
       } else {
         properties[keyLabel] = {
           __type: "accessor",

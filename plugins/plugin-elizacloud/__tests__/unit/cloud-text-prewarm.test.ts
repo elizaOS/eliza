@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCloudTextPrewarmer } from "../../src/routes/cloud-text-prewarm";
 
 describe("local voice cloud text prewarm", () => {
-  it("refreshes the default warm lease at five seconds", async () => {
+  it("refreshes the default warm lease before Cloud auth expires", async () => {
     let now = 1_000;
     const useModel = vi.fn(async () => "ok");
     const prewarm = createCloudTextPrewarmer({ now: () => now });
@@ -11,7 +11,7 @@ describe("local voice cloud text prewarm", () => {
     await expect(prewarm({ useModel })).resolves.toBe("warmed");
     expect(useModel).toHaveBeenCalledTimes(2);
 
-    now += 4_999;
+    now += 44_999;
     await expect(prewarm({ useModel })).resolves.toBe("already-warm");
     expect(useModel).toHaveBeenCalledTimes(2);
 
@@ -104,7 +104,7 @@ describe("local voice cloud text prewarm", () => {
     expect(useModel).toHaveBeenCalledTimes(2);
   });
 
-  it("does not cache provider failures", async () => {
+  it("retains a successful lane when its sibling fails", async () => {
     const useModel = vi
       .fn()
       .mockRejectedValueOnce(new Error("provider unavailable"))
@@ -117,6 +117,11 @@ describe("local voice cloud text prewarm", () => {
       causeClass: "Error",
     });
     await expect(prewarm({ useModel })).resolves.toBe("warmed");
-    expect(useModel).toHaveBeenCalledTimes(4);
+    expect(useModel).toHaveBeenCalledTimes(3);
+    expect(useModel.mock.calls.map(([modelType]) => modelType)).toEqual([
+      "RESPONSE_HANDLER",
+      "TEXT_LARGE",
+      "RESPONSE_HANDLER",
+    ]);
   });
 });

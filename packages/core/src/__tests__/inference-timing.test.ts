@@ -80,6 +80,21 @@ describe("InferenceTurnTimer", () => {
 		expect(s.anomalies.some((a) => a.includes("duplicate"))).toBe(true);
 	});
 
+	it("keeps the first concurrent model-token mark without a false anomaly", () => {
+		const timer = new InferenceTurnTimer({
+			turnId: "t5-models",
+			label: "test",
+		});
+		const start = timer.t0EpochMs;
+		timer.markOnce(INFERENCE_MARKS.firstToken, start + 5);
+		timer.markOnce(INFERENCE_MARKS.firstToken, start + 99);
+		const s = timer.summary();
+		expect(
+			s.marks.find((m) => m.name === INFERENCE_MARKS.firstToken)?.tMs,
+		).toBe(5);
+		expect(s.anomalies).toEqual([]);
+	});
+
 	it("openSpan closer is idempotent", async () => {
 		const timer = new InferenceTurnTimer({ turnId: "t6", label: "test" });
 		const close = timer.openSpan("work");

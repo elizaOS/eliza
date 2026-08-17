@@ -1,7 +1,7 @@
 {
   "id": "embeddings",
   "name": "Embeddings",
-  "description": "Provider-agnostic (bring-your-own) TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL / EMBEDDING_API_KEY at any OpenAI-compatible /embeddings endpoint (a personal OpenAI key, Eliza Cloud, Voyage, Together, or a local TEI/Infinity/vLLM/LM Studio server) to get real memory/RAG embeddings independently of the chat brain. Registers ONLY the embedding slot — no text/image/audio handlers.",
+  "description": "Canonical gte-small TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL at an OpenAI-compatible endpoint serving thenlper/gte-small at 384 dimensions. Model and width mismatches fail closed so local and hosted memory vectors remain compatible. Registers only embedding slots.",
   "npmName": "@elizaos/plugin-embeddings",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -12,8 +12,8 @@
       "required": false,
       "sensitive": false,
       "label": "Embedding Base Url",
-      "help": "Base URL of an OpenAI-compatible /embeddings endpoint (e.g. https://api.openai.com/v1, an Eliza Cloud URL, a Voyage proxy, or a local TEI/Infinity/vLLM server). Setting this (or the API key) activates the plugin.",
-      "placeholder": "e.g., https://api.openai.com/v1",
+      "help": "Base URL of an OpenAI-compatible /embeddings endpoint serving thenlper/gte-small with 384-dimensional output. Setting this (or the API key) activates the plugin.",
+      "placeholder": "e.g., http://localhost:8080/v1",
       "advanced": false
     },
     "EMBEDDING_API_KEY": {
@@ -28,10 +28,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-3-small",
+      "default": "thenlper/gte-small",
       "label": "Embedding Model",
       "help": "Embedding model identifier sent as the request `model` field.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "thenlper/gte-small",
       "advanced": false
     },
     "EMBEDDING_FALLBACK_BASE_URL": {
@@ -57,16 +57,16 @@
       "sensitive": false,
       "label": "Embedding Fallback Model",
       "help": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "thenlper/gte-small",
       "advanced": true
     },
     "EMBEDDING_DIMENSIONS": {
       "type": "number",
       "required": false,
       "sensitive": false,
-      "default": "1536",
+      "default": "384",
       "label": "Embedding Dimensions",
-      "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+      "help": "Canonical gte-small vector width. Values other than 384 are rejected to prevent incompatible vector spaces.",
       "advanced": false
     },
     "EMBEDDING_BROWSER_URL": {

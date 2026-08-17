@@ -1,10 +1,10 @@
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 
-// Coalesce a burst of closely spaced session starts, but keep this lease much
-// shorter than the upstream streaming-admission cache. A long-lived local
-// gateway can otherwise report `already-warm` after the upstream lane cooled,
-// leaving the user's first real turn to pay the 503 warmup backoff.
-const DEFAULT_PREWARM_COOLDOWN_MS = 5_000;
+// The Cloud inference auth context has a 60-second physical TTL and refreshes
+// off-response after 30 seconds. Refreshing this local lease at 45 seconds keeps
+// an active dev voice gateway inside that window without racing a synthetic
+// warmup beside each session start or real utterance.
+const DEFAULT_PREWARM_COOLDOWN_MS = 45_000;
 
 export type CloudTextPrewarmResult = "warmed" | "already-warm";
 export type CloudTextPrewarmLane = "response-handler" | "committed-reply";
@@ -68,102 +68,118 @@ export function createCloudTextPrewarmer(options: {
 } = {}) {
   const cooldownMs = options.cooldownMs ?? DEFAULT_PREWARM_COOLDOWN_MS;
   const now = options.now ?? Date.now;
-  let lastWarmedAt = Number.NEGATIVE_INFINITY;
-  let inFlight: Promise<void> | null = null;
+  const lastWarmedAt: Record<CloudTextPrewarmLane, number> = {
+    "response-handler": Number.NEGATIVE_INFINITY,
+    "committed-reply": Number.NEGATIVE_INFINITY,
+  };
+  const inFlight: Record<CloudTextPrewarmLane, Promise<void> | null> = {
+    "response-handler": null,
+    "committed-reply": null,
+  };
+
+  const acceptNoOutput = async (
+    lane: CloudTextPrewarmLane,
+    task: Promise<unknown>,
+  ): Promise<void> => {
+    try {
+      await task;
+    } catch (error) {
+      // error-policy:J5 the provider model handler already records its
+      // diagnostic. Re-throw only a fixed lane identifier so the loopback
+      // control plane never exposes provider payloads.
+      // A provider that successfully returns zero output still completed the
+      // transport/admission warmup. Every other failure remains visible to the
+      // local gateway, whose real turn keeps its normal typed retry/fallback.
+      if (!(error instanceof Error && error.name === "AI_NoOutputGeneratedError")) {
+        throw new CloudTextPrewarmError(lane, error);
+      }
+    }
+  };
+
+  const warmLane = (
+    lane: CloudTextPrewarmLane,
+    runtime: Pick<IAgentRuntime, "useModel">,
+  ): Promise<void> => {
+    if (now() - lastWarmedAt[lane] < cooldownMs) return Promise.resolve();
+    if (inFlight[lane]) return inFlight[lane];
+
+    const task =
+      lane === "response-handler"
+        ? runtime.useModel(ModelType.RESPONSE_HANDLER, {
+            prompt: "ping",
+            maxTokens: 32,
+            temperature: 0,
+            stream: true,
+            streamStructured: true,
+            streamSecurity: "required",
+            voiceOutput: "internal",
+            onStreamChunk: async () => undefined,
+            responseSkeleton: {
+              spans: [
+                { kind: "literal" as const, value: '{"replyText":' },
+                { kind: "free-string" as const, key: "replyText" },
+                { kind: "literal" as const, value: "}" },
+              ],
+            },
+            tools: [
+              {
+                name: "HANDLE_RESPONSE",
+                type: "function" as const,
+                strict: true,
+                description: "Return one tiny warmup response.",
+                parameters: {
+                  type: "object",
+                  properties: { replyText: { type: "string" } },
+                  required: ["replyText"],
+                  additionalProperties: false,
+                },
+              },
+            ],
+            toolChoice: "required",
+            providerOptions: { eliza: { thinking: "off" } },
+          })
+        : runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: "Reply with exactly one word: ready.",
+            maxTokens: 32,
+            temperature: 0,
+            stream: true,
+            streamCommittedReply: true,
+            streamSecurity: "required",
+            voiceOutput: "internal",
+            onStreamChunk: async () => undefined,
+            providerOptions: { eliza: { thinking: "off" } },
+          });
+
+    const pending = acceptNoOutput(lane, task)
+      .then(() => {
+        lastWarmedAt[lane] = now();
+      })
+      .finally(() => {
+        inFlight[lane] = null;
+      });
+    inFlight[lane] = pending;
+    return pending;
+  };
 
   return async (
     runtime: Pick<IAgentRuntime, "useModel">,
   ): Promise<CloudTextPrewarmResult> => {
-    if (now() - lastWarmedAt < cooldownMs) return "already-warm";
+    const lanes: CloudTextPrewarmLane[] = [
+      "response-handler",
+      "committed-reply",
+    ];
+    const alreadyWarm = lanes.every(
+      (lane) => now() - lastWarmedAt[lane] < cooldownMs,
+    );
+    if (alreadyWarm) return "already-warm";
 
-    if (!inFlight) {
-      inFlight = (async () => {
-        const acceptNoOutput = async (
-          lane: CloudTextPrewarmLane,
-          task: Promise<unknown>,
-        ): Promise<void> => {
-          try {
-            await task;
-          } catch (error) {
-            // error-policy:J5 the provider model handler already records its
-            // diagnostic. Re-throw only a fixed lane identifier so the
-            // loopback control plane never exposes provider payloads.
-            // A provider that successfully returns zero output still completed
-            // the transport/admission warmup. Every other failure remains
-            // visible to the local gateway, whose real turn keeps its normal
-            // typed retry/fallback behavior.
-            if (!(error instanceof Error && error.name === "AI_NoOutputGeneratedError")) {
-              throw new CloudTextPrewarmError(lane, error);
-            }
-          }
-        };
-
-        // Voice turns use two independently routed Cloud streaming models:
-        // RESPONSE_HANDLER for the private structured participation gate, then
-        // TEXT_LARGE for committed user-visible prose. Warm both exact request
-        // shapes concurrently; warming only Gemma leaves GLM's first committed
-        // reply paying the provider's 503 admission backoff.
-        await Promise.all([
-          acceptNoOutput(
-            "response-handler",
-            runtime.useModel(ModelType.RESPONSE_HANDLER, {
-              prompt: "ping",
-              maxTokens: 32,
-              temperature: 0,
-              stream: true,
-              streamStructured: true,
-              streamSecurity: "required",
-              voiceOutput: "internal",
-              onStreamChunk: async () => undefined,
-              responseSkeleton: {
-                spans: [
-                  { kind: "literal", value: '{"replyText":' },
-                  { kind: "free-string", key: "replyText" },
-                  { kind: "literal", value: "}" },
-                ],
-              },
-              tools: [
-                {
-                  name: "HANDLE_RESPONSE",
-                  type: "function",
-                  strict: true,
-                  description: "Return one tiny warmup response.",
-                  parameters: {
-                    type: "object",
-                    properties: { replyText: { type: "string" } },
-                    required: ["replyText"],
-                    additionalProperties: false,
-                  },
-                },
-              ],
-              toolChoice: "required",
-              // Native options select the same OpenAI-compatible streaming
-              // transport used by the real RESPONSE_HANDLER call.
-              providerOptions: { eliza: { thinking: "off" } },
-            }),
-          ),
-          acceptNoOutput(
-            "committed-reply",
-            runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt: "Reply with exactly one word: ready.",
-              maxTokens: 32,
-              temperature: 0,
-              stream: true,
-              streamCommittedReply: true,
-              streamSecurity: "required",
-              voiceOutput: "internal",
-              onStreamChunk: async () => undefined,
-              providerOptions: { eliza: { thinking: "off" } },
-            }),
-          ),
-        ]);
-        lastWarmedAt = now();
-      })().finally(() => {
-        inFlight = null;
-      });
-    }
-
-    await inFlight;
+    // Voice turns use two independently routed Cloud streaming models:
+    // RESPONSE_HANDLER for the private structured participation gate, then
+    // TEXT_LARGE for committed user-visible prose. Their admission caches can
+    // warm independently, so preserve a successful lane even when its sibling
+    // still returns a cold-gateway 503. The next probe then pays only for the
+    // lane that is actually cold instead of throwing away successful work.
+    await Promise.all(lanes.map((lane) => warmLane(lane, runtime)));
     return "warmed";
   };
 }

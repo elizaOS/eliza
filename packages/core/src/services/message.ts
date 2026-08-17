@@ -403,6 +403,13 @@ export {
 };
 
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
+// Committed direct replies have a separate plain-text synthesis owner. Stage 1
+// only needs enough output for its compact route/effect envelope plus the
+// bounded private brief below; leaving it provider-max lets a slow/misguided
+// model write a second full answer before the already-running visible draft can
+// be published. Keep exact-literal turns uncapped because Stage 1 is their
+// byte-authoritative source.
+const COMMITTED_DIRECT_REPLY_STAGE1_MAX_TOKENS = 512;
 const MAX_COMMITTED_DIRECT_REPLY_BRIEF_CHARS = 240;
 const COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS = 120;
 const COMMITTED_DIRECT_REPLY_SPECULATIVE_BRIEF =
@@ -4328,6 +4335,36 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			}),
 		},
 		{
+			name: "core.voice_memory_action_hint",
+			description:
+				"Pins a voice turn already classified as memory to the registered memory action so the planner does not receive unrelated tool schemas.",
+			priority: 10,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (!isVoiceChannelMessage(message)) return false;
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if ((messageHandler.plan.candidateActions?.length ?? 0) > 0) {
+					return false;
+				}
+				const contexts = messageHandler.plan.contexts ?? [];
+				if (
+					contexts.length !== 1 ||
+					String(contexts[0]).trim().toLowerCase() !== "memory"
+				) {
+					return false;
+				}
+				return registeredMemorySearchAction(runtime) !== undefined;
+			},
+			evaluate: () => ({
+				requiresTool: true,
+				addCandidateActions: ["MEMORY"],
+				addParentActionHints: ["MEMORY"],
+				clearReply: true,
+				debug: [
+					"voice memory route pinned to MEMORY; unrelated planner schemas suppressed",
+				],
+			}),
+		},
+		{
 			name: "core.direct_registered_capability_request",
 			description:
 				"Promotes or reconciles a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
@@ -4978,10 +5015,10 @@ function renderMessageHandlerInstructions(
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			directSimpleReplyInstruction: options?.deferDirectReplySynthesis
-				? `put only a concise response brief in replyText (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer); the validated user-visible answer is synthesized afterward.`
+				? `put a concise, natural, final-ready answer in replyText (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer). A separate validated plain-text stage expands only incomplete answers.`
 				: "answer in replyText.",
 			directSimpleReplyQualityInstruction: options?.deferDirectReplySynthesis
-				? "Simple replyText is a compact factual plan for the answer, never the full prose and never a bare placeholder. Preserve exact literals the user explicitly requested."
+				? "Simple replyText must stand alone as the complete spoken answer when possible, never a plan or bare placeholder. Preserve exact literals the user explicitly requested."
 				: "Simple replyText must be natural and complete, not a placeholder, unless terse was requested.",
 			directShouldRespondInstruction,
 			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
@@ -5025,7 +5062,7 @@ function renderMessageHandlerInstructions(
 		// override the private-brief/committed-visible-stage split.
 		sections.push(
 			"## Committed Direct Reply Override",
-			`For a simple direct answer, replyText is ONLY a concise factual response brief (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer), never the complete user-visible prose. A separate validated plain-text stage writes the answer. Preserve an exact literal when the user explicitly requests one.`,
+			`For a simple direct answer, replyText is a concise, natural, final-ready spoken answer (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer). A separate validated plain-text stage expands it only when it is incomplete. Preserve an exact literal when the user explicitly requests one.`,
 		);
 	}
 	return sections.join("\n\n");
@@ -5044,7 +5081,8 @@ function withCommittedReplyBriefSchema(
 			...schema.properties,
 			replyText: {
 				...replyText,
-				description: `For simple direct answers, emit only a concise factual response brief (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer), not final prose. Planning paths emit a brief acknowledgement. IGNORE emits an empty string. Preserve exact requested literals.`,
+				maxLength: MAX_COMMITTED_DIRECT_REPLY_BRIEF_CHARS,
+				description: `For simple direct answers, emit a concise, natural, final-ready spoken answer (target ${COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS} characters or fewer). Planning paths emit a brief acknowledgement. IGNORE emits an empty string. Preserve exact requested literals.`,
 			},
 		},
 	};
@@ -7376,6 +7414,37 @@ function listAvailableContextsForRole(
 	return registry.listAvailable(role);
 }
 
+function registeredMemorySearchAction(
+	runtime: Pick<IAgentRuntime, "actions">,
+): Action | undefined {
+	return (runtime.actions ?? []).find((action) => {
+		if (normalizeActionIdentifier(action.name) !== "MEMORY") return false;
+		return action.parameters?.some((parameter) => {
+			const name = normalizeActionIdentifier(parameter.name);
+			if (name !== "ACTION" && name !== "OP") return false;
+			return [
+				...(parameter.schema?.enum ?? []),
+				...(parameter.schema?.enumValues ?? []),
+			].some((value) => normalizeActionIdentifier(value) === "SEARCH");
+		});
+	});
+}
+
+function isVoiceMemoryOnlyPlan(
+	message: Pick<Memory, "content">,
+	messageHandler: MessageHandlerResult,
+): boolean {
+	if (!isVoiceChannelMessage(message)) return false;
+	const contexts = messageHandler.plan.contexts ?? [];
+	return (
+		contexts.length === 1 &&
+		String(contexts[0]).trim().toLowerCase() === "memory" &&
+		(messageHandler.plan.candidateActions ?? []).some(
+			(name) => normalizeActionIdentifier(name) === "MEMORY",
+		)
+	);
+}
+
 /**
  * Whether the routed action owns the response-handler's pre-planner reply.
  * A deterministic call is already selected, while relevance candidates are
@@ -8569,6 +8638,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		const maxReplyTokens = resolveMaxReplyTokens(
 			args.runtime.character.settings,
 		);
+		const stage1MustPreserveExactLiteral =
+			parseExactLiteralOnlyInstruction(
+				getUserMessageText(args.message) ?? "",
+			) !== null;
+		const committedStage1TokenBudget =
+			deferDirectReplySynthesis && !stage1MustPreserveExactLiteral
+				? COMMITTED_DIRECT_REPLY_STAGE1_MAX_TOKENS
+				: undefined;
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
@@ -8580,9 +8657,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			// to use provider/model-max output instead of the runtime default; group
 			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
 			maxTokens:
+				committedStage1TokenBudget ??
 				maxReplyTokens ??
 				(directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS),
-			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
+			omitMaxTokens:
+				committedStage1TokenBudget == null &&
+				maxReplyTokens == null &&
+				directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`
@@ -8679,6 +8760,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				| GenerateTextResult;
 			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
+		const stage1PostModelStartedAt = performance.now();
 		const messageHandlerEndedAt = Date.now();
 		// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
 		// right after it completes, before any later model call could overwrite the
@@ -8706,6 +8788,10 @@ export async function runV5MessageRuntimeStage1(args: {
 				"[message] continuation turn resolved to prior user request for candidate inference",
 			);
 		}
+		recordInferenceSpan(
+			"message:stage1:parse-input",
+			performance.now() - stage1PostModelStartedAt,
+		);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
@@ -8812,6 +8898,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
 		}
+		const stage1SanitizeStartedAt = performance.now();
 		const rawStageOneReply = getMessageHandlerReply(messageHandler);
 		const requestedExactLiteral = parseExactLiteralOnlyInstruction(
 			getUserMessageText(args.message),
@@ -8854,25 +8941,43 @@ export async function runV5MessageRuntimeStage1(args: {
 			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		recordInferenceSpan(
+			"message:stage1:sanitize",
+			performance.now() - stage1SanitizeStartedAt,
+		);
 
 		if (recorder && trajectoryId) {
-			messageHandlerStageTask = recordMessageHandlerStage({
-				recorder,
-				trajectoryId,
-				messages: messageHandlerInput.messages,
-				tools: messageHandlerTools,
-				toolChoice: "required",
-				providerOptions: messageHandlerProviderOptions,
-				raw: rawMessageHandler,
-				parsed: messageHandler,
-				startedAt: messageHandlerStartedAt,
-				endedAt: messageHandlerEndedAt,
-				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-				prefixHash: stage1PrefixHash,
-				provider: messageHandlerProvider,
-				state: args.state,
-				runtime: args.runtime,
-			});
+			const stage1TrajectoryScheduleStartedAt = performance.now();
+			// `recordMessageHandlerStage` performs prompt-attribution work before its
+			// first database await. Yield one macrotask so that diagnostic CPU work
+			// cannot sit between an authoritative Stage-1 decision and the realtime
+			// voice publication gate. The returned task is still owned and finalized
+			// by the trajectory lifecycle below.
+			messageHandlerStageTask = new Promise<void>((resolve) =>
+				setTimeout(resolve, 0),
+			).then(() =>
+				recordMessageHandlerStage({
+					recorder,
+					trajectoryId,
+					messages: messageHandlerInput.messages,
+					tools: messageHandlerTools,
+					toolChoice: "required",
+					providerOptions: messageHandlerProviderOptions,
+					raw: rawMessageHandler,
+					parsed: messageHandler,
+					startedAt: messageHandlerStartedAt,
+					endedAt: messageHandlerEndedAt,
+					segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+					prefixHash: stage1PrefixHash,
+					provider: messageHandlerProvider,
+					state: args.state,
+					runtime: args.runtime,
+				}),
+			);
+			recordInferenceSpan(
+				"message:stage1:trajectory-schedule",
+				performance.now() - stage1TrajectoryScheduleStartedAt,
+			);
 		}
 
 		if (messageHandler.processMessage === "RESPOND") {
@@ -9234,6 +9339,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			} else if (
 				deferDirectReplySynthesis &&
 				replyIsModelVoice &&
+				!(speculativeDirectReply && looksLikeCompleteDirectReply(reply)) &&
 				!isTerseReplyWorthKeeping({
 					reply,
 					messageText: getUserMessageText(args.message),
@@ -9425,7 +9531,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			fullSurfaceEnv === "true" ||
 			fullSurfaceEnv === "yes" ||
 			fullSurfaceEnv === "on";
-		const plannerCandidateActions = useFullSurface
+		const collectedPlannerCandidateActions = useFullSurface
 			? (args.runtime.actions ?? []).filter(
 					(action) =>
 						// Full-surface = the eliza-code coding sub-agent (its ACP server
@@ -9462,6 +9568,19 @@ export async function runV5MessageRuntimeStage1(args: {
 					userRoles: [senderRole],
 					diagnostics: candidateGateDiagnostics,
 				});
+		// A realtime voice turn already classified as memory-only does not need the
+		// catalog's semantically adjacent contact/database/view surface. The live
+		// 2026-08-16 trace handed GLM 85 KB of schemas (27,172 prompt tokens) for
+		// one 53 ms MEMORY search. Keep the canonical umbrella action — including
+		// its normal role/context/validate gates — and let its operation enum own
+		// argument selection. Composite contexts and non-voice turns retain the
+		// ordinary broad retrieval surface.
+		const plannerCandidateActions =
+			!useFullSurface && isVoiceMemoryOnlyPlan(args.message, messageHandler)
+				? collectedPlannerCandidateActions.filter(
+						(action) => normalizeActionIdentifier(action.name) === "MEMORY",
+					)
+				: collectedPlannerCandidateActions;
 		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
 		// but is gated on this surface (role/privacy — e.g. owner-life actions in
 		// a public channel), and no named candidate survived into the collected
@@ -14026,13 +14145,21 @@ export class DefaultMessageService implements IMessageService {
 				});
 			}
 			if (message.id) {
-				await runtime.updateMemory({
-					id: message.id,
-					content: message.content,
-				});
-				await runtime.queueEmbeddingGeneration(
-					{ ...message, id: message.id },
-					"normal",
+				await timeInferenceSpan(
+					"message:ingress:rewrite-persistence",
+					() =>
+						runtime.updateMemory({
+							id: message.id as UUID,
+							content: message.content,
+						}),
+				);
+				await timeInferenceSpan(
+					"message:ingress:rewrite-embedding-queue",
+					() =>
+						runtime.queueEmbeddingGeneration(
+							{ ...message, id: message.id as UUID },
+							"normal",
+						),
 				);
 			}
 		}

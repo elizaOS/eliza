@@ -134,4 +134,35 @@ describe("TaskDrain", () => {
 			taskId: createdId,
 		});
 	});
+
+	test("dispose does not report the expected adapter-closed shutdown race", async () => {
+		const createdId = "00000000-0000-0000-0000-0000000000ab";
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			reportError,
+			getTasksByName: async () => [],
+			createTask: vi.fn(async () => createdId),
+			deleteTask: vi
+				.fn()
+				.mockRejectedValue(
+					new Error("Database is shutting down - operation rejected"),
+				),
+		});
+		const drain = new TaskDrain(
+			{
+				taskName: "BATCHER_DRAIN",
+				intervalMs: 30_000,
+				taskMetadata: { affinityKey: "autonomy" },
+				skipRegisterWorker: true,
+			},
+			30_000,
+		);
+
+		await drain.start(runtime);
+		await expect(drain.dispose(runtime)).resolves.toBeUndefined();
+
+		expect(runtime.deleteTask).toHaveBeenCalledWith(createdId);
+		expect(reportError).not.toHaveBeenCalled();
+	});
 });

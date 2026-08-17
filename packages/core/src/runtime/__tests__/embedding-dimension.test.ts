@@ -63,6 +63,22 @@ function makeMemory(text: string): Memory {
 }
 
 describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
+	it("cleanly skips the probe when no embedding provider is registered", async () => {
+		const runtime = makeRuntime();
+		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
+
+	it("still rejects an explicitly configured provider with no handler", async () => {
+		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "direct" });
+
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toThrow(
+			'Configured TEXT_EMBEDDING provider "direct" has no registered handler',
+		);
+	});
+
 	it("pins the canonically routed embedding provider instead of plugin priority", async () => {
 		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "direct" });
 		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));

@@ -21,7 +21,7 @@ import type {
   ProcessEnvLike,
   TextEmbeddingParams,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { assertCanonicalEmbeddingConfig, logger, ModelType } from "@elizaos/core";
 
 import {
   handleBatchTextEmbedding,
@@ -31,6 +31,7 @@ import {
 import {
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
+  getEmbeddingModel,
   hasEmbeddingConfig,
   logResolvedConfig,
 } from "./utils/config";
@@ -85,6 +86,11 @@ export const embeddingsPlugin: Plugin = {
     // Validate the dimension up-front so a misconfiguration surfaces at boot,
     // not on the first embedding call.
     validateEmbeddingDimension(getEmbeddingDimensions(runtime));
+    assertCanonicalEmbeddingConfig(
+      getEmbeddingModel(runtime),
+      getEmbeddingDimensions(runtime),
+      "EMBEDDING_*"
+    );
     if (!getEmbeddingBaseURL(runtime)) {
       logger.warn(
         "[Embeddings] EMBEDDING_API_KEY is set but EMBEDDING_BASE_URL is not — " +

@@ -6,6 +6,9 @@
 
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
+const LOCAL_VOICE_PREWARM_REFRESH_MS = 45_100;
+const LOCAL_VOICE_PREWARM_STARTUP_ATTEMPTS = 3;
+const LOCAL_VOICE_PREWARM_RETRY_MS = 250;
 // Keep the zero-config local gateway aligned with the repo-root character used
 // by this dev stack. Operators can still override it explicitly per process.
 const DEFAULT_CARTESIA_VOICE_ID = "b9c387c8-2583-4b89-9a8e-be6699e38a23";
@@ -58,6 +61,7 @@ function assertUuid(label: string, value: string): string {
 async function readLocalIdentity(runtimeOrigin: string): Promise<{
   agentId: string;
   conversationId: string;
+  runtimeModel: string;
 }> {
   const healthResponse = await fetch(new URL("/api/health", runtimeOrigin));
   if (!healthResponse.ok) {
@@ -72,6 +76,18 @@ async function readLocalIdentity(runtimeOrigin: string): Promise<{
   if (health.ready !== true || health.canRespond !== true) {
     throw new Error("local runtime is not ready to respond");
   }
+
+  const statusResponse = await fetch(new URL("/api/status", runtimeOrigin));
+  if (!statusResponse.ok) {
+    throw new Error(
+      `local runtime status returned HTTP ${statusResponse.status}`,
+    );
+  }
+  const status = (await statusResponse.json()) as { model?: unknown };
+  const runtimeModel =
+    typeof status.model === "string" && status.model.trim()
+      ? status.model.trim().slice(0, 128)
+      : "unknown";
 
   const configuredAgentId = process.env.ELIZA_LOCAL_VOICE_AGENT_ID?.trim();
   const agentResponse = await fetch(new URL("/api/agents", runtimeOrigin));
@@ -112,7 +128,7 @@ async function readLocalIdentity(runtimeOrigin: string): Promise<{
     configuredConversationId || discoveredConversationId || "",
   );
 
-  return { agentId, conversationId };
+  return { agentId, conversationId, runtimeModel };
 }
 
 async function main(): Promise<void> {
@@ -128,7 +144,8 @@ async function main(): Promise<void> {
     process.env.VOICE_REALTIME_CARTESIA_VOICE_ID?.trim() ||
       DEFAULT_CARTESIA_VOICE_ID,
   );
-  const { agentId, conversationId } = await readLocalIdentity(runtimeOrigin);
+  const { agentId, conversationId, runtimeModel } =
+    await readLocalIdentity(runtimeOrigin);
   const [{ createLocalRuntimeConversationFetch }, harness] = await Promise.all([
     import("../v1/voice/session/lib/local-runtime-conversation-fetch"),
     import("../v1/voice/session/lib/harness-real-server"),
@@ -148,15 +165,36 @@ async function main(): Promise<void> {
   // but the runtime-side coalescer makes that call content-free and immediate
   // after this process-lifecycle warmup succeeds. This keeps the user's first
   // committed utterance from queueing behind a background model request.
-  try {
-    await localRuntimeFetch.prewarm();
-    writeLog("info", "local voice inference prewarm complete");
-  } catch (error) {
-    // error-policy:J7 prewarm is latency-only; the real turn retains its typed
-    // provider retry/fallback path and the diagnostic stays content-free.
-    writeLog("warn", "local voice inference prewarm unavailable", {
-      errorClass: error instanceof Error ? error.name : "UnknownError",
-    });
+  let inferencePrewarmed = false;
+  for (
+    let attempt = 1;
+    attempt <= LOCAL_VOICE_PREWARM_STARTUP_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await localRuntimeFetch.prewarm();
+      inferencePrewarmed = true;
+      writeLog("info", "local voice inference prewarm complete", { attempt });
+      break;
+    } catch (error) {
+      // error-policy:J7 prewarm is latency-only; the real turn retains its
+      // typed provider retry/fallback path and the diagnostic stays
+      // content-free. A warming 503 can outlive one model-handler retry budget,
+      // so gateway startup makes a few bounded loopback attempts before it
+      // advertises readiness.
+      writeLog("warn", "local voice inference prewarm attempt unavailable", {
+        attempt,
+        errorClass: error instanceof Error ? error.name : "UnknownError",
+      });
+      if (attempt < LOCAL_VOICE_PREWARM_STARTUP_ATTEMPTS) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, LOCAL_VOICE_PREWARM_RETRY_MS),
+        );
+      }
+    }
+  }
+  if (!inferencePrewarmed) {
+    writeLog("warn", "local voice inference prewarm unavailable after retries");
   }
   const server = await harness.startRealVoiceServer({
     cartesiaApiKey,
@@ -179,15 +217,45 @@ async function main(): Promise<void> {
     agentId,
     providers: {
       stt: "cartesia/ink-2",
-      llm: "local-runtime/cerebras",
+      llm: `local-runtime/${runtimeModel}`,
       tts: "cartesia/sonic-3.5",
     },
   });
 
+  // Keep the two Cloud inference admission lanes warm while this explicitly
+  // local development gateway is running. The runtime-side lease coalesces
+  // session starts, and this refresh lands just after that lease expires, so a
+  // user pressing Talk never races two synthetic warmup generations beside the
+  // real utterance. The timer is process-local and is stopped with the server.
   let stopping = false;
+  let prewarmRefresh: ReturnType<typeof setTimeout> | undefined;
+  const schedulePrewarmRefresh = () => {
+    prewarmRefresh = setTimeout(async () => {
+      try {
+        await localRuntimeFetch.prewarm();
+      } catch (error) {
+        // error-policy:J7 refresh is latency-only and the real turn retains its
+        // normal typed retry/fallback behavior.
+        writeLog("warn", "local voice inference prewarm refresh unavailable", {
+          errorClass: error instanceof Error ? error.name : "UnknownError",
+        });
+      } finally {
+        // Schedule from completion, not the preceding timer edge. A cold probe
+        // can itself take seconds; setInterval then lands just inside the
+        // runtime-side cooldown, skips that refresh, and leaves the Cloud auth
+        // lease cold until the following interval. Completion-relative refresh
+        // preserves one real warmup per lease without overlapping probes.
+        if (!stopping) schedulePrewarmRefresh();
+      }
+    }, LOCAL_VOICE_PREWARM_REFRESH_MS);
+    prewarmRefresh.unref();
+  };
+  schedulePrewarmRefresh();
+
   const stop = async (signal: string) => {
     if (stopping) return;
     stopping = true;
+    if (prewarmRefresh) clearTimeout(prewarmRefresh);
     writeLog("info", "stopping local voice gateway", { signal });
     await server.stop();
     process.exit(0);

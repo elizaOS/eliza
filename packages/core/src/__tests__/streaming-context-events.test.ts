@@ -106,11 +106,13 @@ describe("streaming context event hooks", () => {
 	});
 
 	it("isolates hook failures from callers", async () => {
+		const reportError = vi.fn();
 		const context: StreamingContext = {
 			onStreamChunk: vi.fn(),
 			onToolCall: vi.fn(async () => {
 				throw new Error("observer failed");
 			}),
+			reportError,
 		};
 		const toolCall: ToolCall = {
 			id: "call-1",
@@ -121,5 +123,39 @@ describe("streaming context event hooks", () => {
 		await expect(
 			emitStreamingHook(context, "onToolCall", { toolCall }),
 		).resolves.toBeUndefined();
+		expect(reportError).toHaveBeenCalledWith(
+			"StreamingContext.emitHook",
+			expect.any(Error),
+			{ hook: "onToolCall" },
+		);
 	});
+
+	it.each([
+		Object.assign(new Error("Turn aborted: voice-session-interrupt"), {
+			code: "TURN_ABORTED",
+		}),
+		Object.assign(new Error("cancelled"), { name: "TurnAbortedError" }),
+		new DOMException("client disconnected", "AbortError"),
+	])(
+		"does not report expected hook cancellation as a runtime failure",
+		async (error) => {
+			const reportError = vi.fn();
+			const context: StreamingContext = {
+				onToolCall: vi.fn(async () => {
+					throw error;
+				}),
+				reportError,
+			};
+			const toolCall: ToolCall = {
+				id: "call-cancelled",
+				name: "LOOKUP",
+				arguments: {},
+			};
+
+			await expect(
+				emitStreamingHook(context, "onToolCall", { toolCall }),
+			).resolves.toBeUndefined();
+			expect(reportError).not.toHaveBeenCalled();
+		},
+	);
 });

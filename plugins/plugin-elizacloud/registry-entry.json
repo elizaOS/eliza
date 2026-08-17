@@ -72,10 +72,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-3-small",
+      "default": "thenlper/gte-small",
       "label": "Cloud Embedding Model",
       "help": "Identifier of the model to use for generating text embeddings.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "thenlper/gte-small",
       "advanced": false
     },
     "ELIZAOS_CLOUD_EMBEDDING_URL": {
@@ -98,7 +98,7 @@
       "type": "number",
       "required": false,
       "sensitive": false,
-      "default": "1536",
+      "default": "384",
       "label": "Cloud Embedding Dimensions",
       "help": "Number of dimensions for the returned embedding vectors.",
       "advanced": false

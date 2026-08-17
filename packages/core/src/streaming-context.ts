@@ -43,6 +43,22 @@ export interface StreamingHookPayloads {
 }
 
 /**
+ * Streaming observers are cancelled with the turn they describe. That is
+ * expected control flow, not a diagnostic failure: reporting it would feed a
+ * normal Stop/barge-in into the runtime error-escalation loop.
+ */
+function isStreamingHookCancellation(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	const code = (error as Error & { code?: unknown }).code;
+	return (
+		code === "TURN_ABORTED" ||
+		error.name === "TurnAbortedError" ||
+		error.name === "AbortError" ||
+		error.message.startsWith("Turn aborted:")
+	);
+}
+
+/**
  * Safely emit an optional streaming event hook.
  * Missing hooks are no-ops, and hook failures are isolated from runtime flow.
  */
@@ -63,9 +79,11 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 	} catch (error) {
 		// error-policy:J7 Streaming observers cannot alter model/action flow;
 		// the owning runtime receives the observer failure when available.
-		context?.reportError?.("StreamingContext.emitHook", error, {
-			hook: String(hook),
-		});
+		if (!isStreamingHookCancellation(error)) {
+			context?.reportError?.("StreamingContext.emitHook", error, {
+				hook: String(hook),
+			});
+		}
 		// Streaming observers must not break the underlying model/action flow.
 	}
 }

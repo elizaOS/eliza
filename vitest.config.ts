@@ -95,6 +95,12 @@ export default defineConfig({
         replacement: path.join(root, "packages/core/src/index.node.ts"),
       },
       {
+        // "./edge" is also an exports-map subpath, so the generic src/$1
+        // rewrite would otherwise target the nonexistent src/edge module.
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(root, "packages/core/src/index.edge.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(root, "packages/core/src/$1"),
       },

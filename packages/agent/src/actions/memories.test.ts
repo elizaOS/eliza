@@ -227,6 +227,34 @@ describe("MEMORY op:create", () => {
 });
 
 describe("MEMORY op:search identity-cluster expansion", () => {
+  it("does not treat the current query message as recalled history", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = {
+      ...makeMessage(),
+      content: { text: "What do you remember about my founder post?" },
+      createdAt: Date.now() + 1,
+    } as Memory;
+    rows.push({ memory: message, tableName: "messages" });
+    seedFact(rows, {
+      text: "the founder post shipped last week",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, message, {
+      action: "search",
+      query: "founder post",
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as {
+      memories: Array<{ id: string; text: string }>;
+    };
+    expect(data.memories.map((memory) => memory.id)).not.toContain(message.id);
+    expect(data.memories.map((memory) => memory.text)).toEqual([
+      "the founder post shipped last week",
+    ]);
+  });
+
   it("finds a fact stored under a cluster sibling of the requested entityId", async () => {
     // Live failure shape: the FACTS provider surfaced "nubs plays guitar"
     // (stored under sibling entity ids) while MEMORY search on the primary

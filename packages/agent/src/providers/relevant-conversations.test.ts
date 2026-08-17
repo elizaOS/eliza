@@ -19,7 +19,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // resolved vector or a fail-open `null`, while keeping every other real export
 // (relied on by @elizaos/shared and the provider's helper modules) intact.
 const embedRecallQuery =
-  vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
+  vi.fn<
+    (
+      runtime: IAgentRuntime,
+      text: string,
+      options?: { waitBudgetMs?: number },
+    ) => Promise<number[] | null>
+  >();
 const buildAccessContext = vi.fn();
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (
@@ -74,8 +80,11 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   return {
     ...actual,
     buildAccessContext: (...args: unknown[]) => buildAccessContext(...args),
-    embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
-      embedRecallQuery(runtime, text),
+    embedRecallQuery: (
+      runtime: IAgentRuntime,
+      text: string,
+      options?: { waitBudgetMs?: number },
+    ) => embedRecallQuery(runtime, text, options),
     markOwnerExclusiveDisclosureUsed,
     recordOwnerExclusiveSuppression,
     revalidateOwnerExclusiveDisclosure,
@@ -84,9 +93,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 });
 
 // Imported after the mock so the provider binds the mocked embedder.
-const { relevantConversationsProvider } = await import(
-  "./relevant-conversations.ts"
-);
+const { relevantConversationsProvider, RELEVANT_CONVERSATIONS_EMBED_WAIT_MS } =
+  await import("./relevant-conversations.ts");
 
 const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as Room["id"];
 const OTHER_ROOM = "00000000-0000-0000-0000-0000000000c2" as Room["id"];
@@ -167,6 +175,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     expect(embedRecallQuery).toHaveBeenCalledWith(
       runtime,
       "what did we decide about the launch date",
+      { waitBudgetMs: RELEVANT_CONVERSATIONS_EMBED_WAIT_MS },
     );
     // Fail-open: no vector search issued.
     expect(searchMemories).not.toHaveBeenCalled();

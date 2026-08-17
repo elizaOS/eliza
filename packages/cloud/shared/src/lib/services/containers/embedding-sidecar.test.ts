@@ -66,14 +66,16 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     expect(buildEnsureEmbeddingSidecarCmd()).not.toMatch(/[\r\n]/);
   });
 
-  test("honors env overrides for image, model, and port", () => {
+  test("honors image and port overrides but rejects a different embedding model", () => {
     process.env.CONTAINERS_EMBEDDING_SIDECAR_IMAGE = "ghcr.io/example/tei:cpu-9.9";
-    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "example/gte-small-v2";
     process.env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT = "9411";
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain("ghcr.io/example/tei:cpu-9.9");
-    expect(cmd).toContain("--model-id example/gte-small-v2");
+    expect(cmd).toContain("--model-id thenlper/gte-small");
     expect(cmd).toContain("-p 127.0.0.1:9411:80");
+
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "example/gte-small-v2";
+    expect(() => buildEnsureEmbeddingSidecarCmd()).toThrow(/model mismatch/);
   });
 
   test("refuses shell-unsafe config instead of quoting around it", () => {

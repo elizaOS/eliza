@@ -310,6 +310,13 @@ export function createCartesiaInkRealtimeSession(
     cancelSocket("cancelled");
   };
 
+  // `ws` can report an asynchronous transport ErrorEvent after close() when a
+  // connecting socket is cancelled (for example, Ink connect timeout). Node's
+  // EventEmitter treats an error with no listener as process-fatal. Cancellation
+  // removes the live protocol listener intentionally, so leave a content-free
+  // terminal sink on the abandoned socket until it is garbage-collected.
+  const absorbLateCancelledSocketError = () => {};
+
   socket.addEventListener("open", onOpen);
   socket.addEventListener("message", onMessage);
   socket.addEventListener("error", onError);
@@ -341,6 +348,7 @@ export function createCartesiaInkRealtimeSession(
       socket.send(JSON.stringify({ type: "close" }));
     },
     cancel(reason = "cancelled") {
+      socket.addEventListener("error", absorbLateCancelledSocketError);
       cancelSocket(reason);
     },
   };

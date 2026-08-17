@@ -142,8 +142,10 @@ const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
  * crossing this deadline may immediately synthesize one short, truthful
  * acknowledgement without delaying or fabricating the eventual answer.
  */
-const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 900;
+const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 500;
 const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
+/** Do not repeat the same generic acknowledgement across rapid voice turns. */
+const VOICE_GENERIC_PROGRESS_COOLDOWN_MS = 20_000;
 /** Retry one terminal phrase when a provider closes successfully with no PCM. */
 const VOICE_TTS_ZERO_AUDIO_RETRY_LIMIT = 1;
 /** Bound incremental display traffic while keeping the normal chat visibly live. */
@@ -265,6 +267,29 @@ function boundedProgressName(value: string | undefined): string | null {
     .trim()
     .slice(0, 64);
   return normalized || null;
+}
+
+/**
+ * Cartesia concatenates inputs on one context byte-for-byte. The committed
+ * speech projector intentionally normalizes leading whitespace, while source
+ * ranges retain it; restore exactly one safe separator for every continuation
+ * whose authoritative source begins with whitespace. Without this, sentence
+ * phrases become `first.Second` at the provider boundary and can produce
+ * garbled or misleading audio despite correct captions.
+ */
+function withAuthoritativeTtsSeparator(
+  sourceText: string,
+  speechText: string,
+  hasPriorSpeech: boolean,
+): string {
+  if (
+    !hasPriorSpeech ||
+    !/^\s/u.test(sourceText) ||
+    /^\s/u.test(speechText)
+  ) {
+    return speechText;
+  }
+  return ` ${speechText}`;
 }
 
 function progressForStatus(status: ChatTurnStatus): {
@@ -473,6 +498,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private turnUnmeteredUplinkBytes = 0;
   private turnTtsChars = 0;
   private firstLlmTextEmitted = false;
+  private lastGenericProgressSpeechAtMs = Number.NEGATIVE_INFINITY;
 
   // Metering accrual (server-derived): count uplink bytes, convert to seconds.
   private unmeteredUplinkBytes = 0;
@@ -1590,6 +1616,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       ) {
         return;
       }
+      const progressAtMs = this.now();
+      if (
+        progressStatus.kind === "thinking" &&
+        progressAtMs - this.lastGenericProgressSpeechAtMs <
+          VOICE_GENERIC_PROGRESS_COOLDOWN_MS
+      ) {
+        return;
+      }
       const progress = progressForStatus(progressStatus);
       if (!progress) return;
       const transition = reduceVoiceProgress(
@@ -1597,7 +1631,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         {
           ...progressOwner,
           type: "progress",
-          atMs: this.now(),
+          atMs: progressAtMs,
           ...progress,
           isSpecific: true,
           importance: "normal",
@@ -1627,6 +1661,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
       this.send({ t: "trace_mark", name: "tts_requested", traceId });
       this.turnTtsChars += start.speechText.length;
+      if (progressStatus.kind === "thinking") {
+        this.lastGenericProgressSpeechAtMs = progressAtMs;
+      }
       ensureTts().sendPhrase({
         text: start.speechText,
         continueContext: true,
@@ -1720,11 +1757,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
         onSpeechSegment: (segment: CommittedSpeechSegment) => {
+          const segmentSourceText = canonicalDisplayText.slice(
+            segment.sourceStart,
+            segment.sourceEnd,
+          );
+          const ttsSegmentText = withAuthoritativeTtsSeparator(
+            segmentSourceText,
+            segment.speechText,
+            segment.sourceStart > 0,
+          );
           if (
             abort.signal.aborted ||
             !this.turnAuthority.isCurrent(lease) ||
             segment.sourceStart !== committedSpeechSourceEnd ||
-            segment.speechText.length >
+            ttsSegmentText.length >
               VOICE_TTS_MAX_SPEECH_CHARS -
                 this.turnTtsChars -
                 retainedCommittedTtsText.length
@@ -1757,7 +1803,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               flush: true,
             });
           }
-          retainedCommittedTtsText = segment.speechText;
+          retainedCommittedTtsText = ttsSegmentText;
         },
       };
       this.send({ t: "trace_mark", name: "router_decided", traceId });
@@ -1867,11 +1913,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const terminalSpeechSource = canonicalDisplayText.slice(
         committedSpeechSourceEnd,
       );
+      const terminalTtsPrefix =
+        committedSpeechSourceEnd > 0 && /^\s/u.test(terminalSpeechSource)
+          ? " "
+          : "";
       const remainingTtsChars = Math.max(
         0,
         VOICE_TTS_MAX_SPEECH_CHARS -
           this.turnTtsChars -
-          retainedCommittedTtsText.length,
+          retainedCommittedTtsText.length -
+          terminalTtsPrefix.length,
       );
       const terminalProjectionSkippedForBudget =
         remainingTtsChars < VOICE_TTS_MIN_PROJECTABLE_SPEECH_CHARS;
@@ -1907,7 +1958,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         projection.captions === projection.speechText &&
         projection.captions !== null &&
         projection.captions.length <= remainingTtsChars
-          ? projection.captions
+          ? `${terminalTtsPrefix}${projection.captions}`
           : null;
       const displayMarkdown = canonicalDisplayText.slice(
         0,

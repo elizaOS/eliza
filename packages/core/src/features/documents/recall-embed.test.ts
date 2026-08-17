@@ -154,7 +154,7 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		expect(JSON.stringify(seen)).not.toContain(secret);
 	});
 
-	test("awaits the full embed — a slow-but-resolving embed returns its real vector (no app-level race truncates it to a silent BM25 fallback)", async () => {
+	test("awaits the full embed when the caller does not set an interactive wait budget", async () => {
 		const { runtime } = makeRuntime({
 			embed: () =>
 				new Promise((resolve) => {
@@ -167,6 +167,35 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		await expect(embedRecallQuery(runtime, "slow query")).resolves.toEqual([
 			1, 2, 3,
 		]);
+	});
+
+	test("an interactive wait budget fails open without aborting or discarding the shared embed", async () => {
+		let resolveEmbed: ((vector: number[]) => void) | undefined;
+		const { runtime, calls } = makeRuntime({
+			embed: () =>
+				new Promise<number[]>((resolve) => {
+					resolveEmbed = resolve;
+				}),
+		});
+
+		await expect(
+			embedRecallQuery(runtime, "latency sensitive recall", {
+				waitBudgetMs: 5,
+			}),
+		).resolves.toBeNull();
+		expect(calls.count).toBe(1);
+
+		resolveEmbed?.([0.7, 0.8, 0.9]);
+		await vi.waitFor(async () => {
+			await expect(
+				embedRecallQuery(runtime, "latency sensitive recall", {
+					waitBudgetMs: 5,
+				}),
+			).resolves.toEqual([0.7, 0.8, 0.9]);
+		});
+		// The second caller consumed the completed shared result; no second model
+		// request was started after the first caller's budget expired.
+		expect(calls.count).toBe(1);
 	});
 
 	test("an embed error fails open (returns null), never throwing onto the reply path", async () => {

@@ -189,6 +189,13 @@ async function readLocalDiscoveryJson<T>(
     const value = await readJsonFile<T>(filePath);
     return value === null ? { status: "missing" } : { status: "valid", value };
   } catch (error) {
+    // The workspace scanner deliberately probes optional `typescript/`
+    // children for legacy plugin layouts. A missing child manifest is the
+    // ordinary not-found state, even when a different core build supplies a
+    // readJsonFile implementation that surfaces ENOENT instead of returning
+    // null. Never turn that optional probe into an unhandled rejection on the
+    // app registry polling path.
+    if (isMissingPathError(error)) return { status: "missing" };
     if (!(error instanceof SyntaxError)) throw error;
     // error-policy:J3 workspace metadata is untrusted discovery input. One
     // malformed candidate is reported and rejected without hiding valid peers.

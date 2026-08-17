@@ -203,11 +203,17 @@ export class TaskDrain {
 			const taskId = this.taskId;
 			// error-policy:J7 diagnostics-must-not-kill-the-loop — dispose must always
 			// complete, but a failed delete leaves an orphaned task row; surface it.
-			await runtime
-				.deleteTask(taskId)
-				.catch((err) =>
-					runtime.reportError("TaskDrain.dispose", err, { taskId }),
-				);
+			await runtime.deleteTask(taskId).catch((err) => {
+				const message = err instanceof Error ? err.message : String(err);
+				if (message === "Database is shutting down - operation rejected") {
+					// Runtime shutdown may close the adapter before feature/plugin
+					// disposal reaches its persisted drain task. Startup reconciliation
+					// removes stale task rows, so this is expected lifecycle cleanup—not
+					// a user-facing runtime failure or repeat-escalation candidate.
+					return;
+				}
+				runtime.reportError("TaskDrain.dispose", err, { taskId });
+			});
 			this.taskId = null;
 		}
 		// Runtime has no unregisterTaskWorker; a later service may call registerTaskWorker again.

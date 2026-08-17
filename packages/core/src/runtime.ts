@@ -45,7 +45,7 @@ import {
 import {
 	INFERENCE_MARKS,
 	type InferenceTimingMeta,
-	markInference,
+	markInferenceOnce,
 	recordInferenceSpan,
 	setInferenceModelProvider,
 } from "./inference-timing";
@@ -6930,7 +6930,11 @@ export class AgentRuntime implements IAgentRuntime {
 						providerAttemptStartedOutput = true;
 					}
 					if (streamedText === "" && safeChunk.length > 0) {
-						markInference(INFERENCE_MARKS.firstToken);
+						// A turn may run multiple models concurrently (for example, a
+						// response handler alongside final-reply synthesis). Their model
+						// TTFT spans remain distinct; the turn headline is the first token
+						// produced by any model and therefore has idempotent ownership.
+						markInferenceOnce(INFERENCE_MARKS.firstToken);
 						const firstTokenAt =
 							typeof performance !== "undefined" &&
 							typeof performance.now === "function"
@@ -10381,6 +10385,9 @@ ${section_end}`;
 	 * with a `[scope]` prefix, records the failure in the bounded ring, emits
 	 * {@link EventType.ERROR_REPORTED}, and forwards it into the
 	 * AgentEventService `"error"` stream when that service is registered.
+	 * Diagnostic-only reports remain observable in those structured sinks but
+	 * log below error severity so expected lifecycle races do not masquerade as
+	 * failed user turns.
 	 *
 	 * Self-safe: never throws. A failure inside this method (or inside an
 	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning
@@ -10414,17 +10421,19 @@ ${section_end}`;
 					? (merged.roomId as UUID)
 					: undefined;
 
-			this.logger.error(
-				{
-					src: "agent",
-					scope,
-					code: normalized.code,
-					severity: normalized.severity,
-					context: merged,
-					err: normalized,
-				},
-				`[${scope}] ${normalized.message}`,
-			);
+			const logFields = {
+				src: "agent",
+				scope,
+				code: normalized.code,
+				severity: normalized.severity,
+				context: merged,
+				err: normalized,
+			};
+			if (merged?.diagnosticOnly === true) {
+				this.logger.debug(logFields, `[${scope}] ${normalized.message}`);
+			} else {
+				this.logger.error(logFields, `[${scope}] ${normalized.message}`);
+			}
 
 			const entry: ReportedError = {
 				scope,
@@ -10589,11 +10598,19 @@ ${section_end}`;
 			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error(
-				embeddingProvider
-					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
-					: "No TEXT_EMBEDDING model registered",
+			if (embeddingProvider) {
+				throw new Error(
+					`Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`,
+				);
+			}
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+				},
+				"No TEXT_EMBEDDING model registered; skipping dimension probe",
 			);
+			return;
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.

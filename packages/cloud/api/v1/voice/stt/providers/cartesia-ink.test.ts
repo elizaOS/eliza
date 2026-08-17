@@ -74,6 +74,9 @@ class FakeCartesiaInkSocket implements CartesiaInkWebSocket {
   }
 
   emitError(): void {
+    if (this.listeners.error.size === 0) {
+      throw new Error("Unhandled error event");
+    }
     for (const listener of this.listeners.error) listener(new Event("error"));
   }
 
@@ -250,7 +253,7 @@ describe("Cartesia Ink realtime adapter", () => {
     expect(socket.listeners.message.size).toBe(0);
   });
 
-  it("cancels idempotently and removes protocol listeners", () => {
+  it("cancels idempotently, removes protocol listeners, and absorbs a late socket error", () => {
     const controller = new AbortController();
     const socket = new FakeCartesiaInkSocket();
     const events: CartesiaInkRealtimeEvent[] = [];
@@ -264,12 +267,16 @@ describe("Cartesia Ink realtime adapter", () => {
     controller.abort();
     session.cancel("second-cancel");
     socket.emitMessage(JSON.stringify({ type: "turn.start" }));
+    expect(() => socket.emitError()).not.toThrow();
 
     expect(socket.closeCalls).toEqual([{ code: 1000, reason: "cancelled" }]);
     expect(events).toMatchObject([
       { type: "close", code: 1000, reason: "cancelled", wasClean: true },
     ]);
     expect(socket.listeners.message.size).toBe(0);
+    expect(socket.listeners.open.size).toBe(0);
+    expect(socket.listeners.close.size).toBe(0);
+    expect(socket.listeners.error.size).toBe(1);
     expect(() =>
       session.sendAudioChunk(new Uint8Array(CARTESIA_INK_CHUNK_BYTES)),
     ).toThrow(CartesiaInkConnectionError);

@@ -69,6 +69,8 @@ interface ProviderScript extends ProviderTurnScript {
 	) => void;
 	/** Holds the first Stage-1 result so tests can prove sealed Phase-2 overlap. */
 	stage1Gate?: Promise<void>;
+	/** Holds Phase 2 so tests can prove a complete Stage-1 reply never waits for it. */
+	phase2Gate?: Promise<void>;
 	speculativeReply?: boolean;
 	onModelCall?: (modelType: string) => void;
 	textToSpeech?: (
@@ -286,6 +288,7 @@ function createHarness(script: ProviderScript): Harness {
 				if (!turnScript.providerChunks) {
 					throw new Error("Unexpected TEXT_LARGE call");
 				}
+				if (script.phase2Gate) await script.phase2Gate;
 
 				let accumulated = "";
 				const guardedStream =
@@ -904,7 +907,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 	});
 
 	it("routes browser realtime VOICE_DM through private Stage 1 and committed TEXT_LARGE streaming", async () => {
-		const brief = "Answer the browser realtime voice request directly.";
+		const brief = "Cover both browser voice authority details";
 		const terminal =
 			"Browser realtime voice uses committed streaming. Native voice authority remains separate.";
 		const harness = createHarness({
@@ -946,6 +949,18 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 			"internal",
 		);
 		const realtimeStage1 = modelParams(harness, ModelType.RESPONSE_HANDLER);
+		expect(realtimeStage1?.maxTokens).toBe(512);
+		expect(realtimeStage1?.omitMaxTokens).toBe(false);
+		const realtimeReplyTextSchema = (
+			realtimeStage1?.tools as
+				| Array<{
+						parameters?: {
+							properties?: { replyText?: { maxLength?: number } };
+						};
+				  }>
+				| undefined
+		)?.[0]?.parameters?.properties?.replyText;
+		expect(realtimeReplyTextSchema?.maxLength).toBe(240);
 		const realtimeResponseSkeleton = realtimeStage1?.responseSkeleton as
 			| { spans?: Array<{ key?: string }> }
 			| undefined;
@@ -964,6 +979,61 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(JSON.stringify(result)).not.toContain(brief);
 	});
 
+	it("ships a complete safe Gemma voice answer without waiting for a slower speculative GLM draft", async () => {
+		const phase2Gate = createDeferred<void>();
+		const phase2Started = createDeferred<void>();
+		const stage1Answer =
+			"The fast final-ready answer can be spoken immediately.";
+		const privateDraft = "A slower expansion that must be discarded.";
+		const harness = createHarness({
+			speculativeReply: true,
+			stage1Brief: stage1Answer,
+			providerChunks: [privateDraft],
+			terminalText: privateDraft,
+			phase2Gate: phase2Gate.promise,
+			onModelCall: (modelType) => {
+				if (modelType === ModelType.TEXT_LARGE) phase2Started.resolve();
+			},
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"Give me the concise spoken answer.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const pending = harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await phase2Started.promise;
+		const result = await pending;
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(modelTypes(harness)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_LARGE,
+		]);
+		expect(streamEvents).toEqual([]);
+		expect(result.responseContent?.text).toBe(stage1Answer);
+		expect(deliveredTexts(deliveries)).toEqual([stage1Answer]);
+		expect(persistedAssistantTexts(harness)).toEqual([stage1Answer]);
+		expect(JSON.stringify({ result, deliveries })).not.toContain(privateDraft);
+
+		phase2Gate.resolve();
+		await Promise.resolve();
+	});
+
 	it("starts sealed GLM synthesis while Gemma Stage 1 is still pending and publishes only after approval", async () => {
 		const stage1Gate = createDeferred<void>();
 		const phase2Started = createDeferred<void>();
@@ -971,7 +1041,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 			"The safe draft was computed in parallel and published only after routing approved it.";
 		const harness = createHarness({
 			speculativeReply: true,
-			stage1Brief: "Approve the direct static answer.",
+			stage1Brief: "Explain the approved static answer with context",
 			providerChunks: [
 				"The safe draft was computed in parallel",
 				" and published only after routing approved it.",
@@ -1078,7 +1148,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		const speculativeFailure = new Error("sealed draft provider failed");
 		const terminal = "The authoritative fallback still completes safely.";
 		const first: ProviderTurnScript = {
-			stage1Brief: "Give the safe direct fallback answer.",
+			stage1Brief: "Expand the safe fallback answer with context",
 			providerChunks: [],
 			providerError: speculativeFailure,
 		};
@@ -1132,7 +1202,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		const phase2Started = createDeferred<void>();
 		const forbidden = "INTERRUPTED_SPECULATIVE_BYTES_MUST_STAY_PRIVATE";
 		const harness = createHarness({
-			stage1Brief: "This route never reaches approval.",
+			stage1Brief: "Explain the interrupted route with context",
 			providerChunks: [forbidden],
 			terminalText: forbidden,
 			stage1Gate: stage1Gate.promise,
@@ -1293,6 +1363,12 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		await drainPostDeliveryTasks(harness.runtime);
 
 		expect(modelTypes(harness)).toEqual([ModelType.RESPONSE_HANDLER]);
+		expect(
+			modelParams(harness, ModelType.RESPONSE_HANDLER)?.maxTokens,
+		).toBeUndefined();
+		expect(
+			modelParams(harness, ModelType.RESPONSE_HANDLER)?.omitMaxTokens,
+		).toBe(true);
 		expect(streamEvents).toEqual([]);
 		expect(result.responseContent?.text).toBe(stage1Answer);
 		expect(deliveredTexts(deliveries)).toEqual([stage1Answer]);
@@ -2057,7 +2133,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		);
 	});
 
-	it("preserves the committed-stream Stage-1 brief invariant and bound through an optimized prompt", async () => {
+	it("preserves the committed-stream Stage-1 final-ready answer invariant and bound through an optimized prompt", async () => {
 		const maximalBrief = Array.from("bounded factual detail ".repeat(30))
 			.slice(0, 240)
 			.join("");
@@ -2088,9 +2164,11 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		});
 		expect(stage1Input).toContain("OPTIMIZED_STAGE1_SENTINEL");
 		expect.soft(stage1Input).toContain("## Committed Direct Reply Override");
-		expect.soft(stage1Input).toContain("concise factual response brief");
+		expect
+			.soft(stage1Input)
+			.toContain("concise, natural, final-ready spoken answer");
 		expect.soft(stage1Input).toContain("target 120 characters or fewer");
-		expect.soft(stage1Input).toContain("never the complete user-visible prose");
+		expect.soft(stage1Input).toContain("expands it only when it is incomplete");
 		const phase2 = modelParams(harness, ModelType.TEXT_LARGE);
 		const briefSegment = (
 			phase2?.promptSegments as Array<{ content?: unknown }> | undefined
@@ -2120,7 +2198,7 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 
 		const result = await harness.service.handleMessage(
 			harness.runtime,
-			harness.makeMessage("Reply with exactly one word: PONG"),
+			harness.makeMessage("Reply with exactly PONG and nothing else."),
 			async (content) => {
 				deliveries.push(content);
 				return [];
@@ -2134,6 +2212,12 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		await drainPostDeliveryTasks(harness.runtime);
 
 		expect(modelTypes(harness)).toEqual([ModelType.RESPONSE_HANDLER]);
+		expect(
+			modelParams(harness, ModelType.RESPONSE_HANDLER)?.maxTokens,
+		).toBeUndefined();
+		expect(
+			modelParams(harness, ModelType.RESPONSE_HANDLER)?.omitMaxTokens,
+		).toBe(true);
 		expect(streamEvents).toEqual([]);
 		expect(result.responseContent?.text).toBe("PONG");
 		expect(deliveredTexts(deliveries)).toEqual(["PONG"]);

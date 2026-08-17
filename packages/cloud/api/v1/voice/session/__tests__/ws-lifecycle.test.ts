@@ -522,8 +522,8 @@ function enqueueCommittedSpeechPrefix(
 
   return {
     canonical,
-    committedChars: sentences.reduce(
-      (total, sentence) => total + sentence.length,
+    committedChars: sources.reduce(
+      (total, source) => total + source.length,
       0,
     ),
   };
@@ -1588,16 +1588,16 @@ describe("voice-session WS lifecycle", () => {
     expect(requests).toEqual([
       expect.objectContaining({ transcript: first, continue: true }),
       expect.objectContaining({
-        transcript: second.trim(),
+        transcript: second,
         continue: true,
       }),
       expect.objectContaining({
-        transcript: third.trim(),
+        transcript: third,
         continue: false,
       }),
     ]);
-    expect(requests.map((entry) => entry.transcript).join(" ")).toBe(
-      `${first} ${second.trim()} ${third.trim()}`,
+    expect(requests.map((entry) => entry.transcript).join("")).toBe(
+      `${first}${second}${third}`,
     );
     expect(
       requests.reduce(
@@ -1609,7 +1609,7 @@ describe("voice-session WS lifecycle", () => {
       expect.objectContaining({
         t: "assistant_output",
         displayMarkdown: `${first}${second}${third}`,
-        speechText: third.trim(),
+        speechText: third,
       }),
     );
 
@@ -1618,18 +1618,22 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({
         t: "usage",
-        ttsChars: first.length + second.trim().length + third.trim().length,
+        ttsChars: first.length + second.length + third.length,
       }),
     );
   });
 
   test.each([
-    ["near-full committed budget", 37, 570, 30],
+    ["near-full committed budget", 37, 572, 28],
     ["zero remaining budget", 39, 600, 0],
   ])(
     "does not project a terminal suffix past the %s",
     async (_case, safeWordRepetitions, expectedCommittedChars, expectedRemaining) => {
       const sentence = `${"safe ".repeat(safeWordRepetitions)}okay.`;
+      const sentences =
+        expectedRemaining === 0
+          ? [sentence, `${"safe ".repeat(39)}yes.`, `${"safe ".repeat(39)}yes.`]
+          : [sentence, sentence, sentence];
       const suffix =
         " This terminal suffix is deliberately long enough to cross the remaining turn budget.";
       const controlled = makeControlledCanonicalChunkFetch();
@@ -1642,7 +1646,7 @@ describe("voice-session WS lifecycle", () => {
 
       const { canonical, committedChars } = enqueueCommittedSpeechPrefix(
         controlled,
-        [sentence, sentence, sentence],
+        sentences,
         suffix,
       );
       expect(committedChars).toBe(expectedCommittedChars);
@@ -1663,9 +1667,9 @@ describe("voice-session WS lifecycle", () => {
         .filter((entry) => typeof entry.transcript === "string");
       expect(requests).toHaveLength(3);
       expect(requests.map((entry) => entry.transcript)).toEqual([
-        sentence,
-        sentence,
-        sentence,
+        sentences[0],
+        ` ${sentences[1]}`,
+        ` ${sentences[2]}`,
       ]);
       expect(
         requests.slice(0, 2).every((entry) => entry.continue === true),
@@ -1673,7 +1677,7 @@ describe("voice-session WS lifecycle", () => {
       expect(requests.at(-1)).toMatchObject({
         continue: false,
       });
-      expect(requests.at(-1)?.transcript).toBe(sentence);
+      expect(requests.at(-1)?.transcript).toBe(` ${sentences[2]}`);
       expect(cartesia.sentText()).not.toContain(suffix.trim());
       expect(cartesia.sentText().length).toBe(expectedCommittedChars);
       expect(cartesia.sentText().length).toBeLessThanOrEqual(600);
@@ -1709,6 +1713,7 @@ describe("voice-session WS lifecycle", () => {
 
   test("drains delayed committed audio before settling a budget-complete turn", async () => {
     const sentence = `${"safe ".repeat(39)}okay.`;
+    const shorterSentence = `${"safe ".repeat(39)}yes.`;
     const suffix =
       " This terminal suffix must remain display-only after the speech budget is exhausted.";
     const controlled = makeControlledCanonicalChunkFetch();
@@ -1725,7 +1730,7 @@ describe("voice-session WS lifecycle", () => {
 
     enqueueCommittedSpeechPrefix(
       controlled,
-      [sentence, sentence, sentence],
+      [sentence, shorterSentence, shorterSentence],
       suffix,
     );
     controlled.finish();
@@ -1745,7 +1750,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests.at(-1)).toMatchObject({
       continue: false,
     });
-    expect(requests.at(-1)?.transcript).toBe(sentence);
+    expect(requests.at(-1)?.transcript).toBe(` ${shorterSentence}`);
     expect(requests.some((entry) => entry.cancel === true)).toBe(false);
     expect(cartesia.closed).toBe(false);
     expect(client.audioFrames).toHaveLength(0);
@@ -2456,6 +2461,39 @@ describe("voice-session WS lifecycle", () => {
       expect.objectContaining({
         transcript: "A direct answer after the acknowledgement.",
         continue: false,
+      }),
+    ]);
+  });
+
+  test("rapid slow turns do not repeat the generic acknowledgement", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([], { hang: true }),
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "first slow request");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "assistant_progress"),
+    ).toHaveLength(1);
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "second slow request");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "assistant_progress"),
+    ).toEqual([
+      expect.objectContaining({
+        text: "Yeah, one sec.",
       }),
     ]);
   });
@@ -3237,6 +3275,7 @@ describe("voice-session WS lifecycle", () => {
       (frame) => frame.t === "speaking_start",
     )?.traceId;
     expect(responseTrace).toBeDefined();
+    if (!responseTrace) throw new Error("expected speaking_start trace id");
 
     ink.emitTurn("turn.start");
     ink.emitTurn("turn.update", "mhm");

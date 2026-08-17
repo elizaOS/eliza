@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 describe("ServingProviderChip", () => {
-  it("names Eliza Cloud when Cloud is serving", async () => {
+  it("distinguishes local runtime from Cloud-served inference", async () => {
     modelsConfig.activeChat = {
       provider: "elizacloud",
       family: "ELIZAOS_CLOUD",
@@ -70,8 +70,10 @@ describe("ServingProviderChip", () => {
     };
     render(<ServingProviderChip />);
     await waitFor(() => {
-      expect(screen.getByTestId("serving-provider-chip").textContent).toBe(
-        "Eliza Cloud",
+      const chip = screen.getByTestId("serving-provider-chip");
+      expect(chip.textContent).toBe("Cloud inference");
+      expect(chip.getAttribute("title")).toBe(
+        "The agent runs on this device; models are served through Eliza Cloud",
       );
     });
   });

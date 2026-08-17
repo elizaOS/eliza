@@ -1,15 +1,14 @@
 # @elizaos/plugin-embeddings
 
-A provider-agnostic ("bring your own") `TEXT_EMBEDDING` provider for elizaOS agents. Point one set of `EMBEDDING_*` variables at **any** OpenAI-compatible `/embeddings` endpoint and get embeddings independently of your chat provider.
+A canonical `TEXT_EMBEDDING` provider for elizaOS agents. Point `EMBEDDING_BASE_URL` at an OpenAI-compatible endpoint serving `thenlper/gte-small`; every first-party path uses the same 384-dimensional vector space independently of the chat provider.
 
 ## Why
 
 Embeddings power memory, recall, and semantic search — but they don't have to come from the same provider as the chat brain. If your agent runs on a provider that serves no good embeddings (e.g. **Claude**, which has no embeddings API, or **Cerebras**, which serves none), this plugin lets you keep your chat brain where it is and route embeddings to something that does it well:
 
-- a personal **OpenAI** key (`text-embedding-3-small` / `-large`)
-- **Eliza Cloud** embeddings
-- **Voyage AI** (via an OpenAI-compatible proxy)
-- a local **TEI**, **Infinity**, **vLLM**, or **LM Studio** server
+- local gte-small through `plugin-local-inference`;
+- the managed Eliza Cloud node sidecar; or
+- a local **TEI**, **Infinity**, **vLLM**, or compatible server serving `thenlper/gte-small`.
 
 ## Purely additive
 
@@ -50,25 +49,19 @@ All variables are read via `runtime.getSetting(key)` first, then `process.env`, 
 |---|---|---|
 | `EMBEDDING_BASE_URL` | _(none)_ | OpenAI-compatible `/embeddings` base URL. **Required** for real embedding calls — no default endpoint. |
 | `EMBEDDING_API_KEY` | _(none)_ | Bearer token. Omit for local servers that need no auth. |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Model id sent as the request `model` field. |
+| `EMBEDDING_MODEL` | `thenlper/gte-small` | Canonical model id. Other model families fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | _(none)_ | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once when the primary endpoint fails. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | _(none)_ | Bearer token for the fallback endpoint. Omit for fallback servers that need no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
-| `EMBEDDING_DIMENSIONS` | `1536` | Vector width (see below). Sent as the request `dimensions` field when explicitly set. |
+| `EMBEDDING_DIMENSIONS` | `384` | Canonical gte-small vector width. Other values fail closed. |
 | `EMBEDDING_BROWSER_URL` | _(none)_ | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent only when this is set, keeping the key off the client. |
 
 Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` activates the plugin.
 Fallback-only settings do **not** activate it and cannot replace a missing primary base URL.
 
-### Supported dimensions
+### Canonical model and dimensions
 
-`EMBEDDING_DIMENSIONS` must be one of:
-
-```
-384, 512, 768, 1024, 1536, 2048, 3072
-```
-
-Any other value throws.
+The endpoint must serve gte-small and return exactly 384 values. The handler rejects a different configured model, a different configured width, or a wrong-width response before vectors can be persisted. The SQL schema retains legacy width columns only so boot reconciliation can identify and replace stale vectors.
 
 ### ⚠️ Keep the dimension stable per database
 
@@ -76,20 +69,11 @@ The embedding dimension is baked into your database's vector schema. Changing `E
 
 ## Example `.env`
 
-Personal OpenAI key for embeddings, while chat stays on another provider:
-
-```
-EMBEDDING_BASE_URL=https://api.openai.com/v1
-EMBEDDING_API_KEY=sk-...
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSIONS=1536
-```
-
 Local TEI / Infinity / vLLM server (no auth):
 
 ```
 EMBEDDING_BASE_URL=http://localhost:8080/v1
-EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+EMBEDDING_MODEL=thenlper/gte-small
 EMBEDDING_DIMENSIONS=384
 ```
 
@@ -97,10 +81,9 @@ Local primary with remote fallback:
 
 ```
 EMBEDDING_BASE_URL=http://localhost:8080/v1
-EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-EMBEDDING_FALLBACK_BASE_URL=https://api.openai.com/v1
-EMBEDDING_FALLBACK_API_KEY=sk-...
-EMBEDDING_FALLBACK_MODEL=text-embedding-3-small
+EMBEDDING_MODEL=thenlper/gte-small
+EMBEDDING_FALLBACK_BASE_URL=https://embedding-sidecar.example/v1
+EMBEDDING_FALLBACK_MODEL=thenlper/gte-small
 EMBEDDING_DIMENSIONS=384
 ```
 

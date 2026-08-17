@@ -27,7 +27,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
     json: async () => ({
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
-      model: "text-embedding-3-small",
+      model: "thenlper/gte-small",
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     text: async () => "",
@@ -83,17 +83,17 @@ describe("plugin-embeddings entrypoint", () => {
         {},
         createRuntime({
           EMBEDDING_API_KEY: "key-only",
-          EMBEDDING_DIMENSIONS: "768",
+          EMBEDDING_DIMENSIONS: "384",
         })
       )
     ).resolves.toBeUndefined();
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/EMBEDDING_API_KEY is set/));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringMatching(/dimensions=768/));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringMatching(/dimensions=384/));
   });
 
   it("wires TEXT_EMBEDDING to the local primary endpoint before any configured fallback", async () => {
-    const expected = vectorOf(512);
+    const expected = vectorOf(384);
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([expected]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
@@ -101,11 +101,11 @@ describe("plugin-embeddings entrypoint", () => {
       createRuntime({
         EMBEDDING_BASE_URL: "https://local.example/v1",
         EMBEDDING_API_KEY: "local-key",
-        EMBEDDING_DIMENSIONS: "512",
-        EMBEDDING_MODEL: "local-model",
+        EMBEDDING_DIMENSIONS: "384",
+        EMBEDDING_MODEL: "thenlper/gte-small",
         EMBEDDING_FALLBACK_BASE_URL: "https://remote.example/v1",
         EMBEDDING_FALLBACK_API_KEY: "remote-key",
-        EMBEDDING_FALLBACK_MODEL: "remote-model",
+        EMBEDDING_FALLBACK_MODEL: "thenlper/gte-small",
       }),
       { text: "local first" }
     );
@@ -116,9 +116,9 @@ describe("plugin-embeddings entrypoint", () => {
     expect(url).toBe("https://local.example/v1/embeddings");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer local-key");
     expect(JSON.parse(init.body as string)).toMatchObject({
-      model: "local-model",
+      model: "thenlper/gte-small",
       input: "local first",
-      dimensions: 512,
+      dimensions: 384,
     });
   });
 
@@ -133,12 +133,12 @@ describe("plugin-embeddings entrypoint", () => {
       embeddingsPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(
         createRuntime({
           EMBEDDING_BASE_URL: "https://local.example/v1",
-          EMBEDDING_DIMENSIONS: "1536",
+          EMBEDDING_DIMENSIONS: "384",
           EMBEDDING_FALLBACK_BASE_URL: "https://remote.example/v1",
         }),
         { text: "fallback mismatch" }
       )
-    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 1536/i);
+    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 384/i);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

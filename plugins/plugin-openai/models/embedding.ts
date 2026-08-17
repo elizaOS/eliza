@@ -1,12 +1,13 @@
 /**
  * `handleTextEmbedding`: calls the OpenAI embeddings endpoint and validates the
- * returned vector dimension against `VECTOR_DIMS`. In Cerebras mode without an
- * explicit embedding endpoint it substitutes a deterministic local hash
- * embedding (Cerebras serves no embeddings), keeping recall functional when no
- * real embedding server is reachable.
+ * returned vector dimension against the canonical gte-small/384 contract.
+ * Cerebras serves no embeddings, so a Cerebras text configuration without an
+ * explicit embedding endpoint fails closed and lets the runtime select the
+ * local gte-small provider. It never fabricates hash vectors.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  assertCanonicalEmbeddingConfig,
   logger,
   ModelType,
   toWellFormedUnicode,
@@ -22,7 +23,6 @@ import {
   getEmbeddingModel,
   getSetting,
   isBrowser,
-  isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -66,58 +66,19 @@ function hasExplicitEmbeddingDimensions(runtime: IAgentRuntime): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function shouldUseLocalEmbeddingFallback(runtime: IAgentRuntime): boolean {
-  return isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime);
-}
-
-function hashFeature(feature: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < feature.length; i += 1) {
-    hash ^= feature.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function createDeterministicEmbedding(text: string, dimension: VectorDimension): number[] {
-  const vector = new Array(dimension).fill(0);
-  const normalized = text.toLowerCase();
-  const tokens = normalized.match(/[a-z0-9]+(?:[_-][a-z0-9]+)*/g) ?? [normalized];
-
-  const addFeature = (feature: string, weight: number): void => {
-    const hash = hashFeature(feature);
-    const idx = hash % dimension;
-    const sign = (hash & 1) === 0 ? 1 : -1;
-    vector[idx] += sign * weight;
-
-    const secondHash = hashFeature(`b:${feature}`);
-    const secondIdx = secondHash % dimension;
-    const secondSign = (secondHash & 1) === 0 ? 1 : -1;
-    vector[secondIdx] += secondSign * weight * 0.5;
-  };
-
-  tokens.forEach((token, index) => {
-    addFeature(token, 1);
-    if (index > 0) {
-      addFeature(`${tokens[index - 1]} ${token}`, 0.35);
-    }
-  });
-  addFeature(normalized.slice(0, 512), 0.15);
-
-  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-  if (norm === 0) {
-    vector[0] = 1;
-    return vector;
-  }
-  return vector.map((value) => value / norm);
-}
-
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingModel = getEmbeddingModel(runtime);
   const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  assertCanonicalEmbeddingConfig(embeddingModel, embeddingDimension, "OPENAI_EMBEDDING_*");
+  if (!hasExplicitEmbeddingEndpoint(runtime)) {
+    throw new Error(
+      "OPENAI_EMBEDDING_URL is required for canonical gte-small embeddings. " +
+        "Cerebras/OpenAI text credentials are not embedding providers; configure the local or sidecar endpoint."
+    );
+  }
   const signal = extractSignal(params);
 
   const text = extractText(params);
@@ -146,11 +107,6 @@ export async function handleTextEmbedding(
   // Wire-boundary guarantee: lone surrogates in the JSON body 400 on strict
   // provider parsers (#18025).
   trimmedText = toWellFormedUnicode(trimmedText);
-
-  if (shouldUseLocalEmbeddingFallback(runtime)) {
-    logger.debug("[OpenAI] Using deterministic local embedding fallback for Cerebras mode");
-    return createDeterministicEmbedding(trimmedText, embeddingDimension);
-  }
 
   const baseURL = getEmbeddingBaseURL(runtime);
   const url = `${baseURL}/embeddings`;

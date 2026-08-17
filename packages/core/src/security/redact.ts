@@ -144,6 +144,8 @@ const NON_SECRET_TOKEN_METADATA_KEYS = new Set([
 	"totaltokens",
 ]);
 
+const SENSITIVE_EXACT_KEYS = new Set(["encryptionsalt"]);
+
 /**
  * Whether an object key names a credential and its value must be fully masked.
  * Matches the substrings in {@link SENSITIVE_KEY_SUBSTRINGS} plus `token`
@@ -153,6 +155,9 @@ const NON_SECRET_TOKEN_METADATA_KEYS = new Set([
 export function isSensitiveKeyName(key: string): boolean {
 	const lower = key.toLowerCase();
 	const normalized = lower.replace(/[_-]/g, "");
+	if (SENSITIVE_EXACT_KEYS.has(normalized)) {
+		return true;
+	}
 	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) {
 		return false;
 	}

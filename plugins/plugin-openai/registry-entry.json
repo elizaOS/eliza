@@ -80,10 +80,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-3-small",
+      "default": "thenlper/gte-small",
       "label": "Embedding Model",
       "help": "Identifier of the model to use for generating text embeddings.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "thenlper/gte-small",
       "advanced": false
     },
     "OPENAI_EMBEDDING_URL": {
@@ -91,7 +91,7 @@
       "required": false,
       "sensitive": false,
       "label": "Embedding Url",
-      "help": "Custom base URL for the OpenAI embeddings endpoint.",
+      "help": "Required explicit OpenAI-compatible endpoint serving thenlper/gte-small at 384 dimensions.",
       "advanced": false
     },
     "OPENAI_EMBEDDING_API_KEY": {
@@ -106,9 +106,9 @@
       "type": "number",
       "required": false,
       "sensitive": false,
-      "default": "1536",
+      "default": "384",
       "label": "Embedding Dimensions",
-      "help": "Number of dimensions for the returned embedding vectors.",
+      "help": "Canonical gte-small vector width; values other than 384 fail closed.",
       "advanced": false
     },
     "OPENAI_IMAGE_DESCRIPTION_MODEL": {

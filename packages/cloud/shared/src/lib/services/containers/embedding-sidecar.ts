@@ -44,6 +44,9 @@ import {
  * name on the shared bridge network.
  */
 export const EMBEDDING_SIDECAR_CONTAINER_NAME = "eliza-embedding-sidecar";
+/** OpenAI-compatible base URL visible to managed agent containers. */
+export const EMBEDDING_SIDECAR_AGENT_BASE_URL =
+  `http://${EMBEDDING_SIDECAR_CONTAINER_NAME}:80/v1` as const;
 
 /** Host bind-mount for the TEI model cache so weights survive re-creates. */
 const MODEL_CACHE_HOST_DIR = "/data/embedding-models";

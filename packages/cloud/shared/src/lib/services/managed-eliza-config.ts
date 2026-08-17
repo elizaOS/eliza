@@ -1,11 +1,13 @@
 // Coordinates cloud service managed eliza config behavior behind route handlers.
 import crypto from "node:crypto";
+import { CANONICAL_EMBEDDING_DIMENSION, CANONICAL_EMBEDDING_MODEL } from "@elizaos/core";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import type { DbTransaction } from "../../db/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
+import { EMBEDDING_SIDECAR_AGENT_BASE_URL } from "./containers/embedding-sidecar";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
@@ -198,47 +200,29 @@ export function mergeManagedPublicBaseUrl(
 }
 
 /**
- * The cloud-managed inference defaults: the embedding endpoint + the cloud
- * embedding handler's OUTPUT dimensions, and the Cerebras-direct small/large
+ * The cloud-managed inference defaults: the node-local canonical embedding
+ * sidecar contract and the Cerebras-direct small/large
  * model pins. Pure and single-source-of-truth - both the provision path (via
  * prepareManagedElizaBaseEnvironment) and the blue/green fleet-upgrade path
  * (eliza-sandbox.ts) backfill these onto an agent's stored env so an agent
- * provisioned BEFORE these pins landed heals on upgrade (#8434). An explicit
- * per-agent value always wins.
- *
- * Local-primary restore: when a managed lean-chat agent opts in with
- * ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1, keep cloud text generation defaults but
- * stop pinning the cloud embedding handler as primary. The local gte-small
- * handler emits 384-d vectors, so the managed defaults also move the embedding
- * dimension hints to 384 for that agent. This is deliberately per-agent and
- * flag-gated: existing 1536-d stores must be re-embedded/backfilled before the
- * flag is enabled or recall can degrade (#9911 class).
- *
- * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
- * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
- * EMITS when cloud embeddings are enabled (1536 by default, 384 for the
- * local-primary opt-in so all probes/storage hints agree). They do NOT size the
- * plugin-sql storage column - plugin-sql never reads either var. The storage
- * column width is decided at boot by runtime.ensureEmbeddingDimension(), which
- * probes the registered embedding handler's actual vector length and snaps the
- * column to that dimension. That probe must run before bundled docs are seeded;
- * that boot ordering was the real no-memory bug (#8769) - fixed in
- * packages/agent/src/runtime/eliza.ts, not here.
+ * provisioned BEFORE these pins landed heals on upgrade (#8434). Embedding
+ * identity and width are deliberately forced rather than preserved: allowing a
+ * stale per-agent 1536 override would mix incompatible vector spaces. Runtime
+ * boot probes 384 and reclaims/re-embeds stale-width rows before recall.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
 ): Record<string, string> {
-  const localPrimaryEmbeddings =
-    existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS === "1" &&
-    existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
-  const embeddingDimension = localPrimaryEmbeddings ? "384" : "1536";
+  const embeddingDimension = String(CANONICAL_EMBEDDING_DIMENSION);
   return {
-    ...(localPrimaryEmbeddings ? { ELIZAOS_CLOUD_USE_EMBEDDINGS: "false" } : {}),
-    ELIZAOS_CLOUD_EMBEDDING_URL:
-      existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
-    EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? embeddingDimension,
-    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
-      existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension,
+    ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+    ELIZA_EMBEDDING_PROVIDER: "embeddings",
+    EMBEDDING_BASE_URL: EMBEDDING_SIDECAR_AGENT_BASE_URL,
+    EMBEDDING_MODEL: CANONICAL_EMBEDDING_MODEL,
+    EMBEDDING_DIMENSIONS: embeddingDimension,
+    EMBEDDING_DIMENSION: embeddingDimension,
+    ELIZAOS_CLOUD_EMBEDDING_MODEL: CANONICAL_EMBEDDING_MODEL,
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: embeddingDimension,
     ELIZAOS_CLOUD_SMALL_MODEL:
       existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     ELIZAOS_CLOUD_LARGE_MODEL:
@@ -300,17 +284,11 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
-      // Cloud-managed inference defaults: by default pin embeddings to the
-      // elizacloud Worker base (whose POST /embeddings serves 1536-dim
-      // text-embedding-3-small - without it the plugin falls back to the
-      // Cerebras/BitRouter text base with no /embeddings route -> 503), pin
-      // BOTH embedding-output dimensions to the handler's output width, and pin
-      // the healthy Cerebras-direct small/large models so the container never
-      // resolves a tier to the `:nitro` default. For the explicit
-      // ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 rollout lane, the helper yields the
-      // cloud embedding slot and uses 384-dim hints so local gte-small,
-      // ensureEmbeddingDimension, and storage agree. Each value still honors an
-      // explicit per-agent override in existingEnv.
+      // Cloud-managed inference defaults: every managed agent uses the
+      // supervised node-local gte-small sidecar at 384 dimensions. These keys
+      // intentionally override stale per-agent embedding settings; mixing model
+      // families or widths corrupts similarity semantics even when SQL accepts
+      // both vector columns. Text model overrides remain per-agent.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;

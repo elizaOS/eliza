@@ -1,5 +1,8 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
   logger,
   ModelType,
   timeInferenceSpan,
@@ -30,6 +33,29 @@ const EMBED_MAX_ATTEMPTS = 2;
 const EMBED_BACKOFF_BASE_MS = 1_000;
 export const EMBED_BACKOFF_CAP_MS = 8_000;
 const EMBED_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * A turn-owned embedding may still be in flight when Stop/barge-in revokes the
+ * turn. That is successful cancellation, not a provider failure. Keep the
+ * original rejection identity for the queue/controller while avoiding an
+ * error-level log that can be mistaken for a failed user turn.
+ */
+function isExpectedEmbeddingCancellation(
+  error: unknown,
+  signal?: AbortSignal
+): boolean {
+  if (signal?.aborted && (signal.reason === undefined || signal.reason === error)) {
+    return true;
+  }
+  if (!(error instanceof Error)) return false;
+  const code = (error as Error & { code?: unknown }).code;
+  return (
+    code === "TURN_ABORTED" ||
+    error.name === "TurnAbortedError" ||
+    error.name === "AbortError" ||
+    error.message.startsWith("Turn aborted:")
+  );
+}
 
 /**
  * Backoff before the next embedding attempt. Exponential (base·2^attempt) as a
@@ -91,10 +117,14 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   const embeddingModelName = getSetting(
     runtime,
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
-    "text-embedding-3-small"
-  );
+    CANONICAL_EMBEDDING_MODEL
+  ) ?? CANONICAL_EMBEDDING_MODEL;
   const embeddingDimension = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536",
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+      String(CANONICAL_EMBEDDING_DIMENSION)
+    ) || String(CANONICAL_EMBEDDING_DIMENSION),
     10
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
@@ -103,6 +133,11 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     logger.error(errorMsg);
     throw new Error(errorMsg);
   }
+  assertCanonicalEmbeddingConfig(
+    embeddingModelName,
+    embeddingDimension,
+    "ELIZAOS_CLOUD_EMBEDDING_*"
+  );
 
   return { embeddingModelName, embeddingDimension };
 }
@@ -390,7 +425,11 @@ export async function handleBatchTextEmbedding(
       // router can fall through to another provider; never persist marker/zero
       // vectors that would corrupt the embedding store (Commandment 8).
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
+      if (isExpectedEmbeddingCancellation(error, signal)) {
+        logger.debug("[BatchEmbeddings] Batch cancelled with its owning turn");
+      } else {
+        logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
+      }
       throw error instanceof Error ? error : new Error(message);
     }
   }

@@ -154,11 +154,18 @@ describe("GET /api/health database liveness", () => {
   });
 
   it("serves status and runtime introspection without treating optional health as fatal", async () => {
+    const rawSalt = "runtime-debug-sensitive-salt-marker";
+    const rawApiKey = "sk-runtime-debug-sensitive-key-marker";
     const circular: Record<string, unknown> = { name: "loop" };
     circular.self = circular;
     const runtime = {
       agentId: "agent-id",
       character: { name: "Debug Agent" },
+      settings: {
+        ENCRYPTION_SALT: rawSalt,
+        nested: { OPENAI_API_KEY: rawApiKey },
+        diagnostic: `provider rejected ${rawApiKey}`,
+      },
       plugins: [{ name: "plugin-a" }, { id: "plugin-b" }],
       actions: [{ name: "act" }],
       providers: [{ serviceType: "provider-kind" }],
@@ -170,6 +177,10 @@ describe("GET /api/health database liveness", () => {
             circular,
             new Map([["k", { nested: true }]]),
             new Set(["a", "b"]),
+            new Map([
+              ["CEREBRAS_API_KEY", rawApiKey],
+              ["safe", "visible"],
+            ]),
             Buffer.from("abcdef"),
             new Error("diagnostic"),
           ],
@@ -201,7 +212,7 @@ describe("GET /api/health database liveness", () => {
     const debug = makeContext(runtime);
     debug.ctx.pathname = "/api/runtime";
     debug.ctx.url = new URL(
-      "http://127.0.0.1/api/runtime?depth=5&maxArrayLength=3&maxObjectEntries=10&maxStringLength=64",
+      "http://127.0.0.1/api/runtime?depth=5&maxArrayLength=10&maxObjectEntries=10&maxStringLength=64",
     );
     await expect(handleHealthRoutes(debug.ctx)).resolves.toBe(true);
 
@@ -215,9 +226,14 @@ describe("GET /api/health database liveness", () => {
         providerCount: 1,
         evaluatorCount: 1,
         serviceTypeCount: 1,
-        serviceCount: 5,
+        serviceCount: 6,
       },
     });
     expect(debug.responses[0].data).toHaveProperty("sections.runtime");
+    const serializedDebug = JSON.stringify(debug.responses[0].data);
+    expect(serializedDebug).not.toContain(rawSalt);
+    expect(serializedDebug).not.toContain(rawApiKey);
+    expect(serializedDebug).toContain("[REDACTED]");
+    expect(serializedDebug).toContain("visible");
   });
 });

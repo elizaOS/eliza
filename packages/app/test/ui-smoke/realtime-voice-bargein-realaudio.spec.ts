@@ -189,12 +189,40 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
       ).toBe(false);
       await muteAfterSecondTurn;
 
+      const localInterruptIndex = consoleMessages.findIndex((message) =>
+        message.includes(
+          "[eliza][voice-capture] realtime:local_speech_start_confirmed",
+        ),
+      );
+      expect(localInterruptIndex).toBeGreaterThanOrEqual(0);
+      const hadAuthoritativeTextBeforeInterruption = consoleMessages
+        .slice(0, localInterruptIndex)
+        .some((message) =>
+          message.includes("[eliza][voice-capture] realtime:assistant_display"),
+        );
       const interruptedAssistantRow = assistantMessageRows
         .filter({ hasText: "Stopped" })
         .first();
-      await expect(interruptedAssistantRow).toBeVisible({ timeout: 30_000 });
-      const frozenInterruptedText = await interruptedAssistantRow.textContent();
-      expect(frozenInterruptedText?.trim()).toBeTruthy();
+      let frozenInterruptedText: string | null = null;
+      if (hadAuthoritativeTextBeforeInterruption) {
+        await expect(interruptedAssistantRow).toBeVisible({ timeout: 30_000 });
+        frozenInterruptedText = await interruptedAssistantRow.textContent();
+        expect(frozenInterruptedText?.trim()).toBeTruthy();
+      } else {
+        // The generic progress acknowledgement is captioned while audible but
+        // is deliberately not canonical answer/history content. Interrupting
+        // it must flush audio without fabricating a stopped assistant answer.
+        expect(
+          consoleMessages
+            .slice(0, localInterruptIndex)
+            .some((message) =>
+              message.includes(
+                "[eliza][voice-capture] realtime:assistant_progress",
+              ),
+            ),
+        ).toBe(true);
+        await expect(interruptedAssistantRow).toHaveCount(0);
+      }
 
       const replacementTraceLine = page
         .getByTestId("voice-capture-hud-line")
@@ -253,12 +281,25 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
         .poll(() => assistantMessageRows.count())
         .toBeGreaterThanOrEqual(1);
       expect(await assistantMessageRows.count()).toBeLessThanOrEqual(2);
-      await expect
-        .poll(() => interruptedAssistantRow.textContent(), {
-          message:
-            "an interrupted voice row must stay frozen while its replacement finishes",
-        })
-        .toBe(frozenInterruptedText);
+      const progressPreambleCount = consoleMessages.filter((message) =>
+        message.includes("[eliza][voice-capture] realtime:assistant_progress"),
+      ).length;
+      expect(
+        progressPreambleCount,
+        "rapid interrupted/replacement turns must not repeat generic filler",
+      ).toBeLessThanOrEqual(1);
+      await expect(
+        assistantMessageRows.filter({ hasText: "same issue a few times" }),
+        "normal voice interruption must never become an owner escalation reply",
+      ).toHaveCount(0);
+      if (frozenInterruptedText !== null) {
+        await expect
+          .poll(() => interruptedAssistantRow.textContent(), {
+            message:
+              "an interrupted voice row must stay frozen while its replacement finishes",
+          })
+          .toBe(frozenInterruptedText);
+      }
       const downloadPromise = page.waitForEvent("download");
       await page.getByTestId("voice-capture-hud-download").click();
       const download = await downloadPromise;

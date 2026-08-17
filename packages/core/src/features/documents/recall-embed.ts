@@ -52,13 +52,13 @@
  * a stable recall code so it remains eligible for runtime diagnostics and
  * escalation without turning a known missing capability into chat noise.
  *
- * There is deliberately NO app-level latency timeout here. A short, arbitrary
- * race on every healthy-but-slow embed would silently degrade vector recall to
- * keyword-only every turn — a feature-kill switch, not a circuit breaker.
- * Bounding a *hung* request is the embedding model handler's job (it owns a
- * real, cancelable request timeout); keeping that bound at the request layer
- * means a slow embed either completes (rich recall) or genuinely errors
- * (fail-open), with no silent middle ground.
+ * Interactive callers may provide a small `waitBudgetMs`. That budget bounds
+ * only how long the caller waits for optional semantic context; it does NOT
+ * abort the shared embed. The request keeps running in the turn cache, so a
+ * later caller can consume the result and the provider's real request timeout
+ * remains authoritative. This prevents a cold/rate-limited remote embedding
+ * service from holding first-token delivery hostage without turning transient
+ * slowness into a failed embedding or throwing away useful completed work.
  */
 
 import { toElizaError } from "../../errors";
@@ -252,7 +252,15 @@ function getTurnCache(
 export async function embedRecallQuery(
 	runtime: IAgentRuntime,
 	queryText: string,
-	options?: { messageId?: string; signal?: AbortSignal },
+	options?: {
+		messageId?: string;
+		signal?: AbortSignal;
+		/**
+		 * Maximum time this caller may wait for an uncached shared embed. Expiry
+		 * returns `null` (keyword-only recall) while the cached request continues.
+		 */
+		waitBudgetMs?: number;
+	},
 ): Promise<number[] | null> {
 	const signal = options?.signal ?? getStreamingContext()?.abortSignal;
 	if (signal?.aborted) {
@@ -345,7 +353,35 @@ export async function embedRecallQuery(
 	}
 
 	try {
-		const vector = await pending;
+		let vector: number[];
+		const waitBudgetMs = options?.waitBudgetMs;
+		if (
+			typeof waitBudgetMs === "number" &&
+			Number.isFinite(waitBudgetMs) &&
+			waitBudgetMs >= 0
+		) {
+			const waitStartedAt = performance.now();
+			const budgetExpired = Symbol("recall-embed-wait-budget-expired");
+			let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+			const settled = await Promise.race([
+				pending,
+				new Promise<typeof budgetExpired>((resolve) => {
+					budgetTimer = setTimeout(() => resolve(budgetExpired), waitBudgetMs);
+				}),
+			]);
+			if (budgetTimer !== undefined) clearTimeout(budgetTimer);
+			if (settled === budgetExpired) {
+				recordInferenceSpan(
+					"embedding-wait-budget:recall",
+					performance.now() - waitStartedAt,
+					{ outcome: "timeout", waitBudgetMs },
+				);
+				return null;
+			}
+			vector = settled;
+		} else {
+			vector = await pending;
+		}
 		// A handler that resolved to a non-array (e.g. undefined) failed to embed;
 		// report that as the fail-open null, not a garbage value.
 		return Array.isArray(vector) ? vector : null;

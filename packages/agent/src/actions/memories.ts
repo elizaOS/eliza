@@ -240,6 +240,7 @@ async function collectCandidates(
     roomId?: UUID;
     query?: string;
     limit: number;
+    excludeMemoryId?: UUID;
   },
 ): Promise<CandidateScan> {
   const tables: readonly MemoryType[] = scope.type
@@ -268,6 +269,10 @@ async function collectCandidates(
     const text = (c.memory.content as { text?: string } | undefined)?.text;
     return typeof text === "string" && text.trim().length > 0;
   });
+
+  if (scope.excludeMemoryId) {
+    filtered = filtered.filter((c) => c.memory.id !== scope.excludeMemoryId);
+  }
 
   if (scope.entityId) {
     const clusterIds = new Set<string>(
@@ -327,6 +332,7 @@ function describeScanWindow(scan: CandidateScan): string {
 
 async function doSearch(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const type =
@@ -359,7 +365,15 @@ async function doSearch(
     roomId: roomParam.ok ? roomParam.id : undefined,
     query,
   };
-  const scan = await collectCandidates(runtime, { ...scope, limit });
+  // The current user utterance is already persisted before actions run. It is
+  // evidence of what the user just asked, not evidence that the agent recalls
+  // an older fact. Excluding only that exact id prevents a recall query from
+  // "finding" itself while preserving genuinely older identical messages.
+  const scan = await collectCandidates(runtime, {
+    ...scope,
+    limit,
+    excludeMemoryId: message.id,
+  });
 
   const matchedInWindow = scan.matches.length;
   const items = scan.matches
@@ -653,7 +667,7 @@ export const memoryAction: Action = {
         case "create":
           return await doCreate(runtime, message, params);
         case "search":
-          return await doSearch(runtime, params);
+          return await doSearch(runtime, message, params);
         case "update":
           return await doUpdate(runtime, params);
         case "delete":

@@ -212,17 +212,6 @@ export function detectRuntimeModel(
 ): string | undefined {
   if (!runtime) return undefined;
 
-  // Who actually answered beats who was configured to. A character `model`
-  // pin is a request, not a receipt: with a cloud-proxy route and no live
-  // Cloud account the runtime falls through to another provider, and
-  // reporting the pin made /api/status claim "elizacloud" while local
-  // inference served every turn (elizaOS/eliza#20045 review).
-  const serving = lastServingTextProvider(runtime);
-  if (serving) return serving;
-
-  const configured = readCharacterModel(runtime);
-  if (configured) return configured;
-
   const routing = resolveServiceRoutingInConfig(
     (config ?? null) as Record<string, unknown> | null,
   );
@@ -231,6 +220,39 @@ export function detectRuntimeModel(
   );
   const llmText = routing?.llmText;
   const backend = normalizeFirstRunProviderId(llmText?.backend);
+
+  // Who actually answered beats who was configured to. A character `model`
+  // pin is a request, not a receipt: with a cloud-proxy route and no live
+  // Cloud account the runtime falls through to another provider, and
+  // reporting the pin made /api/status claim "elizacloud" while local
+  // inference served every turn (elizaOS/eliza#20045 review).
+  const serving = lastServingTextProvider(runtime);
+  if (serving) {
+    // plugin-openai registers every OpenAI-compatible transport under the
+    // provider id `openai`. In direct Cerebras mode that registration id is not
+    // the serving model (or even the serving provider): returning it made the
+    // status surface claim `openai` after the first successful Gemma/GLM turn.
+    // The direct route owns one concrete Cerebras endpoint, so its effective
+    // response-model selector is the truthful model identity here. Preserve
+    // receipt-first behavior for every provider whose registration is already
+    // semantically specific (local inference, Cloud, Anthropic, etc.); this
+    // fallback must never relabel proxy or failover receipts as Cerebras.
+    if (
+      serving === "openai" &&
+      llmText?.transport === "direct" &&
+      backend === "cerebras"
+    ) {
+      return (
+        readCerebrasResponseModel(runtime, config) ??
+        llmText.primaryModel ??
+        backend
+      );
+    }
+    return serving;
+  }
+
+  const configured = readCharacterModel(runtime);
+  if (configured) return configured;
 
   if (llmText?.transport === "direct") {
     const provider = backend && backend !== "elizacloud" ? backend : undefined;

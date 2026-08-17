@@ -96,4 +96,21 @@ describe("applyLocalWorkspaceApps", () => {
       "[LocalRegistry] Ignoring malformed local package metadata",
     );
   });
+
+  it("ignores an absent legacy typescript child without rejecting discovery", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-registry-"));
+    temporaryRoots.push(root);
+    process.env.ELIZA_WORKSPACE_ROOT = root;
+    process.env.ELIZA_STATE_DIR = path.join(root, "state");
+
+    const pluginDir = path.join(root, "plugins", "plugin-without-typescript");
+    await fs.mkdir(pluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginDir, "package.json"),
+      JSON.stringify({ name: "@test/plain-plugin", version: "1.0.0" }),
+    );
+
+    const apps = new Map<string, RegistryPluginInfo>();
+    await expect(applyLocalWorkspaceApps(apps)).resolves.toBeUndefined();
+  });
 });

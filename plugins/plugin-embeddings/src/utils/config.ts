@@ -10,8 +10,13 @@
  * unrelated endpoint.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  type IAgentRuntime,
+  logger,
+  resolveSetting,
+} from "@elizaos/core";
 
 /**
  * Runtime config first, then `process.env`, then the supplied default.
@@ -93,7 +98,7 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 }
 
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "EMBEDDING_MODEL") ?? "text-embedding-3-small";
+  return getSetting(runtime, "EMBEDDING_MODEL") ?? CANONICAL_EMBEDDING_MODEL;
 }
 
 export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
@@ -111,7 +116,7 @@ export function getEmbeddingFallbackModel(runtime: IAgentRuntime): string {
 }
 
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
-  return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", 1536);
+  return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", CANONICAL_EMBEDDING_DIMENSION);
 }
 
 /**

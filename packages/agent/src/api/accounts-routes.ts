@@ -291,9 +291,25 @@ interface PoolFacade {
 
 let cachedPool: PoolFacade | null = null;
 
+const standaloneReadOnlyPool: PoolFacade = {
+  list: () => [],
+  get: () => null,
+  upsert: async () => {
+    throw new Error("Account pool is unavailable in this runtime");
+  },
+  deleteMetadata: async () => {
+    throw new Error("Account pool is unavailable in this runtime");
+  },
+  refreshUsage: async () => {
+    throw new Error("Account pool is unavailable in this runtime");
+  },
+};
+
 async function getPool(): Promise<PoolFacade> {
   if (!cachedPool) {
-    cachedPool = getAgentHostBridge().getDefaultAccountPool() as PoolFacade;
+    cachedPool =
+      (getAgentHostBridge().getDefaultAccountPool() as PoolFacade | null) ??
+      standaloneReadOnlyPool;
   }
   return cachedPool;
 }

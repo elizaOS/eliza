@@ -1626,6 +1626,7 @@ function mergeProviderIdentity(
 
 function createLlmCallDetails(
   modelName: string,
+  provider: "cerebras" | "evolink" | "openai",
   params: GenerateTextParams,
   systemPrompt: string | undefined,
   actionType: string,
@@ -1650,7 +1651,11 @@ function createLlmCallDetails(
   return {
     model: modelName,
     modelType,
-    provider: "vercel-ai-sdk",
+    // Record the backend that actually served the request. The AI SDK is the
+    // transport, not a billable provider identity; persisting it here makes a
+    // Cerebras Gemma/GLM call look like a generic OpenAI call in trajectories.
+    provider,
+    providerMetadata: { modelName, provider, transport: "vercel-ai-sdk" },
     systemPrompt: nativeSystem ?? "",
     userPrompt:
       typeof nativePrompt === "string"
@@ -2280,6 +2285,7 @@ async function generateTextByModelType(
     if (shouldBufferStream) {
       const details = createLlmCallDetails(
         modelName,
+        usageProvider,
         params,
         systemPrompt,
         "ai.streamText",
@@ -2339,6 +2345,7 @@ async function generateTextByModelType(
     }
     const details = createLlmCallDetails(
       modelName,
+      usageProvider,
       params,
       systemPrompt,
       "ai.streamText",
@@ -2591,6 +2598,7 @@ async function generateTextByModelType(
   // Non-streaming mode
   const details = createLlmCallDetails(
     modelName,
+    usageProvider,
     params,
     systemPrompt,
     "ai.generateText",

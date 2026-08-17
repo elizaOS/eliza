@@ -110,14 +110,17 @@ writeFakeCaptureWav(
   fakeAudioWav,
   Buffer.concat([knownPhrasePcm, Buffer.alloc(silenceBytes)]),
 );
-// Tuneable only for the opt-in live barge proof: bracket the real provider's
-// semantic-EOT/playout boundary without changing application behavior.
+// Tuneable only for the opt-in live barge proof: the production voice path now
+// speaks one truthful progress acknowledgement after 500 ms. Start the second
+// real-speech clip while that acknowledgement is still audible so this lane
+// deterministically proves browser-local double-talk interruption even when the
+// provider's authoritative answer has not arrived yet.
 const bargeGapMs = Number.parseInt(
-  // The first clip is ~1.72s. Seven seconds of silence places the second clip
-  // inside the deliberately long seeded answer across the observed Gemma → GLM
-  // provider-latency envelope; shorter gaps can begin the second utterance
-  // before playout begins and therefore do not actually exercise double-talk.
-  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "7000",
+  // The first clip is ~1.72s. A 1.5 s gap places the sustained portion of the
+  // repeated utterance inside the acknowledgement across the measured
+  // Ink → progress → Sonic envelope while leaving enough post-EOT separation
+  // for Ink to commit the first turn independently.
+  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "1500",
   10,
 );
 if (!Number.isFinite(bargeGapMs) || bargeGapMs < 1_000 || bargeGapMs > 9_000) {

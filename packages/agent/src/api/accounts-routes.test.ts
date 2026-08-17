@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fakes = vi.hoisted(() => ({
   accounts: [] as Array<Record<string, unknown>>,
   poolAccounts: [] as Array<Record<string, unknown>>,
+  poolAvailable: true,
   deleteAccount: vi.fn(),
   getAccessToken: vi.fn(async () => "access-token"),
   probeDirectApiKey: vi.fn(
@@ -108,7 +109,9 @@ vi.mock("@elizaos/auth/oauth-flow", () => ({
   subscribeFlow: fakes.subscribeFlow,
 }));
 vi.mock("../runtime/host-bridge.ts", () => ({
-  getAgentHostBridge: () => ({ getDefaultAccountPool: () => fakes.pool }),
+  getAgentHostBridge: () => ({
+    getDefaultAccountPool: () => (fakes.poolAvailable ? fakes.pool : null),
+  }),
 }));
 
 import {
@@ -185,6 +188,7 @@ describe("accounts routes", () => {
     vi.clearAllMocks();
     fakes.accounts = [];
     fakes.poolAccounts = [];
+    fakes.poolAvailable = true;
     fakes.getAccessToken.mockResolvedValue("access-token");
     fakes.probeDirectApiKey.mockResolvedValue({
       ok: true,
@@ -248,6 +252,19 @@ describe("accounts routes", () => {
         chat: { available: false, credentialPath: "none" },
         codingAgent: { available: true, credentialPath: "account-pool" },
       },
+    });
+  });
+
+  it("lists providers without crashing in the standalone agent runtime", async () => {
+    fakes.poolAvailable = false;
+    const request = makeContext("GET", "/api/accounts");
+
+    await expect(handleAccountsRoutes(request.ctx)).resolves.toBe(true);
+    expect(request.errorCalls).toEqual([]);
+    expect(request.jsonCalls[0]?.body).toMatchObject({
+      providers: expect.arrayContaining([
+        expect.objectContaining({ providerId: "cerebras-api", accounts: [] }),
+      ]),
     });
   });
 

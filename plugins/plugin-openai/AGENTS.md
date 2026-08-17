@@ -19,7 +19,7 @@ This plugin registers **model handlers only** (no actions, providers, services, 
 | `TEXT_MEGA` | falls back to large | `handleTextMega` |
 | `RESPONSE_HANDLER` | falls back to small | `handleResponseHandler` |
 | `ACTION_PLANNER` | falls back to medium | `handleActionPlanner` |
-| `TEXT_EMBEDDING` | `text-embedding-3-small` | `handleTextEmbedding` |
+| `TEXT_EMBEDDING` | `thenlper/gte-small` (384-dim, explicit endpoint required) | `handleTextEmbedding` |
 | `TEXT_TOKENIZER_ENCODE` | js-tiktoken | `handleTokenizerEncode` |
 | `TEXT_TOKENIZER_DECODE` | js-tiktoken | `handleTokenizerDecode` |
 | `IMAGE` | `dall-e-3` | `handleImageGeneration` |
@@ -93,10 +93,10 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | no | falls back to large | TEXT_MEGA model |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | no | falls back to small | RESPONSE_HANDLER model |
 | `OPENAI_ACTION_PLANNER_MODEL` | no | falls back to medium | ACTION_PLANNER model |
-| `OPENAI_EMBEDDING_MODEL` | no | `text-embedding-3-small` | Embedding model |
+| `OPENAI_EMBEDDING_MODEL` | no | `thenlper/gte-small` | Canonical embedding model |
 | `OPENAI_EMBEDDING_URL` | no | `OPENAI_BASE_URL` | Override embeddings endpoint |
 | `OPENAI_EMBEDDING_API_KEY` | no | `OPENAI_API_KEY` | Separate embedding auth |
-| `OPENAI_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector dimensions |
+| `OPENAI_EMBEDDING_DIMENSIONS` | no | `384` | Canonical embedding vector dimensions |
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | no | `gpt-5-mini` | Vision model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | no | `OPENAI_BASE_URL` | Override vision endpoint |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | no | `OPENAI_API_KEY` | Separate vision auth |

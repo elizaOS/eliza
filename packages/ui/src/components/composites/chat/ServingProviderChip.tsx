@@ -39,7 +39,7 @@ export function ServingProviderChip({ className }: { className?: string }) {
         : Cpu;
   const label =
     axes.inference === "cloud"
-      ? t("chat.servingProviderCloud", { defaultValue: "Eliza Cloud" })
+      ? t("chat.servingProviderCloud", { defaultValue: "Cloud inference" })
       : axes.inference === "external"
         ? (axes.activeChatProvider ??
           t("chat.servingProviderExternal", { defaultValue: "External" }))
@@ -52,10 +52,17 @@ export function ServingProviderChip({ className }: { className?: string }) {
         className,
       )}
       data-testid="serving-provider-chip"
-      title={t("chat.servingProviderTitle", {
-        defaultValue: "Chat replies are computed by {{provider}}",
-        provider: label,
-      })}
+      title={
+        axes.combination === "cloud-inference"
+          ? t("chat.servingProviderCloudInferenceTitle", {
+              defaultValue:
+                "The agent runs on this device; models are served through Eliza Cloud",
+            })
+          : t("chat.servingProviderTitle", {
+              defaultValue: "Chat replies are computed by {{provider}}",
+              provider: label,
+            })
+      }
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden />
       {label}

@@ -10,6 +10,7 @@
  */
 
 import * as fs from "node:fs";
+import { CANONICAL_EMBEDDING_MODEL } from "@elizaos/core";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 /**
@@ -135,10 +136,16 @@ export const containersEnv = {
    */
   embeddingSidecarModelId(): string {
     const env = getCloudAwareEnv();
-    return (
-      pick(env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID, env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID) ??
-      "thenlper/gte-small"
+    const configured = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID,
+      env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID,
     );
+    if (configured && configured !== CANONICAL_EMBEDDING_MODEL) {
+      throw new Error(
+        `[embedding-sidecar] model mismatch: got "${configured}", expected "${CANONICAL_EMBEDDING_MODEL}" (gte-small/384 is platform invariant)`,
+      );
+    }
+    return CANONICAL_EMBEDDING_MODEL;
   },
 
   /**

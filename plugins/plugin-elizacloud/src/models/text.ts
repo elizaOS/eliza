@@ -493,15 +493,25 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
  * mapped 503s (`api_error`, upstream codes) and `ai_not_configured` — is a
  * real failure and must keep failing over promptly.
  */
-export function isWarmingUnavailableResponse(status: number, bodyText: string): boolean {
-  if (status !== 503) return false;
+export function warmingUnavailableCode(
+  status: number,
+  bodyText: string
+): string | undefined {
+  if (status !== 503) return undefined;
   const body = parseJsonRecord(bodyText);
-  if (!body) return false;
+  if (!body) return undefined;
   const errorCode = asRecord(body.error).code;
   if (typeof errorCode === "string" && errorCode.endsWith("_cache_warming")) {
-    return true;
+    return errorCode;
   }
-  return body.code === "service_unavailable" && asRecord(body.details).retryable === true;
+  return body.code === "service_unavailable" &&
+    asRecord(body.details).retryable === true
+    ? "service_unavailable"
+    : undefined;
+}
+
+export function isWarmingUnavailableResponse(status: number, bodyText: string): boolean {
+  return warmingUnavailableCode(status, bodyText) !== undefined;
 }
 
 interface WarmingRetryState {
@@ -539,6 +549,23 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function recordCloudPreforwardTiming(response: Response): void {
+  const raw = response.headers.get("x-eliza-preforward-ms");
+  if (!raw) return;
+  const match = raw.match(
+    /^total=(\d+(?:\.\d+)?);auth=(\d+(?:\.\d+)?);mid=(\d+(?:\.\d+)?);reserve=(\d+(?:\.\d+)?);setup=(\d+(?:\.\d+)?)$/
+  );
+  if (!match) return;
+  const [, total, auth, middle, reserve, setup] = match.map(Number);
+  if (![total, auth, middle, reserve, setup].every(Number.isFinite)) return;
+  recordInferenceSpan("cloud.preforward", total, {
+    authMs: auth,
+    middleMs: middle,
+    reserveMs: reserve,
+    setupMs: setup,
+  });
+}
+
 /**
  * Run a buffered cloud text round-trip under the shared concurrency cap,
  * retrying in place while the gateway reports the structural warming 503.
@@ -559,7 +586,7 @@ export async function requestNativeWithWarmingRetry(
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
     if (delayMs === undefined) return { response, bodyText };
     logger.warn(
-      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
+      `[ELIZAOS_CLOUD] cloud gateway is warming (503, code=${warmingUnavailableCode(response.status, bodyText) ?? "unknown"}) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
     await sleepMs(delayMs);
   }
@@ -1303,6 +1330,7 @@ async function generateTextWithModel(
       }),
     "responses"
   );
+  recordCloudPreforwardTiming(response);
   let data: ResponsesApiResponse = {};
   if (responseText) {
     try {
@@ -1411,6 +1439,7 @@ export async function generateNativeChatCompletion(
       }),
     "chat/completions"
   );
+  recordCloudPreforwardTiming(response);
   let data: ChatCompletionsResponse = {};
   if (responseText) {
     try {
@@ -1867,10 +1896,12 @@ export async function streamNativeChatCompletion(
       throw requestError;
     }
     logger.warn(
-      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
+      `[ELIZAOS_CLOUD] cloud gateway is warming (503, code=${warmingUnavailableCode(response.status, warmingBodyText) ?? "unknown"}) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
     await sleepMs(delayMs);
   }
+
+  recordCloudPreforwardTiming(response);
 
   if (!response.ok) {
     let errorBody: { message?: string } | undefined;

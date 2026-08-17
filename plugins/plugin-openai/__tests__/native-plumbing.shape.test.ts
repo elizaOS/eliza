@@ -910,6 +910,13 @@ describe("OpenAI native text plumbing", () => {
     expect(trajectoryCalls).toHaveLength(1);
     expect(trajectoryCalls[0]).toMatchObject({
       stepId: "step-openai-stream",
+      model: "gpt-test-small",
+      provider: "openai",
+      providerMetadata: {
+        modelName: "gpt-test-small",
+        provider: "openai",
+        transport: "vercel-ai-sdk",
+      },
       actionType: "ai.streamText",
       response: "hello",
       promptTokens: 2,
@@ -952,6 +959,13 @@ describe("OpenAI native text plumbing", () => {
     expect(trajectoryCalls).toHaveLength(1);
     expect(trajectoryCalls[0]).toMatchObject({
       stepId: "step-openai-buffered",
+      model: "gpt-test-small",
+      provider: "openai",
+      providerMetadata: {
+        modelName: "gpt-test-small",
+        provider: "openai",
+        transport: "vercel-ai-sdk",
+      },
       actionType: "ai.streamText",
       response: '{"answer":"ok"}',
       promptTokens: 8,
@@ -1128,7 +1142,8 @@ describe("OpenAI native text plumbing", () => {
       const settings: Record<string, string> = {
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
-        OPENAI_SMALL_MODEL: "gpt-oss-120b",
+        // Cerebras-specific slots intentionally outrank OPENAI_SMALL_MODEL.
+        CEREBRAS_SMALL_MODEL: "gpt-oss-120b",
       };
       return settings[key];
     });

@@ -57,6 +57,10 @@ const MATCH_THRESHOLD = 0.7;
 const MIN_HASH_MEMORY_SCORE = 0.5;
 const HASH_MEMORY_SNIPPET_LENGTH = 700;
 const RELEVANT_SNIPPET_LENGTH = 200;
+// Cross-room semantic recall enriches a reply but is not required to answer it.
+// Keep its critical-path wait below a perceptible conversational beat. The
+// shared embed continues and remains cached after this budget expires.
+export const RELEVANT_CONVERSATIONS_EMBED_WAIT_MS = 200;
 
 function memoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";
@@ -180,7 +184,9 @@ export const relevantConversationsProvider: Provider = {
       const [hashMemories, semanticRecall] = await Promise.all([
         loadHashMemories(runtime, text, accessContext),
         (async (): Promise<CanonicalRecallResult | null> => {
-          const embedding = await embedRecallQuery(runtime, text);
+          const embedding = await embedRecallQuery(runtime, text, {
+            waitBudgetMs: RELEVANT_CONVERSATIONS_EMBED_WAIT_MS,
+          });
           if (!embedding || embedding.length === 0) return null;
           return searchCanonicalConversationMemories({
             runtime,

@@ -400,6 +400,12 @@ export class InferenceTurnTimer {
 		this.marks.set(name, atEpochMs ?? Date.now());
 	}
 
+	/** Record an idempotent once-per-turn mark. Concurrent later writers are ignored. */
+	markOnce(name: string, atEpochMs?: number): void {
+		if (this.marks.has(name)) return;
+		this.marks.set(name, atEpochMs ?? Date.now());
+	}
+
 	/** Attribute the turn to a model provider (first writer wins). */
 	setModelProvider(provider: string | null | undefined): void {
 		if (provider && !this.modelProvider) this.modelProvider = provider;
@@ -559,6 +565,11 @@ export function recordInferenceSpan(
 /** Record a point mark on the active timer (no-op when none active). */
 export function markInference(name: string, atEpochMs?: number): void {
 	getInferenceTimer()?.mark(name, atEpochMs);
+}
+
+/** Record an idempotent point mark on the active timer (no-op when none active). */
+export function markInferenceOnce(name: string, atEpochMs?: number): void {
+	getInferenceTimer()?.markOnce(name, atEpochMs);
 }
 
 /** Attribute the active turn to a model provider (no-op when none active). */

@@ -395,7 +395,7 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
 }
 
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+  return getSetting(runtime, "OPENAI_EMBEDDING_MODEL") ?? "thenlper/gte-small";
 }
 
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
@@ -427,7 +427,7 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
 }
 
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
-  return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", 1536);
+  return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", 384);
 }
 
 export function getImageDescriptionMaxTokens(runtime: IAgentRuntime): number {

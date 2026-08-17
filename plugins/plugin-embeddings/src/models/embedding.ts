@@ -7,7 +7,7 @@
  * ../index.ts; see the package CLAUDE.md for the routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import { assertCanonicalEmbeddingConfig, logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 
 import type { EmbeddingResponse } from "../types";
 import {
@@ -108,6 +108,19 @@ function getEmbeddingEndpoints(runtime: IAgentRuntime): EmbeddingEndpoint[] {
   ];
 }
 
+function assertCanonicalEndpointModels(
+  endpoints: EmbeddingEndpoint[],
+  embeddingDimension: number
+): void {
+  for (const endpoint of endpoints) {
+    assertCanonicalEmbeddingConfig(
+      endpoint.model,
+      embeddingDimension,
+      `${endpoint.role} EMBEDDING_*`
+    );
+  }
+}
+
 function truncate(text: string): string {
   if (text.length <= MAX_EMBEDDING_CHARS) {
     return text;
@@ -137,6 +150,7 @@ async function requestEmbeddings(
   signal?: AbortSignal
 ): Promise<number[][]> {
   const endpoints = getEmbeddingEndpoints(runtime);
+  assertCanonicalEndpointModels(endpoints, embeddingDimension);
   const expectedCount = Array.isArray(input) ? input.length : 1;
   const failures: string[] = [];
 
@@ -275,6 +289,7 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
+  assertCanonicalEmbeddingConfig(getEmbeddingModel(runtime), embeddingDimension, "EMBEDDING_*");
   const signal = extractSignal(params);
 
   const text = extractText(params);
@@ -312,6 +327,7 @@ export async function handleBatchTextEmbedding(
   }
 
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
+  assertCanonicalEmbeddingConfig(getEmbeddingModel(runtime), embeddingDimension, "EMBEDDING_*");
 
   const prepared = texts.map((text, i) => {
     if (typeof text !== "string" || text.trim().length === 0) {

@@ -465,6 +465,7 @@ describe("isSensitiveKeyName", () => {
 			"sshKey",
 			"signingKey",
 			"credential",
+			"ENCRYPTION_SALT",
 		]) {
 			expect(isSensitiveKeyName(key)).toBe(true);
 		}

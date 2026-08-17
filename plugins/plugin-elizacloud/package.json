@@ -264,7 +264,7 @@
         "type": "string",
         "description": "Identifier of the model to use for generating text embeddings.",
         "required": false,
-        "default": "text-embedding-3-small",
+        "default": "thenlper/gte-small",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_EMBEDDING_URL": {
@@ -283,7 +283,7 @@
         "type": "number",
         "description": "Number of dimensions for the returned embedding vectors.",
         "required": false,
-        "default": 1536,
+        "default": 384,
         "sensitive": false
       },
       "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL": {

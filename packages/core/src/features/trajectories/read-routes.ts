@@ -33,9 +33,24 @@ interface ServiceTrajectoryListItem {
 
 interface ServiceLlmCall {
 	callId: string;
+	timestamp?: number;
 	model: string;
+	modelVersion?: string;
+	modelType?: string;
 	provider?: string;
 	response: string;
+	finishReason?: string;
+	temperature?: number;
+	maxTokens?: number;
+	maxTokensOmitted?: boolean;
+	latencyMs?: number;
+	promptTokens?: number;
+	completionTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
+	modelSlot?: string;
+	providerMetadata?: unknown;
 	purpose?: string;
 	actionType?: string;
 	stepType?: string;
@@ -45,6 +60,10 @@ interface ServiceProviderAccess {
 	providerId: string;
 	providerName: string;
 	purpose?: string;
+	startedAt?: number | null;
+	endedAt?: number | null;
+	durationMs?: number | null;
+	overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 }
 
 interface ServiceActionAttempt {
@@ -172,11 +191,61 @@ function detailToUi(
 	for (const step of steps) {
 		const calls = step.llmCalls;
 		for (const c of calls) {
+			const identity =
+				c.providerMetadata &&
+				typeof c.providerMetadata === "object" &&
+				!Array.isArray(c.providerMetadata)
+					? (c.providerMetadata as Record<string, unknown>)
+					: null;
+			const concreteModel =
+				typeof identity?.modelName === "string" && identity.modelName.length > 0
+					? identity.modelName
+					: c.model;
+			const servingProvider =
+				typeof identity?.provider === "string" && identity.provider.length > 0
+					? identity.provider
+					: c.provider;
 			llmCalls.push({
 				id: c.callId,
-				model: c.model,
+				trajectoryId: id,
+				stepId: step.stepId,
+				...(typeof c.timestamp === "number"
+					? {
+							timestamp: c.timestamp,
+							createdAt: new Date(c.timestamp).toISOString(),
+						}
+					: {}),
+				model: concreteModel,
 				response: c.response,
-				...(c.provider ? { provider: c.provider } : {}),
+				...(c.modelVersion ? { modelVersion: c.modelVersion } : {}),
+				...(c.modelType ? { modelType: c.modelType } : {}),
+				...(servingProvider ? { provider: servingProvider } : {}),
+				...(typeof identity?.transport === "string"
+					? { transport: identity.transport }
+					: {}),
+				...(c.finishReason ? { finishReason: c.finishReason } : {}),
+				...(typeof c.temperature === "number"
+					? { temperature: c.temperature }
+					: {}),
+				...(typeof c.maxTokens === "number" ? { maxTokens: c.maxTokens } : {}),
+				...(c.maxTokensOmitted === true ? { maxTokensOmitted: true } : {}),
+				...(typeof c.latencyMs === "number" ? { latencyMs: c.latencyMs } : {}),
+				...(typeof c.promptTokens === "number"
+					? { promptTokens: c.promptTokens }
+					: {}),
+				...(typeof c.completionTokens === "number"
+					? { completionTokens: c.completionTokens }
+					: {}),
+				...(typeof c.cacheReadInputTokens === "number"
+					? { cacheReadInputTokens: c.cacheReadInputTokens }
+					: {}),
+				...(typeof c.cacheCreationInputTokens === "number"
+					? { cacheCreationInputTokens: c.cacheCreationInputTokens }
+					: {}),
+				...(typeof c.reasoningTokens === "number"
+					? { reasoningTokens: c.reasoningTokens }
+					: {}),
+				...(c.modelSlot ? { modelSlot: c.modelSlot } : {}),
 				...(c.purpose ? { purpose: c.purpose } : {}),
 				...(c.actionType ? { actionType: c.actionType } : {}),
 				...(c.stepType ? { stepType: c.stepType } : {}),
@@ -186,8 +255,14 @@ function detailToUi(
 		for (const p of accesses) {
 			providerAccesses.push({
 				id: p.providerId,
+				trajectoryId: id,
+				stepId: step.stepId,
 				providerName: p.providerName,
 				...(p.purpose ? { purpose: p.purpose } : {}),
+				...(p.startedAt !== undefined ? { startedAt: p.startedAt } : {}),
+				...(p.endedAt !== undefined ? { endedAt: p.endedAt } : {}),
+				...(p.durationMs !== undefined ? { durationMs: p.durationMs } : {}),
+				...(p.overlapsWith ? { overlapsWith: p.overlapsWith } : {}),
 			});
 		}
 		// Genuinely actionless steps (Agent bridge LLM-only capture) contribute
