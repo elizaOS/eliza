@@ -27,6 +27,15 @@ const VALID_SESSION_FEATURES = new Set([
   "suggestions",
 ]);
 
+/** Accepts the canonical package-name grammar used by registry entries. */
+export function isValidRegistryPackageName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 214 &&
+    PACKAGE_NAME_RE.test(value)
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -251,7 +260,7 @@ export function validateRegistryEntry(value: unknown): string[] {
   }
 
   const pkg = value.package;
-  if (typeof pkg !== "string" || !PACKAGE_NAME_RE.test(pkg)) {
+  if (!isValidRegistryPackageName(pkg)) {
     errors.push("package must be a valid npm package name");
   } else if (pkg.startsWith("@elizaos/")) {
     errors.push("package must not use the reserved @elizaos/* scope");

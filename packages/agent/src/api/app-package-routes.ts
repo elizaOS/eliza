@@ -10,6 +10,7 @@ import type {
   AppPackageRouteContext,
   AppPackageRouteDispatchContext,
 } from "@elizaos/core";
+import { isValidAppRouteSlug } from "@elizaos/shared";
 import {
   type AppRouteModule,
   importAppRouteModule,
@@ -69,8 +70,12 @@ export async function handleAppPackageRoutes(
   const decodedSlug = decodePathComponent(encodedSlug, ctx.res, "app slug");
   if (decodedSlug === null) return true;
 
-  const slug = decodedSlug.trim();
-  if (!slug || RESERVED_APP_ROUTE_SLUGS.has(slug)) return false;
+  const slug = decodedSlug;
+  if (RESERVED_APP_ROUTE_SLUGS.has(slug)) return false;
+  if (!isValidAppRouteSlug(slug)) {
+    ctx.error(ctx.res, "Invalid app slug", 400);
+    return true;
+  }
 
   const routeModule = await importAppRouteModule(slug);
   if (!routeModule) return false;

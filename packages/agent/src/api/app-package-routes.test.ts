@@ -112,6 +112,25 @@ describe("dynamic app-package route dispatch", () => {
     },
   );
 
+  it.each([
+    "%2F",
+    "%5C",
+    ".",
+    "..",
+    "%00",
+    "%20",
+    "%252F",
+    "A",
+    "a".repeat(129),
+  ])("rejects non-canonical decoded app slug %s", async (encodedSlug) => {
+    const { context, error } = createContext(`/api/apps/${encodedSlug}/run`);
+
+    await expect(handleAppPackageRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(context.res, "Invalid app slug", 400);
+    expect(importAppRouteModuleMock).not.toHaveBeenCalled();
+  });
+
   it("dispatches a valid encoded slug with a request-bound body reader", async () => {
     const { context, error, readJsonBody, req, res } = createContext(
       "/api/apps/example%2Dapp/run",
