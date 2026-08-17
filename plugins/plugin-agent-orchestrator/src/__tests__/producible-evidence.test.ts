@@ -114,9 +114,17 @@ describe("deterministicLedgerVerdict", () => {
   });
 
   test("an unsatisfied check criterion stays undetermined and blocks allMet", () => {
+    // A code file in the deliverable makes the check APPLICABLE — the
+    // static-only vacuous leg (see the dedicated describe) must not fire.
     const verdict = deterministicLedgerVerdict(
       ["the live URL is reachable", "tests pass"],
-      quickAppFacts,
+      {
+        ...quickAppFacts,
+        ledgerVerifiedFiles: [
+          ...quickAppFacts.ledgerVerifiedFiles,
+          "data/apps/canon-clock/main.ts",
+        ],
+      },
     );
     expect(verdict.allMet).toBe(false);
     expect(verdict.undetermined).toEqual(["tests pass"]);
@@ -227,10 +235,13 @@ describe("deterministicLedgerVerdict", () => {
 
   test("renders met bases and undetermined markers", () => {
     const rendered = renderDeterministicVerdict(
-      deterministicLedgerVerdict(
-        ["the live URL is reachable", "tests pass"],
-        quickAppFacts,
-      ),
+      deterministicLedgerVerdict(["the live URL is reachable", "tests pass"], {
+        ...quickAppFacts,
+        ledgerVerifiedFiles: [
+          ...quickAppFacts.ledgerVerifiedFiles,
+          "data/apps/canon-clock/main.ts",
+        ],
+      }),
     );
     expect(rendered).toContain("MET: the live URL is reachable");
     expect(rendered).toContain("undetermined (needs judgment): tests pass");
@@ -310,5 +321,52 @@ describe("generateDefaultAcceptanceCriteria enforcement (#20794)", () => {
     expect(criteria.join("\n")).not.toContain("agent-home/canon-clock.html");
     expect(criteria).toContain("the live URL is reachable");
     expect(criteria.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("static-only deliverable check inapplicability (ember-tide live shape)", () => {
+  const staticFacts = {
+    verifiedPublicUrls: ["https://nubilio.org/apps/ember-tide/"],
+    ledgerVerifiedFiles: ["data/apps/ember-tide/index.html"],
+    hasChangeSet: false,
+    greenChecks: { test: false, build: false, lint: false },
+  };
+
+  test("typecheck/lint/tests are vacuously met when the deliverable is static-only", () => {
+    const verdict = deterministicLedgerVerdict(
+      ["typecheck passes", "lint passes", "tests pass"],
+      staticFacts,
+    );
+    expect(verdict.allMet).toBe(true);
+    for (const result of verdict.results) {
+      expect(result.basis).toContain("inapplicable");
+    }
+  });
+
+  test("any code file in the deliverable keeps check criteria undetermined", () => {
+    const verdict = deterministicLedgerVerdict(["typecheck passes"], {
+      ...staticFacts,
+      ledgerVerifiedFiles: [
+        "data/apps/ember-tide/index.html",
+        "data/apps/ember-tide/main.ts",
+      ],
+    });
+    expect(verdict.allMet).toBe(false);
+  });
+
+  test("no verified files means no vacuous satisfaction", () => {
+    const verdict = deterministicLedgerVerdict(["lint passes"], {
+      ...staticFacts,
+      ledgerVerifiedFiles: [],
+    });
+    expect(verdict.allMet).toBe(false);
+  });
+
+  test("green output still wins over the inapplicability leg", () => {
+    const verdict = deterministicLedgerVerdict(["tests pass"], {
+      ...staticFacts,
+      greenChecks: { test: true, build: false, lint: false },
+    });
+    expect(verdict.results[0]?.basis).toBe("green test output captured");
   });
 });

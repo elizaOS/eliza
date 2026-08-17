@@ -286,10 +286,11 @@ async function sendToChannel(
       resolveScopedSendSource(resolvedContact?.source ?? channel, (source) =>
         hasRuntimeSendHandler(runtime, source),
       );
-    if (
-      targetSource === MESSAGE_SOURCE_CLIENT_CHAT &&
-      !hasRuntimeSendHandler(runtime, targetSource)
-    ) {
+    // Boot-window guard for EVERY source (live: the boot's own
+    // service-failure escalation fired before the discord handler registered
+    // and the send threw). A missing handler is a skip — escalation's
+    // channel/wait retry machinery re-attempts once runtime wiring completes.
+    if (!hasRuntimeSendHandler(runtime, targetSource)) {
       logMissingSendHandlerOnce("escalation", targetSource);
       return false;
     }
