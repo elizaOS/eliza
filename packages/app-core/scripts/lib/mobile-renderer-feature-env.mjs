@@ -1,9 +1,10 @@
 /**
  * Resolves renderer feature flags and cache policy for mobile build lanes.
  * Local iOS artifacts expose the existing runtime chooser so a sideload can
- * select its bundled agent without Cloud authentication. LP3 debug artifacts
- * enable the realtime voice client, while lanes with optional flags start from
- * a fresh renderer because the current stamp does not encode those flags.
+ * select its bundled agent without Cloud authentication. Every iOS renderer
+ * also compiles the optional APNs transport gate. LP3 debug artifacts enable
+ * the realtime voice client. Lanes with these optional flags start from a fresh
+ * renderer because the current stamp does not encode their values.
  */
 
 const ANDROID_CLOUD_DEBUG = "android-cloud-debug";
@@ -29,5 +30,5 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
   if (typeof platform !== "string" || platform.length === 0) {
     throw new Error("mobileRendererRequiresFreshBuild: platform is required");
   }
-  return platform === ANDROID_CLOUD_DEBUG || platform === "ios-local";
+  return platform === ANDROID_CLOUD_DEBUG || platform.startsWith("ios");
 }

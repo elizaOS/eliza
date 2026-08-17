@@ -61,10 +61,10 @@ describe("mobileRendererRequiresFreshBuild", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    expect(mobileRendererRequiresFreshBuild({ platform: "ios-local" })).toBe(
-      true,
-    );
-    for (const platform of ["android", "android-cloud", "ios"]) {
+    for (const platform of ["ios", "ios-local", "ios-overlay"]) {
+      expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
+    }
+    for (const platform of ["android", "android-cloud"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
   });
