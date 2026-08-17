@@ -10,13 +10,18 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
 
-const requireUserOrApiKeyWithOrg = mock(async () => ({
-  id: USER_ID,
-  organization_id: ORG_ID,
-}));
-const applyReferralCode = mock(async () => {
-  throw new Error("applyReferralCode must not run");
-});
+const requireUserOrApiKeyWithOrg =
+  mock<
+    (context: unknown) => Promise<{ id: string; organization_id: string }>
+  >();
+const applyReferralCode =
+  mock<
+    (
+      userId: string,
+      organizationId: string,
+      code: string,
+    ) => Promise<{ success: boolean; message: string }>
+  >();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -34,8 +39,9 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: mock((c: { json: (body: unknown, status: number) => unknown }) =>
-    c.json({ success: false, error: "An unexpected error occurred" }, 500),
+  failureResponse: mock(
+    (c: { json: (body: unknown, status: number) => unknown }) =>
+      c.json({ success: false, error: "An unexpected error occurred" }, 500),
   ),
 }));
 
@@ -87,7 +93,9 @@ describe("POST /api/v1/referrals/apply JSON body", () => {
       const res = await post(raw);
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+      expect((await res.json()) as unknown).toEqual({
+        error: "Invalid JSON body",
+      });
       expect(requireUserOrApiKeyWithOrg).toHaveBeenCalled();
       expect(applyReferralCode).not.toHaveBeenCalled();
     },
@@ -99,7 +107,9 @@ describe("POST /api/v1/referrals/apply JSON body", () => {
       const res = await post(raw);
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+      expect((await res.json()) as unknown).toEqual({
+        error: "Invalid JSON body",
+      });
       expect(applyReferralCode).not.toHaveBeenCalled();
     },
   );
@@ -108,7 +118,9 @@ describe("POST /api/v1/referrals/apply JSON body", () => {
     const res = await post("{}");
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid referral code format." });
+    expect((await res.json()) as unknown).toEqual({
+      error: "Invalid referral code format.",
+    });
     expect(applyReferralCode).not.toHaveBeenCalled();
   });
 
@@ -121,7 +133,7 @@ describe("POST /api/v1/referrals/apply JSON body", () => {
     const res = await post(JSON.stringify({ code: "FRIEND1" }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as unknown).toEqual({
       success: true,
       message: "Referral applied",
     });
