@@ -702,7 +702,27 @@ async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
       });
       return true;
     };
+    (window as unknown as Record<string, unknown>).__homeVoiceReady = () =>
+      instances.some((instance) => instance.started);
   });
+}
+
+async function waitForChatSpeechRecognitionShim(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const ready = (
+            window as unknown as { __homeVoiceReady?: () => boolean }
+          ).__homeVoiceReady;
+          return ready?.() ?? false;
+        }),
+      {
+        message: "home voice shim must start before the scripted turn",
+        timeout: 10_000,
+      },
+    )
+    .toBe(true);
 }
 
 test.describe("assistant home app flow", () => {
@@ -845,6 +865,7 @@ test.describe("assistant home app flow", () => {
     const mic = assistantMicButton(page);
     await expect(mic).toBeEnabled({ timeout: 30_000 });
     await mic.click();
+    await waitForChatSpeechRecognitionShim(page);
 
     const accepted = await page.evaluate(() => {
       const simulate = (
@@ -990,6 +1011,7 @@ test.describe("assistant home app flow", () => {
       pointerType: "mouse",
     });
     await mic.click();
+    await waitForChatSpeechRecognitionShim(page);
 
     // The release-click starts the same hands-free conversation a tap starts:
     // the scripted final transcript is auto-submitted as a turn, not inserted
