@@ -7,6 +7,7 @@
 
 import {
   type AgentEventPayload,
+  AgentEventService,
   type AgentNotification,
   AgentRuntime,
   ChannelType,
@@ -26,6 +27,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core/edge";
+import { NotificationService } from "@elizaos/core/services/notification";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
@@ -120,6 +122,9 @@ export function subscribeSharedMobilePush(
 let edgeStreamingContextReady: Promise<void> | undefined;
 let sharedRuntimeKernelReady: Promise<void> | undefined;
 
+/** Canonical notification services required by the ephemeral Shared runtime. */
+export const SHARED_NOTIFICATION_SERVICES = [AgentEventService, NotificationService] as const;
+
 async function ensureEdgeStreamingContext(): Promise<void> {
   edgeStreamingContextReady ??= import("node:async_hooks").then(({ AsyncLocalStorage }) => {
     const storage = new AsyncLocalStorage<StreamingContext | undefined>();
@@ -144,6 +149,7 @@ function sharedModelPlugin(
   return {
     name: "shared-cerebras-model",
     description: "Platform-funded text generation for the Shared Workerd runtime.",
+    services: [...SHARED_NOTIFICATION_SERVICES],
     models: {
       [ModelType.RESPONSE_HANDLER]: handler,
       [ModelType.ACTION_PLANNER]: handler,
@@ -480,7 +486,13 @@ async function executeSharedElizaRuntimeTurn(
     await runtime.initialize({ skipMigrations: true });
     const pushDispatches: Promise<void>[] = [];
     const eventBus = runtime.getService(ServiceType.AGENT_EVENT);
+    const notificationService = runtime.getService(ServiceType.NOTIFICATION);
     const mobilePushDispatch = input.execution?.mobilePush?.dispatch;
+    if (mobilePushDispatch && (!isSharedNotificationEventBus(eventBus) || !notificationService)) {
+      throw new Error(
+        "Eliza Shared runtime initialized mobile push without canonical notification services",
+      );
+    }
     const unsubscribePush =
       mobilePushDispatch && isSharedNotificationEventBus(eventBus)
         ? subscribeSharedMobilePush(eventBus, mobilePushDispatch, pushDispatches)

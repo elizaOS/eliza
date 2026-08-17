@@ -2,9 +2,16 @@
 
 import type { AgentEventPayload } from "@elizaos/core/edge";
 import { describe, expect, it, vi } from "vitest";
-import { subscribeSharedMobilePush } from "./shared-eliza-runtime";
+import { SHARED_NOTIFICATION_SERVICES, subscribeSharedMobilePush } from "./shared-eliza-runtime";
 
 describe("subscribeSharedMobilePush", () => {
+  it("registers the canonical event bus and notification producer on Shared", () => {
+    expect(SHARED_NOTIFICATION_SERVICES.map((service) => service.serviceType)).toEqual([
+      "agent_event",
+      "notification",
+    ]);
+  });
+
   it("dispatches notification events with the canonical deep-link metadata", async () => {
     let listener: ((event: AgentEventPayload) => void) | undefined;
     const unsubscribe = vi.fn();

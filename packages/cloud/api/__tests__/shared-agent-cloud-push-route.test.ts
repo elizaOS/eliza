@@ -185,6 +185,33 @@ test("rejects invalid registration before durable mutation", async () => {
   expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
 });
 
+test("rejects a token above the durable registration limit", async () => {
+  const response = await request("notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform: "ios", token: "x".repeat(4_097) }),
+  });
+  expect(response.status).toBe(400);
+  expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
+});
+
+test("rejects body revocation above the durable token limit", async () => {
+  const response = await request("notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token: "x".repeat(4_097) }),
+  });
+  expect(response.status).toBe(400);
+  expect(coordinateSharedPushUnregister).not.toHaveBeenCalled();
+});
+
+test("rejects path revocation above the durable token limit", async () => {
+  const response = await request(
+    `notifications/push-tokens/${"x".repeat(4_097)}`,
+    { method: "DELETE" },
+  );
+  expect(response.status).toBe(400);
+  expect(coordinateSharedPushUnregister).not.toHaveBeenCalled();
+});
+
 test("rejects an oversized registration body before parsing or mutation", async () => {
   const response = await request("notifications/push-tokens", {
     method: "POST",

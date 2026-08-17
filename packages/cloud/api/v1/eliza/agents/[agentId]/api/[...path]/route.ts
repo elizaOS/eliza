@@ -49,6 +49,7 @@ import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
+const MAX_PUSH_TOKEN_CHARACTERS = 4_096;
 
 const app = new Hono<AppEnv>();
 
@@ -325,7 +326,11 @@ app.post("/", async (c) => {
     }
     const platform = body?.platform;
     const token = typeof body?.token === "string" ? body.token.trim() : "";
-    if (platform !== "ios" || !token) {
+    if (
+      platform !== "ios" ||
+      !token ||
+      token.length > MAX_PUSH_TOKEN_CHARACTERS
+    ) {
       return json(
         c,
         { success: false, error: "Invalid mobile push registration" },
@@ -422,7 +427,7 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
     }
     if (token !== null) {
       if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
-      if (!token)
+      if (!token || token.length > MAX_PUSH_TOKEN_CHARACTERS)
         return json(
           c,
           { success: false, error: "Invalid mobile push token" },
