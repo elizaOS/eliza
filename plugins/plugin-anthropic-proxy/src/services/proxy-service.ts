@@ -199,7 +199,14 @@ export function resolveConfig(): ProxyServiceConfig {
   const mode: ProxyMode = validMode ? modeRaw : "off";
 
   const portRaw = readEnv("CLAUDE_MAX_PROXY_PORT");
-  const port = portRaw ? Number.parseInt(portRaw, 10) || 18801 : 18801;
+  const parsedPort = portRaw !== undefined && /^\d+$/.test(portRaw) ? Number(portRaw) : NaN;
+  const validPort = Number.isSafeInteger(parsedPort) && parsedPort >= 0 && parsedPort <= 65535;
+  const port =
+    portRaw === undefined || validPort ? (portRaw === undefined ? 18801 : parsedPort) : 18801;
+  const portError =
+    mode === "inline" && portRaw !== undefined && !validPort
+      ? `Invalid CLAUDE_MAX_PROXY_PORT: ${portRaw}`
+      : undefined;
   const fingerprint = resolveFingerprintConfig();
 
   return {
@@ -215,7 +222,7 @@ export function resolveConfig(): ProxyServiceConfig {
     fingerprintConfig: fingerprint.fingerprintConfig,
     configError:
       fingerprint.configError ??
-      (validMode ? undefined : `Invalid CLAUDE_MAX_PROXY_MODE: ${modeRaw}`),
+      (validMode ? portError : `Invalid CLAUDE_MAX_PROXY_MODE: ${modeRaw}`),
   };
 }
 
