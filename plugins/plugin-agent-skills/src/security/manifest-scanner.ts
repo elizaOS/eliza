@@ -57,6 +57,26 @@ function hasHiddenComponent(filePath: string): boolean {
 		.some((p) => p.startsWith(".") && !ALLOWED_DOTFILES.has(p));
 }
 
+/**
+ * Separator-aware containment test for the symlink-escape gate. A raw
+ * `target.startsWith(dir)` check would treat a sibling directory that merely
+ * shares a string prefix (e.g. `/base/skills/myskill-evil` for skill dir
+ * `/base/skills/myskill`) as internal, letting an escaping symlink bypass the
+ * blocking rule. Requiring an exact match or a trailing path separator closes
+ * that boundary. `symlinkTarget` is a realpath-resolved, absolute, canonical
+ * path, so only the skill dir needs its trailing separator stripped to accept
+ * dirs passed with or without a trailing slash.
+ */
+function isInsideDir(target: string, dir: string): boolean {
+	const normalizedDir = dir.replace(/[/\\]+$/, "");
+	if (normalizedDir === "") return true;
+	if (target === normalizedDir) return true;
+	return (
+		target.startsWith(`${normalizedDir}/`) ||
+		target.startsWith(`${normalizedDir}\\`)
+	);
+}
+
 export interface ManifestFileEntry {
 	relativePath: string;
 	sizeBytes: number;
@@ -90,7 +110,7 @@ export function scanManifest(
 		if (entry.isSymlink) {
 			if (
 				entry.symlinkTarget &&
-				!entry.symlinkTarget.startsWith(skillDirPath)
+				!isInsideDir(entry.symlinkTarget, skillDirPath)
 			) {
 				findings.push({
 					ruleId: "symlink-escape",

@@ -1,10 +1,19 @@
 /**
- * In-memory skill-manifest builder tests for the security scanner.
- * The manifest records byte lengths for text and binary payloads so integrity checks do not confuse character count with UTF-8 size.
+ * In-memory skill-manifest builder and symlink-escape classification tests for
+ * the security scanner. The builder cases prove byte lengths for text and
+ * binary payloads so integrity checks do not confuse character count with UTF-8
+ * size. The scanManifest cases pin the separator-aware boundary of the blocking
+ * `symlink-escape` rule so a sibling directory that shares a string prefix
+ * cannot masquerade as an internal (non-blocking) symlink. Deterministic; no
+ * disk, no mocks — scanManifest is pure over synthetic manifest entries.
  */
 
 import { describe, expect, it } from "vitest";
-import { buildManifestEntriesFromMemory } from "./manifest-scanner";
+import type { ManifestFileEntry } from "./manifest-scanner";
+import {
+  buildManifestEntriesFromMemory,
+  scanManifest,
+} from "./manifest-scanner";
 
 describe("buildManifestEntriesFromMemory", () => {
   it("returns an empty manifest for no files", () => {
@@ -37,5 +46,61 @@ describe("buildManifestEntriesFromMemory", () => {
   it("marks every entry as a non-symlink", () => {
     const files = new Map([["x", { content: "y", isText: true }]]);
     expect(buildManifestEntriesFromMemory(files).every((e) => e.isSymlink === false)).toBe(true);
+  });
+});
+
+describe("scanManifest symlink-escape boundary", () => {
+  const SKILL_DIR = "/base/skills/myskill";
+
+  function symlinkFinding(target: string, skillDir = SKILL_DIR) {
+    const entries: ManifestFileEntry[] = [
+      { relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+      { relativePath: "link", sizeBytes: 0, isSymlink: true, symlinkTarget: target },
+    ];
+    const finding = scanManifest(entries, skillDir).find((f) =>
+      f.ruleId.startsWith("symlink-"),
+    );
+    if (!finding) throw new Error("expected a symlink finding");
+    return finding;
+  }
+
+  it("blocks a sibling-prefix target that only shares a string prefix", () => {
+    // Regression for #21213: /base/skills/myskill-evil resolves OUTSIDE
+    // /base/skills/myskill despite the shared prefix and must not be treated
+    // as internal.
+    const finding = symlinkFinding("/base/skills/myskill-evil/secret.env");
+    expect(finding.ruleId).toBe("symlink-escape");
+    expect(finding.severity).toBe("critical");
+  });
+
+  it("blocks a target fully outside the skill directory", () => {
+    const finding = symlinkFinding("/etc/passwd");
+    expect(finding.ruleId).toBe("symlink-escape");
+    expect(finding.severity).toBe("critical");
+  });
+
+  it("treats a genuinely nested target as an internal warning", () => {
+    const finding = symlinkFinding("/base/skills/myskill/sub/x");
+    expect(finding.ruleId).toBe("symlink-internal");
+    expect(finding.severity).toBe("warn");
+  });
+
+  it("treats a target equal to the skill directory as internal", () => {
+    const finding = symlinkFinding("/base/skills/myskill");
+    expect(finding.ruleId).toBe("symlink-internal");
+    expect(finding.severity).toBe("warn");
+  });
+
+  it("classifies identically when the skill dir carries a trailing slash", () => {
+    expect(
+      symlinkFinding("/base/skills/myskill-evil/secret.env", "/base/skills/myskill/")
+        .ruleId,
+    ).toBe("symlink-escape");
+    expect(symlinkFinding("/etc/passwd", "/base/skills/myskill/").ruleId).toBe(
+      "symlink-escape",
+    );
+    expect(
+      symlinkFinding("/base/skills/myskill/sub/x", "/base/skills/myskill/").ruleId,
+    ).toBe("symlink-internal");
   });
 });
