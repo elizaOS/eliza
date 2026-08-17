@@ -30,6 +30,9 @@ mock.module("../../runtime/cloud-bindings", () => ({
 
 mock.module("../eliza-managed-launch", () => ({
   launchManagedElizaAgent,
+  // The mock must expose every name imported by onboarding-chat so this suite
+  // exercises the error policy instead of failing during module linking.
+  readManagedElizaAgentConnection: mock(),
 }));
 
 mock.module("./provisioning", () => ({
