@@ -36,6 +36,10 @@ export interface InterruptionInput {
   sessionBusy: boolean;
   /** The sub-agent's person-name label, for addressing detection. */
   agentLabel?: string;
+  /** Stable ACP session id. A full id in the message is an explicit target. */
+  sessionId?: string;
+  /** Stable coding-task id. A full id in the message is an explicit target. */
+  taskId?: string;
   /** An Eliza participant's core shouldRespond verdict, when available. */
   shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
   /** True when the room has participants beyond the user + this sub-agent. */
@@ -82,10 +86,91 @@ const ADDITIVE_PATTERN =
 const REDIRECT_PATTERN =
   /\b(no,? (?:stop|don'?t|do not|not that)|that'?s wrong|that is wrong|wrong (?:approach|direction|file|way|thing)|scrap (?:that|this|it)|start over|undo (?:that|this|it)|revert (?:that|this|it)|instead of|change of plan|actually,? (?:stop|cancel|no|don'?t|do not|wait|hold|revert))\b/i;
 
-function isAddressed(text: string, agentLabel?: string): boolean {
-  if (text.includes("@")) return true;
-  if (!agentLabel) return false;
-  return new RegExp(`\\b${escapeRegExp(agentLabel)}\\b`, "i").test(text);
+function containsStableId(text: string, value: string | undefined): boolean {
+  const target = value?.trim();
+  // Production session/task ids are UUIDs (or longer Smithers compound ids).
+  // Refuse tiny tokens such as "s1": substring matching those would recreate
+  // the same ambient-message fan-out this gate exists to prevent.
+  return Boolean(target && target.length >= 8 && text.includes(target));
+}
+
+export interface InterruptionTarget {
+  agentLabel?: string;
+  sessionId?: string;
+  taskId?: string;
+}
+
+function leadingVocativeTerms(text: string): string[] {
+  const vocative = /^\s*([^,:]{1,160})\s*[,:]/u.exec(text)?.[1];
+  if (!vocative) return [];
+  return vocative
+    .split(/\s+(?:and|&)\s+/iu)
+    .map((part) => part.trim().replace(/^@/u, ""))
+    .filter(Boolean);
+}
+
+function explicitAddressTerms(text: string): Set<string> {
+  const terms = new Set<string>();
+  for (const match of text.matchAll(
+    /(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}_][\p{L}\p{N}_.-]*)/gu,
+  )) {
+    if (match[1]) terms.add(match[1].toLocaleLowerCase());
+  }
+  for (const term of leadingVocativeTerms(text)) {
+    terms.add(term.toLocaleLowerCase());
+  }
+  for (const match of text.matchAll(
+    /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/giu,
+  )) {
+    terms.add(match[0].toLocaleLowerCase());
+  }
+  return terms;
+}
+
+export function hasExplicitTargetSyntax(text: string): boolean {
+  return explicitAddressTerms(text).size > 0;
+}
+
+export function hasExplicitMultiTargetSyntax(text: string): boolean {
+  return explicitAddressTerms(text).size > 1;
+}
+
+/**
+ * Resolve explicit targeting without treating a label mentioned in prose as
+ * an address. Labels count only as `@Label` tokens or in the leading vocative
+ * clause (`Ada, ...`, `Ada and Bob: ...`). Full stable ids remain explicit
+ * anywhere because accidental matches are vanishingly unlikely.
+ */
+export function explicitlyAddressesTarget(
+  text: string,
+  target: InterruptionTarget,
+): boolean {
+  if (
+    containsStableId(text, target.sessionId) ||
+    containsStableId(text, target.taskId)
+  ) {
+    return true;
+  }
+  const label = target.agentLabel?.trim();
+  if (!label) return false;
+  const escapedLabel = escapeRegExp(label);
+  if (
+    new RegExp(
+      `(?:^|[^\\p{L}\\p{N}_])@${escapedLabel}(?=$|[^\\p{L}\\p{N}_])`,
+      "iu",
+    ).test(text)
+  ) {
+    return true;
+  }
+
+  return leadingVocativeTerms(text).some(
+    (part) =>
+      part.localeCompare(label, undefined, { sensitivity: "accent" }) === 0,
+  );
+}
+
+function isAddressed(input: InterruptionInput): boolean {
+  return explicitlyAddressesTarget(input.text, input);
 }
 
 function escapeRegExp(value: string): string {
@@ -116,7 +201,7 @@ export function decideInterruption(
     }
   }
 
-  const addressed = isAddressed(text, input.agentLabel);
+  const addressed = isAddressed(input);
   const additive = ADDITIVE_PATTERN.test(text);
 
   // Explicit stop interrupts (busy or not), unless the message is really an
@@ -164,7 +249,9 @@ export function decideInterruption(
 // full task context. It returns the 4-way action directly (a superset of the
 // core RESPOND/IGNORE/STOP verdict, which cannot express "interrupt to
 // redirect"). The regex decision remains the fallback whenever the model is
-// unavailable or returns an unparseable verdict, so behavior only ever improves.
+// unavailable or returns an unparseable verdict. Dedicated rooms and explicit
+// targets retain that baseline; unresolved shared-origin traffic stays with the
+// planner so classifier failure cannot become cross-task prompt injection.
 
 function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
   const label = input.agentLabel?.trim() || input.agentType;
@@ -235,8 +322,9 @@ function parseInterruptionVerdict(raw: string): InterruptionDecision | null {
  * decideInterruption} as a cheap pre-filter for the unambiguous cases (empty
  * text → ignore; an idle agent in a solo room → deliver), and for the
  * decision-critical cases (mid-turn, or a crowded room) asks a small model to
- * classify intent with full task context. Falls back to the regex decision on
- * any model error or unparseable verdict — so it never regresses the pure path.
+ * classify intent with full task context. Falls back to the regex decision for
+ * dedicated rooms and exact targets; unresolved shared-origin traffic is
+ * planner-owned on any model error or unparseable verdict.
  */
 export async function decideInterruptionWithModel(
   runtime: IAgentRuntime,
@@ -244,6 +332,28 @@ export async function decideInterruptionWithModel(
 ): Promise<InterruptionDecision> {
   const baseline = decideInterruption(input);
   if (!input.text.trim()) return baseline;
+  const explicitlyAddressed = isAddressed(input);
+  // A shared origin channel can bind several unrelated coding sessions. With
+  // no exact label/session/task target, per-session model calls can each claim
+  // relevance and broadcast one planner message into every task. Keep that
+  // ambiguous message in the planner pipeline; it can choose TASKS_SEND with a
+  // concrete target if follow-up delivery is intended.
+  if (input.sharedChannel && input.multiParty && !explicitlyAddressed) {
+    return {
+      action: "ignore",
+      reason: "shared channel ambiguous; planner owns routing",
+    };
+  }
+
+  const unresolvedFallback = (): InterruptionDecision => {
+    if (input.sharedChannel && !explicitlyAddressed) {
+      return {
+        action: "ignore",
+        reason: "shared channel unresolved; planner owns routing",
+      };
+    }
+    return baseline;
+  };
   // A mid-turn agent (interrupt-vs-queue matters), a crowded room
   // (directed-vs-ambient matters), or a planner-shared channel
   // (task-follow-up-vs-planner-command matters) warrants a model call. Only an
@@ -262,7 +372,7 @@ export async function decideInterruptionWithModel(
     const verdict = parseInterruptionVerdict(
       typeof raw === "string" ? raw : String(raw),
     );
-    if (!verdict) return baseline;
+    if (!verdict) return unresolvedFallback();
 
     // The model decides relevance and interruption intent, while the observed
     // ACP state is authoritative for when a relevant message can be sent. The
@@ -283,12 +393,10 @@ export async function decideInterruptionWithModel(
     }
     return verdict;
   } catch {
-    // error-policy:J4 model unavailable/unparseable → deterministic regex
-    // baseline (deliver when idle), INCLUDING on shared channels. Fail-open is
-    // deliberate: fail-closed would silently resurrect the dropped-follow-ups
-    // bug the origin-room binding exists to fix on every model-less runtime,
-    // while the planner double-processing that fail-open risks is bounded and
-    // visible (the planner's own reply shows what it did).
-    return baseline;
+    // error-policy:J4 model unavailable → deterministic fallback. Dedicated
+    // rooms and exact label/session/task targets retain the regex behavior;
+    // ambiguous shared-origin messages stay planner-owned instead of being
+    // silently injected into an unrelated coding session.
+    return unresolvedFallback();
   }
 }

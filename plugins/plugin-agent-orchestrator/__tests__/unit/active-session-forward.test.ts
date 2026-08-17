@@ -203,11 +203,12 @@ describe("active-session forward handler", () => {
     expect(acp.sendPrompt).not.toHaveBeenCalled();
   });
 
-  it("forwards an origin-channel follow-up when meta.roomId is a minted task room", async () => {
+  it("forwards an explicitly addressed origin-channel follow-up when meta.roomId is a minted task room", async () => {
     // Default-on task rooms: spawn stamps meta.roomId = taskRoomId while the
     // user keeps typing in the origin connector channel (originRoomId). No
-    // model on this runtime → the shared-channel classifier falls open to the
-    // regex baseline (deliver when idle) so follow-ups still flow.
+    // model on this runtime: explicit agent addressing is sufficient to keep
+    // the follow-up flowing without guessing that unrelated planner traffic is
+    // for the coding session.
     const acp = makeAcp([
       session({
         metadata: {
@@ -219,10 +220,10 @@ describe("active-session forward handler", () => {
       }),
     ]);
     const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
-    await handler(msg("also handle the edge case"));
+    await handler(msg("Ada, also handle the edge case"));
     expect(acp.sendPrompt).toHaveBeenCalledWith(
       "s1",
-      "also handle the edge case",
+      "Ada, also handle the edge case",
     );
   });
 
@@ -238,8 +239,8 @@ describe("active-session forward handler", () => {
       }),
     ]);
     const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
-    await handler(msg("use bun, not npm"));
-    expect(acp.sendPrompt).toHaveBeenCalledWith("s1", "use bun, not npm");
+    await handler(msg("Ada, use bun, not npm"));
+    expect(acp.sendPrompt).toHaveBeenCalledWith("s1", "Ada, use bun, not npm");
   });
 
   it("consults the classifier on a shared channel and honors an ignore verdict (planner-owned message)", async () => {
@@ -320,9 +321,7 @@ describe("active-session forward handler", () => {
     expect(acp.sendPrompt).toHaveBeenCalledWith("s1", "tighten the types");
   });
 
-  it("falls open to delivery when the shared-channel classifier errors", async () => {
-    // Fail-open is deliberate: fail-closed would silently resurrect the
-    // dropped-follow-ups bug on every model-less runtime.
+  it("keeps an ambiguous shared-channel message planner-owned when the classifier errors", async () => {
     const acp = makeAcp([
       session({
         metadata: {
@@ -340,9 +339,196 @@ describe("active-session forward handler", () => {
       makeRuntime(acp, undefined, useModel),
       inbox,
     );
-    await handler(msg("ship it with the fix"));
+    await handler(msg("set a reminder for 6pm"));
     expect(useModel).toHaveBeenCalledTimes(1);
-    expect(acp.sendPrompt).toHaveBeenCalledWith("s1", "ship it with the fix");
+    expect(acp.sendPrompt).not.toHaveBeenCalled();
+    expect(inbox.size("s1")).toBe(0);
+  });
+
+  it("routes an explicit agent mention to only that shared-origin session when the classifier fails", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: {
+          roomId: TASK_ROOM,
+          taskRoomId: TASK_ROOM,
+          originRoomId: ROOM_1,
+          label: "Ada",
+        },
+      }),
+      session({
+        id: "s2",
+        name: "Bob",
+        metadata: {
+          roomId: TASK_ROOM_2,
+          taskRoomId: TASK_ROOM_2,
+          originRoomId: ROOM_1,
+          label: "Bob",
+        },
+      }),
+    ]);
+    const useModel = vi.fn(async () => {
+      throw new Error("model offline");
+    });
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+    await handler(msg("@Bob, add the retry regression"));
+    expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "s2",
+      "@Bob, add the retry regression",
+    );
+  });
+
+  it("does not inject a Bob-directed comparison into Ada when Ada is only referenced", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: { roomId: ROOM_1, taskRoomId: ROOM_1, label: "Ada" },
+      }),
+      session({
+        id: "s2",
+        name: "Bob",
+        metadata: { roomId: ROOM_1, taskRoomId: ROOM_1, label: "Bob" },
+      }),
+    ]);
+    // Even an over-eager per-session classifier must not override the explicit
+    // target set resolved from the leading vocative.
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "deliver", reason: "mentions this agent" }),
+    );
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+    const text = "Bob, compare your output with Ada's result";
+
+    await handler(msg(text));
+
+    expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
+    expect(acp.sendPrompt).toHaveBeenCalledWith("s2", text);
+    expect(inbox.size("s1")).toBe(0);
+  });
+
+  it("does not broadcast an unrelated mention when shared-channel classification fails", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: {
+          roomId: TASK_ROOM,
+          taskRoomId: TASK_ROOM,
+          originRoomId: ROOM_1,
+          label: "Ada",
+        },
+      }),
+      session({
+        id: "s2",
+        name: "Bob",
+        metadata: {
+          roomId: TASK_ROOM_2,
+          taskRoomId: TASK_ROOM_2,
+          originRoomId: ROOM_1,
+          label: "Bob",
+        },
+      }),
+    ]);
+    const useModel = vi.fn(async () => {
+      throw new Error("model offline");
+    });
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+    await handler(msg("@planner set a reminder for 6pm"));
+    expect(acp.sendPrompt).not.toHaveBeenCalled();
+    expect(inbox.size()).toBe(0);
+  });
+
+  it("does not inject an unmatched explicit mention into the sole shared-origin session", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: {
+          roomId: TASK_ROOM,
+          taskRoomId: TASK_ROOM,
+          originRoomId: ROOM_1,
+          label: "Ada",
+        },
+      }),
+    ]);
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "deliver", reason: "task follow-up" }),
+    );
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+
+    await handler(msg("@Bob, compare the implementations"));
+
+    expect(acp.sendPrompt).not.toHaveBeenCalled();
+    expect(inbox.size()).toBe(0);
+  });
+
+  it("fails closed when one explicit label ambiguously matches multiple sessions", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: { roomId: ROOM_1, taskRoomId: ROOM_1, label: "Ada" },
+      }),
+      session({
+        id: "s2",
+        name: "Ada",
+        metadata: { roomId: ROOM_1, taskRoomId: ROOM_1, label: "Ada" },
+      }),
+    ]);
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "deliver", reason: "addressed" }),
+    );
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+
+    await handler(msg("@Ada, stop and compare"));
+
+    expect(acp.sendPrompt).not.toHaveBeenCalled();
+    expect(acp.cancelSession).not.toHaveBeenCalled();
+    expect(inbox.size()).toBe(0);
+  });
+
+  it("does not let per-session model verdicts broadcast ambiguous traffic across legacy shared-room sessions", async () => {
+    const acp = makeAcp([
+      session({
+        id: "s1",
+        name: "Ada",
+        metadata: { roomId: ROOM_1, label: "Ada" },
+      }),
+      session({
+        id: "s2",
+        name: "Bob",
+        metadata: { roomId: ROOM_1, label: "Bob" },
+      }),
+    ]);
+    // A weak classifier can return the same deliver verdict for each session.
+    // A connector room cannot be "dedicated" to two unrelated live sessions;
+    // the unresolved message must remain planner-owned.
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "deliver", reason: "generic instruction" }),
+    );
+    const handler = createActiveSessionForwardHandler(
+      makeRuntime(acp, undefined, useModel),
+      inbox,
+    );
+    await handler(msg("set a reminder for 6pm"));
+    expect(acp.sendPrompt).not.toHaveBeenCalled();
   });
 
   it("broadcasts an addressed follow-up to ALL bound live sessions, not just the first", async () => {

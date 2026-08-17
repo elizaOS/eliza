@@ -367,6 +367,159 @@ const STUCK_TASK_REAP_THRESHOLD_MS = 5 * 60_000;
 /** Cadence of the stuck-task reaper scan. */
 const STUCK_TASK_REAP_INTERVAL_MS = 60_000;
 
+/** Durable task-metadata key for verified one-shot sessions whose ACP teardown
+ * has not yet been proven. The marker is written in the SAME task-store update
+ * that promotes the task to `done`, so a crash cannot commit completion while
+ * forgetting the child that still needs to be closed. */
+const TERMINAL_SESSION_TEARDOWN_METADATA_KEY = "terminalSessionTeardown";
+
+/** Periodic retry cadence for terminal one-shot teardown. */
+const TERMINAL_SESSION_REAP_INTERVAL_MS = 30_000;
+
+/** One get+stop attempt is bounded so a wedged ACP transport cannot hang task
+ * validation or the periodic reaper forever. */
+const TERMINAL_SESSION_REAP_ATTEMPT_TIMEOUT_MS = 10_000;
+
+/** Failed attempts back off across periodic scans, while startup/manual scans
+ * may force an immediate retry after a transport repair. */
+const TERMINAL_SESSION_REAP_MAX_BACKOFF_MS = 5 * 60_000;
+
+interface TerminalSessionTeardownMarker {
+  version: 1;
+  state: "pending" | "paused";
+  sessionIds: string[];
+  requestedAt: number;
+  updatedAt: number;
+  attempts: number;
+  nextAttemptAt: number;
+  lastAttemptAt?: number;
+  lastError?: string;
+}
+
+type TerminalSessionTeardownOutcome =
+  | {
+      sessionId: string;
+      outcome: "stopped" | "absent" | "already_stopped" | "keep_alive";
+    }
+  | {
+      sessionId: string;
+      outcome: "pending";
+      error: unknown;
+      operation: string;
+    };
+
+function readTerminalSessionTeardownMarker(
+  metadata: Record<string, unknown> | undefined,
+): TerminalSessionTeardownMarker | null {
+  const raw = metadata?.[TERMINAL_SESSION_TEARDOWN_METADATA_KEY];
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    (raw.state !== "pending" && raw.state !== "paused")
+  ) {
+    return null;
+  }
+  if (!Array.isArray(raw.sessionIds)) return null;
+  const sessionIds = [
+    ...new Set(
+      raw.sessionIds.filter(
+        (sessionId): sessionId is string =>
+          typeof sessionId === "string" && sessionId.length > 0,
+      ),
+    ),
+  ];
+  if (sessionIds.length === 0) return null;
+  const requestedAt = num(raw.requestedAt);
+  const updatedAt = num(raw.updatedAt);
+  const attempts = Math.max(0, Math.floor(num(raw.attempts)));
+  const nextAttemptAt = num(raw.nextAttemptAt);
+  const normalizedRequestedAt = requestedAt > 0 ? requestedAt : Date.now();
+  return {
+    version: 1,
+    state: raw.state,
+    sessionIds,
+    requestedAt: normalizedRequestedAt,
+    updatedAt: updatedAt > 0 ? updatedAt : normalizedRequestedAt,
+    attempts,
+    nextAttemptAt: nextAttemptAt > 0 ? nextAttemptAt : 0,
+    ...(num(raw.lastAttemptAt) > 0
+      ? { lastAttemptAt: num(raw.lastAttemptAt) }
+      : {}),
+    ...(typeof raw.lastError === "string" && raw.lastError.length > 0
+      ? { lastError: raw.lastError }
+      : {}),
+  };
+}
+
+function terminalSessionTeardownMarker(
+  existing: TerminalSessionTeardownMarker | null,
+  sessionIds: readonly string[],
+  nowMs: number,
+): TerminalSessionTeardownMarker {
+  return {
+    version: 1,
+    state: "pending",
+    sessionIds: [...new Set([...(existing?.sessionIds ?? []), ...sessionIds])],
+    requestedAt: existing?.requestedAt ?? nowMs,
+    updatedAt: nowMs,
+    attempts: existing?.attempts ?? 0,
+    nextAttemptAt: existing?.nextAttemptAt ?? nowMs,
+    ...(existing?.lastAttemptAt
+      ? { lastAttemptAt: existing.lastAttemptAt }
+      : {}),
+    ...(existing?.lastError ? { lastError: existing.lastError } : {}),
+  };
+}
+
+function pausedTerminalSessionTeardownMetadata(
+  metadata: Record<string, unknown>,
+  nowMs: number,
+): Record<string, unknown> | undefined {
+  const marker = readTerminalSessionTeardownMarker(metadata);
+  if (!marker || marker.state === "paused") return undefined;
+  return {
+    ...metadata,
+    [TERMINAL_SESSION_TEARDOWN_METADATA_KEY]: {
+      ...marker,
+      state: "paused",
+      updatedAt: nowMs,
+    } satisfies TerminalSessionTeardownMarker,
+  };
+}
+
+function terminalSessionReapBackoffMs(attempts: number): number {
+  const exponent = Math.min(Math.max(attempts - 1, 0), 4);
+  return Math.min(
+    TERMINAL_SESSION_REAP_INTERVAL_MS * 2 ** exponent,
+    TERMINAL_SESSION_REAP_MAX_BACKOFF_MS,
+  );
+}
+
+async function withTerminalSessionReapDeadline<T>(
+  operation: () => Promise<T>,
+  deadlineMs: number,
+  operationName: string,
+): Promise<T> {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error(`${operationName} timed out`);
+  }
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${operationName} timed out`)),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function independentVerifyTimeoutMs(runtime: {
   getSetting?: (key: string) => unknown;
 }): number {
@@ -1073,8 +1226,13 @@ export class OrchestratorTaskService extends Service {
   private admissionDrainLock = Promise.resolve();
   private admissionReconcileTimer: NodeJS.Timeout | undefined;
   private stuckTaskReaperTimer: NodeJS.Timeout | undefined;
+  private terminalSessionReaperTimer: NodeJS.Timeout | undefined;
   /** Serializes reaper passes — a slow scan must not overlap the next tick. */
   private stuckTaskReapInFlight = false;
+  /** Serializes durable terminal-session scans. Per-task work is additionally
+   * guarded by taskWriteLocks so validation and a periodic pass cannot rewrite
+   * the same metadata marker concurrently. */
+  private terminalSessionReapInFlight = false;
   private smithersRecoveryInFlight:
     | Promise<{ recovered: number; skipped: number }>
     | undefined;
@@ -1158,10 +1316,18 @@ export class OrchestratorTaskService extends Service {
       }, STUCK_TASK_REAP_INTERVAL_MS);
       this.stuckTaskReaperTimer.unref?.();
     }
+    // Verified one-shot teardown is durable, not a one-time callback. A marker
+    // committed with `done` is retried after transient ACP failures and across
+    // restarts until the child is terminal/absent or explicit keep-alive wins.
+    this.terminalSessionReaperTimer = setInterval(() => {
+      void this.reapTerminalTaskSessions(Date.now(), false);
+    }, TERMINAL_SESSION_REAP_INTERVAL_MS);
+    this.terminalSessionReaperTimer.unref?.();
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
       this.queueSmithersRecovery(acp);
+      void this.reapTerminalTaskSessions();
       return;
     }
     // ACP may not be registered yet — service start order during boot isn't
@@ -1201,6 +1367,7 @@ export class OrchestratorTaskService extends Service {
       if (this.started && !this.unsubscribe) {
         this.subscribeToAcp(acp);
         this.queueSmithersRecovery(acp);
+        void this.reapTerminalTaskSessions();
       }
     } catch (error) {
       // error-policy:J7 background ACP bind; the failure is warned and observable
@@ -1225,6 +1392,10 @@ export class OrchestratorTaskService extends Service {
     if (this.stuckTaskReaperTimer) {
       clearInterval(this.stuckTaskReaperTimer);
       this.stuckTaskReaperTimer = undefined;
+    }
+    if (this.terminalSessionReaperTimer) {
+      clearInterval(this.terminalSessionReaperTimer);
+      this.terminalSessionReaperTimer = undefined;
     }
     this.started = false;
   }
@@ -3231,6 +3402,27 @@ export class OrchestratorTaskService extends Service {
     return this.withAdmissionPosition(toTaskThreadDetail(doc));
   }
 
+  /** Pause, rather than discard, a terminal teardown marker before an operator
+   * reactivates a task. The same task lock the reaper uses closes the race where
+   * a periodic pass reads `done`, then stops the session after restart/reopen
+   * has made it active. A later verified `done` merges these ids back into a
+   * pending marker; until then active work is never reaped. */
+  private async pauseTerminalSessionTeardown(taskId: string): Promise<void> {
+    await this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      const metadata = pausedTerminalSessionTeardownMetadata(
+        doc.task.metadata,
+        Date.now(),
+      );
+      if (!metadata) return;
+      await this.store.updateTask(taskId, {
+        metadata,
+        lastActivityAt: doc.task.lastActivityAt,
+      });
+    });
+  }
+
   /** Fill the DTO's `admission.position` from the live DISPATCH order (1-based,
    * priority-band + aging applied), which the mapper cannot see. A parked task
    * not currently in the in-memory queue keeps position 0. */
@@ -3400,6 +3592,7 @@ export class OrchestratorTaskService extends Service {
   }
 
   async reopenTask(taskId: string): Promise<TaskThreadDetailDto | null> {
+    await this.pauseTerminalSessionTeardown(taskId);
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     // Route the revival through the table: a task that already ran resumes
@@ -3664,6 +3857,43 @@ export class OrchestratorTaskService extends Service {
     // stamps) may have updated the bag since `doc` was read. updateTask
     // replaces `metadata` wholesale, so a stale spread would drop them.
     const fresh = (await this.store.getTask(taskId)) ?? doc;
+    const oneShotSessionIds =
+      next === "done"
+        ? fresh.sessions
+            .filter(
+              (session) => session.metadata?.keepAliveAfterComplete === false,
+            )
+            .map((session) => session.sessionId)
+        : [];
+    const priorTeardown = readTerminalSessionTeardownMarker(
+      fresh.task.metadata,
+    );
+    const teardown =
+      next === "done" && (oneShotSessionIds.length > 0 || priorTeardown)
+        ? terminalSessionTeardownMarker(
+            priorTeardown,
+            oneShotSessionIds,
+            Date.now(),
+          )
+        : next !== "done" && priorTeardown
+          ? ({
+              ...priorTeardown,
+              state: "paused",
+              updatedAt: Date.now(),
+            } satisfies TerminalSessionTeardownMarker)
+          : priorTeardown;
+    const nextMetadata =
+      residuals || teardown
+        ? {
+            ...fresh.task.metadata,
+            ...(residuals
+              ? { [COMPLETION_RESIDUALS_METADATA_KEY]: residuals }
+              : {}),
+            ...(teardown
+              ? { [TERMINAL_SESSION_TEARDOWN_METADATA_KEY]: teardown }
+              : {}),
+          }
+        : undefined;
     await this.store.updateTask(taskId, {
       status: next,
       summary: result.summary ?? fresh.task.summary,
@@ -3671,15 +3901,33 @@ export class OrchestratorTaskService extends Service {
       // A failed override reactivates the task; a stale closedAt from an
       // earlier done would misread as still-closed.
       ...(next === "active" ? { closedAt: null } : {}),
-      ...(residuals
-        ? {
-            metadata: {
-              ...fresh.task.metadata,
-              [COMPLETION_RESIDUALS_METADATA_KEY]: residuals,
-            },
-          }
-        : {}),
+      ...(nextMetadata ? { metadata: nextMetadata } : {}),
     });
+    if (next === "done" && teardown) {
+      if (!priorTeardown) {
+        await this.addTerminalSessionTeardownEvent(taskId, {
+          eventType: "terminal_session_teardown_pending",
+          summary: `Closing ${teardown.sessionIds.length} completed one-shot session${
+            teardown.sessionIds.length === 1 ? "" : "s"
+          }`,
+          data: { sessionIds: teardown.sessionIds },
+        });
+      }
+      await this.reapTerminalTaskSessionsForTaskLocked(
+        taskId,
+        Date.now(),
+        true,
+      ).catch((err) => {
+        // error-policy:J7 `done` and its teardown marker are already one
+        // durable commit. A post-commit store/reaper failure is retried by the
+        // periodic/startup pass and must not masquerade as failed validation.
+        this.runtime.reportError?.(
+          "OrchestratorTask.reapTerminalTaskSessionsAfterValidation",
+          err,
+          { taskId },
+        );
+      });
+    }
     // Curated memory requires a fresh verified GitHub verdict from this exact
     // validation pass. Human overrides and non-GitHub tasks may still complete,
     // but must never reuse a stale verdict left in task metadata.
@@ -3687,6 +3935,350 @@ export class OrchestratorTaskService extends Service {
       await this.harvestCuratedCodingMemory(taskId);
     }
     return this.getTask(taskId);
+  }
+
+  /** Persist a teardown timeline item without turning a post-commit
+   * observability failure into a false validation failure. The metadata marker
+   * remains the durable recovery authority; this event is the human audit
+   * surface. */
+  private async addTerminalSessionTeardownEvent(
+    taskId: string,
+    input: {
+      eventType: string;
+      summary: string;
+      data: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    try {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: input.eventType,
+        summary: input.summary,
+        data: input.data,
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      this.emitChange(taskId);
+    } catch (err) {
+      // error-policy:J7 the task+teardown marker has already committed; a
+      // timeline append failure is reported but the reaper keeps its authority.
+      this.runtime.reportError?.(
+        "OrchestratorTask.terminalSessionTeardownEvent",
+        err,
+        { taskId, eventType: input.eventType },
+      );
+    }
+  }
+
+  /** Resolve one durable teardown candidate. One deadline covers BOTH the ACP
+   * read and close, so a wedged transport cannot stretch validation by twice
+   * the configured bound. Successful stopSession is a terminal acknowledgement
+   * (AcpService.closeSession persists `stopped` before it resolves). */
+  private async reapTerminalTaskSession(
+    acp: AcpService,
+    taskId: string,
+    sessionId: string,
+    durable: OrchestratorTaskSession | undefined,
+    timeoutMs: number,
+  ): Promise<TerminalSessionTeardownOutcome> {
+    if (durable?.metadata?.keepAliveAfterComplete === true) {
+      return { sessionId, outcome: "keep_alive" };
+    }
+
+    const deadlineMs = Date.now() + timeoutMs;
+    let live: SessionInfo | undefined;
+    try {
+      live = await withTerminalSessionReapDeadline(
+        () => acp.getSession(sessionId),
+        deadlineMs,
+        "getSession",
+      );
+    } catch (error) {
+      return { sessionId, outcome: "pending", error, operation: "getSession" };
+    }
+
+    if (!live) {
+      if (durable && !TERMINAL_TASK_SESSION_STATUSES.has(durable.status)) {
+        try {
+          await this.store.updateSession(
+            sessionId,
+            { status: "stopped", stoppedAt: Date.now() },
+            taskId,
+          );
+        } catch (error) {
+          return {
+            sessionId,
+            outcome: "pending",
+            error,
+            operation: "persistSession",
+          };
+        }
+      }
+      return { sessionId, outcome: "absent" };
+    }
+    if (live.metadata?.keepAliveAfterComplete === true) {
+      return { sessionId, outcome: "keep_alive" };
+    }
+    // Logical completion, cancellation, or error is not an OS-containment
+    // acknowledgement: native ACP intentionally may retain its child after a
+    // cooperative cancel, and protocol errors can leave the transport live.
+    // Only `stopped` is persisted by AcpService after close proves teardown.
+    if (live.status === "stopped") {
+      if (durable && !TERMINAL_TASK_SESSION_STATUSES.has(durable.status)) {
+        try {
+          await this.store.updateSession(
+            sessionId,
+            { status: live.status, stoppedAt: Date.now() },
+            taskId,
+          );
+        } catch (error) {
+          return {
+            sessionId,
+            outcome: "pending",
+            error,
+            operation: "persistSession",
+          };
+        }
+      }
+      return { sessionId, outcome: "already_stopped" };
+    }
+
+    const durablePreference = durable?.metadata?.keepAliveAfterComplete;
+    const livePreference = live.metadata?.keepAliveAfterComplete;
+    if (durablePreference !== false && livePreference !== false) {
+      return { sessionId, outcome: "keep_alive" };
+    }
+
+    try {
+      await withTerminalSessionReapDeadline(
+        () => acp.stopSession(sessionId),
+        deadlineMs,
+        "stopSession",
+      );
+      try {
+        await this.store.updateSession(
+          sessionId,
+          { status: "stopped", stoppedAt: Date.now() },
+          taskId,
+        );
+      } catch (error) {
+        return {
+          sessionId,
+          outcome: "pending",
+          error,
+          operation: "persistSession",
+        };
+      }
+      return { sessionId, outcome: "stopped" };
+    } catch (error) {
+      return { sessionId, outcome: "pending", error, operation: "stopSession" };
+    }
+  }
+
+  /** Reconcile one task while its write lock is held. The marker is cleared
+   * only after ACP proves the session absent/already stopped, stopSession
+   * acknowledges close, or explicit durable/live keepAlive=true wins. Logical
+   * completed/cancelled/errored states are not process-containment proof. Every
+   * other outcome remains pending with durable attempts/backoff for restart
+   * recovery. */
+  private async reapTerminalTaskSessionsForTaskLocked(
+    taskId: string,
+    nowMs: number,
+    force: boolean,
+  ): Promise<string[]> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return [];
+    const marker = readTerminalSessionTeardownMarker(doc.task.metadata);
+    if (
+      marker?.state !== "pending" ||
+      !TERMINAL_TASK_STATUSES.has(doc.task.status) ||
+      (!force && marker.nextAttemptAt > nowMs)
+    ) {
+      return [];
+    }
+    const acp = this.acp();
+    if (!acp) return [];
+
+    const outcomes = await Promise.all(
+      marker.sessionIds.map((sessionId) =>
+        this.reapTerminalTaskSession(
+          acp,
+          taskId,
+          sessionId,
+          doc.sessions.find((session) => session.sessionId === sessionId),
+          TERMINAL_SESSION_REAP_ATTEMPT_TIMEOUT_MS,
+        ),
+      ),
+    );
+    const failures = outcomes.filter(
+      (
+        outcome,
+      ): outcome is Extract<
+        TerminalSessionTeardownOutcome,
+        { outcome: "pending" }
+      > => outcome.outcome === "pending",
+    );
+    const stopped = outcomes
+      .filter((outcome) => outcome.outcome === "stopped")
+      .map((outcome) => outcome.sessionId);
+
+    // Re-fetch after ACP calls: stopSession emits an event through the bridge,
+    // and that writer may have refreshed task/session data while we awaited.
+    const latest = await this.store.getTask(taskId);
+    if (!latest) return stopped;
+    const currentMarker = readTerminalSessionTeardownMarker(
+      latest.task.metadata,
+    );
+    if (
+      currentMarker?.state !== "pending" ||
+      !TERMINAL_TASK_STATUSES.has(latest.task.status)
+    ) {
+      return stopped;
+    }
+    const attempted = new Set(marker.sessionIds);
+    const pendingIds = [
+      ...currentMarker.sessionIds.filter(
+        (sessionId) => !attempted.has(sessionId),
+      ),
+      ...failures.map((failure) => failure.sessionId),
+    ];
+    const nextMetadata = { ...latest.task.metadata };
+    if (pendingIds.length === 0) {
+      delete nextMetadata[TERMINAL_SESSION_TEARDOWN_METADATA_KEY];
+    } else {
+      const attempts = currentMarker.attempts + 1;
+      const errorSummary = failures
+        .map(
+          (failure) =>
+            `${failure.sessionId} ${failure.operation} failed (${
+              failure.error instanceof Error
+                ? failure.error.name
+                : "unknown error"
+            })`,
+        )
+        .join("; ");
+      nextMetadata[TERMINAL_SESSION_TEARDOWN_METADATA_KEY] = {
+        ...currentMarker,
+        sessionIds: [...new Set(pendingIds)],
+        updatedAt: nowMs,
+        attempts,
+        lastAttemptAt: nowMs,
+        nextAttemptAt: nowMs + terminalSessionReapBackoffMs(attempts),
+        lastError: errorSummary,
+      } satisfies TerminalSessionTeardownMarker;
+    }
+    await this.store.updateTask(taskId, {
+      metadata: nextMetadata,
+      // A background teardown must not make a closed task look newly active in
+      // list ordering merely because its recovery marker changed.
+      lastActivityAt: latest.task.lastActivityAt,
+    });
+
+    if (failures.length > 0) {
+      for (const failure of failures) {
+        this.runtime.reportError?.(
+          `OrchestratorTask.terminalSessionTeardown.${failure.operation}`,
+          failure.error,
+          { taskId, sessionId: failure.sessionId },
+        );
+      }
+      const nextMarker = readTerminalSessionTeardownMarker(nextMetadata);
+      if (marker.attempts === 0 || marker.lastError !== nextMarker?.lastError) {
+        await this.addTerminalSessionTeardownEvent(taskId, {
+          eventType: "terminal_session_teardown_retry_scheduled",
+          summary: `Completed one-shot session teardown remains pending after attempt ${
+            nextMarker?.attempts ?? marker.attempts + 1
+          }`,
+          data: {
+            sessionIds: failures.map((failure) => failure.sessionId),
+            attempts: nextMarker?.attempts ?? marker.attempts + 1,
+            nextAttemptAt: nextMarker?.nextAttemptAt ?? null,
+          },
+        });
+      }
+    }
+    if (pendingIds.length === 0) {
+      await this.addTerminalSessionTeardownEvent(taskId, {
+        eventType: "terminal_session_teardown_completed",
+        summary: `Completed one-shot session teardown reconciled for ${outcomes.length} session${
+          outcomes.length === 1 ? "" : "s"
+        }`,
+        data: {
+          sessionIds: outcomes.map((outcome) => outcome.sessionId),
+          outcomes: outcomes.map((outcome) => ({
+            sessionId: outcome.sessionId,
+            outcome: outcome.outcome,
+          })),
+        },
+      });
+    }
+    return stopped;
+  }
+
+  /** Scan every durable task for pending terminal one-shot cleanup. Startup and
+   * manual calls force an immediate attempt; the periodic caller passes false
+   * and honors persisted exponential backoff. Returns sessions this pass
+   * actually stopped (already-stopped/absent/keep-alive resolutions still clear
+   * their markers but are not reported as newly stopped). */
+  async reapTerminalTaskSessions(
+    nowMs = Date.now(),
+    force = true,
+  ): Promise<string[]> {
+    if (this.terminalSessionReapInFlight) return [];
+    this.terminalSessionReapInFlight = true;
+    try {
+      const records = await this.store.listTasks({ includeArchived: true });
+      const candidates = records.filter((record) => {
+        const marker = readTerminalSessionTeardownMarker(record.metadata);
+        return (
+          TERMINAL_TASK_STATUSES.has(record.status) &&
+          marker?.state === "pending" &&
+          (force || marker.nextAttemptAt <= nowMs)
+        );
+      });
+      const results = await Promise.all(
+        candidates.map(async (record) => {
+          try {
+            return await this.withTaskWriteLock(record.id, () =>
+              this.reapTerminalTaskSessionsForTaskLocked(
+                record.id,
+                nowMs,
+                force,
+              ),
+            );
+          } catch (err) {
+            // error-policy:J7 a task-store/ACP failure leaves the durable marker
+            // intact for the next tick/startup pass; other tasks still reap.
+            this.runtime.reportError?.(
+              "OrchestratorTask.reapTerminalTaskSessions",
+              err,
+              { taskId: record.id },
+            );
+            this.log("warn", "terminal one-shot session reap pass failed", {
+              taskId: record.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return [];
+          }
+        }),
+      );
+      return results.flat();
+    } catch (err) {
+      // error-policy:J7 even a scan-level store failure (before candidate
+      // isolation) leaves every durable marker intact for startup/next tick.
+      this.runtime.reportError?.(
+        "OrchestratorTask.reapTerminalTaskSessions.scan",
+        err,
+        {},
+      );
+      this.log("warn", "terminal one-shot session scan failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    } finally {
+      this.terminalSessionReapInFlight = false;
+    }
   }
 
   private async harvestCuratedCodingMemory(taskId: string): Promise<void> {
@@ -4787,6 +5379,7 @@ export class OrchestratorTaskService extends Service {
     );
     const mode = input.mode ?? "same-session";
     if (mode === "new-session") {
+      await this.pauseTerminalSessionTeardown(taskId);
       await this.spawnAgentForTask(taskId, {
         ...input.agent,
         task: instruction,
@@ -4829,6 +5422,7 @@ export class OrchestratorTaskService extends Service {
         "Cannot retry in a terminal session; use new-session mode",
       );
     }
+    await this.pauseTerminalSessionTeardown(taskId);
     const sent = await this.sendToTaskAgent(
       taskId,
       sessionId,
@@ -4881,6 +5475,7 @@ export class OrchestratorTaskService extends Service {
     }
     const event = doc.events.find((item) => item.id === input.eventId);
     if (!event) throw new RecoveryConflictError("Source event not found");
+    await this.pauseTerminalSessionTeardown(taskId);
     if (input.stopActive === true) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
@@ -4931,6 +5526,8 @@ export class OrchestratorTaskService extends Service {
         "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
       planRevision,
     );
+    await this.pauseTerminalSessionTeardown(taskId);
+    const restartDoc = (await this.store.getTask(taskId)) ?? doc;
     // Open a fresh budget epoch BEFORE the first spawn of the new run so the
     // prior (failed) run's dead errored sessions no longer count toward the
     // crash-retry budget — otherwise a restarted task re-fails on its first
@@ -4938,7 +5535,7 @@ export class OrchestratorTaskService extends Service {
     // existing bag: `updateTask` replaces `metadata` wholesale.
     await this.store.updateTask(taskId, {
       metadata: {
-        ...doc.task.metadata,
+        ...restartDoc.task.metadata,
         [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
       },
     });

@@ -131,6 +131,38 @@ describe("decideInterruption", () => {
     ).toBe("ignore");
   });
 
+  it("does not treat a mention of another participant as addressing every agent", () => {
+    expect(
+      decideInterruption({
+        ...base,
+        text: "@Bob, please add the regression test",
+        sessionBusy: false,
+        multiParty: true,
+      }).action,
+    ).toBe("ignore");
+  });
+
+  it("targets only the leading vocative when another agent is mentioned as context", () => {
+    const text = "Bob, compare your output with Ada's result";
+    expect(
+      decideInterruption({
+        ...base,
+        text,
+        sessionBusy: false,
+        multiParty: true,
+      }).action,
+    ).toBe("ignore");
+    expect(
+      decideInterruption({
+        ...base,
+        agentLabel: "Bob",
+        text,
+        sessionBusy: false,
+        multiParty: true,
+      }).action,
+    ).toBe("deliver");
+  });
+
   it("threads an Eliza shouldRespond verdict through unchanged", () => {
     expect(
       decideInterruption({
@@ -306,6 +338,69 @@ describe("decideInterruptionWithModel", () => {
     expect(decision.action).toBe("interrupt");
   });
 
+  it("fails closed to planner ownership for an ambiguous shared-channel message", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("model unavailable");
+    });
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      {
+        ...base,
+        text: "set a reminder for tomorrow",
+        sessionBusy: false,
+        sharedChannel: true,
+      },
+    );
+    expect(decision).toEqual({
+      action: "ignore",
+      reason: "shared channel unresolved; planner owns routing",
+    });
+  });
+
+  it("preserves an explicit agent-addressed shared-channel message when the model fails", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("model unavailable");
+    });
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      {
+        ...base,
+        text: "Ada, add the parser regression test",
+        sessionBusy: false,
+        sharedChannel: true,
+      },
+    );
+    expect(decision.action).toBe("deliver");
+  });
+
+  it("preserves exact session- and task-id addressing when the shared-channel model fails", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("model unavailable");
+    });
+    const runtime = runtimeWithModel(useModel);
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const taskId = "22222222-2222-4222-8222-222222222222";
+
+    await expect(
+      decideInterruptionWithModel(runtime, {
+        ...base,
+        sessionId,
+        text: `send this to session ${sessionId}`,
+        sessionBusy: false,
+        sharedChannel: true,
+      }),
+    ).resolves.toMatchObject({ action: "deliver" });
+    await expect(
+      decideInterruptionWithModel(runtime, {
+        ...base,
+        taskId,
+        text: `for coding task ${taskId}, add a retry test`,
+        sessionBusy: true,
+        sharedChannel: true,
+      }),
+    ).resolves.toMatchObject({ action: "queue" });
+  });
+
   it("falls back to the regex decision on an unparseable / invalid verdict", async () => {
     const useModel = vi.fn(async () =>
       JSON.stringify({ action: "banana", reason: "nonsense" }),
@@ -316,5 +411,21 @@ describe("decideInterruptionWithModel", () => {
     );
     // Invalid action → regex fallback (mid-turn relevant → queue).
     expect(decision.action).toBe("queue");
+  });
+
+  it("fails closed on an invalid shared-channel verdict", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "banana", reason: "nonsense" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      {
+        ...base,
+        text: "what should we have for lunch?",
+        sessionBusy: false,
+        sharedChannel: true,
+      },
+    );
+    expect(decision.action).toBe("ignore");
   });
 });

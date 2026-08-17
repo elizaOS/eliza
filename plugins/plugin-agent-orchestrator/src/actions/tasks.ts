@@ -44,7 +44,10 @@ import {
 } from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
-import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
+import {
+  type OrchestratorTaskStatus,
+  TERMINAL_TASK_STATUSES,
+} from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
@@ -2249,6 +2252,29 @@ async function runSend(
         "NO_SESSION",
         "No active task-agent sessions; spawn an agent first.",
       );
+    }
+
+    if (routedCompletion) {
+      const taskService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      const durableTask =
+        taskService && typeof taskService.getTaskForSession === "function"
+          ? await taskService.getTaskForSession(target.session.id)
+          : null;
+      if (durableTask && TERMINAL_TASK_STATUSES.has(durableTask.status)) {
+        return {
+          success: true,
+          text: `The durable coding task is already ${durableTask.status}; no follow-up was sent.`,
+          continueChain: false,
+          data: {
+            sessionId: target.session.id,
+            durableTaskId: durableTask.id,
+            terminalTaskStatus: durableTask.status,
+            suppressedTerminalFollowUp: true,
+          },
+        };
+      }
     }
 
     if (keys) {
@@ -4539,6 +4565,13 @@ function tasksNoopReason(
     return "The operation only read orchestrator state.";
   }
   const data = objectValue(result.data) ?? {};
+  if (
+    operation === "send" &&
+    result.success &&
+    data.suppressedTerminalFollowUp === true
+  ) {
+    return "The durable task was already terminal, so its routed follow-up was suppressed.";
+  }
   if (result.success && isIssueReadOperation(operation, params, content)) {
     return "The operation only read provider issue state.";
   }
