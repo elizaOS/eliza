@@ -4,6 +4,7 @@
  * Includes Redis caching for validation to reduce database load on high-traffic APIs.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
@@ -18,6 +19,7 @@ import {
   invalidateInferenceAuthContextByKeyHash,
   invalidateInferenceAuthContextsByKeyHashes,
 } from "./inference-auth-cache";
+import { revokeInferenceApiKey } from "./inference-credential-revocation";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -360,6 +362,15 @@ export class ApiKeysService {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
+      if (data.is_active === true && existing.is_active === false) {
+        throw new ElizaError("Revoked API keys cannot be reactivated; create a new key instead", {
+          code: "API_KEY_IDENTITY_REVOKED",
+          context: { apiKeyId: existing.id },
+        });
+      }
+      if (data.is_active === false) {
+        await revokeInferenceApiKey(existing.organization_id, existing.id);
+      }
       await this.invalidateCache(existing.key_hash);
     }
 
@@ -374,6 +385,7 @@ export class ApiKeysService {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
+      await revokeInferenceApiKey(existing.organization_id, existing.id);
       await this.invalidateCache(existing.key_hash);
     }
 
@@ -384,6 +396,7 @@ export class ApiKeysService {
     const existingKeys = await apiKeysRepository.findByUserAndName(userId, name);
 
     for (const key of existingKeys) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       await this.invalidateCache(key.key_hash);
     }
 
@@ -397,6 +410,7 @@ export class ApiKeysService {
     );
 
     for (const key of keysInOrganization) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       await this.invalidateCache(key.key_hash);
     }
 
@@ -483,6 +497,7 @@ export class ApiKeysService {
     // the deactivation is already durable, so this pass is authoritative and
     // a confirmed row can be hard-deleted immediately.
     for (const key of revoked) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       try {
         await this.invalidateCache(key.key_hash);
         if (!tx) {

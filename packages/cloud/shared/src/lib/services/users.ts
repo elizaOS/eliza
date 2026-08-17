@@ -18,6 +18,10 @@ import {
   invalidateInferenceAuthContextsByKeyHashes,
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
+import {
+  revokeInferenceSessionsThrough,
+  setInferenceSubjectActive,
+} from "./inference-credential-revocation";
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -285,6 +289,30 @@ export class UsersService {
 
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
     const existing = await usersRepository.findById(id);
+    const movingOrganizations =
+      typeof data.organization_id === "string" &&
+      data.organization_id !== existing?.organization_id;
+    const sessionAuthorityChanged =
+      (typeof data.role === "string" && data.role !== existing?.role) ||
+      (typeof data.steward_user_id === "string" &&
+        data.steward_user_id !== existing?.steward_user_id);
+    const sessionRevocationCutoff =
+      movingOrganizations || sessionAuthorityChanged ? Math.floor(Date.now() / 1000) : null;
+    if (movingOrganizations && existing?.organization_id) {
+      await setInferenceSubjectActive(existing.organization_id, id, false);
+    }
+    if (movingOrganizations && typeof data.organization_id === "string") {
+      await setInferenceSubjectActive(data.organization_id, id, false);
+      if (sessionRevocationCutoff !== null) {
+        await revokeInferenceSessionsThrough(data.organization_id, id, sessionRevocationCutoff);
+      }
+    }
+    if (data.is_active === false && existing?.organization_id) {
+      await setInferenceSubjectActive(existing.organization_id, id, false);
+    }
+    if (sessionRevocationCutoff !== null && existing?.organization_id) {
+      await revokeInferenceSessionsThrough(existing.organization_id, id, sessionRevocationCutoff);
+    }
     const result = await usersRepository.update(id, data);
     if (existing) {
       await this.invalidateCache(existing);
@@ -296,6 +324,12 @@ export class UsersService {
     // entries so the now-inactive account can no longer fast-path inference.
     if (data.is_active === false) {
       await this.invalidateInferenceAuthForUser(id);
+    }
+    if (data.is_active === true && result?.organization_id && !movingOrganizations) {
+      await setInferenceSubjectActive(result.organization_id, id, true);
+    }
+    if (typeof data.organization_id === "string" && result?.organization_id) {
+      await setInferenceSubjectActive(result.organization_id, id, result.is_active);
     }
     return result;
   }
@@ -362,6 +396,9 @@ export class UsersService {
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
+    if (user.organization_id) {
+      await setInferenceSubjectActive(user.organization_id, id, false);
+    }
 
     let slug = generatePersonalOrgSlug(user);
     let attempts = 0;
@@ -425,6 +462,10 @@ export class UsersService {
     }
 
     const organizationId = user.organization_id;
+
+    if (organizationId) {
+      await setInferenceSubjectActive(organizationId, id, false);
+    }
 
     await this.invalidateCache(user);
     // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:

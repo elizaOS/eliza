@@ -16,6 +16,10 @@ const named = (name: string, message = "x"): Error => {
 };
 
 describe("getErrorStatusCode", () => {
+  test("maps a failed inference revocation boundary to retryable service unavailability", () => {
+    expect(getErrorStatusCode(named("InferenceCredentialRevocationUnavailableError"))).toBe(503);
+  });
+
   test("maps by error name", () => {
     expect(getErrorStatusCode(named("NotFoundError"))).toBe(404);
     expect(getErrorStatusCode(named("RateLimitError"))).toBe(429);

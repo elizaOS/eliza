@@ -17,6 +17,10 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  isInferenceStrongRevocationEnabled,
+  revokeInferenceSessionsThrough,
+} from "@/lib/services/inference-credential-revocation";
 import { markSsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
 import { userSessionsService } from "@/lib/services/user-sessions";
 import { logger } from "@/lib/utils/logger";
@@ -67,6 +71,32 @@ app.post("/", async (c) => {
   deleteCookie(c, cookieNames.refreshToken, stewardOpts);
   deleteCookie(c, cookieNames.authed, stewardOpts);
   deleteCookie(c, "eliza-anon-session", { path: "/" });
+
+  let strongRevocationFailed = false;
+  if (stewardToken && isInferenceStrongRevocationEnabled(c.env)) {
+    try {
+      const [claims, user] = await Promise.all([
+        verifyStewardTokenCached(c.env, stewardToken),
+        getCurrentUser(c),
+      ]);
+      if (!claims || !user?.organization_id) {
+        throw new Error("logout credential identity could not be resolved");
+      }
+      await revokeInferenceSessionsThrough(
+        user.organization_id,
+        user.id,
+        claims.issuedAt,
+      );
+    } catch (error) {
+      // error-policy:J1 cookies are already cleared, but the server must not
+      // claim a globally complete logout until the strong inference boundary
+      // confirms that the presented session generation is denied.
+      logger.error("[Logout] Strong inference-session revocation failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      strongRevocationFailed = true;
+    }
+  }
 
   // Stamp the cross-host SSO logout marker FIRST and in its own guarded block:
   // the sso-bridge legs and the cookie-planting session-sync endpoint refuse
@@ -152,6 +182,16 @@ app.post("/", async (c) => {
       {
         error: error instanceof Error ? error.message : String(error),
       },
+    );
+  }
+
+  if (strongRevocationFailed) {
+    return c.json(
+      {
+        error: "Logout revocation is temporarily unavailable",
+        code: "logout_revocation_unavailable" as const,
+      },
+      503,
     );
   }
 

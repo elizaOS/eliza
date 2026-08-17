@@ -87,6 +87,43 @@ interface RateLimitRequest {
   maxRequests: number;
 }
 
+type CredentialCheckRequest =
+  | {
+      organizationId: string;
+      kind: "api_key";
+      credentialId: string;
+      userId: string;
+    }
+  | {
+      organizationId: string;
+      kind: "steward_session";
+      userId: string;
+      issuedAt: number;
+    };
+
+interface CredentialRevokeRequest {
+  organizationId: string;
+  kind: "api_key";
+  credentialId: string;
+}
+
+interface SubjectStateRequest {
+  organizationId: string;
+  userId: string;
+  active: boolean;
+}
+
+interface SessionRevokeRequest {
+  organizationId: string;
+  userId: string;
+  issuedAt: number;
+}
+
+interface OrganizationStateRequest {
+  organizationId: string;
+  active: boolean;
+}
+
 interface RateLimitWindow {
   windowStartedAt: number;
   windowMs: number;
@@ -101,6 +138,10 @@ const LEASE_KEY_PREFIX = "lease:";
 const LEASE_ACTIVE_KEY_PREFIX = "lease-active:";
 const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
+const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
+const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
+const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
+const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
 const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
@@ -146,6 +187,10 @@ function validRequestId(value: unknown): value is string {
 
 function validTrimmedId(value: unknown): value is string {
   return validId(value) && value.trim() === value;
+}
+
+function revocationStorageKey(prefix: string, id: string): string {
+  return `${prefix}${encodeURIComponent(id)}`;
 }
 
 function validRecoveryContext(
@@ -891,6 +936,124 @@ export class InferenceAdmissionGate {
     );
   }
 
+  private async credentialCheck(
+    request: CredentialCheckRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      (request.kind === "api_key" && !validTrimmedId(request.credentialId)) ||
+      (request.kind === "steward_session" &&
+        (!Number.isSafeInteger(request.issuedAt) || request.issuedAt <= 0))
+    ) {
+      return jsonError("Invalid inference credential check", 400);
+    }
+
+    if (await this.state.storage.get<boolean>(ORGANIZATION_DISABLED_KEY)) {
+      return Response.json(
+        { allowed: false, reason: "organization_disabled" },
+        { status: 403 },
+      );
+    }
+    if (
+      await this.state.storage.get<boolean>(
+        revocationStorageKey(DISABLED_SUBJECT_PREFIX, request.userId),
+      )
+    ) {
+      return Response.json(
+        { allowed: false, reason: "subject_disabled" },
+        { status: 403 },
+      );
+    }
+
+    if (request.kind === "api_key") {
+      const revoked = await this.state.storage.get<boolean>(
+        revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
+      );
+      return revoked
+        ? Response.json(
+            { allowed: false, reason: "credential_revoked" },
+            { status: 403 },
+          )
+        : Response.json({ allowed: true });
+    }
+
+    const cutoff = await this.state.storage.get<number>(
+      revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId),
+    );
+    return cutoff !== undefined && request.issuedAt <= cutoff
+      ? Response.json(
+          { allowed: false, reason: "session_revoked" },
+          { status: 403 },
+        )
+      : Response.json({ allowed: true });
+  }
+
+  private async revokeCredential(
+    request: CredentialRevokeRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      request.kind !== "api_key" ||
+      !validTrimmedId(request.credentialId)
+    ) {
+      return jsonError("Invalid inference credential revocation", 400);
+    }
+    await this.state.storage.put(
+      revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
+      true,
+    );
+    return Response.json({ committed: true });
+  }
+
+  private async setSubjectActive(
+    request: SubjectStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      typeof request.active !== "boolean"
+    ) {
+      return jsonError("Invalid inference subject state", 400);
+    }
+    const key = revocationStorageKey(DISABLED_SUBJECT_PREFIX, request.userId);
+    if (request.active) await this.state.storage.delete(key);
+    else await this.state.storage.put(key, true);
+    return Response.json({ committed: true });
+  }
+
+  private async revokeSessionsThrough(
+    request: SessionRevokeRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      !Number.isSafeInteger(request.issuedAt) ||
+      request.issuedAt <= 0
+    ) {
+      return jsonError("Invalid inference session revocation", 400);
+    }
+    const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
+    const previous = (await this.state.storage.get<number>(key)) ?? 0;
+    await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    return Response.json({ committed: true });
+  }
+
+  private async setOrganizationActive(
+    request: OrganizationStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      typeof request.active !== "boolean"
+    ) {
+      return jsonError("Invalid inference organization state", 400);
+    }
+    if (request.active)
+      await this.state.storage.delete(ORGANIZATION_DISABLED_KEY);
+    else await this.state.storage.put(ORGANIZATION_DISABLED_KEY, true);
+    return Response.json({ committed: true });
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
@@ -900,14 +1063,24 @@ export class InferenceAdmissionGate {
       | HydrateRequest
       | SettleRequest
       | LeaseIdentityRequest
-      | RateLimitRequest;
+      | RateLimitRequest
+      | CredentialCheckRequest
+      | CredentialRevokeRequest
+      | SubjectStateRequest
+      | SessionRevokeRequest
+      | OrganizationStateRequest;
     try {
       body = (await request.json()) as
         | LeaseRequest
         | HydrateRequest
         | SettleRequest
         | LeaseIdentityRequest
-        | RateLimitRequest;
+        | RateLimitRequest
+        | CredentialCheckRequest
+        | CredentialRevokeRequest
+        | SubjectStateRequest
+        | SessionRevokeRequest
+        | OrganizationStateRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
       return jsonError("Invalid JSON body", 400);
@@ -936,6 +1109,31 @@ export class InferenceAdmissionGate {
     if (path === "/rate-limit") {
       return await this.serialize(() =>
         this.rateLimit(body as RateLimitRequest),
+      );
+    }
+    if (path === "/credential/check") {
+      return await this.serialize(() =>
+        this.credentialCheck(body as CredentialCheckRequest),
+      );
+    }
+    if (path === "/credential/revoke") {
+      return await this.serialize(() =>
+        this.revokeCredential(body as CredentialRevokeRequest),
+      );
+    }
+    if (path === "/subject/set-active") {
+      return await this.serialize(() =>
+        this.setSubjectActive(body as SubjectStateRequest),
+      );
+    }
+    if (path === "/session/revoke-through") {
+      return await this.serialize(() =>
+        this.revokeSessionsThrough(body as SessionRevokeRequest),
+      );
+    }
+    if (path === "/organization/set-active") {
+      return await this.serialize(() =>
+        this.setOrganizationActive(body as OrganizationStateRequest),
       );
     }
     return new Response("Not found", { status: 404 });

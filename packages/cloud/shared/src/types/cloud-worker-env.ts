@@ -478,6 +478,8 @@ export interface Bindings {
   // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
   INFERENCE_HOT_PATH_CACHES?: string;
   INFERENCE_AUTH_CACHE_ENABLED?: string;
+  /** Strong Durable Object boundary required before positive auth caching can activate. */
+  INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

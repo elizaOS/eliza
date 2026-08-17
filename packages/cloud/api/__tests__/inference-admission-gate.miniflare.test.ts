@@ -156,6 +156,7 @@ describe("Miniflare Durable Object integration", () => {
           useSQLite: true,
         },
       },
+      kvNamespaces: ["TEST_AUTH_CACHE"],
     });
   });
 
@@ -242,4 +243,102 @@ describe("Miniflare Durable Object integration", () => {
     }
     expect([first.status, second.status].sort()).toEqual([200, 402]);
   }, 120_000);
+
+  test("independent callers observe API-key revocation immediately", async () => {
+    const credential = {
+      organizationId: "org-miniflare",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000101",
+      userId: "00000000-0000-0000-0000-000000000201",
+    };
+    const staleCache = await miniflare.getKVNamespace("TEST_AUTH_CACHE");
+    const staleCacheKey = "inference-auth:test-stale-positive";
+    const stalePositive = JSON.stringify({
+      kind: "authorized",
+      apiKeyId: credential.credentialId,
+      userId: credential.userId,
+      organizationId: credential.organizationId,
+    });
+    await staleCache.put(staleCacheKey, stalePositive);
+    expect((await post("/credential/check", credential)).status).toBe(200);
+    expect(
+      (
+        await post("/credential/revoke", {
+          organizationId: credential.organizationId,
+          kind: credential.kind,
+          credentialId: credential.credentialId,
+        })
+      ).status,
+    ).toBe(200);
+
+    // This second dispatch models another Worker location retaining a stale
+    // positive KV entry. Deliberately leave the real workerd KV value untouched
+    // to model delayed delete visibility: the shared DO remains authoritative.
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      stalePositive,
+    );
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      stalePositive,
+    );
+  });
+
+  test("session cutoff revokes old tokens without rejecting a later login", async () => {
+    const base = {
+      organizationId: "org-miniflare",
+      kind: "steward_session",
+      userId: "00000000-0000-0000-0000-000000000202",
+    };
+    expect(
+      (
+        await post("/session/revoke-through", {
+          organizationId: base.organizationId,
+          userId: base.userId,
+          issuedAt: 100,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await post("/credential/check", { ...base, issuedAt: 100 })).status,
+    ).toBe(403);
+    expect(
+      (await post("/credential/check", { ...base, issuedAt: 101 })).status,
+    ).toBe(200);
+  });
+
+  test("subject and organization suspension are reversible durable fences", async () => {
+    const credential = {
+      organizationId: "org-miniflare",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000102",
+      userId: "00000000-0000-0000-0000-000000000203",
+    };
+    expect(
+      (
+        await post("/subject/set-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          active: false,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    await post("/subject/set-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+
+    await post("/organization/set-active", {
+      organizationId: credential.organizationId,
+      active: false,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    await post("/organization/set-active", {
+      organizationId: credential.organizationId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
 });

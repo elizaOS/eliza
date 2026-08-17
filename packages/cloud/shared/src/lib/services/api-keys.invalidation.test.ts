@@ -22,6 +22,7 @@ import type { ApiKey } from "../../db/repositories";
 import { apiKeysRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys } from "../cache/keys";
+import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
 const KEY_HASH = "a".repeat(64);
@@ -95,6 +96,44 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
 
     await expect(apiKeysService.delete("key-1")).resolves.toBeUndefined();
     expect(repoDelete).toHaveBeenCalledWith("key-1");
+  });
+
+  test("delete(): strong revocation must commit before cache or database mutation", async () => {
+    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    const cacheDelete = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => Response.json({ error: "unavailable" }, { status: 503 }),
+      }),
+    };
+
+    await expect(
+      runWithCloudBindingsAsync(
+        {
+          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+          INFERENCE_ADMISSION_GATES: namespace,
+        },
+        () => apiKeysService.delete("key-1"),
+      ),
+    ).rejects.toThrow(/status 503/i);
+    expect(cacheDelete).not.toHaveBeenCalled();
+    expect(repoDelete).not.toHaveBeenCalled();
+  });
+
+  test("an inactive immutable key identity cannot be reactivated", async () => {
+    track(
+      spyOn(apiKeysRepository, "findById").mockResolvedValue({
+        ...fakeKey(),
+        is_active: false,
+      }),
+    );
+    const repoUpdate = track(spyOn(apiKeysRepository, "update").mockResolvedValue(undefined));
+
+    await expect(apiKeysService.update("key-1", { is_active: true })).rejects.toMatchObject({
+      code: "API_KEY_IDENTITY_REVOKED",
+    });
+    expect(repoUpdate).not.toHaveBeenCalled();
   });
 
   test("invalidateInferenceContextForUser: unconfirmed fan-out throws (ban fails closed)", async () => {
