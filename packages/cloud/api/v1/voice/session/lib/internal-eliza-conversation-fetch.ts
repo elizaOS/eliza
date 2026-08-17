@@ -264,7 +264,8 @@ async function dispatchInternalElizaConversationFetch(
   } catch (error) {
     if (
       error instanceof TypeError &&
-      error.message === "invalid internal Eliza stream path: malformed URL encoding"
+      error.message ===
+        "invalid internal Eliza stream path: malformed URL encoding"
     ) {
       return Response.json(
         {
@@ -334,7 +335,19 @@ async function dispatchInternalElizaConversationFetch(
     body = {};
   }
 
-  return handleCanonicalScopedAgentStream({
+  const cutoff = readAttestedHistoryCutoffAt(body);
+  if (!cutoff.ok) {
+    return Response.json(
+      {
+        success: false,
+        error:
+          "invalid historyCutoffAt: expected a finite positive integer timestamp",
+      },
+      { status: 400 },
+    );
+  }
+
+  const streamRequest = {
     abortSignal: request.signal,
     agent,
     agentId: claims.agentId,
@@ -348,11 +361,51 @@ async function dispatchInternalElizaConversationFetch(
       (body as { messageRole?: unknown }).messageRole === "system"
         ? "system"
         : undefined,
-    body,
+    body: stripUntrustedHistoryCutoffAt(body),
     origin: headers.get("origin"),
     namespace: runtime.namespace,
     executionCtx: runtime.executionCtx,
-  });
+  };
+
+  return handleCanonicalScopedAgentStream(
+    cutoff.value === undefined
+      ? streamRequest
+      : Object.assign(streamRequest, { historyCutoffAt: cutoff.value }),
+  );
+}
+
+type HistoryCutoffRead = { ok: true; value?: number } | { ok: false };
+
+/**
+ * Server-attest a client-supplied history cutoff only after voice-service auth.
+ * Prefix-coerced strings, non-integers, and non-positive values are denied.
+ */
+function readAttestedHistoryCutoffAt(body: unknown): HistoryCutoffRead {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: true };
+  }
+  if (!Object.hasOwn(body, "historyCutoffAt")) {
+    return { ok: true };
+  }
+  const value = (body as { historyCutoffAt: unknown }).historyCutoffAt;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return { ok: true, value };
+  }
+  return { ok: false };
+}
+
+function stripUntrustedHistoryCutoffAt(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return body;
+  }
+  if (!Object.hasOwn(body, "historyCutoffAt")) {
+    return body;
+  }
+  const { historyCutoffAt: _ignored, ...rest } = body as Record<
+    string,
+    unknown
+  >;
+  return rest;
 }
 
 function decodeStreamPathSegment(raw: string): string | null {
