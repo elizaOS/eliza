@@ -9,9 +9,11 @@ import {
   type Address,
   type Chain,
   createPublicClient,
+  type GetContractReturnType,
   getContract,
   type Hash,
   http,
+  type PublicClient,
   type WalletClient,
   zeroAddress,
 } from "viem";
@@ -39,12 +41,24 @@ export function requireWalletAccount(client: WalletClient) {
 /** Native ETH token address (zero address) */
 export const NATIVE_TOKEN: Address = zeroAddress;
 
+/** Stable public SDK boundary for the typed AgentAccountV2 contract client. */
+export interface AgentWallet {
+  address: Address;
+  contract: GetContractReturnType<
+    typeof AgentAccountV2Abi,
+    { public: PublicClient; wallet: WalletClient }
+  >;
+  publicClient: PublicClient;
+  walletClient: WalletClient;
+  chain: Chain;
+}
+
 /**
  * Create a wallet client connected to an existing AgentAccountV2.
  */
 export function createWallet(
   config: AgentWalletConfig & { walletClient: WalletClient },
-) {
+): AgentWallet {
   const chain = CHAINS[config.chain];
   if (!chain) throw new Error(`Unsupported chain: ${config.chain}`);
 
@@ -67,8 +81,6 @@ export function createWallet(
     chain,
   };
 }
-
-export type AgentWallet = ReturnType<typeof createWallet>;
 
 /**
  * Set a spend policy for a token. Only callable by the NFT owner.
