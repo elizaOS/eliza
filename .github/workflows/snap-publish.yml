@@ -40,9 +40,6 @@ jobs:
     environment:
       name: production-release
 
-    env:
-      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -70,6 +67,8 @@ jobs:
         uses: ./.github/actions/normalize-snapd-root
 
       - name: Check Snap Store credentials
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
           if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
             echo "::error::SNAPCRAFT_STORE_CREDENTIALS is required for the canonical store release."
@@ -101,11 +100,14 @@ jobs:
           ls -la "$SNAP_FILE"
 
       - name: Verify Snap Store credentials
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: snapcraft whoami
 
       - name: Publish to Snap Store
         env:
           CHANNEL: ${{ inputs.channel }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
           case "$CHANNEL" in
             stable|candidate|beta|edge) ;;
