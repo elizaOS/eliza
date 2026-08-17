@@ -31,6 +31,7 @@ import { type DocumentListResult, DocumentService } from "../service";
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
+const WORLD_ID = "00000000-0000-4000-8000-00000000face" as UUID;
 const DOC_ID = "11111111-2222-3333-4444-555555555555" as UUID;
 
 function listResult(
@@ -104,7 +105,12 @@ function makeRuntime(service: ReturnType<typeof makeService>): {
 			return found;
 		}),
 		getSetting: vi.fn(() => undefined),
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async () => ({ id: ROOM_ID, worldId: WORLD_ID })),
+		getWorld: vi.fn(async () => ({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		})),
 		getRoomsForParticipants: vi.fn(async () => {
 			throw new Error("room lookup is unavailable");
 		}),
@@ -471,9 +477,33 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.addDocument.mock.calls[0]?.[0]).toMatchObject({
 			content: "Launch is Friday.",
 			addedByRole: "USER",
+			roomId: ROOM_ID,
+			worldId: WORLD_ID,
 		});
 		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
 		expect(res?.data).toMatchObject({ subaction: "write" });
+	});
+
+	it("fails closed when canonical room lookup fails during a write", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+		const lookupFailure = new Error("database unavailable");
+		(runtime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			lookupFailure,
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("save Launch is Friday"),
+			undefined,
+			options({ action: "write", text: "Launch is Friday." }),
+		);
+
+		expect(service.addDocument).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({
+			error: "DOCUMENT_ROOM_LOOKUP_FAILED",
+		});
 	});
 
 	it("asks for clarification when search has no query the extractor can supply", async () => {

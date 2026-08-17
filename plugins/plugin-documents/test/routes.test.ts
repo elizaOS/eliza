@@ -29,6 +29,10 @@ type MockResponse = {
 };
 
 const OWNER_ENTITY_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
+const AGENT_ID = "00000000-0000-4000-8000-0000000000a1" as UUID;
+const ROOM_ID = "00000000-0000-4000-8000-0000000000a2" as UUID;
+const WORLD_ID = "00000000-0000-4000-8000-0000000000a3" as UUID;
+const OTHER_WORLD_ID = "00000000-0000-4000-8000-0000000000a4" as UUID;
 
 function buildCtx(args: {
   method: string;
@@ -67,7 +71,7 @@ function buildCtx(args: {
         isOwner: true,
       } satisfies AccessContext),
     runtime: {
-      agentId: "agent-id",
+      agentId: AGENT_ID,
       getSetting: () => undefined,
       getMemoryById,
       ...args.runtime,
@@ -146,6 +150,137 @@ describe("document routes", () => {
     expect(res.body).toEqual({
       error: "content and filename must be non-empty strings",
     });
+    expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ roomId: "not-a-uuid" }, "roomId must be a valid UUID"],
+    [
+      { worldId: "not-a-uuid" },
+      "worldId requires a roomId so tenant scope can be verified",
+    ],
+    [
+      { roomId: ROOM_ID, worldId: "not-a-uuid" },
+      "worldId must be a valid UUID",
+    ],
+  ])(
+    "rejects malformed upload location %#",
+    async (location, expectedError) => {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents",
+        body: { content: "hello", filename: "doc.txt", ...location },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: expectedError });
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it("derives upload world authority from the canonical room", async () => {
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "00000000-0000-4000-8000-0000000000a5",
+      fragmentCount: 1,
+    });
+    const getRoom = vi.fn(async () => ({ id: ROOM_ID, worldId: WORLD_ID }));
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getRoom },
+      accessContext: {
+        requesterEntityId: OWNER_ENTITY_ID,
+        role: "USER",
+        worldId: WORLD_ID,
+      },
+      body: {
+        content: "hello",
+        filename: "doc.txt",
+        roomId: ROOM_ID,
+        worldId: WORLD_ID,
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(getRoom).toHaveBeenCalledWith(ROOM_ID);
+    expect(addDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: ROOM_ID, worldId: WORLD_ID }),
+    );
+  });
+
+  it("rejects a syntactically valid caller-supplied world that mismatches the room", async () => {
+    const getRoom = vi.fn(async () => ({ id: ROOM_ID, worldId: WORLD_ID }));
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getRoom },
+      body: {
+        content: "hello",
+        filename: "doc.txt",
+        roomId: ROOM_ID,
+        worldId: OTHER_WORLD_ID,
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({
+      error: "worldId does not match the canonical room tenant",
+    });
+    expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-owner whose access context is for another world", async () => {
+    const getRoom = vi.fn(async () => ({ id: ROOM_ID, worldId: WORLD_ID }));
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getRoom },
+      accessContext: {
+        requesterEntityId: OWNER_ENTITY_ID,
+        role: "USER",
+        worldId: OTHER_WORLD_ID,
+      },
+      body: { content: "hello", filename: "doc.txt", roomId: ROOM_ID },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({
+      error: "Requester is not authorized for the room tenant",
+    });
+    expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it("returns unavailable and reports diagnostics when room lookup fails", async () => {
+    const lookupFailure = new Error("database unavailable");
+    const reportError = vi.fn();
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: {
+        getRoom: vi.fn(async () => {
+          throw lookupFailure;
+        }),
+        reportError,
+      },
+      body: { content: "hello", filename: "doc.txt", roomId: ROOM_ID },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(503);
+    expect(reportError).toHaveBeenCalledWith(
+      "documents.upload-location",
+      lookupFailure,
+      { roomId: ROOM_ID },
+    );
     expect(addDocument).not.toHaveBeenCalled();
   });
 
