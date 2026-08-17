@@ -1801,9 +1801,17 @@ export const shellAction: Action = {
     );
 
     let result: ShellResult;
+    const abortSignal = (options as { abortSignal?: AbortSignal } | undefined)
+      ?.abortSignal;
     try {
-      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+      result = await runShell(runtime, {
+        command,
+        cwd,
+        timeoutMs: timeout,
+        abortSignal,
+      });
     } catch (err) {
+      if (abortSignal?.aborted) throw abortSignal.reason ?? err;
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
       // the planner loop shows the failure to the model.

@@ -1047,6 +1047,9 @@ export interface HandlerOptions {
 	/** Optional stream chunk callback for streaming responses */
 	onStreamChunk?: StreamChunkCallback;
 
+	/** Caller-controlled cancellation for the current model/tool turn. */
+	abortSignal?: AbortSignal;
+
 	/**
 	 * Validated input parameters extracted from the conversation.
 	 * Only present when the action defines parameters and they were successfully extracted.

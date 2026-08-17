@@ -397,7 +397,12 @@ export async function executePlannedToolCall(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
-	options.abortSignal?.throwIfAborted();
+	// V5 planner paths execute inside the message streaming context and do not
+	// all thread an explicit signal through executorOptions. Resolve it once at
+	// the canonical action boundary so deterministic, loop, shortcut, and
+	// sub-planner calls carry the same caller cancellation into tool handlers.
+	const abortSignal = options.abortSignal ?? getStreamingContext()?.abortSignal;
+	abortSignal?.throwIfAborted();
 	// Diagnostic projection for every copy of the arguments that leaves the
 	// execution path (streaming observers, lifecycle events, trajectories).
 	// The handler itself receives the exact validated values.
@@ -498,6 +503,7 @@ export async function executePlannedToolCall(
 	} = options;
 	const handlerOptions: HandlerOptions = {
 		...handlerOptionOverrides,
+		...(abortSignal ? { abortSignal } : {}),
 		parameters,
 		parameterErrors: undefined,
 		actionContext: options.actionContext ?? {
@@ -575,7 +581,7 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
-	options.abortSignal?.throwIfAborted();
+	abortSignal?.throwIfAborted();
 
 	const messageId = executorCtx.message.id as UUID | undefined;
 	const roomId = executorCtx.message.roomId as UUID;
@@ -664,7 +670,7 @@ export async function executePlannedToolCall(
 						action,
 						callback: protectedCallback,
 						invoke: async (actionCallback) => {
-							options.abortSignal?.throwIfAborted();
+							abortSignal?.throwIfAborted();
 							// Egress (#10469): this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
 							// and trajectory upstream kept the placeholders. Fail loud if the model

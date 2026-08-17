@@ -10,13 +10,17 @@
 import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
+  accessSync,
   createWriteStream,
   existsSync,
+  constants as fsConstants,
   mkdtempSync,
+  realpathSync,
   rmSync,
+  statSync,
   type WriteStream,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import * as importPath from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
@@ -43,6 +47,7 @@ export type ShellSandboxBackend =
   | "capability-router"
   | "docker"
   | "apple-container"
+  | "bubblewrap"
   | "wsl2"
   | "appcontainer"
   | "none";
@@ -96,6 +101,7 @@ interface RuntimeSandboxManager {
     env?: Record<string, string>;
     timeoutMs?: number;
     stdin?: string;
+    abortSignal?: AbortSignal;
   }) => Promise<{
     exitCode: number;
     stdout: string;
@@ -143,8 +149,388 @@ function toSandboxWorkdir(cwd: string): string | undefined {
 
 const STREAM_CAP_CHARS = 30_000;
 
+const TRUSTED_BUBBLEWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap"] as const;
+
+const BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS = [
+  "/usr",
+  "/bin",
+  "/sbin",
+  "/lib",
+  "/lib64",
+] as const;
+
+// Public runtime trust material only. Never bind all of /etc: model-authored
+// commands do not need host identities, service configs, or machine-local
+// credentials merely to run a compiler and tests.
+const BUBBLEWRAP_READ_ONLY_ETC_PATHS = [
+  "/etc/ld.so.cache",
+  "/etc/ssl/certs",
+  "/etc/ssl/openssl.cnf",
+  "/etc/pki/tls/certs/ca-bundle.crt",
+  "/etc/crypto-policies/back-ends/opensslcnf.config",
+] as const;
+
+// Model-authored shell commands must not inherit provider credentials or the
+// agent's operational configuration. Keep this list intentionally narrow: the
+// sandbox gets executable discovery plus terminal/locale presentation only.
+const BUBBLEWRAP_PASSTHROUGH_ENV_KEYS = new Set([
+  "CI",
+  "COLORTERM",
+  "FORCE_COLOR",
+  "LANG",
+  "LC_ALL",
+  "LC_COLLATE",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+  "LC_MONETARY",
+  "LC_NUMERIC",
+  "LC_TIME",
+  "NO_COLOR",
+  "TERM",
+  "TZ",
+]);
+
+const BUBBLEWRAP_TOOLCHAIN_COMMANDS = [
+  "bun",
+  "git",
+  "node",
+  "python",
+  "python3",
+  "rg",
+] as const;
+
+const UNSAFE_MUTABLE_WORKSPACE_ROOTS = [
+  "/",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/home",
+  "/lib",
+  "/lib64",
+  "/media",
+  "/mnt",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/srv",
+  "/sys",
+  "/tmp",
+  "/usr",
+  "/var",
+] as const;
+
 function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
+}
+
+function bubblewrapSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const presentationEnv: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && BUBBLEWRAP_PASSTHROUGH_ENV_KEYS.has(key)) {
+      presentationEnv[key] = value;
+    }
+  }
+  return applyHostExecutionBaseline(sanitizeSpawnEnv(presentationEnv));
+}
+
+function isPathInside(path: string, root: string): boolean {
+  const relative = importPath.relative(root, path);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${importPath.sep}`) &&
+      relative !== ".." &&
+      !importPath.isAbsolute(relative))
+  );
+}
+
+function expandWorkspaceRoot(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return importPath.join(homedir(), value.slice(2));
+  if (value.startsWith("$HOME/")) {
+    return importPath.join(homedir(), value.slice(6));
+  }
+  return value;
+}
+
+function readRuntimeStringSetting(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const fromRuntime = runtime.getSetting?.(key);
+  if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
+    return fromRuntime;
+  }
+  const fromEnvironment = process.env[key];
+  return typeof fromEnvironment === "string" &&
+    fromEnvironment.trim().length > 0
+    ? fromEnvironment
+    : undefined;
+}
+
+function canonicalDirectory(value: string, label: string): string {
+  let resolved: string;
+  try {
+    resolved = realpathSync(importPath.resolve(expandWorkspaceRoot(value)));
+  } catch (error) {
+    // error-policy:J2 local-safe configuration is a hard security boundary;
+    // retain the path label and cause while refusing to execute anything.
+    throw new Error(`${label} is unavailable: ${value}`, { cause: error });
+  }
+  if (!statSync(resolved).isDirectory()) {
+    throw new Error(`${label} is not a directory: ${value}`);
+  }
+  return resolved;
+}
+
+function resolveBubblewrapWorkspace(
+  runtime: IAgentRuntime,
+  cwd: string,
+): { cwd: string; roots: string[] } {
+  const configuredRoots = readRuntimeStringSetting(
+    runtime,
+    "CODING_TOOLS_WORKSPACE_ROOTS",
+  );
+  if (!configuredRoots) {
+    throw new Error(
+      "local-safe mode requires SandboxManager or an explicit CODING_TOOLS_WORKSPACE_ROOTS workspace root for the Linux bubblewrap backend.",
+    );
+  }
+
+  const rawRoots = configuredRoots
+    .split(",")
+    .map((root) => root.trim())
+    .filter(Boolean);
+  if (rawRoots.length === 0) {
+    throw new Error(
+      "local-safe mode requires SandboxManager or a non-empty CODING_TOOLS_WORKSPACE_ROOTS workspace root for the Linux bubblewrap backend.",
+    );
+  }
+
+  const roots = Array.from(
+    new Set(
+      rawRoots.map((root) =>
+        canonicalDirectory(root, "Configured coding workspace root"),
+      ),
+    ),
+  ).sort((a, b) => a.length - b.length);
+  for (const root of roots) {
+    const unsafeRoot = [homedir(), ...UNSAFE_MUTABLE_WORKSPACE_ROOTS].find(
+      (blocked) => root === importPath.resolve(blocked),
+    );
+    if (unsafeRoot) {
+      throw new Error(
+        `local-safe bubblewrap refuses an over-broad mutable workspace root: ${root}`,
+      );
+    }
+  }
+
+  // A nested root adds no authority beyond an already-mounted parent and can
+  // produce surprising mount shadowing, so keep only the minimal root set.
+  const minimalRoots = roots.filter(
+    (root, index) =>
+      !roots.slice(0, index).some((parent) => isPathInside(root, parent)),
+  );
+  const resolvedCwd = canonicalDirectory(cwd, "Shell cwd");
+  if (!minimalRoots.some((root) => isPathInside(resolvedCwd, root))) {
+    throw new Error(
+      `local-safe bubblewrap cwd is outside CODING_TOOLS_WORKSPACE_ROOTS: ${cwd}`,
+    );
+  }
+  return { cwd: resolvedCwd, roots: minimalRoots };
+}
+
+function resolveTrustedBubblewrapBinary(): string | undefined {
+  if (process.platform !== "linux") return undefined;
+  const seen = new Set<string>();
+  for (const candidate of TRUSTED_BUBBLEWRAP_CANDIDATES) {
+    try {
+      const resolved = realpathSync(candidate);
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      const stat = statSync(resolved);
+      if (!stat.isFile() || !isRootOwnedAndNotGroupOrWorldWritable(resolved)) {
+        continue;
+      }
+      accessSync(resolved, fsConstants.X_OK);
+      return resolved;
+    } catch {
+      // error-policy:J4 an absent/untrusted candidate advances to the next
+      // fixed system location; exhausting all candidates fails closed below.
+    }
+  }
+  return undefined;
+}
+
+function isRootOwnedAndNotGroupOrWorldWritable(path: string): boolean {
+  let current = path;
+  while (true) {
+    const stat = statSync(current);
+    if (stat.uid !== 0 || (stat.mode & 0o022) !== 0) return false;
+    const parent = importPath.dirname(current);
+    if (parent === current) return true;
+    current = parent;
+  }
+}
+
+function appendDestinationParents(
+  args: string[],
+  destination: string,
+  createdDirectories: Set<string>,
+): void {
+  const parents: string[] = [];
+  let current = importPath.dirname(destination);
+  while (current !== importPath.dirname(current)) {
+    parents.push(current);
+    current = importPath.dirname(current);
+  }
+  for (const parent of parents.reverse()) {
+    if (createdDirectories.has(parent)) continue;
+    args.push("--dir", parent);
+    createdDirectories.add(parent);
+  }
+}
+
+function appendReadOnlyFileIfOutsideSystemMounts(
+  args: string[],
+  file: string,
+  createdDirectories: Set<string>,
+): void {
+  let resolved: string;
+  try {
+    resolved = realpathSync(file);
+  } catch {
+    return;
+  }
+  if (
+    BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS.some((root) =>
+      isPathInside(resolved, root),
+    )
+  ) {
+    return;
+  }
+  appendDestinationParents(args, resolved, createdDirectories);
+  args.push("--ro-bind", resolved, resolved);
+}
+
+function appendTrustedReadOnlyPath(
+  args: string[],
+  source: string,
+  createdDirectories: Set<string>,
+): void {
+  try {
+    if (!existsSync(source) || !isRootOwnedAndNotGroupOrWorldWritable(source)) {
+      return;
+    }
+    appendDestinationParents(args, source, createdDirectories);
+    args.push("--ro-bind", source, source);
+  } catch {
+    // error-policy:J4 optional public trust material is absent or untrusted;
+    // skip it rather than broadening host read authority.
+  }
+}
+
+async function runInBubblewrap(
+  runtime: IAgentRuntime,
+  opts: RunShellOptions,
+): Promise<ShellResult> {
+  const bubblewrap = resolveTrustedBubblewrapBinary();
+  if (!bubblewrap) {
+    throw new Error(
+      "local-safe mode requires SandboxManager or a trusted Linux bubblewrap backend; no root-owned, non-writable system bwrap executable is available.",
+    );
+  }
+  const workspace = resolveBubblewrapWorkspace(runtime, opts.cwd);
+  const shell = resolveHostShell();
+  if (!shell.available) {
+    throw new Error(shell.warning ?? "No executable shell was detected.");
+  }
+
+  const args = [
+    "--die-with-parent",
+    "--new-session",
+    "--clearenv",
+    "--unshare-all",
+    "--unshare-user",
+    "--disable-userns",
+    "--cap-drop",
+    "ALL",
+    "--hostname",
+    "eliza-sandbox",
+  ];
+  const createdDirectories = new Set<string>();
+  for (const source of BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS) {
+    if (existsSync(source)) args.push("--ro-bind", source, source);
+  }
+  for (const source of BUBBLEWRAP_READ_ONLY_ETC_PATHS) {
+    appendTrustedReadOnlyPath(args, source, createdDirectories);
+  }
+  args.push("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp");
+  args.push("--dir", "/tmp/home");
+  args.push("--tmpfs", "/run");
+
+  appendReadOnlyFileIfOutsideSystemMounts(
+    args,
+    process.execPath,
+    createdDirectories,
+  );
+  appendReadOnlyFileIfOutsideSystemMounts(
+    args,
+    shell.command,
+    createdDirectories,
+  );
+  for (const command of BUBBLEWRAP_TOOLCHAIN_COMMANDS) {
+    const executable = resolveHostExecutable(command);
+    if (executable) {
+      appendReadOnlyFileIfOutsideSystemMounts(
+        args,
+        executable,
+        createdDirectories,
+      );
+    }
+  }
+  for (const root of workspace.roots) {
+    appendDestinationParents(args, root, createdDirectories);
+    args.push("--bind", root, root);
+  }
+  const childEnv = bubblewrapSpawnEnv(process.env);
+  for (const [key, value] of Object.entries(childEnv)) {
+    if (value !== undefined) args.push("--setenv", key, value);
+  }
+  args.push(
+    "--setenv",
+    "HOME",
+    "/tmp/home",
+    "--setenv",
+    "TMPDIR",
+    "/tmp",
+    "--unsetenv",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "--unsetenv",
+    "SSH_AUTH_SOCK",
+    "--chdir",
+    workspace.cwd,
+    shell.command,
+    ...shellArgsForCommand(shell),
+  );
+
+  const result = await runOnHostWithShell(
+    {
+      command: opts.command,
+      cwd: "/",
+      timeoutMs: opts.timeoutMs,
+      env: childEnv,
+      abortSignal: opts.abortSignal,
+    },
+    {
+      command: bubblewrap,
+      args,
+      available: true,
+      source: "candidate",
+    },
+  );
+  return { ...result, sandbox: "bubblewrap" };
 }
 
 function shellArgsForCommand(shell: {
@@ -419,13 +805,16 @@ function runOnHost(opts: {
   cwd: string;
   timeoutMs: number;
   env: NodeJS.ProcessEnv;
+  abortSignal?: AbortSignal;
 }): Promise<ShellResult> {
-  return runOnHostWithShell(opts, resolveHostShell()).then(async (result) => {
-    const shell = resolveHostShell();
+  const shell = resolveHostShell();
+  return runOnHostWithShell(opts, shell).then(async (result) => {
     const basename = importPath.basename(shell.command).toLowerCase();
     if (
       basename === "zsh" &&
       result.exitCode !== 0 &&
+      !result.timedOut &&
+      result.signal === null &&
       result.stdout.length === 0 &&
       result.stderr.length === 0
     ) {
@@ -532,11 +921,18 @@ function runOnHostWithShell(
     cwd: string;
     timeoutMs: number;
     env: NodeJS.ProcessEnv;
+    abortSignal?: AbortSignal;
   },
   shell: ReturnType<typeof resolveHostShell>,
 ): Promise<ShellResult> {
   const start = Date.now();
-  return new Promise<ShellResult>((resolve) => {
+  return new Promise<ShellResult>((resolve, reject) => {
+    try {
+      opts.abortSignal?.throwIfAborted();
+    } catch (error) {
+      reject(error);
+      return;
+    }
     if (!shell.available) {
       resolve({
         exitCode: -1,
@@ -561,6 +957,20 @@ function runOnHostWithShell(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let aborted = false;
+
+    const abortReason = (): unknown =>
+      opts.abortSignal?.reason ??
+      new DOMException("Shell command cancelled", "AbortError");
+    const onAbort = () => {
+      aborted = true;
+      // Model-authored commands get no post-cancel grace period: a process that
+      // ignores TERM could otherwise keep mutating the workspace for 1.5s
+      // after the caller believed cancellation had taken effect.
+      killHostProcess(proc.pid, "SIGKILL", useProcessGroup, proc);
+    };
+    opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    if (opts.abortSignal?.aborted) onAbort();
 
     proc.stdout.on("data", (chunk: Buffer) => {
       if (stdout.length < STREAM_CAP_CHARS * 2) {
@@ -575,15 +985,20 @@ function runOnHostWithShell(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
-      setTimeout(() => {
-        killHostProcess(proc.pid, "SIGKILL", useProcessGroup, proc);
-      }, 1500);
+      // A timeout is the same containment boundary as explicit cancellation.
+      // Kill the complete process group immediately and avoid a detached grace
+      // timer that could later target a reused PID after the shell exits.
+      killHostProcess(proc.pid, "SIGKILL", useProcessGroup, proc);
     }, opts.timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
     proc.on("close", (code, signal) => {
       clearTimeout(timer);
+      opts.abortSignal?.removeEventListener("abort", onAbort);
+      if (aborted) {
+        reject(abortReason());
+        return;
+      }
       resolve({
         exitCode: code ?? -1,
         signal,
@@ -596,6 +1011,11 @@ function runOnHostWithShell(
     });
     proc.on("error", (err) => {
       clearTimeout(timer);
+      opts.abortSignal?.removeEventListener("abort", onAbort);
+      if (aborted) {
+        reject(abortReason());
+        return;
+      }
       resolve({
         exitCode: -1,
         signal: null,
@@ -615,6 +1035,11 @@ async function runThroughCapabilityRouter(
 ): Promise<ShellResult | null> {
   const router = getCapabilityRouter(runtime);
   if (!router) return null;
+  if (opts.abortSignal) {
+    throw new Error(
+      "Capability-router shell execution cannot guarantee cancellation; refusing to dispatch a cancellable command.",
+    );
+  }
   const start = Date.now();
   try {
     const result = await router.pty.runCommand({
@@ -650,13 +1075,14 @@ export interface RunShellOptions {
   command: string;
   cwd: string;
   timeoutMs: number;
+  abortSignal?: AbortSignal;
 }
 
 /**
  * Run a shell command, dispatching against the active runtime mode:
  *  - `cloud`      → throws ("Local shell execution disabled in cloud mode.").
- *  - `local-safe` → SandboxManager.exec; refuses if the sandbox is unavailable
- *                   or the cwd is outside the workspace.
+ *  - `local-safe` → SandboxManager.exec, or a fail-closed Linux bubblewrap
+ *                   fallback constrained to explicit coding workspace roots.
  *  - `local-yolo` → /bin/bash -c host exec.
  */
 export async function runShell(
@@ -665,7 +1091,10 @@ export async function runShell(
 ): Promise<ShellResult> {
   const mode = resolveRuntimeExecutionMode(runtime);
 
+  opts.abortSignal?.throwIfAborted();
+
   const routed = await runThroughCapabilityRouter(runtime, opts);
+  opts.abortSignal?.throwIfAborted();
   if (routed) return routed;
 
   if (mode === "cloud") {
@@ -687,8 +1116,11 @@ export async function runShell(
   if (mode === "local-safe") {
     const manager = getRuntimeSandboxManager(runtime);
     if (!manager) {
+      if (process.platform === "linux") {
+        return runInBubblewrap(runtime, opts);
+      }
       throw new Error(
-        "local-safe mode requires SandboxManager, but no sandbox manager is available for command execution.",
+        "local-safe mode requires SandboxManager; the Linux bubblewrap fallback is unavailable on this platform.",
       );
     }
     const sandboxWorkdir = toSandboxWorkdir(opts.cwd);
@@ -701,7 +1133,9 @@ export async function runShell(
       command: opts.command,
       workdir: sandboxWorkdir,
       timeoutMs: opts.timeoutMs,
+      ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
+    opts.abortSignal?.throwIfAborted();
     return {
       exitCode: result.exitCode,
       signal: null,
@@ -718,5 +1152,6 @@ export async function runShell(
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     env: hostSpawnEnv(process.env),
+    abortSignal: opts.abortSignal,
   });
 }

@@ -2,7 +2,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { arch, platform } from "node:os";
-import { logger, sanitizeSpawnEnv } from "@elizaos/core";
+import { ElizaError, logger, sanitizeSpawnEnv } from "@elizaos/core";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
@@ -34,6 +34,8 @@ export interface ContainerExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   stdin?: string;
+  /** Cancels execution and discards the container to contain child effects. */
+  abortSignal?: AbortSignal;
 }
 
 export interface ContainerExecResult {
@@ -41,6 +43,8 @@ export interface ContainerExecResult {
   stdout: string;
   stderr: string;
   durationMs: number;
+  /** Internal lifecycle signal: the engine discarded the container. */
+  containerDiscarded?: true;
 }
 
 type ExecCommandResult = {
@@ -48,7 +52,11 @@ type ExecCommandResult = {
   args: string[];
   timeoutMs?: number;
   stdin?: string;
+  abortSignal?: AbortSignal;
+  discardContainer: () => Promise<void>;
 };
+
+const CONTAINER_DISCARD_TIMEOUT_MS = 5_000;
 
 function hostEngineEnv(): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(process.env));
@@ -146,9 +154,11 @@ function isContainerVersionUnsupported(error: unknown): boolean {
 async function runExecInContainer(
   opts: ExecCommandResult,
 ): Promise<ContainerExecResult> {
-  const { binary, args, timeoutMs, stdin } = opts;
+  const { binary, args, timeoutMs, stdin, abortSignal, discardContainer } =
+    opts;
+  abortSignal?.throwIfAborted();
   const start = Date.now();
-  return new Promise<ContainerExecResult>((resolve) => {
+  return new Promise<ContainerExecResult>((resolve, reject) => {
     const proc = spawn(binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: hostEngineEnv(),
@@ -156,7 +166,82 @@ async function runExecInContainer(
 
     let stdout = "";
     let stderr = "";
-    const timeout = setTimeout(() => proc.kill("SIGKILL"), timeoutMs ?? 30_000);
+    let settled = false;
+    let containing = false;
+    const executionTimeoutMs = timeoutMs ?? 30_000;
+    const timeout = setTimeout(
+      () => beginContainment("timeout"),
+      executionTimeoutMs,
+    );
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      abortSignal?.removeEventListener("abort", onAbort);
+    };
+    const finishResolve = (result: ContainerExecResult) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const finishReject = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const terminateClient = () => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // error-policy:J6 The engine client may exit while container teardown is in flight.
+      }
+    };
+    const beginContainment = (trigger: "abort" | "timeout") => {
+      if (settled || containing) return;
+      containing = true;
+      clearTimeout(timeout);
+      terminateClient();
+      void discardContainer().then(
+        () => {
+          if (trigger === "abort") {
+            finishReject(
+              abortSignal?.reason ??
+                new DOMException("Sandbox execution aborted", "AbortError"),
+            );
+            return;
+          }
+          const separator =
+            stderr.length === 0 || stderr.endsWith("\n") ? "" : "\n";
+          finishResolve({
+            exitCode: 124,
+            stdout,
+            stderr: `${stderr}${separator}[SandboxEngine] container exec timed out after ${executionTimeoutMs}ms`,
+            durationMs: Date.now() - start,
+            containerDiscarded: true,
+          });
+        },
+        (cause: unknown) => {
+          // error-policy:J2 Termination must surface containment failure with its cause.
+          finishReject(
+            new ElizaError(
+              trigger === "abort"
+                ? "Sandbox execution cancellation could not discard its container"
+                : "Timed-out sandbox execution could not discard its container",
+              {
+                code:
+                  trigger === "abort"
+                    ? "SANDBOX_EXEC_CANCELLATION_FAILED"
+                    : "SANDBOX_EXEC_TIMEOUT_CONTAINMENT_FAILED",
+                cause,
+                severity: "fatal",
+              },
+            ),
+          );
+        },
+      );
+    };
+    const onAbort = () => beginContainment("abort");
 
     proc.stdout.on("data", (data: Buffer) => {
       stdout += data.toString();
@@ -171,8 +256,8 @@ async function runExecInContainer(
     }
 
     proc.on("close", (code) => {
-      clearTimeout(timeout);
-      resolve({
+      if (containing) return;
+      finishResolve({
         exitCode: code ?? 1,
         stdout,
         stderr,
@@ -181,15 +266,136 @@ async function runExecInContainer(
     });
 
     proc.on("error", (err) => {
-      clearTimeout(timeout);
-      resolve({
+      if (containing) return;
+      finishResolve({
         exitCode: 1,
         stdout,
         stderr: `Exec error: ${err.message}`,
         durationMs: Date.now() - start,
       });
     });
+
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+    if (abortSignal?.aborted) onAbort();
   });
+}
+
+async function runEngineControlCommand(
+  binary: string,
+  args: string[],
+  engineType: SandboxEngineType,
+): Promise<void> {
+  return await new Promise<void>((resolve, reject) => {
+    const proc = spawn(binary, args, {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: hostEngineEnv(),
+    });
+    let stderr = "";
+    let settled = false;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGKILL");
+    }, CONTAINER_DISCARD_TIMEOUT_MS);
+    if (typeof timeout.unref === "function") timeout.unref();
+
+    const finish = (error?: ElizaError) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+    proc.once("error", (cause) => {
+      // error-policy:J2 Engine control failure retains the spawn cause.
+      finish(
+        new ElizaError("Failed to launch sandbox containment command", {
+          code: "SANDBOX_ENGINE_CONTROL_FAILED",
+          cause,
+          context: { engineType, operation: args[0] },
+          severity: "fatal",
+        }),
+      );
+    });
+    proc.once("close", (code) => {
+      if (!timedOut && code === 0) {
+        finish();
+        return;
+      }
+      const detail = stderr.trim();
+      finish(
+        new ElizaError(
+          timedOut
+            ? "Sandbox containment command timed out"
+            : "Sandbox containment command failed",
+          {
+            code: "SANDBOX_ENGINE_CONTROL_FAILED",
+            context: {
+              engineType,
+              operation: args[0],
+              exitCode: code,
+              ...(detail ? { stderr: detail.substring(0, 500) } : {}),
+            },
+            severity: "fatal",
+          },
+        ),
+      );
+    });
+  });
+}
+
+async function discardDockerContainer(
+  binary: string,
+  containerId: string,
+): Promise<void> {
+  await runEngineControlCommand(binary, ["rm", "-f", containerId], "docker");
+}
+
+async function discardAppleContainer(
+  binary: string,
+  containerId: string,
+): Promise<void> {
+  let stopError: unknown;
+  try {
+    await runEngineControlCommand(
+      binary,
+      ["stop", containerId],
+      "apple-container",
+    );
+  } catch (error) {
+    // error-policy:J6 Removal below is the authoritative containment operation.
+    stopError = error;
+  }
+  try {
+    await runEngineControlCommand(
+      binary,
+      ["rm", containerId],
+      "apple-container",
+    );
+  } catch (removeError) {
+    if (stopError === undefined) {
+      // error-policy:J6 A successful stop already terminates the workload; removal only reclaims metadata.
+      logger.debug(
+        { error: removeError, containerId },
+        "[SandboxEngine] Stopped Apple container could not be removed after cancellation",
+      );
+      return;
+    }
+    // error-policy:J2 Preserve both failed containment operations when available.
+    throw new ElizaError(
+      "Apple Container execution could not be stopped and removed",
+      {
+        code: "SANDBOX_ENGINE_CONTROL_FAILED",
+        cause: new AggregateError([stopError, removeError]),
+        context: { engineType: "apple-container" },
+        severity: "fatal",
+      },
+    );
+  }
 }
 
 function parseContainerCommand(command: string): string[] {
@@ -448,11 +654,14 @@ export class DockerEngine implements ISandboxEngine {
     opts: ContainerExecOptions,
   ): Promise<ContainerExecResult> {
     const args = buildContainerExecArgs(opts);
+    const binary = this.requiredBinary();
     return runExecInContainer({
-      binary: this.requiredBinary(),
+      binary,
       args,
       timeoutMs: opts.timeoutMs,
       stdin: opts.stdin,
+      abortSignal: opts.abortSignal,
+      discardContainer: () => discardDockerContainer(binary, opts.containerId),
     });
   }
 
@@ -674,11 +883,14 @@ export class AppleContainerEngine implements ISandboxEngine {
     opts: ContainerExecOptions,
   ): Promise<ContainerExecResult> {
     const args = buildContainerExecArgs(opts);
+    const binary = this.requiredBinary();
     return runExecInContainer({
-      binary: this.requiredBinary(),
+      binary,
       args,
       timeoutMs: opts.timeoutMs,
       stdin: opts.stdin,
+      abortSignal: opts.abortSignal,
+      discardContainer: () => discardAppleContainer(binary, opts.containerId),
     });
   }
 
