@@ -17,6 +17,7 @@
  *    provision and drain.
  */
 
+import { requireCanonicalProviderServerId } from "../../../db/repositories/agent-backup-source-authority";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../config/containers-env";
@@ -352,6 +353,10 @@ export class NodeAutoscaler {
       const hcloudServerId = Number(provisioned.server.id);
 
       try {
+        const providerServerId =
+          providerName === "hetzner"
+            ? requireCanonicalProviderServerId(String(provisioned.server.id))
+            : null;
         await authority.createNode({
           node_id: nodeId,
           hostname: ip,
@@ -363,6 +368,12 @@ export class NodeAutoscaler {
           status: "unknown",
           allocated_count: 0,
           ssh_user: "root",
+          fleet_kind: providerName === "hetzner" ? "cloud" : null,
+          infrastructure_provider: providerName === "hetzner" ? "hetzner" : null,
+          provider_server_id: providerServerId,
+          // The provider API proves server identity, not the running kernel.
+          // Health SSH publishes the first boot UUID after host-key verification.
+          node_incarnation: null,
           metadata: {
             provider: providerName === "hetzner" ? "hetzner-cloud" : providerName,
             environment,
@@ -542,6 +553,14 @@ function generateNodeId(): string {
 }
 
 function getHcloudServerId(node: DockerNode): number | undefined {
+  if (
+    node.fleet_kind === "cloud" &&
+    node.infrastructure_provider === "hetzner" &&
+    node.provider_server_id !== null
+  ) {
+    const providerId = Number(node.provider_server_id);
+    return Number.isSafeInteger(providerId) && providerId > 0 ? providerId : undefined;
+  }
   const meta = (node.metadata ?? {}) as Record<string, unknown>;
   return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
 }

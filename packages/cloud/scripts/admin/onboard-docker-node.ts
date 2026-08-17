@@ -19,8 +19,10 @@
  *      agent naming scheme — never an active sandbox),
  *   5. ensure the local-embedding sidecar is running (same contract the
  *      cloud-init bootstrap installs; see `embedding-sidecar.ts`),
- *   6. upsert the node into `docker_nodes` (update if it already exists),
- *   7. print a clear summary of what changed vs. was already in place.
+ *   6. pre-pull the agent image,
+ *   7. attest the exact Linux boot UUID over host-key-verified SSH,
+ *   8. upsert the node into `docker_nodes` (update if it already exists),
+ *   9. print a clear summary of what changed vs. was already in place.
  *
  * No secrets are hard-coded: the registry token (if any) comes from the
  * control-plane env via `containersEnv`; the DB target from `DATABASE_URL`.
@@ -53,12 +55,16 @@ import {
 async function loadDeps() {
   const [
     { dockerNodesRepository, stampDockerNodeEnvironmentMetadata },
+    { parseLinuxBootId },
     { ensureRegistryAccess },
     dockerUtils,
     { DockerSSHClient },
     { buildEnsureEmbeddingSidecarCmd },
   ] = await Promise.all([
     import("@elizaos/cloud-shared/db/repositories/docker-nodes"),
+    import(
+      "@elizaos/cloud-shared/db/repositories/agent-backup-source-authority"
+    ),
     import(
       "@elizaos/cloud-shared/lib/services/containers/hetzner-client/registry"
     ),
@@ -69,6 +75,7 @@ async function loadDeps() {
   return {
     dockerNodesRepository,
     stampDockerNodeEnvironmentMetadata,
+    parseLinuxBootId,
     ensureRegistryAccess,
     buildEnsureNetworkCmd: dockerUtils.buildEnsureNetworkCmd,
     shellQuote: dockerUtils.shellQuote,
@@ -142,6 +149,12 @@ interface ExistingDockerNodePin {
   capacity: number;
 }
 
+interface ExistingDockerNodeSourceAuthority {
+  fleet_kind: "robot" | "cloud" | null;
+  infrastructure_provider: "hetzner" | null;
+  provider_server_id: string | null;
+}
+
 interface OnboardSshConfig {
   hostname: string;
   port: number;
@@ -171,6 +184,41 @@ export function hostKeyFingerprintForOnboardUpsert(
   capturedFingerprint: string | undefined,
 ): string | null {
   return existing?.host_key_fingerprint ?? capturedFingerprint ?? null;
+}
+
+export function assertRobotOnboardAuthorityCompatible(
+  existing: ExistingDockerNodeSourceAuthority | null,
+): void {
+  if (!existing) return;
+  const isUnclassifiedLegacy =
+    existing.fleet_kind === null &&
+    existing.infrastructure_provider === null &&
+    existing.provider_server_id === null;
+  const isExactRobot =
+    existing.fleet_kind === "robot" &&
+    existing.infrastructure_provider === "hetzner" &&
+    existing.provider_server_id === null;
+  if (!isUnclassifiedLegacy && !isExactRobot) {
+    throw new Error(
+      "Refusing to reinterpret an ambiguous or typed Cloud node as Robot authority",
+    );
+  }
+}
+
+export function requireOnboardHostKeyFingerprint(
+  existing: ExistingDockerNodePin | null,
+  capturedFingerprint: string | undefined,
+): string {
+  const fingerprint = hostKeyFingerprintForOnboardUpsert(
+    existing,
+    capturedFingerprint,
+  );
+  if (!fingerprint?.trim()) {
+    throw new Error(
+      "Robot source authority requires an SSH host-key fingerprint",
+    );
+  }
+  return fingerprint.trim();
 }
 
 /**
@@ -270,6 +318,7 @@ async function main(): Promise<void> {
   const {
     dockerNodesRepository,
     stampDockerNodeEnvironmentMetadata,
+    parseLinuxBootId,
     ensureRegistryAccess,
     buildEnsureNetworkCmd,
     shellQuote,
@@ -278,6 +327,7 @@ async function main(): Promise<void> {
   } = await loadDeps();
   const summary: string[] = [];
   const existing = await dockerNodesRepository.findByNodeId(args.nodeId);
+  assertRobotOnboardAuthorityCompatible(existing);
 
   // Re-onboard must verify against the stored pin before any root SSH command
   // runs. Only a never-pinned node takes the TOFU branch and persists the
@@ -372,27 +422,42 @@ async function main(): Promise<void> {
         summary.push("agent image pre-pull FAILED (non-fatal)");
       });
 
-    // 7. Register / upsert into docker_nodes — same shape as bootstrap-callback.
+    // 7. Read the exact running-kernel identity over the same verified SSH
+    // connection. Unlike image warming, this proof is mandatory: without it
+    // the node must not become manifest-v2 source authority.
+    const nodeIncarnation = parseLinuxBootId(
+      await ssh.exec("cat /proc/sys/kernel/random/boot_id", 30_000),
+    );
+    const hostKeyFingerprint = requireOnboardHostKeyFingerprint(
+      existing,
+      capturedFingerprint,
+    );
+    summary.push(`boot incarnation attested (${nodeIncarnation})`);
+
+    // 8. Register / upsert exact Robot authority. Existing rows use one CAS
+    // write so reboot rotation and operational host updates cannot tear apart.
     if (existing) {
-      await dockerNodesRepository.update(existing.id, {
-        hostname: args.host,
-        ssh_port: args.sshPort,
-        ssh_user: args.sshUser,
-        // Preserve an operator-tuned capacity across re-onboards; the
-        // `--capacity` default only seeds a brand-new row (see create branch).
-        capacity: capacityForOnboardUpsert(existing, args.capacity),
-        status: "unknown",
-        // Never overwrite an established pin during re-onboard; a differing
-        // presented key must fail in DockerSSHClient before this update.
-        host_key_fingerprint: hostKeyFingerprintForOnboardUpsert(
-          existing,
-          capturedFingerprint,
-        ),
-        metadata: stampDockerNodeEnvironmentMetadata({
-          ...((existing.metadata as Record<string, unknown>) ?? {}),
-          provider: "operator-onboarded",
-          lastOnboardedAt: new Date().toISOString(),
-        }),
+      await dockerNodesRepository.attestRobotSourceAuthority({
+        id: existing.id,
+        nodeId: args.nodeId,
+        expectedIncarnation: existing.node_incarnation,
+        expectedHostKeyFingerprint: existing.host_key_fingerprint,
+        observedIncarnation: nodeIncarnation,
+        registration: {
+          hostname: args.host,
+          sshPort: args.sshPort,
+          sshUser: args.sshUser,
+          // Preserve an operator-tuned capacity across re-onboards; the
+          // `--capacity` default only seeds a brand-new row.
+          capacity: capacityForOnboardUpsert(existing, args.capacity),
+          status: "unknown",
+          hostKeyFingerprint,
+          metadata: stampDockerNodeEnvironmentMetadata({
+            ...((existing.metadata as Record<string, unknown>) ?? {}),
+            provider: "operator-onboarded",
+            lastOnboardedAt: new Date().toISOString(),
+          }),
+        },
       });
       summary.push(`docker_nodes row updated (${args.nodeId})`);
     } else {
@@ -405,11 +470,11 @@ async function main(): Promise<void> {
         enabled: true,
         status: "unknown",
         allocated_count: 0,
-        // Persist the TOFU-captured pin so later control-plane SSH is verified.
-        host_key_fingerprint: hostKeyFingerprintForOnboardUpsert(
-          null,
-          capturedFingerprint,
-        ),
+        host_key_fingerprint: hostKeyFingerprint,
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        provider_server_id: null,
+        node_incarnation: nodeIncarnation,
         metadata: stampDockerNodeEnvironmentMetadata({
           provider: "operator-onboarded",
           onboardedAt: new Date().toISOString(),

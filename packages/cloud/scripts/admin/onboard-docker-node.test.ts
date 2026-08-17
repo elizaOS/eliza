@@ -5,11 +5,13 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  assertRobotOnboardAuthorityCompatible,
   buildOnboardSshConfig,
   capacityForOnboardUpsert,
   hostKeyFingerprintForOnboardUpsert,
   parseArgs,
   parseDockerPs,
+  requireOnboardHostKeyFingerprint,
   selectZombieAgentContainers,
 } from "./onboard-docker-node";
 
@@ -306,6 +308,65 @@ describe("host-key pinning helpers", () => {
       ),
     ).toBe("first-pin");
     expect(hostKeyFingerprintForOnboardUpsert(null, undefined)).toBeNull();
+  });
+
+  it("requires a persisted or TOFU-captured fingerprint before source attestation", () => {
+    expect(
+      requireOnboardHostKeyFingerprint(
+        { host_key_fingerprint: "pinned", capacity: 8 },
+        undefined,
+      ),
+    ).toBe("pinned");
+    expect(requireOnboardHostKeyFingerprint(null, "captured")).toBe("captured");
+    expect(requireOnboardHostKeyFingerprint(null, "  captured  ")).toBe(
+      "captured",
+    );
+    expect(() => requireOnboardHostKeyFingerprint(null, undefined)).toThrow(
+      /host-key fingerprint/,
+    );
+  });
+});
+
+describe("Robot source authority", () => {
+  it("accepts legacy/Robot targets but never reinterprets a typed Cloud row", () => {
+    expect(() => assertRobotOnboardAuthorityCompatible(null)).not.toThrow();
+    expect(() =>
+      assertRobotOnboardAuthorityCompatible({
+        fleet_kind: null,
+        infrastructure_provider: null,
+        provider_server_id: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertRobotOnboardAuthorityCompatible({
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        provider_server_id: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertRobotOnboardAuthorityCompatible({
+        fleet_kind: "cloud",
+        infrastructure_provider: "hetzner",
+        provider_server_id: "4242",
+      }),
+    ).toThrow(/Cloud node/);
+    for (const ambiguous of [
+      {
+        fleet_kind: null,
+        infrastructure_provider: "hetzner" as const,
+        provider_server_id: null,
+      },
+      {
+        fleet_kind: "robot" as const,
+        infrastructure_provider: null,
+        provider_server_id: null,
+      },
+    ]) {
+      expect(() => assertRobotOnboardAuthorityCompatible(ambiguous)).toThrow(
+        /Cloud node/,
+      );
+    }
   });
 });
 

@@ -132,6 +132,30 @@ export const agentSandboxes = pgTable(
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
     lifecycle_job_id: uuid("lifecycle_job_id"),
     lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
+    /**
+     * Fully published activation authority consumed by capture and RPO
+     * scheduling. Intermediate quarantine phases are introduced by the
+     * restore slice; this foundation deliberately accepts only all-null or a
+     * complete active generation.
+     */
+    activation_generation: uuid("activation_generation"),
+    /**
+     * Exact signed-int64 copy of `lifecycle_revision`. The source column is a
+     * PostgreSQL bigint, so bigint mode avoids a lossy JavaScript number while
+     * retaining direct SQL equality and the source column's int64 upper bound.
+     */
+    activation_lifecycle_revision: bigint("activation_lifecycle_revision", { mode: "bigint" }),
+    activation_phase: text("activation_phase").$type<"active">(),
+    activation_receipt_hash: text("activation_receipt_hash"),
+    activation_container_id: text("activation_container_id"),
+    activation_node_id: text("activation_node_id"),
+    activation_image_digest: text("activation_image_digest"),
+    activation_boot_id: uuid("activation_boot_id"),
+    activation_authority_published_at: timestamp("activation_authority_published_at", {
+      withTimezone: true,
+    }),
+    activation_dispatched_at: timestamp("activation_dispatched_at", { withTimezone: true }),
+    activation_completed_at: timestamp("activation_completed_at", { withTimezone: true }),
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
     /** Lifecycle state captured when a reversible deletion generation begins. */
@@ -221,6 +245,28 @@ export const agentSandboxes = pgTable(
      * due-set window and starve backup-capable agents (#15783).
      */
     backup_unsupported_reason: text("backup_unsupported_reason"),
+    /**
+     * Primary-DB clock authority for the next periodic catalogue-v3 backup.
+     * Null means the row is not enrolled; it never proves that a due backup
+     * completed.
+     */
+    next_backup_at: timestamp("next_backup_at", { withTimezone: true }),
+    /** Retry-stable operation id allocated before a due row leaves the DB. */
+    backup_schedule_operation_id: uuid("backup_schedule_operation_id"),
+    /** DB-clock backpressure that does not advance the protected-backup deadline. */
+    backup_schedule_retry_at: timestamp("backup_schedule_retry_at", { withTimezone: true }),
+    /** Exact bounded scheduler lease. All three members are null or present. */
+    backup_schedule_claim_owner: text("backup_schedule_claim_owner"),
+    backup_schedule_claim_generation: uuid("backup_schedule_claim_generation"),
+    backup_schedule_claim_expires_at: timestamp("backup_schedule_claim_expires_at", {
+      withTimezone: true,
+    }),
+    backup_schedule_attempts: integer("backup_schedule_attempts").notNull().default(0),
+    backup_schedule_last_error_code: text("backup_schedule_last_error_code"),
+    /** DB-clock time of the exact catalogue proof that advanced the RPO deadline. */
+    backup_schedule_last_protected_at: timestamp("backup_schedule_last_protected_at", {
+      withTimezone: true,
+    }),
     last_heartbeat_at: timestamp("last_heartbeat_at", { withTimezone: true }),
     error_message: text("error_message"),
     error_count: integer("error_count").notNull().default(0),
@@ -350,6 +396,76 @@ export const agentSandboxes = pgTable(
     lifecycle_execution_idx: index("agent_sandboxes_lifecycle_execution_idx")
       .on(table.lifecycle_job_id, table.lifecycle_execution_generation)
       .where(sql`${table.lifecycle_execution_generation} IS NOT NULL`),
+    activation_generation_idx: index("agent_sandboxes_activation_generation_idx")
+      .on(table.activation_generation)
+      .where(sql`${table.activation_generation} IS NOT NULL`),
+    backup_schedule_due_idx: index("agent_sandboxes_backup_schedule_due_idx")
+      .on(table.next_backup_at, table.backup_schedule_retry_at, table.organization_id, table.id)
+      .where(sql`${table.next_backup_at} IS NOT NULL`),
+    backup_schedule_claim_expiry_idx: index("agent_sandboxes_backup_schedule_claim_expiry_idx")
+      .on(table.backup_schedule_claim_expires_at)
+      .where(sql`${table.backup_schedule_claim_expires_at} IS NOT NULL`),
+    backup_schedule_operation_idx: index("agent_sandboxes_backup_schedule_operation_idx")
+      .on(table.organization_id, table.id, table.backup_schedule_operation_id)
+      .where(sql`${table.backup_schedule_operation_id} IS NOT NULL`),
+    backup_schedule_claim_shape_check: check(
+      "agent_sandboxes_backup_schedule_claim_shape_check",
+      sql`((
+        ${table.backup_schedule_claim_owner} IS NULL
+        AND ${table.backup_schedule_claim_generation} IS NULL
+        AND ${table.backup_schedule_claim_expires_at} IS NULL
+      ) OR (
+        ${table.next_backup_at} IS NOT NULL
+        AND ${table.backup_schedule_operation_id} IS NOT NULL
+        AND ${table.backup_schedule_claim_owner} IS NOT NULL
+        AND ${table.backup_schedule_claim_owner} <> ''
+        AND ${table.backup_schedule_claim_generation} IS NOT NULL
+        AND ${table.backup_schedule_claim_expires_at} IS NOT NULL
+      )) IS TRUE`,
+    ),
+    backup_schedule_attempts_check: check(
+      "agent_sandboxes_backup_schedule_attempts_check",
+      sql`(${table.backup_schedule_attempts} >= 0
+        AND (${table.backup_schedule_last_error_code} IS NULL
+          OR ${table.backup_schedule_last_error_code} ~ '^[A-Z][A-Z0-9_]{0,95}$')) IS TRUE`,
+    ),
+    activation_state_check: check(
+      "agent_sandboxes_activation_state_check",
+      sql`((
+        ${table.activation_generation} IS NULL
+        AND ${table.activation_lifecycle_revision} IS NULL
+        AND ${table.activation_phase} IS NULL
+        AND ${table.activation_receipt_hash} IS NULL
+        AND ${table.activation_container_id} IS NULL
+        AND ${table.activation_node_id} IS NULL
+        AND ${table.activation_image_digest} IS NULL
+        AND ${table.activation_boot_id} IS NULL
+        AND ${table.activation_authority_published_at} IS NULL
+        AND ${table.activation_dispatched_at} IS NULL
+        AND ${table.activation_completed_at} IS NULL
+      ) OR (
+        ${table.activation_generation} IS NOT NULL
+        AND ${table.activation_lifecycle_revision} IS NOT NULL
+        AND ${table.activation_lifecycle_revision} >= 0
+        AND ${table.activation_lifecycle_revision} = ${table.lifecycle_revision}
+        AND ${table.activation_phase} = 'active'
+        AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'
+        AND ${table.activation_container_id} ~ '^[0-9a-f]{64}$'
+        AND ${table.sandbox_id} IS NOT NULL
+        AND ${table.activation_container_id} <> ${table.sandbox_id}
+        AND ${table.activation_node_id} IS NOT NULL
+        AND btrim(${table.activation_node_id}) <> ''
+        AND ${table.activation_node_id} = ${table.node_id}
+        AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.activation_image_digest} = ${table.image_digest}
+        AND ${table.activation_boot_id} IS NOT NULL
+        AND ${table.activation_authority_published_at} IS NOT NULL
+        AND ${table.activation_dispatched_at} IS NOT NULL
+        AND ${table.activation_completed_at} IS NOT NULL
+        AND ${table.activation_authority_published_at} <= ${table.activation_dispatched_at}
+        AND ${table.activation_dispatched_at} <= ${table.activation_completed_at}
+      )) IS TRUE`,
+    ),
     deletion_intent_pair_check: check(
       "agent_sandboxes_deletion_intent_pair_check",
       sql`(
@@ -486,6 +602,10 @@ export type AgentBackupVerificationStatus = "verified" | "failed" | "errored";
  * `agent-backup-diff.ts` for the delta format and reconstruction.
  */
 export type AgentBackupKind = "full" | "incremental";
+
+export const AGENT_BACKUP_SOURCE_PROVIDERS = ["operator-onboarded", "hetzner-cloud"] as const;
+
+export type AgentBackupSourceProvider = (typeof AGENT_BACKUP_SOURCE_PROVIDERS)[number];
 
 /**
  * Durable lifecycle of a logical backup operation. `legacy_unmigrated` is a
@@ -680,6 +800,17 @@ export const agentSandboxBackups = pgTable(
       scale: 0,
       mode: "bigint",
     }),
+    source_provider: text("source_provider").$type<AgentBackupSourceProvider>(),
+    source_node_record_id: uuid("source_node_record_id"),
+    source_node_id: text("source_node_id"),
+    /** Immutable Linux boot UUID resolved from typed node authority at reservation. */
+    source_node_incarnation: uuid("source_node_incarnation"),
+    /** Exact Hetzner Cloud server id; null for operator-onboarded Robot nodes. */
+    source_provider_server_id: text("source_provider_server_id"),
+    /** Provider/container-name handle used only to locate the running sandbox. */
+    source_provider_handle: text("source_provider_handle"),
+    /** Immutable Docker ID from activation create/inspect. */
+    source_container_id: text("source_container_id"),
     manifest_format: text("manifest_format"),
     manifest_version: integer("manifest_version"),
     manifest_digest: text("manifest_digest"),
@@ -702,6 +833,23 @@ export const agentSandboxBackups = pgTable(
     wrapped_dek_sha256: text("wrapped_dek_sha256"),
     wrapped_dek_size_bytes: integer("wrapped_dek_size_bytes"),
     wrapped_dek_receipt_digest: text("wrapped_dek_receipt_digest"),
+    /** Manifest-v3's one-operation DEK + content-HMAC envelope. Never populated for v2. */
+    operation_key_bundle_generation_id: uuid("operation_key_bundle_generation_id"),
+    operation_key_bundle_format: text("operation_key_bundle_format"),
+    operation_key_bundle_ref: text("operation_key_bundle_ref"),
+    operation_key_bundle_ciphertext_base64: text("operation_key_bundle_ciphertext_base64"),
+    operation_key_bundle_sha256: text("operation_key_bundle_sha256"),
+    operation_key_bundle_size_bytes: integer("operation_key_bundle_size_bytes"),
+    /** Exact canonical KMS AAD required to unwrap the v3 bundle after restore. */
+    operation_key_bundle_context: text("operation_key_bundle_context"),
+    operation_key_bundle_context_derivation: text("operation_key_bundle_context_derivation"),
+    operation_key_bundle_local_receipt_derivation: text(
+      "operation_key_bundle_local_receipt_derivation",
+    ),
+    operation_key_bundle_local_receipt_digest: text("operation_key_bundle_local_receipt_digest"),
+    /** Authenticated scalar pointer to a vault authority introduced in the restore slice. */
+    vault_key_generation_id: uuid("vault_key_generation_id"),
+    vault_key_authority_receipt_digest: text("vault_key_authority_receipt_digest"),
     catalog_attempts: integer("catalog_attempts").notNull().default(0),
     catalog_lease_owner: text("catalog_lease_owner"),
     catalog_lease_generation: uuid("catalog_lease_generation"),
@@ -912,43 +1060,75 @@ export const agentSandboxBackups = pgTable(
         'pre-move', 'billing-freeze', 'legal-hold', 'user-erasure'
       ))) IS TRUE`,
     ),
+    catalog_v2_source_check: check(
+      "agent_sandbox_backups_catalog_v2_source_check",
+      sql`(${table.catalog_version} IS DISTINCT FROM 2 OR (
+        ${table.source_provider} IN ('operator-onboarded', 'hetzner-cloud')
+        AND ${table.source_node_record_id} IS NOT NULL
+        AND ${table.source_node_id} IS NOT NULL AND btrim(${table.source_node_id}) <> ''
+        AND ${table.source_provider_handle} IS NOT NULL
+        AND btrim(${table.source_provider_handle}) <> ''
+        AND ${table.source_container_id} ~ '^[0-9a-f]{64}$'
+        AND ${table.source_provider_handle} <> ${table.source_container_id}
+        AND ${table.retention_reason} IS NOT NULL
+        AND ${table.retention_until} IS NOT NULL
+      )) IS TRUE`,
+    ),
+    catalog_v2_source_authority_check: check(
+      "agent_sandbox_backups_catalog_v2_source_authority_check",
+      sql`(${table.catalog_version} IS DISTINCT FROM 2 OR (
+        ${table.source_node_incarnation} IS NOT NULL
+        AND (
+          (${table.source_provider} = 'operator-onboarded'
+            AND ${table.source_provider_server_id} IS NULL)
+          OR (${table.source_provider} = 'hetzner-cloud'
+            AND ${table.source_provider_server_id} IS NOT NULL
+            AND CASE
+              WHEN ${table.source_provider_server_id} ~ '^[1-9][0-9]{0,19}$'
+                THEN ${table.source_provider_server_id}::numeric <= 18446744073709551615
+              ELSE false
+            END)
+        )
+      )) IS TRUE`,
+    ),
     catalog_manifest_shape_check: check(
       "agent_sandbox_backups_catalog_manifest_shape_check",
       sql`(${table.catalog_version} IS DISTINCT FROM 2 OR (
-        (
-          ${table.catalog_state} IN ('scheduled', 'capturing')
-          OR (${table.catalog_state} IN ('failed_retryable', 'failed_terminal')
-            AND ${table.catalog_resume_state} IN ('scheduled', 'capturing'))
-        )
-        AND ${table.manifest_digest} IS NULL
-        AND ${table.manifest_canonical_draft} IS NULL
-        AND ${table.wrapped_dek_ref} IS NULL
-        AND ${table.wrapped_dek_ciphertext_base64} IS NULL
-        AND ${table.wrapped_dek_sha256} IS NULL
-        AND ${table.wrapped_dek_size_bytes} IS NULL
-        AND ${table.wrapped_dek_receipt_digest} IS NULL
+        ((${table.catalog_state} IN ('scheduled', 'capturing')
+            OR (${table.catalog_state} IN ('failed_retryable', 'failed_terminal')
+              AND ${table.catalog_resume_state} IN ('scheduled', 'capturing')))
+          AND num_nonnulls(
+            ${table.manifest_format}, ${table.manifest_version}, ${table.manifest_digest},
+            ${table.manifest_canonical_draft}, ${table.manifest_object_count},
+            ${table.object_inventory_digest}, ${table.image_digest},
+            ${table.database_schema_version}, ${table.plugin_set_digest},
+            ${table.watermark_digest}, ${table.raw_size_bytes},
+            ${table.compressed_size_bytes}, ${table.encrypted_size_bytes},
+            ${table.kms_key_id}, ${table.kms_key_version}, ${table.wrapped_dek_ref},
+            ${table.wrapped_dek_ciphertext_base64}, ${table.wrapped_dek_sha256},
+            ${table.wrapped_dek_size_bytes}, ${table.wrapped_dek_receipt_digest},
+            ${table.operation_key_bundle_generation_id}, ${table.operation_key_bundle_format},
+            ${table.operation_key_bundle_ref}, ${table.operation_key_bundle_ciphertext_base64},
+            ${table.operation_key_bundle_sha256}, ${table.operation_key_bundle_size_bytes},
+            ${table.operation_key_bundle_context}, ${table.operation_key_bundle_context_derivation},
+            ${table.operation_key_bundle_local_receipt_derivation},
+            ${table.operation_key_bundle_local_receipt_digest}, ${table.vault_key_generation_id},
+            ${table.vault_key_authority_receipt_digest}
+          ) = 0)
       ) OR (
-        (
-          ${table.catalog_state} IN (
+        (${table.catalog_state} IN (
             'captured', 'uploading', 'primary_uploaded', 'primary_verified',
             'secondary_pending', 'protected', 'retained', 'expiration_pending',
             'deleting', 'deleted', 'restore_verified'
           )
-          OR (${table.catalog_state} = 'failed_retryable'
+          OR (${table.catalog_state} IN ('failed_retryable', 'failed_terminal')
             AND ${table.catalog_resume_state} IN (
               'captured', 'uploading', 'primary_uploaded', 'primary_verified',
               'secondary_pending', 'protected', 'retained', 'expiration_pending',
               'deleting', 'restore_verified'
-            ))
-          OR (${table.catalog_state} = 'failed_terminal'
-            AND ${table.catalog_resume_state} IN (
-              'captured', 'uploading', 'primary_uploaded', 'primary_verified',
-              'secondary_pending', 'protected', 'retained', 'expiration_pending',
-              'deleting', 'restore_verified'
-            ))
-        )
+            )))
         AND ${table.manifest_format} = 'elizaos.agent-backup'
-        AND ${table.manifest_version} = 2
+        AND ${table.manifest_version} IN (2, 3)
         AND ${table.manifest_digest} ~ '^[0-9a-f]{64}$'
         AND ${table.manifest_canonical_draft} IS NOT NULL
         AND octet_length(${table.manifest_canonical_draft}) BETWEEN 1 AND 4194304
@@ -963,11 +1143,48 @@ export const agentSandboxBackups = pgTable(
         AND ${table.encrypted_size_bytes} IS NOT NULL
         AND ${table.kms_key_id} IS NOT NULL AND ${table.kms_key_id} <> ''
         AND ${table.kms_key_version} BETWEEN 1 AND 9007199254740991
-        AND ${table.wrapped_dek_ref} IS NOT NULL AND ${table.wrapped_dek_ref} <> ''
-        AND octet_length(${table.wrapped_dek_ciphertext_base64}) BETWEEN 4 AND 21848
-        AND ${table.wrapped_dek_sha256} ~ '^[0-9a-f]{64}$'
-        AND ${table.wrapped_dek_size_bytes} BETWEEN 1 AND 16384
-        AND ${table.wrapped_dek_receipt_digest} ~ '^[0-9a-f]{64}$'
+        AND ((${table.manifest_version} = 2
+          AND num_nulls(${table.wrapped_dek_ref}, ${table.wrapped_dek_ciphertext_base64},
+            ${table.wrapped_dek_sha256}, ${table.wrapped_dek_size_bytes},
+            ${table.wrapped_dek_receipt_digest}) = 0
+          AND ${table.wrapped_dek_ref} <> ''
+          AND octet_length(${table.wrapped_dek_ciphertext_base64}) BETWEEN 4 AND 21848
+          AND ${table.wrapped_dek_sha256} ~ '^[0-9a-f]{64}$'
+          AND ${table.wrapped_dek_size_bytes} BETWEEN 1 AND 16384
+          AND ${table.wrapped_dek_receipt_digest} ~ '^[0-9a-f]{64}$'
+          AND num_nonnulls(${table.operation_key_bundle_generation_id},
+            ${table.operation_key_bundle_format}, ${table.operation_key_bundle_ref},
+            ${table.operation_key_bundle_ciphertext_base64},
+            ${table.operation_key_bundle_sha256}, ${table.operation_key_bundle_size_bytes},
+            ${table.operation_key_bundle_context}, ${table.operation_key_bundle_context_derivation},
+            ${table.operation_key_bundle_local_receipt_derivation},
+            ${table.operation_key_bundle_local_receipt_digest}, ${table.vault_key_generation_id},
+            ${table.vault_key_authority_receipt_digest}) = 0)
+        OR (${table.manifest_version} = 3
+          AND num_nonnulls(${table.wrapped_dek_ref}, ${table.wrapped_dek_ciphertext_base64},
+            ${table.wrapped_dek_sha256}, ${table.wrapped_dek_size_bytes},
+            ${table.wrapped_dek_receipt_digest}) = 0
+          AND num_nulls(${table.operation_key_bundle_generation_id},
+            ${table.operation_key_bundle_format}, ${table.operation_key_bundle_ref},
+            ${table.operation_key_bundle_ciphertext_base64},
+            ${table.operation_key_bundle_sha256}, ${table.operation_key_bundle_size_bytes},
+            ${table.operation_key_bundle_context}, ${table.operation_key_bundle_context_derivation},
+            ${table.operation_key_bundle_local_receipt_derivation},
+            ${table.operation_key_bundle_local_receipt_digest}, ${table.vault_key_generation_id},
+            ${table.vault_key_authority_receipt_digest}) = 0
+          AND ${table.operation_key_bundle_format} = 'kms-aead-operation-key-bundle-v1'
+          AND ${table.operation_key_bundle_ref} =
+            'backup-key-bundle:' || ${table.backup_operation_id}::text
+          AND ${table.operation_key_bundle_ciphertext_base64} ~ '^[A-Za-z0-9+/]{123}=$'
+          AND ${table.operation_key_bundle_sha256} ~ '^[0-9a-f]{64}$'
+          AND ${table.operation_key_bundle_size_bytes} = 92
+          AND octet_length(${table.operation_key_bundle_context}) BETWEEN 1 AND 65536
+          AND ${table.operation_key_bundle_context_derivation} =
+            'elizaos.agent-backup.operation-key-bundle-context.v1'
+          AND ${table.operation_key_bundle_local_receipt_derivation} =
+            'elizaos.kms-aead-operation-key-bundle.local-receipt.v1'
+          AND ${table.operation_key_bundle_local_receipt_digest} ~ '^[0-9a-f]{64}$'
+          AND ${table.vault_key_authority_receipt_digest} ~ '^[0-9a-f]{64}$'))
       )) IS TRUE`,
     ),
     catalog_lease_shape_check: check(

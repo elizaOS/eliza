@@ -204,12 +204,36 @@ export interface ImmutableObjectUploadReceipt {
   verifiedPresent: true;
 }
 
+/** Caller cancellation plus an absolute wall-clock bound for provider I/O. */
+export interface ObjectRequestControl {
+  readonly signal?: AbortSignal;
+  readonly deadline?: Date;
+}
+
+export interface PutImmutableObjectInput extends ObjectRequestControl {
+  readonly key: string;
+  readonly body: ArrayBuffer | Uint8Array;
+  readonly contentType?: string;
+  /**
+   * Transfer this exact mutable byte range to the storage boundary. The bytes
+   * are wiped before settlement; callers must not read or mutate them again.
+   */
+  readonly transferBodyOwnership?: boolean;
+  /**
+   * Fenced authority check run immediately before every provider PUT attempt.
+   * A rejection prevents both the PUT and any response-loss reconciliation.
+   */
+  readonly beforeWriteAttempt?: () => Promise<void>;
+}
+
 /**
  * Single-PUT uploads are intentionally smaller than the Worker memory limit.
  * Larger backup artifacts must use the future streaming/multipart primitive.
  */
 export const MAX_IMMUTABLE_SINGLE_PUT_BYTES = 32 * 1024 * 1024;
 export const MAX_IMMUTABLE_PUT_ATTEMPTS = 3;
+export const MAX_IMMUTABLE_UPLOAD_DURATION_MS = 5 * 60 * 1_000;
+export const DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS = 2 * 60 * 1_000;
 /** Mirrors the durable backup catalogue's per-object safety ceiling. */
 export const MAX_EXACT_OBJECT_READ_BYTES = 1024 * 1024 * 1024;
 
@@ -228,6 +252,8 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_UPLOAD_FAILED"
   | "OBJECT_STORAGE_UPLOAD_UNCONFIRMED"
   | "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED"
+  | "OBJECT_STORAGE_UPLOAD_ABORTED"
+  | "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED"
   | "OBJECT_STORAGE_READ_TOO_LARGE"
   | "OBJECT_STORAGE_READ_NOT_FOUND"
   | "OBJECT_STORAGE_READ_BODY_UNAVAILABLE"
@@ -558,7 +584,10 @@ function requireObjectSize(value: number | undefined): number {
   return value;
 }
 
-function runtimeChecksum(object: RuntimeR2ObjectMetadata): ObjectChecksumReceipt {
+function runtimeChecksum(
+  object: RuntimeR2ObjectMetadata,
+  requireProviderValidated = false,
+): ObjectChecksumReceipt {
   if (object.checksums?.sha256) {
     return {
       algorithm: "sha256",
@@ -566,9 +595,11 @@ function runtimeChecksum(object: RuntimeR2ObjectMetadata): ObjectChecksumReceipt
       value: checksumBytesToBase64(object.checksums.sha256),
     };
   }
-  const declaredSha256 = normalizedSha256(object.customMetadata?.[IMMUTABLE_SHA256_METADATA_KEY]);
-  if (declaredSha256) {
-    return { algorithm: "sha256", encoding: "base64", value: declaredSha256 };
+  if (!requireProviderValidated) {
+    const declaredSha256 = normalizedSha256(object.customMetadata?.[IMMUTABLE_SHA256_METADATA_KEY]);
+    if (declaredSha256) {
+      return { algorithm: "sha256", encoding: "base64", value: declaredSha256 };
+    }
   }
   if (object.checksums?.sha1) {
     return {
@@ -592,13 +623,18 @@ function runtimeChecksum(object: RuntimeR2ObjectMetadata): ObjectChecksumReceipt
   );
 }
 
-function s3Checksum(object: HeadObjectCommandOutput): ObjectChecksumReceipt {
+function s3Checksum(
+  object: HeadObjectCommandOutput,
+  requireProviderValidated = false,
+): ObjectChecksumReceipt {
   if (object.ChecksumSHA256) {
     return { algorithm: "sha256", encoding: "base64", value: object.ChecksumSHA256 };
   }
-  const declaredSha256 = normalizedSha256(object.Metadata?.[IMMUTABLE_SHA256_METADATA_KEY]);
-  if (declaredSha256) {
-    return { algorithm: "sha256", encoding: "base64", value: declaredSha256 };
+  if (!requireProviderValidated) {
+    const declaredSha256 = normalizedSha256(object.Metadata?.[IMMUTABLE_SHA256_METADATA_KEY]);
+    if (declaredSha256) {
+      return { algorithm: "sha256", encoding: "base64", value: declaredSha256 };
+    }
   }
   if (object.ChecksumSHA1) {
     return { algorithm: "sha1", encoding: "base64", value: object.ChecksumSHA1 };
@@ -725,9 +761,11 @@ async function headObjectOnBackend(
   keyFingerprint: string,
   requestChecksum = false,
   providerVersionId?: string,
+  control?: ImmutableUploadAbortContext,
 ): Promise<ObjectHeadReceipt> {
   if (backend.runtimeBucket) {
-    const object = await backend.runtimeBucket.head(key);
+    const request = backend.runtimeBucket.head(key);
+    const object = control ? await control.race(request) : await request;
     if (!object) {
       return {
         status: "absent",
@@ -735,7 +773,7 @@ async function headObjectOnBackend(
         metadata: null,
       };
     }
-    const checksum = runtimeChecksum(object);
+    const checksum = runtimeChecksum(object, requestChecksum);
     return {
       status: "present",
       locator: makeLocator(
@@ -748,15 +786,17 @@ async function headObjectOnBackend(
   }
 
   try {
-    const object = await backend.s3Client.send(
+    const request = backend.s3Client.send(
       new HeadObjectCommand({
         Bucket: backend.locator.bucket,
         Key: key,
         VersionId: providerVersionId,
         ChecksumMode: requestChecksum ? "ENABLED" : undefined,
       }),
+      control ? { abortSignal: control.signal } : undefined,
     );
-    const checksum = s3Checksum(object);
+    const object = control ? await control.race(request) : await request;
+    const checksum = s3Checksum(object, requestChecksum);
     return {
       status: "present",
       locator: makeLocator(
@@ -767,6 +807,7 @@ async function headObjectOnBackend(
       metadata: { sizeBytes: requireObjectSize(object.ContentLength), checksum },
     };
   } catch (error) {
+    if (control?.signal.aborted) throw control.failure();
     // error-policy:J1 translate only the provider's authoritative not-found
     // response into the explicit absent result at the object-store boundary.
     if (!isS3ObjectNotFound(error)) throw error;
@@ -1013,10 +1054,13 @@ function s3ResponseBodyStream(body: GetObjectCommandOutput["Body"]): ReadableStr
   );
 }
 
-async function cancelUntransferredBody(body: unknown): Promise<void> {
+async function cancelUntransferredBody(
+  body: unknown,
+  context: ExactReadAbortContext,
+): Promise<void> {
   try {
     if (isReadableByteStream(body)) {
-      await body.cancel();
+      await raceRuntimeGet(Promise.resolve(body.cancel()), context);
       return;
     }
     if (
@@ -1035,7 +1079,9 @@ async function cancelUntransferredBody(body: unknown): Promise<void> {
       typeof body.transformToWebStream === "function"
     ) {
       const stream = body.transformToWebStream();
-      if (isReadableByteStream(stream)) await stream.cancel();
+      if (isReadableByteStream(stream)) {
+        await raceRuntimeGet(Promise.resolve(stream.cancel()), context);
+      }
     }
   } catch {
     // error-policy:J6 best-effort teardown must not replace the static
@@ -1328,7 +1374,7 @@ async function getExactObjectOnBackend(
         bodyTransferred = true;
         return read;
       } finally {
-        if (!bodyTransferred) await cancelUntransferredBody(object.body);
+        if (!bodyTransferred) await cancelUntransferredBody(object.body, context);
       }
     }
 
@@ -1370,7 +1416,7 @@ async function getExactObjectOnBackend(
       bodyTransferred = true;
       return read;
     } finally {
-      if (!bodyTransferred) await cancelUntransferredBody(object.Body);
+      if (!bodyTransferred) await cancelUntransferredBody(object.Body, context);
     }
   } catch (error) {
     // error-policy:J2 add stable storage-domain context while preserving cause.
@@ -1387,24 +1433,147 @@ export async function getExactObjectAtBackend(params: {
   return getExactObjectOnBackend(params.backend, params.input);
 }
 
+interface ImmutableUploadAbortContext {
+  readonly signal: AbortSignal;
+  ensureActive(): void;
+  failure(): ObjectStorageLifecycleError;
+  race<T>(request: Promise<T>): Promise<T>;
+  wait(delayMs: number): Promise<void>;
+  dispose(): void;
+}
+
+function createImmutableUploadAbortContext(
+  input: ObjectRequestControl,
+): ImmutableUploadAbortContext {
+  const now = Date.now();
+  const suppliedDeadline = input.deadline?.getTime();
+  if (suppliedDeadline !== undefined && !Number.isFinite(suppliedDeadline)) {
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_METADATA_INVALID",
+      "Immutable object upload requires a valid absolute deadline",
+    );
+  }
+  const deadlineAt = suppliedDeadline ?? now + DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS;
+  if (deadlineAt - now > MAX_IMMUTABLE_UPLOAD_DURATION_MS) {
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_METADATA_INVALID",
+      "Immutable object upload deadline exceeds the bounded provider-I/O window",
+    );
+  }
+
+  const controller = new AbortController();
+  let source: "caller" | "deadline" | null = null;
+  let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+  let disposed = false;
+  const abort = (nextSource: "caller" | "deadline") => {
+    if (source !== null || disposed) return;
+    source = nextSource;
+    controller.abort();
+  };
+  const onCallerAbort = () => abort("caller");
+  input.signal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (input.signal?.aborted) abort("caller");
+
+  const armDeadline = () => {
+    if (source !== null || disposed) return;
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) {
+      abort("deadline");
+      return;
+    }
+    deadlineTimer = setTimeout(armDeadline, Math.min(remaining, 2_147_483_647));
+  };
+  armDeadline();
+
+  const failure = () =>
+    source === "deadline"
+      ? new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+          "Immutable object provider I/O exceeded its deadline",
+        )
+      : new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_UPLOAD_ABORTED",
+          "Immutable object provider I/O was aborted",
+        );
+
+  const ensureActive = () => {
+    if (Date.now() >= deadlineAt) abort("deadline");
+    if (input.signal?.aborted) abort("caller");
+    if (controller.signal.aborted) throw failure();
+  };
+
+  const race = async <T>(request: Promise<T>): Promise<T> => {
+    ensureActive();
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(failure());
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      return await Promise.race([request, aborted]);
+    } finally {
+      if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+    }
+  };
+
+  return {
+    signal: controller.signal,
+    ensureActive,
+    failure,
+    race,
+    async wait(delayMs: number) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await race(
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, delayMs);
+          }),
+        );
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (deadlineTimer !== null) clearTimeout(deadlineTimer);
+      input.signal?.removeEventListener("abort", onCallerAbort);
+    },
+  };
+}
+
 /** HEAD one exact key without downloading its body. */
-export async function headObject(key: string): Promise<ObjectHeadReceipt> {
+export async function headObject(
+  key: string,
+  control: ObjectRequestControl = {},
+): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
-  const [backend, keyFingerprint] = await Promise.all([
-    resolveLifecycleBackend(),
-    fingerprintKey(key),
-  ]);
-  return headObjectOnBackend(backend, key, keyFingerprint);
+  const context = createImmutableUploadAbortContext(control);
+  try {
+    const [backend, keyFingerprint] = await context.race(
+      Promise.all([resolveLifecycleBackend(), fingerprintKey(key)]),
+    );
+    return await headObjectOnBackend(backend, key, keyFingerprint, false, undefined, context);
+  } finally {
+    context.dispose();
+  }
 }
 
 /** HEAD one exact key on a caller-resolved backend. */
 export async function headObjectAtBackend(
   backend: ExactObjectStorageBackend,
   key: string,
+  control: ObjectRequestControl = {},
 ): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
   requireExactBackendLocator(backend.locator);
-  return headObjectOnBackend(backend, key, await fingerprintKey(key));
+  const context = createImmutableUploadAbortContext(control);
+  try {
+    const keyFingerprint = await context.race(fingerprintKey(key));
+    return await headObjectOnBackend(backend, key, keyFingerprint, false, undefined, context);
+  } finally {
+    context.dispose();
+  }
 }
 
 type ImmutableWriteFailure = "none" | "precondition" | "retryable" | "unsupported" | "fatal";
@@ -1460,13 +1629,18 @@ function classifyImmutableWriteFailure(error: unknown): ImmutableWriteFailure {
   return isRetryableProviderError(error) ? "retryable" : "fatal";
 }
 
-function immutableUploadBytes(body: ArrayBuffer | Uint8Array): Uint8Array<ArrayBuffer> {
-  if (body instanceof ArrayBuffer) return new Uint8Array(body);
-  if (body.buffer instanceof ArrayBuffer) {
-    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+function immutableUploadBytes(
+  body: ArrayBuffer | Uint8Array,
+  transferBodyOwnership: boolean,
+): Uint8Array<ArrayBuffer> {
+  if (transferBodyOwnership) {
+    if (body instanceof ArrayBuffer) return new Uint8Array(body);
+    if (body.buffer instanceof ArrayBuffer) {
+      return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+    }
   }
   const copy = new Uint8Array(body.byteLength);
-  copy.set(body);
+  copy.set(body instanceof ArrayBuffer ? new Uint8Array(body) : body);
   return copy;
 }
 
@@ -1515,9 +1689,12 @@ function immutableReceiptFromHead(
   };
 }
 
-async function immutableRetryBackoff(attempt: number): Promise<void> {
+async function immutableRetryBackoff(
+  attempt: number,
+  context: ImmutableUploadAbortContext,
+): Promise<void> {
   const delayMs = 25 * 2 ** Math.max(0, attempt - 1);
-  await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  await context.wait(delayMs);
 }
 
 /**
@@ -1530,133 +1707,189 @@ async function immutableRetryBackoff(attempt: number): Promise<void> {
  */
 async function putImmutableObjectOnBackend(params: {
   backend: ExactObjectStorageBackend;
-  key: string;
-  body: ArrayBuffer | Uint8Array;
-  contentType?: string;
+  key: PutImmutableObjectInput["key"];
+  body: PutImmutableObjectInput["body"];
+  contentType?: PutImmutableObjectInput["contentType"];
+  signal?: PutImmutableObjectInput["signal"];
+  deadline?: PutImmutableObjectInput["deadline"];
+  beforeWriteAttempt?: PutImmutableObjectInput["beforeWriteAttempt"];
+  transferBodyOwnership?: PutImmutableObjectInput["transferBodyOwnership"];
 }): Promise<ImmutableObjectUploadReceipt> {
   requireExactKey(params.key);
   requireExactBackendLocator(params.backend.locator);
-  const body = immutableUploadBytes(params.body);
-  if (body.byteLength > MAX_IMMUTABLE_SINGLE_PUT_BYTES) {
+  if (params.body.byteLength > MAX_IMMUTABLE_SINGLE_PUT_BYTES) {
+    if (params.transferBodyOwnership) {
+      (params.body instanceof ArrayBuffer ? new Uint8Array(params.body) : params.body).fill(0);
+    }
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_UPLOAD_TOO_LARGE",
       "Immutable single-PUT object exceeds the bounded upload limit",
     );
   }
+  const body = immutableUploadBytes(params.body, params.transferBodyOwnership === true);
+  let context: ImmutableUploadAbortContext | undefined;
+  let digestBytes: Uint8Array<ArrayBuffer> | undefined;
+  try {
+    context = createImmutableUploadAbortContext(params);
+    const backend = params.backend;
+    const [keyFingerprint, sha256] = await context.race(
+      Promise.all([fingerprintKey(params.key), immutableSha256(body)]),
+    );
+    digestBytes = new Uint8Array(sha256.bytes);
+    const expected: ImmutableObjectUploadReceipt["metadata"] = {
+      sizeBytes: body.byteLength,
+      checksum: sha256.receipt,
+    };
 
-  const backend = params.backend;
-  const [keyFingerprint, sha256] = await Promise.all([
-    fingerprintKey(params.key),
-    immutableSha256(body),
-  ]);
-  const expected: ImmutableObjectUploadReceipt["metadata"] = {
-    sizeBytes: body.byteLength,
-    checksum: sha256.receipt,
-  };
-
-  for (let attempt = 1; attempt <= MAX_IMMUTABLE_PUT_ATTEMPTS; attempt += 1) {
-    let writeFailure: ImmutableWriteFailure = "none";
-    try {
-      if (backend.runtimeBucket) {
-        const onlyIf = new Headers({ "if-none-match": "*" });
-        const result = await backend.runtimeBucket.put(params.key, body, {
-          onlyIf,
-          httpMetadata: {
-            contentType: params.contentType ?? "application/octet-stream",
-          },
-          customMetadata: {
-            [IMMUTABLE_SHA256_METADATA_KEY]: sha256.receipt.value,
-          },
-          sha256: sha256.bytes,
-        });
-        // Native R2 returns null when the create-only precondition fails.
-        if (result === null) writeFailure = "precondition";
-      } else {
-        await backend.s3Client.send(
-          new PutObjectCommand({
-            Bucket: backend.locator.bucket,
-            Key: params.key,
-            Body: body,
-            ContentLength: body.byteLength,
-            ContentType: params.contentType ?? "application/octet-stream",
-            ChecksumSHA256: sha256.receipt.value,
-            Metadata: {
-              [IMMUTABLE_SHA256_METADATA_KEY]: sha256.receipt.value,
-            },
-            IfNoneMatch: "*",
-          }),
-        );
-      }
-    } catch (error) {
-      // error-policy:J1 provider failures are reconciled below and translated
-      // to static key-free domain errors at this storage boundary.
-      writeFailure = classifyImmutableWriteFailure(error);
-    }
-
-    try {
-      const observed = await headObjectOnBackend(backend, params.key, keyFingerprint, true);
-      const receipt = immutableReceiptFromHead(observed, expected);
-      if (receipt) return receipt;
-    } catch (error) {
-      // error-policy:J1 reconcile the provider response at the immutable-write
-      // boundary before returning a receipt or a static domain failure.
-      if (
-        error instanceof ObjectStorageLifecycleError &&
-        error.code === "OBJECT_STORAGE_IMMUTABLE_CONFLICT"
-      ) {
+    for (let attempt = 1; attempt <= MAX_IMMUTABLE_PUT_ATTEMPTS; attempt += 1) {
+      let writeFailure: ImmutableWriteFailure = "none";
+      const attemptBody = body.slice();
+      const attemptDigest = digestBytes.slice();
+      try {
+        context.ensureActive();
+        if (params.beforeWriteAttempt) {
+          await context.race(Promise.resolve().then(params.beforeWriteAttempt));
+        }
+        context.ensureActive();
+      } catch (error) {
+        attemptBody.fill(0);
+        attemptDigest.fill(0);
         throw error;
       }
-      if (
-        error instanceof ObjectStorageLifecycleError &&
-        error.code === "OBJECT_STORAGE_METADATA_INVALID"
-      ) {
+      let providerRequest: Promise<unknown>;
+      try {
+        if (backend.runtimeBucket) {
+          const onlyIf = new Headers({ "if-none-match": "*" });
+          providerRequest = Promise.resolve(
+            backend.runtimeBucket.put(params.key, attemptBody, {
+              onlyIf,
+              httpMetadata: {
+                contentType: params.contentType ?? "application/octet-stream",
+              },
+              customMetadata: {
+                [IMMUTABLE_SHA256_METADATA_KEY]: sha256.receipt.value,
+              },
+              sha256: attemptDigest.buffer,
+            }),
+          );
+        } else {
+          providerRequest = backend.s3Client.send(
+            new PutObjectCommand({
+              Bucket: backend.locator.bucket,
+              Key: params.key,
+              Body: attemptBody,
+              ContentLength: attemptBody.byteLength,
+              ContentType: params.contentType ?? "application/octet-stream",
+              ChecksumSHA256: sha256.receipt.value,
+              Metadata: {
+                [IMMUTABLE_SHA256_METADATA_KEY]: sha256.receipt.value,
+              },
+              IfNoneMatch: "*",
+            }),
+            { abortSignal: context.signal },
+          );
+        }
+      } catch (error) {
+        attemptBody.fill(0);
+        attemptDigest.fill(0);
+        throw error;
+      }
+      const trackedRequest = providerRequest.finally(() => {
+        attemptBody.fill(0);
+        attemptDigest.fill(0);
+      });
+      try {
+        const result = await context.race(trackedRequest);
+        // Native R2 returns null when the create-only precondition fails.
+        if (backend.runtimeBucket && result === null) writeFailure = "precondition";
+      } catch (error) {
+        // A timed-out binding request may settle after this execution returns.
+        // Its private attempt buffer is wiped only after that provider request
+        // settles, so late provider consumption cannot observe zeroed bytes.
+        void trackedRequest.catch(() => undefined);
+        if (context.signal.aborted) throw context.failure();
+        // error-policy:J1 provider failures are reconciled below and translated
+        // to static key-free domain errors at this storage boundary.
+        writeFailure = classifyImmutableWriteFailure(error);
+      }
+
+      // A provider that rejected or does not implement create-only PUT cannot
+      // establish immutable-write authority. Do not adopt a matching HEAD from
+      // a pre-existing or non-conformant write under either failure class.
+      if (writeFailure === "unsupported") {
         throw new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
-          "Immutable object upload refused because existing content could not be verified",
+          "OBJECT_STORAGE_IMMUTABLE_PUT_UNSUPPORTED",
+          "Storage provider does not support create-only immutable object uploads",
         );
       }
-      if (!isRetryableProviderError(error)) {
+      if (writeFailure === "fatal") {
         throw new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_UPLOAD_UNCONFIRMED",
-          "Immutable object upload could not be confirmed by the storage provider",
+          "OBJECT_STORAGE_UPLOAD_FAILED",
+          "Storage provider rejected the immutable object upload",
         );
       }
-      writeFailure = "retryable";
+
+      try {
+        const observed = await headObjectOnBackend(
+          backend,
+          params.key,
+          keyFingerprint,
+          true,
+          undefined,
+          context,
+        );
+        const receipt = immutableReceiptFromHead(observed, expected);
+        if (receipt) return receipt;
+      } catch (error) {
+        if (context.signal.aborted) throw context.failure();
+        if (
+          error instanceof ObjectStorageLifecycleError &&
+          error.code === "OBJECT_STORAGE_IMMUTABLE_CONFLICT"
+        ) {
+          throw error;
+        }
+        if (
+          error instanceof ObjectStorageLifecycleError &&
+          error.code === "OBJECT_STORAGE_METADATA_INVALID"
+        ) {
+          throw new ObjectStorageLifecycleError(
+            "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+            "Immutable object upload refused because existing content could not be verified",
+          );
+        }
+        if (!isRetryableProviderError(error)) {
+          throw new ObjectStorageLifecycleError(
+            "OBJECT_STORAGE_UPLOAD_UNCONFIRMED",
+            "Immutable object upload could not be confirmed by the storage provider",
+          );
+        }
+        writeFailure = "retryable";
+      }
+
+      if (attempt === MAX_IMMUTABLE_PUT_ATTEMPTS) {
+        throw new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED",
+          "Immutable object upload exhausted its bounded retry budget",
+        );
+      }
+      await immutableRetryBackoff(attempt, context);
     }
 
-    if (writeFailure === "unsupported") {
-      throw new ObjectStorageLifecycleError(
-        "OBJECT_STORAGE_IMMUTABLE_PUT_UNSUPPORTED",
-        "Storage provider does not support create-only immutable object uploads",
-      );
-    }
-    if (writeFailure === "fatal") {
-      throw new ObjectStorageLifecycleError(
-        "OBJECT_STORAGE_UPLOAD_FAILED",
-        "Storage provider rejected the immutable object upload",
-      );
-    }
-    if (attempt === MAX_IMMUTABLE_PUT_ATTEMPTS) {
-      throw new ObjectStorageLifecycleError(
-        "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED",
-        "Immutable object upload exhausted its bounded retry budget",
-      );
-    }
-    await immutableRetryBackoff(attempt);
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED",
+      "Immutable object upload exhausted its bounded retry budget",
+    );
+  } finally {
+    body.fill(0);
+    digestBytes?.fill(0);
+    context?.dispose();
   }
-
-  throw new ObjectStorageLifecycleError(
-    "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED",
-    "Immutable object upload exhausted its bounded retry budget",
-  );
 }
 
 /** Put an immutable object using the legacy process-global backend selector. */
-export async function putImmutableObject(params: {
-  key: string;
-  body: ArrayBuffer | Uint8Array;
-  contentType?: string;
-}): Promise<ImmutableObjectUploadReceipt> {
+export async function putImmutableObject(
+  params: PutImmutableObjectInput,
+): Promise<ImmutableObjectUploadReceipt> {
   requireExactKey(params.key);
   if (params.body.byteLength > MAX_IMMUTABLE_SINGLE_PUT_BYTES) {
     throw new ObjectStorageLifecycleError(
@@ -1673,9 +1906,13 @@ export async function putImmutableObject(params: {
 /** Put an immutable object on a caller-resolved exact backend. */
 export async function putImmutableObjectAtBackend(params: {
   backend: ExactObjectStorageBackend;
-  key: string;
-  body: ArrayBuffer | Uint8Array;
-  contentType?: string;
+  key: PutImmutableObjectInput["key"];
+  body: PutImmutableObjectInput["body"];
+  contentType?: PutImmutableObjectInput["contentType"];
+  signal?: PutImmutableObjectInput["signal"];
+  deadline?: PutImmutableObjectInput["deadline"];
+  beforeWriteAttempt?: PutImmutableObjectInput["beforeWriteAttempt"];
+  transferBodyOwnership?: PutImmutableObjectInput["transferBodyOwnership"];
 }): Promise<ImmutableObjectUploadReceipt> {
   return putImmutableObjectOnBackend(params);
 }
@@ -1759,8 +1996,6 @@ async function deleteObjectOnBackend(
       );
       providerRequestId = output.$metadata.requestId ?? null;
     } catch (error) {
-      // error-policy:J1 translate conditional-delete and not-found responses at
-      // the exact object lifecycle boundary; all other failures propagate.
       if (providerHttpStatus(error) === 412) {
         throw new ObjectStorageLifecycleError(
           "OBJECT_STORAGE_VERSION_MISMATCH",

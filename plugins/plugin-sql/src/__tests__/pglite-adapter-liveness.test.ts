@@ -36,8 +36,14 @@ function makeAdapter() {
   const manager = {
     close: vi.fn(async () => undefined),
     dumpDataDir: vi.fn(async () => new Blob(["snapshot"])),
+    dumpDataDirAfterPreflight: vi.fn(async <T>(preflight: () => Promise<T>) => ({
+      dump: new Blob(["bounded-snapshot"]),
+      preflight: await preflight(),
+      release: vi.fn(),
+    })),
     ensureSync: vi.fn(async () => undefined),
     getConnection: vi.fn(() => rawConnection),
+    getDataDir: vi.fn(() => "/tmp/pglite-test"),
     initialize: vi.fn(async () => undefined),
     isInitialized: vi.fn(() => true),
     isShuttingDown: vi.fn(() => false),
@@ -79,8 +85,17 @@ describe("PgliteDatabaseAdapter liveness", () => {
     await expect(adapter.init()).resolves.toBeUndefined();
     await expect(adapter.getConnection()).resolves.toBe(db);
     expect(adapter.getRawConnection()).toBe(rawConnection);
+    expect(adapter.getPgliteDataDir()).toBe("/tmp/pglite-test");
     await expect(adapter.dumpPgliteDataDir("gzip")).resolves.toBeInstanceOf(Blob);
     expect(manager.dumpDataDir).toHaveBeenCalledWith("gzip");
+    await expect(
+      adapter.dumpPgliteDataDirAfterPreflight(async () => "bounded", "gzip")
+    ).resolves.toEqual({
+      dump: expect.any(Blob),
+      preflight: "bounded",
+      release: expect.any(Function),
+    });
+    expect(manager.dumpDataDirAfterPreflight).toHaveBeenCalledWith(expect.any(Function), "gzip");
     await expect(
       adapter.withEntityContext(null, async (tx) => {
         expect(tx).toBe(db);

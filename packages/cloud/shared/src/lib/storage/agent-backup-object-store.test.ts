@@ -64,7 +64,7 @@ function makeRuntimeBucket(): {
           size,
           etag: `etag-${key.length}`,
           version: `version-${key.length}`,
-          checksums: { sha256 },
+          checksums: { sha256: sha256.slice(0) },
           customMetadata: options.customMetadata,
         };
         objects.set(key, object);
@@ -168,6 +168,16 @@ afterAll(() => {
 });
 
 describe("agent backup explicit object storage", () => {
+  test("rejects non-loopback cleartext S3 endpoints before credentials can be used", async () => {
+    await expect(
+      createAgentBackupObjectStore(
+        s3Endpoint("hetzner-object-storage", {
+          endpoint: "http://object-storage.example.invalid",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "OBJECT_STORAGE_LOCATOR_UNAVAILABLE" });
+  });
+
   test("maps Worker R2 primary authority and keeps receipts privacy-safe", async () => {
     const runtime = makeRuntimeBucket();
     const endpoint = workerEndpoint(runtime.bucket);

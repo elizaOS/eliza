@@ -67,4 +67,47 @@ describe("migrations/meta/_journal.json registration", () => {
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
     expect(new Set(entries.map((e) => e.tag)).size).toBe(entries.length);
   });
+
+  test("the catalogue and capture stack is registered in strict deployment order", () => {
+    const tags = [
+      "0218_agent_backup_catalog_columns",
+      "0219_agent_backup_catalog_legacy_backfill",
+      "0220_agent_backup_catalog_authority",
+      "0221_agent_backup_catalog_ownership_fks",
+      "0222_agent_backup_catalog_identity_checks",
+      "0223_agent_backup_catalog_runtime_checks",
+      "0224_agent_backup_catalog_manifest_v2_check",
+      "0225_agent_backup_catalog_indexes",
+      "0226_agent_backup_objects",
+      "0227_agent_backup_gc_outbox",
+      "0228_agent_backup_catalog_tenant_authority",
+      "0229_agent_backup_catalog_chain_authority",
+      "0230_agent_backup_activation_authority_foundation",
+      "0231_agent_backup_docker_source_authority",
+      "0232_agent_backup_catalog_source_authority",
+      "0233_agent_backup_catalog_manifest_v3_columns",
+      "0234_agent_backup_catalog_manifest_v3_shape",
+      "0235_agent_backup_rpo_scheduler",
+    ];
+    const tail = journalEntries().slice(-tags.length);
+
+    expect(tail.map(({ tag }) => tag)).toEqual(tags);
+    expect(tail.map(({ idx }) => idx)).toEqual(tags.map((_, offset) => 217 + offset));
+    expect(tail.map(({ when }) => when)).toEqual(
+      tags.map((_, offset) => 1787947200000 + offset * 86_400_000),
+    );
+  });
+
+  test("each capture migration remains below the review-size ceiling", () => {
+    const captureTags = journalEntries()
+      .filter(({ idx }) => idx >= 223 && idx <= 228)
+      .map(({ tag }) => tag);
+
+    for (const tag of captureTags) {
+      const source = readFileSync(join(MIGRATIONS_DIR, `${tag}.sql`), "utf8");
+      expect(source.split(/\r?\n/).length, `${tag}.sql must stay below 100 lines`).toBeLessThan(
+        100,
+      );
+    }
+  });
 });
