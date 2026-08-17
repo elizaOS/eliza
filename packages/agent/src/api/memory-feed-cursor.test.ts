@@ -53,6 +53,48 @@ describe("GET /api/memories/feed cursor", () => {
     });
   });
 
+  test("400s a malformed before cursor instead of silently emptying the feed", async () => {
+    // Number("abc") is NaN — a `number`, so it passes the undefined check in
+    // fetchMemoriesFromTables, and every `createdAt < NaN` comparison is
+    // false. Without the boundary guard this request returned 200 with an
+    // empty feed, indistinguishable from an agent that has no memories.
+    const getMemories = vi.fn(async () => []);
+    const runtime = {
+      agentId: "11111111-1111-4111-8111-111111111111" as UUID,
+      character: { name: "Eliza" },
+      ensureConnection: vi.fn(async () => undefined),
+      getMemories,
+    } as unknown as AgentRuntime;
+    const errors: Array<{ message: string; status?: number }> = [];
+    const context: MemoryRouteContext = {
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/memories/feed",
+      url: new URL(
+        "https://agent.test/api/memories/feed?before=abc&type=messages",
+      ),
+      runtime,
+      agentName: "Eliza",
+      json: () => {
+        throw new Error("unexpected 200");
+      },
+      error: (_res, message, status) => {
+        errors.push({ message, status });
+      },
+      readJsonBody: async <T extends object>() => ({}) as T,
+    };
+
+    expect(await handleMemoryRoutes(context)).toBe(true);
+    expect(errors).toEqual([
+      {
+        message: "before must be a finite Unix timestamp in milliseconds",
+        status: 400,
+      },
+    ]);
+    expect(getMemories).not.toHaveBeenCalled();
+  });
+
   test("rejects an unknown type before scanning tables", async () => {
     const getMemories = vi.fn(async () => []);
     const runtime = {
