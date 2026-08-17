@@ -6,22 +6,24 @@ import {
   callOpeningClientMessageId,
   callOpeningPrompt,
   callStartedEvent,
+  establishInboundCallIdentity,
   prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
+  resolveCallContinuityContext,
 } from "./voice-continuity";
 
 describe("voice continuity", () => {
   const now = Date.UTC(2026, 7, 15, 12);
 
   test("describes first contact without inventing history", () => {
-    expect(callStartedEvent(undefined, now)).toContain(
+    expect(callStartedEvent(false, now - 3 * 60 * 60_000, now)).toContain(
       "first recorded interaction",
     );
   });
 
   test("bounds prior interaction age into spoken units", () => {
     expect(relativeInteractionAge(now - 3 * 60 * 60_000, now)).toBe("3 hours");
-    expect(callStartedEvent(now - 2 * 86_400_000, now)).toContain(
+    expect(callStartedEvent(true, now - 2 * 86_400_000, now)).toContain(
       "about 2 days ago",
     );
   });
@@ -65,6 +67,61 @@ describe("voice continuity", () => {
     expect(callOpeningClientMessageId("CA123")).not.toBe(
       "twilio-call:CA123:started",
     );
+  });
+
+  test("converges duplicate webhooks on one immutable opening payload", async () => {
+    const stableCall = {
+      id: "call-record-1",
+      receivedAt: new Date(now),
+    };
+    const firstIdentity = await establishInboundCallIdentity(
+      async () => stableCall,
+      async () => undefined,
+    );
+    const duplicateIdentity = await establishInboundCallIdentity(
+      async () => undefined,
+      async () => stableCall,
+    );
+    expect(duplicateIdentity).toEqual(firstIdentity);
+
+    const priorInteractionAt = now - 3 * 60 * 60_000;
+    const firstContext = resolveCallContinuityContext({
+      callStartedAt: firstIdentity.receivedAt.getTime(),
+      historyMessages: [{ createdAt: priorInteractionAt }],
+    });
+    const duplicateContext = resolveCallContinuityContext({
+      callStartedAt: duplicateIdentity.receivedAt.getTime(),
+      historyMessages: [
+        { createdAt: priorInteractionAt },
+        { createdAt: now + 1_000 },
+        { createdAt: now + 1_001 },
+      ],
+    });
+    expect(duplicateContext).toEqual(firstContext);
+
+    const firstPrompt = callOpeningPrompt(
+      firstContext.returningCaller,
+      firstContext.previousInteractionAt,
+      firstIdentity.receivedAt.getTime(),
+    );
+    const duplicatePrompt = callOpeningPrompt(
+      duplicateContext.returningCaller,
+      duplicateContext.previousInteractionAt,
+      duplicateIdentity.receivedAt.getTime(),
+    );
+    expect(duplicatePrompt).toBe(firstPrompt);
+    expect(callOpeningClientMessageId("CA123")).toBe(
+      "twilio-call:CA123:opening",
+    );
+  });
+
+  test("keeps legacy history without timestamps returning but age-unknown", () => {
+    expect(
+      resolveCallContinuityContext({
+        callStartedAt: now,
+        historyMessages: [{}, { createdAt: now + 1_000 }],
+      }),
+    ).toEqual({ returningCaller: true, previousInteractionAt: undefined });
   });
 
   test("sanitizes teardown reasons", () => {
