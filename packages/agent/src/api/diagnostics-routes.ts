@@ -135,7 +135,7 @@ function parseAuditSince(raw: string | null): {
 } {
   if (raw == null) return {};
   const trimmed = raw.trim();
-  if (!trimmed) {
+  if (!trimmed || raw !== trimmed) {
     return {
       error: 'Invalid "since" filter: expected epoch ms or ISO timestamp.',
     };

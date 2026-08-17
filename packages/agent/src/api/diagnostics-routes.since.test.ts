@@ -33,10 +33,7 @@ function makeCtx(search: string) {
     pathname,
     url,
     json,
-    logBuffer: [
-      entry(1_000, "old"),
-      entry(ISO_MS + 1, "new"),
-    ],
+    logBuffer: [entry(1_000, "old"), entry(ISO_MS + 1, "new")],
     eventBuffer: [],
     auditEventTypes: [] as string[],
     auditSeverities: [] as string[],
@@ -79,16 +76,24 @@ describe("GET /api/logs since timestamp", () => {
     );
   });
 
-  it.each(["1e2", "12px", "007", "Infinity", "foo", "1.5"])(
-    "rejects since=%s before filtering the buffer",
-    async (token) => {
-      const ctx = makeCtx(`?since=${encodeURIComponent(token)}`);
-      await handleDiagnosticsRoutes(ctx);
-      expect(ctx.json).toHaveBeenCalledTimes(1);
-      const [, body, status] = ctx.json.mock.calls[0];
-      expect(status).toBe(400);
-      expect(body.error).toMatch(/since/i);
-      expect(body.entries).toBeUndefined();
-    },
-  );
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "Infinity",
+    "foo",
+    "1.5",
+    " 1500",
+    "1500 ",
+    ` ${ISO}`,
+    `${ISO} `,
+  ])("rejects since=%s before filtering the buffer", async (token) => {
+    const ctx = makeCtx(`?since=${encodeURIComponent(token)}`);
+    await handleDiagnosticsRoutes(ctx);
+    expect(ctx.json).toHaveBeenCalledTimes(1);
+    const [, body, status] = ctx.json.mock.calls[0];
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/since/i);
+    expect(body.entries).toBeUndefined();
+  });
 });
