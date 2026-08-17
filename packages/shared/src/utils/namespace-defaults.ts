@@ -21,11 +21,10 @@ export function ensureNamespaceDefaults(
     globalThis as { process?: { env?: NamespaceDefaultsEnv } }
   ).process?.env,
 ): void {
-  if (!env) return;
+  if (!env || typeof env !== "object") return;
 
-  if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
-    env.ELIZA_NAMESPACE = "eliza";
-  }
+  const trimmed = trimEnvValue(env.ELIZA_NAMESPACE);
+  env.ELIZA_NAMESPACE = trimmed ?? "eliza";
 }
 
 ensureNamespaceDefaults();
