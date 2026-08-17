@@ -838,11 +838,15 @@ function resolveActiveViewSurface({
   navigationPath,
   availableViews,
   viewLayout,
+  enabledKinds,
+  managedCloudRuntime,
 }: {
   tab: string;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   viewLayout: ActiveViewLayout | null;
+  enabledKinds: EnabledViewKinds;
+  managedCloudRuntime: boolean;
 }): ActiveViewSurface {
   // A split/tile layout or an unregistered builtin route has no manifest bearer;
   // it resolves to the safe default (no grants) — the default-deny baseline.
@@ -853,11 +857,18 @@ function resolveActiveViewSurface({
     };
   }
 
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (appShellPageForRoute) {
+  const visibleAppShellPage = findVisibleAppShellPageForRoute(
+    navigationPath,
+    enabledKinds,
+    managedCloudRuntime,
+  );
+  // Restricted native renderers cannot execute remote bundles, so the signed
+  // host page is also the active capability owner there. Web and desktop keep
+  // their intentional remote-bundle precedence below.
+  if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
     return {
-      manifest: resolveSurfaceManifest(appShellPageForRoute),
-      viewId: appShellPageForRoute.id,
+      manifest: resolveSurfaceManifest(visibleAppShellPage),
+      viewId: visibleAppShellPage.id,
     };
   }
 
@@ -878,8 +889,20 @@ function resolveActiveViewSurface({
     };
   }
 
+  if (visibleAppShellPage) {
+    return {
+      manifest: resolveSurfaceManifest(visibleAppShellPage),
+      viewId: visibleAppShellPage.id,
+    };
+  }
+
   const appShellPageForTab = listAppShellPages().find(
-    (entry) => entry.id === tab,
+    (entry) =>
+      entry.id === tab &&
+      appShellPageIsAvailable(entry, {
+        managedCloud: managedCloudRuntime,
+      }) &&
+      isViewVisible(entry, enabledKinds),
   );
   if (appShellPageForTab) {
     return {
@@ -921,11 +944,15 @@ function useActiveViewSurface({
   navigationPath,
   availableViews,
   viewLayout,
+  enabledKinds,
+  managedCloudRuntime,
 }: {
   tab: string;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   viewLayout: ActiveViewLayout | null;
+  enabledKinds: EnabledViewKinds;
+  managedCloudRuntime: boolean;
 }): ActiveViewSurface {
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
@@ -935,8 +962,18 @@ function useActiveViewSurface({
       navigationPath,
       availableViews,
       viewLayout,
+      enabledKinds,
+      managedCloudRuntime,
     });
-  }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
+  }, [
+    availableViews,
+    enabledKinds,
+    managedCloudRuntime,
+    navigationPath,
+    registryVersion,
+    tab,
+    viewLayout,
+  ]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -1042,6 +1079,21 @@ function findAppShellPageForRoute(
   return listAppShellPages().find((entry) =>
     appShellPageMatchesPath(entry, navigationPath),
   );
+}
+
+function findVisibleAppShellPageForRoute(
+  navigationPath: string,
+  enabledKinds: EnabledViewKinds,
+  managedCloudRuntime: boolean,
+): AppShellPageRegistration | undefined {
+  const registration = findAppShellPageForRoute(navigationPath);
+  return registration &&
+    appShellPageIsAvailable(registration, {
+      managedCloud: managedCloudRuntime,
+    }) &&
+    isViewVisible(registration, enabledKinds)
+    ? registration
+    : undefined;
 }
 
 function viewLayoutLabel(layout: ActiveViewLayout): string {
@@ -1429,15 +1481,11 @@ function renderViewRouterContent({
       walletNav,
     });
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  const visibleAppShellPage =
-    appShellPageForRoute &&
-    appShellPageIsAvailable(appShellPageForRoute, {
-      managedCloud: managedCloudRuntime,
-    }) &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-      ? appShellPageForRoute
-      : undefined;
+  const visibleAppShellPage = findVisibleAppShellPageForRoute(
+    navigationPath,
+    enabledKinds,
+    managedCloudRuntime,
+  );
   const renderAppShellPage = (registration: AppShellPageRegistration) => (
     <TabContentView
       nav={walletNav}
@@ -2436,6 +2484,8 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
+  const enabledKinds = useEnabledViewKinds();
+  const managedCloudRuntime = isManagedCloudRuntime(startupCoordinator.target);
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2458,6 +2508,8 @@ function AppContent() {
     navigationPath,
     availableViews: availableViewsForDesktopTabs,
     viewLayout,
+    enabledKinds,
+    managedCloudRuntime,
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
