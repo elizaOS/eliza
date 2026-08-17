@@ -249,6 +249,25 @@ function renderPlainData(value: unknown, indent = 0): string {
   return String(value);
 }
 
+/**
+ * Canonical positive-integer parse for `COMPUTER_USE_ACTION_TIMEOUT_MS`.
+ * `Number.parseInt("1e4", 10) === 1` used to apply a 1ms per-action budget —
+ * the scientific spelling of the documented 10000ms default. Prefix junk
+ * (`12px`, `007`, `5000abc`) is the same hole. Those spellings are rejected
+ * so loadConfig keeps the default instead of silently shrinking the timeout.
+ */
+export function parseComputerUseActionTimeoutMs(
+  raw: string | undefined,
+): number | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return undefined;
+  return parsed;
+}
+
 export class ComputerUseService extends Service {
   static serviceType = "computeruse";
 
@@ -2329,11 +2348,9 @@ export class ComputerUseService extends Service {
     }
 
     const timeout = getSetting("COMPUTER_USE_ACTION_TIMEOUT_MS");
-    if (timeout) {
-      const numericTimeout = Number.parseInt(timeout, 10);
-      if (Number.isFinite(numericTimeout) && numericTimeout > 0) {
-        this.cuConfig.actionTimeoutMs = numericTimeout;
-      }
+    const parsedTimeout = parseComputerUseActionTimeoutMs(timeout);
+    if (parsedTimeout !== undefined) {
+      this.cuConfig.actionTimeoutMs = parsedTimeout;
     }
 
     const approvalMode = getSetting("COMPUTER_USE_APPROVAL_MODE");

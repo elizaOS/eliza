@@ -22,7 +22,10 @@ import {
   startComputerUseRuntime,
   stopComputerUseRuntime,
 } from "../../test/helpers/service-runtime.ts";
-import { ComputerUseService } from "../services/computer-use-service.js";
+import {
+  ComputerUseService,
+  parseComputerUseActionTimeoutMs,
+} from "../services/computer-use-service.js";
 
 type RawActionParams = { action: string };
 
@@ -102,6 +105,54 @@ describe("ComputerUseService configuration", () => {
       actionTimeoutMs: 5000,
     });
     expect(service.getRecentActions()).toEqual([]);
+  });
+});
+
+describe("parseComputerUseActionTimeoutMs", () => {
+  it("accepts canonical positive integers", () => {
+    expect(parseComputerUseActionTimeoutMs("1")).toBe(1);
+    expect(parseComputerUseActionTimeoutMs("5000")).toBe(5000);
+    expect(parseComputerUseActionTimeoutMs("10000")).toBe(10000);
+    expect(parseComputerUseActionTimeoutMs(" 2500 ")).toBe(2500);
+  });
+
+  it("rejects prefix-numeric and non-canonical spellings that parseInt would coerce", () => {
+    for (const raw of [
+      "1e4",
+      "12px",
+      "007",
+      "5000abc",
+      "0",
+      "-1",
+      "0x10",
+      "1.5",
+      " ",
+      "",
+    ]) {
+      expect(parseComputerUseActionTimeoutMs(raw)).toBeUndefined();
+    }
+    expect(parseComputerUseActionTimeoutMs(undefined)).toBeUndefined();
+  });
+});
+
+describe("ComputerUseService configuration rejects prefix-coerced timeouts", () => {
+  let runtime: AgentRuntime;
+  let service: ComputerUseService;
+
+  beforeAll(async () => {
+    ({ runtime, service } = await startComputerUseRuntime({
+      COMPUTER_USE_ACTION_TIMEOUT_MS: "1e4",
+    }));
+  });
+
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
+  });
+
+  it("does not apply parseInt('1e4') === 1 as the per-action timeout", () => {
+    expect(Number.parseInt("1e4", 10)).toBe(1);
+    expect(service.getConfig().actionTimeoutMs).not.toBe(1);
+    expect(service.getConfig().actionTimeoutMs).toBe(10000);
   });
 });
 
