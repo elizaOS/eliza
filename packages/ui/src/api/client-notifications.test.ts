@@ -54,17 +54,16 @@ describe("ElizaClient push-token verbs", () => {
     });
   });
 
-  it("DELETEs the URL-encoded token on unregister", async () => {
+  it("DELETEs the token in a body so device identifiers never enter request URLs", async () => {
     const client = new ElizaClient("http://agent.example:31337", "token");
     const fetch = vi.fn(async () => ({ ok: true }));
     client.fetch = fetch as typeof client.fetch;
 
-    // A token with a slash must be percent-encoded so it stays one path segment.
     await client.unregisterPushToken("tok/with+slash");
 
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/notifications/push-tokens/tok%2Fwith%2Bslash",
-      { method: "DELETE" },
-    );
+    expect(fetch).toHaveBeenCalledWith("/api/notifications/push-tokens", {
+      method: "DELETE",
+      body: JSON.stringify({ token: "tok/with+slash" }),
+    });
   });
 });

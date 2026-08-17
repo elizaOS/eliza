@@ -24,6 +24,7 @@ import { type ActionResult, replaceNameTokens, type UUID } from "@elizaos/core/e
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { generateText, streamText } from "ai";
+import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getInteractiveCerebrasLanguageModel,
@@ -111,6 +112,9 @@ export interface RunSharedAgentTurnInput {
     reminders?: {
       delivery: SharedReminderDelivery;
       runner: ScheduledTaskRunner;
+    };
+    mobilePush?: {
+      dispatch: (message: MobilePushMessage) => Promise<void>;
     };
   };
 }
