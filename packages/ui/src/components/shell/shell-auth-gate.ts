@@ -22,6 +22,7 @@ export interface ShellAuthGate {
 export interface DeriveShellAuthGateInput {
   cloudOnly: boolean;
   authPhase: AuthStatusState["phase"];
+  hasUsableCloudSession: boolean;
 }
 
 export interface DeriveShellPhaseInput {
@@ -37,15 +38,20 @@ export interface DeriveShellPhaseInput {
 /**
  * Compose branding + the shared auth snapshot into the pill gate.
  *
- * `loading` and `server_unavailable` stay on `checking` so a slow probe never
- * flashes the sign-in chip. The native-owner-key trap is the `cloudOnly`
- * guard: without it a local desktop owner token would look like Cloud.
+ * A cloud-only desktop requires the canonical Steward session token in
+ * addition to a successful backend auth probe. Without that token, a local
+ * owner credential can make `/api/auth/me` look authenticated even though the
+ * user has never signed in to Cloud. A present token remains gated on
+ * `checking` while the probe is unresolved or unavailable.
  */
 export function deriveShellAuthGate(
   input: DeriveShellAuthGateInput,
 ): ShellAuthGate {
   if (!input.cloudOnly) {
     return { gated: false, phase: "clear" };
+  }
+  if (!input.hasUsableCloudSession) {
+    return { gated: true, phase: "needs-auth" };
   }
   if (input.authPhase === "authenticated") {
     return { gated: false, phase: "clear" };
