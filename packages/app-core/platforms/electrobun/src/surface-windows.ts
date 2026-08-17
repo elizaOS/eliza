@@ -97,7 +97,7 @@ const SURFACE_LABELS: Record<ManagedSurface, string> = {
   connectors: "Connectors",
   cloud: "Cloud",
   settings: "Settings",
-  app: "App",
+  app: "Workspace",
 };
 
 const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
@@ -109,7 +109,7 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
   settings: { x: 180, y: 120, width: 1240, height: 900 },
-  app: { x: 180, y: 120, width: 1280, height: 900 },
+  app: { x: 120, y: 80, width: 1440, height: 960 },
 };
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
@@ -147,6 +147,7 @@ export function buildSurfaceShellQuery(
   tabHint?: string,
   browse?: string,
 ): string {
+  if (surface === "app") return "?shellMode=full";
   if (surface === "settings") {
     const normalizedTab = normalizeSettingsTabHint(tabHint);
     return normalizedTab

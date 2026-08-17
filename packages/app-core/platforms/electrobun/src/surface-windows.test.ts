@@ -136,15 +136,12 @@ describe("SurfaceWindowManager app windows", () => {
 
   it("gives the full Workspace exclusive ownership of chat until it closes", async () => {
     expect(
-      buildSurfaceWindowRendererUrl(
-        "http://127.0.0.1:5173/?boot=1#old",
-        "dashboard",
-      ),
+      buildSurfaceWindowRendererUrl("http://127.0.0.1:5173/?boot=1#old", "app"),
     ).toBe("http://127.0.0.1:5173/?shellMode=full");
 
     const fixture = createFixture();
-    const first = await fixture.manager.openSurfaceWindow("dashboard");
-    const second = await fixture.manager.openSurfaceWindow("dashboard");
+    const first = await fixture.manager.openSurfaceWindow("app");
+    const second = await fixture.manager.openSurfaceWindow("app");
 
     expect(second).toEqual(first);
     expect(fixture.created).toHaveLength(1);
@@ -162,13 +159,13 @@ describe("SurfaceWindowManager app windows", () => {
 
     expect(fixture.dashboardVisibilityChanged).toHaveBeenCalledTimes(2);
     expect(fixture.dashboardVisibilityChanged).toHaveBeenLastCalledWith(false);
-    expect(fixture.manager.listWindows("dashboard")).toEqual([]);
+    expect(fixture.manager.listWindows("app")).toEqual([]);
   });
 
   it("lets macOS managed windows merge native chrome into the app surface", async () => {
     const fixture = createFixture({ titleBarStyle: "hiddenInset" });
 
-    await fixture.manager.openSurfaceWindow("dashboard");
+    await fixture.manager.openSurfaceWindow("app");
     await fixture.manager.openSettingsWindow("voice");
 
     expect(
@@ -192,7 +189,7 @@ describe("SurfaceWindowManager app windows", () => {
       onDashboardVisibilityChanged: dashboardVisibilityChanged,
     });
 
-    await expect(manager.openSurfaceWindow("dashboard")).rejects.toThrow(
+    await expect(manager.openSurfaceWindow("app")).rejects.toThrow(
       "native window creation failed",
     );
     expect(dashboardVisibilityChanged.mock.calls).toEqual([[true], [false]]);
