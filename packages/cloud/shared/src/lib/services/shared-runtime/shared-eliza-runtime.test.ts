@@ -198,17 +198,17 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(providerCalls).toBe(0);
   });
 
-  test("streams HANDLE_RESPONSE reply text through the genuine runtime", async () => {
+  test("routes ordinary focus language through HANDLE_RESPONSE in the genuine runtime", async () => {
     const requests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       const argumentsText = JSON.stringify({
         shouldRespond: "RESPOND",
-        thought: "The genuine runtime streamed this turn.",
+        thought: "Offer one small, practical focus reset.",
         contexts: ["simple"],
         intents: [],
         candidateActionNames: [],
-        replyText: "hello from streaming Eliza",
+        replyText: "Take one slow breath, then choose the smallest next step.",
         replyEffectStatus: "none",
         facts: [],
         relationships: [],
@@ -285,7 +285,7 @@ describe("Shared Eliza Workerd runtime", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "say hello",
+      message: "What is one small way to reset my focus?",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
         assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
@@ -306,14 +306,17 @@ describe("Shared Eliza Workerd runtime", () => {
         .filter((part) => part.type === "text-delta")
         .map((part) => part.text)
         .join(""),
-    ).toBe("hello from streaming Eliza");
+    ).toBe("Take one slow breath, then choose the smallest next step.");
     expect(parts.at(-1)).toMatchObject({
       type: "finish",
-      text: "hello from streaming Eliza",
+      text: "Take one slow breath, then choose the smallest next step.",
     });
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ stream: true });
+    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
+    expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
+    expect(JSON.stringify(requests[0])).not.toContain('"name":"VIEWS"');
   });
 
   test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {

@@ -409,6 +409,9 @@ async function executeSharedElizaRuntimeTurn(
 
   try {
     await runtime.initialize({ skipMigrations: true });
+    if (runtime.actions.some((action) => action.name === "VIEWS")) {
+      throw new Error("Eliza Shared runtime must not register client view-navigation actions");
+    }
     if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
       throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
     }

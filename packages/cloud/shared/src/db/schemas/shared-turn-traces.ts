@@ -3,7 +3,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /** Terminal outcome of a Shared turn as classified by the trace recorder. */
-export type SharedTurnTraceFinishReason = "reply" | "capability-wall" | "nav-intent" | "degraded";
+export type SharedTurnTraceFinishReason = "reply" | "capability-wall" | "degraded";
 
 /**
  * One compact stage in a Shared turn trace: a short machine name, an optional

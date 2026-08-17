@@ -137,7 +137,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
   test("marks dispatch only at the final model handoff", async () => {
     let dispatches = 0;
     generateTextImpl = async () => {
-      expect(dispatches).toBe(1);
+      expect(dispatches).toBeGreaterThan(0);
       return { text: "provider reply" };
     };
     const onProviderDispatch = async () => {
@@ -157,14 +157,15 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(providerTurn.reply).toBe("provider reply");
     expect(dispatches).toBe(1);
 
-    const navTurn = await runSharedAgentTurn({
+    const navigationLanguageTurn = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova." },
       history: [],
       message: "go to settings",
       onProviderDispatch,
     });
-    expect(navTurn.navIntent?.viewId).toBe("settings");
-    expect(dispatches).toBe(1);
+    expect(navigationLanguageTurn.reply).toBe("provider reply");
+    expect(navigationLanguageTurn.actionResults).toBeUndefined();
+    expect(dispatches).toBe(2);
 
     providerConfigured = false;
     const degradedTurn = await runSharedAgentTurn({
@@ -174,7 +175,24 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       onProviderDispatch,
     });
     expect(degradedTurn.degraded).toBe(true);
-    expect(dispatches).toBe(1);
+    expect(dispatches).toBe(2);
+  });
+
+  test.each([
+    "What is one small way to reset my focus?",
+    "How can I reset my focus?",
+    "What is one way to improve my focus?",
+  ])("ordinary focus language reaches the model: %s", async (message) => {
+    generateTextImpl = async () => ({ text: "Take one slow breath and choose one task." });
+
+    const turn = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message,
+    });
+
+    expect(turn.actionResults).toBeUndefined();
+    expect(turn.reply).toBe("Take one slow breath and choose one task.");
   });
 
   test("blocks unsupported Shared actions before provider dispatch", async () => {
@@ -405,6 +423,38 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
 });
 
 describe("runSharedAgentTurnStream — incremental provider policy", () => {
+  test.each(["open settings", "What is one small way to reset my focus?"])(
+    "routes navigation-like language through the provider without view actions: %s",
+    async (message) => {
+      let providerStreams = 0;
+      streamTextImpl = () => {
+        providerStreams++;
+        return {
+          fullStream: aiFullStream(
+            (async function* () {
+              yield { type: "text-delta", text: "normal reply" };
+              yield { type: "finish", totalUsage: { totalTokens: 2 } };
+            })(),
+          ),
+          text: Promise.resolve("normal reply"),
+          totalUsage: Promise.resolve({ totalTokens: 2 }),
+        };
+      };
+
+      const turn = await runSharedAgentTurnStream({
+        character: { name: "Nova", system: "You are Nova." },
+        history: [],
+        message,
+      });
+      expect(turn.actionResults).toBeUndefined();
+      expect(providerStreams).toBe(1);
+      if (!turn.parts) throw new Error("expected provider stream");
+      const parts = [];
+      for await (const part of turn.parts) parts.push(part);
+      expect(parts.at(-1)).toMatchObject({ type: "finish", text: "normal reply" });
+    },
+  );
+
   test("streams text deltas and a final usage-bearing finish part", async () => {
     const result = await runSharedAgentTurnStream({
       character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
