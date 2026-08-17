@@ -1,0 +1,293 @@
+/**
+ * Tests for skill zip extraction hardening — the sinks for W5-007 (zip-slip:
+ * backslash, absolute, and `..` entry names escaping the skill directory on
+ * extraction) and W5-031 (zip-bomb: uncompressed expansion previously bounded
+ * only by the 10 MB compressed download cap). Uses real fflate-produced
+ * archives, a real tmpdir-backed FileSystemSkillStore, and forged
+ * central-directory sizes. No mocks beyond the shared @elizaos/core double.
+ */
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { strToU8, zipSync } from "fflate";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	FileSystemSkillStore,
+	MAX_ZIP_UNCOMPRESSED_SIZE,
+	MemorySkillStore,
+} from "./storage";
+
+const encoder = new TextEncoder();
+
+function makeZip(entries: Record<string, string>): Uint8Array {
+	const input: Record<string, Uint8Array> = {};
+	for (const [name, content] of Object.entries(entries)) {
+		input[name] = strToU8(content);
+	}
+	return zipSync(input);
+}
+
+/**
+ * Overwrite the uncompressed-size field of every central-directory entry,
+ * simulating a zip whose declared sizes do not match its real payload.
+ */
+function forgeUncompressedSizes(zip: Uint8Array, size: number): Uint8Array {
+	const out = new Uint8Array(zip);
+	const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+	let eocd = -1;
+	for (let i = out.length - 22; i >= 0; i--) {
+		if (
+			out[i] === 0x50 &&
+			out[i + 1] === 0x4b &&
+			out[i + 2] === 0x05 &&
+			out[i + 3] === 0x06
+		) {
+			eocd = i;
+			break;
+		}
+	}
+	expect(eocd).toBeGreaterThanOrEqual(0);
+	const entryCount = view.getUint16(eocd + 10, true);
+	let offset = view.getUint32(eocd + 16, true);
+	for (let i = 0; i < entryCount; i++) {
+		expect(view.getUint32(offset, true)).toBe(0x02014b50);
+		view.setUint32(offset + 24, size, true);
+		offset +=
+			46 +
+			view.getUint16(offset + 28, true) +
+			view.getUint16(offset + 30, true) +
+			view.getUint16(offset + 32, true);
+	}
+	return out;
+}
+
+const traversalEntries: Array<[label: string, entryName: string]> = [
+	["backslash traversal", "..\\..\\..\\escape.bat"],
+	["forward-slash traversal", "../../../escape.txt"],
+	["absolute POSIX path", "/etc/eliza-escape.txt"],
+	["drive-letter path", "C:/Windows/eliza-escape.dll"],
+	["drive-relative path", "C:eliza-escape.txt"],
+	["mixed separators", "subdir\\../../escape.txt"],
+	["backslash-only parent", "..\\escape.txt"],
+];
+
+describe("zip entry path validation", () => {
+	let basePath: string;
+	let fsStore: FileSystemSkillStore;
+	let memStore: MemorySkillStore;
+
+	beforeEach(async () => {
+		basePath = fs.mkdtempSync(path.join(os.tmpdir(), "w6-skills-test-"));
+		fsStore = new FileSystemSkillStore(basePath);
+		await fsStore.initialize();
+		memStore = new MemorySkillStore();
+	});
+
+	afterEach(() => {
+		fs.rmSync(basePath, { recursive: true, force: true });
+	});
+
+	const stores = () => [
+		{
+			name: "FileSystemSkillStore.saveFromZip",
+			extract: (zip: Uint8Array) => fsStore.saveFromZip("demo", zip),
+		},
+		{
+			name: "MemorySkillStore.loadFromZip",
+			extract: (zip: Uint8Array) => memStore.loadFromZip("demo", zip),
+		},
+	];
+
+	for (const [label, entryName] of traversalEntries) {
+		it(`rejects ${label} entries in both stores`, async () => {
+			const zip = makeZip({ "SKILL.md": "# demo", [entryName]: "payload" });
+			for (const store of stores()) {
+				await expect(store.extract(zip)).rejects.toMatchObject({
+					code: "SKILL_ZIP_ENTRY_UNSAFE",
+				});
+			}
+			// The rejection happens before any write: no skill directory, no
+			// escaped file anywhere near the base path.
+			expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
+			expect(fs.existsSync(path.join(basePath, "escape.txt"))).toBe(false);
+			expect(memStore.getPackage("demo")).toBeUndefined();
+		});
+	}
+
+	it("rejects an entry consisting only of a parent segment", async () => {
+		const zip = makeZip({ "..": "payload", "SKILL.md": "# demo" });
+		for (const store of stores()) {
+			await expect(store.extract(zip)).rejects.toMatchObject({
+				code: "SKILL_ZIP_ENTRY_UNSAFE",
+			});
+		}
+	});
+
+	it("installs a well-formed skill zip end to end", async () => {
+		const zip = makeZip({
+			"SKILL.md": "# demo skill",
+			"scripts/run.sh": "echo hi",
+			"references/doc.md": "docs",
+		});
+		await fsStore.saveFromZip("demo", zip);
+		expect(fs.readFileSync(path.join(basePath, "demo", "SKILL.md"), "utf-8")).toBe(
+			"# demo skill",
+		);
+		expect(
+			fs.readFileSync(path.join(basePath, "demo", "scripts", "run.sh"), "utf-8"),
+		).toBe("echo hi");
+		expect(await fsStore.loadSkillContent("demo")).toBe("# demo skill");
+
+		await memStore.loadFromZip("demo", zip);
+		expect(await memStore.loadSkillContent("demo")).toBe("# demo skill");
+		expect(await memStore.loadFile("demo", "scripts/run.sh")).toBe("echo hi");
+	});
+
+	it("skips directory entries without rejecting the archive", async () => {
+		const input: Record<string, Uint8Array> = {
+			"SKILL.md": strToU8("# demo"),
+			"scripts/": new Uint8Array(0),
+			"scripts/run.sh": strToU8("echo hi"),
+		};
+		const zip = zipSync(input);
+		await fsStore.saveFromZip("demo", zip);
+		expect(
+			fs.existsSync(path.join(basePath, "demo", "scripts", "run.sh")),
+		).toBe(true);
+	});
+});
+
+describe("zip uncompressed-size limit", () => {
+	let basePath: string;
+	let fsStore: FileSystemSkillStore;
+	let memStore: MemorySkillStore;
+
+	beforeEach(async () => {
+		basePath = fs.mkdtempSync(path.join(os.tmpdir(), "w6-skills-test-"));
+		fsStore = new FileSystemSkillStore(basePath);
+		await fsStore.initialize();
+		memStore = new MemorySkillStore();
+	});
+
+	afterEach(() => {
+		fs.rmSync(basePath, { recursive: true, force: true });
+	});
+
+	it("rejects a zip whose forged central directory declares a huge entry", async () => {
+		// Real payload is tiny; the central directory claims a single entry
+		// expands past the cap. Rejection must happen before decompression.
+		const zip = forgeUncompressedSizes(
+			makeZip({ "SKILL.md": "# demo" }),
+			MAX_ZIP_UNCOMPRESSED_SIZE + 1,
+		);
+		await expect(fsStore.saveFromZip("demo", zip)).rejects.toMatchObject({
+			code: "SKILL_ZIP_TOO_LARGE",
+		});
+		await expect(memStore.loadFromZip("demo", zip)).rejects.toMatchObject({
+			code: "SKILL_ZIP_TOO_LARGE",
+		});
+		expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
+	});
+
+	it("rejects when the sum of entry sizes exceeds the cap", async () => {
+		const perEntry = Math.floor(MAX_ZIP_UNCOMPRESSED_SIZE / 2) + 1;
+		const zip = forgeUncompressedSizes(
+			makeZip({ "SKILL.md": "# demo", "data.bin": "x" }),
+			perEntry,
+		);
+		await expect(fsStore.saveFromZip("demo", zip)).rejects.toMatchObject({
+			code: "SKILL_ZIP_TOO_LARGE",
+		});
+	});
+
+	it("rejects a buffer that is not a zip archive", async () => {
+		const garbage = encoder.encode("this is not a zip file at all");
+		await expect(fsStore.saveFromZip("demo", garbage)).rejects.toMatchObject({
+			code: "SKILL_ZIP_INVALID",
+		});
+	});
+
+	it("accepts a zip whose declared sizes are within the cap", async () => {
+		const zip = makeZip({ "SKILL.md": "# demo", "data.txt": "small" });
+		await fsStore.saveFromZip("demo", zip);
+		expect(await fsStore.loadSkillContent("demo")).toBe("# demo");
+	});
+});
+
+describe("filesystem path containment", () => {
+	let outerDir: string;
+	let basePath: string;
+	let store: FileSystemSkillStore;
+
+	beforeEach(async () => {
+		// Two-level fixture: the store root sits in its own sandbox parent so a
+		// containment regression can only ever delete this test's own directory.
+		outerDir = fs.mkdtempSync(path.join(os.tmpdir(), "w6-skills-outer-"));
+		basePath = path.join(outerDir, "skills");
+		store = new FileSystemSkillStore(basePath);
+		await store.initialize();
+	});
+
+	afterEach(() => {
+		fs.rmSync(outerDir, { recursive: true, force: true });
+	});
+
+	it("refuses to write a package file outside the skill directory", async () => {
+		await expect(
+			store.saveSkill({
+				slug: "demo",
+				files: new Map([
+					[
+						"../../escape.txt",
+						{ path: "../../escape.txt", content: "payload", isText: true },
+					],
+				]),
+			}),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		expect(fs.existsSync(path.join(outerDir, "escape.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(basePath, "escape.txt"))).toBe(false);
+	});
+
+	it("refuses to save a package whose slug escapes the base directory", async () => {
+		await expect(
+			store.saveSkill({
+				slug: "../escaped",
+				files: new Map([
+					["SKILL.md", { path: "SKILL.md", content: "# x", isText: true }],
+				]),
+			}),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		expect(fs.existsSync(path.join(outerDir, "escaped"))).toBe(false);
+	});
+
+	it("refuses to delete outside the base directory", async () => {
+		const canary = path.join(outerDir, "canary.txt");
+		fs.writeFileSync(canary, "do not delete");
+		await expect(store.deleteSkill("..")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		await expect(store.deleteSkill("../..")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		expect(fs.readFileSync(canary, "utf-8")).toBe("do not delete");
+		// The store itself is untouched by the rejected deletes.
+		expect(fs.existsSync(basePath)).toBe(true);
+	});
+
+	it("still deletes a real skill directory", async () => {
+		await store.saveSkill({
+			slug: "demo",
+			files: new Map([
+				[
+					"SKILL.md",
+					{ path: "SKILL.md", content: "# demo", isText: true },
+				],
+			]),
+		});
+		expect(await store.hasSkill("demo")).toBe(true);
+		expect(await store.deleteSkill("demo")).toBe(true);
+		expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
+		expect(await store.deleteSkill("demo")).toBe(false);
+	});
+});
