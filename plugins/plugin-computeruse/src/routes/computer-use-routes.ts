@@ -23,6 +23,16 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+function decodeApprovalId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding
+    // is invalid client input, not an approval-router outage.
+    return null;
+  }
+}
+
 function sendEmptyApprovalStream(res: http.ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -66,9 +76,16 @@ export async function handleComputerUseRoutes(
     pathname,
   );
   if (method === "POST" && approvalDecision) {
+    const id = decodeApprovalId(approvalDecision[1] ?? "");
+    if (id === null) {
+      sendJson(res, 400, {
+        error: "Invalid approval id: malformed URL encoding",
+      });
+      return true;
+    }
     sendJson(res, 404, {
       error: "Computer-use approval is not pending.",
-      id: decodeURIComponent(approvalDecision[1] ?? ""),
+      id,
     });
     return true;
   }
