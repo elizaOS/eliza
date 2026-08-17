@@ -305,9 +305,20 @@ app.post("/", async (c) => {
     });
   }
 
+  const autoProvisionQuery = c.req.query("autoProvision");
+  if (
+    autoProvisionQuery != null &&
+    autoProvisionQuery !== "" &&
+    autoProvisionQuery !== "true" &&
+    autoProvisionQuery !== "false"
+  ) {
+    throw ValidationError("Invalid autoProvision", {
+      message: 'autoProvision must be "true" or "false".',
+    });
+  }
+
   const autoProvision =
-    c.req.query("autoProvision") !== "false" &&
-    parsed.data.autoProvision !== false;
+    autoProvisionQuery !== "false" && parsed.data.autoProvision !== false;
 
   const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
   let linkedCharacter: UserCharacter | undefined;
