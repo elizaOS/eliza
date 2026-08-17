@@ -109,6 +109,16 @@ describe("GET /api/lifeops/entities limit query", () => {
     });
   });
 
+  it("empty limit (?limit=) still lists without a bound", async () => {
+    const { ctx, res } = buildCtx("?limit=");
+    await handleEntityRoutes(ctx);
+    expect(res.statusCode).toBe(200);
+    expect(kg.list).toHaveBeenCalledWith({});
+    expect(JSON.parse(res.body ?? "")).toEqual({
+      entities: [{ entityId: "e1" }, { entityId: "e2" }],
+    });
+  });
+
   it("canonical limit=2 reaches store.list", async () => {
     const { ctx, res } = buildCtx("?limit=2");
     await handleEntityRoutes(ctx);
@@ -132,7 +142,15 @@ describe("GET /api/lifeops/entities limit query", () => {
     "-1",
     "50abc",
     "9007199254740992",
-  ])("rejects limit=%s with 400 before store.list", async (limit) => {
+    // Whitespace-only and whitespace-padded tokens must not trim into either
+    // an "unbounded" list or a coerced integer. encodeURIComponent preserves
+    // the raw whitespace through the URL parser (e.g. " 2" -> "%202" -> " 2").
+    " ",
+    " 2",
+    "2 ",
+    "\t2",
+    "2\n",
+  ])("rejects limit=%j with 400 before store.list", async (limit) => {
     const { ctx, res } = buildCtx(`?limit=${encodeURIComponent(limit)}`);
     await handleEntityRoutes(ctx);
     expect(res.statusCode).toBe(400);

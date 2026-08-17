@@ -43,16 +43,16 @@ function makeStore(ctx: LifeOpsRouteContext): EntityStore | null {
 function parseEntityLimit(
   raw: string | null,
 ): { ok: true; limit?: number } | { ok: false; message: string } {
-  if (raw === null || raw.trim() === "") {
+  if (raw === null || raw === "") {
     return { ok: true };
   }
-  const trimmed = raw.trim();
-  // Prefix coercion or leading zeros can turn a malformed paging request into
-  // an unintended unbounded knowledge-graph response.
-  if (!/^[1-9]\d*$/.test(trimmed)) {
+  // Validate the raw token without trimming: whitespace padding or a
+  // whitespace-only value used to trim away and either coerce a malformed
+  // paging request or silently drop the limit into an unbounded response.
+  if (!/^[1-9]\d*$/.test(raw)) {
     return { ok: false, message: "limit must be a positive integer" };
   }
-  const limit = Number(trimmed);
+  const limit = Number(raw);
   if (!Number.isSafeInteger(limit)) {
     return { ok: false, message: "limit must be a positive integer" };
   }
