@@ -7,7 +7,10 @@
  * input always produces byte-identical SVG output across runs and platforms.
  * Not suitable for security or collision-sensitive use.
  */
-export function hashString(value: string): number {
+export function hashString(value: string | null | undefined): number {
+  if (typeof value !== "string" || value.length === 0) {
+    return 0;
+  }
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
     hash = (hash * 31 + value.charCodeAt(index)) | 0;
