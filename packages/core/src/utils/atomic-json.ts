@@ -149,3 +149,21 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 		throw error;
 	}
 }
+
+/**
+ * Synchronous read and parse JSON. Only a genuinely absent file returns `null`;
+ * malformed JSON and filesystem failures surface to the caller.
+ */
+export function readJsonFileSync<T>(filePath: string): T | null {
+	try {
+		const raw = fs.readFileSync(filePath, "utf-8");
+		return JSON.parse(raw) as T;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J4 an absent optional JSON file is an explicit not-found
+			// state; parse and other filesystem failures still propagate.
+			return null;
+		}
+		throw error;
+	}
+}
