@@ -1207,13 +1207,29 @@ function generateOnboardingReply(args: {
 function transcriptText(session: OnboardingSession): string {
   const firstMessageAt = session.history[0]?.createdAt ?? session.createdAt;
   const lastMessageAt = session.history.at(-1)?.createdAt ?? session.updatedAt;
-  const identityLinkStatus = !session.platform
-    ? "none"
-    : session.platformIdentityTrusted !== true
-      ? "pending"
-      : session.userId && session.organizationId
-        ? "linked"
-        : "verified";
+  // Web onboarding carries no messaging-platform identity to link, so both an
+  // absent platform and the literal "web" platform report "none". Only trusted
+  // messaging platforms progress through the pending/verified/linked lifecycle.
+  const identityLinkStatus =
+    !session.platform || session.platform === "web"
+      ? "none"
+      : session.platformIdentityTrusted !== true
+        ? "pending"
+        : session.userId && session.organizationId
+          ? "linked"
+          : "verified";
+  // Serialize provenance as a single JSON line so an embedded newline in an
+  // untrusted string field (notably platformDisplayName) cannot forge a sibling
+  // provenance field or line: JSON.stringify escapes control characters.
+  // Private session fields (session.id, platformUserId,
+  // platformReplyAddress/phone, continuationToken) are deliberately omitted.
+  const provenance = {
+    sourcePlatform: session.platform ?? "web",
+    platformDisplayName: session.platformDisplayName ?? "not provided",
+    identityLinkStatus,
+    firstMessageTimestamp: firstMessageAt,
+    lastMessageTimestamp: lastMessageAt,
+  };
   const lines = session.history.map((message) => {
     const speaker = message.role === "user" ? "User" : "Eliza onboarding";
     return `${speaker}: ${message.content}`;
@@ -1221,11 +1237,7 @@ function transcriptText(session: OnboardingSession): string {
   return [
     "Onboarding conversation transcript copied from Eliza Cloud.",
     session.name ? `User's preferred name: ${session.name}` : null,
-    `Source platform: ${session.platform ?? "web"}`,
-    `Platform display name: ${session.platformDisplayName ?? "not provided"}`,
-    `Verified identity link status: ${identityLinkStatus}`,
-    `First message timestamp: ${firstMessageAt}`,
-    `Last message timestamp: ${lastMessageAt}`,
+    `Onboarding handoff provenance: ${JSON.stringify(provenance)}`,
     "",
     ...lines,
   ]
