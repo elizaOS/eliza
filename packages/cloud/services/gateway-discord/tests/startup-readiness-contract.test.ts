@@ -78,6 +78,47 @@ test("stays unready through delayed authentication and admits only after the fir
   }
 });
 
+test("stays unready when the first 2xx poll payload cannot be applied", async () => {
+  process.env.ELIZA_APP_DISCORD_BOT_ENABLED = "false";
+  globalThis.fetch = mock(async (input: unknown) => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/auth/token")) {
+      return Response.json({
+        access_token: "ready-token",
+        token_type: "Bearer",
+        expires_in: 60,
+      });
+    }
+    if (path.endsWith("/discord/gateway/shutdown")) {
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  }) as typeof fetch;
+
+  const manager = new GatewayManager(
+    {
+      podName: "malformed-poll-test-pod",
+      elizaCloudUrl: "https://api.test",
+      gatewayBootstrapSecret: "bootstrap-secret",
+      project: "test",
+    },
+    {
+      fetchAssignments: mock(async () => Response.json({})) as typeof fetch,
+    },
+  );
+
+  await manager.start();
+  try {
+    expect(manager.isReady()).toBeFalse();
+    expect(manager.getHealth().controlPlane).toMatchObject({
+      healthy: false,
+      lastSuccessfulPoll: null,
+    });
+  } finally {
+    await manager.shutdown();
+  }
+});
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (!predicate()) {
