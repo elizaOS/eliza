@@ -441,6 +441,47 @@ describe("Miniflare Durable Object integration", () => {
     expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
   }, 120_000);
 
+  test("the active v2 rate-limit identity answers while the obsolete cutover coordinator is blocked", async () => {
+    expect(
+      (await post("/test-block-ledger", {}, "rate-limit:v2:cutover")).status,
+    ).toBe(202);
+
+    const blockedCutover = post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    const cutoverAnsweredEarly = await Promise.race([
+      blockedCutover.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(cutoverAnsweredEarly).toBe(false);
+
+    const isolated = await Promise.race([
+      post(
+        "/rate-limit",
+        {
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+          windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+        },
+        "rate-limit:v2:org-miniflare-cutover-blocked",
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error("v2 rate limit waited behind cutover coordinator"),
+            ),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedCutover).status).toBe(200);
+  }, 120_000);
+
   test("clearing one subject denial cannot clear an independent denial", async () => {
     const credential = {
       organizationId: "org-miniflare-independent-fences",

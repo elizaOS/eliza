@@ -414,6 +414,8 @@ describe("InferenceAdmissionGate", () => {
       expect(network.rateStorage.read("ledger")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeUndefined();
       expect(network.requestedNames).toContain("rate-limit:v2:org-a");
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
       expect(
         network.requestedNames.filter((name) => name === "rate-limit:v2:org-a"),
       ).toHaveLength(1);
@@ -428,7 +430,7 @@ describe("InferenceAdmissionGate", () => {
     });
   });
 
-  test("cuts over only after the entire legacy fixed window has expired", async () => {
+  test("advances fixed windows entirely on the isolated rate-limit identity", async () => {
     const network = createRateLimitGateNetwork();
     const clock = spyOn(Date, "now").mockReturnValue(61_234);
     const body = {
@@ -459,8 +461,10 @@ describe("InferenceAdmissionGate", () => {
           }),
         ).toMatchObject({ allowed: true, remaining: 0 });
       });
-      expect(network.legacyStorage.read("rate-limits")).toBeDefined();
+      expect(network.legacyStorage.read("rate-limits")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeDefined();
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
     } finally {
       clock.mockRestore();
     }
