@@ -54,7 +54,7 @@ import {
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { stringToUuid } from "./utils/string-to-uuid";
-import { resolvePgliteDir } from "./utils.node";
+import { resolvePgliteDir } from "./utils.node.ts";
 
 export type {
   AppendConnectorAccountAuditEventParams,
