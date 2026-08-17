@@ -370,6 +370,16 @@ export const SKILL_BODY_RECOMMENDED_TOKENS = 5000;
 /** Pattern for valid skill names */
 export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+/**
+ * Pattern for valid binary names in skill `requires.bins` / `install[].bins`
+ * metadata. Bare executable names only: must start alphanumeric, then allow
+ * letters, digits, `.`, `_`, `+`, `-` (covers `g++`, `python3.12`,
+ * `docker-compose`). Anything else — whitespace, shell metacharacters, path
+ * separators, leading dashes (option injection) — is rejected because these
+ * registry-controlled strings are passed to `which`/`where` probes.
+ */
+export const SKILL_BIN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
+
 // ============================================================
 // ELIGIBILITY TYPES
 // ============================================================
