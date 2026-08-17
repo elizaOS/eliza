@@ -40,6 +40,7 @@ export class BlueBubblesClient {
 				"Content-Type": "application/json",
 				...options.headers,
 			},
+			signal: options.signal ?? AbortSignal.timeout(15_000),
 		});
 
 		if (!response.ok) {
@@ -154,6 +155,7 @@ export class BlueBubblesClient {
 		const response = await fetch(url, {
 			method: "POST",
 			body: formData,
+			signal: AbortSignal.timeout(30_000),
 		});
 
 		if (!response.ok) {
@@ -198,6 +200,7 @@ export class BlueBubblesClient {
 		const response = await fetch(url, {
 			method: "POST",
 			body: formData,
+			signal: AbortSignal.timeout(30_000),
 		});
 
 		if (!response.ok) {
