@@ -85,7 +85,9 @@ vi.mock("../src/actions/life.js", () => ({
 }));
 
 vi.mock("../src/actions/money.js", () => ({
+  MONEY_CONTEXTS: [],
   MONEY_PARAMETERS: [],
+  MONEY_TAGS: [],
   OWNER_FINANCE_SIMILES: [],
   runMoneyHandler: vi.fn(),
 }));
