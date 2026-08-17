@@ -366,24 +366,31 @@ function applyStreamChatTokenEvent(
     provisional?: boolean,
   ) => void,
 ): boolean {
-  const chunk = parsed.text ?? "";
+  const chunk = typeof parsed.text === "string" ? parsed.text : null;
+  const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
+  if (chunk === null && fullText === null) {
+    // error-policy:J3 malformed SSE token frames are ignored at the transport
+    // boundary; they must not become a valid-looking empty text update.
+    return false;
+  }
+  const safeChunk = chunk ?? "";
   const nextFullText =
-    typeof parsed.fullText === "string"
+    fullText !== null
       ? // An explicit snapshot is always authoritative (delta-v2 periodic
         // snapshot AND legacy per-token fullText both land here).
-        parsed.fullText
-      : chunk
+        fullText
+      : safeChunk
         ? // No fullText: a bare delta. Under negotiated delta-v2 the server
           // guarantees pure appends, so bypass mergeStreamingText (its overlap
           // dedupe drops legitimately repeated multi-char deltas). Foreign /
           // un-negotiated streams still ride the merge heuristic.
           state.deltaProtocol
-          ? state.fullText + chunk
-          : mergeStreamingText(state.fullText, chunk)
+          ? state.fullText + safeChunk
+          : mergeStreamingText(state.fullText, safeChunk)
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
-  onToken(chunk, state.fullText, parsed.provisional === true);
+  onToken(safeChunk, state.fullText, parsed.provisional === true);
   return false;
 }
 
