@@ -200,15 +200,19 @@ describe("GET /api/auth/siws/nonce — Redis failure boundary", () => {
     });
   });
 
-  test("canonical solana:devnet binds that chain", async () => {
-    const res = await getNonce("?chainId=solana:devnet");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { chainId: string };
-    expect(body.chainId).toBe("solana:devnet");
-    expect(JSON.parse([...stored.values()][0] ?? "")).toMatchObject({
-      chainId: "solana:devnet",
-    });
-  });
+  test.each(["devnet", "testnet", "localnet"])(
+    "canonical solana:%s binds that chain",
+    async (network) => {
+      const chainId = `solana:${network}`;
+      const res = await getNonce(`?chainId=${chainId}`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { chainId: string };
+      expect(body.chainId).toBe(chainId);
+      expect(JSON.parse([...stored.values()][0] ?? "")).toMatchObject({
+        chainId,
+      });
+    },
+  );
 
   test.each([
     "ethereum:1",
@@ -218,7 +222,9 @@ describe("GET /api/auth/siws/nonce — Redis failure boundary", () => {
     "SOLANA:mainnet",
     "solana:mainnet/foo",
     "solana:mainnet ",
-    "solana:this-reference-is-way-too-long-for-caip2",
+    "solana:garbage",
+    "solana:main_net",
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   ])("rejects %s before any nonce write", async (token) => {
     const res = await getNonce(`?chainId=${encodeURIComponent(token)}`);
     expect(res.status).toBe(400);
