@@ -133,6 +133,12 @@ const URL_BEHAVIOR_CRITERION_RE =
   /\b(?:[1-5]\d{2}|status|response|body|json|xml|auth(?:entication|orization)?|unauthorized|forbidden|token|header|payload|method|redirect|error|returns?|responds?|contains?|matches?|accepts?|rejects?|requires?|allows?|denies?|get|post|put|patch|delete)\b/i;
 const IMPLICIT_REACHABILITY_CRITERION_RE =
   /\b(?:live\s+url|public\s+url|(?:url|page|site|app|deployment)\s+(?:is\s+)?(?:live|reachable|available|served)|deployed\s+(?:app|page|site))\b/i;
+const EXPLICIT_REACHABILITY_ASSERTION_RE =
+  /^\s*(?:is\s+)?(?:live|reachable|available|served)[.!]?\s*$/i;
+
+function withoutExplicitHttpUrls(value: string): string {
+  return value.replace(EXPLICIT_HTTP_URL_RE, " ");
+}
 
 function normalizeExplicitHttpUrl(value: string): string | undefined {
   const candidate = value.replace(/[),.;!?]+$/, "");
@@ -157,7 +163,8 @@ function urlCriterionBasis(
   const verified = facts.verifiedPublicUrls
     .map(normalizeExplicitHttpUrl)
     .filter((url): url is string => Boolean(url));
-  if (URL_BEHAVIOR_CRITERION_RE.test(criterion)) return undefined;
+  const assertion = withoutExplicitHttpUrls(criterion);
+  if (URL_BEHAVIOR_CRITERION_RE.test(assertion)) return undefined;
   if (
     demandedUrls.length === 0 &&
     !IMPLICIT_REACHABILITY_CRITERION_RE.test(criterion)
@@ -230,18 +237,21 @@ export function deterministicCriterionCheck(
   criterion: string,
   facts: DeterministicEvidenceFacts,
 ): DeterministicCriterionResult {
+  const assertion = withoutExplicitHttpUrls(criterion);
   if (SCREENSHOT_CRITERION_RE.test(criterion)) {
     return { criterion, status: "undetermined" };
   }
   // One deterministic fact can satisfy only a single-fact evidence assertion.
   // A reachable URL proves liveness, not its content or behavior, and a green
   // existing test run does not prove that a requested new test was added.
-  if (COMPOSITE_CRITERION_RE.test(criterion)) {
+  if (COMPOSITE_CRITERION_RE.test(assertion)) {
     return { criterion, status: "undetermined" };
   }
   if (
-    URL_LIVENESS_CRITERION_RE.test(criterion) &&
-    !CONTENT_OR_BEHAVIOR_RE.test(criterion)
+    (URL_LIVENESS_CRITERION_RE.test(criterion) ||
+      (assertion !== criterion &&
+        EXPLICIT_REACHABILITY_ASSERTION_RE.test(assertion))) &&
+    !CONTENT_OR_BEHAVIOR_RE.test(assertion)
   ) {
     const basis = urlCriterionBasis(criterion, facts);
     return basis
@@ -337,6 +347,22 @@ export function isPubliclyReachableUrl(value: string): boolean {
 
 const GREEN_MARKER_RE = /\bpass(?:ed|ing)?\b|✓|✔|\bPASS\b|\bok\b|0 fail/i;
 const RED_MARKER_RE = /\bnot\s+ok\b|\bfail(?:ed|ing|ure)?\b|✗|✖|\berrors?\b/i;
+const NONZERO_EXIT_RE =
+  /\b(?:exit(?:ed)?(?:\s+with)?|exit[_ -]?code)\s*(?:[:=]|->|→)?\s*[1-9]\d*\b/i;
+
+/**
+ * Deterministic check evidence must come from an explicitly successful tool
+ * transition. Running, failed, errored, or statusless events remain useful to
+ * the model judge, but cannot promote a coding task without judgment.
+ */
+export function isCompletedToolEvidence(
+  toolCall: Record<string, unknown>,
+): boolean {
+  return (
+    typeof toolCall.status === "string" &&
+    toolCall.status.trim().toLowerCase() === "completed"
+  );
+}
 
 /**
  * Whether mined tool output constitutes GREEN evidence for a check class:
@@ -347,7 +373,9 @@ export function isGreenCheckOutput(output: string | undefined | null): boolean {
   if (typeof output !== "string" || output.trim().length === 0) return false;
   const withoutZeroFailures = output.replace(/\b0\s+fail(?:ed|ures?)?\b/gi, "");
   return (
-    GREEN_MARKER_RE.test(output) && !RED_MARKER_RE.test(withoutZeroFailures)
+    GREEN_MARKER_RE.test(output) &&
+    !RED_MARKER_RE.test(withoutZeroFailures) &&
+    !NONZERO_EXIT_RE.test(output)
   );
 }
 
