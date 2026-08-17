@@ -163,11 +163,13 @@ const querySchema = z
       .string()
       .transform((s) => s === "true")
       .optional(),
+    // Catalog-liveness identity, leftover tax after voice-list
+    // includeInactive (#21106). activeOnly=TRUE used to silently invert
+    // the default live-only filter. x402Only parser stays untouched.
     activeOnly: z
-      .string()
-      .transform((s) => s === "true")
+      .union([z.enum(["true", "false"]), z.literal("")])
       .optional()
-      .default(true),
+      .transform((value) => value !== "false"),
     limit: z.coerce.number().int().min(1).max(200).optional().default(50),
     offset: z.coerce
       .number()
@@ -203,6 +205,24 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   try {
     const url = new URL(c.req.url);
+    const requestedActiveValues = url.searchParams.getAll("activeOnly");
+    const requestedActive = requestedActiveValues[0];
+    if (
+      requestedActiveValues.length > 1 ||
+      (requestedActive !== undefined &&
+        requestedActive !== "" &&
+        requestedActive !== "true" &&
+        requestedActive !== "false")
+    ) {
+      return c.json(
+        {
+          error: "Invalid activeOnly",
+          message:
+            'activeOnly must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
     const rawParams = Object.fromEntries(url.searchParams);
 
     const parseResult = querySchema.safeParse(rawParams);
