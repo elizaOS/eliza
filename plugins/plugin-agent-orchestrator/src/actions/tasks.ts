@@ -2199,10 +2199,49 @@ async function runSpawnAgent(
         ? inheritedResolvedWorkdirRoute(extraMetadata)
         : undefined;
     const effectiveRoute = route ?? inheritedRoute;
-    const effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
+    let effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
     // Only isolate per-session when we fell back to a shared scratch root (no
     // route). A route resolves to a specific project dir that must be used as-is.
-    const isolateWorkdir = effectiveRoute ? false : resolvedIsolate === true;
+    let isolateWorkdir = effectiveRoute ? false : resolvedIsolate === true;
+    // A repo-targeted spawn must run IN A CLONE of that repo. The schema
+    // advertises `repo` but only provision_workspace consumed it, so a
+    // "branch + commit + PR in <repo>" ask spawned into the cwd fallback and
+    // the sub-agent rummaged the HOME DIRECTORY (live 2026-08-17: repo param
+    // present, workdir=/home/milady, report listed "Desktop" and "Git" as its
+    // created files). When no route/explicit workdir claimed the spawn and a
+    // repo is requested, provision the workspace clone here and bind to it.
+    let provisionedRepo: string | undefined;
+    const requestedRepo =
+      typeof (params as Record<string, unknown>).repo === "string"
+        ? normalizeRepositoryInput(
+            (params as Record<string, unknown>).repo as string,
+          )
+        : undefined;
+    if (requestedRepo && !effectiveRoute && !explicitWorkdir) {
+      const workspaceService = getCodingWorkspaceService(runtime);
+      if (workspaceService) {
+        try {
+          const workspace = await workspaceService.provisionWorkspace({
+            repo: requestedRepo,
+            useWorktree: false,
+          });
+          effectiveWorkdir = workspace.path;
+          isolateWorkdir = false;
+          provisionedRepo = requestedRepo;
+          logger(runtime).info(
+            `[TASKS:spawn_agent] provisioned repo workspace for spawn: ${requestedRepo} -> ${workspace.path}`,
+          );
+        } catch (error) {
+          // error-policy:J2 a repo the user named that cannot be provisioned
+          // must fail the spawn loudly — running the task in an unrelated
+          // directory is the worse outcome.
+          const text = `Could not clone ${requestedRepo} for this task: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          return { success: false, text, error: new Error(text) };
+        }
+      }
+    }
     const taskWithRouteHints = taskWithResolvedRoute(
       task,
       effectiveRoute,
@@ -2336,6 +2375,7 @@ async function runSpawnAgent(
       approvalPreset,
       metadata: {
         ...extraMetadata,
+        ...(provisionedRepo ? { repo: provisionedRepo } : {}),
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
         // Persist the stable root id so SubAgentRouter re-stamps it onto the
         // next synthetic re-spawn inbound (keeping the per-origin spawn cap
