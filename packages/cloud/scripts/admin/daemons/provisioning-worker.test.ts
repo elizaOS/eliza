@@ -750,7 +750,7 @@ describe("readWorkerConfig (canonical env ints)", () => {
   });
 
   it("throws on prefix-coerced WORKER_POLL_INTERVAL tokens (would have been a 1ms-class poll)", () => {
-    for (const token of ["1e4", "12px", "007", "0", "0x10"]) {
+    for (const token of ["1e4", "12px", "007", "0", "0x10", " 1e4", "\t12px"]) {
       expect(() =>
         readWorkerConfig(
           { WORKER_POLL_INTERVAL: token } as NodeJS.ProcessEnv,
