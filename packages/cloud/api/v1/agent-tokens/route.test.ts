@@ -11,13 +11,14 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 
-class MockApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
+// Mirrors the real ApiError, which extends Hono's HTTPException, so an
+// uncaught rethrow surfaces with its own status through Hono's default
+// error handling exactly as the production global onError would translate it.
+class MockApiError extends HTTPException {
+  constructor(status: 401 | 403 | 503, message: string) {
+    super(status, { message });
     this.name = "ApiError";
   }
 }
@@ -207,6 +208,21 @@ describe("agent-tokens route — human-leg tenant binding", () => {
     });
     const res = await post({}, {});
     expect(res.status).toBe(400);
+    expect(mintAgentToken).not.toHaveBeenCalled();
+  });
+
+  test("a 5xx platform-admin infrastructure failure is not masked as an auth denial", async () => {
+    requireAdminBehavior = async () => {
+      throw new MockApiError(
+        503,
+        "API key validation is temporarily unavailable. Please retry.",
+      );
+    };
+
+    const res = await post({});
+    expect(res.status).toBe(503);
+    expect(getCurrentUser).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(mintAgentToken).not.toHaveBeenCalled();
   });
 });

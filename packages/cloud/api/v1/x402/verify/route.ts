@@ -48,12 +48,12 @@ app.post("/", async (c) => {
 
     return c.json(result, result.isValid ? 200 : 400);
   } catch (err) {
+    // error-policy:J1 route boundary — verification failures return a constant
+    // reason to unauthenticated callers; upstream RPC/provider detail stays in
+    // server logs only.
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[x402-verify] Verification error: ${msg}`);
-    return c.json(
-      { isValid: false, invalidReason: `internal_error: ${msg}` },
-      500,
-    );
+    return c.json({ isValid: false, invalidReason: "internal_error" }, 500);
   }
 });
 
