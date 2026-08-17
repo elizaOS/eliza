@@ -265,6 +265,18 @@ describe("canonical cloud deployment environment contract", () => {
     expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
   });
 
+  test("validates quoted Terraform state addresses through the executable parser", () => {
+    const validate = step(
+      infra,
+      "terraform",
+      "Validate credentials and state operation",
+    );
+    expect(validate.run).toContain(
+      'node packages/scripts/validate-terraform-state-address.mjs "$STATE_ADDRESS"',
+    );
+    expect(validate.run).not.toContain('$STATE_ADDRESS" =~');
+  });
+
   test("selects the dedicated Pages credential without changing other Terraform roots", () => {
     const token = infra.jobs?.terraform?.env?.CLOUDFLARE_API_TOKEN;
     expect(token).toContain("inputs.component == 'pages-domains'");

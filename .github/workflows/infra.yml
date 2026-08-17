@@ -349,10 +349,7 @@ jobs:
           fi
           if [ "$OPERATION" = "state-rm" ]; then
             [ -n "$STATE_ADDRESS" ] || { echo "::error::state_address is required for state-rm"; exit 1; }
-            if [[ ! "$STATE_ADDRESS" =~ ^[A-Za-z0-9_.\[\]\"-]+$ ]]; then
-              echo "::error::state_address contains unsupported characters"
-              exit 1
-            fi
+            node packages/scripts/validate-terraform-state-address.mjs "$STATE_ADDRESS"
           fi
           if [ "$OPERATION" = "plan" ] || [ "$OPERATION" = "apply" ]; then
             [ -n "$TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY is required"; exit 1; }
