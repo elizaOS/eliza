@@ -1,10 +1,13 @@
 import type { IAgentRuntime, TranscriptionParams } from "@elizaos/core";
-import { fetchWithSsrfGuard, logger } from "@elizaos/core";
+import { fetchWithSsrfGuard, logger, readResponseWithLimit } from "@elizaos/core";
 import type { OpenAITranscriptionParams } from "../types";
 import { isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 import { warmingRetryWaitSeconds } from "../utils/warming";
+
+/** Hard cap on caller-supplied audio bytes pulled for transcription (Whisper-class 25 MiB). */
+const TRANSCRIPTION_AUDIO_MAX_BYTES = 25 * 1024 * 1024;
 
 /**
  * Thrown when Cloud STT cannot serve (no API key, or neither
@@ -36,7 +39,9 @@ function isCoreTranscriptionParams(input: object): input is TranscriptionParams 
 /**
  * Fetch caller-provided audio bytes from an http(s) URL through the SSRF
  * guard (the repo's convention for every server-side attachment fetch) so a
- * crafted `audioUrl` can't reach internal/metadata endpoints.
+ * crafted `audioUrl` can't reach internal/metadata endpoints. The body is
+ * read under a hard byte cap — the 30 s timeout alone cannot bound a hostile
+ * server's payload size.
  */
 async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
   const { response, release } = await fetchWithSsrfGuard({
@@ -50,7 +55,10 @@ async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blo
         `Failed to fetch TRANSCRIPTION audioUrl: ${response.status} ${response.statusText}`
       );
     }
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const bytes = await readResponseWithLimit(
+      response,
+      TRANSCRIPTION_AUDIO_MAX_BYTES
+    );
     const mimeType = response.headers.get("content-type") || detectAudioMimeType(bytes);
     return new Blob([bytes] as never, { type: mimeType });
   } finally {

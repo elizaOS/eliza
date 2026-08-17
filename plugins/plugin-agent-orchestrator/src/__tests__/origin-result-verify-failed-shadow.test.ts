@@ -194,6 +194,23 @@ async function runFailedThenCleanLineage(
   originKey: string;
 }> {
   const host = await startAppHost();
+  // W1-048: the verifier only probes loopback URLs on supervisor-configured
+  // ports. Sanction this test's app-host port through the operator custom
+  // static host (hermetic: no config file, env only — the same pattern as
+  // built-apps-registry.test.ts).
+  const savedEnv: Record<string, string | undefined> = {};
+  for (const key of [
+    "ELIZA_CONFIG_PATH",
+    "ELIZA_APP_DEPLOY_TARGET",
+    "ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR",
+    "ELIZA_APP_DEPLOY_CUSTOM_BASE_URL",
+  ]) {
+    savedEnv[key] = process.env[key];
+  }
+  process.env.ELIZA_CONFIG_PATH = "/nonexistent/verify-shadow-test.json";
+  process.env.ELIZA_APP_DEPLOY_TARGET = "custom";
+  process.env.ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR = "/srv/apps";
+  process.env.ELIZA_APP_DEPLOY_CUSTOM_BASE_URL = new URL(host.url).origin;
   try {
     const meta = originMeta(msgId, host.url, connectorId);
     const sessions = new Map<string, Record<string, unknown>>([
@@ -240,6 +257,10 @@ async function runFailedThenCleanLineage(
 
     return { router, runtime, acp, betweenAttempts, originKey };
   } finally {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     await host.close();
   }
 }
