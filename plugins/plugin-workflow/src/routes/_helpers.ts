@@ -33,12 +33,19 @@ export function getRouteOwnerEntityId(runtime: IAgentRuntime): string {
 }
 
 /**
- * Validate and clamp limit parameter
+ * Validate and clamp limit parameter — strict: rejects non-canonical Number() forms
+ * (`1e4`,`0x10`,`5.9`) via /^\d+$/ + isSafeInteger before clamp.
  */
 export function validateLimit(limitParam: unknown, defaultLimit = 20, maxLimit = 100): number {
-  const limit = Number(limitParam);
-  if (!Number.isFinite(limit) || limit <= 0) {
-    return defaultLimit;
+  if (typeof limitParam === "number") {
+    if (!Number.isSafeInteger(limitParam) || limitParam <= 0) return defaultLimit;
+    return Math.min(limitParam, maxLimit);
   }
-  return Math.min(limit, maxLimit);
+  if (typeof limitParam === "string") {
+    if (!/^\d+$/.test(limitParam)) return defaultLimit;
+    const n = Number(limitParam);
+    if (!Number.isSafeInteger(n) || n <= 0) return defaultLimit;
+    return Math.min(n, maxLimit);
+  }
+  return defaultLimit;
 }

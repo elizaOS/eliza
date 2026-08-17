@@ -49,8 +49,15 @@ function text(value: unknown): string | undefined {
 }
 
 function number(value: unknown, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  }
+  if (typeof value === "string") {
+    if (!/^\d+$/.test(value)) return fallback;
+    const n = Number(value);
+    return Number.isSafeInteger(n) && n > 0 ? n : fallback;
+  }
+  return fallback;
 }
 
 function record(value: unknown): Record<string, unknown> {
