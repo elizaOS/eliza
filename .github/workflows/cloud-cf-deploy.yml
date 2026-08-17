@@ -116,6 +116,7 @@ concurrency:
 # Default to least privilege. Override per-job where needed.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   validate-deploy-source:
@@ -389,7 +390,9 @@ jobs:
   certify-staging-release:
     name: Certify successful staging Cloud tree
     needs: release
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.release.result == 'success' }}
+    # A superseded release ends neutrally without mutating anything, so its
+    # tree was never actually deployed and must not receive a certification.
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

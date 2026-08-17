@@ -16,9 +16,17 @@ on:
         required: false
         type: boolean
         default: false
+    outputs:
+      superseded:
+        description: >-
+          "true" when the release ended neutrally before any mutation because
+          the canonical branch advanced past this run's SHA (the run SHA is an
+          ancestor of the new head). Callers must not certify such a run.
+        value: ${{ jobs.migrate-db.outputs.superseded }}
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   migrate-db:
@@ -37,6 +45,10 @@ jobs:
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+    outputs:
+      # "true" only for the neutral supersession skip; downstream deploy jobs
+      # and the caller's certification job gate on it.
+      superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -77,7 +89,33 @@ jobs:
           echo "Add the secret in: Settings → Environments → Environment secrets."
           exit 1
 
+      - name: Verify canonical deploy source
+        id: source_guard
+        env:
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
+        run: |
+          set -euo pipefail
+          # --neutral-when-superseded: this is the first mutation of the whole
+          # release, reached after the caller's serialized queue wait, so the
+          # canonical branch routinely advances past this run's SHA. When the
+          # run SHA is an ancestor of the new head a newer queued run owns the
+          # release — the guard exits 0 with superseded=true and every mutation
+          # job skips instead of failing red. Divergent or unverifiable
+          # sources still fail hard inside the guard.
+          source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$NEUTRAL_WHEN_SUPERSEDED" = "true" ]; then
+            source_args+=(--neutral-when-superseded)
+          fi
+          if [ "$FORCE" = "true" ]; then
+            source_args+=(--force)
+          fi
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+
       - name: Run migrations
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
@@ -88,6 +126,10 @@ jobs:
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
+          # Recheck inside the mutation step after all preparation. The branch
+          # can advance between workflow steps; only the preflight is eligible
+          # for a neutral supersession. Once this step is running, any mismatch
+          # must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
@@ -121,7 +163,7 @@ jobs:
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
     needs: migrate-db
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1276,7 +1318,7 @@ jobs:
   resolve-pages-environment-config:
     name: Resolve Pages environment configuration
     needs: migrate-db
-    if: ${{ !cancelled() && needs.migrate-db.result == 'success' }}
+    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     outputs:
@@ -1334,7 +1376,7 @@ jobs:
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
-    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.resolve-pages-environment-config.result == 'success' }}
+    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' && needs.resolve-pages-environment-config.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # GitHub preserves outputs from successful jobs when only failed jobs are
