@@ -97,4 +97,18 @@ describe("canonical store release workflow", () => {
     expect(mobileSource).toContain("bun run build:android:cloud");
     expect(mobileSource).toContain('bundle exec fastlane "$APPLE_LANE"');
   });
+
+  test("provisions every shipping iOS extension from the generated project", () => {
+    expect(mobileSource).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);",
+    );
+    expect(mobileSource).toContain("index($0, app \".\") == 1");
+    expect(mobileSource).toContain('$0 !~ /\\.AppUITests$/');
+    expect(mobileSource).toContain(
+      'echo "APP_IDENTIFIER_EXTRA=$extension_ids" >> "$GITHUB_ENV"',
+    );
+    expect(mobileSource).not.toContain(
+      'APP_IDENTIFIER_EXTRA=$app_id.WebsiteBlockerContentExtension',
+    );
+  });
 });

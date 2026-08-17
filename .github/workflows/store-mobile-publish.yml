@@ -260,11 +260,19 @@ jobs:
         working-directory: packages/app
         run: |
           set -euo pipefail
-          app_id="$(grep -m1 -E 'PRODUCT_BUNDLE_IDENTIFIER = [^.]+\.' ios/App/App.xcodeproj/project.pbxproj \
-            | grep -v WebsiteBlockerContentExtension | awk '{print $3}' | tr -d ';')"
+          identifiers="$(sed -nE 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/\1/p' \
+            ios/App/App.xcodeproj/project.pbxproj | sort -u)"
+          app_id="$(printf '%s\n' "$identifiers" | awk '
+            !/\.AppUITests$/ && (shortest == "" || length($0) < length(shortest)) { shortest = $0 }
+            END { print shortest }
+          ')"
           test -n "$app_id"
+          extension_ids="$(printf '%s\n' "$identifiers" | awk -v app="$app_id" '
+            $0 != app && index($0, app ".") == 1 && $0 !~ /\.AppUITests$/ { print }
+          ' | paste -sd, -)"
+          test -n "$extension_ids"
           echo "APP_IDENTIFIER=$app_id" >> "$GITHUB_ENV"
-          echo "APP_IDENTIFIER_EXTRA=$app_id.WebsiteBlockerContentExtension" >> "$GITHUB_ENV"
+          echo "APP_IDENTIFIER_EXTRA=$extension_ids" >> "$GITHUB_ENV"
 
       - name: Run iOS store preflight
         working-directory: packages/app
