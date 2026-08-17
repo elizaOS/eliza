@@ -183,6 +183,13 @@ new_sqlite_classes = ["PersonalTelegramDelivery"]
 # -----------------------------------------------------------------------------
 # Vars (non-secret build/runtime config — the rest live as wrangler secrets)
 # -----------------------------------------------------------------------------
+# AUTO_TOP_UP_DURABLE_ENABLED is deliberately absent from every vars block.
+# The checked-in dry-run-first cutover operator must inventory and reconcile
+# legacy Stripe PaymentIntents, prove its watermark and blockers, and move the
+# primary database control to durable before the exact string "true" may be
+# bound at 100%. A quiet timer is not a provider fence. For rollback, first
+# transition the database control durable -> paused, then remove/false this
+# secondary switch; keep the durable binary deployed so recovery can converge.
 [vars]
 # Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"

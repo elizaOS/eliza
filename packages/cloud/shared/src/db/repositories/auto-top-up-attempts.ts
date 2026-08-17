@@ -867,6 +867,19 @@ export class AutoTopUpAttemptsRepository {
     return row ? toLegacyQuarantine(row) : null;
   }
 
+  /** Read one exact legacy quarantine snapshot without changing its lifecycle. */
+  async findLegacyPaymentByStripePaymentIntentId(
+    paymentIntentId: string,
+  ): Promise<AutoTopUpLegacyPaymentQuarantine | null> {
+    requiredString(paymentIntentId, "paymentIntentId");
+    const [row] = await dbWrite
+      .select()
+      .from(autoTopUpLegacyPaymentQuarantine)
+      .where(eq(autoTopUpLegacyPaymentQuarantine.stripe_payment_intent_id, paymentIntentId))
+      .limit(1);
+    return row ? toLegacyQuarantine(row) : null;
+  }
+
   async findByPaymentIntentId(paymentIntentId: string): Promise<AutoTopUpAttempt | null> {
     requiredString(paymentIntentId, "paymentIntentId");
     const [row] = await dbWrite

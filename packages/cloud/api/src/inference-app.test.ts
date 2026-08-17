@@ -1,5 +1,7 @@
 /** Verifies the thin inference router's authentication and canonical route behavior. */
 import { describe, expect, test } from "bun:test";
+import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
+import { getRequestTaskDefer } from "@/lib/runtime/request-context";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import chatCompletionsRoute from "../v1/chat/completions/route";
 import { createInferenceApp } from "./inference-app";
@@ -21,21 +23,70 @@ interface NotFoundBody {
 const executionCtx = {
   waitUntil: () => undefined,
   passThroughOnException: () => undefined,
-} as unknown as ExecutionContext;
+  props: undefined,
+} satisfies HonoExecutionContext;
 
 const env = {
   ENVIRONMENT: "test",
   NODE_ENV: "test",
   REDIS_RATE_LIMITING: "false",
   CACHE_ENABLED: "false",
+  DATABASE_URL: "postgres://test.invalid/eliza",
   BLOB: {},
-} as unknown as AppEnv["Bindings"];
+} as AppEnv["Bindings"];
 
 function createChatInferenceApp() {
   return createInferenceApp("/api/v1/chat/completions", chatCompletionsRoute);
 }
 
 describe("chat-only inference application", () => {
+  test("binds shared deferred work to the active Worker execution context", async () => {
+    const deferred: Promise<unknown>[] = [];
+    const probe = new Hono<AppEnv>();
+    probe.get("/", (c) => {
+      const task = Promise.resolve("observed");
+      getRequestTaskDefer()?.(task);
+      return c.json({ ok: true });
+    });
+    const context = {
+      waitUntil(task: Promise<unknown>) {
+        deferred.push(task);
+      },
+      passThroughOnException() {},
+      props: undefined,
+    } satisfies HonoExecutionContext;
+
+    const response = await createInferenceApp("/probe", probe).fetch(
+      new Request("https://api.elizacloud.ai/probe"),
+      env,
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(deferred).toHaveLength(1);
+    await expect(deferred[0]).resolves.toBe("observed");
+  });
+
+  test("omits deferred work when a local request has no Worker context", async () => {
+    const probe = new Hono<AppEnv>();
+    probe.get("/", (c) =>
+      c.json({ hasRequestTaskDefer: Boolean(getRequestTaskDefer()) }),
+    );
+
+    const response = await createInferenceApp("/probe", probe).fetch(
+      new Request("https://api.elizacloud.ai/probe"),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(
+      typeof body === "object" &&
+        body !== null &&
+        Reflect.get(body, "hasRequestTaskDefer"),
+    ).toBe(false);
+  });
+
   test("keeps unauthenticated chat pre-SSE with the canonical shell", async () => {
     const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {

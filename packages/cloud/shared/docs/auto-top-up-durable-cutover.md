@@ -41,10 +41,11 @@ automatic card recharges:
 6. moving the control row to `durable` does not unseal this bridge binary.
 
 Do not activate `durable` while only the bridge binary is deployed.
-This foundation release does not expose an activation command. The reviewed,
-dry-run-first operator command for inventory, quarantine resolution, and the
-guarded control transition must ship with the durable processor before any
-cutover is attempted. Direct SQL is not a supported activation procedure.
+This foundation release does not expose an activation command. The durable
+processor ships the reviewed, dry-run-first command at
+`packages/cloud/scripts/admin/auto-top-up-cutover.ts`. It owns inventory,
+quarantine resolution, and the guarded control transition. Direct SQL is not a
+supported activation procedure.
 
 The lifecycle guard is an intentional, operator-visible maintenance impact.
 Migration `0217` enforces it globally: while `auto_top_up_control.mode` is
@@ -75,20 +76,75 @@ deploy does not authorize it.
    approved replacement/revocation strategy for the Stripe credential capable
    of creating these PaymentIntents. Merely omitting a Worker secret is not
    proof: deploy tooling can preserve existing bindings.
-4. Page through Stripe PaymentIntents using the authoritative list API for the
-   full cutover interval. Do not use eventually-consistent search as the
-   inventory. Reconcile every `auto_top_up` intent created before the provider
-   fence, including intents whose HTTP response was lost.
+4. Capture the fixed provider high-water, then run the checked-in command in
+   its default dry-run mode. It pages through Stripe PaymentIntents with the
+   authoritative list API for the complete interval from the Unix epoch through
+   that high-water; it never uses Search. Because there is no authoritative
+   legacy launch watermark, the command accepts only the Unix epoch as
+   `--inventory-start`, passes `created.gte = 0`, and rejects every later lower
+   bound. The provider credential action, evidence token, and timestamps remain
+   explicit human-owned inputs, and the command never changes a Stripe secret
+   or Worker binding.
+
+   ```sh
+   bun --conditions=eliza-source packages/cloud/scripts/admin/auto-top-up-cutover.ts \
+     --inventory-start 1970-01-01T00:00:00.000Z \
+     --provider-fence-at 2026-08-17T12:00:00.000Z \
+     --provider-fence-evidence INC-20717-key-revoked \
+     --worker-version <full-40-hex-sha> \
+     --output /tmp/auto-top-up-cutover.json
+   ```
+
+   This phase performs provider and primary-control reads only. Preserve the
+   generated plan as evidence; do not edit it.
 5. Drain and inspect the Stripe webhook queue and dead-letter queue. Successful
    intents must have exactly one matching credit; canceled intents must not have
-   a credit; processing, malformed, or otherwise ambiguous intents remain
-   quarantined with auto-top-up disabled for that organization.
-6. In the primary database, verify the reconciliation watermark, zero
-   unresolved imported payments, valid organization re-arm baselines, and no
-   unresolved durable attempt that could overlap activation.
-7. Transition the database control from `paused` to `durable` with its guarded
-   compare-and-set operation. Only after that transaction succeeds may the
-   exact reviewed durable runtime switch be enabled.
+   a credit. Safely identified processing or ambiguous intents enter durable
+   manual review with auto-top-up disabled for that organization. Malformed
+   identity or money metadata that cannot be imported safely remains an
+   activation blocker and requires human reconciliation plus a new dry-run.
+6. Have an independent reviewer inspect the immutable plan and attest the
+   provider fence, 100% passive Worker rollout, disabled secondary switch,
+   reconciled queue/DLQ evidence, and migration/re-arm evidence. The last item
+   requires migration head through `0217` and a read-only primary count of zero
+   organizations where `created_at <= auto_top_up_control.paused_at` and
+   `auto_top_up_covered_balance_decrease_revision IS NULL`. A `NULL` revision
+   remains legitimate for an organization created after the pause. With all
+   five facts true, apply the reviewed imports. Apply is replay-safe and
+   deliberately leaves the database control in `paused` mode.
+
+   ```sh
+   bun --conditions=eliza-source packages/cloud/scripts/admin/auto-top-up-cutover.ts \
+     --apply --plan /tmp/auto-top-up-cutover.json \
+     --confirm-provider-fence \
+     --confirm-passive-worker-100-percent \
+     --confirm-worker-switch-off \
+     --confirm-queue-and-dlq-reconciled \
+     --confirm-migration-and-rearm-baselines
+   ```
+
+7. Independently review every applied resolution. Before activation, record
+   and verify the primary migration/head, reconciliation watermark, zero
+   unresolved imports, and valid non-null organization covered-decrease
+   revision baselines. Baseline verification is an explicit human preflight;
+   the control CAS does not perform it. Then run the activation phase with the
+   same immutable plan and fresh attestations. The repository rechecks the
+   watermark, unresolved imports, manual-review organizations, and durable
+   attempts before its `paused` to `durable` compare-and-set. The command never
+   activates by raw SQL and never changes the Worker switch.
+
+   ```sh
+   bun --conditions=eliza-source packages/cloud/scripts/admin/auto-top-up-cutover.ts \
+     --activate --plan /tmp/auto-top-up-cutover.json \
+     --confirm-provider-fence \
+     --confirm-passive-worker-100-percent \
+     --confirm-worker-switch-off \
+     --confirm-queue-and-dlq-reconciled \
+     --confirm-migration-and-rearm-baselines
+   ```
+
+   Only after activation succeeds may a human operator enable the exact
+   reviewed durable runtime switch.
 8. Observe claim, lease, provider-id reuse, credit, terminal-state, and manual
    review logs before declaring the cutover complete.
 
@@ -98,9 +154,18 @@ reviewer approval as deployment evidence. Never put credentials in that record.
 
 ## Rollback
 
-1. Move the database control from `durable` to `paused`. This is the
-   linearizable stop for new claims.
-2. Disable the secondary durable runtime switch.
+1. Move the database control from `durable` to `paused` with the checked-in
+   repository-backed rollback phase. This provider-independent CAS is the
+   linearizable stop for new claims; it does not call Stripe or change an env
+   binding.
+
+   ```sh
+   bun --conditions=eliza-source packages/cloud/scripts/admin/auto-top-up-cutover.ts \
+     --pause-for-rollback --confirm-database-pause-first
+   ```
+
+2. Only after the command reports `controlMode: "paused"`, have a human
+   operator disable the secondary durable runtime switch.
 3. Keep the recovery-capable durable binary deployed while existing attempts
    converge or enter manual review.
 4. Investigate and reconcile before re-enabling charging.
@@ -116,5 +181,7 @@ provider charge for a balance already covered by a durable attempt.
 - activating from a Worker variable without the database transition;
 - checking only non-terminal durable attempts while ignoring older provider
   payments or the webhook DLQ;
+- choosing a post-epoch inventory lower bound that can omit delayed legacy
+  payments;
 - using Stripe Search instead of a complete paginated inventory;
 - rolling back to the previous direct-charging implementation.

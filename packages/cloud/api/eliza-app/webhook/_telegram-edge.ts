@@ -82,26 +82,31 @@ async function runInternalRoute(
   const localEnv = { ...env, INTERNAL_SECRET: localSecret };
   setRuntimeR2Bucket(env.BLOB);
   return runWithCloudBindingsAsync(localEnv as Record<string, unknown>, () =>
-    runWithRequestContext({ idempotencyKey }, () =>
-      runWithDbCacheAsync(() =>
-        Promise.resolve(
-          app.request(
-            "/",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${localSecret}`,
-                "Content-Type": "application/json",
-                "Idempotency-Key": idempotencyKey,
-                "X-Eliza-Trace-Id": traceId,
+    runWithRequestContext(
+      {
+        idempotencyKey,
+        defer: (task) => executionCtx.waitUntil(task),
+      },
+      () =>
+        runWithDbCacheAsync(() =>
+          Promise.resolve(
+            app.request(
+              "/",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${localSecret}`,
+                  "Content-Type": "application/json",
+                  "Idempotency-Key": idempotencyKey,
+                  "X-Eliza-Trace-Id": traceId,
+                },
+                body: JSON.stringify(body),
               },
-              body: JSON.stringify(body),
-            },
-            localEnv,
-            executionCtx,
+              localEnv,
+              executionCtx,
+            ),
           ),
         ),
-      ),
     ),
   );
 }

@@ -12,7 +12,7 @@
  * This suite drives the real route against PGlite (real claim rows, real credit
  * ledger, real managed_domains reassignment). Only the external seams are
  * stubbed: auth, the Cloudflare registrar/DNS HTTP clients, and — mirroring
- * `credits-deduct-guard.test.ts` — the fire-and-forget post-debit notifications
+ * `credits-deduct-guard.test.ts` — the deferred-or-locally-awaited post-debit notifications
  * (email/auto-top-up/waifu), which are not the code under test.
  *
  * Self-skips LOUDLY if PGlite/pushSchema is unavailable.
@@ -131,7 +131,7 @@ mock.module("@/lib/services/cloudflare-dns", () => ({
   },
 }));
 
-// Fire-and-forget post-debit notifications (NOT the code under test) — same
+// Deferred-or-locally-awaited post-debit notifications (NOT the code under test) — same
 // stubs as credits-deduct-guard.test.ts so the suite stays deterministic and
 // offline. The debit/refund SQL itself runs entirely real against PGlite.
 mock.module("@/lib/services/email", () => ({
@@ -143,7 +143,9 @@ mock.module("@/lib/services/waifu-webhook", () => ({
   emitWaifuCreditWebhook: mock(async () => undefined),
 }));
 mock.module("@/lib/services/auto-top-up", () => ({
-  autoTopUpService: { executeAutoTopUp: mock(async () => undefined) },
+  autoTopUpService: {
+    executeAutoTopUpForOrganization: mock(async () => undefined),
+  },
 }));
 
 // Import the route AFTER the seam mocks (it binds them at module-eval time).
