@@ -14,8 +14,6 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
 }));
-const getMock = mock(async (_id: string, _organizationId: string) => null);
-const getBallotMock = mock(async (_id: string) => null);
 
 const ballotRow = {
   id: BALLOT_ID,
@@ -31,6 +29,16 @@ const ballotRow = {
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   metadata: { tokenHashByIdentity: { voter: "secret-hash" } },
 };
+
+const getMock = mock(
+  async (
+    _id: string,
+    _organizationId: string,
+  ): Promise<typeof ballotRow | null> => null,
+);
+const getBallotMock = mock(
+  async (_id: string): Promise<typeof ballotRow | null> => null,
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
