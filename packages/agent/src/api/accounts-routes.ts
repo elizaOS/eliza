@@ -193,10 +193,16 @@ export async function ensureSubscriptionCli(
     await mkdir(prefix, { recursive: true });
     // A user-prefix install, never `-g`: no writes under /usr/lib/node_modules,
     // works for any service user that owns the eliza state dir.
+    // SECURITY: --ignore-scripts keeps npm lifecycle scripts (preinstall/
+    // postinstall) from executing arbitrary code on the host if one of the
+    // pinned CLI packages is ever supply-chain compromised; both CLIs ship as
+    // binaries that work without lifecycle scripts. Same guarantee as
+    // plugin-installer.ts.
     await runInstall([
       "install",
       "--prefix",
       prefix,
+      "--ignore-scripts",
       "--no-fund",
       "--no-audit",
       packageName,

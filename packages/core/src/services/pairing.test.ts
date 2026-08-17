@@ -1,6 +1,9 @@
 /**
- * Public PairingService pagination contract tests. The legacy array APIs stay
- * source-compatible while bounded pages carry validated options into storage.
+ * Public PairingService contract tests: bounded pagination reads (the legacy
+ * array APIs stay source-compatible while bounded pages carry validated
+ * options into storage) and the pairing-code entropy source (CSPRNG-only,
+ * fail-closed when no CSPRNG exists). The storage adapter is mocked; the
+ * service under test is real.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime, MOCK_AGENT_ID } from "../testing/mock-runtime";
@@ -10,7 +13,7 @@ import type {
 	PairingRequest,
 	UUID,
 } from "../types";
-import { normalizePairingPageOptions } from "../types";
+import { normalizePairingPageOptions, PAIRING_CODE_ALPHABET } from "../types";
 import { PairingService } from "./pairing";
 
 function uuid(index: number): UUID {
@@ -271,5 +274,62 @@ describe("PairingService bounded reads", () => {
 		expect(() =>
 			normalizePairingPageOptions({ offset: Number.MAX_SAFE_INTEGER + 1 }),
 		).toThrow(RangeError);
+	});
+});
+
+describe("PairingService pairing-code entropy", () => {
+	const noop = () => undefined;
+
+	function upsertRuntime(): IAgentRuntime {
+		return createMockRuntime({
+			getPairingRequests: vi.fn(async () => [
+				{ channel: "discord", agentId: MOCK_AGENT_ID, requests: [] },
+			]),
+			createPairingRequest: vi.fn(async () => undefined),
+			updatePairingRequest: vi.fn(async () => undefined),
+			deletePairingRequest: vi.fn(async () => undefined),
+			logger: {
+				debug: noop,
+				info: noop,
+				warn: noop,
+				error: noop,
+			} as unknown as IAgentRuntime["logger"],
+		});
+	}
+
+	it("draws codes from the platform CSPRNG, never Math.random", async () => {
+		const getRandomValues = vi.spyOn(globalThis.crypto, "getRandomValues");
+		const mathRandom = vi.spyOn(Math, "random");
+		try {
+			const result = await new PairingService(upsertRuntime()).upsertRequest({
+				channel: "discord",
+				senderId: "sender-entropy",
+			});
+
+			expect(result.created).toBe(true);
+			expect(result.code).toHaveLength(8);
+			for (const char of result.code) {
+				expect(PAIRING_CODE_ALPHABET).toContain(char);
+			}
+			expect(getRandomValues).toHaveBeenCalled();
+			expect(mathRandom).not.toHaveBeenCalled();
+		} finally {
+			getRandomValues.mockRestore();
+			mathRandom.mockRestore();
+		}
+	});
+
+	it("fails closed when the platform has no CSPRNG", async () => {
+		vi.stubGlobal("crypto", undefined);
+		try {
+			await expect(
+				new PairingService(upsertRuntime()).upsertRequest({
+					channel: "discord",
+					senderId: "sender-no-csprng",
+				}),
+			).rejects.toMatchObject({ code: "PAIRING_CSPRNG_UNAVAILABLE" });
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });
