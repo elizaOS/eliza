@@ -1,10 +1,10 @@
 /**
- * GET /api/cron/auto-top-up
- * Periodic cron that processes auto top-up for orgs whose balance is below
- * threshold. Protected by CRON_SECRET.
+ * Exposes the secret-protected scheduled auto-top-up cutover check. Both the
+ * Worker scheduler's POST and an operator's GET return the authoritative
+ * paused state with zero work while this bridge release is deployed.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
@@ -13,51 +13,49 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.get("/", async (c) => {
+async function handleAutoTopUpCutover(c: Context<AppEnv>) {
   const startTime = Date.now();
   try {
     requireCronSecret(c);
 
-    logger.info("auto-top-up-cron", "Starting auto top-up check");
-
     const result = await autoTopUpService.checkAndExecuteAutoTopUps();
-    const duration = Date.now() - startTime;
+    const durationMs = Date.now() - startTime;
 
-    logger.info("auto-top-up-cron", "Auto top-up check completed", {
-      duration: `${duration}ms`,
+    logger.info("[AutoTopUp] Scheduled cutover check remained sealed", {
+      durationMs,
+      controlMode: result.controlMode,
       checked: result.organizationsChecked,
       processed: result.organizationsProcessed,
-      successful: result.successful,
-      failed: result.failed,
     });
 
     return c.json({
       success: true,
-      message: "Auto top-up check completed successfully",
+      status: "cutover_paused" as const,
+      message: "Auto top-up charging is paused during the durable cutover.",
+      cutoverPaused: result.cutoverPaused,
+      controlMode: result.controlMode,
       stats: {
         timestamp: result.timestamp.toISOString(),
-        duration: `${duration}ms`,
+        durationMs,
         organizationsChecked: result.organizationsChecked,
         organizationsProcessed: result.organizationsProcessed,
         successful: result.successful,
         failed: result.failed,
-        details: result.results.map((r) => ({
-          organizationId: r.organizationId,
-          success: r.success,
-          amount: r.amount,
-          newBalance: r.newBalance,
-          error: r.error,
-        })),
+        details: result.results,
       },
     });
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error("auto-top-up-cron", "Auto top-up check failed", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      duration: `${duration}ms`,
+    // error-policy:J1 boundary translation — a missing secret or unavailable
+    // control authority is returned as failure, never fabricated zero work.
+    logger.error("[AutoTopUp] Scheduled cutover check failed", {
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
     });
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handleAutoTopUpCutover);
+app.post("/", handleAutoTopUpCutover);
 
 export default app;

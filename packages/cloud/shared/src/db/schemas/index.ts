@@ -40,6 +40,7 @@ export * from "./app-reviews";
 export * from "./app-usage-projections";
 export * from "./apps";
 export * from "./auth-events";
+export * from "./auto-top-up-attempts";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
 export * from "./containers";

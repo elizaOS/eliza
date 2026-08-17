@@ -1,4 +1,6 @@
-// Defines the organizations Drizzle table shape used by cloud repositories and services.
+/**
+ * Defines the organizations Drizzle table shape used by cloud repositories and services.
+ */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
@@ -46,6 +48,16 @@ export const organizations = pgTable(
     // is the per-organization initial revision; only mutations need a globally
     // monotonic sequence value.
     balance_revision: bigint("balance_revision", { mode: "number" }).notNull().default(0),
+    // Durable auto-top-up re-arms only after a balance decrease. Existing
+    // organizations are conservatively fenced during migration; newly created
+    // organizations start without a fence so their first eligible top-up can run.
+    balance_decrease_revision: bigint("balance_decrease_revision", { mode: "number" })
+      .notNull()
+      .default(0),
+    auto_top_up_covered_balance_decrease_revision: bigint(
+      "auto_top_up_covered_balance_decrease_revision",
+      { mode: "number" },
+    ),
 
     // Settings (kept for backward compatibility with container management)
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
