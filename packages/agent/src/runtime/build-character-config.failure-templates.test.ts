@@ -77,7 +77,9 @@ describe("failure templates flow from the eliza preset into the Character", () =
     expect(character.name).toBe("Nyx");
     for (const key of FAILURE_TEMPLATE_KEYS) {
       expect(character.templates?.[key]).toBeTruthy();
-      expect(String(character.templates?.[key])).not.toMatch(/\bEliza\b(?!\s*Cloud)/);
+      expect(String(character.templates?.[key])).not.toMatch(
+        /\bEliza\b(?!\s*Cloud)/,
+      );
     }
   });
 
