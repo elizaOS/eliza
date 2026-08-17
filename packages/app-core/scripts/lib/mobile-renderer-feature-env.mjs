@@ -32,3 +32,10 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
   }
   return platform === ANDROID_CLOUD_DEBUG || platform.startsWith("ios");
 }
+
+/** Explain why a cached renderer cannot prove an unstamped feature value. */
+export function mobileRendererUnstampedFeatureProblem({ platform } = {}) {
+  return mobileRendererRequiresFreshBuild({ platform })
+    ? `dist cannot prove the lane-specific renderer feature flags for '${platform}' because they are not stamped`
+    : null;
+}
