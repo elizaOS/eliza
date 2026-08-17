@@ -26,6 +26,9 @@ vi.mock("../../api/client", () => ({
       unreadCount: 0,
     })),
     onWsEvent: vi.fn(),
+    // notificationProbesEnabled reads the configured base URL before every
+    // hydration request; empty string = same-origin (probes enabled).
+    getBaseUrl: vi.fn(() => ""),
     markNotificationRead: vi.fn(async () => ({})),
     markAllNotificationsRead: vi.fn(async () => ({})),
     removeNotification: vi.fn(async () => ({})),
@@ -40,6 +43,10 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
 }));
 
 import type { AgentNotification } from "@elizaos/core";
+import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+} from "../../hooks/useAuthStatus";
 import {
   __getStateForTests,
   __ingestNotificationForTests,
@@ -248,6 +255,7 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   __resetNotificationStoreForTests();
+  __resetAuthStatusForTests();
   navigateDeepLink.mockClear();
 });
 
@@ -664,6 +672,20 @@ describe("NotificationsHomeCenter", () => {
   });
 
   it("renders terminal hydration failure with a working retry", async () => {
+    // The retry re-runs hydration through notificationProbesEnabled, which
+    // requires an authenticated session before probing the protected inbox
+    // API — mirror the store test's authenticated fixture.
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    } as never);
     __setHydrationFailureForTests("private transport detail");
     renderRestedNotifications();
 
@@ -685,6 +707,13 @@ describe("NotificationsHomeCenter", () => {
     await act(async () => {
       fireEvent.click(retry);
       await Promise.resolve();
+    });
+
+    // Retry passes back through the async hydrating state (which renders
+    // nothing) before the hydrated-empty surface mounts. The suite runs fake
+    // timers, so flush timers + microtasks explicitly rather than waitFor.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
     });
 
     expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
