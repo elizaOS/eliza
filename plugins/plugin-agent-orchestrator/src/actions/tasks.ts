@@ -3322,11 +3322,15 @@ export const DUPLICATE_SPAWN_FORCE_RE =
 /** Task statuses that mean the work is still in flight (or parked awaiting a
  * verdict/human) — a near-identical new spawn against one of these is a
  * duplicate, not a new request. */
+// waiting_on_user is deliberately ABSENT: a parked task is human-gated, not
+// in flight — hours-old parked builds were matching UNRELATED new requests
+// and stranding them ("wind-chimes build, waiting_on_user" blocked a github
+// branch+PR ask, live 2026-08-17). A genuine follow-up about parked work
+// needs no spawn, so the guard has nothing to protect there.
 const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
   "open",
   "active",
   "validating",
-  "waiting_on_user",
   "blocked",
 ]);
 
@@ -3349,7 +3353,10 @@ export function goalSimilarity(a: string, b: string): number {
   for (const token of tokensA) {
     if (tokensB.has(token)) overlap += 1;
   }
-  return overlap / Math.min(tokensA.size, tokensB.size);
+  // max(): a short label overlapping a long request must not read as a near
+  // duplicate. The old min() denominator let "tide-glass" match "ember-tide
+  // build" on one shared token (live 2026-08-17).
+  return overlap / Math.max(tokensA.size, tokensB.size);
 }
 
 const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
@@ -3398,10 +3405,14 @@ async function findNearDuplicateInFlightWork(args: {
           typeof session.metadata?.label === "string"
             ? session.metadata.label
             : session.name;
-        const initialTask =
+        const rawInitialTask =
           typeof session.metadata?.initialTask === "string"
             ? session.metadata.initialTask
             : "";
+        // Compare only the GOAL, not the injected workspace/route contract:
+        // every routed quick-app carries the same boilerplate sections, which
+        // made unrelated builds read as near-duplicates of each other.
+        const initialTask = rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
         const existingText = `${label ?? ""} ${initialTask}`;
         if (
           goalSimilarity(candidateText, existingText) >=
