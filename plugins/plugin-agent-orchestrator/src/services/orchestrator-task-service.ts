@@ -18,14 +18,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  appendFile,
-  mkdir,
-  readdir,
-  readFile,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { appendFile, lstat, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
@@ -57,6 +50,15 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import {
+  CHILD_TRAJECTORY_USAGE_METADATA_KEY,
+  ChildTrajectoryReadError,
+  childTrajectoryUsageAsRecordedTrajectory,
+  isControlledChildTrajectoryPath,
+  parseChildTrajectoryUsageSummary,
+  readControlledChildTrajectoryJson,
+  summarizeChildTrajectoryUsage,
+} from "./child-trajectory-usage.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -278,7 +280,7 @@ type RuntimeLike = IAgentRuntime & {
 
 export interface TraceUsageArtifactError {
   path: string;
-  reason: "read_failed" | "invalid_trajectory";
+  reason: "read_failed" | "invalid_trajectory" | "untrusted_path";
   message: string;
 }
 
@@ -391,11 +393,21 @@ const TERMINAL_SESSION_REAP_MAX_BACKOFF_MS = 5 * 60_000;
 const COMPLETION_GIT_POLICY_METADATA_KEY = "completionGitPolicy";
 const LEAVE_UNCOMMITTED_GIT_POLICY = "leave_uncommitted";
 
-/** Explicit whole-delivery no-commit instructions. The punctuation/end guard
- * deliberately rejects narrower prose such as "do not commit secrets" and
- * conditional prose such as "do not commit until tests pass". */
-const NO_COMMIT_DELIVERY_DIRECTIVE =
-  /\b(?:do not|don't|must not)\s+(?:create\s+(?:a\s+)?commit|commit(?:\s+(?:the|these|those|any|your|our)\s+(?:changes?|work))?)(?=\s*(?:[.!;,)]|$))|\b(?:leave|keep)\s+(?:the\s+|these\s+|those\s+|your\s+|all\s+)?changes?\s+uncommitted\b|\bwithout\s+(?:creating\s+(?:a\s+)?commit|committing)\b/i;
+/** Explicit whole-delivery no-commit instructions. A delivery directive may
+ * be followed by another publication action ("do not commit or push"), but a
+ * scoped target/condition must not be promoted into a task-wide policy ("do
+ * not commit secrets", "do not commit until tests pass"). */
+const WHOLE_DELIVERY_COMMIT_TARGET = String.raw`(?:\s+(?:anything|(?:any|all|the|this|these|those|your|our)?\s*(?:final\s+|finished\s+|completed\s+|resulting\s+)?(?:changes?|work)))?`;
+const WHOLE_DELIVERY_DIRECTIVE_END = String.raw`(?=\s*(?:[.!;)]|\/|\b(?:and|or)\b|,\s*(?:(?:and|or)\s+)?(?:(?:do not|don't|must not|never|no)\s+)?(?:push|publish|open|create|commit|reset|clean|stash|delete|merge|deploy|report|return|leave|show|send|pr)\b|$))`;
+const NO_COMMIT_DELIVERY_DIRECTIVE = new RegExp(
+  [
+    String.raw`\b(?:do not|don't|must not|never)\s+(?:create\s+(?:(?:a|any)\s+)?commits?|commit${WHOLE_DELIVERY_COMMIT_TARGET})${WHOLE_DELIVERY_DIRECTIVE_END}`,
+    String.raw`\bno\s+(?:new\s+)?commits?${WHOLE_DELIVERY_DIRECTIVE_END}`,
+    String.raw`\b(?:leave|keep)\s+(?:the\s+|this\s+|these\s+|those\s+|your\s+|our\s+|all\s+)?changes?\s+uncommitted${WHOLE_DELIVERY_DIRECTIVE_END}`,
+    String.raw`\bwithout\s+(?:creating\s+(?:(?:a|any)\s+)?commits?|committing${WHOLE_DELIVERY_COMMIT_TARGET})${WHOLE_DELIVERY_DIRECTIVE_END}`,
+  ].join("|"),
+  "i",
+);
 
 interface TerminalSessionTeardownMarker {
   version: 1;
@@ -776,7 +788,7 @@ function str(value: unknown): string | undefined {
 /** Convert an explicit user delivery instruction into structured spawn
  * metadata. Free-form text is examined once at the trusted orchestration
  * boundary; completion checks consume only the stamped policy. */
-function requestedCompletionGitPolicy(
+export function requestedCompletionGitPolicy(
   ...instructions: Array<string | undefined>
 ): typeof LEAVE_UNCOMMITTED_GIT_POLICY | undefined {
   return instructions.some(
@@ -2548,8 +2560,9 @@ export class OrchestratorTaskService extends Service {
     // artifact paths are the persistent dedupe key: they survive restart with
     // the task document, and skipping them preserves the original ingesting
     // session's correlation (we never touch an already-attached artifact).
+    const taskDoc = await this.store.getTask(taskId);
     const existingArtifactPaths = new Set(
-      ((await this.store.getTask(taskId))?.artifacts ?? [])
+      (taskDoc?.artifacts ?? [])
         .filter((a) => a.artifactType === "trajectory" && a.path)
         .map((a) => a.path as string),
     );
@@ -2563,17 +2576,69 @@ export class OrchestratorTaskService extends Service {
     const withMtime = await Promise.all(
       freshFiles.map(async (path) => ({
         path,
-        mtimeMs: (await stat(path)).mtimeMs,
+        // lstat deliberately does not follow a child-created symlink. The
+        // controlled reader below rejects non-regular files before reading.
+        mtimeMs: (await lstat(path)).mtimeMs,
       })),
     );
     withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
     const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
+    // Native Eliza Code currently has no terminal ACP usage frame. Its
+    // finished trajectory is the measured fallback. Once this session has any
+    // non-trajectory usage row, ACP is authoritative for that and subsequent
+    // turns, preventing a future adapter upgrade from double-counting both.
+    const mayBackfillNativeUsage =
+      session?.framework.toLowerCase() === "elizaos" &&
+      !(taskDoc?.usage ?? []).some(
+        (usage) =>
+          usage.sessionId === sessionId &&
+          !usage.sourceEventId?.startsWith("trajectory:"),
+      );
     const ingested: string[] = [];
     for (const { path } of capped) {
       // The recorder names files `<trajectoryId>.json`.
       const trajectoryId = basename(path, ".json");
+      let usageSummary: ReturnType<typeof summarizeChildTrajectoryUsage> = null;
+      try {
+        const raw = await readControlledChildTrajectoryJson(dir, path);
+        usageSummary = summarizeChildTrajectoryUsage(raw, {
+          trajectoryId,
+          taskId,
+          sessionId,
+          fallbackProvider:
+            session?.providerSource ?? session?.framework ?? "unknown",
+          ...(session?.model ? { fallbackModel: session.model } : {}),
+        });
+      } catch (error) {
+        // error-policy:J7 trajectory usage is observability. Attach the
+        // artifact without a summary so trace usage reports it as partial, but
+        // never let a malformed file block task completion.
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.readChildTrajectoryUsage",
+          error,
+          { taskId, sessionId, trajectoryId },
+        );
+      }
+
+      if (mayBackfillNativeUsage && usageSummary) {
+        for (const [index, usage] of usageSummary.providerUsage.entries()) {
+          await this.recordUsage(taskId, sessionId, {
+            ...usage,
+            state: "measured",
+            sourceEventId: [
+              "trajectory",
+              sessionId,
+              trajectoryId,
+              String(index),
+              usage.provider,
+              usage.model ?? "",
+            ].join(":"),
+          });
+        }
+      }
+
       await this.store.addArtifact({
         id: randomUUID(),
         taskId,
@@ -2584,12 +2649,15 @@ export class OrchestratorTaskService extends Service {
         verificationStatus: "pending",
         metadata: {
           correlation: {
-            traceId: session?.traceId,
+            traceId: usageSummary?.traceId ?? session?.traceId,
             taskId,
             sessionId,
             parentStepId: session?.parentTrajectoryStepId,
             childTrajectoryId: trajectoryId,
           },
+          ...(usageSummary
+            ? { [CHILD_TRAJECTORY_USAGE_METADATA_KEY]: usageSummary }
+            : {}),
         },
         createdAt: nowIso(),
       });
@@ -6007,15 +6075,12 @@ export class OrchestratorTaskService extends Service {
 
   /**
    * Per-trace token/cost roll-up across this task's INGESTED SUB-AGENT
-   * TRAJECTORY FILES (#13775 item 5). Distinct from {@link getUsage}: that sums
-   * the ACP terminal `OrchestratorTaskUsage` frames (the spend a sub-agent's
-   * ACP surface reported for the whole session); this reads the file-recorder
-   * `trajectory` artifacts item 2 attached and sums their inner per-model-call
-   * metrics, grouped by the shared `traceId`. The two count different things
-   * (ACP-reported session spend vs. file-recorded inner-call spend) and are
-   * deliberately kept apart so nothing is double-summed. For an eliza-backend
-   * sub-agent whose ACP frame is coarse/absent, this is the only surface that
-   * attributes the real inner spend to the logical run.
+   * TRAJECTORY FILES (#13775 item 5). {@link getUsage} remains the canonical
+   * task/session billing view: ACP usage frames win when present, while native
+   * Eliza Code sessions with no ACP frame receive an idempotent fallback from
+   * these same validated summaries. This endpoint keeps the complementary
+   * per-trace view grouped by shared `traceId`; it does not add those totals to
+   * the canonical view a second time.
    *
    * Attach-by-reference means the files live where the child wrote them. A
    * missing/unreadable/parse-failed file keeps the endpoint partial: readable
@@ -6031,39 +6096,79 @@ export class OrchestratorTaskService extends Service {
     // more than one artifact row pointing at the SAME trajectory file. Summing
     // each row would double-count that file's tokens/cost, so read each
     // distinct path once.
-    const paths = [
-      ...new Set(
-        doc.artifacts
-          .filter(
-            (artifact) =>
-              artifact.artifactType === "trajectory" && Boolean(artifact.path),
-          )
-          .map((artifact) => artifact.path as string),
-      ),
-    ];
+    const artifactsByPath = new Map(
+      doc.artifacts
+        .filter(
+          (artifact) =>
+            artifact.artifactType === "trajectory" && Boolean(artifact.path),
+        )
+        .map((artifact) => [artifact.path as string, artifact] as const),
+    );
+    const paths = [...artifactsByPath.keys()];
+    const controlledRoot = this.childTrajectoryDir(taskId);
     const trajectories: RecordedTrajectory[] = [];
     const artifactErrors: TraceUsageArtifactError[] = [];
     for (const path of paths) {
+      const artifact = artifactsByPath.get(path);
+      const sessionId = artifact?.sessionId;
+      if (!isControlledChildTrajectoryPath(controlledRoot, path)) {
+        artifactErrors.push({
+          path,
+          reason: "untrusted_path",
+          message:
+            "Trajectory artifact path is outside the controlled child directory.",
+        });
+        continue;
+      }
+
+      const trajectoryId = basename(path, ".json");
+      const persisted = parseChildTrajectoryUsageSummary(
+        artifact?.metadata?.[CHILD_TRAJECTORY_USAGE_METADATA_KEY],
+      );
+      if (
+        persisted &&
+        persisted.taskId === taskId &&
+        persisted.sessionId === sessionId &&
+        persisted.trajectoryId === trajectoryId
+      ) {
+        trajectories.push(childTrajectoryUsageAsRecordedTrajectory(persisted));
+        continue;
+      }
+
       try {
-        const raw = await readFile(path, "utf8");
-        const parsed = JSON.parse(raw) as unknown;
-        // A well-formed trajectory carries a metrics block; anything else is a
-        // mislabeled artifact and is surfaced as partial rather than trusted.
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          "metrics" in parsed &&
-          parsed.metrics &&
-          typeof parsed.metrics === "object"
-        ) {
-          trajectories.push(parsed as RecordedTrajectory);
-        } else {
+        if (!sessionId) {
           artifactErrors.push({
             path,
             reason: "invalid_trajectory",
-            message: "Trajectory artifact does not contain metrics.",
+            message: "Trajectory artifact has no correlated session.",
           });
+          continue;
         }
+        const session = doc.sessions.find(
+          (candidate) => candidate.sessionId === sessionId,
+        );
+        const raw = await readControlledChildTrajectoryJson(
+          controlledRoot,
+          path,
+        );
+        const summary = summarizeChildTrajectoryUsage(raw, {
+          trajectoryId,
+          taskId,
+          sessionId,
+          fallbackProvider:
+            session?.providerSource ?? session?.framework ?? "unknown",
+          ...(session?.model ? { fallbackModel: session.model } : {}),
+        });
+        if (!summary) {
+          artifactErrors.push({
+            path,
+            reason: "invalid_trajectory",
+            message:
+              "Trajectory artifact failed correlation or usage validation.",
+          });
+          continue;
+        }
+        trajectories.push(childTrajectoryUsageAsRecordedTrajectory(summary));
       } catch (err) {
         // error-policy:J4 trace usage is a user-facing accounting surface; keep
         // readable totals available, but return artifactErrors/readState so a
@@ -6071,7 +6176,10 @@ export class OrchestratorTaskService extends Service {
         const message = err instanceof Error ? err.message : String(err);
         artifactErrors.push({
           path,
-          reason: "read_failed",
+          reason:
+            err instanceof ChildTrajectoryReadError
+              ? err.reason
+              : "read_failed",
           message,
         });
         this.log("warn", "partial trace usage due to unreadable artifact", {
