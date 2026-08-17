@@ -344,13 +344,45 @@ function parseWorkbenchFileEncoding(
   return null;
 }
 
+/**
+ * GET workbench VFS files `recursive` is listing-depth identity, leftover
+ * tax after notifications unreadOnly (#21220). Stock develop treated every
+ * non-exact `true` token as a shallow list, so `recursive=TRUE` omitted
+ * nested files instead of a 400. encoding / delete parsers stay untouched.
+ */
+function parseRecursiveFlag(
+  query: URLSearchParams,
+): { ok: true; value: boolean } | { ok: false } {
+  const requested = query.getAll("recursive");
+  const raw = requested[0];
+  if (requested.length > 1) {
+    return { ok: false };
+  }
+  if (raw == null || raw === "") {
+    return { ok: true, value: false };
+  }
+  if (raw === "true") {
+    return { ok: true, value: true };
+  }
+  if (raw === "false") {
+    return { ok: true, value: false };
+  }
+  return { ok: false };
+}
+
 async function handleFiles(
   ctx: WorkbenchRouteContext,
   vfs: VirtualFilesystemService,
 ): Promise<void> {
   const path = ctx.url.searchParams.get("path") ?? ".";
-  const recursive = ctx.url.searchParams.get("recursive") === "true";
-  ctx.json(ctx.res, { files: await vfs.list(path, { recursive }) });
+  const recursive = parseRecursiveFlag(ctx.url.searchParams);
+  if (!recursive.ok) {
+    ctx.error(ctx.res, "Invalid recursive", 400);
+    return;
+  }
+  ctx.json(ctx.res, {
+    files: await vfs.list(path, { recursive: recursive.value }),
+  });
 }
 
 async function handleFile(
