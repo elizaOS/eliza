@@ -7,6 +7,7 @@ import {
   handleRelationshipsRoutes,
   parseRelationshipsQuery,
   parseRelationshipsQueryInteger,
+  parseRelationshipsScope,
 } from "./relationships-routes.ts";
 
 describe("parseRelationshipsQueryInteger", () => {
@@ -110,5 +111,120 @@ describe("parseRelationshipsQuery", () => {
     });
     expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseRelationshipsScope", () => {
+  it("keeps omitted and empty as the unfiltered default", () => {
+    expect(parseRelationshipsScope(null)).toEqual({
+      ok: true,
+      scope: undefined,
+    });
+    expect(parseRelationshipsScope("")).toEqual({
+      ok: true,
+      scope: undefined,
+    });
+  });
+
+  it.each(["relevant", "all"] as const)("accepts exact %s", (token) => {
+    expect(parseRelationshipsScope(token)).toEqual({
+      ok: true,
+      scope: token,
+    });
+  });
+
+  it.each(["RELEVANT", "ALL", "Relevant", "everyone", " all"])(
+    "rejects unknown scope %j",
+    (token) => {
+      const parsed = parseRelationshipsScope(token);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) {
+        expect(parsed.message).toBe("scope must be one of: all, relevant");
+      }
+    },
+  );
+});
+
+describe("GET /api/relationships/graph scope identity", () => {
+  it.each(["RELEVANT", "ALL", "Relevant"])(
+    "rejects scope=%s with 400 before getGraphSnapshot",
+    async (token) => {
+      const getGraphSnapshot = vi.fn(async () => ({
+        people: [],
+        relationships: [],
+        stats: {},
+      }));
+      const json = vi.fn();
+      const error = vi.fn();
+      const runtime = {
+        getService: () => ({
+          getGraphSnapshot,
+          getPersonDetail: vi.fn(),
+          getCandidateMerges: vi.fn(),
+          acceptMerge: vi.fn(),
+          rejectMerge: vi.fn(),
+        }),
+      };
+
+      await handleRelationshipsRoutes({
+        req: {
+          url: `/api/relationships/graph?scope=${token}`,
+        } as never,
+        res: {} as never,
+        method: "GET",
+        pathname: "/api/relationships/graph",
+        json,
+        error,
+        readJsonBody: vi.fn(),
+        runtime: runtime as never,
+      });
+
+      expect(error).toHaveBeenCalledWith(
+        expect.anything(),
+        "scope must be one of: all, relevant",
+        400,
+      );
+      expect(getGraphSnapshot).not.toHaveBeenCalled();
+      expect(json).not.toHaveBeenCalled();
+    },
+  );
+
+  it("scope=relevant still reaches the graph service", async () => {
+    const snapshot = { people: [], relationships: [], stats: {} };
+    const getGraphSnapshot = vi.fn(async () => snapshot);
+    const json = vi.fn();
+    const error = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot,
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    await handleRelationshipsRoutes({
+      req: {
+        url: "/api/relationships/graph?scope=relevant",
+      } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/relationships/graph",
+      json,
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getGraphSnapshot).toHaveBeenCalledWith({
+      search: null,
+      platform: null,
+      limit: undefined,
+      offset: undefined,
+      scope: "relevant",
+    });
+    expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
   });
 });
