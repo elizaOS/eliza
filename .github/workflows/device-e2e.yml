@@ -108,6 +108,10 @@ jobs:
 
   ios-simulator-bundle:
     name: iOS simulator bundle
+    # The unattended cadence restores Android coverage only. Keep the existing
+    # iOS producer available to labeled PR callers and explicit dispatches
+    # without adding an unrelated weekly macOS runner allocation.
+    if: github.event_name != 'schedule'
     runs-on: macos-15
     timeout-minutes: 90
     env:

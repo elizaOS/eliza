@@ -142,15 +142,16 @@ Artifacts are written under
 `home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`; the bundle
 root also includes `inline/`, `logs/`, `summary.json`, and `junit.xml`.
 
-`.github/workflows/android-arm64-local-e2e.yml` is the separate weekly and
-manual local-runtime lane. It targets a self-hosted Linux runner labeled
+`.github/workflows/android-arm64-local-e2e.yml` is the separate weekly,
+schedule-only local-runtime lane. It targets a self-hosted Linux runner labeled
 `ARM64` and `android-device`, then fails closed unless Node 24.15.0, Bun 1.3.14,
 an authorized booted `arm64-v8a` Android target, Java, and adb are present. It
 runs the real local chat smoke followed by `local-runtime.android.spec.ts` and
 `route-coverage.android.spec.ts`. The repository does not currently provide
 that runner, so a queued job is an infrastructure prerequisite rather than
-device proof. Do not cite this workflow as ARM64 evidence until a completed
-bundle from the current revision has been inspected.
+device proof. Arbitrary-ref manual dispatch is intentionally unavailable on
+this persistent physical-device runner. Do not cite this workflow as ARM64
+evidence until a completed bundle from the current revision has been inspected.
 
 Local voice, destructive lifecycle, launcher soak, touch, and sleep/wake are
 not smuggled into either set. Run their focused commands explicitly on hardware

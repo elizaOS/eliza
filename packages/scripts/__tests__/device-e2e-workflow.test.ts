@@ -14,12 +14,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,7 +48,11 @@ interface CallerJob {
 }
 
 interface Workflow {
-  concurrency?: { group?: string; "cancel-in-progress"?: boolean | string };
+  concurrency?: {
+    group?: string;
+    "cancel-in-progress"?: boolean | string;
+    queue?: string;
+  };
   env?: Record<string, string>;
   jobs?: Record<string, WorkflowJob>;
   on?: Record<string, unknown>;
@@ -67,6 +66,9 @@ const arm64WorkflowSource = read(
 );
 const arm64Workflow = Bun.YAML.parse(arm64WorkflowSource) as Workflow;
 const androidRunnerSource = read("packages/app/scripts/android-e2e.mjs");
+const androidRouteCoverageSource = read(
+  "packages/app/test/android/route-coverage.android.spec.ts",
+);
 const arm64PreflightSource = read(
   ".github/scripts/device-e2e/arm64-local-preflight.sh",
 );
@@ -138,9 +140,7 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     );
     const script = runner.with?.script ?? "";
     expect(script).toContain("packages/app/scripts/android-e2e.mjs");
-    expect(script).toContain(
-      '--output "$ELIZA_DEVICE_BUNDLE_ROOT/android"',
-    );
+    expect(script).toContain('--output "$ELIZA_DEVICE_BUNDLE_ROOT/android"');
     expect(script).toContain("--start-host-agent");
     expect(script).toContain("--host-emulator-probes");
     expect(script).toContain("--skip-local-chat");
@@ -151,6 +151,7 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
 
   test("the iOS job invokes ios-e2e.mjs with --output inside the artifact root", () => {
     const job = requireJob(iosJob, "ios-simulator-bundle");
+    expect(job.if).toBe("github.event_name != 'schedule'");
     expect(String(job["runs-on"])).toMatch(/^macos-/);
     const runner = findStep(
       job,
@@ -203,6 +204,12 @@ describe("Android probe partitioning (#13580)", () => {
     expect(hostSet).not.toContain("launcher-gesture-loop.android.spec.ts");
     expect(androidRunnerSource).toContain("startDeviceE2eHostAgent");
     expect(androidRunnerSource).toContain("await hostAgent.stop()");
+  });
+
+  test("route coverage proves the requested path and canonical page marker", () => {
+    expect(androidRouteCoverageSource).toContain("window.location.pathname");
+    expect(androidRouteCoverageSource).toContain("route.readyChecks");
+    expect(androidRouteCoverageSource).toContain("expectRouteReady(");
   });
 
   test("ARM64 local set includes chat-backed WebView proof but excludes voice", () => {
@@ -264,11 +271,22 @@ describe("Android probe partitioning (#13580)", () => {
 describe("ARM64 local-runtime workflow (#13580)", () => {
   const armJob = arm64Workflow.jobs?.["android-arm64-local-runtime"];
 
-  test("has its own cadence and exact self-hosted device labels", () => {
+  test("is schedule-only and cannot execute an arbitrary dispatched ref", () => {
     expect(arm64Workflow.on && "schedule" in arm64Workflow.on).toBe(true);
     expect(arm64Workflow.on && "workflow_dispatch" in arm64Workflow.on).toBe(
-      true,
+      false,
     );
+    expect(arm64Workflow.on && "pull_request" in arm64Workflow.on).toBe(false);
+    expect(arm64Workflow.on && "push" in arm64Workflow.on).toBe(false);
+  });
+
+  test("serializes physical-device mutation without cancelling an active run", () => {
+    expect(arm64Workflow.concurrency?.group).toBe("android-arm64-local-e2e");
+    expect(arm64Workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(arm64Workflow.concurrency?.queue).toBe("max");
+  });
+
+  test("requires the exact self-hosted device labels", () => {
     expect(
       requireJob(armJob, "android-arm64-local-runtime")["runs-on"],
     ).toEqual(["self-hosted", "Linux", "ARM64", "android-device"]);

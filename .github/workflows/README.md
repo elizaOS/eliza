@@ -45,13 +45,15 @@ Representative examples:
   Both jobs run the bundle-owning runners with `--output` and upload the full
   bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
   failure, without reading any repository secret.
-- `android-arm64-local-e2e.yml` is the separate weekly and dispatchable
+- `android-arm64-local-e2e.yml` is the separate weekly, schedule-only
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
   contract: the job stays queued until such a runner is online, then fails
   closed unless both the host and attached Android target pass ARM64 and pinned
   toolchain preflight. It runs local chat plus local-runtime/route WebView
-  probes; on-device voice remains separately qualified.
+  probes; on-device voice remains separately qualified. Manual arbitrary-ref
+  dispatch is intentionally unavailable because this runner persists and owns
+  a physical device.
 
 ## Manual operations
 
