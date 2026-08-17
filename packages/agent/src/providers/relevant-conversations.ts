@@ -23,6 +23,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildAccessContext,
+  ChannelType,
   embedRecallQuery,
   filterByAccessContext,
   markOwnerExclusiveDisclosureUsed,
@@ -34,7 +35,10 @@ import {
   stringToUuid,
   truncateWellFormed,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+import {
+  getValidationKeywordTerms,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -68,6 +72,25 @@ function memoryText(memory: Memory): string {
 
 function memoryCreatedAt(memory: Memory): number {
   return typeof memory.createdAt === "number" ? memory.createdAt : 0;
+}
+
+function isExactRealtimeVoiceMessage(message: Memory): boolean {
+  const content = message.content as {
+    channelType?: unknown;
+    metadata?: unknown;
+  };
+  if (content.channelType !== ChannelType.VOICE_DM) return false;
+  if (
+    typeof content.metadata !== "object" ||
+    content.metadata === null ||
+    Array.isArray(content.metadata)
+  ) {
+    return false;
+  }
+  return (
+    (content.metadata as Record<string, unknown>).clientTransport ===
+    REALTIME_VOICE_CLIENT_TRANSPORT
+  );
 }
 
 // /api/memory/remember writes lexical "hash memories" into the messages table at
@@ -181,8 +204,17 @@ export const relevantConversationsProvider: Provider = {
       // the lexical hash-memory scan overlaps the shared recall-query embed
       // and canonical semantic search instead of adding to the reply critical
       // path. Either branch still fails into the same wholesale outer degrade.
+      const realtimeVoice = isExactRealtimeVoiceMessage(message);
       const [hashMemories, semanticRecall] = await Promise.all([
-        loadHashMemories(runtime, text, accessContext),
+        // A 2,000-row lexical scan is valuable for deliberate text recall but
+        // has no bounded completion time. It measured 1.36 s on the local
+        // laptop and dominated an otherwise subsecond Cerebras voice turn.
+        // Exact realtime voice retains the canonical semantic recall lane and
+        // same-room RECENT_MESSAGES provider; only this cross-room fallback scan
+        // is removed from its latency-critical compose path.
+        realtimeVoice
+          ? Promise.resolve([])
+          : loadHashMemories(runtime, text, accessContext),
         (async (): Promise<CanonicalRecallResult | null> => {
           const embedding = await embedRecallQuery(runtime, text, {
             waitBudgetMs: RELEVANT_CONVERSATIONS_EMBED_WAIT_MS,

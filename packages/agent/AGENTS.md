@@ -92,7 +92,7 @@ Run from repo root targeting this package:
 
 ```bash
 bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to `serve`)
-bun run --cwd packages/agent dev              # bun --hot src/bin.ts
+bun run --cwd packages/agent dev              # supervised full-process restart
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # deterministic Vitest batches
 bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)

@@ -137,12 +137,14 @@ const SEMANTIC_EOT_MERGE_WINDOW_MS = 900;
 const SEMANTIC_EOT_MAX_HOLD_MS = 5_000;
 const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
 /**
- * Do not leave a conversational turn acoustically dead while the two-stage
- * Eliza response path is still working. Cartesia is prewarmed in parallel, so
- * crossing this deadline may immediately synthesize one short, truthful
- * acknowledgement without delaying or fabricating the eventual answer.
+ * Do not leave a genuinely slow conversational turn acoustically dead while
+ * the two-stage Eliza response path is still working. Normal Cerebras turns
+ * should answer directly: a 500 ms deadline made the acknowledgement race the
+ * first real token and audibly preface routine replies. Cartesia is prewarmed
+ * in parallel, so crossing this longer deadline can still synthesize one short,
+ * truthful acknowledgement without delaying the eventual answer.
  */
-const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 500;
+const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 2_500;
 const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
 /** Do not repeat the same generic acknowledgement across rapid voice turns. */
 const VOICE_GENERIC_PROGRESS_COOLDOWN_MS = 20_000;
@@ -282,11 +284,7 @@ function withAuthoritativeTtsSeparator(
   speechText: string,
   hasPriorSpeech: boolean,
 ): string {
-  if (
-    !hasPriorSpeech ||
-    !/^\s/u.test(sourceText) ||
-    /^\s/u.test(speechText)
-  ) {
+  if (!hasPriorSpeech || !/^\s/u.test(sourceText) || /^\s/u.test(speechText)) {
     return speechText;
   }
   return ` ${speechText}`;
@@ -1813,6 +1811,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (!this.firstLlmTextEmitted) {
           this.firstLlmTextEmitted = true;
           firstModelTextAt = this.now();
+          // Once authoritative answer text exists, never speak a separate
+          // progress acknowledgement. The answer may continue streaming for a
+          // while, but interleaving filler after its first visible bytes makes
+          // display and speech appear to disagree.
+          finishProgress("final");
           this.send({ t: "llm_first_text", traceId });
         }
         // Never forward an incremental fragment to synthesis. Secrets,

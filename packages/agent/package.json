@@ -30,7 +30,7 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist dist-mobile dist-mobile-ios dist-mobile-ios-jsc && node ../scripts/clean-stray-dts.mjs",
     "start": "bun run src/bin.ts",
-    "dev": "bun --hot src/bin.ts",
+    "dev": "cd ../.. && node packages/scripts/dev-agent-watch.mjs",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "gen:optional-plugin-imports": "bun run scripts/gen-optional-plugin-imports.ts",

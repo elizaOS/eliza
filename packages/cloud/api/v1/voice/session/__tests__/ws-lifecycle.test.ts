@@ -522,10 +522,7 @@ function enqueueCommittedSpeechPrefix(
 
   return {
     canonical,
-    committedChars: sources.reduce(
-      (total, source) => total + source.length,
-      0,
-    ),
+    committedChars: sources.reduce((total, source) => total + source.length, 0),
   };
 }
 
@@ -2568,6 +2565,35 @@ describe("voice-session WS lifecycle", () => {
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(client.controlTypes()).not.toContain("assistant_progress");
     expect(cartesia.sentText()).toBe("The answer is ready now.");
+  });
+
+  test("first authoritative answer text cancels filler while the stream is still open", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start answering now");
+    await controlled.ready;
+    controlled.enqueueChunk("The answer has started");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    expect(client.controlTypes()).not.toContain("assistant_progress");
+
+    controlled.enqueueChunk(" and is now complete.");
+    controlled.finish();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe(
+      "The answer has started and is now complete.",
+    );
   });
 
   test("barge-in cancels a slow-turn acknowledgement and suppresses every late answer frame", async () => {

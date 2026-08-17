@@ -366,6 +366,32 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     );
   });
 
+  it("does not put the unbounded lexical scan on the exact realtime voice critical path", async () => {
+    embedRecallQuery.mockResolvedValue(null);
+    const getMemories = vi.fn(async () => {
+      throw new Error("realtime voice must not wait for lexical recall");
+    });
+    const { runtime, searchMemories } = makeRuntime({ getMemories });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      {
+        ...makeMessage("what did we decide about the launch date"),
+        content: {
+          text: "what did we decide about the launch date",
+          channelType: "VOICE_DM",
+          metadata: { clientTransport: "realtime_voice" },
+        },
+      } as Memory,
+      EMPTY_STATE,
+    );
+
+    expect(getMemories).not.toHaveBeenCalled();
+    expect(embedRecallQuery).toHaveBeenCalledTimes(1);
+    expect(searchMemories).not.toHaveBeenCalled();
+    expect(result).toEqual({ text: "", values: {}, data: {} });
+  });
+
   it("withholds lexical hash memory without an owner-private destination", async () => {
     embedRecallQuery.mockResolvedValue(null);
     revalidateOwnerExclusiveDisclosure.mockResolvedValue({
