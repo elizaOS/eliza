@@ -128,7 +128,7 @@ export class AnonymousSessionsRepository {
         ip_address: data.ip_address,
         user_agent: data.user_agent,
         fingerprint: data.fingerprint,
-        messages_limit: data.messages_limit || 10,
+        messages_limit: data.messages_limit ?? 10,
       })
       .returning();
 
