@@ -115,6 +115,17 @@ function sendJsonErrorResponse(
   sendJsonResponse(res, status, { error: message });
 }
 
+function decodeApprovalId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — leftover tax after
+    // computer-use-routes approval-id encoding (#21326). Malformed
+    // percent-encoding is invalid client input, not a compat-router outage.
+    return null;
+  }
+}
+
 function ensureCompatSensitiveRouteAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   res: http.ServerResponse,
@@ -459,8 +470,18 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
+    const id = decodeApprovalId(approvalId);
+    if (id === null) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "Invalid approval id: malformed URL encoding",
+      );
+      return true;
+    }
+
     const resolution = service.resolveApproval(
-      decodeURIComponent(approvalId),
+      id,
       body.approved,
       typeof body.reason === "string" ? body.reason : undefined,
     );
