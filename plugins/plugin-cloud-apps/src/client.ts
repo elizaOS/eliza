@@ -404,7 +404,7 @@ export function describeAppReference(
  */
 export function appReferenceLogView(reference: string): string {
   const collapsed = reference.replace(/\s+/g, " ").trim();
-  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+  return collapsed.length > 120 ? `${collapsed.slice(0, 119)}…` : collapsed;
 }
 
 export interface ResolvedApp {
