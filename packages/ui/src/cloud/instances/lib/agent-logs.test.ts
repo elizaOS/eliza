@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AgentLogsProtocolError,
   AgentLogsTimeoutError,
+  AgentLogsUnavailableError,
   loadAgentLogs,
   parseAgentLogsJob,
   parseAgentLogsStart,
@@ -81,6 +82,60 @@ describe("agent log protocol", () => {
       kind: "complete",
       result: { logs: "", notice: "No container logs are available." },
     });
+  });
+
+  it("rejects the producer's completed agent-gone no-op as unavailable", () => {
+    expect(() =>
+      parseAgentLogsJob({
+        success: true,
+        data: {
+          type: "agent_logs",
+          status: "completed",
+          result: {
+            cloudAgentId: "agent-gone",
+            skipped: true,
+            reason: "Agent not found",
+          },
+        },
+      }),
+    ).toThrow(AgentLogsUnavailableError);
+    expect(() =>
+      parseAgentLogsJob({
+        success: true,
+        data: {
+          type: "agent_logs",
+          status: "completed",
+          result: {
+            cloudAgentId: "agent-gone",
+            skipped: true,
+            reason: "Agent not found",
+          },
+        },
+      }),
+    ).toThrow("This agent is no longer available");
+  });
+
+  it("rejects completed results without an explicit logs string", () => {
+    expect(() =>
+      parseAgentLogsJob({
+        success: true,
+        data: {
+          type: "agent_logs",
+          status: "completed",
+          result: {},
+        },
+      }),
+    ).toThrow(AgentLogsUnavailableError);
+    expect(() =>
+      parseAgentLogsJob({
+        success: true,
+        data: {
+          type: "agent_logs",
+          status: "completed",
+          result: {},
+        },
+      }),
+    ).toThrow("finished without log data");
   });
 
   it("keeps a bounded informational message well-formed at a surrogate boundary", () => {
