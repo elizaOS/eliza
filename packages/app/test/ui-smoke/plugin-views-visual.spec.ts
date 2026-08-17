@@ -186,11 +186,9 @@ test.describe("registered plugin views visual coverage", () => {
             name: /expand conversation|collapse conversation/i,
           }),
         );
-        const assistantComposer = page
-          .getByTestId("chat-composer-textarea")
-          .or(page.getByLabel("message"))
-          .or(page.getByLabel("Message Eliza"))
-          .first();
+        const assistantComposer = page.getByTestId(
+          "chat-composer-textarea",
+        );
         if ((await assistantLauncher.count()) > 0) {
           await assistantLauncher.first().click();
         }
