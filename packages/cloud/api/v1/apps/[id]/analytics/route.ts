@@ -23,7 +23,32 @@ app.get("/", async (c) => {
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
     const { searchParams } = new URL(c.req.url);
 
-    const periodType = (searchParams.get("period") || "daily") as
+    // App-analytics grain identity, not leftover tax on analytics
+    // projections periods, analytics requests view, or admin metrics
+    // timeRange. The prior `as "hourly" | "daily" | "monthly"` cast
+    // plus date_trunc fallback mapped MONTHLY / HOURLY / week onto
+    // daily buckets, so operators asking for a month of grain received
+    // days. Missing / empty still means daily. Garbage 400s before
+    // getById / getAnalytics. Date-range parsing is untouched.
+    const APP_PERIODS = ["hourly", "daily", "monthly"] as const;
+    const requestedPeriod = searchParams.get("period");
+    if (
+      requestedPeriod != null &&
+      requestedPeriod !== "" &&
+      !APP_PERIODS.includes(
+        requestedPeriod as (typeof APP_PERIODS)[number],
+      )
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_period",
+          message: 'period must be "hourly", "daily", or "monthly".',
+        },
+        400,
+      );
+    }
+    const periodType = (requestedPeriod || "daily") as
       | "hourly"
       | "daily"
       | "monthly";
