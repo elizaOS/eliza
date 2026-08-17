@@ -61,8 +61,29 @@ async function __hono_GET(
   const offset = searchParams.get("offset");
   if (offset) requestParams.offset = offset;
 
-  const txType = searchParams.get("tx_type");
-  if (txType) requestParams.tx_type = txType;
+  // Token-trade type identity, not leftover tax on market-candles
+  // OHLCV type. Unknown tokens (SWAP / buy / 1e2) used to be
+  // forwarded to the paid market-data provider.
+  const TX_TYPES = ["swap", "add", "remove", "all"] as const;
+  const requestedTxType = searchParams.get("tx_type");
+  if (
+    requestedTxType != null &&
+    requestedTxType !== "" &&
+    !TX_TYPES.includes(requestedTxType as (typeof TX_TYPES)[number])
+  ) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          error: "Invalid tx_type",
+          details:
+            "tx_type must be a canonical Birdeye trade type (swap, add, remove, all).",
+        },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+    );
+  }
+  if (requestedTxType) requestParams.tx_type = requestedTxType;
 
   const body = {
     method: "getTokenTrades",
