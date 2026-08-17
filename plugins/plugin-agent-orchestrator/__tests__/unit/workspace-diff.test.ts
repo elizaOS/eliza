@@ -3,7 +3,13 @@
  * Drives a real subprocess against a temporary git workspace; deterministic (no live model).
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,9 +17,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureBaselineDirty,
   captureBaselineSha,
+  captureBaselineUntracked,
   captureChangeSet,
+  captureWorkspacePathFingerprints,
   getWorkspaceBranch,
   parseLsFiles,
+  sanitizeWorkspacePathFingerprints,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
 } from "../../src/services/workspace-diff.ts";
@@ -42,6 +51,71 @@ describe("workspace-diff — real git capture", () => {
   it("captures the HEAD sha as baseline inside a work tree", async () => {
     const sha = await captureBaselineSha(dir);
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("captures byte/type/mode fingerprints and changes them on content or permission damage", () => {
+    writeFileSync(join(dir, "dirty.txt"), "before spawn\n");
+    chmodSync(join(dir, "dirty.txt"), 0o640);
+    const before = captureWorkspacePathFingerprints(dir, ["dirty.txt"]);
+    expect(before).toEqual([
+      expect.objectContaining({
+        path: "dirty.txt",
+        kind: "file",
+        mode: 0o640,
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    ]);
+
+    chmodSync(join(dir, "dirty.txt"), 0o600);
+    const modeChanged = captureWorkspacePathFingerprints(dir, ["dirty.txt"]);
+    expect(modeChanged[0]?.sha256).toBe(before[0]?.sha256);
+    expect(modeChanged[0]?.mode).toBe(0o600);
+    writeFileSync(join(dir, "dirty.txt"), "after spawn\n");
+    const contentChanged = captureWorkspacePathFingerprints(dir, ["dirty.txt"]);
+    expect(contentChanged[0]?.sha256).not.toBe(before[0]?.sha256);
+  });
+
+  it("captures concrete untracked files and omits unsupported or oversized fingerprint targets", async () => {
+    mkdirSync(join(dir, "notes"));
+    writeFileSync(join(dir, "notes", "old.md"), "note\n");
+    expect(await captureBaselineUntracked(dir)).toContain("notes/old.md");
+    expect(await captureBaselineUntracked(dir)).not.toContain("notes/");
+    expect(captureWorkspacePathFingerprints(dir, ["notes"])).toEqual([]);
+
+    writeFileSync(
+      join(dir, "oversized.bin"),
+      Buffer.alloc(8 * 1024 * 1024 + 1),
+    );
+    expect(captureWorkspacePathFingerprints(dir, ["oversized.bin"])).toEqual(
+      [],
+    );
+  });
+
+  it("sanitizes persisted fingerprints and rejects traversal or malformed hashes", () => {
+    expect(
+      sanitizeWorkspacePathFingerprints([
+        {
+          path: "safe.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "a".repeat(64),
+        },
+        {
+          path: "../outside.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "b".repeat(64),
+        },
+        { path: "bad.txt", kind: "file", mode: 0o644, sha256: "short" },
+      ]),
+    ).toEqual([
+      {
+        path: "safe.txt",
+        kind: "file",
+        mode: 0o644,
+        sha256: "a".repeat(64),
+      },
+    ]);
   });
 
   it("returns undefined baseline outside a git work tree", async () => {

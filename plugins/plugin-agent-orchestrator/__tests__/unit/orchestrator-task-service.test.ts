@@ -71,6 +71,7 @@ interface SpawnResult {
   agentType: string;
   workdir: string;
   status: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -94,6 +95,7 @@ class FakeAcp {
   readonly stopped: string[] = [];
   readonly stopAttempts: string[] = [];
   readonly liveSessions = new Map<string, Record<string, unknown>>();
+  spawnResultMetadata: Record<string, unknown> = {};
   failGet = false;
   failSend = false;
   failStop = false;
@@ -134,6 +136,12 @@ class FakeAcp {
       agentType: (opts.agentType as string | undefined) ?? "codex",
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
+      metadata: {
+        ...(typeof opts.metadata === "object" && opts.metadata !== null
+          ? (opts.metadata as Record<string, unknown>)
+          : {}),
+        ...this.spawnResultMetadata,
+      },
     };
     this.liveSessions.set(result.sessionId, {
       id: result.sessionId,
@@ -392,6 +400,91 @@ async function addStoredSession(
 }
 
 describe("OrchestratorTaskService — sub-agent naming", () => {
+  it("persists ACP spawn baselines and a task's explicit no-commit delivery policy", async () => {
+    const acp = new FakeAcp();
+    acp.spawnResultMetadata = {
+      codingBaselineSha: "c".repeat(40),
+      codingBaselineDirty: ["preserve-tracked.txt"],
+      codingBaselineUntracked: ["preserve-untracked.txt"],
+      codingBaselinePathFingerprints: [
+        {
+          path: "preserve-tracked.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "a".repeat(64),
+        },
+        {
+          path: "../outside.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "b".repeat(64),
+        },
+      ],
+      env: { PROVIDER_TOKEN: "test-only-must-not-persist" },
+      gitWrapperDir: "/private/transport/path",
+      providerCredential: "test-only-must-not-persist",
+    };
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(
+      createInput({
+        goal: "Implement src/stats.mjs and test/stats.test.mjs; do not commit.",
+      }),
+    );
+
+    const detail = must(
+      await service.spawnAgentForTask(task.id),
+      "expected spawn detail",
+    );
+    const metadata = must(detail.sessions[0], "session").metadata;
+
+    expect(metadata).toMatchObject({
+      codingBaselineSha: "c".repeat(40),
+      codingBaselineDirty: ["preserve-tracked.txt"],
+      codingBaselineUntracked: ["preserve-untracked.txt"],
+      codingBaselinePathFingerprints: [
+        {
+          path: "preserve-tracked.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "a".repeat(64),
+        },
+      ],
+      completionGitPolicy: "leave_uncommitted",
+    });
+    expect(metadata.env).toBeUndefined();
+    expect(metadata.gitWrapperDir).toBeUndefined();
+    expect(metadata.providerCredential).toBeUndefined();
+  });
+
+  it("does not turn a scoped or conditional commit warning into a no-commit delivery policy", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const scoped = await service.createTask(
+      createInput({ goal: "Do not commit secrets; commit the finished work." }),
+    );
+    const conditional = await service.createTask(
+      createInput({ goal: "Do not commit until tests pass; then commit." }),
+    );
+
+    const scopedDetail = must(
+      await service.spawnAgentForTask(scoped.id),
+      "scoped spawn",
+    );
+    const conditionalDetail = must(
+      await service.spawnAgentForTask(conditional.id),
+      "conditional spawn",
+    );
+
+    expect(
+      scopedDetail.sessions[0]?.metadata.completionGitPolicy,
+    ).toBeUndefined();
+    expect(
+      conditionalDetail.sessions[0]?.metadata.completionGitPolicy,
+    ).toBeUndefined();
+  });
+
   it("gives a spawned session a non-empty person-name label", async () => {
     const { service, taskId } = await withSpawnedSession();
     const session = must(
@@ -3708,6 +3801,38 @@ describe("residualsSpawnBaseline — spawn-time metadata classification", () => 
         },
       }),
     ).toEqual({ baselineUntrackedPaths: ["notes/", "scratch.txt"] });
+  });
+
+  it("parses only sanitized byte/type/mode fingerprints", () => {
+    expect(
+      residualsSpawnBaseline({
+        metadata: {
+          codingBaselinePathFingerprints: [
+            {
+              path: "safe.txt",
+              kind: "file",
+              mode: 0o644,
+              sha256: "a".repeat(64),
+            },
+            {
+              path: "../outside.txt",
+              kind: "file",
+              mode: 0o644,
+              sha256: "b".repeat(64),
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      baselinePathFingerprints: [
+        {
+          path: "safe.txt",
+          kind: "file",
+          mode: 0o644,
+          sha256: "a".repeat(64),
+        },
+      ],
+    });
   });
 
   it("classifies a route-mapped, non-isolated workdir as shared", () => {

@@ -137,6 +137,7 @@ import {
   captureBaselineDirty,
   captureBaselineSha,
   captureBaselineUntracked,
+  captureWorkspacePathFingerprints,
 } from "./workspace-diff.js";
 import {
   getSharedWorkspaceRegistry,
@@ -1949,6 +1950,10 @@ export class AcpService extends Service {
       const baselineSha = await captureBaselineSha(workdir);
       const baselineDirty = await captureBaselineDirty(workdir);
       const baselineUntracked = await captureBaselineUntracked(workdir);
+      const baselinePathFingerprints = captureWorkspacePathFingerprints(
+        workdir,
+        [...baselineDirty, ...baselineUntracked],
+      );
 
       // Give each concurrent ACP session its own copied git index so sequential
       // commits in the SAME worktree never drop another session's staged tree.
@@ -2029,6 +2034,9 @@ export class AcpService extends Service {
           : {}),
         ...(baselineSha && baselineUntracked.length > 0
           ? { codingBaselineUntracked: baselineUntracked }
+          : {}),
+        ...(baselineSha && baselinePathFingerprints.length > 0
+          ? { codingBaselinePathFingerprints: baselinePathFingerprints }
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),

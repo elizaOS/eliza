@@ -7,22 +7,35 @@
  * the canonical empty-tree hash so the whole working tree reads as added.
  */
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readlinkSync,
+  readSync,
   rmSync,
+  type Stats,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
 const MAX_DIFF_CHARS = 6_000;
 const MAX_CHANGED_FILES = 60;
 const MAX_FILE_DIFFS = 12;
+const MAX_BASELINE_FINGERPRINTS = 1_000;
+const HASH_CHUNK_BYTES = 64 * 1024;
+const MAX_BASELINE_FINGERPRINT_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_BASELINE_FINGERPRINT_TOTAL_BYTES = 32 * 1024 * 1024;
 
 // The canonical git empty-tree object hash. On an unborn HEAD (a fresh repo
 // with zero commits), `git diff HEAD` throws because HEAD resolves to nothing;
@@ -49,6 +62,198 @@ export interface WorkspaceChangeSet {
   diff: string;
   truncated: boolean;
   capturedAt: number;
+}
+
+/** Sanitized spawn-time identity for one already-dirty workspace path. Only
+ * the relative path, filesystem kind, and SHA-256 digest are persisted; file
+ * bytes, environment values, and provider/session credentials never enter the
+ * task store. Unsupported path kinds are omitted and therefore fail closed at
+ * completion (they cannot receive a baseline exemption). */
+export interface WorkspacePathFingerprint {
+  path: string;
+  kind: "file" | "symlink" | "missing";
+  /** POSIX permission bits only; file-type bits live in `kind`. */
+  mode: number;
+  sha256: string;
+}
+
+function safeWorkspacePath(workdir: string, path: string): string | undefined {
+  if (!path || path.includes("\0") || isAbsolute(path)) return undefined;
+  const root = resolve(workdir);
+  const absolutePath = resolve(root, path);
+  const relativePath = relative(root, absolutePath);
+  if (
+    !relativePath ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    return undefined;
+  }
+  return absolutePath;
+}
+
+function sameFileState(left: Stats, right: Stats): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeMs === right.mtimeMs &&
+    right.isFile()
+  );
+}
+
+/** Hash a regular file without following a swap-to-symlink race. The lstat,
+ * O_NOFOLLOW open, and before/after fstat checks must all describe the same
+ * immutable-size/mtime inode; otherwise the path receives no exemption. */
+function hashFile(path: string, initialState: Stats): string | undefined {
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(HASH_CHUNK_BYTES);
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    if (!sameFileState(initialState, fstatSync(fd))) return undefined;
+    let bytesRead = 0;
+    let totalRead = 0;
+    do {
+      bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) {
+        totalRead += bytesRead;
+        hash.update(buffer.subarray(0, bytesRead));
+      }
+    } while (bytesRead > 0);
+    if (
+      totalRead !== initialState.size ||
+      !sameFileState(initialState, fstatSync(fd))
+    ) {
+      return undefined;
+    }
+    return hash.digest("hex");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function fingerprintWorkspacePath(
+  workdir: string,
+  path: string,
+  remainingHashBytes: number,
+): { fingerprint: WorkspacePathFingerprint; bytesHashed: number } | undefined {
+  const absolutePath = safeWorkspacePath(workdir, path);
+  if (!absolutePath) return undefined;
+  try {
+    const stat = lstatSync(absolutePath);
+    if (stat.isFile()) {
+      if (
+        stat.size > MAX_BASELINE_FINGERPRINT_FILE_BYTES ||
+        stat.size > remainingHashBytes
+      ) {
+        return undefined;
+      }
+      const sha256 = hashFile(absolutePath, stat);
+      return sha256
+        ? {
+            fingerprint: {
+              path,
+              kind: "file",
+              mode: stat.mode & 0o777,
+              sha256,
+            },
+            bytesHashed: stat.size,
+          }
+        : undefined;
+    }
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(absolutePath);
+      if (Buffer.byteLength(target) > remainingHashBytes) return undefined;
+      return {
+        fingerprint: {
+          path,
+          kind: "symlink",
+          mode: stat.mode & 0o777,
+          sha256: createHash("sha256").update(target).digest("hex"),
+        },
+        bytesHashed: Buffer.byteLength(target),
+      };
+    }
+    return undefined;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return {
+        fingerprint: {
+          path,
+          kind: "missing",
+          mode: 0,
+          sha256: createHash("sha256").update("").digest("hex"),
+        },
+        bytesHashed: 0,
+      };
+    }
+    return undefined;
+  }
+}
+
+/** Capture bounded, content-sensitive identities for dirty paths before the
+ * child starts. A path that cannot be fingerprinted is intentionally omitted:
+ * completion then refuses to exempt it based on a path name alone. */
+export function captureWorkspacePathFingerprints(
+  workdir: string,
+  paths: readonly string[],
+): WorkspacePathFingerprint[] {
+  const fingerprints: WorkspacePathFingerprint[] = [];
+  let remainingHashBytes = MAX_BASELINE_FINGERPRINT_TOTAL_BYTES;
+  for (const path of [...new Set(paths)].slice(0, MAX_BASELINE_FINGERPRINTS)) {
+    const captured = fingerprintWorkspacePath(
+      workdir,
+      path,
+      remainingHashBytes,
+    );
+    if (!captured) continue;
+    fingerprints.push(captured.fingerprint);
+    remainingHashBytes -= captured.bytesHashed;
+  }
+  return fingerprints;
+}
+
+/** Structural boundary for persisted fingerprint metadata. Malformed hashes,
+ * absolute/escaping paths, duplicates, and unsupported kinds are discarded. */
+export function sanitizeWorkspacePathFingerprints(
+  value: unknown,
+): WorkspacePathFingerprint[] {
+  if (!Array.isArray(value)) return [];
+  const fingerprints: WorkspacePathFingerprint[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.slice(0, MAX_BASELINE_FINGERPRINTS)) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    const path = record.path;
+    const kind = record.kind;
+    const mode = record.mode;
+    const sha256 = record.sha256;
+    if (
+      typeof path !== "string" ||
+      !path ||
+      path.includes("\0") ||
+      isAbsolute(path) ||
+      path.split(/[\\/]/).includes("..") ||
+      seen.has(path) ||
+      (kind !== "file" && kind !== "symlink" && kind !== "missing") ||
+      typeof mode !== "number" ||
+      !Number.isInteger(mode) ||
+      mode < 0 ||
+      mode > 0o777 ||
+      typeof sha256 !== "string" ||
+      !/^[0-9a-f]{64}$/.test(sha256)
+    ) {
+      continue;
+    }
+    seen.add(path);
+    fingerprints.push({ path, kind, mode, sha256 });
+  }
+  return fingerprints;
 }
 
 /** Disk-level verification for one path the sub-agent claims changed. */
@@ -159,18 +364,20 @@ export async function captureBaselineDirty(workdir: string): Promise<string[]> {
 }
 
 /**
- * Untracked paths already present in the workspace at spawn time, in the same
- * collapsed representation `git status --porcelain` reports them (`dir/` for a
- * wholly-untracked directory). A lived-in workdir (a home-dir cwd, a shared
- * checkout) carries untracked files no sub-agent created; without this
- * baseline the completion-residuals gate counts them as this run's leftover
- * work and blocks every completion there forever.
+ * Untracked files already present in the workspace at spawn time. All-files
+ * porcelain avoids collapsing a directory to `dir/`, so each persisted path
+ * can receive its own byte fingerprint and a new sibling cannot inherit the
+ * exemption. A lived-in workdir carries untracked files no sub-agent created;
+ * without this baseline the completion-residuals gate blocks forever.
  */
 export async function captureBaselineUntracked(
   workdir: string,
 ): Promise<string[]> {
   if (!(await isWorkTree(workdir))) return [];
-  return ((await git(workdir, ["status", "--porcelain"])) ?? "")
+  return (
+    (await git(workdir, ["status", "--porcelain", "--untracked-files=all"])) ??
+    ""
+  )
     .split("\n")
     .filter((line) => line.startsWith("?? "))
     .map((line) => line.slice(3).trim())

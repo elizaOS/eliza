@@ -229,7 +229,11 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
-import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import {
+  captureChangeSet,
+  sanitizeWorkspacePathFingerprints,
+  type WorkspaceChangeSet,
+} from "./workspace-diff.js";
 import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
@@ -371,6 +375,18 @@ const TERMINAL_SESSION_REAP_ATTEMPT_TIMEOUT_MS = 10_000;
 /** Failed attempts back off across periodic scans, while startup/manual scans
  * may force an immediate retry after a transport repair. */
 const TERMINAL_SESSION_REAP_MAX_BACKOFF_MS = 5 * 60_000;
+
+/** Spawn-stamped delivery policy consumed by the deterministic residuals gate.
+ * The child cannot write task-store session metadata, so this remains an
+ * orchestrator-owned contract rather than a self-declared completion bypass. */
+const COMPLETION_GIT_POLICY_METADATA_KEY = "completionGitPolicy";
+const LEAVE_UNCOMMITTED_GIT_POLICY = "leave_uncommitted";
+
+/** Explicit whole-delivery no-commit instructions. The punctuation/end guard
+ * deliberately rejects narrower prose such as "do not commit secrets" and
+ * conditional prose such as "do not commit until tests pass". */
+const NO_COMMIT_DELIVERY_DIRECTIVE =
+  /\b(?:do not|don't|must not)\s+(?:create\s+(?:a\s+)?commit|commit(?:\s+(?:the|these|those|any|your|our)\s+(?:changes?|work))?)(?=\s*(?:[.!;,)]|$))|\b(?:leave|keep)\s+(?:the\s+|these\s+|those\s+|your\s+|all\s+)?changes?\s+uncommitted\b|\bwithout\s+(?:creating\s+(?:a\s+)?commit|committing)\b/i;
 
 interface TerminalSessionTeardownMarker {
   version: 1;
@@ -748,6 +764,84 @@ function str(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** Convert an explicit user delivery instruction into structured spawn
+ * metadata. Free-form text is examined once at the trusted orchestration
+ * boundary; completion checks consume only the stamped policy. */
+function requestedCompletionGitPolicy(
+  ...instructions: Array<string | undefined>
+): typeof LEAVE_UNCOMMITTED_GIT_POLICY | undefined {
+  return instructions.some(
+    (instruction) =>
+      typeof instruction === "string" &&
+      NO_COMMIT_DELIVERY_DIRECTIVE.test(instruction),
+  )
+    ? LEAVE_UNCOMMITTED_GIT_POLICY
+    : undefined;
+}
+
+function sessionAllowsUncommittedDelivery(
+  session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
+): boolean {
+  return (
+    session?.metadata?.[COMPLETION_GIT_POLICY_METADATA_KEY] ===
+    LEAVE_UNCOMMITTED_GIT_POLICY
+  );
+}
+
+/** Persist only the trusted ACP metadata the task residual/change-set paths
+ * consume. ACP session metadata also contains local git-wrapper paths and
+ * transport internals that do not belong on the public task detail DTO. */
+function taskSessionValidationMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!metadata) return {};
+  const baselineDirty = Array.isArray(metadata.codingBaselineDirty)
+    ? metadata.codingBaselineDirty.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : [];
+  const baselineUntracked = Array.isArray(metadata.codingBaselineUntracked)
+    ? metadata.codingBaselineUntracked.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : [];
+  const ownedArtifacts = readOwnedArtifactsFromMetadata(metadata);
+  const baselinePathFingerprints = sanitizeWorkspacePathFingerprints(
+    metadata.codingBaselinePathFingerprints,
+  );
+  return {
+    ...(typeof metadata.codingBaselineSha === "string" &&
+    /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(metadata.codingBaselineSha)
+      ? { codingBaselineSha: metadata.codingBaselineSha }
+      : {}),
+    ...(baselineDirty.length > 0 ? { codingBaselineDirty: baselineDirty } : {}),
+    ...(baselineUntracked.length > 0
+      ? { codingBaselineUntracked: baselineUntracked }
+      : {}),
+    ...(baselinePathFingerprints.length > 0
+      ? { codingBaselinePathFingerprints: baselinePathFingerprints }
+      : {}),
+    ...(metadata[COMPLETION_GIT_POLICY_METADATA_KEY] ===
+    LEAVE_UNCOMMITTED_GIT_POLICY
+      ? {
+          [COMPLETION_GIT_POLICY_METADATA_KEY]: LEAVE_UNCOMMITTED_GIT_POLICY,
+        }
+      : {}),
+    ...(typeof metadata.workdirRouteId === "string" &&
+    metadata.workdirRouteId.trim().length > 0
+      ? { workdirRouteId: metadata.workdirRouteId }
+      : {}),
+    ...(metadata[ACP_METADATA_ISOLATED_WORKDIR] === true
+      ? { [ACP_METADATA_ISOLATED_WORKDIR]: true }
+      : {}),
+    ...(ownedArtifacts.length > 0
+      ? {
+          [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: ownedArtifacts,
+        }
+      : {}),
+  };
+}
+
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -885,8 +979,9 @@ export function residualsOrchestratorOwnedArtifacts(
  * (`AcpService.spawnSession` / the TASKS spawn path), never worker-writable.
  * `codingBaselineDirty` (tracked files already dirty at spawn) and
  * `codingBaselineUntracked` (untracked paths already present at spawn) become
- * the gate's pre-existing-churn baselines; a `workdirRouteId` on a NON-isolated
- * session marks a shared route-mapped app checkout
+ * the gate's pre-existing-churn path baselines, while
+ * `codingBaselinePathFingerprints` proves those bytes remain unchanged; a
+ * `workdirRouteId` on a NON-isolated session marks a shared route-mapped checkout
  * (`TASK_AGENT_WORKDIR_ROUTES`, e.g. agent-home) whose git state is shared
  * across tasks and must not block every completion there. Absent/foreign
  * metadata contributes nothing — prior behavior is unchanged. Exported for
@@ -895,10 +990,19 @@ export function residualsSpawnBaseline(
   session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
 ): Pick<
   CompletionResidualsInput,
-  "baselineDirtyPaths" | "baselineUntrackedPaths" | "sharedRouteWorkdir"
+  | "baselineDirtyPaths"
+  | "baselineSha"
+  | "baselineUntrackedPaths"
+  | "baselinePathFingerprints"
+  | "sharedRouteWorkdir"
 > {
   const meta = session?.metadata;
   if (!isRecord(meta)) return {};
+  const baselineSha =
+    typeof meta.codingBaselineSha === "string" &&
+    /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(meta.codingBaselineSha)
+      ? meta.codingBaselineSha
+      : undefined;
   const baselineDirtyPaths = Array.isArray(meta.codingBaselineDirty)
     ? meta.codingBaselineDirty.filter(
         (path): path is string => typeof path === "string" && path.length > 0,
@@ -909,13 +1013,20 @@ export function residualsSpawnBaseline(
         (path): path is string => typeof path === "string" && path.length > 0,
       )
     : [];
+  const baselinePathFingerprints = sanitizeWorkspacePathFingerprints(
+    meta.codingBaselinePathFingerprints,
+  );
   const sharedRouteWorkdir =
     typeof meta.workdirRouteId === "string" &&
     meta.workdirRouteId.trim().length > 0 &&
     meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
   return {
+    ...(baselineSha ? { baselineSha } : {}),
     ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
     ...(baselineUntrackedPaths.length > 0 ? { baselineUntrackedPaths } : {}),
+    ...(baselinePathFingerprints.length > 0
+      ? { baselinePathFingerprints }
+      : {}),
     ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
   };
 }
@@ -3824,6 +3935,15 @@ export class OrchestratorTaskService extends Service {
     }
     const workspaceSession = latestWorkspaceSession(doc);
     const acp = this.acp();
+    const allowedUncommittedPaths =
+      workspaceSession && sessionAllowsUncommittedDelivery(workspaceSession)
+        ? (
+            await this.resolveCompletionChangeSet(
+              workspaceSession.sessionId,
+              doc,
+            )
+          )?.changedFiles
+        : undefined;
     let residuals = residualsGateEnabled()
       ? await collectCompletionResiduals({
           workdir: workspaceSession?.workdir,
@@ -3833,6 +3953,12 @@ export class OrchestratorTaskService extends Service {
             workspaceSession,
           ),
           ...residualsSpawnBaseline(workspaceSession),
+          ...(allowedUncommittedPaths && allowedUncommittedPaths.length > 0
+            ? { allowedUncommittedPaths }
+            : {}),
+          ...(sessionAllowsUncommittedDelivery(workspaceSession)
+            ? { gitDeliveryPolicy: LEAVE_UNCOMMITTED_GIT_POLICY }
+            : {}),
           ...envelopeResidualLegs(doc.task.metadata),
         })
       : undefined;
@@ -4569,6 +4695,12 @@ export class OrchestratorTaskService extends Service {
           (session) => session.sessionId === sessionId,
         );
         const acp = this.acp();
+        const allowedUncommittedPaths = sessionAllowsUncommittedDelivery(
+          reportingSession,
+        )
+          ? (await this.resolveCompletionChangeSet(sessionId, doc))
+              ?.changedFiles
+          : undefined;
         const residuals = await collectCompletionResiduals({
           workdir: reportingSession?.workdir,
           repoExpected: residualsRepoExpected(doc, reportingSession),
@@ -4577,6 +4709,12 @@ export class OrchestratorTaskService extends Service {
             reportingSession,
           ),
           ...residualsSpawnBaseline(reportingSession),
+          ...(allowedUncommittedPaths && allowedUncommittedPaths.length > 0
+            ? { allowedUncommittedPaths }
+            : {}),
+          ...(sessionAllowsUncommittedDelivery(reportingSession)
+            ? { gitDeliveryPolicy: LEAVE_UNCOMMITTED_GIT_POLICY }
+            : {}),
           ...(parse.present && parse.ok
             ? {
                 testResults: parse.envelope.testResults,
@@ -6066,6 +6204,16 @@ export class OrchestratorTaskService extends Service {
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
+          ...(requestedCompletionGitPolicy(
+            opts.task,
+            doc.task.originalRequest,
+            doc.task.goal,
+          )
+            ? {
+                [COMPLETION_GIT_POLICY_METADATA_KEY]:
+                  LEAVE_UNCOMMITTED_GIT_POLICY,
+              }
+            : {}),
         },
       });
     } catch (err) {
@@ -6106,8 +6254,6 @@ export class OrchestratorTaskService extends Service {
       | Record<string, unknown>
       | undefined;
     const account = accountMetaFromSessionMetadata(resultMetadata);
-    const orchestratorOwnedArtifacts =
-      readOwnedArtifactsFromMetadata(resultMetadata);
     const ts = nowIso();
     const session: OrchestratorTaskSession = {
       id: randomUUID(),
@@ -6153,13 +6299,11 @@ export class OrchestratorTaskService extends Service {
       ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
         ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
         : {}),
-      metadata:
-        orchestratorOwnedArtifacts.length > 0
-          ? {
-              [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
-                orchestratorOwnedArtifacts,
-            }
-          : {},
+      // ACP adds the validation baselines after receiving caller metadata.
+      // Persist their narrow public subset: retaining only owned artifacts
+      // loses the residual gate's baseline, while retaining the whole bag
+      // would expose local transport/git-wrapper internals on the task DTO.
+      metadata: taskSessionValidationMetadata(resultMetadata),
       createdAt: ts,
       updatedAt: ts,
     };

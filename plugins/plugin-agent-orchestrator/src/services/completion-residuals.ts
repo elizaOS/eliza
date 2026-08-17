@@ -28,6 +28,11 @@ import {
   type OrchestratorOwnedArtifact,
   ownedArtifactStillMatches,
 } from "./orchestrator-artifact-ownership.js";
+import {
+  captureWorkspacePathFingerprints,
+  sanitizeWorkspacePathFingerprints,
+  type WorkspacePathFingerprint,
+} from "./workspace-diff.js";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -53,6 +58,8 @@ export function residualsGateEnabled(): boolean {
 }
 
 export type CompletionResidualKind =
+  | "baseline_integrity_changed"
+  | "history_changed"
   | "uncommitted_changes"
   | "unpushed_commits"
   | "failing_tests_reported";
@@ -102,6 +109,8 @@ export interface CompletionResidualsResult {
    * to this run. Rides the persisted snapshot so the exemption is auditable,
    * never a silent pass. */
   gitLegsSkipped?: "shared_route_workdir";
+  /** Spawn-stamped delivery policy that affected the git legs/correction. */
+  gitDeliveryPolicy?: "leave_uncommitted";
   workdir?: string;
   checkedAt: number;
 }
@@ -127,21 +136,34 @@ export interface CompletionResidualsInput {
   repoExpected: boolean;
   /** Paths already dirty when the reporting session spawned (session metadata
    * `codingBaselineDirty`, captured by `AcpService.spawnSession` as
-   * `git diff --name-only HEAD`). The uncommitted-changes leg subtracts them:
-   * pre-existing churn was not produced by this run. Tracked modifications
-   * only — untracked exemptions come from `baselineUntrackedPaths`. */
+   * `git diff --name-only HEAD`). A path is exempt only when its spawn-time
+   * fingerprint still matches; a later edit/deletion is this run's damage.
+   * Tracked modifications only — untracked exemptions come from
+   * `baselineUntrackedPaths`. */
   baselineDirtyPaths?: readonly string[];
+  /** Git HEAD captured before the child starts. Under `leave_uncommitted`, any
+   * different completion-time HEAD is a contract violation even when the
+   * repository has no upstream. */
+  baselineSha?: string;
   /** Untracked paths already present when the reporting session spawned
    * (session metadata `codingBaselineUntracked`, captured by
    * `AcpService.spawnSession` from `git status --porcelain` `??` lines). A
    * lived-in workdir (a home-dir cwd, a shared checkout) carries untracked
    * files no sub-agent created; without this baseline they read as this run's
-   * leftover work and block every completion there forever. Only paths present
-   * at spawn are exempt — an untracked path that APPEARS after spawn is
-   * genuinely new work and still counts. Caveat: git collapses a
-   * wholly-untracked directory to one `dir/` line, so new files inside a
-   * directory that was already untracked at spawn ride its exemption. */
+   * leftover work and block every completion there forever. Only paths whose
+   * fingerprints still match are exempt — a new or mutated file still counts. */
   baselineUntrackedPaths?: readonly string[];
+  /** Sanitized SHA-256/type identities for every exemptible baseline path.
+   * Missing or malformed fingerprints fail closed: path names alone never
+   * prove that pre-existing dirty bytes were preserved. */
+  baselinePathFingerprints?: readonly WorkspacePathFingerprint[];
+  /** Run-produced paths that may intentionally remain uncommitted. This is a
+   * narrow path allowlist, not a whole-worktree bypass: callers populate it
+   * only from the session-scoped workspace change set when the spawn
+   * carries an orchestrator-stamped `leave_uncommitted` delivery policy. */
+  allowedUncommittedPaths?: readonly string[];
+  /** Structured user delivery policy stamped by the orchestrator at spawn. */
+  gitDeliveryPolicy?: "leave_uncommitted";
   /** True when the session ran in a SHARED, route-mapped app checkout
    * (`TASK_AGENT_WORKDIR_ROUTES`) rather than a task-provisioned workspace.
    * A shared checkout carries dirt and unpushed commits from before the run
@@ -225,12 +247,22 @@ function ownedArtifactsByPath(
 function isBaselineDirtyLine(
   line: string,
   baselineDirtyPaths: ReadonlySet<string>,
+  expectedFingerprints: ReadonlyMap<string, WorkspacePathFingerprint>,
+  currentFingerprints: ReadonlyMap<string, WorkspacePathFingerprint>,
 ): boolean {
   if (baselineDirtyPaths.size === 0) return false;
   if (line.startsWith("?? ")) return false;
   const paths = porcelainPaths(line);
   return (
-    paths.length > 0 && paths.every((path) => baselineDirtyPaths.has(path))
+    paths.length > 0 &&
+    paths.every(
+      (path) =>
+        baselineDirtyPaths.has(path) &&
+        workspaceFingerprintMatches(
+          expectedFingerprints.get(path),
+          currentFingerprints.get(path),
+        ),
+    )
   );
 }
 
@@ -241,12 +273,76 @@ function isBaselineDirtyLine(
 function isBaselineUntrackedLine(
   line: string,
   baselineUntrackedPaths: ReadonlySet<string>,
+  expectedFingerprints: ReadonlyMap<string, WorkspacePathFingerprint>,
+  currentFingerprints: ReadonlyMap<string, WorkspacePathFingerprint>,
 ): boolean {
   if (baselineUntrackedPaths.size === 0) return false;
   if (!line.startsWith("?? ")) return false;
   const paths = porcelainPaths(line);
   return (
-    paths.length > 0 && paths.every((path) => baselineUntrackedPaths.has(path))
+    paths.length > 0 &&
+    paths.every(
+      (path) =>
+        baselineUntrackedPaths.has(path) &&
+        workspaceFingerprintMatches(
+          expectedFingerprints.get(path),
+          currentFingerprints.get(path),
+        ),
+    )
+  );
+}
+
+function workspaceFingerprintMatches(
+  expected: WorkspacePathFingerprint | undefined,
+  current: WorkspacePathFingerprint | undefined,
+): boolean {
+  return Boolean(
+    expected &&
+      current &&
+      expected.path === current.path &&
+      expected.kind === current.kind &&
+      expected.mode === current.mode &&
+      expected.sha256 === current.sha256,
+  );
+}
+
+function describeBaselineIntegrityFailure(
+  path: string,
+  expected: WorkspacePathFingerprint | undefined,
+  current: WorkspacePathFingerprint | undefined,
+): string | undefined {
+  if (!expected) return `${path} (spawn fingerprint unavailable)`;
+  if (workspaceFingerprintMatches(expected, current)) return undefined;
+  if (!current) return `${path} (current state unreadable or unsupported)`;
+  if (expected.kind !== "missing" && current.kind === "missing") {
+    return `${path} (deleted after spawn)`;
+  }
+  if (expected.kind !== current.kind) {
+    return `${path} (path type changed after spawn)`;
+  }
+  if (expected.mode !== current.mode) {
+    return `${path} (permissions changed after spawn)`;
+  }
+  return `${path} (contents changed after spawn)`;
+}
+
+/** Whether every path on a porcelain line is an explicitly permitted output
+ * of this session. Git's all-files status mode makes untracked paths concrete
+ * files rather than collapsed directories, so an allowed `src/a.ts` cannot
+ * accidentally exempt an unrelated `src/secret.txt`. */
+function isAllowedUncommittedLine(
+  line: string,
+  allowedUncommittedPaths: ReadonlySet<string>,
+  protectedBaselinePaths: ReadonlySet<string>,
+): boolean {
+  if (allowedUncommittedPaths.size === 0) return false;
+  const paths = porcelainPaths(line);
+  return (
+    paths.length > 0 &&
+    paths.every(
+      (path) =>
+        !protectedBaselinePaths.has(path) && allowedUncommittedPaths.has(path),
+    )
   );
 }
 
@@ -301,6 +397,9 @@ export async function collectCompletionResiduals(
     residuals,
     ...(disclosedRisks.length > 0 ? { disclosedRisks } : {}),
     ...(workdir !== undefined ? { workdir } : {}),
+    ...(input.gitDeliveryPolicy === "leave_uncommitted"
+      ? { gitDeliveryPolicy: input.gitDeliveryPolicy }
+      : {}),
     checkedAt,
   };
   const unverifiable = (
@@ -406,7 +505,11 @@ export async function collectCompletionResiduals(
     // the persisted snapshot so the skip is visible, never a silent pass.
     gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    const status = runGit(workdir, [
+      "status",
+      "--porcelain",
+      "--untracked-files=all",
+    ]);
     if (!status.ok) {
       return unverifiable(
         "git_failed",
@@ -427,10 +530,60 @@ export async function collectCompletionResiduals(
         .map((path) => path.trim())
         .filter((path) => path.length > 0),
     );
+    const allowedUncommittedPaths = new Set(
+      (input.allowedUncommittedPaths ?? [])
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0),
+    );
+    const baselinePathFingerprints = sanitizeWorkspacePathFingerprints(
+      input.baselinePathFingerprints,
+    );
+    const expectedFingerprints = new Map(
+      baselinePathFingerprints.map((fingerprint) => [
+        fingerprint.path,
+        fingerprint,
+      ]),
+    );
+    const currentFingerprints = new Map(
+      captureWorkspacePathFingerprints(
+        workdir,
+        baselinePathFingerprints.map((fingerprint) => fingerprint.path),
+      ).map((fingerprint) => [fingerprint.path, fingerprint]),
+    );
+    const protectedBaselinePaths = new Set([
+      ...baselineDirtyPaths,
+      ...baselineUntrackedPaths,
+    ]);
+    const baselineIntegrityItems: string[] = [];
+    const damagedBaselinePaths = new Set<string>();
+    for (const path of protectedBaselinePaths) {
+      const failure = describeBaselineIntegrityFailure(
+        path,
+        expectedFingerprints.get(path),
+        currentFingerprints.get(path),
+      );
+      if (!failure) continue;
+      damagedBaselinePaths.add(path);
+      baselineIntegrityItems.push(failure);
+    }
+    if (baselineIntegrityItems.length > 0) {
+      residuals.push({
+        kind: "baseline_integrity_changed",
+        detail: `${baselineIntegrityItems.length} pre-existing dirty path(s) changed or could not be verified`,
+        items: cap(baselineIntegrityItems),
+      });
+    }
     const dirty = status.stdout
       .split("\n")
       .map((line) => line.trimEnd())
       .filter((line) => line.length > 0)
+      // Baseline-integrity failures have a dedicated, more actionable
+      // residual. Drop matching porcelain lines here so each damaged path is
+      // reported once, including paths whose deletion emits no status line.
+      .filter(
+        (line) =>
+          !porcelainPaths(line).some((path) => damagedBaselinePaths.has(path)),
+      )
       .filter(
         (line) =>
           !isOrchestratorOwnedDirtyLine(
@@ -439,8 +592,32 @@ export async function collectCompletionResiduals(
             orchestratorOwnedArtifacts,
           ),
       )
-      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths))
-      .filter((line) => !isBaselineUntrackedLine(line, baselineUntrackedPaths));
+      .filter(
+        (line) =>
+          !isBaselineDirtyLine(
+            line,
+            baselineDirtyPaths,
+            expectedFingerprints,
+            currentFingerprints,
+          ),
+      )
+      .filter(
+        (line) =>
+          !isBaselineUntrackedLine(
+            line,
+            baselineUntrackedPaths,
+            expectedFingerprints,
+            currentFingerprints,
+          ),
+      )
+      .filter(
+        (line) =>
+          !isAllowedUncommittedLine(
+            line,
+            allowedUncommittedPaths,
+            protectedBaselinePaths,
+          ),
+      );
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",
@@ -451,16 +628,47 @@ export async function collectCompletionResiduals(
       });
     }
 
+    if (input.gitDeliveryPolicy === "leave_uncommitted") {
+      const baselineSha = input.baselineSha?.trim();
+      const baselineShaValid = Boolean(
+        baselineSha && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(baselineSha),
+      );
+      const currentHead = runGit(workdir, ["rev-parse", "HEAD"]);
+      const currentSha = currentHead.ok ? currentHead.stdout.trim() : undefined;
+      if (
+        (baselineShaValid && currentSha !== baselineSha) ||
+        (!baselineShaValid && currentSha !== undefined)
+      ) {
+        residuals.push({
+          kind: "history_changed",
+          detail: baselineShaValid
+            ? "workspace HEAD differs from the spawn HEAD under the leave-uncommitted contract"
+            : "workspace has a commit but no valid spawn HEAD was captured under the leave-uncommitted contract",
+          items: cap(
+            [
+              baselineShaValid ? `spawn HEAD: ${baselineSha}` : undefined,
+              currentSha
+                ? `current HEAD: ${currentSha}`
+                : "current HEAD: unborn",
+            ].filter((item): item is string => item !== undefined),
+          ),
+        });
+      }
+    }
+
     // The upstream leg only applies when an upstream is configured: a local
     // throwaway repo (or a detached/unborn HEAD) legitimately has nothing to
     // push, and treating that as a residual would block every scratch task.
-    const upstream = runGit(workdir, [
-      "rev-parse",
-      "--abbrev-ref",
-      "--symbolic-full-name",
-      "@{u}",
-    ]);
-    if (upstream.ok) {
+    const upstream =
+      input.gitDeliveryPolicy === "leave_uncommitted"
+        ? undefined
+        : runGit(workdir, [
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{u}",
+          ]);
+    if (upstream?.ok) {
       const unpushed = runGit(workdir, ["rev-list", "@{u}..HEAD"]);
       if (!unpushed.ok) {
         return unverifiable(
@@ -531,12 +739,26 @@ export function residualsCorrection(result: CompletionResidualsResult): string {
     switch (residual.kind) {
       case "uncommitted_changes":
         lines.push(
-          `- Uncommitted changes remain (${residual.detail}). Commit (or intentionally discard) every leftover path:`,
+          result.gitDeliveryPolicy === "leave_uncommitted"
+            ? `- Unexpected workspace paths remain outside the permitted task outputs (${residual.detail}). Remove only paths this session can prove it created; otherwise stop and ask the user for authoritative recovery:`
+            : `- Uncommitted changes remain (${residual.detail}). Commit (or intentionally discard) every leftover path:`,
+        );
+        break;
+      case "baseline_integrity_changed":
+        lines.push(
+          `- Pre-existing dirty workspace paths changed after this session spawned (${residual.detail}). Do not commit, discard, or guess at the user's prior bytes; restore only from an authoritative snapshot, or stop and ask for recovery:`,
+        );
+        break;
+      case "history_changed":
+        lines.push(
+          `- Repository history changed despite the task's leave-uncommitted delivery contract (${residual.detail}). Stop and ask the user for authoritative recovery; do not alter history or contact any remote:`,
         );
         break;
       case "unpushed_commits":
         lines.push(
-          `- Local commits are not pushed (${residual.detail}). Push your branch to its upstream:`,
+          result.gitDeliveryPolicy === "leave_uncommitted"
+            ? `- Repository history changed despite the task's leave-uncommitted delivery contract (${residual.detail}). Stop and ask the user for authoritative recovery; do not alter history or contact any remote:`
+            : `- Local commits are not pushed (${residual.detail}). Push your branch to its upstream:`,
         );
         break;
       case "failing_tests_reported":
