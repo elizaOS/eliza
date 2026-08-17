@@ -61,6 +61,13 @@ describe("Android device-e2e host-agent contract", () => {
     );
   });
 
+  it("bounds the complete route sweep without selecting unrelated device suites", () => {
+    expect(runner).toContain('"test/android/route-coverage.android.spec.ts"');
+    expect(runner).toContain('"test/android/console-sweep.android.spec.ts"');
+    expect(runner).toContain("{ timeoutMs: 20 * 60_000 }");
+    expect(runner).not.toContain('"stage Android voice models"');
+  });
+
   it("owns the image decoder imported by the Android route suite", () => {
     expect(appPackage.devDependencies.pngjs).toBe("^7.0.0");
     expect(appPackage.devDependencies["@types/pngjs"]).toBe("^6.0.5");

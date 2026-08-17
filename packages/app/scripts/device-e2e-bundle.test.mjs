@@ -569,6 +569,31 @@ describe("device-e2e bundle assembly", () => {
     ).toContain("nope");
   });
 
+  it("bounds bundled commands and records a precise timeout failure", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "android",
+      outputDir: path.join(root, "bundle"),
+    });
+
+    expect(() =>
+      runBundledCommand(
+        bundle,
+        "bounded command",
+        process.execPath,
+        ["-e", "setInterval(() => {}, 1_000)"],
+        { cwd: root, timeoutMs: 50 },
+      ),
+    ).toThrow(/timed out after 50ms/);
+
+    expect(bundle.steps[0]).toMatchObject({
+      name: "bounded command",
+      status: "failed",
+      error: expect.stringContaining("timed out after 50ms"),
+    });
+  });
+
   it("records an unhandled runner failure as a failed junit step", () => {
     const root = tempRoot();
     const bundle = createDeviceE2eBundle({

@@ -394,7 +394,7 @@ export function runBundledCommand(
   name,
   cmd,
   args,
-  { cwd, env = {}, onFailure } = {},
+  { cwd, env = {}, onFailure, timeoutMs } = {},
 ) {
   const step = startBundleStep(bundle, name);
   const result = spawnSync(cmd, args, {
@@ -402,6 +402,7 @@ export function runBundledCommand(
     env: { ...process.env, ...env },
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
+    timeout: timeoutMs,
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
@@ -414,23 +415,17 @@ export function runBundledCommand(
     appendRunnerLog(bundle, stderr);
   }
   const ok = result.status === 0;
-  const failure = ok
-    ? null
-    : `${cmd} ${args.join(" ")} ${
-        result.status === null
-          ? "terminated by signal"
-          : `exited with ${result.status}`
-      }`;
+  const timedOut = result.error?.code === "ETIMEDOUT";
+  const outcome = timedOut
+    ? `timed out after ${timeoutMs}ms`
+    : result.status === null
+      ? `terminated by signal${result.signal ? ` ${result.signal}` : ""}`
+      : `exited with code ${result.status}`;
+  const failure = ok ? null : `${cmd} ${args.join(" ")} ${outcome}`;
   if (!ok && onFailure) onFailure(step, failure);
   finishBundleStep(bundle, step, ok ? "passed" : "failed", failure);
   if (!ok) {
-    throw new Error(
-      `${cmd} ${args.join(" ")} ${
-        result.status === null
-          ? "terminated by signal"
-          : `exited with code ${result.status}`
-      }`,
-    );
+    throw new Error(`${cmd} ${args.join(" ")} ${outcome}`);
   }
   return result;
 }
