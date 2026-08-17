@@ -381,6 +381,7 @@ describe("route identity follows the directory (#20794 stamp gap)", () => {
     );
     expect(result.workdir).toBe(appDir);
     expect(result.route?.id).toBe("agent-home");
+    expect(result.route?.workdir).toBe(fs.realpathSync(appDir));
   });
 
   it("a locked workdir inside the route tree carries the route while honoring the lock", () => {
@@ -471,5 +472,79 @@ describe("route identity follows the directory (#20794 stamp gap)", () => {
     );
     expect(result.workdir).toBe(fs.realpathSync(routeRoot));
     expect(result.route?.id).toBe("agent-home");
+  });
+
+  it("selects the closest containing route regardless of configuration order", () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_WORKDIR_ROUTES"
+          ? JSON.stringify([
+              {
+                id: "broad",
+                workdir: routeRoot,
+                matchAny: ["never-broad"],
+              },
+              {
+                id: "app",
+                workdir: path.dirname(appDir),
+                matchAny: ["never-app"],
+              },
+            ])
+          : undefined,
+    } as never;
+
+    const result = resolveSpawnWorkdir(
+      runtime,
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      appDir,
+    );
+
+    expect(result.route?.id).toBe("app");
+    expect(result.route?.workdir).toBe(fs.realpathSync(appDir));
+  });
+
+  it("does not inherit a broad shared route across a nested repository boundary", () => {
+    fs.writeFileSync(path.join(appDir, ".git"), "gitdir: elsewhere\n");
+
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      appDir,
+    );
+
+    expect(result.route).toBeUndefined();
+  });
+
+  it("allows a route configured at a nested repository root", () => {
+    fs.writeFileSync(path.join(appDir, ".git"), "gitdir: elsewhere\n");
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_WORKDIR_ROUTES"
+          ? JSON.stringify([
+              {
+                id: "broad",
+                workdir: routeRoot,
+                matchAny: ["never-broad"],
+              },
+              {
+                id: "nested-repository",
+                workdir: appDir,
+                matchAny: ["never-nested"],
+              },
+            ])
+          : undefined,
+    } as never;
+
+    const result = resolveSpawnWorkdir(
+      runtime,
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      appDir,
+    );
+
+    expect(result.route?.id).toBe("nested-repository");
+    expect(result.route?.workdir).toBe(fs.realpathSync(appDir));
   });
 });

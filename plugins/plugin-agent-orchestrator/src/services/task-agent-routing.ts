@@ -319,6 +319,10 @@ export function resolveRouteForWorkdir(
     // directory. Callers will retain their normal route-less fallback.
     return undefined;
   }
+  const candidates: Array<{
+    route: WorkdirRoute;
+    canonicalRouteRoot: string;
+  }> = [];
   for (const route of configuredWorkdirRoutes(runtime)) {
     const expanded = expandHomePath(route.workdir);
     let canonicalRouteRoot: string;
@@ -333,10 +337,40 @@ export function resolveRouteForWorkdir(
     const contained =
       relative === "" ||
       (!relative.startsWith("..") && !path.isAbsolute(relative));
-    if (!contained) continue;
+    if (contained) candidates.push({ route, canonicalRouteRoot });
+  }
+  // A route table may intentionally contain a broad checkout plus narrower
+  // project routes. Directory ownership belongs to the closest configured
+  // ancestor, independent of JSON ordering.
+  candidates.sort(
+    (left, right) =>
+      right.canonicalRouteRoot.length - left.canonicalRouteRoot.length,
+  );
+  for (const { route, canonicalRouteRoot } of candidates) {
+    // Do not let a broad shared-checkout route cross into a nested repository
+    // or worktree. Its residuals exemption would otherwise suppress the nested
+    // repository's own uncommitted/unpushed work. A route configured at the
+    // nested repository root remains eligible because its own .git marker is
+    // the boundary, not something crossed beneath it.
+    let cursor = target;
+    let crossesNestedRepository = false;
+    while (cursor !== canonicalRouteRoot) {
+      if (fs.existsSync(path.join(cursor, ".git"))) {
+        crossesNestedRepository = true;
+        break;
+      }
+      const parent = path.dirname(cursor);
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+    if (crossesNestedRepository) continue;
     return {
       id: route.id,
-      workdir: canonicalRouteRoot,
+      // ResolvedWorkdirRoute is persisted and inherited by later sub-agent
+      // turns, so it must carry the session's actual directory rather than the
+      // configured ancestor. Otherwise TASKS:spawn_agent relocates the session
+      // through `effectiveRoute.workdir` after resolution.
+      workdir: target,
       instructions: route.instructions,
       urlMappings: route.urlMappings,
     };
