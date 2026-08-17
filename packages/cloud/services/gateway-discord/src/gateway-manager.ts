@@ -2776,6 +2776,17 @@ export class GatewayManager {
     };
   }
 
+  /** Readiness requires one authenticated control-plane poll, not merely a live process. */
+  isReady(health: HealthStatus = this.getHealth()): boolean {
+    return (
+      !health.draining &&
+      health.status === "healthy" &&
+      health.controlPlane.healthy &&
+      health.controlPlane.lastSuccessfulPoll !== null &&
+      (health.totalBots === 0 || health.connectedBots > 0)
+    );
+  }
+
   getMetrics(): string {
     const h = this.getHealth();
     const pod = this.config.podName;
