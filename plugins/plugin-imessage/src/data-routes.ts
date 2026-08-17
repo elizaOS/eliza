@@ -128,17 +128,46 @@ function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   return isIMessageServiceLike(service) ? service : null;
 }
 
+type ParsedContactId =
+  | { ok: true; id: string }
+  | { ok: false; reason: "missing" | "malformed" };
+
 /**
  * Extract the `:id` segment from a contact path like
- * `/api/imessage/contacts/ABCD-EFGH-...`. Returns null if the path
- * doesn't match.
+ * `/api/imessage/contacts/ABCD-EFGH-...`. Missing segments stay
+ * `missing`. Illegal percent-encoding is `malformed` — leftover tax
+ * after the messages-list `limit` parser. `decodeURIComponent` used
+ * to throw `URIError` and the host mapped that to 500.
  */
-function parseContactId(pathname: string): string | null {
+function parseContactId(pathname: string): ParsedContactId {
   const prefix = "/api/imessage/contacts/";
-  if (!pathname.startsWith(prefix)) return null;
+  if (!pathname.startsWith(prefix)) return { ok: false, reason: "missing" };
   const rest = pathname.slice(prefix.length);
-  if (!rest) return null;
-  return decodeURIComponent(rest);
+  if (!rest) return { ok: false, reason: "missing" };
+  try {
+    const id = decodeURIComponent(rest);
+    if (!id) return { ok: false, reason: "missing" };
+    return { ok: true, id };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — leftover tax after
+    // plugin-imessage messages `limit`. Malformed percent-encoding is
+    // invalid client input, not an iMessage contact-store outage.
+    return { ok: false, reason: "malformed" };
+  }
+}
+
+function rejectContactId(res: RouteResponse, parsed: ParsedContactId): parsed is { ok: true; id: string } {
+  if (parsed.ok) return true;
+  if (parsed.reason === "malformed") {
+    res
+      .status(400)
+      .json(
+        buildSetupError("bad_request", "Invalid contact id: malformed URL encoding")
+      );
+    return false;
+  }
+  res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  return false;
 }
 
 const DEFAULT_MESSAGES_LIMIT = 50;
@@ -375,11 +404,11 @@ async function handleUpdateContact(
   runtime: IAgentRuntime
 ): Promise<void> {
   const pathname = req.url ?? "";
-  const id = parseContactId(pathname.split("?")[0]);
-  if (!id) {
-    res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  const parsed = parseContactId(pathname.split("?")[0]);
+  if (!rejectContactId(res, parsed)) {
     return;
   }
+  const id = parsed.id;
   const service = resolveService(runtime);
   if (!service) {
     res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"));
@@ -435,11 +464,11 @@ async function handleDeleteContact(
   runtime: IAgentRuntime
 ): Promise<void> {
   const pathname = req.url ?? "";
-  const id = parseContactId(pathname.split("?")[0]);
-  if (!id) {
-    res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  const parsed = parseContactId(pathname.split("?")[0]);
+  if (!rejectContactId(res, parsed)) {
     return;
   }
+  const id = parsed.id;
   const service = resolveService(runtime);
   if (!service) {
     res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"));
