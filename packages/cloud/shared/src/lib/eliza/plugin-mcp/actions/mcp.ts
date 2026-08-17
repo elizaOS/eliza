@@ -290,9 +290,35 @@ async function handleSearchActions(
   const content = message.content as Record<string, unknown>;
   const query = (params.query as string) || (content.text as string) || "";
   const platform = (params.platform as string) || undefined;
-  const rawLimit = Number(params.limit) || 10;
-  const limit = Math.min(Math.max(rawLimit, 1), 20);
-  const offset = Math.max(Number(params.offset) || 0, 0);
+  const rawLimit = (() => {
+    const v = params.limit as unknown;
+    if (typeof v === "number") {
+      if (!Number.isSafeInteger(v) || v <= 0) return 10;
+      return Math.min(v, 20);
+    }
+    if (typeof v === "string") {
+      if (!/^\d+$/.test(v)) return 10;
+      const n = Number(v);
+      if (!Number.isSafeInteger(n) || n <= 0) return 10;
+      return Math.min(n, 20);
+    }
+    return 10;
+  })();
+  const limit = rawLimit;
+  const offset = (() => {
+    const v = params.offset as unknown;
+    if (typeof v === "number") {
+      if (!Number.isSafeInteger(v) || v < 0) return 0;
+      return v;
+    }
+    if (typeof v === "string") {
+      if (!/^\d+$/.test(v)) return 0;
+      const n = Number(v);
+      if (!Number.isSafeInteger(n) || n < 0) return 0;
+      return n;
+    }
+    return 0;
+  })();
 
   if (!query.trim()) {
     return { success: false, error: "A search query is required" };
