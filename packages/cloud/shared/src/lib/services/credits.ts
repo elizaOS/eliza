@@ -619,6 +619,16 @@ export class CreditsService {
     return await creditTransactionsRepository.findByStripePaymentIntent(paymentIntentId);
   }
 
+  /**
+   * Read a committed idempotent credit mutation from the primary database.
+   * Retry recovery must not mistake replica lag for an absent ledger row.
+   */
+  async getCommittedTransactionByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<CreditTransaction | undefined> {
+    return await creditTransactionsRepository.findByStripePaymentIntentForWrite(idempotencyKey);
+  }
+
   async listTransactionsByOrganization(
     organizationId: string,
     limit?: number,

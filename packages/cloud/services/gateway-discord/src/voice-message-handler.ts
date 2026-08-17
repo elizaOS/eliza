@@ -8,6 +8,7 @@
  * - Cleans up expired audio files
  */
 
+import { createHash } from "node:crypto";
 import { type Attachment, MessageFlags } from "discord.js";
 import { logger } from "./logger";
 
@@ -53,16 +54,21 @@ const DISCORD_CDN_TIMEOUT_MS = 30_000; // 30 seconds
 const STORAGE_FETCH_TIMEOUT_MS = 30_000;
 
 /**
- * Cover both bounded storage calls between object modification and capability
- * minting, plus one complete cleanup interval.
+ * Cover upload, the first capability request, one bounded renewal, and one
+ * complete cleanup interval.
  */
 export function computeVoiceCleanupSafetyMs(cleanupIntervalMs: number): number {
-  return cleanupIntervalMs + 2 * STORAGE_FETCH_TIMEOUT_MS;
+  return cleanupIntervalMs + 3 * STORAGE_FETCH_TIMEOUT_MS;
 }
 
 const VOICE_CLEANUP_SAFETY_MS =
   computeVoiceCleanupSafetyMs(CLEANUP_INTERVAL_MS);
 const VOICE_STORAGE_PREFIX = "voice";
+const VOICE_PRESIGN_IDEMPOTENCY_PREFIX = "discord-voice-storage-presign-v1";
+const VOICE_PRESIGN_BASE_DOMAIN = "discord-voice-storage-presign-base:v1";
+const VOICE_PRESIGN_RENEWAL_DOMAIN = "discord-voice-storage-presign-renewal:v1";
+const CANONICAL_LOWERCASE_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface VoiceAttachmentResult {
   audioUrl: string;
@@ -108,6 +114,35 @@ function objectUrl(config: StorageConfig, key: string): string {
   return `${config.apiBaseUrl}/api/v1/apis/storage/objects/${encodedKey}`;
 }
 
+function hashVoicePresignIdempotencyMaterial(
+  material: Record<string, string | number>,
+): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify(material), "utf8")
+    .digest("hex");
+  return `${VOICE_PRESIGN_IDEMPOTENCY_PREFIX}:${digest}`;
+}
+
+function voicePresignIdempotencyKey(key: string): string {
+  return hashVoicePresignIdempotencyMaterial({
+    domain: VOICE_PRESIGN_BASE_DOMAIN,
+    objectKey: key,
+    ttlSeconds: VOICE_AUDIO_TTL_SECONDS,
+  });
+}
+
+function voicePresignRenewalIdempotencyKey(
+  key: string,
+  receiptId: string,
+): string {
+  return hashVoicePresignIdempotencyMaterial({
+    domain: VOICE_PRESIGN_RENEWAL_DOMAIN,
+    objectKey: key,
+    ttlSeconds: VOICE_AUDIO_TTL_SECONDS,
+    receiptId,
+  });
+}
+
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -133,8 +168,61 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
+    // error-policy:J3 an invalid provider body remains distinguishable from
+    // valid JSON and is never included in logs or caller-facing errors.
     return text;
   }
+}
+
+function expiredReceiptId(response: Response, body: unknown): string | null {
+  if (
+    response.status !== 409 ||
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body)
+  ) {
+    return null;
+  }
+  const conflict = body as Record<string, unknown>;
+  if (
+    conflict.success !== false ||
+    conflict.code !== "billing_state_conflict" ||
+    !conflict.details ||
+    typeof conflict.details !== "object" ||
+    Array.isArray(conflict.details)
+  ) {
+    return null;
+  }
+  const receiptId = (conflict.details as Record<string, unknown>).receiptId;
+  return typeof receiptId === "string" &&
+    CANONICAL_LOWERCASE_UUID_PATTERN.test(receiptId)
+    ? receiptId
+    : null;
+}
+
+async function requestVoicePresign(
+  config: StorageConfig,
+  key: string,
+  idempotencyKey: string,
+): Promise<{ response: Response; body: unknown }> {
+  const response = await fetch(
+    `${config.apiBaseUrl}/api/v1/apis/storage/presign`,
+    {
+      method: "POST",
+      headers: {
+        ...storageHeaders(config),
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        key,
+        operation: "get",
+        expiresIn: VOICE_AUDIO_TTL_SECONDS,
+      }),
+      signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
+    },
+  );
+  return { response, body: await parseJsonResponse(response) };
 }
 
 async function uploadVoiceObject(
@@ -161,37 +249,42 @@ async function presignVoiceObject(
   config: StorageConfig,
   key: string,
 ): Promise<{ url: string; expiresAt: Date }> {
-  const response = await fetch(
-    `${config.apiBaseUrl}/api/v1/apis/storage/presign`,
-    {
-      method: "POST",
-      headers: {
-        ...storageHeaders(config),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        key,
-        operation: "get",
-        expiresIn: VOICE_AUDIO_TTL_SECONDS,
-      }),
-      signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
-    },
+  let result = await requestVoicePresign(
+    config,
+    key,
+    voicePresignIdempotencyKey(key),
   );
-  const body = await parseJsonResponse(response);
-  if (!response.ok) {
-    throw new Error(`Voice presign failed with status ${response.status}`);
+  if (!result.response.ok) {
+    const receiptId = expiredReceiptId(result.response, result.body);
+    if (!receiptId) {
+      throw new Error(
+        `Voice presign failed with status ${result.response.status}`,
+      );
+    }
+    // Keep renewal bounded to one request. Chained expiry and capability-host
+    // cutover recovery require a separate durable protocol tracked by #21045.
+    result = await requestVoicePresign(
+      config,
+      key,
+      voicePresignRenewalIdempotencyKey(key, receiptId),
+    );
+    if (!result.response.ok) {
+      throw new Error(
+        `Voice presign failed with status ${result.response.status}`,
+      );
+    }
   }
   if (
-    !body ||
-    typeof body !== "object" ||
-    typeof (body as { url?: unknown }).url !== "string" ||
-    typeof (body as { expiresAt?: unknown }).expiresAt !== "string"
+    !result.body ||
+    typeof result.body !== "object" ||
+    typeof (result.body as { url?: unknown }).url !== "string" ||
+    typeof (result.body as { expiresAt?: unknown }).expiresAt !== "string"
   ) {
     throw new Error("Voice presign response missing url or expiresAt");
   }
   return {
-    url: (body as { url: string }).url,
-    expiresAt: new Date((body as { expiresAt: string }).expiresAt),
+    url: (result.body as { url: string }).url,
+    expiresAt: new Date((result.body as { expiresAt: string }).expiresAt),
   };
 }
 

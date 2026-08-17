@@ -3,15 +3,15 @@
  *
  * Routes:
  *   POST /api/v1/apis/storage/presign  { key, operation: "get", expiresIn? }
- *                                      → { url, expiresAt }
+ *                                      → { url, expiresAt, receiptId }
  *
  * Auth: requireUserOrApiKeyWithOrg.
  * Pricing: flat per-request charge against the `storage:presign` row.
  *
- * The URL grants temporary GET/HEAD access through the Worker blob host. The
- * capability is minted locally and returned only after the flat charge commits;
- * writes continue through `PUT /objects/{key+}` so quota enforcement remains
- * authoritative.
+ * The URL grants temporary GET/HEAD access through the Worker blob host. Paid
+ * requests use a durable idempotency receipt so a retry after response loss can
+ * recover the original capability without charging twice. Writes continue
+ * through `PUT /objects/{key+}` so quota enforcement remains authoritative.
  */
 
 import { Hono } from "hono";
@@ -21,10 +21,17 @@ import {
   normalizeStorageReadCapabilityHost,
   StorageReadCapabilityConfigurationError,
 } from "@/api-app/storage-read-capability";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import {
+  StorageReadReceiptConflictError,
+  StorageReadReceiptInsufficientCreditsError,
+  StorageReadReceiptInvalidIdempotencyKeyError,
+  type StorageReadReceiptTemporalClaims,
+  StorageReadReceiptUnavailableError,
+  storageReadReceiptService,
+} from "@/lib/services/storage-read-receipts";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -61,6 +68,35 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
+function temporalClaimsMatch(
+  left: StorageReadReceiptTemporalClaims,
+  right: StorageReadReceiptTemporalClaims,
+): boolean {
+  return (
+    left.issuedAt === right.issuedAt &&
+    left.expiresAt === right.expiresAt &&
+    left.capabilityHost === right.capabilityHost
+  );
+}
+
+async function mintCapability(
+  env: AppEnv["Bindings"],
+  scopedKey: string,
+  claims: StorageReadReceiptTemporalClaims,
+): Promise<string> {
+  return await mintStorageReadCapabilityUrl({
+    rawSecrets: env.STORAGE_READ_SIGNING_SECRETS,
+    host: claims.capabilityHost,
+    scopedKey,
+    issuedAt: claims.issuedAt,
+    expiresAt: claims.expiresAt,
+  });
+}
+
+function expiresAtIso(claims: StorageReadReceiptTemporalClaims): string {
+  return new Date(claims.expiresAt * 1000).toISOString();
+}
+
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -77,7 +113,7 @@ app.post("/", async (c) => {
         400,
       );
     }
-    const { key: userKey, operation, expiresIn } = parsed.data;
+    const { key: userKey, expiresIn } = parsed.data;
     const trimmedKey = userKey.replace(/^\/+|\/+$/g, "");
     const keySegments = trimmedKey.split("/");
     const scopedKey = `org/${organization_id}/${trimmedKey}`;
@@ -121,6 +157,24 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const ttlSeconds = expiresIn ?? 3600;
+    const prepared = await storageReadReceiptService.prepare({
+      rawIdempotencyKey: c.req.header("Idempotency-Key"),
+      organizationId: organization_id,
+      scopedKey,
+      ttlSeconds,
+      capabilityHost: blobHost,
+    });
+
+    if (prepared.status === "replay") {
+      const url = await mintCapability(c.env, scopedKey, prepared.claims);
+      return c.json({
+        url,
+        expiresAt: expiresAtIso(prepared.claims),
+        receiptId: prepared.transactionId,
+      });
+    }
+
     if (!supportsHead(c.env.BLOB)) {
       logger.error(
         "[storage proxy] Native R2 HEAD capability unavailable; signed read rejected",
@@ -140,64 +194,102 @@ app.post("/", async (c) => {
     }
 
     const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "presign");
-    const issuedAt = Math.floor(Date.now() / 1000);
-    const ttlSeconds = expiresIn ?? 3600;
-    const expiresAtSeconds = issuedAt + ttlSeconds;
-
-    let url: string;
-    try {
-      url = await mintStorageReadCapabilityUrl({
-        rawSecrets: c.env.STORAGE_READ_SIGNING_SECRETS,
-        host: blobHost,
-        scopedKey,
-        issuedAt,
-        expiresAt: expiresAtSeconds,
-      });
-    } catch (error) {
-      if (error instanceof StorageReadCapabilityConfigurationError) {
-        // error-policy:J2 deployment configuration is unavailable. Fail before
-        // the debit and never serialize secret material into logs or responses.
-        logger.error(
-          "[storage proxy] Signed read capability configuration unavailable",
-        );
-        return c.json(
-          {
-            error:
-              "Attachment storage proxy not available — server misconfigured",
-          },
-          503,
-        );
-      }
-      throw error;
+    if (!Number.isFinite(cost) || cost < 0) {
+      logger.error("[storage proxy] Storage presign pricing unavailable");
+      return jsonError(
+        c,
+        503,
+        "Attachment storage pricing is temporarily unavailable",
+        "service_unavailable",
+      );
     }
 
-    if (cost > 0) {
-      const deductResult = await creditsService.deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: `API proxy: storage — presign (${operation})`,
-        metadata: {
-          type: "proxy_storage",
-          service: "storage",
-          method: "presign",
-          operation,
-        },
+    const candidateUrl = await mintCapability(
+      c.env,
+      scopedKey,
+      prepared.candidateClaims,
+    );
+
+    if (cost === 0) {
+      return c.json({
+        url: candidateUrl,
+        expiresAt: expiresAtIso(prepared.candidateClaims),
+        receiptId: null,
       });
-      if (!deductResult.success) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-          },
-          402,
-        );
-      }
     }
 
-    const expiresAt = new Date(expiresAtSeconds * 1000).toISOString();
+    const receipt = await storageReadReceiptService.chargeOrReplay(prepared, {
+      chargeAmountUsd: cost,
+    });
+    const url = temporalClaimsMatch(prepared.candidateClaims, receipt.claims)
+      ? candidateUrl
+      : await mintCapability(c.env, scopedKey, receipt.claims);
 
-    return c.json({ url, expiresAt });
+    return c.json({
+      url,
+      expiresAt: expiresAtIso(receipt.claims),
+      receiptId: receipt.transactionId,
+    });
   } catch (error) {
+    if (error instanceof StorageReadReceiptInvalidIdempotencyKeyError) {
+      return jsonError(
+        c,
+        400,
+        "A valid Idempotency-Key header is required",
+        "validation_error",
+      );
+    }
+    if (error instanceof StorageReadReceiptConflictError) {
+      if (error.reason === "receipt_expired") {
+        return jsonError(
+          c,
+          409,
+          "Storage read receipt expired; retry with a new idempotency key",
+          "billing_state_conflict",
+          error.transactionId ? { receiptId: error.transactionId } : undefined,
+        );
+      }
+      return jsonError(
+        c,
+        409,
+        "Idempotency key was already used for a different storage read request",
+        "billing_state_conflict",
+      );
+    }
+    if (error instanceof StorageReadReceiptInsufficientCreditsError) {
+      return c.json(
+        {
+          error: "Insufficient credits",
+          topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+        },
+        402,
+      );
+    }
+    if (error instanceof StorageReadReceiptUnavailableError) {
+      // error-policy:J2 a missing or corrupt durable receipt cannot safely
+      // authorize disclosure. Keep receipt and object details private.
+      logger.error("[storage proxy] Storage read receipt unavailable");
+      return jsonError(
+        c,
+        503,
+        "Storage billing receipt service is temporarily unavailable",
+        "service_unavailable",
+      );
+    }
+    if (error instanceof StorageReadCapabilityConfigurationError) {
+      // error-policy:J2 deployment configuration or signing is unavailable.
+      // Fail closed without serializing capability or secret details.
+      logger.error(
+        "[storage proxy] Signed read capability configuration unavailable",
+      );
+      return c.json(
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
+        503,
+      );
+    }
     // error-policy:J1 the route boundary translates authentication, pricing,
     // debit, configuration, and signing failures into the canonical response.
     return failureResponse(c, error);
