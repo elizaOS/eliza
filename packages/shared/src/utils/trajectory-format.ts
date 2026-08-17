@@ -15,7 +15,7 @@ export function formatTrajectoryDuration(ms: number | null): string {
   // browser garbage "NaNh" / "Infinityh" / "-1ms" instead of the designed
   // placeholder.
   if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) {
     const rounded = Math.round(seconds * 10) / 10;
@@ -40,8 +40,9 @@ export function formatTrajectoryDuration(ms: number | null): string {
  */
 export function formatTrajectoryTokenCount(
   count: number | undefined,
-  options: { emptyLabel: string },
+  options?: { emptyLabel?: string },
 ): string {
+  const emptyLabel = options?.emptyLabel ?? "—";
   // Fail closed on non-finite or negative values: NaN / Infinity / negative
   // counts render as emptyLabel rather than "NaNM" / "InfinityM". Aligns with
   // the non-negative contract of formatByteSize in format.ts.
@@ -51,7 +52,7 @@ export function formatTrajectoryTokenCount(
     !Number.isFinite(count) ||
     count < 0
   ) {
-    return options.emptyLabel;
+    return emptyLabel;
   }
   if (count < 1000) return String(count);
   const thousands = count / 1000;
