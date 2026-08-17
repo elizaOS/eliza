@@ -360,11 +360,25 @@ export function createSchedulingSqlScheduledTaskStore(
         nextFireAtIso === null || nextFireAtIso.length === 0
           ? "NULL"
           : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+      // PostgreSQL re-evaluates this expression against the current row after
+      // a concurrent updater releases its lock. The proposed metadata remains
+      // authoritative for lifecycle changes, while the receipt map is merged
+      // from that current row so distinct committed keys cannot erase one
+      // another.
+      const mergedMetadataSql = `jsonb_set(
+        ${sqlJson(task.metadata ?? {})}::jsonb,
+        '{schedulingApplyReceipts}',
+        COALESCE(
+          metadata_json::jsonb -> 'schedulingApplyReceipts',
+          '{}'::jsonb
+        ) || jsonb_build_object(${sqlQuote(receiptKey)}, TRUE),
+        true
+      )::text`;
       const rows = await executeSql(
         `WITH updated_task AS (
           UPDATE ${TASK_TABLE}
              SET state_json = ${sqlJson(task.state)},
-                 metadata_json = ${sqlJson(task.metadata ?? {})},
+                 metadata_json = ${mergedMetadataSql},
                  next_fire_at = ${nextFireAtSql},
                  updated_at = ${sqlQuote(now)},
                  version = version + 1
