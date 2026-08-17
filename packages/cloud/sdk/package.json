@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-sdk",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
   "type": "module",
   "main": "./dist/index.js",
@@ -67,5 +67,8 @@
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
