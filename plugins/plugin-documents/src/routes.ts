@@ -777,6 +777,8 @@ export async function handleDocumentsRoutes(
     error(res, "Authentication required", 401);
     return true;
   }
+  // Preserve the runtime guard across the nested async location resolver.
+  const uploadLocationRuntime = runtime;
   const uploadLocationActor = routeActor;
 
   async function resolveUploadLocation(input: {
@@ -814,10 +816,12 @@ export async function handleDocumentsRoutes(
     const roomId = input.roomId.trim() as UUID;
     let room: Awaited<ReturnType<AgentRuntime["getRoom"]>>;
     try {
-      room = await runtime.getRoom(roomId);
+      room = await uploadLocationRuntime.getRoom(roomId);
     } catch (cause) {
       // error-policy:J1 The HTTP boundary reports canonical-room lookup failure as unavailable.
-      runtime.reportError("documents.upload-location", cause, { roomId });
+      uploadLocationRuntime.reportError("documents.upload-location", cause, {
+        roomId,
+      });
       return {
         ok: false,
         status: 503,
@@ -828,7 +832,7 @@ export async function handleDocumentsRoutes(
       return { ok: false, status: 400, error: "roomId does not exist" };
     }
     if (!room.worldId) {
-      runtime.reportError(
+      uploadLocationRuntime.reportError(
         "documents.upload-location",
         new Error("Canonical document room has no worldId"),
         { roomId },
