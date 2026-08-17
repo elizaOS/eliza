@@ -85,13 +85,23 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
+      - name: Generate source keyword modules
+        working-directory: .
+        run: bun run --cwd packages/shared build:i18n
+
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
-        run: bun test tests/ --timeout 60000
+        # The gateway imports source-form workspace subpaths such as
+        # @elizaos/shared/discord-dm-policy. Match the package-owned test
+        # script's export condition so a clean runner never falls through to
+        # an unbuilt dist/ entry.
+        run: bun --conditions=eliza-source test tests/ --timeout 60000
         env:
           SKIP_SERVER_CHECK: "true"
 
       - name: Run lib tests
-        run: bun test src/lib/services/gateway-discord/__tests__ --timeout 60000
+        # These tests traverse plugin/runtime source exports as part of the
+        # routing contract, so they need the same clean-runner source condition.
+        run: bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000
         env:
           SKIP_SERVER_CHECK: "true"

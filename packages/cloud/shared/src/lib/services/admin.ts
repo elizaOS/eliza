@@ -379,6 +379,18 @@ class AdminService {
         newStatus = "warned";
       }
 
+      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
+      const isBlocking = newStatus === "banned" || newTotalViolations >= 5;
+      if (isBlocking && !wasBlocking) {
+        const user = await dbRead.query.users.findFirst({
+          where: eq(users.id, userId),
+          columns: { organization_id: true },
+        });
+        if (user?.organization_id) {
+          await setInferenceSubjectActive(user.organization_id, userId, false, "moderation");
+        }
+      }
+
       await dbWrite
         .update(userModerationStatus)
         .set({
@@ -397,8 +409,6 @@ class AdminService {
       // inference auth-context so they stop fast-pathing inference within the
       // request, not after the IAC TTL. Wired into the authoritative mutation so
       // every moderation entrypoint (chat, messages, A2A) is covered uniformly.
-      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
-      const isBlocking = newStatus === "banned" || newTotalViolations >= 5;
       if (isBlocking && !wasBlocking) {
         await invalidateUserInferenceContext(userId);
       }
@@ -495,7 +505,7 @@ class AdminService {
       columns: { organization_id: true },
     });
     if (user?.organization_id) {
-      await setInferenceSubjectActive(user.organization_id, userId, false);
+      await setInferenceSubjectActive(user.organization_id, userId, false, "moderation");
     }
 
     if (existing) {
@@ -552,7 +562,7 @@ class AdminService {
       columns: { organization_id: true },
     });
     if (user?.organization_id) {
-      await setInferenceSubjectActive(user.organization_id, userId, true);
+      await setInferenceSubjectActive(user.organization_id, userId, true, "moderation");
     }
 
     logger.info("[Admin] User unbanned", { userId, adminUserId });

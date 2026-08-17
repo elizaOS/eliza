@@ -118,7 +118,7 @@ vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
   getScheduledTaskRunner: () => ({
     schedule: docMocks.schedule,
     apply: vi.fn(),
-    list: vi.fn(),
+    list: vi.fn(async () => []),
     pipeline: vi.fn(),
     evaluateCompletion: vi.fn(),
     fire: vi.fn(),

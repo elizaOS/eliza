@@ -27,6 +27,7 @@ let getUser:
 let userReads = 0;
 let moderationReads = 0;
 let assertSessionActive: () => Promise<void>;
+const strongCredentialChecks: Array<Record<string, unknown>> = [];
 const ADMISSION = {
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -75,8 +76,15 @@ mock.module("./inference-credential-revocation", () => ({
       this.name = "InferenceCredentialRevokedError";
     }
   },
-  assertInferenceCredentialActive: () => assertSessionActive(),
+  assertInferenceCredentialActive: (
+    _organizationId: string,
+    credential: Record<string, unknown>,
+  ) => {
+    strongCredentialChecks.push(credential);
+    return assertSessionActive();
+  },
   revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
   setInferenceOrganizationActive: async () => undefined,
   setInferenceSubjectActive: async () => undefined,
@@ -105,6 +113,7 @@ beforeEach(async () => {
   };
   userReads = 0;
   moderationReads = 0;
+  strongCredentialChecks.length = 0;
   assertSessionActive = async () => undefined;
   getUser = async () => ({
     id: "user-1",
@@ -140,7 +149,6 @@ describe("resolveInferenceSessionAuthContext", () => {
     expect(waited).toHaveLength(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
-
     releaseUser();
     await Promise.all(waited);
     expect(moderationReads).toBe(1);
@@ -174,6 +182,12 @@ describe("resolveInferenceSessionAuthContext", () => {
     });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
+    expect(strongCredentialChecks.at(-1)).toEqual({
+      kind: "steward_session",
+      userId: "user-1",
+      stewardUserId: "steward-1",
+      issuedAt: claims?.issuedAt,
+    });
   });
 
   test("warm verified session is denied when its issued-at cutoff is revoked", async () => {
@@ -199,6 +213,27 @@ describe("resolveInferenceSessionAuthContext", () => {
     expect(result).toEqual({ kind: "rejected", status: 401 });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
+  });
+
+  test("warm session is rejected when its stale Steward-to-Cloud binding is revoked", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    assertSessionActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("session_binding_revoked");
+    };
+
+    expect(
+      await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+      }),
+    ).toEqual({ kind: "rejected", status: 401 });
   });
 
   test("concurrent cold requests share one authoritative hydration", async () => {

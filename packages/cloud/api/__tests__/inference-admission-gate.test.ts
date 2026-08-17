@@ -35,9 +35,23 @@ class TestStorage {
   failNextSetAlarm = false;
   failNextTransactionCommit = false;
 
-  async get<T>(key: string): Promise<T | undefined> {
+  async get<T>(key: string): Promise<T | undefined>;
+  async get<T>(keys: string[]): Promise<Map<string, T>>;
+  async get<T>(
+    keyOrKeys: string | string[],
+  ): Promise<T | undefined | Map<string, T>> {
     await Promise.resolve();
-    const value = this.values.get(key);
+    if (Array.isArray(keyOrKeys)) {
+      return new Map(
+        keyOrKeys.flatMap((key) => {
+          const value = this.values.get(key);
+          return value === undefined
+            ? []
+            : [[key, structuredClone(value) as T]];
+        }),
+      );
+    }
+    const value = this.values.get(keyOrKeys);
     return value === undefined ? undefined : (structuredClone(value) as T);
   }
 
@@ -447,6 +461,94 @@ describe("InferenceAdmissionGate", () => {
       });
       expect(network.legacyStorage.read("rate-limits")).toBeDefined();
       expect(network.rateStorage.read("rate-limits")).toBeDefined();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("a queued legacy request cannot open a duplicate post-cutover window", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(61_234);
+    const legacy = createGate();
+    const isolated = createGate();
+    const policy = {
+      endpointType: "completions",
+      windowMs: 61_000,
+      maxRequests: 1,
+    };
+    try {
+      expect(
+        (
+          await post(legacy, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 61_000,
+          })
+        ).status,
+      ).toBe(200);
+
+      // This request selected the legacy lane before the boundary but did not
+      // enter its rate-limit operation until after v2 had started accepting
+      // the next window. It must remain charged to the old window.
+      clock.mockReturnValue(122_001);
+      expect(
+        (
+          await post(isolated, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 122_000,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(legacy, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 61_000,
+          })
+        ).status,
+      ).toBe(429);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("a stale queued request cannot roll durable rate-limit state backward", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(122_001);
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    const policy = {
+      endpointType: "completions",
+      windowMs: 61_000,
+      maxRequests: 1,
+    };
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 122_000,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 61_000,
+          })
+        ).status,
+      ).toBe(429);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...policy,
+            windowStartedAt: 122_000,
+          })
+        ).status,
+      ).toBe(429);
+      expect(
+        storage.read<{ completions: { windowStartedAt: number } }>(
+          "rate-limits",
+        )?.completions.windowStartedAt,
+      ).toBe(122_000);
     } finally {
       clock.mockRestore();
     }

@@ -105,10 +105,11 @@ beforeEach(() => {
 });
 
 describe("prewarmSharedAgentTurnCaches model pricing", () => {
-  test("warms the serialized admission gate beside the policy snapshot", async () => {
+  test("warms billed ledger and rate-limit authorities beside the policy snapshot", async () => {
     await prewarmSharedAgentTurnCaches(agent({}));
 
     expect(warmInferenceAdmissionGate).toHaveBeenCalledWith("org-1");
+    expect(warmInferenceRateLimitGate).toHaveBeenCalledWith("org-1");
     expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith("org-1");
   });
 

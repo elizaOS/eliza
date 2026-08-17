@@ -400,15 +400,24 @@ async function fetchMemoriesFromTables(
   return filtered;
 }
 
-function resolveTableFilter(
+/**
+ * Parse the memory-viewer `type` query. Omitted/empty means every table
+ * (the "all" tab). A known table name narrows the scan. Any other token
+ * used to fall through to that same unfiltered scan, so `type=notes` or
+ * `type=message` silently returned the whole feed.
+ */
+export function parseMemoryTableFilter(
   typeParam: string | null,
-): readonly string[] | undefined {
-  if (!typeParam) return undefined;
+): { ok: true; tables?: readonly string[] } | { ok: false; message: string } {
+  if (typeParam === null || typeParam === "") return { ok: true };
   const t = typeParam.toLowerCase();
   if (MEMORY_TABLE_NAMES.includes(t as (typeof MEMORY_TABLE_NAMES)[number])) {
-    return [t];
+    return { ok: true, tables: [t] };
   }
-  return undefined;
+  return {
+    ok: false,
+    message: `type must be one of: ${MEMORY_TABLE_NAMES.join(", ")}`,
+  };
 }
 
 export async function handleMemoryRoutes(
@@ -438,13 +447,6 @@ export async function handleMemoryRoutes(
   if (!runtime) {
     error(res, "Agent runtime is not available", 503);
     return true;
-  }
-
-  // Dispatched before ensureMemoryConnection: a transfer import must not
-  // create the client-chat room, and it manages its own scaffolding rows.
-  if (method === "POST" && pathname === "/api/memories/import") {
-    const { handleMemoryImportRoute } = await import("./memory-import.ts");
-    return handleMemoryImportRoute(ctx);
   }
 
   const resolvedAgentName = resolveAgentName(runtime, agentName);
@@ -573,7 +575,12 @@ export async function handleMemoryRoutes(
     const limit = Math.min(Math.max(requestedLimit, 1), MEMORY_FEED_MAX_LIMIT);
     const beforeParam = url.searchParams.get("before");
     const before = beforeParam ? Number(beforeParam) : undefined;
-    const tables = resolveTableFilter(url.searchParams.get("type"));
+    const tableFilter = parseMemoryTableFilter(url.searchParams.get("type"));
+    if (!tableFilter.ok) {
+      error(res, tableFilter.message, 400);
+      return true;
+    }
+    const tables = tableFilter.tables;
 
     const allMemories = await fetchMemoriesFromTables(runtime, {
       tables,
@@ -603,7 +610,12 @@ export async function handleMemoryRoutes(
       MEMORY_BROWSE_MAX_LIMIT,
     );
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
-    const tables = resolveTableFilter(url.searchParams.get("type"));
+    const tableFilter = parseMemoryTableFilter(url.searchParams.get("type"));
+    if (!tableFilter.ok) {
+      error(res, tableFilter.message, 400);
+      return true;
+    }
+    const tables = tableFilter.tables;
     const entityIdParam = url.searchParams.get("entityId");
     const entityIdsParam = url.searchParams.get("entityIds");
     const roomIdParam = url.searchParams.get("roomId");
@@ -675,7 +687,12 @@ export async function handleMemoryRoutes(
       MEMORY_BROWSE_MAX_LIMIT,
     );
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
-    const tables = resolveTableFilter(url.searchParams.get("type"));
+    const tableFilter = parseMemoryTableFilter(url.searchParams.get("type"));
+    if (!tableFilter.ok) {
+      error(res, tableFilter.message, 400);
+      return true;
+    }
+    const tables = tableFilter.tables;
 
     const allMemories = await fetchMemoriesFromTables(runtime, {
       entityIds,
