@@ -7,6 +7,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { SKILL_NAME_MAX_LENGTH } from "../types";
 import {
   handleSkillsRoutes,
   type SkillsRouteContext,
@@ -20,11 +21,15 @@ function createSkillsContext(
   ctx: SkillsRouteContext;
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
+  readJsonBody: ReturnType<typeof vi.fn>;
+  discoverSkills: ReturnType<typeof vi.fn>;
 } {
   const req = { method, url: pathname } as http.IncomingMessage;
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
+  const readJsonBody = vi.fn().mockResolvedValue({});
+  const discoverSkills = vi.fn().mockResolvedValue([]);
   const ctx: SkillsRouteContext = {
     req,
     res,
@@ -42,13 +47,13 @@ function createSkillsContext(
     },
     json,
     error,
-    readJsonBody: vi.fn().mockResolvedValue({}),
+    readJsonBody,
     readBody: vi.fn().mockResolvedValue(""),
-    discoverSkills: vi.fn().mockResolvedValue([]),
+    discoverSkills,
     ...overrides,
   };
 
-  return { ctx, json, error };
+  return { ctx, json, error, readJsonBody, discoverSkills };
 }
 
 describe("handleSkillsRoutes path encoding validation", () => {
@@ -246,6 +251,60 @@ describe("handleSkillsRoutes path encoding validation", () => {
     expect(error).toHaveBeenCalledWith(
       ctx.res,
       expect.stringContaining("Invalid skill ID"),
+      400,
+    );
+  });
+
+  it.each([
+    [
+      "POST",
+      `/api/skills/${"a".repeat(SKILL_NAME_MAX_LENGTH + 1)}/acknowledge`,
+    ],
+    [
+      "PUT",
+      `/api/skills/${"a".repeat(SKILL_NAME_MAX_LENGTH + 1)}/source`,
+    ],
+  ])("rejects overlong skill IDs before collaborators for %s %s", async (method, pathname) => {
+    const { ctx, error, readJsonBody, discoverSkills } = createSkillsContext(method, pathname);
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(ctx.res, expect.stringContaining("Invalid skill ID"), 400);
+    expect(readJsonBody).not.toHaveBeenCalled();
+    expect(discoverSkills).not.toHaveBeenCalled();
+    expect(ctx.state.runtime?.getCache).not.toHaveBeenCalled();
+    expect(ctx.state.runtime?.getService).not.toHaveBeenCalled();
+  });
+
+  it("accepts a skill ID at the canonical length limit", async () => {
+    const skillId = "a".repeat(SKILL_NAME_MAX_LENGTH);
+    const { ctx, error, readJsonBody } = createSkillsContext(
+      "POST",
+      `/api/skills/${skillId}/acknowledge`,
+    );
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(readJsonBody).toHaveBeenCalledOnce();
+    expect(error).not.toHaveBeenCalledWith(
+      ctx.res,
+      expect.stringContaining("Invalid skill ID"),
+      400,
+    );
+  });
+
+  it("ignores the deprecated decoder callback while preserving its input contract", async () => {
+    const legacyDecoder = vi.fn(() => "rewritten-by-host");
+    const { ctx, error } = createSkillsContext("GET", "/api/skills/%/scan", {
+      decodePathComponent: legacyDecoder,
+    });
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(legacyDecoder).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Invalid skill ID: malformed URL encoding",
       400,
     );
   });
