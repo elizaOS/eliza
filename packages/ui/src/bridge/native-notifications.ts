@@ -25,9 +25,12 @@
  * make backups heads-up or approvals silent, with no way for the user to tune
  * them apart. Web maps low priority to a silent notification.
  */
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import type { NotificationPriority } from "@elizaos/core";
-import { navigateDeepLink } from "../state/notifications/navigate-deep-link";
+import {
+  isSafeDeepLink,
+  navigateDeepLink,
+} from "../state/notifications/navigate-deep-link";
 import { getNativePlugin } from "./native-plugins";
 
 export interface NativeNotificationRequest {
@@ -66,6 +69,20 @@ interface LocalNotificationsPluginLike extends Record<string, unknown> {
     importance: number;
     visibility?: number;
   }) => Promise<void>;
+  addListener?: (
+    eventName: "localNotificationActionPerformed",
+    listenerFunc: (action: LocalNotificationActionPerformed) => void,
+  ) => PluginListenerHandle | Promise<PluginListenerHandle>;
+}
+
+interface LocalNotificationActionPerformed {
+  actionId?: unknown;
+  notification?: { extra?: unknown };
+}
+
+export interface LocalNotificationTapRoutingDeps {
+  getPlugin: () => LocalNotificationsPluginLike;
+  navigate: (deepLink: string) => void;
 }
 
 interface ElizaIntentPluginLike extends Record<string, unknown> {
@@ -83,6 +100,30 @@ function numericId(id: string): number {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
   return Math.abs(hash) % 2_000_000_000 || 1;
+}
+
+/**
+ * Convert the notification store's safe app-route vocabulary into the custom
+ * URL shape that iOS can reopen through UIApplication. External http(s) links
+ * remain external; every other scheme is rejected before it reaches native
+ * userInfo.
+ */
+function iosTapDeepLink(deepLink: string | undefined): string | undefined {
+  if (!deepLink || !isSafeDeepLink(deepLink)) return undefined;
+  if (/^https?:\/\//i.test(deepLink)) return deepLink;
+  return `elizaos://${deepLink.slice(1)}`;
+}
+
+function localNotificationTapDeepLink(
+  action: LocalNotificationActionPerformed,
+): string | undefined {
+  if (action.actionId !== "tap") return undefined;
+  const extra = action.notification?.extra;
+  if (typeof extra !== "object" || extra === null) return undefined;
+  const deepLink = (extra as Record<string, unknown>).deepLink;
+  return typeof deepLink === "string" && isSafeDeepLink(deepLink)
+    ? deepLink
+    : undefined;
 }
 
 function hasMethod<T>(value: unknown, method: keyof T): value is T {
@@ -111,6 +152,53 @@ const ANDROID_CHANNELS: Record<
 };
 
 const ensuredChannels = new Set<string>();
+let localNotificationTapListenerPromise: Promise<void> | null = null;
+
+const defaultTapRoutingDeps: LocalNotificationTapRoutingDeps = {
+  getPlugin: () =>
+    getNativePlugin<LocalNotificationsPluginLike>("LocalNotifications"),
+  navigate: navigateDeepLink,
+};
+
+/**
+ * Attach the one app-lifetime handler for taps on Capacitor local
+ * notifications. Capacitor retains a cold-launch action until this listener is
+ * registered, so shell boot can consume both warm and terminated-app taps
+ * without a second native delegate or route authority.
+ */
+export function initLocalNotificationTapRouting(
+  deps: LocalNotificationTapRoutingDeps = defaultTapRoutingDeps,
+): Promise<void> {
+  if (localNotificationTapListenerPromise) {
+    return localNotificationTapListenerPromise;
+  }
+  const plugin = deps.getPlugin();
+  const addListener = plugin.addListener;
+  if (typeof addListener !== "function") {
+    return Promise.resolve();
+  }
+
+  // Capacitor's web proxy returns a Promise, while the installed native bridge
+  // may return its listener handle directly. Invoke in a deferred Promise so
+  // the singleton is installed first and synchronous native throws reach the
+  // shell's rejection boundary just like asynchronous bridge failures.
+  const attempt = Promise.resolve()
+    .then(() =>
+      addListener.call(plugin, "localNotificationActionPerformed", (action) => {
+        const deepLink = localNotificationTapDeepLink(action);
+        if (deepLink) deps.navigate(deepLink);
+      }),
+    )
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      if (localNotificationTapListenerPromise === attempt) {
+        localNotificationTapListenerPromise = null;
+      }
+      throw error;
+    });
+  localNotificationTapListenerPromise = attempt;
+  return attempt;
+}
 
 /**
  * Test-only: clear the per-tier channel-creation cache between tests so a
@@ -118,6 +206,11 @@ const ensuredChannels = new Set<string>();
  */
 export function __resetEnsuredChannelsForTests(): void {
   ensuredChannels.clear();
+}
+
+/** Test-only: permit an isolated listener registration in each test case. */
+export function __resetLocalNotificationTapRoutingForTests(): void {
+  localNotificationTapListenerPromise = null;
 }
 
 /**
@@ -187,6 +280,9 @@ async function tryLocalNotifications(
   // the post — don't claim success; let the store's glass fallback deliver.
   if (channel.unusable) return false;
 
+  const safeDeepLink =
+    req.deepLink && isSafeDeepLink(req.deepLink) ? req.deepLink : undefined;
+
   await plugin.schedule({
     notifications: [
       {
@@ -196,7 +292,7 @@ async function tryLocalNotifications(
         title: req.title,
         body: req.body ?? "",
         ...(channel.channelId ? { channelId: channel.channelId } : {}),
-        ...(req.deepLink ? { extra: { deepLink: req.deepLink } } : {}),
+        ...(safeDeepLink ? { extra: { deepLink: safeDeepLink } } : {}),
       },
     ],
   });
@@ -211,15 +307,22 @@ async function tryElizaIntent(
   if (!hasMethod<ElizaIntentPluginLike>(plugin, "receiveIntent")) {
     return false;
   }
+  const issuedAtIso = new Date().toISOString();
+  const deepLinkOnTap = iosTapDeepLink(req.deepLink);
   const result = await plugin.receiveIntent({
     kind: "reminder",
     payload: {
+      // This bridge displays an immediate notification. The native intent
+      // contract still requires an explicit schedule time, so use the same
+      // instant as the issued-at receipt rather than sending an invalid
+      // reminder payload or inventing a user-visible delay.
+      timeIso: issuedAtIso,
       title: req.title,
       body: req.body ?? "",
       priority: req.priority,
-      ...(req.deepLink ? { deepLinkOnTap: req.deepLink } : {}),
+      ...(deepLinkOnTap ? { deepLinkOnTap } : {}),
     },
-    issuedAtIso: new Date().toISOString(),
+    issuedAtIso,
   });
   return result.accepted === true;
 }

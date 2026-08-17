@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
+  localTap: vi.fn(async () => undefined),
   push: vi.fn(async () => undefined),
   refreshPush: vi.fn(async () => undefined),
   unsubscribeBase: vi.fn(),
@@ -18,6 +19,9 @@ vi.mock("../../api/client", () => ({
 }));
 
 vi.mock("../../state", () => ({ useAppSelector: () => mocks.setTab }));
+vi.mock("../../bridge/native-notifications", () => ({
+  initLocalNotificationTapRouting: mocks.localTap,
+}));
 vi.mock("../../state/notifications/notification-store", () => ({
   initNotifications: mocks.init,
   seedDevNotificationsIfEmpty: mocks.seed,
@@ -47,11 +51,24 @@ describe("notification boot boundaries", () => {
     expect(mocks.init).toHaveBeenCalledOnce();
   });
 
-  it("boots native push and routes notification-center ingress to chat", async () => {
+  it("boots native push and local-tap routing, then routes notification-center ingress to chat", async () => {
     render(<NotificationsShellBoot />);
     await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
+    expect(mocks.localTap).toHaveBeenCalledOnce();
 
     act(() => window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT)));
+    expect(mocks.setTab).toHaveBeenCalledWith("chat");
+  });
+
+  it("routes a retained cold-launch tap replayed during native listener attachment", async () => {
+    mocks.localTap.mockImplementationOnce(async () => {
+      window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT));
+    });
+
+    render(<NotificationsShellBoot />);
+
+    await waitFor(() => expect(mocks.localTap).toHaveBeenCalledOnce());
+    expect(mocks.setTab).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
   });
 
