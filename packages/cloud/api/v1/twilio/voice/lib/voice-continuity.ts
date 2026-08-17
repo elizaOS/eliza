@@ -48,3 +48,13 @@ export function callEndedEvent(reason: string): string {
     .slice(0, 40);
   return `Call lifecycle event: the phone call ended (${normalized || "unknown"}).`;
 }
+
+/** Starts latency prewarm before lifecycle persistence and joins both tasks. */
+export async function prewarmAndRecordVoiceCallStart(
+  prewarm: () => Promise<void> | undefined,
+  recordLifecycle: () => Promise<void>,
+): Promise<void> {
+  const prewarmPromise = prewarm();
+  const lifecyclePromise = recordLifecycle();
+  await Promise.all([prewarmPromise, lifecyclePromise]);
+}
