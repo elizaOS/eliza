@@ -165,6 +165,7 @@ export class BirdeyeService extends Service {
     const fetchOptions = this.getBirdeyeFetchOptions(chain);
     const response = await fetch(this.birdeyeUrl(suffix), {
       ...fetchOptions,
+      signal: AbortSignal.timeout(10_000),
       headers: {
         ...(fetchOptions.headers as Record<string, string>),
         ...(options.headers ?? {}),
