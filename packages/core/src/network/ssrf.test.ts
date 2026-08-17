@@ -234,3 +234,85 @@ describe("isPrivateIpAddress: non-canonical IPv4 encodings (SSRF bypass vectors)
 		}
 	});
 });
+
+describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass vectors)", () => {
+	// On NAT64/DNS64, 6to4, or Teredo network paths a literal URL never hits
+	// DNS, so the guard must decode the embedded IPv4 and screen it — e.g.
+	// http://[64:ff9b::a9fe:a9fe]/ translates to 169.254.169.254 (cloud
+	// metadata) without ever resolving a hostname.
+	it("blocks IPv4-compatible ::/96 spellings of private addresses", () => {
+		for (const addr of [
+			"::a9fe:a9fe", // ::169.254.169.254
+			"::169.254.169.254", // dotted tail form
+			"::7f00:1", // ::127.0.0.1
+			"::a00:1", // ::10.0.0.1
+			"::c0a8:101", // ::192.168.1.1
+			"0:0:0:0:0:0:a9fe:a9fe", // expanded form
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		// Public embeds stay public; :: and ::1 were already blocked.
+		expect(isPrivateIpAddress("::808:808")).toBe(false); // ::8.8.8.8
+		expect(isPrivateIpAddress("::8.8.8.8")).toBe(false);
+	});
+
+	it("blocks NAT64 64:ff9b::/96 spellings of private addresses", () => {
+		for (const addr of [
+			"64:ff9b::a9fe:a9fe", // 169.254.169.254
+			"64:ff9b::169.254.169.254", // dotted tail form
+			"64:ff9b::7f00:1", // 127.0.0.1
+			"64:ff9b::a00:1", // 10.0.0.1
+			"64:ff9b::c0a8:101", // 192.168.1.1
+			"64:ff9b::ac10:1", // 172.16.0.1
+			"64:ff9b::6440:1", // 100.64.0.1 (CGNAT)
+			"0064:ff9b:0000:0000:0000:0000:a9fe:a9fe", // expanded form
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		expect(isPrivateIpAddress("64:ff9b::808:808")).toBe(false); // 8.8.8.8
+		expect(isPrivateIpAddress("64:ff9b::8.8.8.8")).toBe(false);
+	});
+
+	it("blocks 6to4 2002::/16 spellings of private addresses", () => {
+		for (const addr of [
+			"2002:a9fe:a9fe::", // 169.254.169.254
+			"2002:7f00:1::", // 127.0.0.1
+			"2002:a00:1::", // 10.0.0.1
+			"2002:c0a8:101::1", // 192.168.1.1 with subnet host bits
+			"2002:ac1f:1::", // 172.31.0.1
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		expect(isPrivateIpAddress("2002:808:808::")).toBe(false); // 8.8.8.8
+		expect(isPrivateIpAddress("2002:cb00:710a::")).toBe(false); // 203.0.113.10
+	});
+
+	it("blocks Teredo 2001:0000::/32 spellings of private addresses", () => {
+		// Teredo obfuscates the client IPv4 as the low 32 bits XOR 0xffffffff.
+		for (const addr of [
+			"2001:0:4136:e378:8000:63bf:5601:5601", // client 169.254.169.254
+			"2001:0::80ff:fffe", // client 127.0.0.1
+			"2001:0:4136:e378:8000:63bf:f5ff:fffe", // client 10.0.0.1
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		// Client 192.0.2.45 (TEST-NET-1) is outside every blocked IPv4 range.
+		expect(isPrivateIpAddress("2001:0:4136:e378:8000:63bf:3fff:fdd2")).toBe(
+			false,
+		);
+		// Other 2001:: space (non-Teredo) is unaffected.
+		expect(isPrivateIpAddress("2001:4860:4860::8888")).toBe(false);
+	});
+
+	it("screens bracketed URL-literal forms end to end", () => {
+		expect(isPrivateIpAddress("[64:ff9b::a9fe:a9fe]")).toBe(true);
+		expect(isPrivateIpAddress("[2002:a9fe:a9fe::]")).toBe(true);
+		expect(isPrivateIpAddress("[::a9fe:a9fe]")).toBe(true);
+	});
+
+	it("still allows legitimate public IPv6 in the screened prefixes", () => {
+		expect(isPrivateIpAddress("64:ff9b:1::a9fe:a9fe")).toBe(false); // not /96
+		expect(isPrivateIpAddress("2001:db8::1")).toBe(false); // docs range, non-Teredo
+		expect(isPrivateIpAddress("2003:a9fe:a9fe::")).toBe(false); // not 6to4
+	});
+});
