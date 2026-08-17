@@ -23,7 +23,7 @@ import {
 	SetupStep,
 } from "../types/setup";
 
-const MAX_SETUP_OUTPUT_LENGTH = 5000;
+export const MAX_SETUP_OUTPUT_LENGTH = 5000;
 const MAX_SETUP_ERRORS = 8;
 const MAX_SETUP_CHANNELS = 10;
 const MAX_SETUP_SKILLS = 12;
@@ -50,7 +50,7 @@ function formatStepStatus(
 /**
  * Generate setup progress text for LLM context.
  */
-function generateProgressText(
+export function generateProgressText(
 	context: SetupContext,
 	agentName: string,
 ): string {
@@ -177,6 +177,12 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 	return output;
 }
 
+export function truncateSetupProgressText(text: string): string {
+	return text.length > MAX_SETUP_OUTPUT_LENGTH
+		? `${text.slice(0, MAX_SETUP_OUTPUT_LENGTH - 3)}...`
+		: text;
+}
+
 /**
  * Setup Progress Provider
  *
@@ -239,10 +245,9 @@ export const setupProgressProvider: Provider = {
 			const context = metadata.setupStateMachine.context;
 			const agentName = runtime.character.name ?? "Agent";
 
-			let progressText = generateProgressText(context, agentName);
-			if (progressText.length > MAX_SETUP_OUTPUT_LENGTH) {
-				progressText = `${progressText.slice(0, MAX_SETUP_OUTPUT_LENGTH)}...`;
-			}
+			const progressText = truncateSetupProgressText(
+				generateProgressText(context, agentName),
+			);
 
 			logger.debug(
 				{
