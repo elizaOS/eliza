@@ -485,6 +485,26 @@ export async function handleVoiceModelsRoutes(
 
 	// GET /api/local-inference/voice-models/check
 	if (method === "GET" && pathname === `${ROUTE_PREFIX}/check`) {
+		// Voice-models force-check identity, leftover tax after
+		// voice-profiles includeOwner (#21202). force=true used to
+		// silently skip a forced updater walk instead of a 400.
+		// pin / preferences / update parsers stay untouched.
+		const requestedForceValues = url.searchParams.getAll("force");
+		const requestedForce = requestedForceValues[0];
+		if (
+			requestedForceValues.length > 1 ||
+			(requestedForce != null &&
+				requestedForce !== "" &&
+				requestedForce !== "1")
+		) {
+			sendJsonError(
+				res,
+				'force must be specified at most once as "1".',
+				400,
+			);
+			return true;
+		}
+		const force = requestedForce === "1";
 		const [installed, pins] = await Promise.all([
 			resolveInstalledVersions(),
 			readPins(),
@@ -495,7 +515,7 @@ export async function handleVoiceModelsRoutes(
 			statuses = await updater.check(
 				{ installed, bundleVersion: resolveBundleVersion() },
 				{ pinned: pins },
-				{ force: url.searchParams.get("force") === "1" },
+				{ force },
 			);
 		} catch (err) {
 			logger.warn(
