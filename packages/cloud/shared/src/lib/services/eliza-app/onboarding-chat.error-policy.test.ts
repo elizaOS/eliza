@@ -30,9 +30,8 @@ mock.module("../../runtime/cloud-bindings", () => ({
 
 mock.module("../eliza-managed-launch", () => ({
   launchManagedElizaAgent,
-  // onboarding-chat.ts also imports this named export; a mock.module factory
-  // must supply every imported name or the module fails to LOAD (SyntaxError:
-  // "Export named ... not found"), killing the whole suite.
+  // The mock must expose every name imported by onboarding-chat so this suite
+  // exercises the error policy instead of failing during module linking.
   readManagedElizaAgentConnection: mock(),
 }));
 

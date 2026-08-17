@@ -18,9 +18,8 @@
  *   3. EMBEDDING COLUMN = dim384. A FRESH provision (no ELIZAOS_CLOUD_API_KEY in
  *      existingEnv) defaults to local-primary gte-small embeddings, so the env
  *      pins `EMBEDDING_DIMENSION=384` and the 384-d vectors land in the
- *      `dim_384` column (nubs/shaw directive 2026-08-16: self-hosted embeddings
- *      are the platform default; previously provisioned agents keep their
- *      pinned 1536 width). We boot a REAL in-memory PGlite adapter, snap it to
+ *      `dim_384` column. Existing provisioned agents retain their explicitly
+ *      pinned width. We boot a REAL in-memory PGlite adapter, snap it to
  *      the env's dimension, and prove a 384-d memory insert SUCCEEDS — while a
  *      1536-d insert hits the "dimension mismatch" guard (the negative
  *      control). Either drift — a revert to cloud-primary 1536 for fresh
@@ -189,8 +188,8 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
 
       // Negative control: a 1536-d vector against the dim384 column trips the
       // insert-path "dimension mismatch" guard — the memory row persists, the
-      // embedding does NOT. Confirms the dim384 column is the one in effect (a
-      // revert to cloud-primary 1536 for fresh provisions would flip both).
+      // embedding does NOT. Together these assertions prove the dim384 column
+      // is the active fresh-provision contract.
       const mismatchId = await adapter.createMemory(makeMemory(1536) as never, "messages");
       const mismatch = await adapter.getMemoryById(mismatchId);
       expect(mismatch).toBeTruthy();
