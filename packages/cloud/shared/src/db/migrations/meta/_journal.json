@@ -1667,6 +1667,20 @@
       "when": 1789675200000,
       "tag": "0238_org_storage_immutable_provider_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1789761600000,
+      "tag": "0239_org_storage_head_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1789848000000,
+      "tag": "0240_org_storage_head_receipt_response_shapes",
+      "breakpoints": true
     }
   ]
 }
