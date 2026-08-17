@@ -304,7 +304,7 @@ describe("resolveWorkdirRoute — malformed route guard", () => {
     ]);
     const r = resolveWorkdirRoute(stubRuntime(routes), "task", "please shipit");
     expect(r?.id).toBe("ok");
-    expect(r?.workdir).toBe(dir);
+    expect(r?.workdir).toBe(fs.realpathSync(dir));
   });
 });
 
@@ -336,5 +336,140 @@ describe("task-agent adapter aliases", () => {
             : undefined,
     };
     expect(resolvePinnedAdapter(runtime as never)).toBe("elizaos");
+  });
+});
+
+describe("route identity follows the directory (#20794 stamp gap)", () => {
+  let routeRoot: string;
+  let appDir: string;
+  let outsideDir: string;
+  const runtimeWithRoutes = () =>
+    ({
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_WORKDIR_ROUTES"
+          ? JSON.stringify([
+              {
+                id: "agent-home",
+                workdir: routeRoot,
+                matchAny: ["agent-home", "nubilio app"],
+                instructions: "shared route checkout",
+              },
+            ])
+          : undefined,
+    }) as never;
+
+  beforeEach(() => {
+    routeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "route-root-"));
+    appDir = path.join(routeRoot, "data", "apps", "wind-chimes");
+    fs.mkdirSync(appDir, { recursive: true });
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "outside-"));
+  });
+  afterEach(() => {
+    fs.rmSync(routeRoot, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("an explicit workdir inside the route tree carries the route even when the text matches nothing", () => {
+    // The live incident: create-path spawn with a planner-passed workdir into
+    // the shared route checkout, request phrasing matching no route term —
+    // the session must still carry the route id (residuals exemption reads it).
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      appDir,
+    );
+    expect(result.workdir).toBe(appDir);
+    expect(result.route?.id).toBe("agent-home");
+  });
+
+  it("a locked workdir inside the route tree carries the route while honoring the lock", () => {
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      appDir,
+      { lockWorkdir: true },
+    );
+    expect(result.workdir).toBe(appDir);
+    expect(result.route?.id).toBe("agent-home");
+  });
+
+  it("the route root itself is contained", () => {
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      routeRoot,
+    );
+    expect(result.route?.id).toBe("agent-home");
+  });
+
+  it("a workdir outside every route tree carries no route", () => {
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      outsideDir,
+    );
+    expect(result.workdir).toBe(outsideDir);
+    expect(result.route).toBeUndefined();
+  });
+
+  it("a sibling directory sharing the route prefix is NOT contained", () => {
+    // path.relative guards against the classic prefix-string trap
+    // (/tmp/route-root-x vs /tmp/route-root-x-evil).
+    const sibling = `${routeRoot}-sibling`;
+    fs.mkdirSync(sibling, { recursive: true });
+    try {
+      const result = resolveSpawnWorkdir(
+        runtimeWithRoutes(),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        sibling,
+      );
+      expect(result.route).toBeUndefined();
+    } finally {
+      fs.rmSync(sibling, { recursive: true, force: true });
+    }
+  });
+
+  it("does not stamp a symlink inside the route tree when it resolves outside", () => {
+    const outsideLink = path.join(routeRoot, "outside-link");
+    fs.symlinkSync(outsideDir, outsideLink, "dir");
+
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      outsideLink,
+    );
+
+    expect(result.route).toBeUndefined();
+  });
+
+  it("stamps a symlink outside the route tree when it resolves inside", () => {
+    const alias = path.join(outsideDir, "route-link");
+    fs.symlinkSync(appDir, alias, "dir");
+
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      alias,
+    );
+
+    expect(result.route?.id).toBe("agent-home");
+  });
+
+  it("text-matched route resolution still outranks and is unchanged", () => {
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      "ship the nubilio app update",
+      "ship the nubilio app update",
+      undefined,
+    );
+    expect(result.workdir).toBe(fs.realpathSync(routeRoot));
+    expect(result.route?.id).toBe("agent-home");
   });
 });

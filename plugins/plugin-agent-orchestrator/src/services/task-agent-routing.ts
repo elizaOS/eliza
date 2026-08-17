@@ -108,8 +108,19 @@ export function resolveSpawnWorkdir(
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
     : undefined;
+  // Route identity follows the DIRECTORY on every route-less resolution
+  // below: a chosen workdir inside a configured route's tree carries that
+  // route's id/instructions even when the request text matched nothing
+  // (#20794 — the residuals shared_route_workdir exemption reads the stamp).
+  const withContainedRoute = (result: {
+    workdir: string;
+    isolate?: boolean;
+  }): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } => {
+    const contained = resolveRouteForWorkdir(runtime, result.workdir);
+    return contained ? { ...result, route: contained } : result;
+  };
   if (opts.lockWorkdir && expandedExplicit && fs.existsSync(expandedExplicit)) {
-    return { workdir: expandedExplicit };
+    return withContainedRoute({ workdir: expandedExplicit });
   }
   const route = resolveWorkdirRoute(runtime, task, userRequest);
   if (route) return { workdir: route.workdir, route };
@@ -119,7 +130,7 @@ export function resolveSpawnWorkdir(
   // is convention-over-configuration — no per-project route entry needed
   // as long as the project directory is named like the user refers to it.
   const detected = resolveWorkdirByConvention(runtime, task, userRequest);
-  if (detected) return { workdir: detected };
+  if (detected) return withContainedRoute({ workdir: detected });
   const fallback = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     if (
@@ -131,7 +142,7 @@ export function resolveSpawnWorkdir(
       );
       return { workdir: fallback.workdir, isolate: true };
     }
-    return { workdir: expandedExplicit };
+    return withContainedRoute({ workdir: expandedExplicit });
   }
   if (expandedExplicit) {
     logger.warn(
@@ -273,11 +284,9 @@ export function resolveWorkdirByConvention(
   return undefined;
 }
 
-export function resolveWorkdirRoute(
+function configuredWorkdirRoutes(
   runtime: IAgentRuntime | undefined,
-  task: string,
-  userRequest: string,
-): ResolvedWorkdirRoute | undefined {
+): WorkdirRoute[] {
   const runtimeSetting =
     typeof runtime?.getSetting === "function"
       ? (runtime.getSetting("TASK_AGENT_WORKDIR_ROUTES") as string | undefined)
@@ -286,13 +295,70 @@ export function resolveWorkdirRoute(
     runtimeSetting ??
     readConfigEnvKey("TASK_AGENT_WORKDIR_ROUTES") ??
     process.env.TASK_AGENT_WORKDIR_ROUTES;
-  const routes = parseWorkdirRoutes(raw);
+  return parseWorkdirRoutes(raw);
+}
+
+/**
+ * Reverse route lookup by directory containment: the route whose workdir tree
+ * contains (or equals) `workdir`. Text matching identifies a route from what
+ * the user SAID; this identifies it from where the session actually LANDS —
+ * a planner-passed explicit workdir inside a shared route checkout is the
+ * same shared checkout whether or not the request phrasing matched, and the
+ * route identity (residuals exemption, route instructions) must follow the
+ * directory, not the phrasing (#20794 stamp gap).
+ */
+export function resolveRouteForWorkdir(
+  runtime: IAgentRuntime | undefined,
+  workdir: string,
+): ResolvedWorkdirRoute | undefined {
+  let target: string;
+  try {
+    target = fs.realpathSync(expandHomePath(workdir));
+  } catch {
+    // error-policy:J3 Reverse lookup only applies to an existing, resolvable
+    // directory. Callers will retain their normal route-less fallback.
+    return undefined;
+  }
+  for (const route of configuredWorkdirRoutes(runtime)) {
+    const expanded = expandHomePath(route.workdir);
+    let canonicalRouteRoot: string;
+    try {
+      canonicalRouteRoot = fs.realpathSync(expanded);
+    } catch {
+      // error-policy:J4 A missing or unreadable configured route is skipped so
+      // another valid route can still own the resolved workdir.
+      continue;
+    }
+    const relative = path.relative(canonicalRouteRoot, target);
+    const contained =
+      relative === "" ||
+      (!relative.startsWith("..") && !path.isAbsolute(relative));
+    if (!contained) continue;
+    return {
+      id: route.id,
+      workdir: canonicalRouteRoot,
+      instructions: route.instructions,
+      urlMappings: route.urlMappings,
+    };
+  }
+  return undefined;
+}
+
+export function resolveWorkdirRoute(
+  runtime: IAgentRuntime | undefined,
+  task: string,
+  userRequest: string,
+): ResolvedWorkdirRoute | undefined {
+  const routes = configuredWorkdirRoutes(runtime);
   if (routes.length === 0) return undefined;
   const haystack = `${userRequest}\n${task}`.toLowerCase();
   for (const route of routes) {
     if (!routeMatches(route, haystack)) continue;
     const expanded = expandHomePath(route.workdir);
-    if (!fs.existsSync(expanded)) {
+    let canonicalWorkdir: string;
+    try {
+      canonicalWorkdir = fs.realpathSync(expanded);
+    } catch {
       logger.warn(
         `[workdir-routes] Route "${route.id}" matched but workdir does not exist: ${expanded}`,
       );
@@ -303,7 +369,7 @@ export function resolveWorkdirRoute(
     );
     return {
       id: route.id,
-      workdir: expanded,
+      workdir: canonicalWorkdir,
       instructions: route.instructions,
       urlMappings: route.urlMappings,
     };
