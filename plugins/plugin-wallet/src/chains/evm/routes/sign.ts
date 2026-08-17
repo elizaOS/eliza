@@ -138,8 +138,16 @@ function readChainId(body: unknown): number {
   const c = (body as { chainId?: unknown }).chainId;
   if (typeof c === "number") return c;
   if (typeof c === "string") {
-    const n = c.startsWith("0x") ? Number.parseInt(c.slice(2), 16) : Number(c);
-    if (Number.isFinite(n)) return n;
+    const raw = c.trim();
+    // Canonical hex or decimal only. Number("1e2") === 100 used to sign on
+    // Gnosis instead of rejecting leftover scientific / prefix identities.
+    if (/^0x[0-9a-fA-F]+$/.test(raw)) {
+      const n = Number.parseInt(raw.slice(2), 16);
+      if (Number.isFinite(n)) return n;
+    } else if (/^(0|[1-9]\d*)$/.test(raw)) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) return n;
+    }
   }
   throw new EvmSignInputError("chainId must be a number or hex string");
 }
