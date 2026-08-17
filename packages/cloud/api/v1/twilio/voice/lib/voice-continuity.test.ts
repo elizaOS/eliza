@@ -6,7 +6,8 @@ import {
   callOpeningClientMessageId,
   callOpeningPrompt,
   callStartedEvent,
-  establishInboundCallIdentity,
+  claimInboundCallOpeningContext,
+  type InboundCallOpeningClaim,
   prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
   resolveCallContinuityContext,
@@ -69,50 +70,74 @@ describe("voice continuity", () => {
     );
   });
 
-  test("converges duplicate webhooks on one immutable opening payload", async () => {
-    const stableCall = {
-      id: "call-record-1",
-      receivedAt: new Date(now),
+  test("converges a delayed pre-cutoff write on the first claimed opener", async () => {
+    let persisted: InboundCallOpeningClaim | undefined;
+    const persistFirstWriter = async (candidate: InboundCallOpeningClaim) => {
+      persisted ??= candidate;
+      return persisted;
     };
-    const firstIdentity = await establishInboundCallIdentity(
-      async () => stableCall,
-      async () => undefined,
-    );
-    const duplicateIdentity = await establishInboundCallIdentity(
-      async () => undefined,
-      async () => stableCall,
-    );
-    expect(duplicateIdentity).toEqual(firstIdentity);
-
-    const priorInteractionAt = now - 3 * 60 * 60_000;
     const firstContext = resolveCallContinuityContext({
-      callStartedAt: firstIdentity.receivedAt.getTime(),
-      historyMessages: [{ createdAt: priorInteractionAt }],
+      callStartedAt: now,
+      historyMessages: [],
     });
-    const duplicateContext = resolveCallContinuityContext({
-      callStartedAt: duplicateIdentity.receivedAt.getTime(),
-      historyMessages: [
-        { createdAt: priorInteractionAt },
-        { createdAt: now + 1_000 },
-        { createdAt: now + 1_001 },
-      ],
+    const firstClaim = await claimInboundCallOpeningContext(
+      {
+        id: "call-record-1",
+        receivedAt: new Date(now),
+        ...firstContext,
+      },
+      persistFirstWriter,
+    );
+
+    const delayedPriorInteractionAt = now - 1;
+    const changedCandidate = resolveCallContinuityContext({
+      callStartedAt: now,
+      historyMessages: [{ createdAt: delayedPriorInteractionAt }],
     });
-    expect(duplicateContext).toEqual(firstContext);
+    expect(changedCandidate).toEqual({
+      returningCaller: true,
+      previousInteractionAt: delayedPriorInteractionAt,
+    });
+    const duplicateClaim = await claimInboundCallOpeningContext(
+      {
+        id: "call-record-2",
+        receivedAt: new Date(now),
+        ...changedCandidate,
+      },
+      persistFirstWriter,
+    );
+    expect(duplicateClaim).toEqual(firstClaim);
 
     const firstPrompt = callOpeningPrompt(
-      firstContext.returningCaller,
-      firstContext.previousInteractionAt,
-      firstIdentity.receivedAt.getTime(),
+      firstClaim.returningCaller,
+      firstClaim.previousInteractionAt,
+      firstClaim.receivedAt.getTime(),
     );
     const duplicatePrompt = callOpeningPrompt(
-      duplicateContext.returningCaller,
-      duplicateContext.previousInteractionAt,
-      duplicateIdentity.receivedAt.getTime(),
+      duplicateClaim.returningCaller,
+      duplicateClaim.previousInteractionAt,
+      duplicateClaim.receivedAt.getTime(),
     );
     expect(duplicatePrompt).toBe(firstPrompt);
     expect(callOpeningClientMessageId("CA123")).toBe(
       "twilio-call:CA123:opening",
     );
+  });
+
+  test("fails when the durable opening claim returns no winner", async () => {
+    await expect(
+      claimInboundCallOpeningContext(
+        {
+          id: "call-record-missing",
+          receivedAt: new Date(now),
+          returningCaller: false,
+          previousInteractionAt: undefined,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toMatchObject({
+      code: "TWILIO_CALL_OPENING_CONTEXT_UNAVAILABLE",
+    });
   });
 
   test("keeps legacy history without timestamps returning but age-unknown", () => {

@@ -6,7 +6,7 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-export interface InboundCallIdentity {
+export interface InboundCallOpeningClaim extends CallContinuityContext {
   id: string;
   receivedAt: Date;
 }
@@ -16,19 +16,19 @@ export interface CallContinuityContext {
   previousInteractionAt: number | undefined;
 }
 
-/** Makes a unique provider call reuse the winning audit row after an insert race. */
-export async function establishInboundCallIdentity(
-  insert: () => Promise<InboundCallIdentity | undefined>,
-  loadExisting: () => Promise<InboundCallIdentity | undefined>,
-): Promise<InboundCallIdentity> {
-  const inserted = await insert();
-  if (inserted) return inserted;
-  const existing = await loadExisting();
-  if (existing) return existing;
+/** Makes every retry use the first continuity snapshot claimed for a provider call. */
+export async function claimInboundCallOpeningContext(
+  candidate: InboundCallOpeningClaim,
+  persistFirstWriter: (
+    candidate: InboundCallOpeningClaim,
+  ) => Promise<InboundCallOpeningClaim | undefined>,
+): Promise<InboundCallOpeningClaim> {
+  const claimed = await persistFirstWriter(candidate);
+  if (claimed) return claimed;
   throw new ElizaError(
-    "Twilio call identity disappeared after a duplicate insert",
+    "Twilio call opening context was not returned by its durable claim",
     {
-      code: "TWILIO_CALL_IDENTITY_UNAVAILABLE",
+      code: "TWILIO_CALL_OPENING_CONTEXT_UNAVAILABLE",
       severity: "fatal",
     },
   );
