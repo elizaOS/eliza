@@ -21,7 +21,7 @@ function clampText(
   const trimmed = value?.trim();
   if (!trimmed) return fallback;
   return trimmed.length > maxLength
-    ? `${trimmed.slice(0, maxLength - 1)}...`
+    ? `${trimmed.slice(0, maxLength - 3)}...`
     : trimmed;
 }
 
