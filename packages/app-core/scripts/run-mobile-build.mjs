@@ -144,6 +144,7 @@ import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
   mergeIosInfoPlist,
   readIosApnsBuildFlag,
+  readIosHealthKitBuildFlag,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
 } from "./mobile/ios-plist.mjs";
@@ -3708,6 +3709,9 @@ function overlayIos() {
       appName: APP.appName,
       urlScheme: APP.urlScheme,
       apnsEnabled: readIosApnsBuildFlag(process.env.VITE_ELIZA_APNS_ENABLED),
+      healthKitEnabled: readIosHealthKitBuildFlag(
+        process.env.ELIZA_IOS_HEALTHKIT_ENABLED,
+      ),
     });
     if (nextPlist.changed) {
       plist = nextPlist.content;

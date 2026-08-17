@@ -30,6 +30,7 @@ const IOS_BG_TASK_IDENTIFIERS = [
   "ai.eliza.tasks.processing",
 ];
 export const IOS_APNS_ENABLED_KEY = "ELIZA_APNS_ENABLED";
+export const IOS_HEALTHKIT_ENABLED_KEY = "ELIZA_HEALTHKIT_ENABLED";
 
 /** Parse the one exact build flag shared by the renderer and native plist. */
 export function readIosApnsBuildFlag(raw) {
@@ -37,6 +38,15 @@ export function readIosApnsBuildFlag(raw) {
   if (raw === "1") return true;
   throw new Error(
     `VITE_ELIZA_APNS_ENABLED must be "0" or "1", received ${JSON.stringify(raw)}`,
+  );
+}
+
+/** Parse the explicit native HealthKit entitlement build flag. */
+export function readIosHealthKitBuildFlag(raw) {
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw === "1") return true;
+  throw new Error(
+    `ELIZA_IOS_HEALTHKIT_ENABLED must be "0" or "1", received ${JSON.stringify(raw)}`,
   );
 }
 
@@ -85,7 +95,7 @@ export function resolveIosPermissionKeys({ appName }) {
   ];
 }
 
-/** Set (or insert before `</dict>`) a `<key>`/`<string>` pair in a plist. */
+/** Set or insert a root `<key>`/`<string>` pair in a plist. */
 export function replaceOrInsertPlistString(content, key, value) {
   const escapedValue = escapeXmlText(value);
   const keyRe = escapeRegExp(key);
@@ -98,8 +108,8 @@ export function replaceOrInsertPlistString(content, key, value) {
   if (new RegExp(`<key>${keyRe}</key>`).test(content)) {
     throw new Error(`Info.plist: ${key} must be a string`);
   }
-  return content.replace(
-    "</dict>",
+  return insertBeforeRootPlistDictClose(
+    content,
     `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
   );
 }
@@ -110,7 +120,10 @@ export function ensurePlistTrueBool(content, key) {
   if (new RegExp(`<key>${keyRe}</key>`).test(content)) {
     return content;
   }
-  return content.replace("</dict>", `\t<key>${key}</key>\n\t<true/>\n</dict>`);
+  return insertBeforeRootPlistDictClose(
+    content,
+    `\t<key>${key}</key>\n\t<true/>\n</dict>`,
+  );
 }
 
 /** Ensure a plist `<array>` under `key` contains every value in `values`. */
@@ -178,13 +191,14 @@ export function mergeIosInfoPlist(
     urlScheme,
     displayName = "$(ELIZA_DISPLAY_NAME)",
     apnsEnabled = false,
+    healthKitEnabled = false,
   },
 ) {
   let nextContent = content;
   for (const [key, desc] of resolveIosPermissionKeys({ appName })) {
     if (!nextContent.includes(key)) {
-      nextContent = nextContent.replace(
-        "</dict>",
+      nextContent = insertBeforeRootPlistDictClose(
+        nextContent,
         `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
       );
     }
@@ -216,6 +230,11 @@ export function mergeIosInfoPlist(
     nextContent,
     IOS_APNS_ENABLED_KEY,
     apnsEnabled ? "1" : "0",
+  );
+  nextContent = replaceOrInsertPlistString(
+    nextContent,
+    IOS_HEALTHKIT_ENABLED_KEY,
+    healthKitEnabled ? "1" : "0",
   );
   return {
     changed: nextContent !== content,
