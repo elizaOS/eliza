@@ -182,7 +182,7 @@ function typeFilterCacheKey(selected: readonly string[]): string {
 
 function truncateText(text: string, max = 200): string {
   if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
+  return `${text.slice(0, max - 1)}…`;
 }
 
 function formatRelativeTime(timestamp: number, t: TranslateFn): string {

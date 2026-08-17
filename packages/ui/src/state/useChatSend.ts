@@ -1545,7 +1545,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           activeConv.title === "conversations.newChatTitle")
       ) {
         const fallbackTitle =
-          text.length > 15 ? `${text.slice(0, 15)}...` : text;
+          text.length > 15 ? `${text.slice(0, 12)}...` : text;
         setConversations((prev) =>
           prev.map((c) =>
             c.id === convId ? { ...c, title: fallbackTitle } : c,
@@ -2384,7 +2384,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             activeConv.title === "conversations.newChatTitle")
         ) {
           const fallbackTitle =
-            trimmed.length > 15 ? `${trimmed.slice(0, 15)}...` : trimmed;
+            trimmed.length > 15 ? `${trimmed.slice(0, 12)}...` : trimmed;
           setConversations((prev) =>
             prev.map((c) =>
               c.id === convId ? { ...c, title: fallbackTitle } : c,

@@ -210,7 +210,7 @@ const REPLY_PILL_SNIPPET_MAX = 140;
 function replyPillSnippet(text: string): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
   return collapsed.length > REPLY_PILL_SNIPPET_MAX
-    ? `${collapsed.slice(0, REPLY_PILL_SNIPPET_MAX)}…`
+    ? `${collapsed.slice(0, REPLY_PILL_SNIPPET_MAX - 1)}…`
     : collapsed;
 }
 

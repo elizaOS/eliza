@@ -87,7 +87,7 @@ const SECTION_TAB_KEYS: Array<{
 function nodeSummary(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") {
-    const compact = value.length > 100 ? `${value.slice(0, 100)}...` : value;
+    const compact = value.length > 100 ? `${value.slice(0, 97)}...` : value;
     return JSON.stringify(compact);
   }
   if (typeof value === "number" || typeof value === "boolean") {

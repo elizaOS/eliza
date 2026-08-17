@@ -131,7 +131,7 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
 
 function shortId(value: string | null | undefined): string {
   if (!value) return "Not recorded";
-  return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+  return value.length > 12 ? `${value.slice(0, 9)}...` : value;
 }
 
 function experienceKeywords(experience: CharacterExperienceRecord): string[] {
