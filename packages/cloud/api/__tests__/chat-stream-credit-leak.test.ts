@@ -126,6 +126,7 @@ mock.module("@/lib/services/credits", () => ({
   },
   DEFAULT_OUTPUT_TOKENS: 500,
   InsufficientCreditsError: TestInsufficientCreditsError,
+  ReservationNotFoundError: class extends Error {},
 }));
 
 mock.module("@/lib/services/organization-inference-admission", () => ({
