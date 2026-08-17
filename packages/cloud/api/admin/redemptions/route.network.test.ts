@@ -99,7 +99,10 @@ describe("GET /api/admin/redemptions payout-rail identity", () => {
       const response = await listRedemptions(query);
       expect(response.status).toBe(200);
       const body = (await response.json()) as { redemptions: { id: string }[] };
-      expect(body.redemptions.map((row) => row.id)).toEqual(["r-sol", "r-base"]);
+      expect(body.redemptions.map((row) => row.id)).toEqual([
+        "r-sol",
+        "r-base",
+      ]);
       expect(listForAdmin).toHaveBeenCalledTimes(1);
     },
   );

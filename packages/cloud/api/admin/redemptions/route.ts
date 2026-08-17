@@ -64,7 +64,9 @@ function parseAdminRedemptionNetworkFilter(
   const networkFilter = raw || "all";
   if (networkFilter === "all") return "all";
   if (networkFilter === "bsc") return "bnb";
-  if ((ADMIN_REDEMPTION_NETWORKS as readonly string[]).includes(networkFilter)) {
+  if (
+    (ADMIN_REDEMPTION_NETWORKS as readonly string[]).includes(networkFilter)
+  ) {
     return networkFilter as AdminRedemptionNetwork;
   }
   return null;
@@ -88,7 +90,9 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       );
     }
     const networkRaw = c.req.query("network") || "all";
-    const networkFilter = parseAdminRedemptionNetworkFilter(c.req.query("network"));
+    const networkFilter = parseAdminRedemptionNetworkFilter(
+      c.req.query("network"),
+    );
     if (networkFilter === null) {
       return c.json(
         {
