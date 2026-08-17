@@ -7,7 +7,6 @@
  * Mirrors `_legacy_actions/gallery.ts → listExploreImages`.
  */
 
-import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
@@ -17,13 +16,57 @@ import {
 import { generationsService } from "@/lib/services/generations";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const DEFAULT_EXPLORE_LIMIT = 20;
+const MAX_EXPLORE_LIMIT = 100;
+
+class GalleryExploreLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "GalleryExploreLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/gallery/explore `limit` is explore-page size identity,
+ * leftover tax after v1 gallery list pagination. Stock develop used
+ * parseClampedLimit, which treated `1e2` / `12px` / `007` / `foo` as
+ * the default 20 instead of a 400. type / status stay untouched.
+ * Missing / empty still means 20. Exact integers clamp at 100.
+ */
+function parseExploreLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new GalleryExploreLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_EXPLORE_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new GalleryExploreLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new GalleryExploreLimitError();
+  }
+  return Math.min(parsed, MAX_EXPLORE_LIMIT);
+}
+
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
 
 app.get("/", async (c) => {
   try {
-    const limit = parseClampedLimit(c.req.query("limit"), 20, 100);
+    let limit: number;
+    try {
+      limit = parseExploreLimitQuery(new URL(c.req.url).searchParams);
+    } catch (limitError) {
+      if (limitError instanceof GalleryExploreLimitError) {
+        return c.json({ error: limitError.message }, 400);
+      }
+      throw limitError;
+    }
 
     const generations =
       await generationsService.listRandomPublicImageSummaries(limit);
