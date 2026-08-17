@@ -55,8 +55,45 @@ async function __hono_GET(
 
   const requestParams: Record<string, string> = { address };
 
-  const type = searchParams.get("type");
-  if (type) requestParams.type = type;
+  // OHLCV interval identity, not leftover tax on analytics periods,
+  // analytics export type, or token-lookup chain. Unknown tokens
+  // (1h / 1d / HOUR) used to be forwarded to the paid provider.
+  const OHLCV_TYPES = [
+    "1m",
+    "3m",
+    "5m",
+    "15m",
+    "30m",
+    "1H",
+    "2H",
+    "4H",
+    "6H",
+    "8H",
+    "12H",
+    "1D",
+    "3D",
+    "1W",
+    "1M",
+  ] as const;
+  const requestedType = searchParams.get("type");
+  if (
+    requestedType != null &&
+    requestedType !== "" &&
+    !(OHLCV_TYPES as readonly string[]).includes(requestedType)
+  ) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          error: "Invalid type",
+          details:
+            "type must be a canonical Birdeye OHLCV interval (1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 8H, 12H, 1D, 3D, 1W, 1M).",
+        },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+    );
+  }
+  if (requestedType) requestParams.type = requestedType;
 
   const timeFrom = searchParams.get("time_from");
   if (timeFrom) requestParams.time_from = timeFrom;
