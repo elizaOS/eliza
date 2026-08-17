@@ -71,6 +71,7 @@ import {
 	ModelType,
 	NoModelProviderConfiguredError,
 } from "@elizaos/core";
+import { getFirstRunModelRegistrationProvider } from "@elizaos/shared";
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
@@ -92,6 +93,11 @@ export const ROUTER_PROVIDER = "eliza-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
+const TEXT_SMALL_SEMANTIC_DISPATCH = [
+	[ModelType.RESPONSE_HANDLER, ModelType.RESPONSE_HANDLER],
+	[ModelType.ACTION_PLANNER, ModelType.ACTION_PLANNER],
+	[ModelType.TEXT_COMPLETION, ModelType.TEXT_SMALL],
+] as const;
 
 /**
  * The device-tier assessment drives the `auto` policy (and softly hints
@@ -131,6 +137,20 @@ function readBooleanEnv(name: string): boolean {
 		return false;
 	}
 	return value === "1" || value.toLowerCase() === "true";
+}
+
+function readCanonicalTextProvider(
+	runtime: IAgentRuntime,
+	slot: AgentModelSlot,
+): string | null {
+	if (slot !== "TEXT_SMALL" && slot !== "TEXT_LARGE") return null;
+	const value =
+		typeof runtime.getSetting === "function"
+			? runtime.getSetting("MODEL_PROVIDER")
+			: undefined;
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim().toLowerCase()
+		: null;
 }
 
 /**
@@ -318,9 +338,12 @@ export async function filterUnavailableLocalInference(
 	);
 }
 
-function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
+function makeRouterHandler(
+	slot: AgentModelSlot,
+	dispatchModelType = slotToModelType(slot),
+): AnyHandler {
 	return async (runtime, params) => {
-		const modelType = slotToModelType(slot);
+		const modelType = dispatchModelType;
 		if (!modelType) {
 			throw new Error(`[router] Unknown agent slot: ${slot}`);
 		}
@@ -333,8 +356,24 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		const globalDefault: RoutingPolicy = readBooleanEnv("ELIZA_LOCAL_ONLY")
 			? "local-only"
 			: DEFAULT_ROUTING_POLICY;
-		const policy: RoutingPolicy = prefs.policy[slot] ?? globalDefault;
-		const preferred = prefs.preferredProvider[slot] ?? null;
+		const configuredPolicy = prefs.policy[slot];
+		const configuredPreferred = prefs.preferredProvider[slot];
+		const canonicalTextProvider = readCanonicalTextProvider(runtime, slot);
+		// Canonical service routing is projected into MODEL_PROVIDER at boot. It
+		// owns text dispatch unless the user has made the more specific per-slot
+		// choice; otherwise the router can advertise one provider while silently
+		// executing a different local model.
+		const useCanonicalTextProvider =
+			configuredPolicy === undefined &&
+			configuredPreferred === undefined &&
+			canonicalTextProvider !== null;
+		const policy: RoutingPolicy = useCanonicalTextProvider
+			? "manual"
+			: (configuredPolicy ?? globalDefault);
+		const preferred = useCanonicalTextProvider
+			? (getFirstRunModelRegistrationProvider(canonicalTextProvider) ??
+				canonicalTextProvider)
+			: (configuredPreferred ?? null);
 
 		// Ask the policy engine which handler to dispatch to. For automatic
 		// policies, honor the documented fallback behaviour: if the selected
@@ -348,6 +387,14 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			preferred,
 			getRuntimeModelCandidates(runtime, modelType),
 		);
+		if (
+			useCanonicalTextProvider &&
+			!candidates.some((candidate) => candidate.provider === preferred)
+		) {
+			throw new NoModelProviderConfiguredError(
+				`[router] Configured provider ${canonicalTextProvider} is not registered for ${slot}.`,
+			);
+		}
 
 		// Only the capability-aware policies need the hardware assessment + live
 		// signals. The tier is cached; the live signals are read fresh.
@@ -533,6 +580,17 @@ export function installRouterHandler(
 			ROUTER_PRIORITY,
 			{ streamable: true, routingProxy: true },
 		);
+	}
+	if (!skippedSlots.has("TEXT_SMALL")) {
+		for (const [modelType, dispatchModelType] of TEXT_SMALL_SEMANTIC_DISPATCH) {
+			rt.registerModel(
+				modelType,
+				makeRouterHandler("TEXT_SMALL", dispatchModelType),
+				ROUTER_PROVIDER,
+				ROUTER_PRIORITY,
+				{ streamable: true, routingProxy: true },
+			);
+		}
 	}
 }
 

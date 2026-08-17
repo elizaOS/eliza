@@ -903,6 +903,23 @@ export function getFirstRunProviderOption(
   );
 }
 
+/**
+ * Resolves a product-facing provider choice to the identity its model handlers
+ * use in AgentRuntime's registry. OpenAI-compatible products deliberately
+ * share plugin-openai, so routing must compare against the plugin identity
+ * without replacing the product id stored in configuration or telemetry.
+ */
+export function getFirstRunModelRegistrationProvider(
+  providerId: unknown,
+): string | null {
+  const option = getFirstRunProviderOption(providerId);
+  if (!option) return null;
+  if (option.pluginName === "@elizaos/plugin-elizacloud") {
+    return "elizaOSCloud";
+  }
+  return option.pluginName.replace(/^@elizaos\//, "").replace(/^plugin-/, "");
+}
+
 export function getFirstRunProviderFamily(
   providerId: unknown,
 ): FirstRunProviderFamily | null {

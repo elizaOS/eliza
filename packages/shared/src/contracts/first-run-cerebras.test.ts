@@ -28,6 +28,7 @@ import {
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
+  getFirstRunModelRegistrationProvider,
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,
   getStoredSubscriptionProviderForRequest,
@@ -63,6 +64,16 @@ describe("Cerebras first-run provider", () => {
     expect(getFirstRunProviderSignalEnvKeys("cerebras")).toEqual([
       "CEREBRAS_API_KEY",
     ]);
+  });
+
+  it("resolves product providers to their runtime model registration authority", () => {
+    expect(getFirstRunModelRegistrationProvider("cerebras")).toBe("openai");
+    expect(getFirstRunModelRegistrationProvider("moonshot")).toBe("openai");
+    expect(getFirstRunModelRegistrationProvider("anthropic")).toBe("anthropic");
+    expect(getFirstRunModelRegistrationProvider("gemini")).toBe("google-genai");
+    expect(getFirstRunModelRegistrationProvider("elizacloud")).toBe(
+      "elizaOSCloud",
+    );
   });
 
   it("maps to the cerebras-api direct account so it surfaces in the switcher", () => {
