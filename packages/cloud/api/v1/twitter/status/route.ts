@@ -10,8 +10,30 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role =
-      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
+    // Role identity leftover after twitter-disconnect (#21144) / x-status
+    // (#20945). The prior ternary mapped every non-"agent" token —
+    // including AGENT, owner-typos, and 1e2 — onto the personal owner
+    // Twitter status. Missing/empty still defaults to owner. Garbage
+    // 400s before getConnectionStatus.
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
+    if (
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const role = requestedRole === "agent" ? "agent" : ("owner" as const);
     const connectionId = `twitter:${user.organization_id}:${role}`;
 
     if (!twitterAutomationService.isConfigured()) {
