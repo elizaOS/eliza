@@ -109,10 +109,16 @@ function asBool(value: unknown): boolean | undefined {
 }
 
 function asNumber(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "number") {
+		if (!Number.isSafeInteger(value)) return undefined;
+		return value;
+	}
 	if (typeof value === "string") {
-		const n = Number(value);
-		if (Number.isFinite(n)) return n;
+		const trimmed = value.trim();
+		if (!/^-?\d+$/.test(trimmed)) return undefined;
+		const n = Number(trimmed);
+		if (!Number.isSafeInteger(n)) return undefined;
+		return n;
 	}
 	return undefined;
 }
@@ -182,10 +188,16 @@ function parseMessageLookupHints(
 }
 
 function asTimestampMs(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "number") {
+		if (!Number.isSafeInteger(value)) return undefined;
+		return value;
+	}
 	if (typeof value === "string") {
-		const n = Number(value);
-		if (Number.isFinite(n)) return n;
+		const trimmed = value.trim();
+		if (/^-?\d+$/.test(trimmed)) {
+			const n = Number(trimmed);
+			if (Number.isSafeInteger(n)) return n;
+		}
 		const parsed = Date.parse(value);
 		if (Number.isFinite(parsed)) return parsed;
 	}
