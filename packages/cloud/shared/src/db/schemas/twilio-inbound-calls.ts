@@ -18,7 +18,7 @@ export const twilioInboundCalls = pgTable(
     from_number: text("from_number").notNull(),
     to_number: text("to_number").notNull(),
     call_status: text("call_status").notNull(),
-    agent_id: uuid("agent_id"),
+    agent_id: text("agent_id"),
     raw_payload: jsonb("raw_payload").notNull().default({}),
     raw_payload_storage: text("raw_payload_storage").notNull().default("inline"),
     raw_payload_key: text("raw_payload_key"),
