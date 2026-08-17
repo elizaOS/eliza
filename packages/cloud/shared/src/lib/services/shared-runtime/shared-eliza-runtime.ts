@@ -17,6 +17,7 @@ import {
   InMemoryDatabaseAdapter,
   ModelType,
   NOTIFICATION_STREAM,
+  NotificationService,
   type Plugin,
   ServiceType,
   type StreamingContext,
@@ -27,7 +28,6 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core/edge";
-import { NotificationService } from "@elizaos/core/services/notification";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";

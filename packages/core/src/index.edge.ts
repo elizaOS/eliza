@@ -68,6 +68,7 @@ export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/message";
+export { NotificationService } from "./services/notification";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
