@@ -10,7 +10,8 @@ import { resolveStateDir } from "./state-dir";
 
 function getEnvVar(key: string): string | undefined {
 	if (typeof process !== "undefined" && process.env) {
-		return process.env[key];
+		const raw = process.env[key]?.trim();
+		return raw && raw.length > 0 ? raw : undefined;
 	}
 	return undefined;
 }
