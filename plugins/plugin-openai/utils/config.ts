@@ -49,9 +49,11 @@ export function getNumericSetting(
   if (value === undefined) {
     return defaultValue;
   }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Setting '${key}' must be a valid integer, got: ${value}`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `Setting '${key}' must be a positive integer within JavaScript's safe range, got: ${value}`
+    );
   }
   return parsed;
 }
