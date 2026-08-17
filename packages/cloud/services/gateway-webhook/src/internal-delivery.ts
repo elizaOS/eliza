@@ -5,12 +5,10 @@ import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import type { ChatEvent } from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
-import { resolveWebhookConfig } from "./webhook-config";
+import { resolveSharedWebhookConfig } from "./webhook-config";
 
 interface InternalDeliveryDependencies {
   redis: GatewayRedis;
-  cloudBaseUrl: string;
-  getAuthHeader(): Record<string, string>;
 }
 
 type InternalWebhookDelivery =
@@ -211,32 +209,10 @@ export async function deliverInternalMessage(
 
   let connectorAttempted = false;
   try {
-    const config = await resolveWebhookConfig(
-      dependencies.redis,
-      dependencies.cloudBaseUrl,
-      dependencies.getAuthHeader(),
+    const config = resolveSharedWebhookConfig(
       delivery.platform,
       delivery.project,
     );
-    if (!config) {
-      let claimReleased = true;
-      try {
-        await dependencies.redis.del(dedupeKey);
-      } catch {
-        // error-policy:J6 the bounded pre-egress claim expires without provider side effects.
-        claimReleased = false;
-      }
-      return Response.json(
-        {
-          success: false,
-          error: "connector unavailable",
-          retryable: true,
-          acceptance: "not_accepted",
-          claimReleased,
-        },
-        { status: 503, headers: { "Retry-After": claimReleased ? "1" : "60" } },
-      );
-    }
     const event: ChatEvent = {
       platform: delivery.platform,
       messageId: delivery.idempotencyKey,
