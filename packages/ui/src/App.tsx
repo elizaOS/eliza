@@ -1808,6 +1808,7 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
+  const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1914,6 +1915,20 @@ function ShellFoundationMount({
       cancelled = true;
     };
   }, [hasController, shellIsOpen, shellPreviewHovered, useWebChatPanel]);
+  useEffect(() => {
+    if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
+      return;
+    }
+    focusComposerOnOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-composer-textarea"]',
+        )
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [shellIsOpen, useWebChatPanel]);
   const closeWebChatWhenPilled = useCallback(
     (pilled: boolean) => {
       if (pilled) controller?.close();
@@ -1938,7 +1953,10 @@ function ShellFoundationMount({
         phase={controller.phase}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={controller.open}
+        onOpen={() => {
+          focusComposerOnOpenRef.current = useWebChatPanel;
+          controller.open();
+        }}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
