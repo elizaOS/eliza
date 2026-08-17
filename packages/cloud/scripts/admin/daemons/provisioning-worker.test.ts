@@ -734,6 +734,21 @@ describe("readWorkerConfig (canonical env ints)", () => {
     ).toBe(5000);
   });
 
+  it("bounds the poll gap below the worker watchdog window", () => {
+    expect(
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "59999" } as NodeJS.ProcessEnv,
+        [],
+      ).pollIntervalMs,
+    ).toBe(59_999);
+    expect(() =>
+      readWorkerConfig(
+        { WORKER_POLL_INTERVAL: "60000" } as NodeJS.ProcessEnv,
+        [],
+      ),
+    ).toThrow(/no greater than 59999/);
+  });
+
   it("throws on prefix-coerced WORKER_POLL_INTERVAL tokens (would have been a 1ms-class poll)", () => {
     for (const token of ["1e4", "12px", "007", "0", "0x10"]) {
       expect(() =>

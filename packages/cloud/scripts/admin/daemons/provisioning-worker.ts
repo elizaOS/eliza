@@ -198,13 +198,14 @@ function parsePositiveInt(
   value: string | undefined,
   fallback: number,
   label = "integer",
+  maximum = Number.MAX_SAFE_INTEGER,
 ): number {
   if (!value) return fallback;
   if (/^[1-9]\d*$/.test(value)) {
     const parsed = Number(value);
-    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) {
       throw new Error(
-        `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
+        `${label} must be a canonical positive integer no greater than ${maximum} (received ${JSON.stringify(value)})`,
       );
     }
     return parsed;
@@ -240,6 +241,7 @@ export function readWorkerConfig(
       env.WORKER_POLL_INTERVAL,
       DEFAULT_POLL_INTERVAL_MS,
       "WORKER_POLL_INTERVAL",
+      MAX_POLL_INTERVAL_MS,
     ),
     batchSize: parsePositiveInt(
       env.WORKER_BATCH_SIZE,
@@ -1310,6 +1312,13 @@ const PHASE_TIMEOUT_MS = 60_000;
  * unit test pins it too (FIX F).
  */
 const WORK_CYCLE_TIMEOUT_MS = 4 * 60_000;
+
+/**
+ * Longest configurable sleep that still leaves the bounded work cycle inside
+ * the watchdog window. The strict one-millisecond margin preserves the
+ * invariant's `<`, rather than `<=`, contract.
+ */
+const MAX_POLL_INTERVAL_MS = WATCHDOG_MAX_CYCLE_MS - WORK_CYCLE_TIMEOUT_MS - 1;
 
 /**
  * The watchdog invariant, surfaced for the unit test (FIX F) so adding a phase
