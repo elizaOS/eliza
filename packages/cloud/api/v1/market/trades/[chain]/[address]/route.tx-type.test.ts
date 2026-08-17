@@ -29,15 +29,10 @@ mock.module("@/lib/services/proxy/services/market-data", () => ({
 }));
 
 const route = (await import("./route")).default;
-const app = new Hono().route(
-  "/api/v1/market/trades/:chain/:address",
-  route,
-);
+const app = new Hono().route("/api/v1/market/trades/:chain/:address", route);
 
 function trades(query = "") {
-  return app.request(
-    `/api/v1/market/trades/solana/${SOLANA_TOKEN}${query}`,
-  );
+  return app.request(`/api/v1/market/trades/solana/${SOLANA_TOKEN}${query}`);
 }
 
 describe("GET /api/v1/market/trades token-trade type identity", () => {
