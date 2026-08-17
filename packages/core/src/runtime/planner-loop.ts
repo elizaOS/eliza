@@ -3712,7 +3712,17 @@ function terminalMessageWithFailureAuthority(
 		unresolvedFailure,
 	);
 	if (successEvidence.length === 0) return failureNote;
-	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+	// The generic fallback says the failed step produced no usable result. Once
+	// later tools publish structural success evidence, using that sentence as the
+	// lead contradicts the evidence appended immediately below it (live Eliza
+	// Code run: corrected FILE write + 5/5 passing test after a typoed cwd). Keep
+	// the unresolved failure authoritative, but describe the outcome as partial
+	// instead of falsely claiming the whole turn produced nothing useful.
+	const failureLead =
+		failureNote === FAILED_TOOL_FALLBACK_MESSAGE
+			? PARTIAL_TOOL_FALLBACK_MESSAGE
+			: failureNote;
+	return `${failureLead}\n\nWork that did complete: ${successEvidence.join(" ")}`;
 }
 
 /**
@@ -5090,6 +5100,9 @@ function shouldRecoverSilentFailedFinish(args: {
  */
 export const FAILED_TOOL_FALLBACK_MESSAGE =
 	"I tried to complete that, but the available runtime step failed before it produced a usable result.";
+
+const PARTIAL_TOOL_FALLBACK_MESSAGE =
+	"I couldn't complete every requested runtime step.";
 
 function failedToolFallbackMessage(
 	trajectory: PlannerTrajectory,
