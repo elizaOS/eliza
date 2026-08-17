@@ -129,6 +129,7 @@ jobs:
     concurrency:
       group: cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}
       cancel-in-progress: false
+      queue: max
     env:
       REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
       TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
