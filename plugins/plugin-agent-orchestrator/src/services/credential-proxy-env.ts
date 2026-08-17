@@ -130,7 +130,7 @@ export const GIT_CREDENTIAL_PROXY_HELPER_SOURCE = [
   '  const endpoint = url.replace(/\\/+$/, "") + "/git-credential";',
   "  let res;",
   "  try {",
-  '    res = await fetch(endpoint, { method: "POST", headers, body });',
+  '    res = await fetch(endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(15_000) });',
   "  } catch (e) {",
   '    return fail("proxy request failed: " + (e && e.message ? e.message : e));',
   "  }",
