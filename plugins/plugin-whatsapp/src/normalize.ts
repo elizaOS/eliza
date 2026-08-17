@@ -38,26 +38,37 @@ function stripWhatsAppTargetPrefixes(value: string): string {
  * Normalizes a phone number to E.164 format
  */
 export function normalizeE164(input: string): string {
-  const stripped = input.replace(/[\s\-().]+/g, "");
+  const candidate = input.trim();
+  if (!candidate || /[^\d+\s\-().]/.test(candidate)) {
+    return "";
+  }
+  const stripped = candidate.replace(/[\s\-().]+/g, "");
+  if (
+    (stripped.match(/\+/g) ?? []).length > 1 ||
+    (stripped.includes("+") && !stripped.startsWith("+"))
+  ) {
+    return "";
+  }
   const digitsOnly = stripped.replace(/[^\d+]/g, "");
 
-  if (!digitsOnly) {
+  if (!digitsOnly || digitsOnly === "+") {
     return "";
   }
 
   // If it starts with +, keep as-is (already E.164)
   if (digitsOnly.startsWith("+")) {
-    return digitsOnly;
+    return /^\+[1-9]\d{1,14}$/.test(digitsOnly) ? digitsOnly : "";
   }
 
   // If it starts with 00, replace with +
   if (digitsOnly.startsWith("00")) {
-    return `+${digitsOnly.slice(2)}`;
+    const international = `+${digitsOnly.slice(2)}`;
+    return /^\+[1-9]\d{1,14}$/.test(international) ? international : "";
   }
 
   // Assume it's a full number without the +
   if (digitsOnly.length >= 10) {
-    return `+${digitsOnly}`;
+    return /^[1-9]\d{9,14}$/.test(digitsOnly) ? `+${digitsOnly}` : "";
   }
 
   // Return as-is if too short
@@ -175,6 +186,38 @@ export function buildWhatsAppUserJid(phoneNumber: string): string {
   const normalized = normalizeE164(phoneNumber);
   const digits = normalized.replace(/^\+/, "");
   return `${digits}@s.whatsapp.net`;
+}
+
+/**
+ * Resolves an outbound Baileys target while preserving transport-native user
+ * and group identifiers, including LIDs that are not phone numbers.
+ */
+export function normalizeBaileysSendTarget(target: string): string {
+  if (isWhatsAppGroupJid(target) || isWhatsAppUserTarget(target)) {
+    return target;
+  }
+  const normalized = normalizeWhatsAppTarget(target);
+  if (!normalized) {
+    throw new Error("WhatsApp send target must be a valid phone number or WhatsApp JID.");
+  }
+  return buildWhatsAppUserJid(normalized);
+}
+
+/**
+ * Resolves an outbound Cloud API target to canonical E.164. Cloud sends do not
+ * accept Baileys group or LID identifiers, and short local numbers are unsafe
+ * because the Cloud API requires an explicit country code.
+ */
+export function normalizeCloudApiSendTarget(target: string): string {
+  const candidate = stripWhatsAppTargetPrefixes(target);
+  if (isWhatsAppGroupJid(candidate) || WHATSAPP_LID_RE.test(candidate)) {
+    throw new Error("WhatsApp Cloud API send target must be a valid E.164 phone number.");
+  }
+  const normalized = normalizeWhatsAppTarget(candidate);
+  if (!normalized || !/^\+[1-9]\d{1,14}$/.test(normalized)) {
+    throw new Error("WhatsApp Cloud API send target must be a valid E.164 phone number.");
+  }
+  return normalized;
 }
 
 /**
