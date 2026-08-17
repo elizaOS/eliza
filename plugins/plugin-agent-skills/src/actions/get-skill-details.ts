@@ -29,7 +29,7 @@ const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
 function truncateSkillDetailsText(text: string): string {
 	return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS
 		? text
-		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
+		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS - 27)}\n\n[truncated skill details]`;
 }
 
 export const getSkillDetailsAction = {
