@@ -1,3 +1,4 @@
+/** Deterministic unit coverage validates Core's platform-specific npm CLI resolution. */
 import { describe, expect, it } from "vitest";
 import { resolveNpmCliInvocation } from "./npm-cli";
 

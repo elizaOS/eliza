@@ -1,3 +1,4 @@
+/** Resolves the npm CLI invocation used by Core build verification across supported platforms. */
 import { existsSync } from "node:fs";
 import path from "node:path";
 
