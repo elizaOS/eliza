@@ -107,7 +107,7 @@ async function readErrorBodySnippet(
 		if (collapsed.length <= maxChars) {
 			return collapsed;
 		}
-		return `${collapsed.slice(0, maxChars)}…`;
+		return `${collapsed.slice(0, maxChars - 1)}…`;
 	} catch {
 		// error-policy:J7 The HTTP status remains authoritative when its optional
 		// diagnostic body snippet cannot be read.

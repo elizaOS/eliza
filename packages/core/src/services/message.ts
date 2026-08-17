@@ -1884,7 +1884,7 @@ export function subAgentCompletionRelayBody(
 	if (!body) return undefined;
 	const maxLength = 1500;
 	return body.length > maxLength
-		? `${body.slice(0, maxLength).trimEnd()}…`
+		? `${body.slice(0, maxLength - 1).trimEnd()}…`
 		: body;
 }
 
