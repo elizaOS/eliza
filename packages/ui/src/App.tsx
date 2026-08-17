@@ -2366,7 +2366,7 @@ function HomeScreenMount({
     <div
       aria-hidden={chatOwnsViewport ? "true" : undefined}
       data-onboarding-hidden={firstRunOpen ? "true" : undefined}
-      data-chat-overlay-hidden={chatOwnsViewport ? "true" : undefined}
+      data-chat-overlay-hidden={chatOwnsViewport ? "true" : "false"}
       inert={chatOwnsViewport || undefined}
       className={cn(
         "relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden",
@@ -2424,6 +2424,7 @@ function AppContent() {
   }));
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
+  const persistentShellController = useShellControllerContext();
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
   useEffect(() => {
@@ -2467,6 +2468,13 @@ function AppContent() {
   const handleFirstRunReleaseHandled = useCallback(() => {
     firstRunReleasePendingRef.current = false;
   }, []);
+  const handlePersistentOverlayOpenChange = useCallback(
+    (open: boolean): void => {
+      if (open) persistentShellController?.open();
+      else persistentShellController?.close();
+    },
+    [persistentShellController],
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -3450,6 +3458,7 @@ function AppContent() {
         <ChatOverlayMount
           releaseFirstRunToHalf={firstRunReleasePendingRef.current}
           onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+          onRequestedOpenChange={handlePersistentOverlayOpenChange}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live

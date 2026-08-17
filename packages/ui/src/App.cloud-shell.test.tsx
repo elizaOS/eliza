@@ -121,6 +121,11 @@ describe("App standalone chat-overlay wiring", () => {
     expect(homeMount).toContain("aria-hidden={chatOwnsViewport");
     expect(homeMount).toContain("inert={chatOwnsViewport || undefined}");
     expect(homeMount).toContain("data-chat-overlay-hidden={chatOwnsViewport");
+    expect(APP_TSX).toContain(
+      "onRequestedOpenChange={handlePersistentOverlayOpenChange}",
+    );
+    expect(APP_TSX).toContain("persistentShellController?.open()");
+    expect(APP_TSX).toContain("persistentShellController?.close()");
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {

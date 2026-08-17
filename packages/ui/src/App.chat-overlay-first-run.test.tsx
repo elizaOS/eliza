@@ -52,6 +52,7 @@ const overlayHarness = vi.hoisted(() => ({
   sizeClass: undefined as
     | ((sizeClass: "resting" | "input" | "sheet") => void)
     | undefined,
+  openChange: undefined as ((open: boolean) => void) | undefined,
 }));
 
 const shellControllerMock = vi.hoisted(() => ({
@@ -59,6 +60,7 @@ const shellControllerMock = vi.hoisted(() => ({
   cancelRecording: vi.fn(),
   close: vi.fn(),
   isOpen: false,
+  open: vi.fn(),
   recording: false,
   requestSignIn: vi.fn(),
   startRecording: vi.fn(),
@@ -111,9 +113,11 @@ vi.mock("./components/shell/ChatOverlay", () => ({
     onWindowSizeClassChange?: (
       sizeClass: "resting" | "input" | "sheet",
     ) => void;
+    onRequestedOpenChange?: (open: boolean) => void;
   }) => {
     overlayHarness.materialSize = props.onWindowMaterialSizeChange;
     overlayHarness.sizeClass = props.onWindowSizeClassChange;
+    overlayHarness.openChange = props.onRequestedOpenChange;
     return <div data-testid="chat-overlay" />;
   },
 }));
@@ -346,6 +350,14 @@ describe("App chat-overlay first-run composition", () => {
     desktopBridgeMock.request.mockClear();
     overlayHarness.materialSize = undefined;
     overlayHarness.sizeClass = undefined;
+    overlayHarness.openChange = undefined;
+    shellControllerMock.isOpen = false;
+    shellControllerMock.open.mockImplementation(() => {
+      shellControllerMock.isOpen = true;
+    });
+    shellControllerMock.close.mockImplementation(() => {
+      shellControllerMock.isOpen = false;
+    });
   });
 
   afterEach(() => {
@@ -497,6 +509,30 @@ describe("App chat-overlay first-run composition", () => {
 
     expect(shell.getByTestId("startup-screen")).toBeTruthy();
     expect(shell.queryByTestId("shell-controller-provider")).toBeNull();
+  });
+
+  it("makes the retained Home layer inert across real overlay open and collapse edges", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    appState.authPhase = "authenticated";
+
+    const shell = render(<App />);
+    const home = () =>
+      shell.container.querySelector<HTMLElement>("[data-chat-overlay-hidden]");
+    expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("false");
+
+    act(() => overlayHarness.openChange?.(true));
+    shell.rerender(<App />);
+    expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("true");
+    expect(home()?.hasAttribute("inert")).toBe(true);
+    expect(home()?.className).toContain("invisible");
+
+    act(() => overlayHarness.openChange?.(false));
+    shell.rerender(<App />);
+    expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("false");
+    expect(home()?.hasAttribute("inert")).toBe(false);
+    expect(home()?.className).not.toContain("invisible");
   });
 
   it("keeps the conductor mounted but UNGATED by App once first-run completes (hook self-gates)", () => {
