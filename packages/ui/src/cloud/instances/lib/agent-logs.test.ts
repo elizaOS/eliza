@@ -6,11 +6,16 @@ import {
   AgentLogsTimeoutError,
   AgentLogsUnavailableError,
   loadAgentLogs,
-  parseAgentLogsJob,
+  parseAgentLogsJob as parseAgentLogsJobBoundary,
   parseAgentLogsStart,
 } from "./agent-logs";
 
 const TEST_JOB_ID = "123e4567-e89b-12d3-a456-426614174000";
+const TEST_EXPECTATION = { agentId: "agent-1", tail: 200 } as const;
+
+function parseAgentLogsJob(value: unknown) {
+  return parseAgentLogsJobBoundary(value, TEST_EXPECTATION);
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -48,7 +53,12 @@ describe("agent log protocol", () => {
           data: {
             type: "agent_logs",
             status: "completed",
-            result: { logs: "ready" },
+            result: {
+              cloudAgentId: "agent/one",
+              status: "running",
+              tail: 200,
+              logs: "ready",
+            },
           },
           polling: { shouldContinue: false },
         }),
@@ -75,7 +85,13 @@ describe("agent log protocol", () => {
         data: {
           type: "agent_logs",
           status: "completed",
-          result: { logs: "", message: "No container logs are available." },
+          result: {
+            cloudAgentId: "agent-1",
+            status: "running",
+            tail: 200,
+            logs: "",
+            message: "No container logs are available.",
+          },
         },
       }),
     ).toEqual({
@@ -122,7 +138,11 @@ describe("agent log protocol", () => {
         data: {
           type: "agent_logs",
           status: "completed",
-          result: {},
+          result: {
+            cloudAgentId: "agent-1",
+            status: "running",
+            tail: 200,
+          },
         },
       }),
     ).toThrow(AgentLogsUnavailableError);
@@ -132,25 +152,37 @@ describe("agent log protocol", () => {
         data: {
           type: "agent_logs",
           status: "completed",
-          result: {},
+          result: {
+            cloudAgentId: "agent-1",
+            status: "running",
+            tail: 200,
+          },
         },
       }),
     ).toThrow("finished without log data");
   });
 
   it.each([
-    "Agent is provisioning — no container assigned yet.",
-    "Logs unavailable: sandbox provider does not implement fetchLogs.",
+    ["provisioning", "Agent is provisioning — no container assigned yet."],
+    [
+      "running",
+      "Logs unavailable: sandbox provider does not implement fetchLogs.",
+    ],
   ])(
     "preserves the producer's message-only unavailable result: %s",
-    (message) => {
+    (status, message) => {
       expect(
         parseAgentLogsJob({
           success: true,
           data: {
             type: "agent_logs",
             status: "completed",
-            result: { cloudAgentId: "agent-1", message },
+            result: {
+              cloudAgentId: "agent-1",
+              status,
+              tail: 200,
+              message,
+            },
           },
         }),
       ).toEqual({
@@ -166,7 +198,13 @@ describe("agent log protocol", () => {
       data: {
         type: "agent_logs",
         status: "completed",
-        result: { logs: "", message: `${"a".repeat(499)}😀` },
+        result: {
+          cloudAgentId: "agent-1",
+          status: "running",
+          tail: 200,
+          logs: "",
+          message: `${"a".repeat(499)}😀`,
+        },
       },
     });
 
@@ -174,6 +212,62 @@ describe("agent log protocol", () => {
     if (result.kind !== "complete") return;
     expect(result.result.notice).toHaveLength(499);
     expect(result.result.notice?.isWellFormed()).toBe(true);
+  });
+
+  it("rejects arbitrary message-only completions and mismatched producer metadata", () => {
+    expect(() =>
+      parseAgentLogsJob({
+        success: true,
+        data: {
+          type: "agent_logs",
+          status: "completed",
+          result: {
+            cloudAgentId: "agent-1",
+            status: "running",
+            tail: 200,
+            message: "arbitrary partial completion",
+          },
+        },
+      }),
+    ).toThrow("unsupported log outcome");
+
+    expect(() =>
+      parseAgentLogsJobBoundary(
+        {
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result: {
+              cloudAgentId: "different-agent",
+              status: "running",
+              tail: 999,
+              logs: "different agent log",
+            },
+          },
+        },
+        TEST_EXPECTATION,
+      ),
+    ).toThrow("does not match the requested agent");
+
+    expect(() =>
+      parseAgentLogsJobBoundary(
+        {
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result: {
+              cloudAgentId: "agent-1",
+              status: "running",
+              tail: 999,
+              logs: "wrong range",
+            },
+          },
+        },
+        TEST_EXPECTATION,
+      ),
+    ).toThrow("does not match the requested log range");
   });
 
   it.each([

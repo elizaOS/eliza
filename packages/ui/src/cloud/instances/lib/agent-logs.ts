@@ -35,6 +35,11 @@ type AgentLogsJobState =
   | { kind: "complete"; result: AgentLogsResult }
   | { kind: "failed"; message: string };
 
+interface AgentLogsJobExpectation {
+  agentId: string;
+  tail: number;
+}
+
 export class AgentLogsProtocolError extends Error {
   readonly name: string = "AgentLogsProtocolError";
 }
@@ -141,7 +146,10 @@ export function parseAgentLogsStart(value: unknown): AgentLogsStart {
   };
 }
 
-export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
+export function parseAgentLogsJob(
+  value: unknown,
+  expected: AgentLogsJobExpectation,
+): AgentLogsJobState {
   if (!isRecord(value) || value.success !== true) {
     throw new AgentLogsProtocolError(
       isRecord(value)
@@ -199,8 +207,37 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
       "This agent is no longer available. Refresh the agent list and try again.",
     );
   }
+  if (
+    typeof result.cloudAgentId !== "string" ||
+    result.cloudAgentId !== expected.agentId
+  ) {
+    throw new AgentLogsProtocolError(
+      "The completed log job does not match the requested agent.",
+    );
+  }
+  if (!Number.isSafeInteger(result.tail) || result.tail !== expected.tail) {
+    throw new AgentLogsProtocolError(
+      "The completed log job does not match the requested log range.",
+    );
+  }
+  const resultStatus = readBoundedText(result.status, 64);
+  if (!resultStatus) {
+    throw new AgentLogsProtocolError(
+      "The completed log job did not include an agent status.",
+    );
+  }
   const resultMessage = readBoundedText(result.message);
   if (result.logs === undefined && resultMessage) {
+    const producerOwnedNotice =
+      resultMessage ===
+        `Agent is ${resultStatus} — no container assigned yet.` ||
+      resultMessage ===
+        "Logs unavailable: sandbox provider does not implement fetchLogs.";
+    if (!producerOwnedNotice) {
+      throw new AgentLogsUnavailableError(
+        "The completed log job returned an unsupported log outcome.",
+      );
+    }
     return {
       kind: "complete",
       result: { logs: "", notice: resultMessage },
@@ -339,7 +376,7 @@ export async function loadAgentLogs({
         readJson(response, "The log job"),
       );
 
-      const job = parseAgentLogsJob(body);
+      const job = parseAgentLogsJob(body, { agentId, tail });
       if (job.kind === "complete") return job.result;
       if (job.kind === "failed") throw new AgentLogsProtocolError(job.message);
       intervalMs = job.intervalMs;
