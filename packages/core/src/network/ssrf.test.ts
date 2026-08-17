@@ -315,4 +315,44 @@ describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass
 		expect(isPrivateIpAddress("2001:db8::1")).toBe(false); // docs range, non-Teredo
 		expect(isPrivateIpAddress("2003:a9fe:a9fe::")).toBe(false); // not 6to4
 	});
+
+	it("blocks mixed-case and non-canonical spellings of the same embeds", () => {
+		for (const addr of [
+			"64:FF9B::A9FE:A9FE", // upper-case NAT64
+			"2002:A9FE:A9FE::", // upper-case 6to4
+			"2001:0:4136:E378:8000:63BF:5601:5601", // upper-case Teredo
+			"0::ffff:7f00:1", // mapped spelling the normalize prefix regex misses
+			"0:0:0:0:0:ffff:7f00:1", // expanded mapped loopback
+			"0:0:0:0:0:0:7f00:1", // expanded compatible loopback
+			"0:0:0:0:0:0:0:1", // expanded ::1
+			"0:0:0:0:0:0:0:0", // expanded ::
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+	});
+
+	it("screens zone-id and mapped loopback literals end to end", () => {
+		expect(isPrivateIpAddress("fe80::1%eth0")).toBe(true);
+		expect(isPrivateIpAddress("[fe80::1%25eth0]")).toBe(true);
+		expect(isPrivateIpAddress("[::ffff:7f00:1]")).toBe(true);
+	});
+
+	it("loose URL spellings are unparseable or canonicalize into the guard", () => {
+		// Node and Bun both REJECT a loose dotted tail inside an IPv6 literal
+		// (leading-zero octal / hex quads), so those spellings can never be
+		// connected to — the strict dotted-tail parse in the guard is no bypass.
+		for (const url of [
+			"http://[64:ff9b::0177.0.0.1]/",
+			"http://[64:ff9b::0xa9.0xfe.0xa9.0xfe]/",
+			"http://[::ffff:2130706433]/",
+		]) {
+			expect(() => new URL(url), url).toThrow();
+		}
+		// Mixed-case spellings DO parse and canonicalize; the canonical form is
+		// what reaches isPrivateIpAddress, and it stays blocked.
+		expect(new URL("http://[::FFFF:7F00:1]/").hostname).toBe("[::ffff:7f00:1]");
+		expect(
+			isPrivateIpAddress(new URL("http://[64:FF9B::A9FE:A9FE]/").hostname),
+		).toBe(true);
+	});
 });
