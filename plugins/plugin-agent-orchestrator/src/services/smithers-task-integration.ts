@@ -56,6 +56,16 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function findLastNonEmptyString(
+  values: readonly unknown[],
+): string | undefined {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (nonEmptyString(value)) return value;
+  }
+  return undefined;
+}
+
 function approvalPreset(value: unknown): ApprovalPreset | undefined {
   return value === "readonly" ||
     value === "standard" ||
@@ -253,12 +263,11 @@ export async function runDurableTask(
       severity: "ephemeral",
     });
   }
-  const recoveredResponse = collectDurableTaskTurns(result.execution)
-    .map((turn) => turn.output?.finalText)
-    .findLast(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0,
-    );
+  const recoveredResponse = findLastNonEmptyString(
+    collectDurableTaskTurns(result.execution).map(
+      (turn) => turn.output?.finalText,
+    ),
+  );
   const lastResponse = executor.lastResponse ?? recoveredResponse;
   if (typeof lastResponse !== "string" || lastResponse.trim().length === 0) {
     throw new ElizaError("Durable task completed without a response", {

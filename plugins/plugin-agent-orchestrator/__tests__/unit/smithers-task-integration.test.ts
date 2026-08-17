@@ -73,14 +73,19 @@ describe("runDurableTask", () => {
   );
 
   it(
-    "recovers a completed response without another ACP prompt after restart",
+    "recovers the newest completed response without another ACP prompt after restart",
     async () => {
       const session = uniqueSession();
       const durableResponse = `durable-${"x".repeat(128 * 1024)}-tail`;
-      const sendPrompt = vi.fn(async () => ({
-        stopReason: "end_turn",
-        finalText: durableResponse,
-      }));
+      const responses = [
+        { stopReason: "max_tokens", finalText: "older partial response" },
+        { stopReason: "end_turn", finalText: durableResponse },
+      ];
+      const sendPrompt = vi.fn(async () => {
+        const response = responses.shift();
+        if (!response) throw new Error("unexpected extra ACP prompt");
+        return response;
+      });
       const service: AcpTaskService = {
         sendPrompt,
         cancelSession: cancellation(),
@@ -88,17 +93,21 @@ describe("runDurableTask", () => {
 
       const first = await runDurableTask(service, session, "do it once", {
         tenantId,
+        maxTurns: 2,
       });
       expect(first.lastResponse).toBe(durableResponse);
-      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      expect(first.turns).toBe(2);
+      expect(sendPrompt).toHaveBeenCalledTimes(2);
 
       sendPrompt.mockClear();
       const resumed = await runDurableTask(service, session, "do it once", {
         tenantId,
+        maxTurns: 2,
       });
       expect(sendPrompt).not.toHaveBeenCalled();
       expect(resumed.lastResponse).toBe(durableResponse);
       expect(resumed.status).toBe("completed");
+      expect(resumed.turns).toBe(2);
     },
     TIMEOUT,
   );
