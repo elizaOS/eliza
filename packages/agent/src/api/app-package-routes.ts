@@ -14,6 +14,7 @@ import {
   type AppRouteModule,
   importAppRouteModule,
 } from "../services/app-package-modules.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 const RESERVED_APP_ROUTE_SLUGS = new Set([
   "",
@@ -27,28 +28,9 @@ const RESERVED_APP_ROUTE_SLUGS = new Set([
   "stop",
 ]);
 
-type AppSlugParseResult =
-  | { kind: "unmatched" }
-  | { kind: "invalid" }
-  | { kind: "slug"; value: string };
-
-function parseAppSlug(pathname: string): AppSlugParseResult {
+function extractEncodedAppSlug(pathname: string): string | null {
   const match = pathname.match(/^\/api\/apps\/([^/]+)(?:\/|$)/);
-  if (!match?.[1]) return { kind: "unmatched" };
-
-  let slug: string;
-  try {
-    slug = decodeURIComponent(match[1]).trim();
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — malformed path encoding is
-    // reported by the route boundary instead of escaping as URIError.
-    return { kind: "invalid" };
-  }
-
-  if (!slug || RESERVED_APP_ROUTE_SLUGS.has(slug)) {
-    return { kind: "unmatched" };
-  }
-  return { kind: "slug", value: slug };
+  return match?.[1] ?? null;
 }
 
 function toLegacyHandlerName(slug: string): string {
@@ -79,13 +61,16 @@ function resolveAppRouteHandler(
 export async function handleAppPackageRoutes(
   ctx: AppPackageRouteDispatchContext,
 ): Promise<boolean> {
-  const parsedSlug = parseAppSlug(ctx.pathname);
-  if (parsedSlug.kind === "unmatched") return false;
-  if (parsedSlug.kind === "invalid") {
-    ctx.error(ctx.res, "Invalid app slug: malformed URL encoding", 400);
-    return true;
-  }
-  const slug = parsedSlug.value;
+  const encodedSlug = extractEncodedAppSlug(ctx.pathname);
+  if (encodedSlug === null) return false;
+
+  // error-policy:J3 untrusted-input sanitizing — the shared HTTP boundary
+  // decoder writes the explicit 400 response for malformed percent encoding.
+  const decodedSlug = decodePathComponent(encodedSlug, ctx.res, "app slug");
+  if (decodedSlug === null) return true;
+
+  const slug = decodedSlug.trim();
+  if (!slug || RESERVED_APP_ROUTE_SLUGS.has(slug)) return false;
 
   const routeModule = await importAppRouteModule(slug);
   if (!routeModule) return false;
