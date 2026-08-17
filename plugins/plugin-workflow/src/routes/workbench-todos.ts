@@ -64,11 +64,15 @@ interface AgentEventEmitterLike {
   }): void;
 }
 
-function parseNullableNumber(value: unknown): number | null {
+export function parseNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const parsed = Number(value);
+    const raw = value.trim();
+    // Canonical decimal only. Number("1e2") === 100 used to store leftover
+    // scientific / hex / leading-zero identities as a real todo priority.
+    if (!/^-?(0|[1-9]\d*)(\.\d+)?$/.test(raw)) return null;
+    const parsed = Number(raw);
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
