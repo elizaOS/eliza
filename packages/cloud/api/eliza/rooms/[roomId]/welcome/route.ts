@@ -39,10 +39,22 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   const roomId = c.req.param("roomId") ?? "";
-  const body = await c.req.json();
-  const text = body?.text as string | undefined;
-
-  if (!text?.trim()) return c.json({ error: "text is required" }, 400);
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+    // bare JSON.parse. SyntaxError must be a caller 400, not an uncaught
+    // 500, before auth or the first-agent memory write.
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const text = (body as { text?: unknown }).text;
+  if (typeof text !== "string" || !text.trim()) {
+    return c.json({ error: "text is required" }, 400);
+  }
 
   const userId = await resolveUserId(c);
   if (!userId) return c.json({ error: "Authentication required" }, 401);
