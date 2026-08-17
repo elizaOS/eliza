@@ -156,6 +156,7 @@ import {
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
+import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -1563,6 +1564,14 @@ export function ChatOverlay({
   // empty composer settles it back to compact. Elsewhere focus is tracked via
   // refs (composerFocusedAtPressRef) that must not trigger a re-render.
   const [composerFocused, setComposerFocused] = React.useState(false);
+  React.useEffect(
+    () => () => {
+      // The setting is WebView-global. Always restore it when chat leaves the
+      // tree so a later settings or onboarding field retains its accessory.
+      setChatComposerAccessoryBarHidden(false);
+    },
+    [],
+  );
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
@@ -6518,6 +6527,7 @@ export function ChatOverlay({
                     if (nextDraft.trim().length > 0) expandFromTyping();
                   }}
                   onFocus={() => {
+                    setChatComposerAccessoryBarHidden(true);
                     // Widen out of the short-landscape compact affordance (#14173)
                     // on focus, before the first keystroke.
                     setComposerFocused(true);
@@ -6530,6 +6540,7 @@ export function ChatOverlay({
                     }
                   }}
                   onBlur={() => {
+                    setChatComposerAccessoryBarHidden(false);
                     setComposerFocused(false);
                     // A suppress-expand flag armed for a focus that never landed
                     // (openFromPill arms it BEFORE focusing) must not survive to

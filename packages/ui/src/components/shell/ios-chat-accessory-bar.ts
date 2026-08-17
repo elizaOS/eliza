@@ -1,0 +1,83 @@
+/**
+ * Scopes WebView-global iOS keyboard accessory suppression to the chat
+ * composer's focus lifecycle and serializes native bridge writes so a later
+ * restore cannot be overtaken by an earlier hide.
+ */
+
+import { logger } from "@elizaos/logger";
+
+import { isIOS, isNative } from "../../platform/init";
+
+interface KeyboardAccessoryBridge {
+  setAccessoryBarVisible(options: { isVisible: boolean }): Promise<void>;
+}
+
+type KeyboardAccessoryLoader = () => Promise<KeyboardAccessoryBridge>;
+
+export interface ChatAccessoryBarController {
+  initializeBaseline(): Promise<void>;
+  setChatComposerHidden(hidden: boolean): Promise<void>;
+}
+
+export function createChatAccessoryBarController({
+  enabled,
+  loadKeyboard,
+  reportError,
+}: {
+  enabled: boolean;
+  loadKeyboard: KeyboardAccessoryLoader;
+  reportError: (error: unknown) => void;
+}): ChatAccessoryBarController {
+  let update = Promise.resolve();
+  let chatComposerHidden = false;
+
+  const enqueueVisibility = (hidden: boolean): Promise<void> => {
+    if (!enabled) return Promise.resolve();
+    update = update
+      .then(async () => {
+        const Keyboard = await loadKeyboard();
+        await Keyboard.setAccessoryBarVisible({ isVisible: !hidden });
+      })
+      .catch((error) => {
+        // error-policy:J4 the optional native keyboard bridge can be absent or
+        // unavailable; ordinary WebView keyboard behavior remains usable.
+        reportError(error);
+      });
+    return update;
+  };
+
+  return {
+    initializeBaseline(): Promise<void> {
+      // Boot can finish after React mounts and the composer takes focus. Apply
+      // the current owner state instead of blindly restoring the global bar.
+      return enqueueVisibility(chatComposerHidden);
+    },
+    setChatComposerHidden(hidden: boolean): Promise<void> {
+      chatComposerHidden = hidden;
+      return enqueueVisibility(hidden);
+    },
+  };
+}
+
+const chatAccessoryBarController = createChatAccessoryBarController({
+  enabled: isNative && isIOS,
+  loadKeyboard: async () => {
+    const { Keyboard } = await import("@capacitor/keyboard");
+    return Keyboard;
+  },
+  reportError: (error) => {
+    logger.warn(
+      { error },
+      "[ChatOverlay] iOS keyboard accessory visibility unavailable",
+    );
+  },
+});
+
+/** Reconciles boot's ordinary-form baseline with any already-focused chat. */
+export function initializeIosKeyboardAccessoryBar(): Promise<void> {
+  return chatAccessoryBarController.initializeBaseline();
+}
+
+export function setChatComposerAccessoryBarHidden(hidden: boolean): void {
+  void chatAccessoryBarController.setChatComposerHidden(hidden);
+}
