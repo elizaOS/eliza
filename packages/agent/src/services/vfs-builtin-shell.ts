@@ -108,8 +108,7 @@ async function runScript(
   cwd: string,
   script: string,
 ): Promise<VfsBuiltinCommandResult> {
-  const segments = script
-    .split(/&&|;/)
+  const segments = splitScriptSegments(script)
     .map((segment) => segment.trim())
     .filter(Boolean);
   let stdout = "";
@@ -123,6 +122,40 @@ async function runScript(
     }
   }
   return { exitCode: 0, stdout, stderr };
+}
+
+function splitScriptSegments(script: string): string[] {
+  const segments: string[] = [];
+  let start = 0;
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < script.length; index += 1) {
+    const character = script[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = quote === character ? null : (quote ?? character);
+      continue;
+    }
+    if (quote !== null) continue;
+
+    const separatorLength =
+      character === ";" ? 1 : script.startsWith("&&", index) ? 2 : 0;
+    if (separatorLength === 0) continue;
+    segments.push(script.slice(start, index));
+    index += separatorLength - 1;
+    start = index + 1;
+  }
+
+  segments.push(script.slice(start));
+  return segments;
 }
 
 async function runScriptSegment(
