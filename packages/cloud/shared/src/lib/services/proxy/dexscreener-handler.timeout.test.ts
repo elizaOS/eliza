@@ -1,8 +1,8 @@
 /**
- * Covers DexScreener proxy deadlines and credit refunds (clone of birdeye timeout fix).
- * The harness exercises failures during both fetch and response-body consumption.
+ * Exercises the real DexScreener proxy handler with deterministic upstream,
+ * timer, billing, and authentication seams, including fetch and body stalls.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, jest, mock, test } from "bun:test";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
 import * as authActual from "../../auth/workers-hono-auth";
@@ -62,6 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   globalThis.fetch = originalFetch;
 });
 
@@ -71,14 +72,47 @@ afterAll(() => {
   mock.module("../../auth/workers-hono-auth", () => realAuth);
 });
 
+function rejectWhenAborted(signal: AbortSignal | null | undefined): Promise<never> {
+  if (!signal) return Promise.reject(new Error("fetch signal is required"));
+  return new Promise((_, reject) => {
+    const rejectAbort = () => {
+      const error = new Error("This operation was aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal.aborted) rejectAbort();
+    else signal.addEventListener("abort", rejectAbort, { once: true });
+  });
+}
+
+async function waitFor(check: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (check()) return;
+    await Promise.resolve();
+  }
+  expect(check()).toBe(true);
+}
+
 describe("dexscreener proxy — timeout covers fetch+body and transport refunds", () => {
-  test("AbortError during fetch refunds once and returns 504", async () => {
-    globalThis.fetch = mock(async () => {
-      const err = new Error("This operation was aborted");
-      err.name = "AbortError";
-      throw err;
-    }) as unknown as typeof fetch;
-    const res = await handleDexscreenerProxyGet(makeContext("latest/dex/tokens/So111"));
+  test("the real deadline aborts a stalled fetch, refunds once, and returns 504", async () => {
+    jest.useFakeTimers();
+    const fetchMock = mock(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      rejectWhenAborted(init?.signal),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const responsePromise = handleDexscreenerProxyGet(makeContext("latest/dex/tokens/So111"));
+    await waitFor(() => fetchMock.mock.calls.length === 1);
+    const signal = fetchMock.mock.calls[0]?.[1]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+
+    jest.advanceTimersByTime(9_999);
+    expect(signal?.aborted).toBe(false);
+    expect(refundCredits).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+
+    const res = await responsePromise;
     expect(res.status).toBe(504);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("timeout");
@@ -91,27 +125,54 @@ describe("dexscreener proxy — timeout covers fetch+body and transport refunds"
     expect(args.amount).toBe(COST);
   });
 
-  test("AbortError during body read (stalled body) refunds once and returns 504", async () => {
-    globalThis.fetch = mock(
-      async () =>
-        new Response("{}", {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    ) as unknown as typeof fetch;
-    const originalText = Response.prototype.text;
-    Response.prototype.text = mock(async function (this: Response) {
-      const err = new Error("This operation was aborted");
-      err.name = "AbortError";
-      throw err;
-    }) as unknown as typeof Response.prototype.text;
-    try {
-      const res = await handleDexscreenerProxyGet(makeContext("latest/dex/tokens/So111"));
-      expect(res.status).toBe(504);
-      expect(refundCredits).toHaveBeenCalledTimes(1);
-    } finally {
-      Response.prototype.text = originalText;
-    }
+  test("the same real deadline covers a stalled body read", async () => {
+    jest.useFakeTimers();
+    let bodyReadStarted = false;
+    let requestSignal: AbortSignal | null | undefined;
+    const fetchMock = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal;
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "Content-Type": "application/json" }),
+        text: () => {
+          bodyReadStarted = true;
+          return rejectWhenAborted(requestSignal);
+        },
+      } as Response;
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const responsePromise = handleDexscreenerProxyGet(makeContext("latest/dex/tokens/So111"));
+    await waitFor(() => bodyReadStarted);
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    expect(requestSignal?.aborted).toBe(false);
+    jest.advanceTimersByTime(10_000);
+
+    const res = await responsePromise;
+    expect(requestSignal?.aborted).toBe(true);
+    expect(res.status).toBe(504);
+    expect(refundCredits).toHaveBeenCalledTimes(1);
+  });
+
+  test("a completed response clears the deadline instead of aborting later", async () => {
+    jest.useFakeTimers();
+    let requestSignal: AbortSignal | null | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal;
+      return new Response('{"ok":1}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const res = await handleDexscreenerProxyGet(makeContext("latest/dex/tokens/So111"));
+    expect(res.status).toBe(200);
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    expect(requestSignal?.aborted).toBe(false);
+    jest.advanceTimersByTime(10_000);
+    expect(requestSignal?.aborted).toBe(false);
+    expect(refundCredits).not.toHaveBeenCalled();
   });
 
   test("non-Abort transport failure refunds once and returns 502", async () => {
