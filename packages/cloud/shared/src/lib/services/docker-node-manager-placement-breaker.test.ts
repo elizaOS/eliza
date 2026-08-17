@@ -42,7 +42,7 @@ mock.module("../../db/repositories/docker-nodes", () => ({
       repoCalls.updateStatus.push({ nodeId, status });
       return Promise.resolve();
     },
-    setHostKeyFingerprint: () => Promise.resolve(),
+    rotateNodeHostKeyFingerprint: () => Promise.resolve(),
   },
 }));
 

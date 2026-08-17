@@ -198,7 +198,14 @@ export async function handleConnectorRoutes(
     if (rawName.includes("/")) {
       return false;
     }
-    const name = decodeURIComponent(rawName);
+    let name: string;
+    try {
+      name = decodeURIComponent(rawName);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid connector name encoding", 400);
+      return true;
+    }
     if (!name || isBlockedObjectKey(name)) {
       error(res, "Missing or invalid connector name", 400);
       return true;

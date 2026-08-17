@@ -57,6 +57,12 @@ export interface Bindings {
    * Default off provides an immediate rollback to the monolithic router.
    */
   THIN_INFERENCE_ENTRY_ENABLED?: string;
+  /**
+   * Secondary kill switch for durable auto-top-up claims. Only the exact
+   * string "true" permits new claims; recovery and signed reconciliation run
+   * while it is absent or false, subject to the primary database control.
+   */
+  AUTO_TOP_UP_DURABLE_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;

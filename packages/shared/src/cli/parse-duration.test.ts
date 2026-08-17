@@ -25,6 +25,9 @@ describe("parseDurationMs", () => {
 
   it("throws on empty / malformed / negative input", () => {
     expect(() => parseDurationMs("")).toThrow();
+    expect(() => parseDurationMs("   ")).toThrow();
+    expect(() => parseDurationMs(null as unknown as string)).toThrow();
+    expect(() => parseDurationMs(undefined as unknown as string)).toThrow();
     expect(() => parseDurationMs("abc")).toThrow();
     expect(() => parseDurationMs("10x")).toThrow();
     expect(() => parseDurationMs("-5s")).toThrow();
@@ -38,6 +41,18 @@ describe("parseDurationMs", () => {
       );
     },
   );
+
+  it("rejects values exceeding MAX_SAFE_INTEGER", () => {
+    expect(() => parseDurationMs("1000000000000000d")).toThrow(
+      "invalid duration",
+    );
+    expect(() => parseDurationMs("10000000000000000ms")).toThrow(
+      "invalid duration",
+    );
+    expect(parseDurationMs(`${Number.MAX_SAFE_INTEGER}ms`)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
 
   it("checks overflow after applying the default unit", () => {
     expect(() =>

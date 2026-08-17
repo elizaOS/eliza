@@ -230,7 +230,15 @@ describe("route matching uses the originating request, not the planner task", ()
   let originalRoutes: string | undefined;
 
   beforeEach(() => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "originating-route-"));
+    // Canonicalize the temp root the same way production does: after #20991,
+    // resolveWorkdirRoute resolves a matched route's workdir with
+    // fs.realpathSync, so on macOS it returns /private/var/... while a bare
+    // os.tmpdir() yields the /var symlink. Deriving appsDir from the canonical
+    // root keeps every expected path in the same filesystem identity as the
+    // value production returns; otherwise these assertions fail only on macOS.
+    tmpRoot = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "originating-route-")),
+    );
     appsDir = path.join(tmpRoot, "custom-apps");
     fs.mkdirSync(appsDir, { recursive: true });
     originalRoutes = process.env[ENV_KEY];

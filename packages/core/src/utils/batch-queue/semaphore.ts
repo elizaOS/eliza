@@ -13,7 +13,20 @@ export class Semaphore {
 	private waiters: Array<() => void> = [];
 
 	constructor(count: number) {
-		this.permits = Math.max(1, count);
+		this.permits =
+			typeof count === "number" && Number.isFinite(count)
+				? Math.max(1, Math.floor(count))
+				: 1;
+	}
+
+	/** Number of currently available permits. */
+	get availablePermits(): number {
+		return this.permits;
+	}
+
+	/** Number of tasks currently queued waiting for a permit. */
+	get queueLength(): number {
+		return this.waiters.length;
 	}
 
 	async acquire(): Promise<void> {

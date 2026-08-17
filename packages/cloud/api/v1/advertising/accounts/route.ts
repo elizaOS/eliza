@@ -6,11 +6,11 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { advertisingService } from "@/lib/services/advertising";
 import {
-  type AdPlatform,
-  advertisingService,
-} from "@/lib/services/advertising";
-import { ConnectAccountSchema } from "@/lib/services/advertising/schemas";
+  AdPlatformSchema,
+  ConnectAccountSchema,
+} from "@/lib/services/advertising/schemas";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,7 +20,20 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const platform = c.req.query("platform") as AdPlatform | null;
+    const requestedPlatform = c.req.query("platform");
+    const parsedPlatform = requestedPlatform
+      ? AdPlatformSchema.safeParse(requestedPlatform)
+      : null;
+    if (parsedPlatform && !parsedPlatform.success) {
+      return c.json(
+        {
+          error: "invalid_platform",
+          message: `platform must be one of: ${AdPlatformSchema.options.join(", ")}.`,
+        },
+        400,
+      );
+    }
+    const platform = parsedPlatform?.data;
 
     const accounts = await advertisingService.listAccounts(
       user.organization_id,

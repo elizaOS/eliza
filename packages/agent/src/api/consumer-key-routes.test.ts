@@ -267,4 +267,39 @@ describe("consumer-key routes CRUD", () => {
     await handleConsumerKeyRoutes(badVerb.ctx);
     expect(badVerb.reply.status).toBe(405);
   });
+
+  it("rejects malformed percent-encoded consumer key id with 400", async () => {
+    installAdmin();
+    for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const badReq = makeRequest({
+        method: "PATCH",
+        pathname: `/api/accounts/consumer-keys/${badId}`,
+        authorized: true,
+        body: { enabled: true },
+      });
+      await handleConsumerKeyRoutes(badReq.ctx);
+      expect(badReq.reply.status).toBe(400);
+      expect(badReq.reply.body).toEqual({
+        error: "Invalid consumer-key id encoding",
+      });
+    }
+  });
+
+  it("decodes valid percent-encoded consumer key id", async () => {
+    const { admin } = installAdmin();
+    const created = admin.create({ label: "encoded" });
+    expect(created).not.toBeNull();
+    if (!created) throw new Error("expected created consumer key");
+    const id = created.consumer.id; // e.g. "ck_1"
+    const encodedId = encodeURIComponent(id);
+
+    const patchReq = makeRequest({
+      method: "PATCH",
+      pathname: `/api/accounts/consumer-keys/${encodedId}`,
+      authorized: true,
+      body: { label: "updated" },
+    });
+    await handleConsumerKeyRoutes(patchReq.ctx);
+    expect(patchReq.reply.status).toBe(200);
+  });
 });

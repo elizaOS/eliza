@@ -33,8 +33,11 @@ export const EXAMPLE_NAMES = [
 ] as const;
 
 export function pickRandomExampleName(index = 0): string {
+	const safeIndex =
+		typeof index === "number" && Number.isFinite(index) ? Math.floor(index) : 0;
 	const offset = Math.floor(Math.random() * EXAMPLE_NAMES.length);
-	return (
-		EXAMPLE_NAMES[(offset + index) % EXAMPLE_NAMES.length] ?? `user${index + 1}`
-	);
+	const normalizedOffset =
+		(((offset + safeIndex) % EXAMPLE_NAMES.length) + EXAMPLE_NAMES.length) %
+		EXAMPLE_NAMES.length;
+	return EXAMPLE_NAMES[normalizedOffset] ?? `user${safeIndex + 1}`;
 }

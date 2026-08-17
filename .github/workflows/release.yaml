@@ -83,6 +83,23 @@ jobs:
             exit 1
           fi
 
+          # The dispatch binds one commit: the run SHA, declared source SHA,
+          # and workflow SHA must be the same commit of refs/heads/develop.
+          # That commit does not have to still be the live head — under
+          # continuous merge traffic the queue delay would make an exact
+          # head pin unsatisfiable — but it must be genuine develop history
+          # (ancestor of the live head) and its release workflow must be
+          # byte-identical to the live head's, so a stale dispatch cannot
+          # run superseded release logic.
+          if [ "$OBSERVED_SOURCE_SHA" != "$OBSERVED_SHA" ]; then
+            echo "::error::Release source SHA is $OBSERVED_SOURCE_SHA, dispatch bound $OBSERVED_SHA."
+            exit 1
+          fi
+          if [ "$OBSERVED_WORKFLOW_SHA" != "$OBSERVED_SHA" ]; then
+            echo "::error::Release workflow SHA is $OBSERVED_WORKFLOW_SHA, dispatch bound $OBSERVED_SHA."
+            exit 1
+          fi
+
           protected_sha="$({
             curl --fail-with-body --silent --show-error \
               --header 'Accept: application/vnd.github+json' \
@@ -100,19 +117,52 @@ jobs:
             });
           ')"
           if [ "$OBSERVED_SHA" != "$protected_sha" ]; then
-            echo "::error::Release caller SHA is $OBSERVED_SHA, current protected develop is $protected_sha."
-            exit 1
+            ancestry_status="$({
+              curl --fail-with-body --silent --show-error \
+                --header 'Accept: application/vnd.github+json' \
+                --header "Authorization: Bearer $API_TOKEN" \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "${GITHUB_API_URL}/repos/${EXPECTED_REPOSITORY}/compare/${OBSERVED_SHA}...${protected_sha}"
+            } | node -e '
+              let source = "";
+              process.stdin.setEncoding("utf8");
+              process.stdin.on("data", (chunk) => { source += chunk; });
+              process.stdin.on("end", () => {
+                const value = JSON.parse(source)?.status;
+                if (typeof value !== "string") process.exit(1);
+                process.stdout.write(value);
+              });
+            ')"
+            if [ "$ancestry_status" != "ahead" ] && [ "$ancestry_status" != "identical" ]; then
+              echo "::error::Release SHA $OBSERVED_SHA is not reachable from protected develop head $protected_sha (compare status: $ancestry_status)."
+              exit 1
+            fi
+            workflow_blob_at() {
+              curl --fail-with-body --silent --show-error \
+                --header 'Accept: application/vnd.github+json' \
+                --header "Authorization: Bearer $API_TOKEN" \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "${GITHUB_API_URL}/repos/${EXPECTED_REPOSITORY}/contents/.github/workflows/release.yaml?ref=$1" \
+              | node -e '
+                let source = "";
+                process.stdin.setEncoding("utf8");
+                process.stdin.on("data", (chunk) => { source += chunk; });
+                process.stdin.on("end", () => {
+                  const value = JSON.parse(source)?.sha;
+                  if (typeof value !== "string" || !/^[0-9a-f]{40}$/.test(value)) process.exit(1);
+                  process.stdout.write(value);
+                });
+              '
+            }
+            dispatched_workflow_blob="$(workflow_blob_at "$OBSERVED_SHA")"
+            protected_workflow_blob="$(workflow_blob_at "$protected_sha")"
+            if [ "$dispatched_workflow_blob" != "$protected_workflow_blob" ]; then
+              echo "::error::Release workflow at $OBSERVED_SHA no longer matches protected develop head $protected_sha; re-dispatch from the current head."
+              exit 1
+            fi
           fi
-          if [ "$OBSERVED_SOURCE_SHA" != "$protected_sha" ]; then
-            echo "::error::Release source SHA is $OBSERVED_SOURCE_SHA, current protected develop is $protected_sha."
-            exit 1
-          fi
-          if [ "$OBSERVED_WORKFLOW_SHA" != "$protected_sha" ]; then
-            echo "::error::Release workflow SHA is $OBSERVED_WORKFLOW_SHA, current protected develop is $protected_sha."
-            exit 1
-          fi
-          echo "tooling_sha=$protected_sha" >> "$GITHUB_OUTPUT"
-          echo "Protected release tooling: $protected_sha" >> "$GITHUB_STEP_SUMMARY"
+          echo "tooling_sha=$OBSERVED_SHA" >> "$GITHUB_OUTPUT"
+          echo "Protected release tooling: $OBSERVED_SHA (develop head at verification: $protected_sha)" >> "$GITHUB_STEP_SUMMARY"
 
   candidate:
     name: Build immutable candidate
@@ -194,10 +244,16 @@ jobs:
 
       - name: Verify release source before first pack
         if: inputs.candidate_run_id == 0
+        env:
+          # verify's default typecheck fan-out (8 concurrent tsc processes)
+          # exceeds hosted-runner memory and gets the step SIGTERMed; cap it.
+          RUN_TURBO_CONCURRENCY: "3"
         run: bun run verify
 
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0
+        env:
+          RUN_TURBO_CONCURRENCY: "3"
         run: bun run test
 
       - name: Rebind source immediately before pack
@@ -215,6 +271,8 @@ jobs:
 
       - name: Build and pack once
         if: inputs.candidate_run_id == 0
+        env:
+          RUN_TURBO_CONCURRENCY: "3"
         run: >-
           node packages/scripts/release-candidate.mjs candidate
           --cohort packages/scripts/release-cohort.json

@@ -107,6 +107,12 @@ app.post("/", async (c) => {
       c.env,
       c.executionCtx,
     );
+    const personalSharedTiming = response.headers.get("Server-Timing");
+    if (personalSharedTiming) {
+      // The Discord gateway cannot optimize a slow turn if the internal
+      // wrapper erases the account, prewarm, and Shared runtime split.
+      c.header("Server-Timing", personalSharedTiming);
+    }
     const payload = (await response.json()) as {
       success?: boolean;
       error?: string;

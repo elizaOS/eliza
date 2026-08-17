@@ -194,6 +194,26 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
 
+    // App-delete GitHub-repo identity, not leftover tax on telegram
+    // webhook flag or share-ingest consume. deleteGitHubRepo=FALSE
+    // used to still delete the linked repo.
+    const requestedDeleteGitHub = c.req.query("deleteGitHubRepo");
+    if (
+      requestedDeleteGitHub != null &&
+      requestedDeleteGitHub !== "" &&
+      requestedDeleteGitHub !== "true" &&
+      requestedDeleteGitHub !== "false"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid deleteGitHubRepo",
+          message: 'deleteGitHubRepo must be "true" or "false".',
+        },
+        400,
+      );
+    }
+
     const existing = await appsService.getById(id);
     if (!existing)
       return c.json({ success: false, error: "App not found" }, 404);
@@ -205,7 +225,7 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const deleteGitHubRepo = c.req.query("deleteGitHubRepo") !== "false";
+    const deleteGitHubRepo = requestedDeleteGitHub !== "false";
 
     const cleanupResult = await appCleanupService.deleteAppWithCleanup(id, {
       deleteGitHubRepo,

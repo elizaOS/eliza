@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
   PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
@@ -74,16 +74,30 @@ async function seedState(root: string): Promise<void> {
 }
 
 /**
- * Real in-memory adapter widened with the PGlite raw-connection surface the
- * snapshot capture path reads; `dumpDataDir` behavior is injected per test.
+ * Real in-memory adapter widened with the bounded PGlite export surface the
+ * snapshot capture path reads; materialization behavior is injected per test.
  */
 class PgliteFacadeAdapter extends InMemoryDatabaseAdapter {
-  constructor(private readonly dumpDataDir: () => Promise<unknown>) {
+  constructor(
+    private readonly dataDir: string,
+    private readonly materialize: () => Promise<unknown>,
+  ) {
     super();
   }
 
-  getRawConnection(): unknown {
-    return { dumpDataDir: this.dumpDataDir };
+  getPgliteDataDir(): string {
+    return this.dataDir;
+  }
+
+  async dumpPgliteDataDirAfterPreflight<T>(
+    preflight: () => Promise<T>,
+  ): Promise<{ dump: unknown; preflight: T; release: () => void }> {
+    const proof = await preflight();
+    return {
+      dump: await this.materialize(),
+      preflight: proof,
+      release: () => undefined,
+    };
   }
 }
 
@@ -100,7 +114,9 @@ async function withSnapshotServer(
     runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
     // Register before initialize() so the runtime does not fall back to a
     // plain in-memory adapter without the raw-connection facade.
-    runtime.registerDatabaseAdapter(new PgliteFacadeAdapter(dumpDataDir));
+    runtime.registerDatabaseAdapter(
+      new PgliteFacadeAdapter(path.join(root, "state", "pglite"), dumpDataDir),
+    );
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
     api = await startApiServer({
@@ -129,7 +145,14 @@ async function postSnapshot(baseUrl: string): Promise<Response> {
   });
 }
 
-afterEach(restoreEnvironment);
+beforeEach(() => {
+  vi.spyOn(process, "availableMemory").mockReturnValue(512 * 1024 * 1024);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  restoreEnvironment();
+});
 
 describe("POST /api/snapshot transient/terminal mapping", () => {
   it("maps a PGlite closing race to 503 with the structured transient code", async () => {

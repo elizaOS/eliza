@@ -87,20 +87,23 @@ describe("handleAuthRoutes", () => {
     await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
 
     expect(captured.status).toBe(200);
+    // With ELIZA_REQUIRE_LOCAL_AUTH enforced, loopback is deliberately NOT
+    // auto-trusted; the token-authorized caller is a BEARER machine principal,
+    // and passwordConfigured reflects the configured API token.
     expect(captured.body).toMatchObject({
       identity: {
-        id: "local-agent",
-        displayName: "Local Agent",
+        id: "bearer-agent",
+        displayName: "API User",
         kind: "machine",
       },
       session: {
-        id: "local",
-        kind: "local",
+        id: "bearer",
+        kind: "machine",
         expiresAt: null,
       },
       access: {
-        mode: "local",
-        passwordConfigured: false,
+        mode: "bearer",
+        passwordConfigured: true,
         ownerConfigured: false,
       },
     });
@@ -112,10 +115,12 @@ describe("handleAuthRoutes", () => {
     await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
 
     expect(captured.status).toBe(401);
+    // Enforced local auth strips loopback trust, so the unauthenticated caller
+    // presents as a remote principal.
     expect(captured.body).toMatchObject({
       reason: "remote_auth_required",
       access: {
-        mode: "local",
+        mode: "remote",
         passwordConfigured: true,
         ownerConfigured: false,
       },

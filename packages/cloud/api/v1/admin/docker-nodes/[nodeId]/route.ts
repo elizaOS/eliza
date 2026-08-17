@@ -121,6 +121,8 @@ const updateNodeSchema = z
     capacity: z.number().int().min(1).optional(),
     sshPort: z.number().int().min(1).max(65535).optional(),
     sshUser: z.string().min(1).optional(),
+    // Explicit pin rotation/revocation always clears node_incarnation. A later
+    // host-key-verified health probe must re-attest the boot before capture.
     hostKeyFingerprint: z.string().min(1).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
@@ -198,11 +200,21 @@ async function __hono_PATCH(
     if (capacity !== undefined) updateData.capacity = capacity;
     if (sshPort !== undefined) updateData.ssh_port = sshPort;
     if (sshUser !== undefined) updateData.ssh_user = sshUser;
-    if (hostKeyFingerprint !== undefined)
-      updateData.host_key_fingerprint = hostKeyFingerprint;
     if (metadata !== undefined) updateData.metadata = metadata;
 
-    const updated = await dockerNodesRepository.update(existing.id, updateData);
+    const pinRotated =
+      hostKeyFingerprint === undefined
+        ? null
+        : await dockerNodesRepository.rotateNodeHostKeyFingerprint({
+            id: existing.id,
+            nodeId,
+            expectedFingerprint: existing.host_key_fingerprint,
+            observedFingerprint: hostKeyFingerprint,
+          });
+    const updated =
+      Object.keys(updateData).length > 0
+        ? await dockerNodesRepository.update(existing.id, updateData)
+        : pinRotated;
 
     logger.info("[Admin Docker Nodes] Node updated", {
       nodeId,

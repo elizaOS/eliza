@@ -27,8 +27,27 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    // The query selects a tenant-facing party view, so only the two documented
+    // identities are accepted. Missing or empty retains the advertiser default;
+    // ambiguous tokens fail before either booking list is read.
+    const requestedAs = c.req.query("as");
+    if (
+      requestedAs !== undefined &&
+      requestedAs !== "" &&
+      requestedAs !== "influencer" &&
+      requestedAs !== "advertiser"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_as",
+          message: 'as must be "influencer" or "advertiser".',
+        },
+        400,
+      );
+    }
     const bookings =
-      c.req.query("as") === "influencer"
+      requestedAs === "influencer"
         ? await influencerMarketplaceService.listBookingsForInfluencer(user.id)
         : await influencerMarketplaceService.listBookingsForOrg(
             user.organization_id,

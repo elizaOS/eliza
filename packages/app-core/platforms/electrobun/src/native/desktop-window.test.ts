@@ -1,4 +1,5 @@
 /** Exercises desktop window behavior with deterministic app-core test fixtures. */
+import { Screen } from "electrobun/bun";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
@@ -338,6 +339,10 @@ describe("DesktopManager main window controls", () => {
   beforeEach(() => {
     resetDesktopManagerForTesting();
     electrobunMock.reset();
+    vi.mocked(Screen.getPrimaryDisplay).mockReset();
+    vi.mocked(Screen.getPrimaryDisplay).mockReturnValue({
+      workArea: { x: 100, y: 50, width: 900, height: 700 },
+    } as never);
     delete process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY;
   });
 
@@ -408,7 +413,67 @@ describe("DesktopManager main window controls", () => {
 
     await manager.setBottomBarExpanded({ expanded: false });
     expect(window.setFrame).toHaveBeenLastCalledWith(502, 694, 96, 56);
+
+    await manager.setBottomBarExpanded({ expanded: false, chip: true });
+    expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
     await manager.dispose();
+  });
+
+  it("applies a chip frame requested before the native window becomes available", async () => {
+    vi.useFakeTimers();
+    try {
+      const manager = new DesktopManager();
+      manager.enableBottomBarReanchor();
+      await manager.setBottomBarExpanded({ expanded: false, chip: true });
+
+      const window = new FakeBrowserWindow();
+      manager.setMainWindow(window as never);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries an unapplied frame after a transient setFrame failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, window } = createManagerWithWindow();
+      manager.enableBottomBarReanchor();
+      window.setFrame.mockImplementationOnce(() => {
+        throw new Error("native frame unavailable");
+      });
+
+      await expect(
+        manager.setBottomBarExpanded({ expanded: false, chip: true }),
+      ).rejects.toThrow("native frame unavailable");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenCalledTimes(2);
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains a desired chip frame while the display work area is unavailable", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, window } = createManagerWithWindow();
+      manager.enableBottomBarReanchor();
+      vi.mocked(Screen.getPrimaryDisplay).mockReturnValueOnce(null as never);
+      await manager.setBottomBarExpanded({ expanded: false, chip: true });
+      expect(window.setFrame).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns safe fallback states when no main window is present", async () => {

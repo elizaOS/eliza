@@ -80,7 +80,8 @@ export class R2StorageAdapter {
     });
   }
 
-  async presign(key: string, expiresIn: number): Promise<string> {
+  /** Creates a short-lived URL authorizing GET access to one object. */
+  async presignGet(key: string, expiresIn: number): Promise<string> {
     return this.storage.presign(key, { expiresIn });
   }
 }

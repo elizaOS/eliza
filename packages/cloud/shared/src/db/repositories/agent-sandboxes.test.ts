@@ -529,7 +529,7 @@ describe("AgentSandboxesRepository", () => {
       expect(JSON.stringify(insertData.state_data)).not.toContain("secret pre-wipe memory");
       expect(JSON.stringify(insertData.state_data)).not.toContain("secret-config");
 
-      const hydrated = await hydrateAgentSandboxBackup({
+      const storedFixture = {
         id: backupId,
         sandbox_record_id: sandboxRecordId,
         snapshot_type: "manual",
@@ -548,7 +548,8 @@ describe("AgentSandboxesRepository", () => {
         verified_at: null,
         verification_error: null,
         created_at: createdAt,
-      });
+      } as Parameters<typeof hydrateAgentSandboxBackup>[0];
+      const hydrated = await hydrateAgentSandboxBackup(storedFixture);
 
       expect(hydrated.state_data).toEqual(stateData);
     } finally {
@@ -603,6 +604,7 @@ describe("AgentSandboxesRepository", () => {
   });
 
   test("incremental reconstruction walks only the target chain sequentially", async () => {
+    useWriteSelectMock = true;
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     const { diffBackupState, computeStateHash } = await import(
       "../../lib/services/agent-backup-diff"

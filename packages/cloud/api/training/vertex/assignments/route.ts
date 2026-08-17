@@ -39,7 +39,22 @@ async function __hono_GET(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
-    const scope = parseScope(searchParams.get("scope"));
+    // Tuned-model tenant identity, not leftover models catalogOnly or
+    // relationships-scope tax. parseScope maps unknown tokens to
+    // organization, so scope=GLOBAL / USER listed org assignments.
+    // Missing / empty still means unfiltered. Garbage 400s before
+    // listVisibleAssignments. POST/DELETE and slot/active untouched.
+    const rawScope = searchParams.get("scope");
+    if (
+      rawScope !== null &&
+      rawScope !== "" &&
+      rawScope !== "global" &&
+      rawScope !== "organization" &&
+      rawScope !== "user"
+    ) {
+      return Response.json({ error: "Invalid scope." }, { status: 400 });
+    }
+    const scope = parseScope(rawScope);
     const rawSlot = searchParams.get("slot");
     const slot = parseSlot(rawSlot);
     const activeOnly = searchParams.get("active") !== "false";

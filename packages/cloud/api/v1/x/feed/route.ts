@@ -4,6 +4,7 @@
  * maxResults, connectionRole.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXFeed } from "@/lib/services/x";
@@ -16,12 +17,40 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const maxResults =
-      rawMaxResults && rawMaxResults.trim().length > 0
-        ? Number.parseInt(rawMaxResults, 10)
-        : undefined;
-    const connectionRole =
-      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    const hasMaxResults = Boolean(rawMaxResults?.trim());
+    const maxResults = hasMaxResults
+      ? parsePositiveInteger(rawMaxResults)
+      : undefined;
+    if (hasMaxResults && maxResults === undefined) {
+      return c.json(
+        { success: false, error: "maxResults must be a positive integer" },
+        400,
+      );
+    }
+    // Role identity leftover after x/status (#20945). The prior ternary
+    // mapped every non-"agent" token — including AGENT, owner-typos, and
+    // 1e2 — onto the personal owner X feed. Missing/empty still defaults
+    // to owner (this route's documented default). Garbage 400s before
+    // getXFeed. maxResults parser stays untouched.
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
+    if (
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const connectionRole = requestedRole === "agent" ? "agent" : "owner";
 
     const result = await getXFeed({
       organizationId: user.organization_id,

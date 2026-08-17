@@ -23,7 +23,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 process.env.ELIZA_CF_REGISTRAR_DEV_STUB = "1";
 
-// Non-billing fire-and-forget side-effects of the success path — NOT under test.
+// Non-billing deferred side effects of the success path — NOT under test.
 mock.module("../email", () => ({
   emailService: { sendLowCreditsEmail: mock(async () => false) },
 }));
@@ -33,7 +33,7 @@ mock.module("../waifu-webhook", () => ({
   emitWaifuCreditWebhook: mock(async () => undefined),
 }));
 mock.module("../auto-top-up", () => ({
-  autoTopUpService: { executeAutoTopUp: mock(async () => undefined) },
+  autoTopUpService: { executeAutoTopUpForOrganization: mock(async () => undefined) },
 }));
 
 // Outbound network for the health probe (path resolves to lib/security/safe-fetch).
@@ -131,7 +131,7 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS organizations (
         id uuid PRIMARY KEY, name text NOT NULL, slug text NOT NULL,
         credit_balance numeric(12,6) NOT NULL DEFAULT '0',
-        balance_revision bigint NOT NULL DEFAULT 0, settings jsonb DEFAULT '{}',
+        balance_revision bigint NOT NULL DEFAULT 0, balance_decrease_revision bigint NOT NULL DEFAULT 0, auto_top_up_covered_balance_decrease_revision bigint, settings jsonb DEFAULT '{}',
         stripe_customer_id text, billing_email text, stripe_payment_method_id text,
         stripe_default_payment_method text, auto_top_up_enabled boolean DEFAULT false,
         auto_top_up_threshold numeric(10,2), auto_top_up_amount numeric(10,2),

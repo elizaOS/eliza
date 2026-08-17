@@ -54,6 +54,7 @@ describe("HomePill", () => {
 
   it.each<ShellPhase>([
     "booting",
+    "needs-auth",
     "idle",
     "summoned",
     "listening",
@@ -178,6 +179,58 @@ describe("HomePill", () => {
     expect(mark.className).not.toContain("animate-pulse");
   });
 
+  it("grows into a labeled sign-in chip while needs-auth and does not arm hold", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button", {
+      name: /sign in with eliza cloud/i,
+    });
+    expect(btn.getAttribute("data-phase")).toBe("needs-auth");
+    expect(btn.hasAttribute("aria-pressed")).toBe(false);
+    expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
+      "Sign in with Eliza Cloud",
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(btn.className).toContain("h-12");
+    expect(btn.className).toContain("w-[18rem]");
+    expect(mark.className).toContain("h-11");
+    expect(mark.className).toContain("w-full");
+    expect(mark.className).toContain("bg-[#FF5800]");
+    expect(screen.getByTestId("shell-home-pill-sign-in-icon")).toBeTruthy();
+    expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
+    fireEvent.click(btn);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the sign-in chip opaque and shows a spinner during Cloud login", () => {
+    render(
+      <HomePill
+        phase="needs-auth"
+        signingIn
+        onOpen={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).not.toContain("opacity-65");
+    expect(mark.className).not.toContain("animate-pulse");
+    expect(screen.getByTestId("shell-home-pill-sign-in-spinner")).toBeTruthy();
+    expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
+    const btn = screen.getByRole("button", {
+      name: /signing in to eliza cloud/i,
+    });
+    expect(btn.getAttribute("aria-busy")).toBe("true");
+    expect(btn.hasAttribute("aria-pressed")).toBe(false);
+  });
+
   it("stays available while booting and opens on click", () => {
     const onOpen = vi.fn();
     render(<HomePill phase="booting" onOpen={onOpen} onClose={() => {}} />);
@@ -283,6 +336,27 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     fireEvent.pointerCancel(btn);
     expect(hold.onHoldCancel).toHaveBeenCalledTimes(1);
     expect(hold.onHoldEnd).not.toHaveBeenCalled();
+  });
+
+  it("needs-auth never arms the hold, even when hold handlers are provided", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(HOLD_THRESHOLD_MS + 200);
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+    expect(hold.onHoldStart).not.toHaveBeenCalled();
+    expect(hold.onHoldEnd).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("a right-click press never arms the hold", () => {

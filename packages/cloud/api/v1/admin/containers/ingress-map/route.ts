@@ -48,7 +48,27 @@ async function __hono_GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const format = url.searchParams.get("format") ?? "json";
+  // Ingress-format identity, not leftover analytics-export type tax. The
+  // prior `?? "json"` then `=== "caddy"` mapped CADDY / YAML / foo onto the
+  // JSON map, so operators asking for a Caddyfile received JSON. Missing /
+  // empty still means JSON. Garbage 400s before the inventory read.
+  const requestedFormat = url.searchParams.get("format");
+  if (
+    requestedFormat !== null &&
+    requestedFormat !== "" &&
+    requestedFormat !== "json" &&
+    requestedFormat !== "caddy"
+  ) {
+    return Response.json(
+      {
+        success: false,
+        error: "invalid_format",
+        message: 'format must be "json" or "caddy".',
+      },
+      { status: 400 },
+    );
+  }
+  const format = requestedFormat === "caddy" ? "caddy" : "json";
 
   try {
     // Only running / deploying containers belong in the ingress map.

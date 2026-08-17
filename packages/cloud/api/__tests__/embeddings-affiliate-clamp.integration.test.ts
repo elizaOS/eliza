@@ -26,7 +26,7 @@
  * mock.module ordering across files) + REAL affiliates repository + REAL
  * redeemable-earnings service against PGlite. Only the external seams are
  * stubbed: auth, org rate limit, the embedding provider (`ai` embed/embedMany),
- * usage analytics, and the fire-and-forget post-debit notifications —
+ * usage analytics, and the deferred-or-locally-awaited post-debit notifications —
  * mirroring domains-buy-cross-app-replay.integration.test.ts.
  *
  * Pinned invariants (the #11976 contract, now on this route too):
@@ -210,7 +210,7 @@ mock.module("@/lib/services/usage", () => ({
   },
 }));
 
-// Fire-and-forget post-debit notifications (NOT the code under test) — same
+// Deferred-or-locally-awaited post-debit notifications (NOT the code under test) — same
 // stubs as domains-buy-cross-app-replay.integration.test.ts. The reserve /
 // reconcile / earnings SQL itself runs entirely real against PGlite.
 mock.module("@/lib/services/email", () => ({
@@ -222,7 +222,9 @@ mock.module("@/lib/services/waifu-webhook", () => ({
   emitWaifuCreditWebhook: mock(async () => undefined),
 }));
 mock.module("@/lib/services/auto-top-up", () => ({
-  autoTopUpService: { executeAutoTopUp: mock(async () => undefined) },
+  autoTopUpService: {
+    executeAutoTopUpForOrganization: mock(async () => undefined),
+  },
 }));
 
 // Import the route AFTER the seam mocks (it binds them at module-eval time).

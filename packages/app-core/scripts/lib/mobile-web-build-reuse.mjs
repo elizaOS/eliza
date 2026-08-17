@@ -1,7 +1,7 @@
 /**
  * Decides whether a mobile lane can reuse the existing Vite renderer dist by
- * checking the renderer build manifest's variant, target, and runtime mode
- * against what the lane expects.
+ * checking the renderer build manifest's variant, target, runtime mode, and
+ * lane-specific feature flags against what the lane expects.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +30,7 @@ export function mobileWebDistReuseStatus({
   expectedVariant,
   expectedTarget,
   expectedRuntimeMode,
+  expectedIosApnsEnabled,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -83,6 +84,17 @@ export function mobileWebDistReuseStatus({
           manifestRuntimeMode == null
             ? `dist manifest is missing runtime mode; this build targets ${wantedLabel}`
             : `dist built for runtime mode '${manifestRuntimeMode}' but this build targets ${wantedLabel}`,
+        );
+      }
+    }
+    if (expectedIosApnsEnabled !== undefined) {
+      const manifestIosApnsEnabled = manifest.iosApnsEnabled ?? null;
+      const wantedIosApnsEnabled = expectedIosApnsEnabled ?? null;
+      if (manifestIosApnsEnabled !== wantedIosApnsEnabled) {
+        problems.push(
+          manifest.iosApnsEnabled == null
+            ? `dist manifest is missing iOS APNs gate; this build targets '${wantedIosApnsEnabled ? "enabled" : "disabled"}'`
+            : `dist built with iOS APNs gate '${manifestIosApnsEnabled ? "enabled" : "disabled"}' but this build targets '${wantedIosApnsEnabled ? "enabled" : "disabled"}'`,
         );
       }
     }

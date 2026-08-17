@@ -3,8 +3,9 @@
  * message pipeline while a deterministic HTTP boundary stands in for Cerebras.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { AgentRuntime } from "@elizaos/core/edge";
+import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
@@ -185,17 +186,26 @@ afterEach(() => {
 });
 
 describe("Shared Eliza Workerd runtime", () => {
-  test("prewarms the genuine runtime kernel without dispatching inference", async () => {
+  test("prewarms once, releases the runtime, and never dispatches inference", async () => {
     const { prewarmSharedElizaRuntime } = await import("./shared-eliza-runtime");
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop");
+    const closeSpy = spyOn(AgentRuntime.prototype, "close");
     let providerCalls = 0;
     globalThis.fetch = (async () => {
       providerCalls += 1;
       throw new Error("Runtime prewarm must not contact Cerebras");
     }) as typeof fetch;
 
-    await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
+    try {
+      await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
 
-    expect(providerCalls).toBe(0);
+      expect(providerCalls).toBe(0);
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stopSpy.mockRestore();
+      closeSpy.mockRestore();
+    }
   });
 
   test("routes ordinary focus language through HANDLE_RESPONSE in the genuine runtime", async () => {
@@ -841,7 +851,8 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toMatch(/^Reminder set for shared-reminder-1:/);
+    expect(result.reply).toBe("Got it — I'll remind you in 2 minutes: stand up and stretch");
+    expect(result.reply).not.toMatch(/shared-reminder-1|scheduled|\d{4}-\d{2}-\d{2}T/);
     expect(result.reply).not.toContain("couldn't verify");
     expect(scheduledInputs).toHaveLength(1);
     expect(scheduledInputs[0]).toMatchObject({
@@ -878,6 +889,208 @@ describe("Shared Eliza Workerd runtime", () => {
       ),
     ).toBe(true);
   });
+
+  test.each([
+    {
+      operation: "list",
+      parameters: { operation: "list" },
+      expected: "Your reminders:\n• Stretch — on Aug 14, 2026 at 8:02 PM UTC",
+    },
+  ])(
+    "keeps the verified $operation result authoritative over a hostile evaluator",
+    async ({ operation, parameters, expected }) => {
+      const modelRequests: Array<Record<string, unknown>> = [];
+      const task: ScheduledTask = {
+        taskId: "shared-reminder-sensitive-1",
+        kind: "reminder",
+        promptInstructions: "Stretch",
+        trigger: { kind: "once", atIso: "2026-08-14T20:02:00.000Z" },
+        priority: "medium",
+        escalation: { steps: [{ delayMinutes: 0, channelKey: "current_dm" }] },
+        output: {
+          destination: "channel",
+          target: "current_dm",
+          fallback: { body: "Stretch" },
+        },
+        subject: {
+          kind: "self",
+          id: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        },
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        ownerVisible: true,
+        metadata: {},
+        executionProfile: "notify-only",
+        state: { status: "scheduled", followupCount: 0 },
+      };
+      const lifecycleRunner: ScheduledTaskRunner = {
+        async scheduleWithResult() {
+          throw new Error("Scheduling is outside this lifecycle test");
+        },
+        async schedule() {
+          throw new Error("Scheduling is outside this lifecycle test");
+        },
+        async list(filter) {
+          expect(filter).toEqual({
+            kind: "reminder",
+            ownerVisibleOnly: true,
+            status: ["scheduled", "fired", "acknowledged"],
+          });
+          return [task];
+        },
+        async apply(taskId, verb) {
+          expect(taskId).toBe("shared-reminder-sensitive-1");
+          expect(verb).toBe(operation);
+          return {
+            ...task,
+            state: {
+              status:
+                verb === "complete" ? "completed" : verb === "dismiss" ? "dismissed" : "scheduled",
+              followupCount: 0,
+            },
+          };
+        },
+        async pipeline() {
+          return [];
+        },
+      };
+      globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        modelRequests.push(request);
+        const call = modelRequests.length;
+        if (call === 1) {
+          return Response.json({
+            id: `chatcmpl-shared-reminder-${operation}-stage-one`,
+            object: "chat.completion",
+            created: 0,
+            model: "gemma-4-31b",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `shared-reminder-${operation}-handle-response`,
+                      type: "function",
+                      function: {
+                        name: "HANDLE_RESPONSE",
+                        arguments: JSON.stringify({
+                          shouldRespond: "RESPOND",
+                          thought: "The user requested a reminder operation.",
+                          contexts: ["reminders"],
+                          intents: [],
+                          candidateActionNames: ["REMINDERS"],
+                          requiresTool: true,
+                          replyText: "",
+                          replyEffectStatus: "none",
+                          facts: [],
+                          relationships: [],
+                          addressedTo: [],
+                        }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+          });
+        }
+        if (call === 2) {
+          return Response.json({
+            id: `chatcmpl-shared-reminder-${operation}-plan`,
+            object: "chat.completion",
+            created: 0,
+            model: "gemma-4-31b",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `shared-reminder-${operation}-action`,
+                      type: "function",
+                      function: {
+                        name: "REMINDERS",
+                        arguments: JSON.stringify(parameters),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+          });
+        }
+        return Response.json({
+          id: `chatcmpl-shared-reminder-${operation}-hostile-finish`,
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: JSON.stringify({
+                  success: true,
+                  decision: "FINISH",
+                  thought: "Expose the structured reminder fields.",
+                  messageToUser:
+                    "Reminder shared-reminder-sensitive-1 is scheduled at 2026-08-14T20:02:00.000Z.",
+                }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 50, completion_tokens: 14, total_tokens: 64 },
+        });
+      }) as typeof fetch;
+
+      const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+      const result = await runSharedAgentTurn({
+        character: {
+          name: "Shared Eliza",
+          system: "You are Eliza.",
+          model: "gemma-4-31b",
+        },
+        history: [],
+        message: `Please ${operation} my reminder`,
+        messageIds: {
+          user: "7d734b8f-1ac5-456a-8bf3-9cd61dd546ef",
+          assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
+        },
+        execution: {
+          engine: "eliza-runtime",
+          agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+          reminders: {
+            runner: lifecycleRunner,
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              chatId: "123456789",
+            },
+          },
+        },
+      });
+
+      expect(result.reply).toBe(expected);
+      expect(result.reply).not.toMatch(/shared-reminder-sensitive-1|scheduled|2026-08-14T/);
+      expect(modelRequests).toHaveLength(2);
+      expect(result.actionResults?.[0]).toMatchObject({
+        verifiedUserFacing: true,
+        userFacingText: expected,
+        turnComplete: true,
+      });
+    },
+  );
 
   test("streams TODO through the genuine plugin and writes only the injected owner scope", async () => {
     const modelRequests: Array<Record<string, unknown>> = [];

@@ -199,10 +199,66 @@ describe("atomic release refs", () => {
         sourceRef: "refs/heads/missing",
         sourceSha: fixture.releaseSha,
       }),
-    ).toThrow("resolves to null");
+    ).toThrow("is missing on remote");
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/",
     );
+  });
+
+  test("accepts a source the ref fast-forwarded past and rejects divergent history", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${fixture.releaseSha}:refs/heads/develop`,
+    ]);
+    fs.writeFileSync(path.join(fixture.repoRoot, "later.txt"), "later\n");
+    git(fixture.repoRoot, ["add", "."]);
+    git(fixture.repoRoot, ["commit", "-m", "later merge traffic"]);
+    const laterSha = git(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${laterSha}:refs/heads/develop`,
+    ]);
+    git(fixture.repoRoot, ["checkout", "--quiet", fixture.releaseSha]);
+    expect(
+      verifyReleaseSource({
+        repoRoot: fixture.repoRoot,
+        remote: fixture.remote,
+        repository: "elizaOS/eliza",
+        sourceRef: "refs/heads/develop",
+        sourceSha: fixture.releaseSha,
+      }),
+    ).toMatchObject({ sourceSha: fixture.releaseSha });
+
+    git(fixture.repoRoot, [
+      "checkout",
+      "--quiet",
+      "-b",
+      "divergent",
+      fixture.baseSha,
+    ]);
+    fs.writeFileSync(path.join(fixture.repoRoot, "divergent.txt"), "other\n");
+    git(fixture.repoRoot, ["add", "."]);
+    git(fixture.repoRoot, ["commit", "-m", "divergent history"]);
+    const divergentSha = git(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    git(fixture.repoRoot, [
+      "push",
+      "--force",
+      fixture.remote,
+      `${divergentSha}:refs/heads/develop`,
+    ]);
+    git(fixture.repoRoot, ["checkout", "--quiet", fixture.releaseSha]);
+    expect(() =>
+      verifyReleaseSource({
+        repoRoot: fixture.repoRoot,
+        remote: fixture.remote,
+        repository: "elizaOS/eliza",
+        sourceRef: "refs/heads/develop",
+        sourceSha: fixture.releaseSha,
+      }),
+    ).toThrow("is not its descendant");
   }, 120_000);
 
   test("one rejected ref rejects the entire atomic push and no unrelated tag follows", () => {

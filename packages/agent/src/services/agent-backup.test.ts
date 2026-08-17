@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type AgentBackupStateData,
   AgentSnapshotBudgetExceededError,
@@ -21,6 +21,7 @@ import {
   restoreLocalAgentBackup,
   SnapshotBudget,
 } from "./agent-backup.ts";
+import { AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS } from "./agent-backup-v2-capture.ts";
 
 const ORIGINAL_ENV = {
   ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
@@ -51,6 +52,21 @@ function runtimeStub(agentId: string): AgentRuntime {
     },
     getSetting: () => null,
   } as unknown as AgentRuntime;
+}
+
+function boundedPgliteAdapter(
+  dataDir: string,
+  createDump: () => unknown | Promise<unknown>,
+  release: () => void = () => undefined,
+) {
+  return {
+    close: async () => undefined,
+    getPgliteDataDir: () => dataDir,
+    dumpPgliteDataDirAfterPreflight: async <T>(preflight: () => Promise<T>) => {
+      const proof = await preflight();
+      return { dump: await createDump(), preflight: proof, release };
+    },
+  };
 }
 
 async function writeFixtureState(
@@ -136,11 +152,16 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-describe("agent backup manifest", () => {
-  afterEach(() => {
-    restoreEnv();
-  });
+beforeEach(() => {
+  vi.spyOn(process, "availableMemory").mockReturnValue(512 * 1024 * 1024);
+});
 
+afterEach(() => {
+  vi.restoreAllMocks();
+  restoreEnv();
+});
+
+describe("agent backup manifest", () => {
   test("captures and restores local PGlite, media, vault, character, and state-dir files", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-"),
@@ -268,7 +289,7 @@ describe("agent backup manifest", () => {
     );
   });
 
-  test("captures live PGlite through dumpDataDir when the adapter exposes it", async () => {
+  test("captures live PGlite through the bounded leased exporter", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-"),
     );
@@ -281,21 +302,16 @@ describe("agent backup manifest", () => {
     await writeFixtureState(root, pgliteDir);
 
     const dumpBytes = Buffer.from("official-pglite-dump-bytes");
-    const rawConnection = {
-      ready: true,
-      async dumpDataDir(this: { ready: boolean }, compression?: "gzip") {
-        expect(this.ready).toBe(true);
-        expect(compression).toBe("gzip");
-        return new Blob([dumpBytes], { type: "application/gzip" });
-      },
-      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
-    };
+    let releases = 0;
     const runtime = {
       ...runtimeStub("44444444-4444-4444-8444-444444444444"),
-      adapter: {
-        close: async () => undefined,
-        getRawConnection: () => rawConnection,
-      },
+      adapter: boundedPgliteAdapter(
+        pgliteDir,
+        () => new Blob([dumpBytes], { type: "application/gzip" }),
+        () => {
+          releases += 1;
+        },
+      ),
     } as unknown as AgentRuntime;
 
     const snapshot = await createAgentSnapshot(runtime, {} as never);
@@ -308,26 +324,27 @@ describe("agent backup manifest", () => {
       dumpBytes,
     );
     expect(snapshot.manifest.components.database.pglite).toBeUndefined();
+    expect(releases).toBe(1);
   });
 
   test("captures through the adapter's lifecycle-serialized PGlite operation", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-"),
     );
+    const pgliteDir = path.join(root, "pglite");
     process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
 
     let captures = 0;
     const runtime = {
       ...runtimeStub("55555555-5555-4555-8555-555555555555"),
-      adapter: {
-        close: async () => undefined,
-        dumpPgliteDataDir: async () => {
-          captures += 1;
-          return new Blob(["captured"], { type: "application/gzip" });
-        },
-      },
+      adapter: boundedPgliteAdapter(pgliteDir, async () => {
+        captures += 1;
+        return new Blob(["captured"], { type: "application/gzip" });
+      }),
     } as unknown as AgentRuntime;
 
     const snapshot = await createAgentSnapshot(runtime, {} as never);
@@ -340,19 +357,19 @@ describe("agent backup manifest", () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-"),
     );
+    const pgliteDir = path.join(root, "pglite");
     process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
 
-    const snapshotWithError = (message: string) => {
+    const snapshotWithError = (message: string, code?: string) => {
       const runtime = {
         ...runtimeStub("66666666-6666-4666-8666-666666666666"),
-        adapter: {
-          close: async () => undefined,
-          dumpPgliteDataDir: async () => {
-            throw new Error(message);
-          },
-        },
+        adapter: boundedPgliteAdapter(pgliteDir, async () => {
+          throw Object.assign(new Error(message), code ? { code } : {});
+        }),
       } as unknown as AgentRuntime;
       return createAgentSnapshot(runtime, {} as never);
     };
@@ -360,6 +377,18 @@ describe("agent backup manifest", () => {
     await expect(snapshotWithError("connection is closing")).rejects.toThrow(
       PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
     );
+    await expect(
+      snapshotWithError(
+        "rss budget exhausted",
+        "AGENT_BACKUP_V2_PGLITE_RSS_BUDGET_EXCEEDED",
+      ),
+    ).rejects.toThrow(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
+    await expect(
+      snapshotWithError(
+        "directory changed",
+        "AGENT_BACKUP_V2_PGLITE_PREFLIGHT_CHANGED",
+      ),
+    ).rejects.toThrow(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
     await expect(
       snapshotWithError("failed while closing corrupted WAL segment"),
     ).rejects.toThrow("failed while closing corrupted WAL segment");
@@ -428,10 +457,6 @@ describe("agent backup manifest", () => {
 });
 
 describe("source-side snapshot budget (#17172 §1)", () => {
-  afterEach(() => {
-    restoreEnv();
-  });
-
   async function fixtureRoot(): Promise<{ root: string; pgliteDir: string }> {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-budget-"));
     const pgliteDir = path.join(root, "pglite");
@@ -557,10 +582,11 @@ describe("source-side snapshot budget (#17172 §1)", () => {
   });
 
   test("refuses an oversized PGlite dump from Blob.size, before arrayBuffer()", async () => {
-    await fixtureRoot();
+    const { pgliteDir } = await fixtureRoot();
     let materialized = false;
-    const rawConnection = {
-      async dumpDataDir() {
+    const withDump = {
+      ...runtime(),
+      adapter: boundedPgliteAdapter(pgliteDir, async () => {
         return {
           size: 256 * 1024,
           arrayBuffer: async () => {
@@ -568,15 +594,7 @@ describe("source-side snapshot budget (#17172 §1)", () => {
             return new ArrayBuffer(256 * 1024);
           },
         };
-      },
-      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
-    };
-    const withDump = {
-      ...runtime(),
-      adapter: {
-        close: async () => undefined,
-        getRawConnection: () => rawConnection,
-      },
+      }),
     } as unknown as AgentRuntime;
 
     await expect(
@@ -587,8 +605,70 @@ describe("source-side snapshot budget (#17172 §1)", () => {
     expect(materialized).toBe(false);
   });
 
+  test("rejects a non-finite PGlite Blob size and releases its export lease", async () => {
+    const { pgliteDir } = await fixtureRoot();
+    let materialized = false;
+    let releases = 0;
+    const withDump = {
+      ...runtime(),
+      adapter: boundedPgliteAdapter(
+        pgliteDir,
+        async () => ({
+          size: Number.NaN,
+          arrayBuffer: async () => {
+            materialized = true;
+            return new ArrayBuffer(0);
+          },
+        }),
+        () => {
+          releases += 1;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    await expect(createAgentSnapshot(withDump, config)).rejects.toThrow(
+      "did not return a Blob/File",
+    );
+    expect(materialized).toBe(false);
+    expect(releases).toBe(1);
+  });
+
+  test("refuses legacy Blob conversion when remaining memory cannot cover its copies", async () => {
+    const { pgliteDir } = await fixtureRoot();
+    vi.restoreAllMocks();
+    vi.spyOn(process, "availableMemory")
+      .mockReturnValueOnce(512 * 1024 * 1024)
+      .mockReturnValue(
+        AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.availableMemoryHeadroomBytes,
+      );
+    let materialized = false;
+    let releases = 0;
+    const withDump = {
+      ...runtime(),
+      adapter: boundedPgliteAdapter(
+        pgliteDir,
+        async () => ({
+          size: 1,
+          arrayBuffer: async () => {
+            materialized = true;
+            return new ArrayBuffer(1);
+          },
+        }),
+        () => {
+          releases += 1;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    await expect(createAgentSnapshot(withDump, config)).rejects.toThrow(
+      PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
+    );
+    expect(materialized).toBe(false);
+    expect(releases).toBe(1);
+  });
+
   test("an in-budget PGlite dump is charged, so a sibling cannot spend the same bytes", async () => {
-    const { root } = await fixtureRoot();
+    const { root, pgliteDir } = await fixtureRoot();
     // Dump ~48 KiB + a 48 KiB media file: each fits a 96 KiB (base64) budget
     // alone, both together do not.
     const dumpBytes = Buffer.alloc(48 * 1024, 5);
@@ -596,18 +676,12 @@ describe("source-side snapshot budget (#17172 §1)", () => {
       path.join(root, "media", "big.bin"),
       Buffer.alloc(48 * 1024, 7),
     );
-    const rawConnection = {
-      async dumpDataDir() {
-        return new Blob([dumpBytes], { type: "application/gzip" });
-      },
-      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
-    };
     const withDump = {
       ...runtime(),
-      adapter: {
-        close: async () => undefined,
-        getRawConnection: () => rawConnection,
-      },
+      adapter: boundedPgliteAdapter(
+        pgliteDir,
+        async () => new Blob([dumpBytes], { type: "application/gzip" }),
+      ),
     } as unknown as AgentRuntime;
 
     await expect(
@@ -617,8 +691,8 @@ describe("source-side snapshot budget (#17172 §1)", () => {
 
   test("refuses an oversized file on the pglite-files fallback walk", async () => {
     const { pgliteDir } = await fixtureRoot();
-    // No getRawConnection on the stub adapter, so the capture takes the
-    // fallback file walk — which used to run with no budget at all.
+    // No bounded exporter on the stub adapter, so the capture takes the
+    // legacy fallback file walk — which used to run with no budget at all.
     await fs.writeFile(
       path.join(pgliteDir, "oversized.wal"),
       Buffer.alloc(256 * 1024, 9),

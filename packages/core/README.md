@@ -13,6 +13,30 @@
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+## Computer-use adapter contract
+
+`contracts/computer-use.ts` is the provider-neutral boundary shared by browser
+automation and native desktop control. It deliberately keeps two execution
+planes distinct: browser adapters use DOM, browser accessibility, and supported
+devtools protocols; computer adapters use OS accessibility, capture, and input.
+Both planes expose the same session, surface, capability, observation, action,
+confirmation, lease, and result envelopes.
+
+Adapters must advertise capabilities before dispatch. Unsupported work returns
+`UNSUPPORTED`; stale observations and lease conflicts have separate outcomes;
+and a mutation whose effect cannot be proven returns non-retryable
+`UNCERTAIN_EFFECT`. Results reuse canonical `EffectReceipt` values instead of
+creating a second mutation-proof format. Existing signed-in profiles require an
+explicit grant, while genuinely concurrent pointer or keyboard work belongs in
+isolated sessions rather than competing for the shared physical input devices.
+
+Package-owned adapter tests can import
+`runInteractionAdapterConformance` from `@elizaos/core/testing`. The runner
+requires fixtures for success, no-effect failure, uncertain effect, policy
+block, confirmation, unsupported capability, stale observation, and lease
+conflict. Passing this deterministic contract suite does not replace the real
+browser or OS E2E evidence required by the adapter's package.
+
 ### Bounded pairing operator reads
 
 `PairingService` keeps its existing complete-array methods (`listPendingRequests`

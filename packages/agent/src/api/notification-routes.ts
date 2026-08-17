@@ -354,7 +354,15 @@ export async function handleNotificationRoute(
   // ── POST /api/notifications/:id/read ──────────────────────────────
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
   if (method === "POST" && readMatch) {
-    const ok = await service.markRead(decodeURIComponent(readMatch[1]));
+    let id: string;
+    try {
+      id = decodeURIComponent(readMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid notification id", 400);
+      return true;
+    }
+    const ok = await service.markRead(id);
     helpers.json(res, { ok });
     return true;
   }
@@ -369,7 +377,15 @@ export async function handleNotificationRoute(
   // ── DELETE /api/notifications/:id ─────────────────────────────────
   const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (method === "DELETE" && idMatch) {
-    const ok = await service.remove(decodeURIComponent(idMatch[1]));
+    let id: string;
+    try {
+      id = decodeURIComponent(idMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid notification id", 400);
+      return true;
+    }
+    const ok = await service.remove(id);
     helpers.json(res, { ok });
     return true;
   }

@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 168
+- **Registered runtime actions:** 170
 
 ## Actions
 
@@ -411,6 +411,7 @@ list. Regenerate this document after changing the registered action surface.
 - `GET_APP` — `plugins/plugin-cloud-apps/src/actions/get-app.ts`
 - `GET_APP_DEPLOY_STATUS` — `plugins/plugin-cloud-apps/src/actions/get-app-deploy-status.ts`
 - `GET_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/get-app-earnings.ts`
+- `GET_COMPANION_STATUS` — `plugins/plugin-companion/src/actions.ts`
 - `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
 - `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
 - `HOUSEHOLD_COORDINATION` — `plugins/plugin-personal-assistant/src/actions/household-coordination.ts`
@@ -485,6 +486,7 @@ list. Regenerate this document after changing the registered action surface.
 - `SECURITY_EVALUATOR` — `packages/core/src/features/trust/evaluators/securityEvaluator.ts`
 - `SEND_MEDIA_TO` — `packages/agent/src/actions/knowledge.ts`
 - `SET_AD_CAMPAIGN_DAYPARTING` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `SET_COMPANION_MOOD` — `plugins/plugin-companion/src/actions.ts`
 - `SET_FOLLOWUP_THRESHOLD` — `plugins/plugin-personal-assistant/src/followup/actions/setFollowupThreshold.ts`
 - `SETTINGS` — `packages/agent/src/actions/settings-actions.ts`, `plugins/plugin-app-control/src/actions/settings.ts`
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`

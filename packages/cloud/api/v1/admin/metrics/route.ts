@@ -39,9 +39,32 @@ app.get("/", async (c) => {
     }
 
     const view = c.req.query("view") || "overview";
-    const timeRange = c.req.query("timeRange") || "30d";
+    // Admin-engagement window identity, not leftover app-analytics
+    // periods tax. The prior `|| "30d"` then `TIME_RANGE_MS[x] ?? 30d`
+    // mapped 90D / 7D / foo onto a month of engagement, so operators
+    // asking for 90 days received 30. Missing / empty still means 30d.
+    // Garbage 400s before the metrics sinks. view= leftover already
+    // 400s via switch default and is untouched here.
+    const ADMIN_TIME_RANGES = ["7d", "30d", "90d"] as const;
+    const requestedRange = c.req.query("timeRange");
+    if (
+      requestedRange != null &&
+      requestedRange !== "" &&
+      !ADMIN_TIME_RANGES.includes(
+        requestedRange as (typeof ADMIN_TIME_RANGES)[number],
+      )
+    ) {
+      return c.json(
+        {
+          error: "invalid_time_range",
+          message: 'timeRange must be "7d", "30d", or "90d".',
+        },
+        400,
+      );
+    }
+    const timeRange = requestedRange || "30d";
 
-    const rangeMs = TIME_RANGE_MS[timeRange] ?? TIME_RANGE_MS["30d"];
+    const rangeMs = TIME_RANGE_MS[timeRange];
     const rangeDays = Math.round(rangeMs / 86_400_000);
     const now = new Date();
     const startDate = new Date(now.getTime() - rangeMs);

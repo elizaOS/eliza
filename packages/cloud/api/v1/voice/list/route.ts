@@ -18,10 +18,21 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
+
+type VoiceCloneType = "instant" | "professional";
+
+function parseVoiceCloneType(
+  raw: string | undefined,
+): VoiceCloneType | undefined | null {
+  if (!raw) return undefined;
+  if (raw === "instant" || raw === "professional") return raw;
+  return null;
+}
 
 interface VoiceListItem {
   id: string;
@@ -57,23 +68,39 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const includeInactive = c.req.query("includeInactive") === "true";
-    const cloneTypeParam = c.req.query("cloneType");
-    const cloneType: "instant" | "professional" | undefined =
-      cloneTypeParam === "instant" || cloneTypeParam === "professional"
-        ? cloneTypeParam
-        : undefined;
+    // Voice Studio inactive-row identity, not leftover tax on cloneType
+    // (#21047). includeInactive=TRUE used to silently hide soft-deleted
+    // voices instead of 400.
+    const inactiveValues = c.req.queries("includeInactive") ?? [];
+    const requestedInactive = inactiveValues[0];
+    if (
+      inactiveValues.length > 1 ||
+      (requestedInactive != null &&
+        requestedInactive !== "" &&
+        requestedInactive !== "true" &&
+        requestedInactive !== "false")
+    ) {
+      return c.json(
+        {
+          error: "Invalid includeInactive",
+          message:
+            'includeInactive must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeInactive = requestedInactive === "true";
+    const cloneType = parseVoiceCloneType(c.req.query("cloneType"));
+    if (cloneType === null) {
+      return c.json({ error: "Invalid cloneType" }, 400);
+    }
 
-    const rawLimit = Number.parseInt(
-      c.req.query("limit") ?? String(DEFAULT_LIMIT),
-      10,
-    );
-    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
-    const limit = Math.min(
-      Math.max(Number.isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1),
+    const limit = parseClampedLimit(
+      c.req.query("limit"),
+      DEFAULT_LIMIT,
       MAX_LIMIT,
     );
-    const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
+    const offset = parseClampedOffset(c.req.query("offset"));
 
     const result = await userVoicesRepository.listByOrganization(
       user.organization_id,

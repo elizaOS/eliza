@@ -20,6 +20,7 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
+  resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
 import type {
   EscalationConfig,
@@ -276,11 +277,20 @@ async function sendToChannel(
   }
 
   try {
-    const targetSource = resolvedContact?.source ?? channel;
-    if (
-      targetSource === MESSAGE_SOURCE_CLIENT_CHAT &&
-      !hasRuntimeSendHandler(runtime, targetSource)
-    ) {
+    // A contact's explicit `source` wins; otherwise a scoped contact key
+    // ("discord-nubs-test") resolves to the registered handler it scopes
+    // ("discord") instead of being used verbatim as a send source that no
+    // handler serves.
+    const targetSource =
+      contact.source?.trim() ||
+      resolveScopedSendSource(resolvedContact?.source ?? channel, (source) =>
+        hasRuntimeSendHandler(runtime, source),
+      );
+    // Boot-window guard for EVERY source (live: the boot's own
+    // service-failure escalation fired before the discord handler registered
+    // and the send threw). A missing handler is a skip — escalation's
+    // channel/wait retry machinery re-attempts once runtime wiring completes.
+    if (!hasRuntimeSendHandler(runtime, targetSource)) {
       logMissingSendHandlerOnce("escalation", targetSource);
       return false;
     }

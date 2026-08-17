@@ -206,6 +206,8 @@ beforeAll(async () => {
         slug text NOT NULL DEFAULT 'test-org',
         credit_balance numeric(20,6) NOT NULL DEFAULT '0' CHECK (credit_balance >= 0),
         balance_revision bigint NOT NULL DEFAULT 0,
+        balance_decrease_revision bigint NOT NULL DEFAULT 0,
+        auto_top_up_covered_balance_decrease_revision bigint,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -1171,6 +1173,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("50"); // org spent a $100 top-up down to $50
+      await dbWrite.execute(
+        `UPDATE organizations SET auto_top_up_enabled = true WHERE id = '${ORG_ID}';`,
+      );
       const r = await creditsService.clawbackCredits({
         organizationId: ORG_ID,
         amount: 100,
@@ -1185,6 +1190,12 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       expect(r.shortfallAmount).toBeCloseTo(50, 6);
       expect(r.alreadyProcessed).toBe(false);
       expect(await countByType("clawback")).toBe(1);
+      const settings = await dbWrite.execute(
+        `SELECT auto_top_up_enabled FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect((settings.rows[0] as { auto_top_up_enabled: boolean }).auto_top_up_enabled).toBe(
+        false,
+      );
 
       const clawbackRow = await dbWrite.execute(
         `SELECT amount, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'clawback';`,

@@ -13,21 +13,19 @@ import {
   clearCloudTelemetry,
   getCloudTelemetrySnapshot,
 } from "@/lib/observability/cloud-backend-observability";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-function parseLimit(value: string | undefined): number {
-  const parsed = value ? Number.parseInt(value, 10) : 200;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 1_000) : 200;
-}
 
 app.get("/", async (c) => {
   try {
     await requireAdmin(c);
     return c.json({
       success: true,
-      data: getCloudTelemetrySnapshot(parseLimit(c.req.query("limit"))),
+      data: getCloudTelemetrySnapshot(
+        parseClampedLimit(c.req.query("limit"), 200, 1_000),
+      ),
     });
   } catch (error) {
     return failureResponse(c, error);

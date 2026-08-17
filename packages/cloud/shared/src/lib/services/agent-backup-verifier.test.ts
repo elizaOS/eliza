@@ -38,6 +38,7 @@ import {
   type AgentBackupFileSet,
   type AgentBackupManifest,
   type AgentBackupStateData,
+  agentBackupCatalogAuthorities,
   agentSandboxBackups,
   agentSandboxes,
   type EncryptedAgentBackupStateData,
@@ -51,6 +52,7 @@ import { computeStateHash, diffBackupState } from "./agent-backup-diff";
 import {
   type BackupVerifierConfig,
   classifyCryptoError,
+  createDecryptBudget,
   readBackupVerifierConfig,
   runBackupVerificationCycle,
   verifyBackupRestorability,
@@ -171,6 +173,44 @@ async function seedFullBackup(
   return backup.id;
 }
 
+async function seedScheduledCatalogV2Placeholder(sandboxRecordId: string): Promise<string> {
+  const [sandbox] = await dbWrite
+    .select({ organizationId: agentSandboxes.organization_id })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, sandboxRecordId))
+    .limit(1);
+  if (!sandbox) throw new Error(`sandbox row ${sandboxRecordId} not found`);
+
+  await dbWrite
+    .insert(agentBackupCatalogAuthorities)
+    .values({ organization_id: sandbox.organizationId, agent_id: sandboxRecordId })
+    .onConflictDoNothing();
+
+  const [backup] = await dbWrite
+    .insert(agentSandboxBackups)
+    .values({
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "auto",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      size_bytes: 0,
+      backup_kind: "full",
+      backup_operation_id: randomUUID(),
+      catalog_version: 2,
+      catalog_state: "scheduled",
+      catalog_payload_digest: "a".repeat(64),
+      catalog_organization_id: sandbox.organizationId,
+      catalog_agent_id: sandboxRecordId,
+      lifecycle_generation: randomUUID(),
+      lifecycle_revision: 0n,
+      retention_reason: "schedule",
+      retention_until: new Date("2030-01-01T00:00:00.000Z"),
+    })
+    .returning();
+  if (!backup) throw new Error("v2 catalogue backup fixture was not inserted");
+  return backup.id;
+}
+
 async function readBackupRow(backupId: string) {
   const [row] = await dbWrite
     .select()
@@ -266,7 +306,14 @@ beforeAll(async () => {
     return;
   }
   try {
-    const schema = { organizations, users, userCharacters, agentSandboxes, agentSandboxBackups };
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      agentBackupCatalogAuthorities,
+      agentSandboxBackups,
+    };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
   } catch (error) {
@@ -282,6 +329,7 @@ beforeEach(async () => {
   expect(pgliteReady).toBe(true);
   setRuntimeR2Bucket(null);
   await dbWrite.delete(agentSandboxBackups);
+  await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
 });
 
@@ -443,6 +491,32 @@ describe("classifyCryptoError", () => {
 });
 
 describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
+  test("legacy verification neither reads nor stamps a v2 catalogue placeholder", async () => {
+    expect(pgliteReady).toBe(true);
+    const sandboxId = await seedSandbox();
+    const backupId = await seedScheduledCatalogV2Placeholder(sandboxId);
+    const budget = createDecryptBudget(1024 * 1024);
+
+    const direct = await verifyBackupRestorability(await readBackupRow(backupId), { budget });
+
+    expect(direct).toMatchObject({
+      ok: false,
+      failure: { kind: "invalid-payload" },
+      checks: { decrypted: false, contentHashChecked: false, manifestChecked: false },
+    });
+    expect(budget.usedBytes).toBe(0);
+
+    const { alerts, alert } = makeAlertSpy();
+    const summary = await runBackupVerificationCycle({ config: CONFIG, alert });
+
+    expect(summary).toMatchObject({ sampled: 0, verified: 0, failed: 0, errored: 0 });
+    const persisted = await readBackupRow(backupId);
+    expect(persisted.verification_status).toBeNull();
+    expect(persisted.verified_at).toBeNull();
+    expect(persisted.verification_error).toBeNull();
+    expect(alerts).toHaveLength(0);
+  });
+
   test("happy path: decrypts, matches content_hash, stamps verified, no alert", async () => {
     expect(pgliteReady).toBe(true);
     const sandboxId = await seedSandbox();
@@ -820,6 +894,8 @@ describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
       .set({
         sandbox_record_id: null,
         snapshot_type: "pre-delete",
+        verification_status: "verified",
+        verified_at: new Date("2020-01-01T00:00:00.000Z"),
         recovery_organization_id: deletedAgent.organizationId,
         recovery_agent_id: deletedAgentId,
         recovery_deletion_attempt_id: randomUUID(),

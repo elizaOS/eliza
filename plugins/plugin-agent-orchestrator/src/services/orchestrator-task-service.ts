@@ -184,11 +184,28 @@ import {
 } from "./orchestrator-task-types.js";
 import { isParentAgentBrokerWired } from "./parent-agent-broker.js";
 import {
+  capabilitiesForBackend,
+  DETERMINISTIC_LEDGER_VERIFIER_NAME,
+  deterministicLedgerVerdict,
+  isCompletedToolEvidence,
+  isGreenCheckOutput,
+  isPubliclyReachableUrl,
+  renderDeterministicVerdict,
+} from "./producible-evidence.js";
+import {
   resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
+import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  detectCheckSurfaces,
+  mineCandidatePaths,
+  probeMappedUrls,
+  readFsVerifiedContents,
+} from "./quick-app-evidence.js";
 import {
   readSmithersDurableRunLink,
   runDurableTask,
@@ -1743,11 +1760,8 @@ export class OrchestratorTaskService extends Service {
         // bare event summary. Fire-and-forget so the event-bridge write path
         // stays fast; the verifier gates itself on the flag + criteria presence,
         // and evidence assembly never throws into this path.
-        const completionEvidence = await this.buildCompletionEvidence(
-          taskId,
-          sessionId,
-          summary ?? "",
-        );
+        const { evidence: completionEvidence, bundle: completionBundle } =
+          await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
         // Thread the RAW final message (record.response) through alongside the
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
@@ -1757,6 +1771,7 @@ export class OrchestratorTaskService extends Service {
           sessionId,
           completionEvidence,
           summary ?? "",
+          completionBundle,
         );
         break;
       }
@@ -2303,7 +2318,7 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     sessionId: string,
     fallbackSummary: string,
-  ): Promise<string> {
+  ): Promise<{ evidence: string; bundle?: CompletionEvidenceBundle }> {
     try {
       const bundle = await this.collectEvidenceBundle(
         taskId,
@@ -2322,7 +2337,7 @@ export class OrchestratorTaskService extends Service {
         sessionId,
       );
       void this.writeEvidenceTrajectory(taskId, sessionId, bundle);
-      return buildCompletionEvidenceString(bundle);
+      return { evidence: buildCompletionEvidenceString(bundle), bundle };
     } catch (err) {
       // error-policy:J7 fire-and-forget on the task_complete path; on failure it
       // degrades to the bare summary (the prior behavior), never throws.
@@ -2331,7 +2346,7 @@ export class OrchestratorTaskService extends Service {
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return fallbackSummary;
+      return { evidence: fallbackSummary };
     }
   }
 
@@ -2439,6 +2454,57 @@ export class OrchestratorTaskService extends Service {
       extractWriteLedger(sessionEvents),
     );
 
+    // Ledger-less adapters starve the deterministic pre-pass (#20794 live
+    // residual): recover observation-grade evidence by direct inspection.
+    // Claims (mined paths, captured change set) only select WHAT to inspect;
+    // fs stat inside the session workdir and a real HTTP probe of the route's
+    // operator-configured public mapping are what produce evidence.
+    let fsVerifiedFiles: string[] = [];
+    const reportingSession = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    if (
+      reportingSession?.workdir &&
+      (!ledgerVerdict.ledgerObserved ||
+        ledgerVerdict.verifiedClaims.length === 0)
+    ) {
+      fsVerifiedFiles = collectFsObservedFiles({
+        workdir: reportingSession.workdir,
+        candidatePaths: [
+          ...(changeSet?.changedFiles ?? []),
+          ...mineCandidatePaths([summary, ...subAgentReplies]),
+        ],
+        sessionStartedAt: reportingSession.registeredAt,
+      });
+      if (fsVerifiedFiles.length > 0 && verifiedUrls.length === 0) {
+        const routeMeta = isRecord(reportingSession.metadata)
+          ? reportingSession.metadata.workdirRoute
+          : undefined;
+        const urlMappings =
+          isRecord(routeMeta) && Array.isArray(routeMeta.urlMappings)
+            ? (routeMeta.urlMappings as {
+                urlPrefix: string;
+                localPath: string;
+              }[])
+            : undefined;
+        const probed = await probeMappedUrls(
+          deriveRouteMappedUrls(fsVerifiedFiles, urlMappings),
+        );
+        verifiedUrls.push(...probed);
+      }
+    }
+
+    // Which check classes the verified deliverable can actually RUN —
+    // detected in the deliverable's own directories (see detectCheckSurfaces).
+    const surfaceFiles = [
+      ...(ledgerVerdict.ledgerObserved ? ledgerVerdict.verifiedClaims : []),
+      ...fsVerifiedFiles,
+    ];
+    const checkSurfaces =
+      reportingSession?.workdir && surfaceFiles.length > 0
+        ? detectCheckSurfaces(reportingSession.workdir, surfaceFiles)
+        : undefined;
+
     return {
       summary,
       diffSummary,
@@ -2451,6 +2517,19 @@ export class OrchestratorTaskService extends Service {
             unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
           }
         : {}),
+      ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
+      ...(checkSurfaces ? { checkSurfaces } : {}),
+      ...(fsVerifiedFiles.length > 0 && reportingSession?.workdir
+        ? (() => {
+            const fsVerifiedFileContents = readFsVerifiedContents(
+              reportingSession.workdir,
+              fsVerifiedFiles,
+            );
+            return fsVerifiedFileContents.length > 0
+              ? { fsVerifiedFileContents }
+              : {};
+          })()
+        : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -2460,6 +2539,7 @@ export class OrchestratorTaskService extends Service {
    *  carries the command/title so {@link classifyToolOutput} can class it. */
   private extractToolSignals(
     events: OrchestratorTaskDocument["events"],
+    completedOnly = false,
   ): EvidenceSignal[] {
     const signals: EvidenceSignal[] = [];
     for (const event of events) {
@@ -2471,6 +2551,7 @@ export class OrchestratorTaskService extends Service {
       const toolCall = isRecord(event.data.toolCall)
         ? event.data.toolCall
         : event.data;
+      if (completedOnly && !isCompletedToolEvidence(toolCall)) continue;
       const output = str(toolCall.output) ?? str(event.data.output);
       if (!output) continue;
       const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
@@ -3055,7 +3136,15 @@ export class OrchestratorTaskService extends Service {
   ): Promise<CreateTaskInput> {
     const supplied = input.acceptanceCriteria;
     // Caller-supplied criteria are authoritative — never overwrite them.
-    if (supplied && supplied.length > 0) return input;
+    if (supplied && supplied.length > 0) {
+      return {
+        ...input,
+        metadata: {
+          ...input.metadata,
+          acceptanceCriteriaOrigin: "caller",
+        },
+      };
+    }
     if (!shouldRequireGoalContract()) return input;
     if (!isNonTrivialGoal(input.goal)) return input;
 
@@ -3070,7 +3159,14 @@ export class OrchestratorTaskService extends Service {
       "debug",
       `auto-generated ${generated.length} default acceptance criteria for criteria-free task (type=${hint ?? detectTaskType(input.goal)})`,
     );
-    return { ...input, acceptanceCriteria: generated };
+    return {
+      ...input,
+      acceptanceCriteria: generated,
+      metadata: {
+        ...input.metadata,
+        acceptanceCriteriaOrigin: "generated",
+      },
+    };
   }
 
   /** Map an explicit `kind` on the create input to a task type when it lines up
@@ -3696,6 +3792,7 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     completionEvidence: string,
     rawCompletion: string,
+    evidenceBundle?: CompletionEvidenceBundle,
   ): Promise<void> {
     if (!shouldAutoVerifyGoal()) return;
     // Re-entrancy guard: drop a second overlapping run for the same task (the
@@ -3710,6 +3807,7 @@ export class OrchestratorTaskService extends Service {
           sessionId,
           completionEvidence,
           rawCompletion,
+          evidenceBundle,
         ),
       );
     } catch (err) {
@@ -3732,6 +3830,7 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     completionEvidence: string,
     rawCompletion: string,
+    evidenceBundle?: CompletionEvidenceBundle,
   ): Promise<void> {
     {
       let doc = await this.store.getTask(taskId);
@@ -4003,6 +4102,86 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
+      // 2.5. Deterministic ledger pre-pass (#20794) — BEFORE the independent
+      // verifier and the text judge. The orchestrator already holds hard
+      // evidence at completion: the session's successful write ledger, the
+      // router's probed URLs, the captured changeset, and mined check output.
+      // When EVERY criterion is satisfied by those facts, the task passes with
+      // deterministic provenance and zero model spend — a working deliverable
+      // can no longer be failed by fabricated demands. Partial satisfaction is
+      // appended to the evidence so downstream judges see what is already
+      // proven and grill only the remainder.
+      const workerSession = doc.sessions.find(
+        (session) => session.sessionId === sessionId,
+      );
+      const workerCaps = capabilitiesForBackend(
+        workerSession?.framework,
+        (key) => {
+          const value = this.runtime.getSetting?.(key);
+          return typeof value === "string" ? value : undefined;
+        },
+      );
+      if (evidenceBundle) {
+        // Reuse the bundle assembled on the task_complete path. When assembly
+        // failed, skip this optional pre-pass and keep the established judge
+        // fallback; immediately repeating the same throwing IO under the task
+        // lock would strand the coding task in `validating`.
+        const bundle = evidenceBundle;
+        // Only structured tool-result events may become deterministic green
+        // checks. `bundle.toolOutput` deliberately also contains sub-agent
+        // prose for the model judge, but prose is a claim rather than
+        // model-free execution evidence.
+        const deterministicToolOutput = classifyToolOutput(
+          this.extractToolSignals(
+            doc.events.filter(
+              (event) =>
+                event.sessionId === sessionId || event.sessionId === undefined,
+            ),
+            true,
+          ),
+        );
+        const detVerdict = deterministicLedgerVerdict(acceptanceCriteria, {
+          verifiedPublicUrls: bundle.verifiedUrls.filter(
+            isPubliclyReachableUrl,
+          ),
+          ledgerVerifiedFiles: [
+            ...(bundle.ledgerVerifiedFiles ?? []),
+            ...(bundle.fsVerifiedFiles ?? []),
+          ],
+          ...(bundle.checkSurfaces
+            ? { checkSurfaces: bundle.checkSurfaces }
+            : {}),
+          hasChangeSet: Boolean(bundle.diffSummary?.trim()),
+          greenChecks: {
+            test: isGreenCheckOutput(deterministicToolOutput?.test),
+            build: isGreenCheckOutput(deterministicToolOutput?.build),
+            lint: isGreenCheckOutput(deterministicToolOutput?.lint),
+          },
+        });
+        // Generated defaults are intentionally generic fallbacks. Green
+        // typecheck/lint/tests/diff does not prove a goal such as "fix this
+        // bug", so only an explicit caller contract may bypass the verifier
+        // and judge. Generated criteria still contribute grounded evidence.
+        const explicitContract =
+          doc.task.metadata.acceptanceCriteriaOrigin === "caller";
+        if (detVerdict.allMet && explicitContract) {
+          await this.validateTaskLocked(taskId, {
+            passed: true,
+            summary: `All ${acceptanceCriteria.length} criteria deterministically verified from the write ledger, probed URLs, and captured output.`,
+            evidence: renderDeterministicVerdict(detVerdict),
+            verifier: DETERMINISTIC_LEDGER_VERIFIER_NAME,
+          });
+          this.emitChange(taskId);
+          return;
+        }
+        if (detVerdict.met.length > 0) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            renderDeterministicVerdict(detVerdict),
+          );
+        }
+      }
+
       // 3. Independent read-only execution verifier (#8898).
       const independent = await this.runIndependentVerify(
         taskId,
@@ -4027,7 +4206,9 @@ export class OrchestratorTaskService extends Service {
             correction: [
               "Independent verification of your completion was inconclusive:",
               `- ${independent.summary}`,
-              "Re-report your completion when the work is truly done. End your final message with the fenced ```json CompletionEnvelope exactly matching the required schema, and include concrete evidence (commands run, their real output, and where the deliverable lives).",
+              workerCaps.completionEnvelope
+                ? "Re-report your completion when the work is truly done. End your final message with the fenced ```json CompletionEnvelope exactly matching the required schema, and include concrete evidence (commands run, their real output, and where the deliverable lives)."
+                : "Re-report your completion when the work is truly done, and include concrete evidence inline: the commands you ran with their real output, and where the deliverable lives (file path and/or reachable URL).",
             ].join("\n"),
             eventType: "independent_verify_inconclusive",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
@@ -4070,6 +4251,7 @@ export class OrchestratorTaskService extends Service {
             correction: buildAutoVerifyCorrection(
               missing.length > 0 ? missing : [independent.summary],
               attempts + 1,
+              workerCaps,
             ),
             eventType: "independent_verify_failed",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
@@ -4117,7 +4299,11 @@ export class OrchestratorTaskService extends Service {
         sessionId,
         // Escalate the grill per attempt: `attempts` is the count of prior
         // failures, so `attempts + 1` is this correction's 1-based stage.
-        correction: buildAutoVerifyCorrection(verdict.missing, attempts + 1),
+        correction: buildAutoVerifyCorrection(
+          verdict.missing,
+          attempts + 1,
+          workerCaps,
+        ),
         eventType: "auto_verify_failed",
         verifier: LLM_GOAL_VERIFIER_NAME,
         summary: verdict.summary,
@@ -4277,6 +4463,18 @@ export class OrchestratorTaskService extends Service {
       return typeof fromEnv === "string" ? fromEnv : undefined;
     };
     if (!shouldRunIndependentVerify(getSetting, hasCodeChanges)) return null;
+    // #20794: the verifier reports through a CompletionEnvelope, but the
+    // default spawn backend (elizaos) never emits one — every such run is
+    // structurally inconclusive and only burns bounded verify attempts.
+    // Spawn the independent verifier only when its backend can actually
+    // produce the contract it is asked to report with.
+    const verifierBackend =
+      configuredDefaultAgentType(this.runtime) ?? "elizaos";
+    if (
+      !capabilitiesForBackend(verifierBackend, getSetting).completionEnvelope
+    ) {
+      return null;
+    }
     const acp = this.acp();
     if (!acp) return null;
     const session = doc.sessions.find((s) => s.sessionId === sessionId);

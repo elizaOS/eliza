@@ -4,8 +4,11 @@
  * routes, while the planner action uses the same registered stateful view.
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { type Action, type IAgentRuntime, Service } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearActiveViewContext } from "../runtime/view-action-affinity.ts";
@@ -166,6 +169,7 @@ async function getJson(
 }
 
 let server: http.Server | null = null;
+let pluginRoot: string | null = null;
 
 beforeEach(async () => {
   clearCurrentViewState();
@@ -189,9 +193,129 @@ afterEach(async () => {
     );
     server = null;
   }
+  if (pluginRoot) {
+    await rm(pluginRoot, { recursive: true, force: true });
+    pluginRoot = null;
+  }
 });
 
 describe("runtime-owned view interactions over the real HTTP route", () => {
+  it("rejects malformed asset encoding while preserving encoded asset names", async () => {
+    const service = new RuntimeOwnedRecordsService();
+    const runtime = makeRuntime(service);
+    pluginRoot = await mkdtemp(path.join(tmpdir(), "eliza-view-assets-"));
+    const bundleDir = path.join(pluginRoot, "dist", "views");
+    await mkdir(bundleDir, { recursive: true });
+    await mkdir(path.join(bundleDir, "chunks"), { recursive: true });
+    await writeFile(path.join(bundleDir, "bundle.js"), "export {};\n");
+    await writeFile(
+      path.join(bundleDir, "chunk name.js"),
+      "export const asset = true;\n",
+    );
+    await writeFile(
+      path.join(bundleDir, "chunks", "nested.js"),
+      "export const nested = true;\n",
+    );
+    await writeFile(
+      path.join(bundleDir, "..safe.js"),
+      "export const dotPrefixed = true;\n",
+    );
+    await writeFile(
+      path.join(pluginRoot, "dist", "outside.js"),
+      "must not escape the bundle directory\n",
+    );
+
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "Static asset encoding fixture.",
+        views: [
+          {
+            id: VIEW_ID,
+            label: "Static asset encoding fixture",
+            bundlePath: "dist/views/bundle.js",
+          },
+        ],
+      },
+      pluginRoot,
+      runtime,
+    );
+
+    const started = await startViewsServer(runtime);
+    server = started.server;
+
+    const malformedMissingView = await getJson(
+      started.baseUrl,
+      "/api/views/missing-view/%E0%A4",
+      400,
+    );
+    expect(malformedMissingView.error).toBe(
+      "Invalid view asset path: malformed URL encoding",
+    );
+
+    const encodedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/chunk%20name.js`,
+    );
+    expect(encodedAsset.status).toBe(200);
+    expect(await encodedAsset.text()).toBe("export const asset = true;\n");
+
+    const encodedNestedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/chunks%2Fnested.js`,
+    );
+    expect(encodedNestedAsset.status).toBe(200);
+    expect(await encodedNestedAsset.text()).toBe(
+      "export const nested = true;\n",
+    );
+
+    const safeDotPrefixedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/..safe.js`,
+    );
+    expect(safeDotPrefixedAsset.status).toBe(200);
+    expect(await safeDotPrefixedAsset.text()).toBe(
+      "export const dotPrefixed = true;\n",
+    );
+
+    const malformedEncoding = await getJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/%E0%A4`,
+      400,
+    );
+    expect(malformedEncoding.error).toBe(
+      "Invalid view asset path: malformed URL encoding",
+    );
+
+    for (const adversarialPath of [
+      "..%2Foutside.js",
+      ".%2E%2Foutside.js",
+      "chunks%2F.%2E%2Foutside.js",
+      "%2Fetc%2Fpasswd",
+      "%00",
+      "%5C..%5Coutside.js",
+    ]) {
+      const rejected = await getJson(
+        started.baseUrl,
+        `/api/views/${VIEW_ID}/${adversarialPath}`,
+        400,
+      );
+      expect(rejected.error).toBe("Malformed view asset path");
+    }
+
+    const doubleEncodedTraversal = await getJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/%252E%252E%252Foutside.js`,
+      404,
+    );
+    expect(doubleEncodedTraversal.error).toBe(
+      'View asset "%2E%2E%2Foutside.js" not found',
+    );
+
+    const malformedHead = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/%E0%A4`,
+      { method: "HEAD" },
+    );
+    expect(malformedHead.status).toBe(400);
+  });
+
   it("keeps CRUD on one runtime service across interact, activate, and planner paths", async () => {
     const service = new RuntimeOwnedRecordsService();
     const runtime = makeRuntime(service);

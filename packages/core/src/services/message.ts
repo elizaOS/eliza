@@ -2770,11 +2770,12 @@ async function collectV5PlannerCandidateActions(args: {
 		 * `disclosureRejectedExplicitCandidates`. */
 		disclosureRejectedReasons: string[];
 		/** Normalized names of EXPLICIT stage-1 candidates rejected by a
-		 * NON-disclosure gate (role/context/private-action). A privacy denial
-		 * only proves a disclosure boundary; when the same turn also has a
-		 * non-disclosure rejection the request is compound, so the privacy
-		 * short-circuit must stand down and let the planner/recovery path answer
-		 * the non-disclosure limitation honestly (#20679). */
+		 * NON-disclosure gate: role/context/private-action (#20679), plus
+		 * connector-account-policy denials and `validate() === false` (#20869).
+		 * A privacy denial only proves a disclosure boundary; when the same turn
+		 * also has a non-disclosure rejection the request is compound, so the
+		 * privacy short-circuit must stand down and let the planner/recovery
+		 * path answer the non-disclosure limitation honestly. */
 		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
@@ -2859,6 +2860,12 @@ async function collectV5PlannerCandidateActions(args: {
 			);
 			if (!accountPolicy.allowed) {
 				if (explicitCandidateName) {
+					// An account-policy denial is a non-disclosure rejection: record it
+					// so a mixed {disclosure + policy} set is visible to the privacy
+					// short-circuit's onlyDisclosureRejections conjunct (#20869).
+					args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+						action.name,
+					);
 					args.runtime.logger.warn(
 						{
 							src: "service:message",
@@ -2880,6 +2887,12 @@ async function collectV5PlannerCandidateActions(args: {
 				);
 				if (!valid) {
 					if (explicitCandidateName) {
+						// validate()===false is likewise a non-disclosure rejection
+						// (#20869); without this record the mixed set short-circuits to
+						// the privacy template — the #20679 mislabel class.
+						args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+							action.name,
+						);
 						args.runtime.logger.warn(
 							{
 								src: "service:message",

@@ -60,6 +60,7 @@ import {
   callEndedEvent,
   callOpeningGreeting,
   callStartedEvent,
+  prewarmAndRecordVoiceCallStart,
 } from "../lib/voice-continuity";
 
 const app = new Hono<AppEnv>();
@@ -391,14 +392,16 @@ app.get("/", async (c) => {
     });
     const callExpSeconds =
       Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
-    const prewarmAndRecordCallStart = async (): Promise<void> => {
-      await elizaFetch.recordLifecycleEvent({
-        id: `twilio-call:${claims.callSid}:started`,
-        content: callStartedEvent(claims.previousInteractionAt),
-        createdAt: Date.now(),
-      });
-      await elizaFetch.prewarm?.();
-    };
+    const prewarmAndRecordCallStart = () =>
+      prewarmAndRecordVoiceCallStart(
+        () => elizaFetch.prewarm?.(),
+        () =>
+          elizaFetch.recordLifecycleEvent({
+            id: `twilio-call:${claims.callSid}:started`,
+            content: callStartedEvent(claims.previousInteractionAt),
+            createdAt: Date.now(),
+          }),
+      );
     session = new VoiceSession({
       sessionId: claims.sessionId,
       jti: claims.jti,

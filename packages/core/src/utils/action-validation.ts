@@ -24,8 +24,8 @@ export interface ActionContextValidationOptions {
 export function hasActionContext(
 	message: Memory,
 	state: State | undefined,
-	options: ActionContextValidationOptions,
+	options?: ActionContextValidationOptions,
 ): boolean {
 	const activeContexts = getActiveRoutingContextsForTurn(state, message);
-	return routingContextsOverlap(options.contexts, activeContexts);
+	return routingContextsOverlap(options?.contexts, activeContexts);
 }

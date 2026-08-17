@@ -352,7 +352,7 @@ async function settleLedgerCharge(
     // hosted-agent pause webhook so an org draining via optimistic inference still
     // gets low-balance warnings (the ledger debits with its own SQL, not deductCredits).
     if (outcome.newBalance !== undefined) {
-      creditsService.notifyBalanceDecrease(ctx.organizationId, outcome.newBalance, {
+      await creditsService.notifyBalanceDecrease(ctx.organizationId, outcome.newBalance, {
         user_id: ctx.userId,
         requestId: ctx.requestId,
         model: ctx.model,

@@ -20,6 +20,7 @@ import {
   logger,
   ModelType,
   parseBooleanValue,
+  validateUuid,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
@@ -39,6 +40,7 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
@@ -336,7 +338,17 @@ export async function handleMiscRoutes(
     if (rawEvent === null) return true;
     const agentEventMatch = pathname.match(/^\/api\/agents\/([^/]+)\/event$/);
     if (agentEventMatch) {
-      const routeAgentId = decodeURIComponent(agentEventMatch[1] ?? "").trim();
+      const decodedAgentId = decodePathComponent(
+        agentEventMatch[1] ?? "",
+        res,
+        "agent id",
+      );
+      if (decodedAgentId === null) return true;
+      const routeAgentId = validateUuid(decodedAgentId.trim());
+      if (!routeAgentId) {
+        json(res, { error: "Invalid agent id" }, 400);
+        return true;
+      }
       if (state.runtime?.agentId && state.runtime.agentId !== routeAgentId) {
         json(res, { error: "Agent not found" }, 404);
         return true;
@@ -722,7 +734,17 @@ export async function handleMiscRoutes(
   );
 
   if (method === "POST" && customActionTestMatch) {
-    const actionId = decodeURIComponent(customActionTestMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionTestMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
     const rawTest = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawTest === null) return true;
     const parsedTest = PostCustomActionTestRequestSchema.safeParse(rawTest);
@@ -780,7 +802,17 @@ export async function handleMiscRoutes(
   }
 
   if (method === "PUT" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
     const rawUpdate = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawUpdate === null) return true;
     const parsedUpdate = PutCustomActionRequestSchema.safeParse(rawUpdate);
@@ -844,7 +876,17 @@ export async function handleMiscRoutes(
   }
 
   if (method === "DELETE" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
 
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];

@@ -457,23 +457,31 @@ class RedeemableEarningsService {
 
       return {
         success: true,
-        newBalance: Number(result.earnings?.available_balance ?? 0),
+        // Absent earnings on a dedup replay stays an explicit 0; a present but
+        // corrupt NUMERIC throws instead of reporting a fabricated balance.
+        newBalance: result.earnings
+          ? parseRedeemableEarningsNumber(result.earnings.available_balance, "available_balance")
+          : 0,
         ledgerEntryId: result.ledgerEntryId,
         deduplicated: true,
       };
     }
 
+    const addedBalance = parseRedeemableEarningsNumber(
+      result.earnings.available_balance,
+      "available_balance",
+    );
     logger.info("[RedeemableEarnings] Added earnings", {
       userId: userId.slice(0, 8) + "...",
       amount,
       source,
       sourceId: sourceId.slice(0, 8) + "...",
-      newBalance: Number(result.earnings.available_balance),
+      newBalance: addedBalance,
     });
 
     return {
       success: true,
-      newBalance: Number(result.earnings.available_balance),
+      newBalance: addedBalance,
       ledgerEntryId: result.ledgerEntryId,
       deduplicated: false,
     };
@@ -597,7 +605,10 @@ class RedeemableEarningsService {
             skipped: false,
             insufficient: false,
             deduplicated: true,
-            currentBalance: Number(earnings.available_balance),
+            currentBalance: parseRedeemableEarningsNumber(
+              earnings.available_balance,
+              "available_balance",
+            ),
           };
         }
       }
@@ -682,7 +693,11 @@ class RedeemableEarningsService {
       });
       return {
         success: true,
-        newBalance: Number(result.earnings?.available_balance ?? 0),
+        // Absent earnings on a dedup replay stays an explicit 0; a present but
+        // corrupt NUMERIC throws instead of reporting a fabricated balance.
+        newBalance: result.earnings
+          ? parseRedeemableEarningsNumber(result.earnings.available_balance, "available_balance")
+          : 0,
         ledgerEntryId: result.ledgerEntryId,
         deduplicated: true,
       };
@@ -720,17 +735,21 @@ class RedeemableEarningsService {
       };
     }
 
+    const reducedBalance = parseRedeemableEarningsNumber(
+      updatedEarnings.available_balance,
+      "available_balance",
+    );
     logger.info("[RedeemableEarnings] Reduced earnings (reconciliation)", {
       userId: `${userId.slice(0, 8)}...`,
       amount,
       source,
       sourceId: `${sourceId.slice(0, 8)}...`,
-      newBalance: Number(updatedEarnings.available_balance),
+      newBalance: reducedBalance,
     });
 
     return {
       success: true,
-      newBalance: Number(updatedEarnings.available_balance),
+      newBalance: reducedBalance,
       ledgerEntryId: result.ledgerEntryId,
     };
   }
@@ -844,7 +863,10 @@ class RedeemableEarningsService {
       userId: userId.slice(0, 8) + "...",
       amount,
       redemptionId: redemptionId.slice(0, 8) + "...",
-      newAvailable: Number(result.earnings.available_balance),
+      newAvailable: parseRedeemableEarningsNumber(
+        result.earnings.available_balance,
+        "available_balance",
+      ),
       isExisting: result.isExisting,
     });
 
@@ -1057,6 +1079,10 @@ class RedeemableEarningsService {
       return { earnings: updated, ledgerEntryId: ledgerEntry.id, idempotent: false };
     });
 
+    const convertedBalance = parseRedeemableEarningsNumber(
+      result.earnings.available_balance,
+      "available_balance",
+    );
     logger.info(
       result.idempotent
         ? "[RedeemableEarnings] Skipped duplicate conversion (idempotent)"
@@ -1066,13 +1092,13 @@ class RedeemableEarningsService {
         organizationId: `${organizationId.slice(0, 8)}...`,
         amount,
         idempotencyKey,
-        newBalance: Number(result.earnings.available_balance),
+        newBalance: convertedBalance,
       },
     );
 
     return {
       success: true,
-      newBalance: Number(result.earnings.available_balance),
+      newBalance: convertedBalance,
       ledgerEntryId: result.ledgerEntryId,
     };
   }

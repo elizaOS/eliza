@@ -55,6 +55,9 @@ export function buildFollowerController(
 
   return {
     phase: snapshot.phase,
+    authGate: snapshot.authGate,
+    requestSignIn: () => fire({ kind: "requestSignIn" }),
+    signingIn: snapshot.signingIn,
     bootProgressSignal: snapshot.bootProgressSignal,
     responding: snapshot.responding,
     turnStatus: snapshot.turnStatus,

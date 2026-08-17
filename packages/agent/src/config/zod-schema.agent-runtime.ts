@@ -633,6 +633,7 @@ const uuidPattern =
 
 export const OwnerContactEntrySchema = z
   .object({
+    source: z.string().trim().min(1).optional(),
     entityId: z.string().regex(uuidPattern, "invalid UUID").optional(),
     channelId: z.string().optional(),
     roomId: z.string().regex(uuidPattern, "invalid UUID").optional(),

@@ -20,6 +20,7 @@ interface StoredNode {
   ssh_user: string;
   capacity: number;
   host_key_fingerprint: string | null;
+  node_incarnation: string | null;
   status: string;
   metadata: Record<string, unknown>;
 }
@@ -32,6 +33,7 @@ const EXISTING: StoredNode = {
   ssh_user: "root",
   capacity: 8,
   host_key_fingerprint: "SHA256:pinned-fingerprint",
+  node_incarnation: "00000000-0000-4000-8000-000000000001",
   status: "healthy",
   metadata: { provider: "operator-provisioned" },
 };
@@ -54,6 +56,22 @@ const mockCreate = mock(async (data: StoredNode) => {
   stored = { ...data, id: "node-row-new" };
   return stored;
 });
+const mockRotateNodeHostKeyFingerprint = mock(
+  async (input: {
+    expectedFingerprint: string | null;
+    observedFingerprint: string | null;
+  }) => {
+    if (!stored || stored.host_key_fingerprint !== input.expectedFingerprint) {
+      throw new Error("stale host-key rotation");
+    }
+    stored = {
+      ...stored,
+      host_key_fingerprint: input.observedFingerprint,
+      node_incarnation: null,
+    };
+    return stored;
+  },
+);
 const mockReconcileProvisionalCapacity = mock(
   async (
     _id: string,
@@ -76,6 +94,7 @@ mock.module("@/db/repositories/docker-nodes", () => ({
     findByNodeId: mockFindByNodeId,
     update: mockUpdate,
     create: mockCreate,
+    rotateNodeHostKeyFingerprint: mockRotateNodeHostKeyFingerprint,
     reconcileProvisionalCapacity: mockReconcileProvisionalCapacity,
   },
 }));
@@ -116,6 +135,7 @@ function useProvisionalAutoscaledNode(requestedCapacity: number | null): void {
     ...EXISTING,
     capacity: 0,
     host_key_fingerprint: null,
+    node_incarnation: null,
     metadata: {
       provider: "hetzner-cloud",
       autoscaled: true,
@@ -134,6 +154,7 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
     mockUpdate.mockClear();
     mockCreate.mockClear();
     mockFindByNodeId.mockClear();
+    mockRotateNodeHostKeyFingerprint.mockClear();
     mockReconcileProvisionalCapacity.mockClear();
   });
 
@@ -216,8 +237,15 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
 
     expect(res.status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledTimes(1);
-    expect(lastUpdateArg?.host_key_fingerprint).toBe("SHA256:first-real-pin");
+    expect(mockRotateNodeHostKeyFingerprint).toHaveBeenCalledWith({
+      id: EXISTING.id,
+      nodeId: EXISTING.node_id,
+      expectedFingerprint: null,
+      observedFingerprint: "SHA256:first-real-pin",
+    });
+    expect(lastUpdateArg).not.toHaveProperty("host_key_fingerprint");
     expect(stored?.host_key_fingerprint).toBe("SHA256:first-real-pin");
+    expect(stored?.node_incarnation).toBeNull();
   });
 
   test("allows identity mutation with a matching pinned fingerprint", async () => {

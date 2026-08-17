@@ -14,9 +14,12 @@ import { installDefaultAppRoutes, openAppPath } from "./helpers";
  */
 
 function chatComposer(page: Page) {
+  // The label fallback must be exact: substring matching would also hit chat
+  // message bubbles labeled "Show message actions" once the greeting renders,
+  // making the union locator ambiguous under strict mode.
   return page
     .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+    .or(page.getByLabel("message", { exact: true }));
 }
 
 /**

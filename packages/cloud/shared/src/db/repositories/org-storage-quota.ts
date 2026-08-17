@@ -19,10 +19,10 @@ export const DEFAULT_ORG_STORAGE_BYTES_LIMIT = 5n * 1024n * 1024n * 1024n;
 /**
  * Repository for per-organization attachment storage quotas.
  *
- * Only the route handler in `apps/api/v1/apis/storage` calls this. Reads
- * use the read-intent connection; writes use the primary. There is no soft limit:
+ * Storage proxy and direct object-upload routes call this boundary. Reads use
+ * the read-intent connection; writes use the primary. There is no soft limit:
  * `tryReserveBytes` returns `null` when the requested write would push the
- * org above its `bytes_limit`, and the caller surfaces a 413.
+ * organization above its `bytes_limit`, and the caller surfaces a 413.
  */
 export class OrgStorageQuotaRepository {
   async findByOrganization(organizationId: string): Promise<OrgStorageQuota | undefined> {
@@ -73,8 +73,7 @@ export class OrgStorageQuotaRepository {
 
   /**
    * Atomically releases `bytes` back to an organization's quota. Clamped at
-   * zero so a double-decrement (e.g. delete-after-failed-put) cannot drive
-   * the counter negative.
+   * zero so a repeated compensating release cannot drive the counter negative.
    */
   async releaseBytes(organizationId: string, bytes: bigint): Promise<void> {
     if (bytes <= 0n) {

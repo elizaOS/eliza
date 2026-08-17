@@ -293,5 +293,6 @@ describe("buildRendererManifest", () => {
     expect(manifest.variant).toBeNull();
     expect(manifest.capacitorTarget).toBeNull();
     expect(manifest.playwrightTestAuth).toBeNull();
+    expect(manifest.iosApnsEnabled).toBeNull();
   });
 });

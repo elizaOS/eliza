@@ -17,6 +17,16 @@ export {
 	installMediaElementShims,
 	suppressReactTestConsoleErrors,
 } from "./browser-mocks";
+export {
+	type InteractionAdapterConformanceOptions,
+	type InteractionConformanceCaseName,
+	type InteractionConformanceCheck,
+	type InteractionConformanceFixture,
+	type InteractionConformanceReport,
+	REQUIRED_INTERACTION_CONFORMANCE_CASES,
+	runInteractionAdapterConformance,
+	runInteractionLeaseConformance,
+} from "./computer-use-conformance";
 // Conditional test helpers (describeIf, itIf, testIf)
 export { describeIf, itIf, testIf } from "./conditional-tests";
 export {

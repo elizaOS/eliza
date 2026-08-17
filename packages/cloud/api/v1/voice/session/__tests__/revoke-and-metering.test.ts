@@ -232,6 +232,99 @@ describe("revoke-to-silence (SEC-6)", () => {
     expect(ink.closed).toBe(true);
   });
 
+  test("one transient revocation-store failure does not hang up the call", async () => {
+    const dl = collectDownlink();
+    const usageStore: VoiceUsageStore = {
+      async checkAndRecord() {
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
+      },
+      async release() {},
+    };
+    let checks = 0;
+    const session = new VoiceSession({
+      sessionId: "sess-transient-revoke-store",
+      jti: "jti-transient-revoke-store",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 120,
+      cartesiaInkWebSocketFactory: (() => new FakeInkSocket()) as never,
+      cartesiaApiKey: "ct",
+      cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+      elizaEndpoint: "http://x",
+      elizaAuthorization: "Bearer x",
+      elizaModel: "gemma-4-31b",
+      usageStore,
+      usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
+      isRevoked: async () => {
+        checks += 1;
+        if (checks === 1) throw new Error("temporary Redis timeout");
+        return false;
+      },
+      downlink: dl.downlink,
+    });
+    session.start();
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    expect(checks).toBeGreaterThanOrEqual(2);
+    expect(ink.closed).toBe(false);
+    expect(dl.ref.closed).toBeNull();
+    session.sever("client_disconnect");
+  });
+
+  test("sustained revocation-store failures still fail closed", async () => {
+    const dl = collectDownlink();
+    const usageStore: VoiceUsageStore = {
+      async checkAndRecord() {
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
+      },
+      async release() {},
+    };
+    const session = new VoiceSession({
+      sessionId: "sess-revoke-store-down",
+      jti: "jti-revoke-store-down",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 120,
+      cartesiaInkWebSocketFactory: (() => new FakeInkSocket()) as never,
+      cartesiaApiKey: "ct",
+      cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+      elizaEndpoint: "http://x",
+      elizaAuthorization: "Bearer x",
+      elizaModel: "gemma-4-31b",
+      usageStore,
+      usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
+      isRevoked: async () => {
+        throw new Error("Redis unavailable");
+      },
+      downlink: dl.downlink,
+    });
+    session.start();
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    await new Promise((resolve) => setTimeout(resolve, 1_300));
+
+    expect(ink.closed).toBe(true);
+    expect(dl.ref.closed).toEqual({ code: 1000, reason: "revoked" });
+  });
+
   test("client disconnect self-severs the provider socket", async () => {
     const dl = collectDownlink();
     const usageStore: VoiceUsageStore = {

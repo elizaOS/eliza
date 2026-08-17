@@ -485,9 +485,30 @@ async function scopedAddOptions(
 ) {
 	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
 	const addedBy = message.entityId;
+	let worldId = message.worldId as UUID | undefined;
+	if (!worldId) {
+		let room: Awaited<ReturnType<typeof runtime.getRoom>>;
+		try {
+			room = await runtime.getRoom(message.roomId as UUID);
+		} catch (cause) {
+			// error-policy:J2 Required document scope lookup failed; preserve the adapter failure.
+			throw new ElizaError("Document room lookup failed", {
+				code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+				context: { roomId: message.roomId },
+				cause,
+			});
+		}
+		if (!room?.worldId) {
+			throw new ElizaError("Document world resolution failed", {
+				code: "DOCUMENT_WORLD_MISSING",
+				context: { roomId: message.roomId },
+			});
+		}
+		worldId = room.worldId as UUID;
+	}
 	return {
 		agentId: runtime.agentId,
-		worldId: message.worldId ?? runtime.agentId,
+		worldId,
 		roomId: message.roomId,
 		entityId: scopedToEntityId ?? addedBy,
 		scope,
@@ -1377,34 +1398,46 @@ export const documentAction: Action = {
 		try {
 			switch (subaction) {
 				case "search":
-					return handleSearch(service, message, params, callback);
+					return await handleSearch(service, message, params, callback);
 				case "read":
-					return handleRead(service, message, params, callback);
+					return await handleRead(service, message, params, callback);
 				case "write":
-					return handleWrite(runtime, service, message, params, callback);
+					return await handleWrite(runtime, service, message, params, callback);
 				case "edit":
-					return handleEdit(service, message, params, callback);
+					return await handleEdit(service, message, params, callback);
 				case "delete":
-					return handleDelete(service, message, params, callback);
+					return await handleDelete(service, message, params, callback);
 				case "list":
-					return handleList(service, message, params, callback);
+					return await handleList(service, message, params, callback);
 				case "import_file":
-					return handleImportFile(runtime, service, message, params, callback);
+					return await handleImportFile(
+						runtime,
+						service,
+						message,
+						params,
+						callback,
+					);
 				case "import_url":
-					return handleImportUrl(runtime, service, message, params, callback);
+					return await handleImportUrl(
+						runtime,
+						service,
+						message,
+						params,
+						callback,
+					);
 			}
 		} catch (error) {
 			// error-policy:J1 The polymorphic documents action translates
 			// failures into its explicit unsuccessful result shape.
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
 			// Planner-facing only: internal exception text must not leak to chat.
-			const text = `The documents ${subaction.replace("_", " ")} operation failed: ${
-				error instanceof Error ? error.message : String(error)
-			}`;
+			const detail = error instanceof Error ? error.message : String(error);
+			const errorCode = error instanceof ElizaError ? error.code : detail;
+			const text = `The documents ${subaction.replace("_", " ")} operation failed: ${detail}`;
 			return result(false, text, subaction, {
-				error: error instanceof Error ? error.message : String(error),
+				error: detail,
 				values: {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorCode,
 				},
 			});
 		}

@@ -40,6 +40,7 @@ function makeAppDist(
     variant?: string;
     capacitorTarget?: string;
     runtimeMode?: string;
+    iosApnsEnabled?: boolean;
     playwrightTestAuth?: boolean;
   } = {},
 ) {
@@ -248,6 +249,51 @@ describe("mobileWebDistReuseStatus", () => {
     expect(status.reusable).toBe(false);
     expect(status.problems).toContain(
       "dist built for runtime mode 'cloud-hybrid' but this build targets an unset runtime mode",
+    );
+  });
+
+  it("does not reuse an iOS dist built with the opposite APNs gate", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud-hybrid",
+      iosApnsEnabled: true,
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud-hybrid",
+      expectedIosApnsEnabled: false,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist built with iOS APNs gate 'enabled' but this build targets 'disabled'",
+    );
+  });
+
+  it("does not reuse a legacy iOS dist with no APNs provenance", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud-hybrid",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud-hybrid",
+      expectedIosApnsEnabled: true,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist manifest is missing iOS APNs gate; this build targets 'enabled'",
     );
   });
 

@@ -58,6 +58,23 @@ describe("sanitizeJsonObject", () => {
     expect(sanitizeJsonObject(false)).toBe(false);
   });
 
+  it("handles Date instances, BigInt primitives, and non-finite numbers", () => {
+    const date = new Date("2026-08-17T00:00:00.000Z");
+    expect(sanitizeJsonObject(date)).toBe("2026-08-17T00:00:00.000Z");
+
+    const invalidDate = new Date("invalid-date");
+    expect(sanitizeJsonObject(invalidDate)).toBeNull();
+
+    expect(sanitizeJsonObject(100n)).toBe("100");
+    expect(sanitizeJsonObject({ block: 12345678901234567890n })).toEqual({
+      block: "12345678901234567890",
+    });
+
+    expect(sanitizeJsonObject(Number.NaN)).toBeNull();
+    expect(sanitizeJsonObject(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(sanitizeJsonObject(Number.NEGATIVE_INFINITY)).toBeNull();
+  });
+
   it("recurses into arrays and objects", () => {
     const input = { list: ["C:\\tmp", { inner: "\\q" }] };
     expect(sanitizeJsonObject(input)).toEqual(input);

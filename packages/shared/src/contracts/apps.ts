@@ -8,6 +8,18 @@ import curatedAppDefinitions from "@elizaos/registry/first-party/curated-app-def
 };
 import z from "zod";
 
+const APP_ROUTE_SLUG_RE = /^[a-z0-9](?:[a-z0-9._-]{0,127})$/;
+
+/** Accepts canonical app slugs used to select installed route modules. */
+export function isValidAppRouteSlug(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    APP_ROUTE_SLUG_RE.test(value) &&
+    value !== "." &&
+    value !== ".."
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Runtime-registered curated apps — keyed on a global Symbol so the same
 // store is shared across @elizaos/shared, @elizaos/app-core, and any plugin

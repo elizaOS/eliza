@@ -34,6 +34,8 @@ describe("number parsing utilities", () => {
   it("parses positive floats with optional flooring", () => {
     expect(parsePositiveFloat("1.5")).toBe(1.5);
     expect(parsePositiveFloat("1.9", { floor: true })).toBe(1);
+    expect(parsePositiveFloat("0.5", { floor: true, fallback: 3 })).toBe(3);
+    expect(parsePositiveFloat("0.5", { floor: true })).toBeUndefined();
     expect(parsePositiveFloat("-1", { fallback: 3 })).toBe(3);
     expect(parsePositiveFloat("abc", { fallback: 3 })).toBe(3);
   });

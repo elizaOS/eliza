@@ -237,6 +237,15 @@ async function __hono_POST(request: Request) {
           );
         }
 
+        if (!hasPinnedFingerprint) {
+          await dockerNodesRepository.rotateNodeHostKeyFingerprint({
+            id: existing.id,
+            nodeId,
+            expectedFingerprint: null,
+            observedFingerprint: hostKeyFingerprint,
+          });
+        }
+
         const attestedAt = new Date().toISOString();
         const reconciled =
           await dockerNodesRepository.reconcileProvisionalCapacity(
@@ -246,9 +255,6 @@ async function __hono_POST(request: Request) {
               hostname: identityChanged ? hostname : existing.hostname,
               ssh_port: identityChanged ? sshPort : existing.ssh_port,
               ssh_user: identityChanged ? sshUser : existing.ssh_user,
-              host_key_fingerprint: hasPinnedFingerprint
-                ? existing.host_key_fingerprint!
-                : hostKeyFingerprint,
               status: "unknown",
             },
             stampDockerNodeEnvironmentMetadata({
@@ -297,13 +303,18 @@ async function __hono_POST(request: Request) {
       // it was born on, so re-writing it on every liveness re-bootstrap would
       // silently reset a hand-tuned value (e.g. a 252 GB robot at capacity=24
       // back to 8). Capacity is stamped only on the create path below.
+      if (!hasPinnedFingerprint) {
+        await dockerNodesRepository.rotateNodeHostKeyFingerprint({
+          id: existing.id,
+          nodeId,
+          expectedFingerprint: null,
+          observedFingerprint: hostKeyFingerprint,
+        });
+      }
       const updated = await dockerNodesRepository.update(existing.id, {
         hostname: identityChanged ? hostname : existing.hostname,
         ssh_port: identityChanged ? sshPort : existing.ssh_port,
         ssh_user: identityChanged ? sshUser : existing.ssh_user,
-        host_key_fingerprint: hasPinnedFingerprint
-          ? existing.host_key_fingerprint
-          : hostKeyFingerprint,
         status: "unknown",
         metadata: stampDockerNodeEnvironmentMetadata({
           ...((existing.metadata as Record<string, unknown>) ?? {}),

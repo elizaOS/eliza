@@ -55,6 +55,24 @@ export class UnionFind<T> {
 		}
 	}
 
+	/** True if `left` and `right` belong to the same connected component. */
+	connected(left: T, right: T): boolean {
+		if (!this.has(left) || !this.has(right)) {
+			return false;
+		}
+		return this.find(left) === this.find(right);
+	}
+
+	/** Total number of registered elements in the structure. */
+	get size(): number {
+		return this.parent.size;
+	}
+
+	/** Clear all elements and reset the structure. */
+	clear(): void {
+		this.parent.clear();
+	}
+
 	/** Return all components as arrays of members keyed by root. */
 	groups(): Map<T, T[]> {
 		const grouped = new Map<T, T[]>();
