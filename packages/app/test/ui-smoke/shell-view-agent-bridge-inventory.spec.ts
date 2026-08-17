@@ -87,6 +87,30 @@ const TRANSCRIPT_DETAIL = {
   ],
 };
 
+// The trajectories toolbar (export/clear-all) only mounts when the list is
+// non-empty, so the bridge inventory needs at least one recorded trajectory.
+const TRAJECTORY_SUMMARY = {
+  id: "trajectory-smoke-1",
+  agentId: "ui-smoke-agent",
+  source: "conversation",
+  status: "completed",
+  startTime: 1_700_000_004_000,
+  endTime: 1_700_000_004_800,
+  durationMs: 800,
+  llmCallCount: 1,
+  providerAccessCount: 0,
+  totalPromptTokens: 128,
+  totalCompletionTokens: 64,
+  scenarioId: null,
+  batchId: null,
+  createdAt: "2023-11-14T22:13:24.000Z",
+  updatedAt: "2023-11-14T22:13:24.800Z",
+  roomId: "ui-smoke-room",
+  entityId: null,
+  conversationId: null,
+  metadata: {},
+};
+
 const SHELL_VIEW_TARGETS: readonly {
   label: string;
   path: string;
@@ -195,6 +219,26 @@ async function installBridgeInventoryFixtures(page: Page): Promise<void> {
       body: JSON.stringify({ transcript: TRANSCRIPT_DETAIL }),
     }),
   );
+  // Registered after installDefaultAppRoutes, so this wins for the list path;
+  // stats/config/latest/detail fall back to the shared empty-state stubs.
+  await page.route("**/api/trajectories**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() !== "GET" || url.pathname !== "/api/trajectories") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        trajectories: [TRAJECTORY_SUMMARY],
+        total: 1,
+        offset: Number(url.searchParams.get("offset") ?? 0),
+        limit: Number(url.searchParams.get("limit") ?? 50),
+      }),
+    });
+  });
 }
 
 async function waitForAgentBridge(page: Page): Promise<void> {
