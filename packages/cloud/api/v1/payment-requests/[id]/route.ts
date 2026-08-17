@@ -31,7 +31,25 @@ app.get("/", async (c) => {
       );
     }
 
-    const isPublic = c.req.query("public") === "1";
+    // Only the exact token `1` selects the unauthenticated, redacted checkout
+    // DTO. Missing or empty selects the authenticated creator view; any other
+    // token is ambiguous and must fail before authentication or lookup.
+    const requestedPublic = c.req.query("public");
+    if (
+      requestedPublic !== undefined &&
+      requestedPublic !== "" &&
+      requestedPublic !== "1"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_public",
+          message: 'public must be "1" for the checkout view.',
+        },
+        400,
+      );
+    }
+    const isPublic = requestedPublic === "1";
     const service = getPaymentRequestsService(c.env);
 
     if (isPublic) {

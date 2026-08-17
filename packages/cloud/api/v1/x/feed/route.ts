@@ -4,6 +4,7 @@
  * maxResults, connectionRole.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXFeed } from "@/lib/services/x";
@@ -16,10 +17,16 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const maxResults =
-      rawMaxResults && rawMaxResults.trim().length > 0
-        ? Number.parseInt(rawMaxResults, 10)
-        : undefined;
+    const hasMaxResults = Boolean(rawMaxResults?.trim());
+    const maxResults = hasMaxResults
+      ? parsePositiveInteger(rawMaxResults)
+      : undefined;
+    if (hasMaxResults && maxResults === undefined) {
+      return c.json(
+        { success: false, error: "maxResults must be a positive integer" },
+        400,
+      );
+    }
     const connectionRole =
       c.req.query("connectionRole") === "agent" ? "agent" : "owner";
 

@@ -36,6 +36,7 @@
 
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
+import { stripInventedArtifactCriteria } from "./producible-evidence.js";
 
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
@@ -192,6 +193,7 @@ function buildRefinePrompt(
     "You are setting the acceptance criteria a coding sub-agent must PROVE before its task is accepted.",
     "Turn the goal below into 3-5 concrete, measurable, independently-verifiable criteria.",
     "Each criterion must be checkable from concrete evidence (a passing build/test/typecheck line, a diff hunk, a reachable URL, a screenshot) — never a vague aspiration.",
+    "NEVER invent concrete file paths, filenames, or directory names the goal does not state verbatim — the worker legitimately chooses its own layout. When the goal names no path, express the criterion as an observable outcome (a file exists in the workdir, a URL serves the requested content).",
     "",
     `Detected task type: ${type}`,
     "Goal:",
@@ -253,7 +255,11 @@ export async function generateDefaultAcceptanceCriteria(
     if (!parsed) return fallback;
     const candidates = extractCriteriaArray(parsed);
     if (candidates.length === 0) return fallback;
-    const refined = normalizeCriteria(candidates, fallback);
+    // The prompt forbids invented paths, but the filter is the enforcement:
+    // a criterion pinning a path the goal never named is unsatisfiable by
+    // design (#20794), so it is dropped and the template tops the set back up.
+    const producible = stripInventedArtifactCriteria(candidates, goal).kept;
+    const refined = normalizeCriteria(producible, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
   } catch {
     // error-policy:J4 optional model refinement of an external dep; any failure degrades to the designed deterministic static template
