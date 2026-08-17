@@ -1355,7 +1355,10 @@ async function downloadRecommendedAospModel(
     logger.info(
       `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${url}`,
     );
-    const response = await fetch(url, { redirect: "follow" });
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!response.ok || !response.body) {
       throw new Error(
         `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${url}`,
@@ -1473,7 +1476,10 @@ function ensureKokoroTtsAssetsInBackground(
       logger.info(
         `[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`,
       );
-      const response = await fetch(url, { redirect: "follow" });
+      const response = await fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(30_000),
+      });
       if (!response.ok || !response.body) {
         throw new Error(
           `Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`,
