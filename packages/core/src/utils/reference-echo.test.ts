@@ -70,6 +70,18 @@ describe("describeUserReference", () => {
 			"the requested target",
 		);
 	});
+
+	it("handles non-string arguments safely without throwing", () => {
+		expect(
+			describeUserReference(undefined as unknown as string, FALLBACK),
+		).toBe(FALLBACK);
+		expect(describeUserReference(null as unknown as string, FALLBACK)).toBe(
+			FALLBACK,
+		);
+		expect(describeUserReference(123 as unknown as string, FALLBACK)).toBe(
+			FALLBACK,
+		);
+	});
 });
 
 describe("userReferenceLogView", () => {
@@ -81,6 +93,12 @@ describe("userReferenceLogView", () => {
 		expect(userReferenceLogView("plain reference")).toBe("plain reference");
 		expect(userReferenceLogView("")).toBe("");
 		expect(userReferenceLogView("   ")).toBe("");
+	});
+
+	it("handles non-string arguments safely without throwing", () => {
+		expect(userReferenceLogView(undefined as unknown as string)).toBe("");
+		expect(userReferenceLogView(null as unknown as string)).toBe("");
+		expect(userReferenceLogView(42 as unknown as string)).toBe("");
 	});
 
 	it("holds the 120-character boundary exactly", () => {
