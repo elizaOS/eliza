@@ -265,6 +265,30 @@ describe("compat dispatcher default-deny (H5)", () => {
     expect(cap.status()).toBe(200);
   });
 
+  it("lets desktop bootstrap reach its one-shot proof handler before session auth", async () => {
+    const cap = captureRes();
+    const handled = await handleElizaCompatRoute(
+      trustedLoopbackReq("POST", "/api/auth/desktop-bootstrap"),
+      cap.res,
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    expect(cap.status()).toBe(503);
+    expect(cap.json()).toEqual({ error: "db_unavailable" });
+
+    const remote = captureRes();
+    const remoteHandled = await handleElizaCompatRoute(
+      unauthReq("POST", "/api/auth/desktop-bootstrap"),
+      remote.res,
+      STATE,
+    );
+
+    expect(remoteHandled).toBe(true);
+    expect(remote.status()).toBe(403);
+    expect(remote.json()).toEqual({ error: "desktop_bootstrap_forbidden" });
+  });
+
   it("denies remote-mode cloud mutations before the forwarder sees unauthenticated callers", async () => {
     const cap = captureRes();
     const handled = await handleElizaCompatRoute(
