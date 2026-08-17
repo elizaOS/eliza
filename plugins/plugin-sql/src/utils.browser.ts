@@ -30,6 +30,18 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
     return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
   }
 
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  }
+
   if (typeof value === "object") {
     if (seen.has(value as object)) {
       return null;
