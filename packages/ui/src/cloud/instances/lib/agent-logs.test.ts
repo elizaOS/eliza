@@ -9,6 +9,8 @@ import {
   parseAgentLogsStart,
 } from "./agent-logs";
 
+const TEST_JOB_ID = "123e4567-e89b-12d3-a456-426614174000";
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -31,7 +33,7 @@ describe("agent log protocol", () => {
         jsonResponse({
           success: true,
           data: {
-            jobId: "job/one",
+            jobId: TEST_JOB_ID,
             polling: {
               endpoint: "https://evil.example/collect",
               intervalMs: 1,
@@ -62,7 +64,7 @@ describe("agent log protocol", () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(
       "/api/compat/agents/agent%2Fone/logs?tail=200",
     );
-    expect(fetchImpl.mock.calls[1]?.[0]).toBe("/api/v1/jobs/job%2Fone");
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(`/api/v1/jobs/${TEST_JOB_ID}`);
   });
 
   it("preserves an informational completion message separately from logs", () => {
@@ -81,11 +83,29 @@ describe("agent log protocol", () => {
     });
   });
 
+  it("keeps a bounded informational message well-formed at a surrogate boundary", () => {
+    const result = parseAgentLogsJob({
+      success: true,
+      data: {
+        type: "agent_logs",
+        status: "completed",
+        result: { logs: "", message: `${"a".repeat(499)}😀` },
+      },
+    });
+
+    expect(result.kind).toBe("complete");
+    if (result.kind !== "complete") return;
+    expect(result.result.notice).toHaveLength(499);
+    expect(result.result.notice?.isWellFormed()).toBe(true);
+  });
+
   it.each([
     {},
     { success: true },
     { success: true, data: {} },
     { success: true, data: { jobId: "" } },
+    { success: true, data: { jobId: "../another-job" } },
+    { success: true, data: { jobId: `${"a".repeat(255)}😀` } },
   ])("rejects malformed enqueue envelopes", (body) => {
     expect(() => parseAgentLogsStart(body)).toThrow(AgentLogsProtocolError);
   });
@@ -123,11 +143,23 @@ describe("agent log protocol", () => {
     ).toThrow("stopped polling");
   });
 
+  it("treats a cancelled log job as a terminal collection failure", () => {
+    expect(
+      parseAgentLogsJob({
+        success: true,
+        data: { type: "agent_logs", status: "cancelled", result: null },
+      }),
+    ).toEqual({
+      kind: "failed",
+      message: "Log collection failed on the server. Try again in a moment.",
+    });
+  });
+
   it("surfaces terminal failure without exposing infrastructure diagnostics", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        jsonResponse({ success: true, data: { jobId: "job-1" } }),
+        jsonResponse({ success: true, data: { jobId: TEST_JOB_ID } }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
@@ -200,7 +232,7 @@ describe("agent log protocol", () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        jsonResponse({ success: true, data: { jobId: "job-1" } }),
+        jsonResponse({ success: true, data: { jobId: TEST_JOB_ID } }),
       )
       .mockResolvedValueOnce(new Response("not-json", { status: 404 }));
 
@@ -236,7 +268,7 @@ describe("agent log protocol", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          data: { jobId: "job-1", polling: { intervalMs: 500 } },
+          data: { jobId: TEST_JOB_ID, polling: { intervalMs: 500 } },
         }),
       )
       .mockImplementation(async () =>
@@ -290,7 +322,7 @@ describe("agent log protocol", () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        jsonResponse({ success: true, data: { jobId: "job-1" } }),
+        jsonResponse({ success: true, data: { jobId: TEST_JOB_ID } }),
       )
       .mockImplementationOnce(
         async () => await new Promise<Response>(() => {}),
