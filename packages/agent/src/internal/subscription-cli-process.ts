@@ -1,3 +1,8 @@
+/**
+ * Resolves and launches the npm-installed subscription CLIs across platforms.
+ * Windows uses real executable boundaries for npm and PATHEXT-aware probes.
+ */
+
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import path from "node:path";
@@ -25,11 +30,7 @@ interface RunSubscriptionCliNpmOptions extends SubscriptionCliProcessOptions {
 }
 
 function isFile(filePath: string): boolean {
-  try {
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
+  return statSync(filePath, { throwIfNoEntry: false })?.isFile() === true;
 }
 
 function pathEntries(env: NodeJS.ProcessEnv): string[] {
