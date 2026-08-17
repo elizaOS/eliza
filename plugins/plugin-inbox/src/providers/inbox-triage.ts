@@ -110,7 +110,7 @@ export const inboxTriageProvider: Provider = {
       lines.push("\n## Recent Auto-Replies");
       for (const item of recentAutoReplies) {
         const draftPreview = item.draftResponse
-          ? `"${item.draftResponse.slice(0, 60)}..."`
+          ? `"${item.draftResponse.slice(0, 57)}..."`
           : "(no draft)";
         lines.push(`- Sent to ${item.channelName}: ${draftPreview}`);
       }
