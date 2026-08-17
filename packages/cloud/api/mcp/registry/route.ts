@@ -1,3 +1,5 @@
+/** Serves the public MCP catalog with validated filters and optional community entries. */
+
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
 import { Hono } from "hono";
 import { z } from "zod";
@@ -411,10 +413,16 @@ app.get("/", async (c) => {
         : "http://localhost:3000");
 
     const limitRaw = c.req.query("limit");
+    const parsedLimit =
+      limitRaw === undefined || limitRaw === ""
+        ? 100
+        : /^\d+$/.test(limitRaw)
+          ? Number(limitRaw)
+          : Number.NaN;
     const rawParams = {
       category: c.req.query("category") || "all",
       status: c.req.query("status") || "all",
-      limit: limitRaw ? parseInt(limitRaw, 10) : 100,
+      limit: parsedLimit,
       search: c.req.query("search") || undefined,
     };
 

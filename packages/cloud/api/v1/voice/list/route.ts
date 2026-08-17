@@ -18,6 +18,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIMIT = 100;
@@ -64,16 +65,12 @@ app.get("/", async (c) => {
         ? cloneTypeParam
         : undefined;
 
-    const rawLimit = Number.parseInt(
-      c.req.query("limit") ?? String(DEFAULT_LIMIT),
-      10,
-    );
-    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
-    const limit = Math.min(
-      Math.max(Number.isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1),
+    const limit = parseClampedLimit(
+      c.req.query("limit"),
+      DEFAULT_LIMIT,
       MAX_LIMIT,
     );
-    const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
+    const offset = parseClampedOffset(c.req.query("offset"));
 
     const result = await userVoicesRepository.listByOrganization(
       user.organization_id,
