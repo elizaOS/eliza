@@ -697,6 +697,9 @@ async function __hono_POST(c: AppContext) {
       deepgramUrl.searchParams.set("words", "true");
       if (languageCode) deepgramUrl.searchParams.set("language", languageCode);
 
+      const deepgramTimeoutSignal = AbortSignal.timeout(
+        DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS,
+      );
       let deepgramResponse: Response;
       try {
         await deepgramReservation.markProviderDispatched?.();
@@ -707,6 +710,7 @@ async function __hono_POST(c: AppContext) {
             "Content-Type": finalMimeType,
           },
           body: buffer,
+          signal: deepgramTimeoutSignal,
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
@@ -714,9 +718,12 @@ async function __hono_POST(c: AppContext) {
         logger.error("[Voice STT API] Deepgram request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
+        const timedOut =
+          error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError");
         return Response.json(
-          { error: "Speech-to-text failed" },
-          { status: 502 },
+          { error: timedOut ? "Speech-to-text timed out" : "Speech-to-text failed" },
+          { status: timedOut ? 504 : 502 },
         );
       }
       if (!deepgramResponse.ok) {
@@ -740,6 +747,13 @@ async function __hono_POST(c: AppContext) {
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
         await refundDeepgramReservation();
+        if (deepgramTimeoutSignal.aborted) {
+          logger.error("[Voice STT API] Deepgram response body timed out");
+          return Response.json(
+            { error: "Speech-to-text timed out" },
+            { status: 504 },
+          );
+        }
         logger.error("[Voice STT API] Deepgram returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
@@ -1080,10 +1094,28 @@ async function __hono_POST(c: AppContext) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities[]", "word");
       form.append("timestamp_granularities[]", "segment");
-      const whisperResponse = await fetch(
-        `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
-        { method: "POST", body: form },
+      const whisperTimeoutSignal = AbortSignal.timeout(
+        DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS,
       );
+      let whisperResponse: Response;
+      try {
+        whisperResponse = await fetch(
+          `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
+          { method: "POST", body: form, signal: whisperTimeoutSignal },
+        );
+      } catch (error) {
+        // error-policy:J1 provider transport failures translate at the route boundary.
+        logger.error("[Voice STT API] Whisper request failed", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+        const timedOut =
+          error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError");
+        return Response.json(
+          { error: timedOut ? "Speech-to-text timed out" : "Speech-to-text failed" },
+          { status: timedOut ? 504 : 502 },
+        );
+      }
       if (!whisperResponse.ok) {
         await whisperResponse.body?.cancel().catch((cancelError) => {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
@@ -1110,6 +1142,13 @@ async function __hono_POST(c: AppContext) {
       try {
         whisperPayload = await whisperResponse.json();
       } catch {
+        if (whisperTimeoutSignal.aborted) {
+          logger.error("[Voice STT API] Whisper response body timed out");
+          return Response.json(
+            { error: "Speech-to-text timed out" },
+            { status: 504 },
+          );
+        }
         logger.error("[Voice STT API] Whisper returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
