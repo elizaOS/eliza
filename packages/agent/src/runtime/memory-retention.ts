@@ -198,10 +198,10 @@ export function resolveRetentionConfigWithPrefix(
 ): ResolvedRetentionConfig {
   return {
     retentionDays: positiveNumberOrUndefined(get(`${prefix}_DAYS`)),
-    maxRowsPerRoom: positiveNumberOrUndefined(
+    maxRowsPerRoom: positiveIntegerOrUndefined(
       get(`${prefix}_MAX_ROWS_PER_ROOM`),
     ),
-    maxDeletePerSweep: positiveNumberOrUndefined(
+    maxDeletePerSweep: positiveIntegerOrUndefined(
       get(`${prefix}_MAX_DELETE_PER_SWEEP`),
     ),
     intervalMinutes: positiveNumberOrUndefined(
@@ -219,4 +219,11 @@ function positiveNumberOrUndefined(
   const n = Number(trimmed);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return n;
+}
+
+function positiveIntegerOrUndefined(
+  raw: string | undefined,
+): number | undefined {
+  const value = positiveNumberOrUndefined(raw);
+  return value !== undefined && Number.isInteger(value) ? value : undefined;
 }
