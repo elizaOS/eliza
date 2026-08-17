@@ -7,12 +7,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const verifier = new URL(
   "packages/scripts/validate-terraform-pages-domain-state.mjs",
   repoRoot,
-).pathname;
+);
+const verifierPath = fileURLToPath(verifier);
 const temporaryDirectories = [];
 
 afterEach(() => {
@@ -84,10 +86,13 @@ function runVerifier(values, environment = "staging") {
     writeFileSync(path, JSON.stringify(value));
     return path;
   });
-  return Bun.spawnSync([process.execPath, verifier, ...paths, environment], {
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  return Bun.spawnSync(
+    [process.execPath, verifierPath, ...paths, environment],
+    {
+      stderr: "pipe",
+      stdout: "pipe",
+    },
+  );
 }
 
 describe("Pages-domain state verifier", () => {
@@ -126,6 +131,16 @@ describe("Pages-domain state verifier", () => {
     );
     expect(stderr).toContain(
       "legacy staging agent certificate is pending_validation, expected active",
+    );
+  });
+
+  test("fails closed when Terraform returns no managed Pages domains", () => {
+    const values = fixtures();
+    values.domains = {};
+    const result = runVerifier(values);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      "pages_domains has no managed Pages domains",
     );
   });
 });

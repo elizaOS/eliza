@@ -89,7 +89,11 @@ export function validatePagesDomainState({
     return [`unsupported environment: ${environment}`];
   }
 
-  for (const [key, entry] of objectEntries(domains)) {
+  const domainEntries = objectEntries(domains);
+  if (domainEntries.length === 0) {
+    failures.push("pages_domains has no managed Pages domains");
+  }
+  for (const [key, entry] of domainEntries) {
     if (entry?.status !== "active") {
       failures.push(
         `${key} domain is ${entry?.status ?? "missing"}, expected active`,
