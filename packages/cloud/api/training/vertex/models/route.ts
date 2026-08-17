@@ -33,7 +33,24 @@ async function __hono_GET(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
-    const scope = parseScope(searchParams.get("scope"));
+    // Tuned-model tenant identity, leftover tax after vertex assignment
+    // scope (#20973). parseScope maps unknown tokens to undefined, so
+    // scope=GLOBAL / USER listed every visible model instead of 400.
+    // Missing / empty still means unfiltered. Garbage 400s before
+    // listVisibleTunedModels. slot / assignment parsers stay untouched.
+    const requestedScopeValues = searchParams.getAll("scope");
+    const rawScope = requestedScopeValues[0];
+    if (
+      requestedScopeValues.length > 1 ||
+      (rawScope != null &&
+        rawScope !== "" &&
+        rawScope !== "global" &&
+        rawScope !== "organization" &&
+        rawScope !== "user")
+    ) {
+      return Response.json({ error: "Invalid scope." }, { status: 400 });
+    }
+    const scope = parseScope(rawScope);
     const rawSlot = searchParams.get("slot");
     const slot = parseSlot(rawSlot);
 
