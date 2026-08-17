@@ -100,7 +100,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (ctx.isIOS) {
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });
         await Keyboard.setScroll({ isDisabled: true });
-        await Keyboard.setAccessoryBarVisible({ isVisible: true });
+        // The app already provides its own chat controls; Capacitor's optional
+        // previous/next/done strip is redundant on the iPhone keyboard.
+        await Keyboard.setAccessoryBarVisible({ isVisible: false });
       }
 
       keyboardListenersRegistered = true;
