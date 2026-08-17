@@ -333,6 +333,38 @@ function isAndroidNotifier(
 	);
 }
 
+class AndroidUnreadOnlyError extends Error {
+	constructor(message = "Invalid unreadOnly") {
+		super(message);
+		this.name = "AndroidUnreadOnlyError";
+	}
+}
+
+/**
+ * GET /api/notifications `unreadOnly` on the Android UDS inbox is unread-row
+ * identity, leftover tax after agent notifications unreadOnly (#21220).
+ * Stock develop treated every non-exact `true` token as the full inbox, so
+ * `unreadOnly=TRUE` / `1` still listed read rows instead of a 400.
+ * Missing / empty still means the full inbox. limit stays untouched.
+ */
+function parseUnreadOnlyQuery(
+	raw: string | string[] | undefined,
+): boolean {
+	if (Array.isArray(raw)) {
+		throw new AndroidUnreadOnlyError();
+	}
+	if (raw == null || raw === "") {
+		return false;
+	}
+	if (raw === "true") {
+		return true;
+	}
+	if (raw === "false") {
+		return false;
+	}
+	throw new AndroidUnreadOnlyError();
+}
+
 /**
  * Serve the `/api/notifications` inbox surface over the Android UDS. These are
  * server-level routes (not plugin `runtime.routes`), so `dispatchRoute` never
@@ -406,8 +438,17 @@ async function directAndroidNotificationRoute(
 			parsedLimit >= 0
 				? Math.min(parsedLimit, 500)
 				: undefined;
+		let unreadOnly: boolean;
+		try {
+			unreadOnly = parseUnreadOnlyQuery(query.unreadOnly);
+		} catch (unreadError) {
+			if (unreadError instanceof AndroidUnreadOnlyError) {
+				return jsonResponse(400, { error: unreadError.message });
+			}
+			throw unreadError;
+		}
 		const notifications = service.list({
-			unreadOnly: queryValue("unreadOnly") === "true",
+			unreadOnly,
 			category: queryValue("category"),
 			limit,
 		});
