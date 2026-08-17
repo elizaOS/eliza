@@ -8,7 +8,8 @@ import type { AgentRuntime } from "@elizaos/core";
 const repairedRuntimes = new WeakSet<AgentRuntime>();
 const repairPromises = new WeakMap<AgentRuntime, Promise<void>>();
 
-export function quoteIdent(name: string): string {
+export function quoteIdent(name: string | null | undefined): string {
+  if (typeof name !== "string") return '""';
   return `"${name.replace(/"/g, '""')}"`;
 }
 
@@ -23,7 +24,8 @@ export function sanitizeIdentifier(
   return sanitized;
 }
 
-export function sqlLiteral(value: string): string {
+export function sqlLiteral(value: string | null | undefined): string {
+  if (typeof value !== "string") return "''";
   return `'${value.replace(/'/g, "''")}'`;
 }
 
