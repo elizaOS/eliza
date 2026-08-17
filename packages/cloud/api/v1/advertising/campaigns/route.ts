@@ -6,11 +6,12 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { advertisingService } from "@/lib/services/advertising";
 import {
-  type AdPlatform,
-  advertisingService,
-} from "@/lib/services/advertising";
-import { CreateCampaignSchema } from "@/lib/services/advertising/schemas";
+  AdPlatformSchema,
+  CampaignStatusSchema,
+  CreateCampaignSchema,
+} from "@/lib/services/advertising/schemas";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,17 +40,42 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    const requestedPlatform = c.req.query("platform");
+    const parsedPlatform = requestedPlatform
+      ? AdPlatformSchema.safeParse(requestedPlatform)
+      : null;
+    if (parsedPlatform && !parsedPlatform.success) {
+      return c.json(
+        {
+          error: "invalid_platform",
+          message: `platform must be one of: ${AdPlatformSchema.options.join(", ")}.`,
+        },
+        400,
+      );
+    }
+    const requestedStatus = c.req.query("status");
+    const parsedStatus = requestedStatus
+      ? CampaignStatusSchema.safeParse(requestedStatus)
+      : null;
+    if (parsedStatus && !parsedStatus.success) {
+      return c.json(
+        {
+          error: "invalid_status",
+          message: `status must be one of: ${CampaignStatusSchema.options.join(", ")}.`,
+        },
+        400,
+      );
+    }
+
     const adAccountId = c.req.query("adAccountId");
-    const platform = c.req.query("platform") as AdPlatform | undefined;
-    const status = c.req.query("status");
     const appId = c.req.query("appId");
 
     const campaigns = await advertisingService.listCampaigns(
       user.organization_id,
       {
         adAccountId: adAccountId || undefined,
-        platform: platform || undefined,
-        status: status || undefined,
+        platform: parsedPlatform?.data,
+        status: parsedStatus?.data,
         appId: appId || undefined,
       },
     );
