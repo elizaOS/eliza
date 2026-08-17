@@ -423,17 +423,27 @@ async function executeSharedElizaRuntimeTurn(
         usage = addUsage(usage, normalized);
         return normalized;
       });
+      const streamText_ = Promise.resolve(result.text);
+      const streamToolCalls = Promise.resolve(result.toolCalls).then((calls) =>
+        calls.map((call) => ({
+          id: call.toolCallId,
+          name: call.toolName,
+          arguments: call.input,
+        })),
+      );
+      const streamFinishReason = Promise.resolve(result.finishReason);
+      // error-policy:J5 a barge-in abandons the turn, rejecting these four
+      // result promises with the cancellation reason while no consumer is
+      // left to await them; textStream remains the observed failure channel,
+      // so mark the abandoned promises handled here.
+      for (const settled of [streamText_, streamToolCalls, streamFinishReason, streamUsage]) {
+        void settled.catch(() => {});
+      }
       return {
         textStream,
-        text: Promise.resolve(result.text),
-        toolCalls: Promise.resolve(result.toolCalls).then((calls) =>
-          calls.map((call) => ({
-            id: call.toolCallId,
-            name: call.toolName,
-            arguments: call.input,
-          })),
-        ),
-        finishReason: Promise.resolve(result.finishReason),
+        text: streamText_,
+        toolCalls: streamToolCalls,
+        finishReason: streamFinishReason,
         usage: streamUsage,
         providerMetadata: { modelName: input.model },
       } as TextStreamResult;
