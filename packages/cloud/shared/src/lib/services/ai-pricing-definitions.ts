@@ -1,32 +1,36 @@
-// Coordinates cloud service ai pricing definitions behavior behind route handlers.
-export type PricingProductFamily =
-  | "language"
-  | "embedding"
-  | "image"
-  | "video"
-  | "music"
-  | "sfx"
-  | "tts"
-  | "stt"
-  | "voice_clone";
+/** Defines canonical pricing dimensions shared by catalog readers and writers. */
+export const PRICING_PRODUCT_FAMILIES = [
+  "language",
+  "embedding",
+  "image",
+  "video",
+  "music",
+  "sfx",
+  "tts",
+  "stt",
+  "voice_clone",
+] as const;
+export type PricingProductFamily = (typeof PRICING_PRODUCT_FAMILIES)[number];
 
-export type PricingBillingSource =
-  | "gateway"
-  | "bitrouter"
-  | "atlascloud"
-  | "groq"
-  | "vast"
-  | "cerebras"
-  | "openai"
-  | "anthropic"
-  | "fal"
-  | "cartesia"
-  | "elevenlabs"
-  | "suno"
+export const PRICING_BILLING_SOURCES = [
+  "gateway",
+  "bitrouter",
+  "atlascloud",
+  "groq",
+  "vast",
+  "cerebras",
+  "openai",
+  "anthropic",
+  "fal",
+  "cartesia",
+  "elevenlabs",
+  "suno",
   // Platform-operated sidecars (e.g. the TEI embeddings service in
   // packages/cloud/services/embeddings): the price covers our own infra, not
   // an upstream provider invoice.
-  | "selfhosted";
+  "selfhosted",
+] as const;
+export type PricingBillingSource = (typeof PRICING_BILLING_SOURCES)[number];
 
 export type PricingChargeUnit =
   | "token"
