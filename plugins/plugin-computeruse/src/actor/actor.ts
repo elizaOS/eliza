@@ -207,6 +207,7 @@ export class OsAtlasProActor implements Actor {
           method: "POST",
           body: init.body,
           headers: init.headers,
+          signal: AbortSignal.timeout(30_000),
         });
         return { ok: resp.ok, status: resp.status, text: () => resp.text() };
       });
