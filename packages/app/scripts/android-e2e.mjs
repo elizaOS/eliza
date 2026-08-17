@@ -49,7 +49,10 @@ import {
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
 import { acquireDeviceLease, isDeviceLeased } from "./lib/device-lease.mjs";
-import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
+import {
+  DEFAULT_HOST_AGENT_PORT,
+  startDeviceE2eHostAgent,
+} from "./lib/host-agent.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const elizaRoot = path.resolve(appDir, "..", "..");
@@ -533,7 +536,10 @@ async function main() {
         hostAgent = await startDeviceE2eHostAgent({
           repoRoot: elizaRoot,
           artifactDir: bundle.logsDir,
-          requestedPort: 31337,
+          requestedPort: val("--host-agent-port"),
+          preferredPort:
+            process.env.ELIZA_ANDROID_HOST_AGENT_PORT ??
+            DEFAULT_HOST_AGENT_PORT,
           log,
         });
         process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
