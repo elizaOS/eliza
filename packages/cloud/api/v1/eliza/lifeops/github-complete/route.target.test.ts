@@ -8,8 +8,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const createLifeOpsGithubReturnResponse = mock(() =>
-  new Response("ok", { status: 200 }),
+const createLifeOpsGithubReturnResponse = mock(
+  () => new Response("ok", { status: 200 }),
 );
 
 mock.module("@/lib/services/agent-github-return", () => ({
@@ -17,17 +17,13 @@ mock.module("@/lib/services/agent-github-return", () => ({
 }));
 
 const route = (await import("./route")).default;
-const app = new Hono().route(
-  "/api/v1/eliza/lifeops/github-complete",
-  route,
-);
+const app = new Hono().route("/api/v1/eliza/lifeops/github-complete", route);
 
 function complete(query: string) {
   return app.request(`/api/v1/eliza/lifeops/github-complete${query}`);
 }
 
-const CONNECTED =
-  "?github_connected=true&connection_id=conn-1";
+const CONNECTED = "?github_connected=true&connection_id=conn-1";
 
 describe("GET /api/v1/eliza/lifeops/github-complete landing identity", () => {
   beforeEach(() => {
