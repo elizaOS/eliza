@@ -71,18 +71,23 @@ packages/app/
 - `../homepage/src/embedded-home.tsx` and `embedded-downloads.tsx` — public
   marketing entrypoints consumed through the `@homepage/*` Vite alias. Their
   package is source/test-only; this app owns every served and deployed build.
+- `src/entry.ts` — synchronous renderer selector. The root marketing route uses
+  `src/marketing-home-entry.tsx` so its static hero does not wait for the Cloud
+  auth router, service worker, wallet providers, or the normal app boot graph.
 
 ## Boot sequence
 
-1. `main()` resolves embed, smoke-test, managed-launch, popout, and detached-window
+1. `entry.ts` selects the marketing-only root, hosted public routes, or the
+   normal application entry before importing any renderer graph.
+2. `main()` resolves embed, smoke-test, managed-launch, popout, and detached-window
    paths before the normal application path.
-2. `initializeAppModules()` assembles `AppBootConfig` and calls `setBootConfig()`;
+3. `initializeAppModules()` assembles `AppBootConfig` and calls `setBootConfig()`;
    feature modules not needed for first paint remain on the deferred idle path.
-3. The normal native path hydrates the storage bridge before rendering because
+4. The normal native path hydrates the storage bridge before rendering because
    session, first-run, and theme state must exist on the first React read.
-4. Platform-specific request, fetch, vision, voice, and desktop bridges are
+5. Platform-specific request, fetch, vision, voice, and desktop bridges are
    installed in their required order.
-5. React mounts the `@elizaos/ui` application, deferred modules are scheduled,
+6. React mounts the `@elizaos/ui` application, deferred modules are scheduled,
    and `initializePlatform()` completes the remaining lifecycle integration.
 
 ## Commands
