@@ -1,6 +1,4 @@
-/**
- * Unit tests for Semaphore in packages/core/src/utils/batch-queue/semaphore.ts.
- */
+/** Deterministic unit coverage for Semaphore capacity and waiter handoff. */
 
 import { describe, expect, it } from "vitest";
 import { Semaphore } from "./semaphore";
@@ -15,6 +13,8 @@ describe("Semaphore", () => {
 	it("sanitizes non-finite, negative, or non-numeric counts to minimum 1", () => {
 		const semNaN = new Semaphore(Number.NaN);
 		expect(semNaN.availablePermits).toBe(1);
+		expect(new Semaphore(Number.POSITIVE_INFINITY).availablePermits).toBe(1);
+		expect(new Semaphore(Number.NEGATIVE_INFINITY).availablePermits).toBe(1);
 
 		const semNeg = new Semaphore(-5);
 		expect(semNeg.availablePermits).toBe(1);
