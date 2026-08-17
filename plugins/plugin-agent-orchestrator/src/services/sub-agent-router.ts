@@ -99,6 +99,23 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 };
 
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
+
+/**
+ * Sources that are internal routing markers, never registered connector send
+ * handlers. A session spawned from a SYNTHETIC sub-agent turn can inherit one
+ * of these as its origin source when the tasks.ts one-level unwrap misses (the
+ * triggering synthetic memory carried no `originSource` — observed live: the
+ * app-control flow's "fix … deployment" follow-up spawn delivered its
+ * completion with source=sub_agent, the dashboard fallback handler rightly
+ * refused ambient delivery, and the user never saw the result). Delivery-time
+ * resolution through the room row (which knows its creating connector) is the
+ * catch-all for every spawn path.
+ */
+const INTERNAL_MARKER_SOURCES = new Set<string>([
+  MESSAGE_SOURCE_SUB_AGENT,
+  "sub_agent_complete",
+  "orchestrator",
+]);
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Display name of the ONE shared entity every router post is attributed to.
 // The name is frozen at first creation per DB (adapter-side
@@ -1939,10 +1956,12 @@ export class SubAgentRouter extends Service {
     const body = stripSubAgentHeaderLine(text).trim() || text.trim();
     const originReplyTarget =
       origin.parentConnectorMessageId ?? origin.parentMessageId;
+    const questionSource =
+      (await this.resolveDeliverySource(origin)) ?? origin.source;
     try {
       requireConfirmedSendHandlerDelivery(
         await sendToTarget(
-          { source: origin.source, roomId: origin.roomId },
+          { source: questionSource, roomId: origin.roomId },
           {
             text: `❓ [${origin.label}] ${body}`,
             // Same source the router stamps on its posts: the mid-task forward
@@ -1963,6 +1982,50 @@ export class SubAgentRouter extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Per-room memo of resolved connector sources (FIFO-bounded). */
+  private readonly roomSourceMemo = new Map<string, string>();
+
+  /**
+   * Resolve the source a delivery should actually use. A real connector source
+   * passes through untouched; an internal marker (or a missing source) is
+   * re-resolved through the room row, which records the connector that created
+   * it — the same fallback `getTaskOriginTarget` uses. Falls back to the
+   * original value so a failed lookup degrades to the prior loud delivery
+   * failure, never a silent drop.
+   */
+  private async resolveDeliverySource(
+    origin: Pick<OriginInfo, "roomId" | "source">,
+  ): Promise<string | undefined> {
+    const source = origin.source;
+    if (source && !INTERNAL_MARKER_SOURCES.has(source)) return source;
+    const memo = this.roomSourceMemo.get(origin.roomId);
+    if (memo) return memo;
+    try {
+      const room = await this.runtime.getRoom?.(origin.roomId);
+      const roomSource =
+        typeof room?.source === "string" && room.source.trim()
+          ? room.source.trim()
+          : undefined;
+      if (roomSource && !INTERNAL_MARKER_SOURCES.has(roomSource)) {
+        this.roomSourceMemo.set(origin.roomId, roomSource);
+        while (this.roomSourceMemo.size > 1024) {
+          const oldest = this.roomSourceMemo.keys().next().value;
+          if (!oldest) break;
+          this.roomSourceMemo.delete(oldest);
+        }
+        return roomSource;
+      }
+    } catch (err) {
+      // error-policy:J7 source resolution is best-effort routing repair; a room
+      // lookup failure falls back to the original (possibly failing) source.
+      this.log("debug", "room-source resolution failed", {
+        roomId: origin.roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return source;
   }
 
   private buildReplyCallback(
@@ -2029,9 +2092,10 @@ export class SubAgentRouter extends Service {
             inReplyTo: originReplyTarget,
           }
         : { ...response, source: "sub_agent_complete" };
+      const deliverySource = (await this.resolveDeliverySource(origin)) ?? source;
       const delivered = await sendToTarget(
         {
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
         },
         threadedResponse,
@@ -2040,7 +2104,7 @@ export class SubAgentRouter extends Service {
         // delivered list on failure (honest "0 delivered").
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
           targetRoomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
