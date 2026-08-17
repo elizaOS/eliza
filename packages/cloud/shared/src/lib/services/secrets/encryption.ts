@@ -92,7 +92,9 @@ export class LocalKMSProvider implements KMSProvider {
     const masterKey = this.getMasterKey();
     const data = Buffer.from(ciphertext, "base64");
     try {
-      const decipher = createDecipheriv("aes-256-gcm", masterKey, data.subarray(0, 12));
+      const decipher = createDecipheriv("aes-256-gcm", masterKey, data.subarray(0, 12), {
+        authTagLength: 16,
+      });
       decipher.setAuthTag(data.subarray(12, 28));
       return Buffer.concat([decipher.update(data.subarray(28)), decipher.final()]);
     } finally {
@@ -237,7 +239,9 @@ export class SecretsEncryptionService {
     }
 
     try {
-      const decipher = createDecipheriv("aes-256-gcm", dek, Buffer.from(nonce, "base64"));
+      const decipher = createDecipheriv("aes-256-gcm", dek, Buffer.from(nonce, "base64"), {
+        authTagLength: 16,
+      });
       if (aad !== undefined) decipher.setAAD(Buffer.from(aad, "utf8"));
       decipher.setAuthTag(Buffer.from(authTag, "base64"));
       const result = Buffer.concat([

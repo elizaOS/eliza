@@ -441,7 +441,9 @@ function decryptAesGcmSegment(
   }
   const authTag = Buffer.from(segment.authTagBase64, "base64");
   const ciphertext = Buffer.from(segment.ciphertextBase64, "base64");
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv, {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }

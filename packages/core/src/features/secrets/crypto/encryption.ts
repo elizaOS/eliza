@@ -21,7 +21,7 @@ import { EncryptionError } from "../types.ts";
 
 const ALGORITHM_GCM = "aes-256-gcm";
 const IV_LENGTH = 16;
-const _AUTH_TAG_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32; // 256 bits
 const DEFAULT_SALT_LENGTH = 32;
 const DEFAULT_PBKDF2_ITERATIONS = 100000;
@@ -181,7 +181,9 @@ export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
 
 	const iv = Buffer.from(encrypted.iv, "base64");
 	const authTag = Buffer.from(encrypted.authTag, "base64");
-	const decipher = createDecipheriv(ALGORITHM_GCM, key, iv);
+	const decipher = createDecipheriv(ALGORITHM_GCM, key, iv, {
+		authTagLength: AUTH_TAG_LENGTH,
+	});
 	decipher.setAuthTag(authTag);
 
 	let decrypted = decipher.update(encrypted.value, "base64", "utf8");
