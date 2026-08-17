@@ -128,7 +128,17 @@ describe("handleNotificationRoute", () => {
     expect(payload.notifications.map((n) => n.title)).toEqual(["A"]);
   });
 
-  it.each(["1e2", "12px", "007", "0", "0x10", "-1", "abc", "50abc", "Infinity"])(
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "0",
+    "0x10",
+    "-1",
+    "abc",
+    "50abc",
+    "Infinity",
+  ])(
     "GET rejects prefix-coerced or non-canonical limit %j before list",
     async (limit) => {
       await service.notify({ title: "Keep" });
@@ -151,6 +161,25 @@ describe("handleNotificationRoute", () => {
       expect(list).not.toHaveBeenCalled();
     },
   );
+
+  it("GET rejects a malformed limit before service availability handling", async () => {
+    const helpers = makeHelpers();
+    await handleNotificationRoute(
+      req("/api/notifications?limit=1e2"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime: null },
+      helpers,
+    );
+    expect(helpers.error).toHaveBeenCalledWith(
+      res,
+      "limit must be a positive integer",
+      400,
+    );
+    expect(helpers.json).not.toHaveBeenCalled();
+    expect(setHeader).not.toHaveBeenCalled();
+  });
 
   it("GET omitted limit still lists the unbounded inbox", async () => {
     await service.notify({ title: "One" });

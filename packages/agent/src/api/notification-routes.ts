@@ -281,12 +281,7 @@ export async function handleNotificationRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/notifications")) return false;
 
-  const service = getService(state);
-  if (!service) {
-    return respondServiceUnavailable(res, state, method, pathname, helpers);
-  }
-
-  // ── GET /api/notifications ────────────────────────────────────────
+  let listRequest: { url: URL; limit: number | undefined } | undefined;
   if (method === "GET" && pathname === "/api/notifications") {
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = parseLimit(url.searchParams.get("limit"));
@@ -294,6 +289,17 @@ export async function handleNotificationRoute(
       helpers.error(res, "limit must be a positive integer", 400);
       return true;
     }
+    listRequest = { url, limit };
+  }
+
+  const service = getService(state);
+  if (!service) {
+    return respondServiceUnavailable(res, state, method, pathname, helpers);
+  }
+
+  // ── GET /api/notifications ────────────────────────────────────────
+  if (listRequest) {
+    const { url, limit } = listRequest;
     const notifications = service.list({
       unreadOnly: url.searchParams.get("unreadOnly") === "true",
       category: parseCategory(url.searchParams.get("category")),
