@@ -175,9 +175,7 @@ describe("compat agent logs tail contract", () => {
   ] as const)(
     "returns 400 and does not look up or enqueue for tail=%s (%s)",
     async (raw) => {
-      const response = await requestLogs(
-        `?tail=${encodeURIComponent(raw)}`,
-      );
+      const response = await requestLogs(`?tail=${encodeURIComponent(raw)}`);
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({
         success: false,

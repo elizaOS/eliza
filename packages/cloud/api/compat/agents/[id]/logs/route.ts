@@ -67,7 +67,9 @@ async function __hono_GET(
       // or clamping it into docker logs --tail.
       return withCompatCors(
         Response.json(
-          errorEnvelope(`tail must be a whole number between 1 and ${MAX_TAIL}`),
+          errorEnvelope(
+            `tail must be a whole number between 1 and ${MAX_TAIL}`,
+          ),
           { status: 400 },
         ),
         CORS_METHODS,
