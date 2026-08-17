@@ -371,14 +371,14 @@ jobs:
             .[0].meta.fileServiceManifest.build.dockerfilePath ==
               "packages/cloud/services/gateway-webhook/Dockerfile" and
             .[0].meta.fileServiceManifest.deploy.healthcheckPath == "/health" and
-            .[0].meta.fileServiceManifest.deploy.healthcheckTimeout == 30 and
+            .[0].meta.fileServiceManifest.deploy.healthcheckTimeout == 90 and
             .[0].meta.fileServiceManifest.deploy.restartPolicyType == "ON_FAILURE" and
             .[0].meta.fileServiceManifest.deploy.restartPolicyMaxRetries == 10 and
             .[0].meta.serviceManifest.build.builder == "DOCKERFILE" and
             .[0].meta.serviceManifest.build.dockerfilePath ==
               "packages/cloud/services/gateway-webhook/Dockerfile" and
             .[0].meta.serviceManifest.deploy.healthcheckPath == "/health" and
-            .[0].meta.serviceManifest.deploy.healthcheckTimeout == 30 and
+            .[0].meta.serviceManifest.deploy.healthcheckTimeout == 90 and
             .[0].meta.serviceManifest.deploy.restartPolicyType == "ON_FAILURE" and
             .[0].meta.serviceManifest.deploy.restartPolicyMaxRetries == 10
           ' "$deployment_meta_path" >/dev/null || {
