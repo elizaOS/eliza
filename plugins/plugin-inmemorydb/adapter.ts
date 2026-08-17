@@ -1309,6 +1309,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteRooms(roomIds: UUID[]): Promise<void> {
     if (roomIds.length === 0) return;
     const set = new Set(roomIds);
+    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) =>
+      set.has(m.roomId as UUID)
+    );
+    const memoryIds = memories
+      .map((memory) => memory.id)
+      .filter((id): id is UUID => id !== undefined);
     for (const id of roomIds) {
       await this.storage.delete(COLLECTIONS.ROOMS, id);
     }
@@ -1316,9 +1322,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.deleteWhere<StoredParticipant>(COLLECTIONS.PARTICIPANTS, (p) =>
       set.has(p.roomId as UUID)
     );
-    await this.storage.deleteWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) =>
-      set.has(m.roomId as UUID)
-    );
+    await this.deleteMemories(memoryIds);
   }
 
   // ── Participant CRUD ──────────────────────────────────────────────────

@@ -207,6 +207,7 @@ import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
+  detectCheckSurfaces,
   mineCandidatePaths,
   probeMappedUrls,
 } from "./quick-app-evidence.js";
@@ -2568,6 +2569,17 @@ export class OrchestratorTaskService extends Service {
       }
     }
 
+    // Which check classes the verified deliverable can actually RUN —
+    // detected in the deliverable's own directories (see detectCheckSurfaces).
+    const surfaceFiles = [
+      ...(ledgerVerdict.ledgerObserved ? ledgerVerdict.verifiedClaims : []),
+      ...fsVerifiedFiles,
+    ];
+    const checkSurfaces =
+      reportingSession?.workdir && surfaceFiles.length > 0
+        ? detectCheckSurfaces(reportingSession.workdir, surfaceFiles)
+        : undefined;
+
     return {
       summary,
       diffSummary,
@@ -2581,6 +2593,7 @@ export class OrchestratorTaskService extends Service {
           }
         : {}),
       ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
+      ...(checkSurfaces ? { checkSurfaces } : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -4337,6 +4350,9 @@ export class OrchestratorTaskService extends Service {
             ...(bundle.ledgerVerifiedFiles ?? []),
             ...(bundle.fsVerifiedFiles ?? []),
           ],
+          ...(bundle.checkSurfaces
+            ? { checkSurfaces: bundle.checkSurfaces }
+            : {}),
           hasChangeSet: Boolean(bundle.diffSummary?.trim()),
           greenChecks: {
             test: isGreenCheckOutput(deterministicToolOutput?.test),
