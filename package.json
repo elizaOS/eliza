@@ -1,6 +1,6 @@
 {
   "name": "eliza",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.4",
   "private": true,
   "type": "module",
   "elizaos": {
@@ -216,8 +216,7 @@
     "voice:matrix": "node packages/app-core/scripts/voice/voice-matrix.mjs",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
-    "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
-    "release:prepare": "node packages/scripts/release-prepare.mjs"
+    "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system"
   },
   "packageManager": "bun@1.3.14",
   "workspaces": [
