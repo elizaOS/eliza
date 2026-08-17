@@ -49,9 +49,11 @@ export function getLogPrefix(): string {
     a.startsWith("--name="),
   );
   if (nameArgMatch) {
-    const name = nameArgMatch.split("=")[1];
-    cachedPrefix = `[${name}]`;
-    return cachedPrefix;
+    const name = nameArgMatch.slice("--name=".length).trim();
+    if (name) {
+      cachedPrefix = `[${name}]`;
+      return cachedPrefix;
+    }
   }
 
   const cwd =
@@ -63,4 +65,8 @@ export function getLogPrefix(): string {
 
   cachedPrefix = "[eliza]";
   return cachedPrefix;
+}
+
+export function resetLogPrefixForTesting(): void {
+  cachedPrefix = null;
 }
