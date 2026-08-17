@@ -1926,6 +1926,55 @@ export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
 
 const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
 
+type AnswerlessRecoverySource =
+	| "actionUserFacingText"
+	| "verifiedFailureText"
+	| "preservedStageOneAnswer"
+	| "asyncHandoffAck"
+	| "failedToolFallback"
+	| "noReportableToolOutcome";
+
+interface AnswerlessRecoveryDecision {
+	text: string;
+	recoverySource?: AnswerlessRecoverySource;
+	succeededActionCount: number;
+	failedActionCount: number;
+}
+
+function actionOutcomeCounts(
+	actionResults: ReadonlyArray<{ success?: boolean }>,
+): {
+	succeededActionCount: number;
+	failedActionCount: number;
+} {
+	return {
+		succeededActionCount: actionResults.filter(
+			(result) => result.success === true,
+		).length,
+		failedActionCount: actionResults.filter(
+			(result) => result.success === false,
+		).length,
+	};
+}
+
+function logAnswerlessRecovery(
+	runtime: IAgentRuntime,
+	decision: AnswerlessRecoveryDecision,
+	earlyReplySent: boolean,
+): void {
+	if (!decision.recoverySource) return;
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			recoverySource: decision.recoverySource,
+			succeededActionCount: decision.succeededActionCount,
+			failedActionCount: decision.failedActionCount,
+			earlyReplySent,
+		},
+		"Tool turn produced no planner reply; recovered a terminal response",
+	);
+}
+
 function preservedVerifiedFailure(
 	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
 	deliveredVisibleTexts: ReadonlySet<string>,
@@ -1967,7 +2016,7 @@ function hasAcceptedAsyncHandoff(result: ActionResult): boolean {
  * pre-tool acknowledgement is retained only when a successful action carries
  * authoritative acceptance proof that work continues beyond this turn.
  */
-export function answerlessToolTurnReport(args: {
+function answerlessToolTurnDecision(args: {
 	settledToolResults: ReadonlyArray<{
 		name: string;
 		result: PlannerToolResult;
@@ -1985,18 +2034,25 @@ export function answerlessToolTurnReport(args: {
 	 * line) is still owed and still delivers. (#20086)
 	 */
 	earlyAckAlreadySent?: boolean;
-}): string {
+}): Pick<AnswerlessRecoveryDecision, "text" | "recoverySource"> {
 	const successful = preservedSettledToolResult(
 		args.settledToolResults,
 		args.deliveredVisibleTexts,
 	);
-	if (successful) return successful.userFacingText;
+	if (successful) {
+		return {
+			text: successful.userFacingText,
+			recoverySource: "actionUserFacingText",
+		};
+	}
 	const failed = preservedVerifiedFailure(
 		args.settledToolResults,
 		args.deliveredVisibleTexts,
 	);
-	if (failed) return failed;
-	if (args.deliveredVisibleTexts.size > 0) return "";
+	if (failed) {
+		return { text: failed, recoverySource: "verifiedFailureText" };
+	}
+	if (args.deliveredVisibleTexts.size > 0) return { text: "" };
 	const acceptedActionNames = args.actionResults
 		.filter(hasAcceptedAsyncHandoff)
 		.map((result) =>
@@ -2004,37 +2060,38 @@ export function answerlessToolTurnReport(args: {
 		)
 		.filter((name) => name.length > 0);
 	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
-		if (args.earlyAckAlreadySent === true) return "";
-		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+		if (args.earlyAckAlreadySent === true) return { text: "" };
+		return {
+			text: args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE,
+			recoverySource: "asyncHandoffAck",
+		};
 	}
-	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+	return {
+		text: NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+		recoverySource: "noReportableToolOutcome",
+	};
+}
+
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+	earlyAckAlreadySent?: boolean;
+}): string {
+	return answerlessToolTurnDecision(args).text;
 }
 
 /**
- * Answerless-final fallback decision for a tool turn (#20086). Exported as a
- * thin seam so regression tests drive the real decision logic instead of
- * re-declaring a local copy — the v2 suite in #20402 re-declared the gate,
- * stayed green with the production fix reverted, and was rejected for it.
- *
- * Two explicit signals keep "delivered work" distinct from "all failed":
- * - `ranNonSilentAction`: at least one action genuinely succeeded
- *   (`success === true`, the authoritative field the media-delivery path
- *   already trusts). The report prefers the last successful userFacingText
- *   or, for an accepted async handoff, the acknowledgement.
- * - `ranFailedOnlyActions`: tools ran but every one failed. These turns must
- *   still end in failure-aware wording — the verified failure text, else
- *   NO_REPORTABLE_TOOL_OUTCOME_MESSAGE — never silence: v2's success-only
- *   gate skipped the report here and collapsed the fallback to
- *   `preservedAnswerFallback || ""`.
- *
- * An early progress acknowledgement does not end the turn either: when the
- * tools finish without terminal/action-owned text the user is still owed a
- * terminal reply, so `earlyReplySent` no longer excludes the turn from the
- * report (issue criterion: recover even when an early ack was sent). It only
- * excludes the handoff-ack branch, via `earlyAckAlreadySent`, because that
- * ack was already delivered.
+ * Chooses the terminal recovery for a tool turn whose planner supplied no
+ * prose. Action-owned output outranks a preserved Stage-1 answer; the latter
+ * outranks generic wording. Callback and media deliveries remain suppressors.
  */
-export function answerlessAckFallback(args: {
+function answerlessRecoveryDecision(args: {
 	actionResults: readonly ActionResult[];
 	settledToolResults: ReadonlyArray<{
 		name: string;
@@ -2048,31 +2105,40 @@ export function answerlessAckFallback(args: {
 	suppressesPlannerReply: boolean;
 	preservedAnswerFallback: string;
 	mediaDeliverableShipped: boolean;
-}): string {
+}): AnswerlessRecoveryDecision {
+	const counts = actionOutcomeCounts(args.actionResults);
 	if (args.plannedText || args.suppressesPlannerReply) {
-		return args.preservedAnswerFallback;
+		return { text: "", ...counts };
 	}
-	const ranNonSilentAction =
-		args.actionResults.some((result) => result.success === true) &&
-		!args.suppressesPlannerReply;
+	const ranNonSilentAction = counts.succeededActionCount > 0;
 	const ranFailedOnlyActions =
-		args.actionResults.length > 0 &&
-		!args.actionResults.some((result) => result.success === true) &&
-		!args.suppressesPlannerReply;
-	return (
-		args.preservedAnswerFallback ||
-		((ranNonSilentAction || ranFailedOnlyActions) &&
-		!args.mediaDeliverableShipped
-			? answerlessToolTurnReport({
-					settledToolResults: args.settledToolResults,
-					deliveredVisibleTexts: args.deliveredVisibleTexts,
-					actionResults: args.actionResults,
-					actions: args.actions,
-					stageOneAck: args.stageOneAck,
-					earlyAckAlreadySent: args.earlyReplySent,
-				})
-			: "")
-	);
+		args.actionResults.length > 0 && counts.succeededActionCount === 0;
+	if (
+		!(ranNonSilentAction || ranFailedOnlyActions) ||
+		args.mediaDeliverableShipped
+	) {
+		return { text: "", ...counts };
+	}
+
+	const toolDecision = answerlessToolTurnDecision({
+		settledToolResults: args.settledToolResults,
+		deliveredVisibleTexts: args.deliveredVisibleTexts,
+		actionResults: args.actionResults,
+		actions: args.actions,
+		stageOneAck: args.stageOneAck,
+		earlyAckAlreadySent: args.earlyReplySent,
+	});
+	if (
+		toolDecision.recoverySource !== "noReportableToolOutcome" ||
+		!args.preservedAnswerFallback
+	) {
+		return { ...toolDecision, ...counts };
+	}
+	return {
+		text: args.preservedAnswerFallback,
+		recoverySource: "preservedStageOneAnswer",
+		...counts,
+	};
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -9477,6 +9543,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.runtime.reportError("MessageService.plannerLoop", error, {
 					roomId: args.message.roomId,
 				});
+				logAnswerlessRecovery(
+					args.runtime,
+					{
+						text: preservedToolResult.userFacingText,
+						recoverySource: "actionUserFacingText",
+						...actionOutcomeCounts(
+							settledPlannerToolResults.map((entry) => entry.result),
+						),
+					},
+					earlyReplySent,
+				);
 				return {
 					kind: "direct_reply",
 					messageHandler,
@@ -9505,6 +9582,17 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.runtime.reportError("MessageService.plannerLoop", error, {
 				roomId: args.message.roomId,
 			});
+			logAnswerlessRecovery(
+				args.runtime,
+				{
+					text: preservedAnswer,
+					recoverySource: "preservedStageOneAnswer",
+					...actionOutcomeCounts(
+						settledPlannerToolResults.map((entry) => entry.result),
+					),
+				},
+				earlyReplySent,
+			);
 			return {
 				kind: "direct_reply",
 				messageHandler,
@@ -9583,6 +9671,34 @@ export async function runV5MessageRuntimeStage1(args: {
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
+		const plannedRecoverySource = ((): AnswerlessRecoverySource | undefined => {
+			if (!plannedTextRaw || deliveredVisibleTexts.size > 0) return undefined;
+			const successful = preservedSettledToolResult(
+				settledPlannerToolResults,
+				deliveredVisibleTexts,
+			);
+			if (successful?.userFacingText === plannedTextRaw) {
+				return "actionUserFacingText";
+			}
+			const failure = preservedVerifiedFailure(
+				settledPlannerToolResults,
+				deliveredVisibleTexts,
+			);
+			if (failure === plannedTextRaw) return "verifiedFailureText";
+			if (plannedTextRaw === FAILED_TOOL_FALLBACK_MESSAGE) {
+				return "failedToolFallback";
+			}
+			return undefined;
+		})();
+		logAnswerlessRecovery(
+			args.runtime,
+			{
+				text: plannedTextRaw,
+				recoverySource: plannedRecoverySource,
+				...actionOutcomeCounts(actionResults),
+			},
+			earlyReplySent,
+		);
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
 		const plannedText = sanitizeReplyTextAfterMediaDelivery(
 			plannedTextRaw,
@@ -9671,10 +9787,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		// deliveredMediaUrls is non-empty only for a SYNCHRONOUSLY delivered media
 		// attachment, so a slow/async generation (nothing delivered yet) still acks.
 		const mediaDeliverableShipped = deliveredMediaUrls.length > 0;
-		// Answerless-final fallback: see answerlessAckFallback (#20086) — the
-		// success-aware / failure-aware gate split and the early-ack recovery
-		// live in the exported seam so regression tests can drive them.
-		const ackFallback = answerlessAckFallback({
+		// Choose and diagnose the terminal recovery after an answerless tool turn.
+		const recoveryDecision = answerlessRecoveryDecision({
 			actionResults,
 			settledToolResults: settledPlannerToolResults,
 			deliveredVisibleTexts,
@@ -9686,7 +9800,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			preservedAnswerFallback,
 			mediaDeliverableShipped,
 		});
-		let effectiveReplyText = plannedText || ackFallback;
+		logAnswerlessRecovery(args.runtime, recoveryDecision, earlyReplySent);
+		let effectiveReplyText = plannedText || recoveryDecision.text;
 		// #18208: a failed sub-agent completion relay must not discard the
 		// finished result it carries. When the turn ended on the generic
 		// failed-tool fallback and the triggering message IS a task_complete
@@ -9844,29 +9959,35 @@ export async function runV5MessageRuntimeStage1(args: {
 			deliveredMediaUrls.length === 0 &&
 			actionResults.length > 0
 		) {
+			const actionUserFacingText = actionResults
+				.map((result) =>
+					typeof result.userFacingText === "string"
+						? result.userFacingText.trim()
+						: "",
+				)
+				.filter((ownedText) => ownedText.length > 0)
+				.at(-1);
 			const recoveredText =
 				effectiveDeliveredReplyText ||
 				stageOneAck ||
-				actionResults
-					.map((result) =>
-						typeof result.userFacingText === "string"
-							? result.userFacingText.trim()
-							: "",
-					)
-					.filter((ownedText) => ownedText.length > 0)
-					.at(-1) ||
+				actionUserFacingText ||
 				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+			const recoverySource = effectiveDeliveredReplyText
+				? "plannedText"
+				: stageOneAck
+					? "stageOneAck"
+					: actionUserFacingText
+						? "actionUserFacingText"
+						: "hardcodedFallback";
+			const outcomeCounts = actionOutcomeCounts(actionResults);
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					emptyFinal: !effectiveReplyText,
 					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
 					suppressedByActionReply: plannedTextRepeatsActionReply,
-					recoveredFrom: effectiveDeliveredReplyText
-						? "plannedText"
-						: stageOneAck
-							? "stageOneAck"
-							: "actionUserFacingText",
+					recoverySource,
+					...outcomeCounts,
 				},
 				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 			);

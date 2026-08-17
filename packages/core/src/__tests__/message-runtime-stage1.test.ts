@@ -7489,3 +7489,218 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });
+
+describe("zero-delivery recovery (#20086)", () => {
+	const ACTION_TEXT = "Event saved for 3pm tomorrow.";
+	const VERIFIED_FAILURE = "The calendar read failed: upstream rate limit.";
+
+	function recoveryResponses(stageOneReply = ""): unknown[] {
+		return [
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["CALENDAR"],
+				replyText: stageOneReply,
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Run the calendar operation.",
+				toolCalls: [{ id: "calendar-1", name: "CALENDAR", args: {} }],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The tool finished but the final prose was lost.",
+				messageToUser: "",
+			}),
+		];
+	}
+
+	function recoveryAction(handler: Action["handler"]): Action {
+		return {
+			name: "CALENDAR",
+			similes: [],
+			tags: ["resource:calendar", "capability:write"],
+			description: "Exercise a calendar operation.",
+			contexts: ["general"],
+			parameters: [],
+			validate: async () => true,
+			handler,
+		};
+	}
+
+	function recoveryWarning(runtime: IAgentRuntime): Record<string, unknown> {
+		const calls = (runtime.logger.warn as { mock: { calls: unknown[][] } }).mock
+			.calls;
+		const call = calls.find(
+			(entry) =>
+				typeof entry[0] === "object" &&
+				entry[0] !== null &&
+				"recoverySource" in entry[0],
+		);
+		expect(call).toBeDefined();
+		return call?.[0] as Record<string, unknown>;
+	}
+
+	it("prefers the latest explicit action text over a preserved Stage-1 answer", async () => {
+		const runtime = makeRuntime(
+			recoveryResponses("A tentative calendar answer."),
+		);
+		runtime.actions = [
+			recoveryAction(async () => ({
+				success: true,
+				userFacingText: ACTION_TEXT,
+				text: "calendar write completed",
+			})),
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(ACTION_TEXT);
+		}
+		expect(recoveryWarning(runtime)).toMatchObject({
+			recoverySource: "actionUserFacingText",
+			succeededActionCount: 1,
+			failedActionCount: 0,
+			earlyReplySent: false,
+		});
+	});
+
+	it("reports a verified failed-action message with failure counts", async () => {
+		const runtime = makeRuntime(recoveryResponses());
+		runtime.actions = [
+			recoveryAction(async () => ({
+				success: false,
+				verifiedUserFacing: true,
+				userFacingText: VERIFIED_FAILURE,
+				text: "status=429",
+			})),
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(VERIFIED_FAILURE);
+		}
+		expect(recoveryWarning(runtime)).toMatchObject({
+			recoverySource: "verifiedFailureText",
+			succeededActionCount: 0,
+			failedActionCount: 1,
+		});
+	});
+
+	it("adds a terminal failure-aware reply after an early progress acknowledgement", async () => {
+		const runtime = makeRuntime(recoveryResponses("I'll check that now."));
+		runtime.actions = [
+			recoveryAction(async () => ({ success: false, text: "status=500" })),
+		] as never;
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+			);
+		}
+		expect(recoveryWarning(runtime)).toMatchObject({
+			recoverySource: "failedToolFallback",
+			succeededActionCount: 0,
+			failedActionCount: 1,
+			earlyReplySent: true,
+		});
+	});
+
+	it("recovers a substantive Stage-1 answer when post-tool synthesis fails", async () => {
+		const preserved = "The calendar appears open tomorrow afternoon.";
+		const runtime = makeRuntime(recoveryResponses(preserved));
+		runtime.actions = [
+			recoveryAction(async () => ({ success: true, text: "available=true" })),
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(preserved);
+		}
+		expect(recoveryWarning(runtime)).toMatchObject({
+			recoverySource: "preservedStageOneAnswer",
+			succeededActionCount: 1,
+			failedActionCount: 0,
+		});
+		expect(reportErrorCalls(runtime).length).toBeGreaterThan(0);
+	});
+
+	it("does not recover or duplicate text already delivered by the action callback", async () => {
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+		const runtime = makeRuntime(recoveryResponses());
+		runtime.actions = [
+			recoveryAction(async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: ACTION_TEXT, source: "action" });
+				return {
+					success: true,
+					userFacingText: ACTION_TEXT,
+					text: "calendar write completed",
+				};
+			}),
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		expect(delivered).toEqual([ACTION_TEXT]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		const warnings = (runtime.logger.warn as { mock: { calls: unknown[][] } })
+			.mock.calls;
+		expect(
+			warnings.some(
+				(entry) =>
+					typeof entry[0] === "object" &&
+					entry[0] !== null &&
+					"recoverySource" in entry[0],
+			),
+		).toBe(false);
+	});
+});
