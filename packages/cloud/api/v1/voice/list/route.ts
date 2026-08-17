@@ -68,7 +68,25 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const includeInactive = c.req.query("includeInactive") === "true";
+    // Voice Studio inactive-row identity, not leftover tax on cloneType
+    // (#21047). includeInactive=TRUE used to silently hide soft-deleted
+    // voices instead of 400.
+    const requestedInactive = c.req.query("includeInactive");
+    if (
+      requestedInactive != null &&
+      requestedInactive !== "" &&
+      requestedInactive !== "true" &&
+      requestedInactive !== "false"
+    ) {
+      return c.json(
+        {
+          error: "Invalid includeInactive",
+          message: 'includeInactive must be "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeInactive = requestedInactive === "true";
     const cloneType = parseVoiceCloneType(c.req.query("cloneType"));
     if (cloneType === null) {
       return c.json({ error: "Invalid cloneType" }, 400);
