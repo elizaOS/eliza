@@ -311,18 +311,32 @@ export function resolveRouteForWorkdir(
   runtime: IAgentRuntime | undefined,
   workdir: string,
 ): ResolvedWorkdirRoute | undefined {
-  const target = path.resolve(expandHomePath(workdir));
+  let target: string;
+  try {
+    target = fs.realpathSync(expandHomePath(workdir));
+  } catch {
+    // error-policy:J3 Reverse lookup only applies to an existing, resolvable
+    // directory. Callers will retain their normal route-less fallback.
+    return undefined;
+  }
   for (const route of configuredWorkdirRoutes(runtime)) {
-    const expanded = path.resolve(expandHomePath(route.workdir));
-    if (!fs.existsSync(expanded)) continue;
-    const relative = path.relative(expanded, target);
+    const expanded = expandHomePath(route.workdir);
+    let canonicalRouteRoot: string;
+    try {
+      canonicalRouteRoot = fs.realpathSync(expanded);
+    } catch {
+      // error-policy:J4 A missing or unreadable configured route is skipped so
+      // another valid route can still own the resolved workdir.
+      continue;
+    }
+    const relative = path.relative(canonicalRouteRoot, target);
     const contained =
       relative === "" ||
       (!relative.startsWith("..") && !path.isAbsolute(relative));
     if (!contained) continue;
     return {
       id: route.id,
-      workdir: expanded,
+      workdir: canonicalRouteRoot,
       instructions: route.instructions,
       urlMappings: route.urlMappings,
     };
@@ -341,7 +355,10 @@ export function resolveWorkdirRoute(
   for (const route of routes) {
     if (!routeMatches(route, haystack)) continue;
     const expanded = expandHomePath(route.workdir);
-    if (!fs.existsSync(expanded)) {
+    let canonicalWorkdir: string;
+    try {
+      canonicalWorkdir = fs.realpathSync(expanded);
+    } catch {
       logger.warn(
         `[workdir-routes] Route "${route.id}" matched but workdir does not exist: ${expanded}`,
       );
@@ -352,7 +369,7 @@ export function resolveWorkdirRoute(
     );
     return {
       id: route.id,
-      workdir: expanded,
+      workdir: canonicalWorkdir,
       instructions: route.instructions,
       urlMappings: route.urlMappings,
     };

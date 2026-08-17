@@ -304,7 +304,7 @@ describe("resolveWorkdirRoute — malformed route guard", () => {
     ]);
     const r = resolveWorkdirRoute(stubRuntime(routes), "task", "please shipit");
     expect(r?.id).toBe("ok");
-    expect(r?.workdir).toBe(dir);
+    expect(r?.workdir).toBe(fs.realpathSync(dir));
   });
 });
 
@@ -432,6 +432,34 @@ describe("route identity follows the directory (#20794 stamp gap)", () => {
     } finally {
       fs.rmSync(sibling, { recursive: true, force: true });
     }
+  });
+
+  it("does not stamp a symlink inside the route tree when it resolves outside", () => {
+    const outsideLink = path.join(routeRoot, "outside-link");
+    fs.symlinkSync(outsideDir, outsideLink, "dir");
+
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      outsideLink,
+    );
+
+    expect(result.route).toBeUndefined();
+  });
+
+  it("stamps a symlink outside the route tree when it resolves inside", () => {
+    const alias = path.join(outsideDir, "route-link");
+    fs.symlinkSync(appDir, alias, "dir");
+
+    const result = resolveSpawnWorkdir(
+      runtimeWithRoutes(),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      alias,
+    );
+
+    expect(result.route?.id).toBe("agent-home");
   });
 
   it("text-matched route resolution still outranks and is unchanged", () => {
