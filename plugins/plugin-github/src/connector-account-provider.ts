@@ -150,6 +150,7 @@ async function exchangeCodeForToken(args: {
       code: args.code,
       redirect_uri: args.redirectUri,
     }).toString(),
+    signal: AbortSignal.timeout(15_000),
   })) as GitHubFetchResponse;
   if (!response.ok) {
     const body = await response.text();
@@ -178,6 +179,7 @@ async function fetchGitHubUser(
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
+    signal: AbortSignal.timeout(15_000),
   })) as GitHubFetchResponse;
   if (!response.ok) {
     throw new Error(`GitHub /user request failed with ${response.status}`);
