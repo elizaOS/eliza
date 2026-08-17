@@ -242,13 +242,14 @@ type ReactionAggregateState = {
 };
 
 /**
- * Parse and clamp the `limit` query parameter. Defaults to 100, capped
- * at 500. Non-numeric input is treated as the default.
+ * Parse and clamp the `limit` query parameter. Defaults to 100 and caps
+ * canonical positive decimal integers at 500.
  */
-function parseLimit(raw: string | null): number {
-  if (!raw) return 100;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+function parseLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") return 100;
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return null;
   return Math.min(parsed, 500);
 }
 
@@ -2583,6 +2584,10 @@ export async function handleInboxRoute(
 
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = parseLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
     const explicitFilter = parseSourceFilter(url.searchParams.get("sources"));
     const sourceFilter = explicitFilter ?? DEFAULT_INBOX_SOURCES;
     // Optional roomId scope. When the messages view has a
