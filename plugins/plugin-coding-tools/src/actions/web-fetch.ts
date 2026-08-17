@@ -208,7 +208,7 @@ export const webFetchAction: Action = {
       );
       const value =
         extracted.value.length > WEB_FETCH_RESULT_CHARS
-          ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
+          ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS - 12)}\n[truncated]`
           : extracted.value;
       return successActionResult(value, {
         action: "WEB_FETCH",
