@@ -21,15 +21,25 @@ const ORG_A = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "agent-provision-1";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
-const getAgentForWrite = mock(async () => ({
-  id: AGENT_ID,
-  organization_id: ORG_A,
-  agent_name: "already-up",
-  execution_tier: "dedicated-always",
-  status: "running",
-  bridge_url: "https://bridge.example.test",
-  health_url: "https://health.example.test",
-}));
+const getAgentForWrite = mock(
+  async (): Promise<{
+    id: string;
+    organization_id: string;
+    agent_name: string;
+    execution_tier: string;
+    status: string;
+    bridge_url: string | null;
+    health_url: string | null;
+  } | null> => ({
+    id: AGENT_ID,
+    organization_id: ORG_A,
+    agent_name: "already-up",
+    execution_tier: "dedicated-always",
+    status: "running",
+    bridge_url: "https://bridge.example.test",
+    health_url: "https://health.example.test",
+  }),
+);
 const provision = mock(async () => ({
   success: true,
   bridgeUrl: "https://bridge.example.test",
