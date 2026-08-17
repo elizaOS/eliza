@@ -206,7 +206,7 @@ function isLoopbackUrl(value: string): boolean {
 function clamp(text: string, max: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max)}\n… [truncated]`;
+  return `${trimmed.slice(0, max - 14)}\n… [truncated]`;
 }
 
 /** Markers that class a signal as TEST output (vitest/jest run, suite result). */
@@ -546,7 +546,7 @@ export function buildCompletionEvidenceString(
 
   const assembled = sections.join("\n\n");
   return assembled.length > MAX_EVIDENCE_CHARS
-    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS - 23)}\n… [evidence truncated]`
     : assembled;
 }
 
@@ -628,6 +628,6 @@ export function buildEvidenceStringFromInput(
 
   const assembled = sections.join("\n\n");
   return assembled.length > MAX_EVIDENCE_CHARS
-    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS - 23)}\n… [evidence truncated]`
     : assembled;
 }
