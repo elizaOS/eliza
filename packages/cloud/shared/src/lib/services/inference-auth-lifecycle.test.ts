@@ -244,6 +244,20 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     ]);
   });
 
+  test("Steward identity upsert retry clears a fence left after the row write", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-new",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-new:true"]);
+  });
+
   test("Steward identity link fences the prior session generation before relinking", async () => {
     userRecord = {
       id: "u1",
