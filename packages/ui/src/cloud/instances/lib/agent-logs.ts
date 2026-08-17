@@ -8,6 +8,8 @@ const MIN_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 export const AGENT_LOGS_TIMEOUT_MS = 30_000;
+const JOB_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface AgentLogsResult {
   logs: string;
@@ -52,14 +54,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readBoundedText(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") return null;
-  const normalized = Array.from(value, (character) => {
+  let normalized = "";
+  for (const character of value) {
     const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint <= 31 || codePoint === 127 ? " " : character;
-  })
-    .join("")
-    .trim();
+    const safeCharacter =
+      codePoint <= 31 || codePoint === 127
+        ? " "
+        : codePoint >= 0xd800 && codePoint <= 0xdfff
+          ? "�"
+          : character;
+    if (normalized.length + safeCharacter.length > maxLength) break;
+    normalized += safeCharacter;
+  }
+  normalized = normalized.trim();
   if (!normalized) return null;
-  return normalized.slice(0, maxLength);
+  return normalized;
 }
 
 function clampInterval(value: unknown, fallback: number): number {
@@ -112,8 +121,8 @@ export function parseAgentLogsStart(value: unknown): AgentLogsStart {
     );
   }
 
-  const jobId = readBoundedText(value.data.jobId, 256);
-  if (!jobId) {
+  const jobId = value.data.jobId;
+  if (typeof jobId !== "string" || !JOB_ID_PATTERN.test(jobId)) {
     throw new AgentLogsProtocolError(
       "The log service did not return a valid job identifier.",
     );
@@ -159,7 +168,7 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
   }
 
   const result = isRecord(value.data.result) ? value.data.result : null;
-  if (status === "failed") {
+  if (status === "failed" || status === "cancelled") {
     return {
       kind: "failed",
       message: LOG_COLLECTION_FAILED_MESSAGE,
