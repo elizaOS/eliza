@@ -36,7 +36,12 @@ type AgentLogsJobState =
   | { kind: "failed"; message: string };
 
 export class AgentLogsProtocolError extends Error {
-  readonly name = "AgentLogsProtocolError";
+  readonly name: string = "AgentLogsProtocolError";
+}
+
+export class AgentLogsUnavailableError extends AgentLogsProtocolError {
+  readonly name = "AgentLogsUnavailableError";
+  readonly retryable = true;
 }
 
 export class AgentLogsTimeoutError extends Error {
@@ -189,16 +194,23 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
   if (resultError) {
     return { kind: "failed", message: LOG_COLLECTION_FAILED_MESSAGE };
   }
-  if (result.logs !== undefined && typeof result.logs !== "string") {
-    throw new AgentLogsProtocolError(
-      "The completed log job returned invalid log data.",
+  if (result.skipped === true) {
+    throw new AgentLogsUnavailableError(
+      "This agent is no longer available. Refresh the agent list and try again.",
+    );
+  }
+  if (typeof result.logs !== "string") {
+    throw new AgentLogsUnavailableError(
+      result.logs === undefined
+        ? "The log collection finished without log data. Try again in a moment."
+        : "The completed log job returned invalid log data.",
     );
   }
 
   return {
     kind: "complete",
     result: {
-      logs: typeof result.logs === "string" ? result.logs : "",
+      logs: result.logs,
       notice: readBoundedText(result.message),
     },
   };
