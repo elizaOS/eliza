@@ -39,15 +39,17 @@ import {
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { publishParsedReply } from "./acp-response.js";
+import { installAcpConnectionCloseTeardown } from "./acp-connection-lifecycle.js";
+import {
+  AcpSessionAdmission,
+  type AcpSessionState,
+  AcpTurnRegistry,
+  createAcpSessionState,
+} from "./acp-session-state.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
-import {
-  ensureSessionIdentity,
-  getMainRoomElizaId,
-  type SessionIdentity,
-} from "./lib/identity.js";
+import { ensureSessionIdentity, type SessionIdentity } from "./lib/identity.js";
 import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
-import type { ChatRoom } from "./types.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
 function log(message: string, extra?: unknown): void {
@@ -84,6 +86,10 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
       process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
+    // A local coding sub-agent executes model-authored shell commands. Default
+    // that boundary to the fail-closed local-safe backend; an operator can still
+    // explicitly select cloud isolation or local-yolo before spawning ACP.
+    process.env.ELIZA_RUNTIME_MODE ??= "local-safe";
     // Drop-in for the opencode coding sub-agent: when the host configured
     // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
     // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
@@ -153,12 +159,11 @@ function promptToText(prompt: unknown): string {
 
 // Per-session state: the chat room, the workspace cwd, and whether the
 // orchestrator's scaffolded operating manual has been injected yet.
-interface AcpSession {
-  room: ChatRoom;
-  cwd?: string;
-  manualInjected: boolean;
-}
-const sessions = new Map<string, AcpSession>();
+const sessions = new Map<string, AcpSessionState>();
+const sessionAdmission = new AcpSessionAdmission();
+const turns = new AcpTurnRegistry();
+const TURN_QUIESCE_TIMEOUT_MS = 2_000;
+const CONNECTION_CLOSE_QUIESCE_TIMEOUT_MS = 100;
 
 /**
  * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
@@ -230,18 +235,16 @@ const _connection = new AgentSideConnection(
       return {};
     },
     async newSession(params: { cwd?: string }) {
-      const runtime = await ensureRuntime(params.cwd);
       const id = randomUUID();
+      // Runtime credentials, FILE roots, and the bubblewrap mount namespace are
+      // process-scoped. Reserve this child before asynchronous initialization so
+      // concurrent session/new calls cannot accidentally share authority.
+      sessionAdmission.reserve(id);
+      const runtime = await ensureRuntime(params.cwd);
       const session = identity as SessionIdentity;
-      const room: ChatRoom = {
-        id,
-        name: "acp",
-        messages: [],
-        createdAt: new Date(),
-        taskIds: [],
-        elizaRoomId: getMainRoomElizaId(session),
-      };
-      sessions.set(id, { room, cwd: params.cwd, manualInjected: false });
+      const sessionState = createAcpSessionState(id, session, params.cwd);
+      const { room } = sessionState;
+      sessions.set(id, sessionState);
       // Point the coding tools' per-conversation working directory at the ACP
       // workspace. We can't process.chdir() (it would break bun's workspace
       // @elizaos/* resolution, so the process stays in the monorepo), and
@@ -269,76 +272,96 @@ const _connection = new AgentSideConnection(
       if (!session || !identity) {
         throw new Error(`[eliza-code-acp] unknown session ${params.sessionId}`);
       }
+      const sessionIdentity = identity;
       const { room } = session;
-      let text = promptToText(params.prompt);
-      if (!text) return { stopReason: "end_turn" };
-      // Inject the orchestrator's scaffolded operating manual on the first prompt
-      // of the session so eliza-code gets the same "you are a non-interactive Eliza
-      // coding sub-agent + relay contract" orientation as claude/codex/opencode.
-      if (!session.manualInjected) {
-        session.manualInjected = true;
-        const preamble: string[] = [];
-        const manual = await readWorkspaceManual(session.cwd);
-        if (manual) preamble.push(manual);
-        // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
-        // to NARRATE a plan ("I'll create the app...") and end the turn instead
-        // of emitting the FILE/SHELL action, especially on larger tasks — which
-        // leaves nothing on disk. Make the act-don't-describe requirement
-        // explicit so a build actually happens before the agent reports done.
-        preamble.push(
-          "Execution contract: DO the work by calling tools — use the FILE " +
-            "action to actually write/edit each file and the SHELL action to run " +
-            "commands. Do NOT reply with a description of what you are about to " +
-            'do; a turn that only says "I\'ll create..." or "Creating the app ' +
-            'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
-            "a multi-file or large build, write the full content of each file " +
-            "with a FILE action first, then verify, and only then report what you " +
-            "did. Never claim a file exists unless you wrote it this session.",
-        );
-        if (session.cwd) {
-          // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
-          // its workspace root up front so it writes absolute paths directly
-          // instead of emitting a relative path, having it rejected, and
-          // round-tripping through `pwd` to rediscover the directory.
+      const originalText = promptToText(params.prompt);
+      if (!originalText) return { stopReason: "end_turn" };
+
+      // Register the turn before its first asynchronous setup step. A cancel
+      // racing the workspace-manual read must abort this same turn; it must not
+      // see an empty registry and then allow a fresh, uncancelled tool turn.
+      const turn = await turns.run(params.sessionId, async (abortSignal) => {
+        let text = originalText;
+        // Inject the orchestrator's scaffolded operating manual on the first
+        // prompt so eliza-code gets the same non-interactive relay contract as
+        // the other coding backends.
+        let injectedManual = false;
+        if (!session.manualInjected) {
+          const preamble: string[] = [];
+          const manual = await readWorkspaceManual(session.cwd);
+          abortSignal.throwIfAborted();
+          if (manual) preamble.push(manual);
+          // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
+          // to NARRATE a plan ("I'll create the app...") and end the turn instead
+          // of emitting the FILE/SHELL action, especially on larger tasks — which
+          // leaves nothing on disk. Make the act-don't-describe requirement
+          // explicit so a build actually happens before the agent reports done.
           preamble.push(
-            `Your workspace directory is: ${session.cwd}\n` +
-              `All file paths MUST be absolute — create and edit files under ` +
-              `this directory (e.g. ${session.cwd}/<filename>) and run shell ` +
-              `commands from here.`,
+            "Execution contract: DO the work by calling tools — use the FILE " +
+              "action to actually write/edit each file and the SHELL action to run " +
+              "commands. Do NOT reply with a description of what you are about to " +
+              'do; a turn that only says "I\'ll create..." or "Creating the app ' +
+              'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
+              "a multi-file or large build, write the full content of each file " +
+              "with a FILE action first, then verify, and only then report what you " +
+              "did. Never claim a file exists unless you wrote it this session.",
           );
+          if (session.cwd) {
+            // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
+            // its workspace root up front so it writes absolute paths directly
+            // instead of emitting a relative path, having it rejected, and
+            // round-tripping through `pwd` to rediscover the directory.
+            preamble.push(
+              `Your workspace directory is: ${session.cwd}\n` +
+                `All file paths MUST be absolute — create and edit files under ` +
+                `this directory (e.g. ${session.cwd}/<filename>) and run shell ` +
+                `commands from here.`,
+            );
+          }
+          if (preamble.length > 0) {
+            text = `${preamble.join("\n\n---\n\n")}\n\n---\n\nTask:\n${text}`;
+            injectedManual = true;
+            log("injected workspace preamble", {
+              manual: manual.length,
+              cwd: session.cwd ?? null,
+            });
+          }
         }
-        if (preamble.length > 0) {
-          text = `${preamble.join("\n\n---\n\n")}\n\n---\n\nTask:\n${text}`;
-          log("injected workspace preamble", {
-            manual: manual.length,
-            cwd: session.cwd ?? null,
-          });
-        }
-      }
-      log("prompt", { sessionId: params.sessionId, chars: text.length });
-      // Do NOT forward raw stream deltas as agent_message_chunk. The inner
-      // runtime's stream is the model's RAW output — for a structured planner
-      // (response-grammar JSON/XML) that is the unparsed envelope, and the
-      // orchestrator concatenates chunks into the session's captured finalText,
-      // which the parent then relays to the user verbatim. Streaming raw here
-      // is how a Discord user ends up seeing ```json {"response":...} instead
-      // of the answer. The parsed user-facing reply only exists once the turn
-      // completes, so emit exactly one authoritative chunk with it.
-      const response = await getAgentClient().sendMessage({
-        room,
-        text,
-        identity,
-        source: "acp",
+        abortSignal.throwIfAborted();
+        log("prompt", { sessionId: params.sessionId, chars: text.length });
+        // Do NOT forward raw stream deltas as agent_message_chunk. The inner
+        // runtime's stream is the model's RAW output — for a structured planner
+        // (response-grammar JSON/XML) that is the unparsed envelope, and the
+        // orchestrator concatenates chunks into the session's captured finalText,
+        // which the parent then relays to the user verbatim. The parsed reply
+        // only exists once the turn completes, so emit exactly one chunk.
+        const response = await getAgentClient().sendMessage({
+          room,
+          text,
+          identity: sessionIdentity,
+          source: "acp",
+          abortSignal,
+        });
+        if (abortSignal.aborted) return response;
+        if (injectedManual) session.manualInjected = true;
+        await publishParsedReply(params.sessionId, response, (update) =>
+          conn.sessionUpdate(update),
+        );
+        return response;
       });
-      await publishParsedReply(params.sessionId, response, (update) =>
-        conn.sessionUpdate(update),
-      );
-      log("prompt done", { response: response.length });
+      if (turn.cancelled) {
+        log("prompt cancelled", { sessionId: params.sessionId });
+        return { stopReason: "cancelled" };
+      }
+      log("prompt done", { response: turn.value.length });
       return { stopReason: "end_turn" };
     },
-    async cancel() {
-      // Best-effort: the runtime turn isn't externally cancellable here; the next
-      // prompt simply starts a new turn. (Hook into runtime abort when available.)
+    async cancel(params: { sessionId: string }) {
+      const aborted = await turns.cancelAndWait(
+        params.sessionId,
+        TURN_QUIESCE_TIMEOUT_MS,
+      );
+      log("cancel", { sessionId: params.sessionId, aborted });
     },
     // The elizaOS orchestrator's native ACP transport sends `session/close` on
     // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),
@@ -348,10 +371,28 @@ const _connection = new AgentSideConnection(
     // Method not found: session/close"). Drop the session entry and ack.
     async closeSession(params: { sessionId?: string }) {
       const sessionId = params?.sessionId;
-      if (sessionId) sessions.delete(sessionId);
+      if (sessionId) {
+        // Never acknowledge teardown while an uncooperative provider/action can
+        // still publish output or mutate files. On timeout this method rejects;
+        // the orchestrator then closes the ACP transport, whose TERM→KILL process
+        // teardown is the hard isolation boundary.
+        await turns.cancelAndWait(sessionId, TURN_QUIESCE_TIMEOUT_MS);
+        sessions.delete(sessionId);
+      }
       log("session closed", { sessionId });
       return {};
     },
   }),
   stream,
 );
+
+// The orchestrator intentionally starts this adapter as its own POSIX process
+// group so it can contain descendants on explicit cancel/close. That also means
+// a parent SIGKILL cannot reach it. ACP EOF is therefore a hard ownership
+// boundary: abort every turn immediately, allow only a tiny cooperative unwind,
+// then exit so bubblewrap's parent-death signal contains any active tool child.
+installAcpConnectionCloseTeardown(_connection.signal, turns, {
+  timeoutMs: CONNECTION_CLOSE_QUIESCE_TIMEOUT_MS,
+  onError: (error) => log("connection-close turn did not quiesce", error),
+  exit: (code) => process.exit(code),
+});
