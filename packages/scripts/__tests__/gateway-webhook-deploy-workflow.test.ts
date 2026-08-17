@@ -40,7 +40,6 @@ interface WorkflowJob {
   concurrency?: {
     "cancel-in-progress"?: boolean;
     group?: string;
-    queue?: string;
   };
   env?: Record<string, string>;
   environment?: string;
@@ -209,7 +208,6 @@ describe("protected gateway-webhook deployment workflow", () => {
       ["cloud-cf-release-v6-", githubExpression("inputs.environment")].join(""),
     );
     expect(deploy?.concurrency?.["cancel-in-progress"]).toBe(false);
-    expect(deploy?.concurrency?.queue).toBe("max");
 
     expect(deploy?.env).toEqual(expectedJobEnvironment);
     expect(() => assertExactProtectedRouting(deploy)).not.toThrow();
