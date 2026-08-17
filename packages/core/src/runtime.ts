@@ -374,6 +374,10 @@ const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+// Page size for the getAllMemories partition sweep. The sweep must be complete
+// — the media GC builds its referenced-set from it — so it paginates until a
+// short page instead of issuing one bounded read that silently truncates.
+const GET_ALL_MEMORIES_PAGE_SIZE = 10_000;
 
 type ProviderExecutionOutcome = "success" | "error" | "aborted";
 
@@ -11229,12 +11233,19 @@ ${section_end}`;
 		const allMemories: Memory[] = [];
 
 		for (const tableName of tables) {
-			const memories = await this.adapter.getMemories({
-				agentId: this.agentId,
-				tableName,
-				limit: 10000, // Get a large number to fetch all
-			});
-			allMemories.push(...memories);
+			// Paginate until a short page: a single 10k-bounded read silently
+			// truncates a larger partition, and the media GC would then delete
+			// files referenced only by rows past the cap as "orphaned".
+			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
+				const memories = await this.adapter.getMemories({
+					agentId: this.agentId,
+					tableName,
+					limit: GET_ALL_MEMORIES_PAGE_SIZE,
+					offset,
+				});
+				allMemories.push(...memories);
+				if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break;
+			}
 		}
 
 		return allMemories;
