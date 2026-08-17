@@ -5102,6 +5102,7 @@ export async function handleConversationRoutes(
                 }
                 writeSse(res, { type: "voice_task_commit", ...event });
               },
+              committedStreamAuthorityOnly: committedSpeechEnabled,
               onChunk: (chunk, origin, metadata) => {
                 if (!chunk) return;
                 if (

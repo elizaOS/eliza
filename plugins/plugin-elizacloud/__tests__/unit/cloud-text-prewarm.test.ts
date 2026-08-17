@@ -1,8 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createCloudTextPrewarmer } from "../../src/routes/cloud-text-prewarm";
+import {
+  createCloudTextPrewarmer,
+  shouldPrewarmCloudTextGateway,
+} from "../../src/routes/cloud-text-prewarm";
 
 describe("local voice cloud text prewarm", () => {
+  it("skips synthetic generations for an explicitly direct text route", () => {
+    expect(
+      shouldPrewarmCloudTextGateway(
+        {
+          llmText: { backend: "cerebras", transport: "direct" },
+        },
+        undefined
+      )
+    ).toBe(false);
+  });
+
+  it("skips when Cloud inference handlers are explicitly disabled", () => {
+    expect(
+      shouldPrewarmCloudTextGateway(
+        {
+          llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+        },
+        " FALSE "
+      )
+    ).toBe(false);
+  });
+
+  it("preserves Cloud-proxy and legacy warmup eligibility", () => {
+    expect(
+      shouldPrewarmCloudTextGateway(
+        {
+          llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+        },
+        "true"
+      )
+    ).toBe(true);
+    expect(shouldPrewarmCloudTextGateway(undefined, undefined)).toBe(true);
+  });
+
   it("refreshes the default warm lease before Cloud auth expires", async () => {
     let now = 1_000;
     const useModel = vi.fn(async () => "ok");

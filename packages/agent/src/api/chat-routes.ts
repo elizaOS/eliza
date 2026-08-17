@@ -1045,6 +1045,12 @@ export interface ChatGenerateOptions {
    * committed effect for abortable in-flight work.
    */
   onVoiceTaskCommit?: (event: { callId: string; toolName: string }) => void;
+  /**
+   * Accept visible model-stream text only from the prefix-stable committed
+   * reply authority. Realtime speech cannot retract an inherited/internal
+   * model chunk, so its route enables this while retaining terminal callbacks.
+   */
+  committedStreamAuthorityOnly?: boolean;
   abortSignal?: AbortSignal;
   /**
    * Exact-request-only gate for assistant persistence/delivery. Kept separate
@@ -4009,6 +4015,21 @@ async function generateChatResponseWithTiming(
                               }
                               opts?.onToolEvent?.(toolEvent);
                             }
+                            return;
+                          }
+                          // Realtime voice may only render or speak text that the
+                          // message service explicitly promoted through its
+                          // prefix-stable committed-reply gate. Nested/internal
+                          // model calls can still inherit the turn's streaming
+                          // context; treating one of their ordinary text chunks as
+                          // the visible source lets a private draft commit speech
+                          // before the terminal callback supplies the real reply.
+                          // Structured tool/status events were handled above and
+                          // remain available to the working indicator.
+                          if (
+                            opts?.committedStreamAuthorityOnly === true &&
+                            !committedMetadata
+                          ) {
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;

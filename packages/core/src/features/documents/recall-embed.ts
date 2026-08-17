@@ -61,7 +61,11 @@
  * slowness into a failed embedding or throwing away useful completed work.
  */
 
-import { normalizeCanonicalEmbedding } from "../../constants/embeddings.ts";
+import {
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	normalizeCanonicalEmbedding,
+	prepareCanonicalEmbeddingInput,
+} from "../../constants/embeddings.ts";
 import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
@@ -116,6 +120,161 @@ function isMissingEmbeddingCapability(error: unknown): boolean {
 /** Normalize query text so trivially-different strings share one cache slot. */
 function normalizeQuery(text: string): string {
 	return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Recall normally embeds one short user question. Rewriters can legitimately
+ * turn that question into a longer security/document envelope, though, and a
+ * direct TEXT_EMBEDDING call must remain strict rather than letting a provider
+ * truncate it. Keep the exceptional fan-out bounded: pathological prompts
+ * degrade to keyword recall before any model call instead of monopolizing the
+ * reply hot path.
+ */
+const MAX_RECALL_EMBEDDING_CHUNKS = 8;
+const MAX_RECALL_EMBEDDING_CODE_UNITS =
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS * MAX_RECALL_EMBEDDING_CHUNKS;
+
+function avoidsSplittingSurrogatePair(text: string, offset: number): number {
+	if (
+		offset > 0 &&
+		offset < text.length &&
+		text.charCodeAt(offset - 1) >= 0xd800 &&
+		text.charCodeAt(offset - 1) <= 0xdbff &&
+		text.charCodeAt(offset) >= 0xdc00 &&
+		text.charCodeAt(offset) <= 0xdfff
+	) {
+		return offset - 1;
+	}
+	return offset;
+}
+
+function isSemanticBoundary(text: string, offset: number): boolean {
+	const whitespace = text[offset];
+	if (whitespace === undefined || !/\s/u.test(whitespace)) return false;
+	if (whitespace === "\n") return true;
+
+	let previous = offset - 1;
+	while (previous >= 0 && /["')\]}]/u.test(text[previous] ?? "")) {
+		previous -= 1;
+	}
+	return /[.!?;:]/u.test(text[previous] ?? "");
+}
+
+/**
+ * Split complete recall text at paragraph/sentence boundaries where practical.
+ * Chunks never overlap and no non-whitespace content is dropped. A minimum
+ * boundary is enforced from the remaining chunk budget so every accepted input
+ * is representable in at most MAX_RECALL_EMBEDDING_CHUNKS calls.
+ */
+function prepareRecallEmbeddingChunks(text: string): string[] {
+	const source = text.trim();
+	if (!source) return [];
+	if (source.length > MAX_RECALL_EMBEDDING_CODE_UNITS) return [];
+
+	const chunks: string[] = [];
+	let start = 0;
+	while (start < source.length) {
+		const remainingSlots = MAX_RECALL_EMBEDDING_CHUNKS - chunks.length;
+		let hardEnd = avoidsSplittingSurrogatePair(
+			source,
+			Math.min(start + CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS, source.length),
+		);
+		if (hardEnd <= start) {
+			throw new Error(
+				"Recall embedding chunk cannot preserve a Unicode scalar.",
+			);
+		}
+
+		if (hardEnd < source.length) {
+			const budgetMinimum = Math.max(
+				start + 1,
+				source.length -
+					(remainingSlots - 1) * CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+			);
+			const preferredMinimum = Math.max(
+				budgetMinimum,
+				start + Math.floor(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS * 0.5),
+			);
+
+			let semanticEnd = -1;
+			let whitespaceEnd = -1;
+			for (let offset = hardEnd - 1; offset >= preferredMinimum; offset -= 1) {
+				if (!/\s/u.test(source[offset] ?? "")) continue;
+				if (whitespaceEnd < 0) whitespaceEnd = offset;
+				if (isSemanticBoundary(source, offset)) {
+					semanticEnd = offset;
+					break;
+				}
+			}
+			const candidate = semanticEnd >= 0 ? semanticEnd : whitespaceEnd;
+			if (candidate >= budgetMinimum) hardEnd = candidate;
+		}
+
+		const chunk = prepareCanonicalEmbeddingInput(source.slice(start, hardEnd));
+		chunks.push(chunk);
+		start = hardEnd;
+		while (start < source.length && /\s/u.test(source[start] ?? "")) {
+			start += 1;
+		}
+	}
+
+	return chunks;
+}
+
+function combineRecallChunkEmbeddings(
+	vectors: number[][],
+	chunkCodeUnits: number[],
+): number[] {
+	if (vectors.length === 0 || vectors.length !== chunkCodeUnits.length) {
+		throw new Error("Recall embedding chunk/vector count mismatch.");
+	}
+	const normalized = vectors.map((vector) =>
+		normalizeCanonicalEmbedding(vector),
+	);
+	if (normalized.length === 1) return normalized[0];
+
+	const combined = new Array<number>(normalized[0]?.length ?? 0).fill(0);
+	for (let chunkIndex = 0; chunkIndex < normalized.length; chunkIndex += 1) {
+		const vector = normalized[chunkIndex];
+		const weight = chunkCodeUnits[chunkIndex];
+		if (!vector || weight === undefined) {
+			throw new Error("Recall embedding chunk/vector count mismatch.");
+		}
+		for (let dimension = 0; dimension < vector.length; dimension += 1) {
+			combined[dimension] += (vector[dimension] ?? 0) * weight;
+		}
+	}
+	return normalizeCanonicalEmbedding(combined);
+}
+
+async function embedCanonicalRecallText(
+	runtime: IAgentRuntime,
+	text: string,
+	signal?: AbortSignal,
+): Promise<number[]> {
+	const chunks = prepareRecallEmbeddingChunks(text);
+	if (chunks.length === 0) {
+		throw new RangeError(
+			`Recall embedding input exceeds the bounded ${MAX_RECALL_EMBEDDING_CODE_UNITS}-code-unit hot-path maximum.`,
+		);
+	}
+
+	const vectors: number[][] = [];
+	for (const chunk of chunks) {
+		if (signal?.aborted) {
+			throw signal.reason ?? new DOMException("Aborted", "AbortError");
+		}
+		vectors.push(
+			await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+				text: chunk,
+				...(signal ? { signal } : {}),
+			}),
+		);
+	}
+	return combineRecallChunkEmbeddings(
+		vectors,
+		chunks.map((chunk) => chunk.length),
+	);
 }
 
 interface TurnEmbedCache {
@@ -275,6 +434,14 @@ export async function embedRecallQuery(
 	if (!normalized) {
 		return null;
 	}
+	if (providerQueryText.trim().length > MAX_RECALL_EMBEDDING_CODE_UNITS) {
+		recordInferenceSpan("embedding-input-budget:recall", 0, {
+			outcome: "keyword_fallback",
+			inputCodeUnits: providerQueryText.trim().length,
+			maximumCodeUnits: MAX_RECALL_EMBEDDING_CODE_UNITS,
+		});
+		return null;
+	}
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
@@ -311,29 +478,11 @@ export async function embedRecallQuery(
 		});
 	}
 	if (!pending) {
-		try {
-			// Promise.resolve guards a model handler that returns a bare value (or
-			// nothing); the catch guards one that throws synchronously. Both are the
-			// same failure as a rejected embed and must fail OPEN here — several
-			// callers (the augmentation warm, the message-service prefetch) invoke
-			// this fire-and-forget, so a rejection escaping this async fn would
-			// surface as an unhandled rejection instead of degraded recall.
-			pending = Promise.resolve(
-				runtime.useModel(ModelType.TEXT_EMBEDDING, {
-					text: providerQueryText,
-					...(signal ? { signal } : {}),
-				}) as Promise<number[]>,
-			).then((vector) => normalizeCanonicalEmbedding(vector));
-		} catch (error) {
-			if (signal?.aborted) {
-				throw signal.reason ?? error;
-			}
-			// error-policy:J4 semantic recall explicitly degrades to keyword recall;
-			// unexpected failures remain observable, while a provider-owned typed
-			// unavailable state is already diagnosed at its registration/probe boundary.
-			reportUnexpectedEmbeddingFailure(runtime, error, "synchronous");
-			return null;
-		}
+		// The async helper converts a bare return, synchronous throw, or rejected
+		// provider call into one shared promise. Fire-and-forget warmers therefore
+		// cannot leak an unhandled rejection; the awaited boundary below degrades
+		// every failure consistently to keyword recall.
+		pending = embedCanonicalRecallText(runtime, providerQueryText, signal);
 		cache?.inFlight.set(normalized, pending);
 		// Populate the per-turn result cache so a later identical query in the same
 		// turn reuses this vector instead of issuing a new call, and clear the

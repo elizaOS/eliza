@@ -9,6 +9,10 @@
  * embedding API handlers registered through the production model router.
  */
 import { describe, expect, test, vi } from "vitest";
+import {
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	normalizeCanonicalEmbedding,
+} from "../../constants/embeddings.ts";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
@@ -130,6 +134,60 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		});
 		const vec = await embedRecallQuery(runtime, "hello world");
 		expect(vec).toEqual(v(1));
+	});
+
+	test("semantically chunks and aggregates a 938-unit rewritten recall query without truncation", async () => {
+		const seen: string[] = [];
+		const vectors = [v(2), v(7), v(11)];
+		const { runtime, calls } = makeRuntime({
+			embed: async ({ text }) => {
+				seen.push(text);
+				return vectors[seen.length - 1] ?? v(13);
+			},
+		});
+		const first = `First topic: ${"alpha ".repeat(69)}done.`;
+		const second = `Second topic: ${"beta ".repeat(73)}done.`;
+		const query = `${first}\n\n${second}`.padEnd(938, "z");
+
+		const result = await embedRecallQuery(runtime, query);
+
+		expect(query).toHaveLength(938);
+		expect(seen.length).toBeGreaterThan(1);
+		expect(calls.count).toBe(seen.length);
+		for (const chunk of seen) {
+			expect(chunk.length).toBeLessThanOrEqual(
+				CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+			);
+		}
+		// Chunk-boundary whitespace is insignificant to embeddings; every other
+		// code unit from the rewritten query reaches exactly one provider call.
+		expect(seen.join("").replace(/\s/gu, "")).toBe(query.replace(/\s/gu, ""));
+
+		const weighted = new Array<number>(384).fill(0);
+		for (let index = 0; index < seen.length; index += 1) {
+			const vector = vectors[index] ?? v(13);
+			const weight = seen[index]?.length ?? 0;
+			for (let dimension = 0; dimension < vector.length; dimension += 1) {
+				weighted[dimension] += (vector[dimension] ?? 0) * weight;
+			}
+		}
+		expect(result).toEqual(normalizeCanonicalEmbedding(weighted));
+		expect(runtime.getRecentReportedErrors()).toEqual([]);
+	});
+
+	test("bounds pathological recall fan-out before provider dispatch", async () => {
+		const { runtime, calls } = makeRuntime({
+			embed: async () => v(1),
+		});
+
+		await expect(
+			embedRecallQuery(
+				runtime,
+				"x".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS * 8 + 1),
+			),
+		).resolves.toBeNull();
+		expect(calls.count).toBe(0);
+		expect(runtime.getRecentReportedErrors()).toEqual([]);
 	});
 
 	test("redacts credentials before embedding and uses the same safe cache key", async () => {

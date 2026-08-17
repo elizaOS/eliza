@@ -1038,11 +1038,34 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
  * adjacent to CURRENT_TIME, so the user-message bytes already churn at
  * that position every turn.
  *
- * Note: we still keep FACTS composed and rendered — Stage 1 may need a
- * grounded fact to discriminate ambiguous routing, and stored facts must
- * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
+ * Note: ordinary text/native-voice turns still keep FACTS composed and
+ * rendered — Stage 1 may need a grounded fact to discriminate ambiguous
+ * routing, and stored facts must be recallable on the simple path (see
+ * CORE_RESPONSE_STATE_PROVIDERS). Exact browser realtime voice is the narrow
+ * exception below: it retains RECENT_MESSAGES and the explicitly-routed,
+ * bounded semantic-memory lane, but never waits for the unbounded FACTS read
+ * before first audio.
  */
 const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
+
+/**
+ * Provider reads excluded from every synchronous composition/render pass for
+ * exact browser realtime voice. FACTS can issue several adapter reads and a
+ * fallback embedding search; a live trace measured 1.56 s here before the
+ * first Cerebras request. This structural transport gate leaves ordinary chat,
+ * Discord/native voice, and generic VOICE_DM behavior byte-for-byte unchanged.
+ * Recent same-room dialogue remains in RECENT_MESSAGES, while an explicitly
+ * selected memory context can still use its separately bounded semantic lane.
+ */
+const REALTIME_VOICE_CRITICAL_PATH_PROVIDER_EXCLUSIONS = ["FACTS"] as const;
+
+function realtimeVoiceCriticalPathProviderExclusions(
+	message: Memory,
+): readonly string[] {
+	return isRealtimeVoiceTransport(message)
+		? REALTIME_VOICE_CRITICAL_PATH_PROVIDER_EXCLUSIONS
+		: [];
+}
 
 /**
  * Providers withheld from EVERY composition pass and EVERY render of an
@@ -1084,14 +1107,25 @@ function ambientTurnProviderExclusions(
 	return [];
 }
 
-/** Per-turn Stage-1 exclusions: the static set plus the ambient-turn gate. */
+/** Provider exclusions that own the entire turn, including cached rendering. */
+function turnScopedProviderExclusions(
+	runtime: IAgentRuntime,
+	message: Memory,
+): readonly string[] {
+	return [
+		...ambientTurnProviderExclusions(runtime, message),
+		...realtimeVoiceCriticalPathProviderExclusions(message),
+	];
+}
+
+/** Per-turn Stage-1 exclusions: the static set plus whole-turn transport gates. */
 function stage1ExtraProviderExclusions(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): readonly string[] {
 	return [
 		...STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
-		...ambientTurnProviderExclusions(runtime, message),
+		...turnScopedProviderExclusions(runtime, message),
 	];
 }
 
@@ -1404,13 +1438,12 @@ export function selectV5PlannerStateProviderNames(args: {
 		providerNames.add(name);
 	}
 
-	// The ambient gate owns this composition pass too: without it, the
-	// always-on re-add above restores RECENT_ERRORS for ambient turns routed
-	// to planning, undoing the Stage-1 exclusion exactly on the turns that
-	// reach a model twice. Stage-1-only exclusions (ENTITIES/DOCUMENTS) are
-	// deliberately NOT subtracted here — the planner legitimately re-adds
-	// them; the ambient exclusions are turn-scoped, not stage-scoped.
-	for (const excluded of ambientTurnProviderExclusions(
+	// Turn-scoped gates own this composition pass too: without it, the core or
+	// always-on re-add above restores RECENT_ERRORS on ambient turns and FACTS
+	// on exact realtime voice turns routed to planning. Stage-1-only exclusions
+	// (ENTITIES/DOCUMENTS) are deliberately NOT subtracted here — the planner
+	// legitimately re-adds them.
+	for (const excluded of turnScopedProviderExclusions(
 		args.runtime,
 		args.message,
 	)) {
@@ -9823,6 +9856,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 			"Built v5 planner action surface",
 		);
+		const plannerRenderProviderExclusions = turnScopedProviderExclusions(
+			args.runtime,
+			args.message,
+		);
 		const plannerContext = await createV5MessageContextObject({
 			...args,
 			state: plannerState,
@@ -9833,13 +9870,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			preselectedActions: exposedPlannerActions,
 			actionSurface,
 			ambientTurn,
-			// Render-side half of the ambient gate: the include-list exclusion in
+			// Render-side half of the turn gates: the include-list exclusion in
 			// selectV5PlannerStateProviderNames stops fresh composition, but
 			// composeState merges the whole turn cache into the state it returns,
 			// so a block composed earlier in the turn would still render here.
-			// The exclusion must own cached rendering as well as composition.
-			...(ambientTurn
-				? { extraProviderExclusions: AMBIENT_TURN_PROVIDER_EXCLUSIONS }
+			...(plannerRenderProviderExclusions.length > 0
+				? { extraProviderExclusions: plannerRenderProviderExclusions }
 				: {}),
 		});
 		const responseHandlerContextSlices = stringArrayProperty(

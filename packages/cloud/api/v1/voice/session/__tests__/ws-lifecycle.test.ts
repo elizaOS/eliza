@@ -2571,7 +2571,7 @@ describe("voice-session WS lifecycle", () => {
     expect(cartesia.sentText()).toBe("The answer is ready now.");
   });
 
-  test("first authoritative answer text cancels filler while the stream is still open", async () => {
+  test("a display-only first delta cannot cancel progress while speech remains uncommitted", async () => {
     const controlled = makeControlledCanonicalChunkFetch();
     const client = new FakeClientSocket();
     await connectSession({
@@ -2588,7 +2588,12 @@ describe("voice-session WS lifecycle", () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
     await flush();
 
-    expect(client.controlTypes()).not.toContain("assistant_progress");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "assistant_progress",
+        text: "Yeah, one sec.",
+      }),
+    );
 
     controlled.enqueueChunk(" and is now complete.");
     controlled.finish();
@@ -2596,7 +2601,39 @@ describe("voice-session WS lifecycle", () => {
 
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(cartesia.sentText()).toBe(
-      "The answer has started and is now complete.",
+      "Yeah, one sec.The answer has started and is now complete.",
+    );
+  });
+
+  test("validated committed speech cancels progress before its deadline", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 30,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer with one safe sentence");
+    await controlled.ready;
+    enqueueCommittedSpeechPrefix(
+      controlled,
+      ["A complete safe sentence that is ready to speak."],
+      "",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).not.toContain("assistant_progress");
+    expect(cartesia.sentText()).toBe("");
+
+    controlled.finish();
+    await flush();
+    expect(cartesia.sentText()).toBe(
+      "A complete safe sentence that is ready to speak.",
     );
   });
 

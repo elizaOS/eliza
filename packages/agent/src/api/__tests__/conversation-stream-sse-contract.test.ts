@@ -3140,10 +3140,21 @@ describe("conversation stream SSE contract (#10712)", () => {
     const fixture = createCtx(
       createChunkPlanMessageService(
         [
-          { chunk: firstSentence, accumulated: firstSentence },
+          {
+            chunk: firstSentence,
+            accumulated: firstSentence,
+            metadata: {
+              authority: "committed_reply",
+              visibleFormat: "text",
+            },
+          },
           {
             chunk: " A later model token provides lookahead.",
             accumulated: `${firstSentence} A later model token provides lookahead.`,
+            metadata: {
+              authority: "committed_reply",
+              visibleFormat: "text",
+            },
           },
         ],
         `${firstSentence} A later model token provides lookahead.`,
@@ -3190,6 +3201,36 @@ describe("conversation stream SSE contract (#10712)", () => {
         (payload) => payload.type === "voice_speech_segment",
       ),
     ).toBe(false);
+  });
+
+  it("keeps an uncommitted internal draft out of realtime voice before the terminal reply", async () => {
+    const privateDraft =
+      "hit the same error a few times recently. details are in diagnostics, not posting them here.";
+    const finalText = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10. it's 19:54.";
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:ignore-uncommitted-draft");
+    const fixture = createCtx(
+      createChunkPlanMessageService(
+        [{ chunk: privateDraft, accumulated: privateDraft }],
+        finalText,
+        "terminal reply must own the turn",
+      ),
+    );
+
+    await handleConversationRoutes(fixture.ctx);
+
+    const payloads = parseSsePayloads(fixture.record.writes);
+    expect(JSON.stringify(payloads)).not.toContain(privateDraft);
+    expect(payloads).not.toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        code: "committed_speech_protocol_error",
+      }),
+    );
+    expect(payloads).toContainEqual(
+      expect.objectContaining({ type: "done", fullText: finalText }),
+    );
   });
 
   it("speaks an upstream-committed first sentence without waiting for fake lookahead", async () => {
@@ -3246,10 +3287,18 @@ describe("conversation stream SSE contract (#10712)", () => {
           {
             chunk: `${committed} Next`,
             accumulated: `${committed} Next`,
+            metadata: {
+              authority: "committed_reply",
+              visibleFormat: "text",
+            },
           },
           {
             chunk: `${rewritten} Next`,
             accumulated: `${rewritten} Next`,
+            metadata: {
+              authority: "committed_reply",
+              visibleFormat: "text",
+            },
           },
         ],
         `${rewritten} Next`,
@@ -3295,10 +3344,16 @@ describe("conversation stream SSE contract (#10712)", () => {
             chunk: string,
             messageId?: string,
             accumulated?: string,
+            metadata?: StreamChunkMetadata,
           ) => Promise<void> | void;
         },
       ) {
-        await options?.onStreamChunk?.(visiblePrefix, undefined, visiblePrefix);
+        await options?.onStreamChunk?.(
+          visiblePrefix,
+          undefined,
+          visiblePrefix,
+          { authority: "committed_reply", visibleFormat: "text" },
+        );
         throw new TurnAbortedError("confirmed_speech");
       },
       shouldRespond: () => ({

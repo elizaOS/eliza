@@ -166,6 +166,72 @@ describe("stage1ResponseStateProviderNames", () => {
 		);
 	});
 
+	it("keeps synchronous FACTS recall off exact realtime voice Stage 1 only", () => {
+		const runtime = { providers: [] } as unknown as IAgentRuntime;
+		const realtimeVoice = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7",
+			"continue what we were discussing",
+			{
+				channelType: ChannelType.VOICE_DM,
+				metadata: { clientTransport: "realtime_voice" },
+			},
+		);
+		const nativeVoice = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8",
+			"continue what we were discussing",
+			{ channelType: ChannelType.VOICE_DM },
+		);
+		const ordinaryDm = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa9",
+			"continue what we were discussing",
+			{ channelType: ChannelType.DM },
+		);
+
+		const realtimeNames = stage1ResponseStateProviderNames(
+			runtime,
+			realtimeVoice,
+		);
+		expect(realtimeNames).not.toContain("FACTS");
+		// Smart short-horizon context stays on the low-latency path.
+		expect(realtimeNames).toContain("RECENT_MESSAGES");
+		expect(stage1ResponseStateProviderNames(runtime, nativeVoice)).toContain(
+			"FACTS",
+		);
+		expect(stage1ResponseStateProviderNames(runtime, ordinaryDm)).toContain(
+			"FACTS",
+		);
+	});
+
+	it("does not execute FACTS while composing exact realtime voice Stage 1", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "realtime-voice-facts-test" } as Character,
+		});
+		const facts = countingProvider("FACTS");
+		const recent = countingProvider("RECENT_MESSAGES");
+		runtime.registerProvider(facts.provider);
+		runtime.registerProvider(recent.provider);
+
+		const message = makeMessage(
+			"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb7",
+			"continue what we were discussing",
+			{
+				channelType: ChannelType.VOICE_DM,
+				metadata: { clientTransport: "realtime_voice" },
+			},
+		);
+		const state = await runtime.composeState(
+			message,
+			stage1ResponseStateProviderNames(runtime, message),
+			true,
+			false,
+		);
+
+		expect(facts.calls()).toBe(0);
+		expect(recent.calls()).toBe(1);
+		expect(state.text).not.toContain("FACTS#");
+		expect(state.text).toContain("RECENT_MESSAGES#1");
+	});
+
 	it("skips excluded providers at stage 1 and defers them to the planner recompose", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "stage1-exec-test" } as Character,

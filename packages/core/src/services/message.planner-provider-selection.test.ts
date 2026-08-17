@@ -201,6 +201,8 @@ describe("selectV5PlannerStateProviderNames — realtime voice owner-private rou
 		expect(selected).toContain("PUBLIC_ALWAYS_ON");
 		expect(selected).not.toContain("OWNER_MEMORY");
 		expect(selected).not.toContain("OWNER_UNGATED");
+		expect(selected).not.toContain("FACTS");
+		expect(selected).toContain("RECENT_MESSAGES");
 	});
 
 	it("re-adds an explicitly routed owner-private provider only for its selected context", () => {
@@ -212,6 +214,7 @@ describe("selectV5PlannerStateProviderNames — realtime voice owner-private rou
 
 		expect(selected).toContain("OWNER_MEMORY");
 		expect(selected).not.toContain("OWNER_UNGATED");
+		expect(selected).not.toContain("FACTS");
 	});
 
 	it("preserves legacy ordinary-DM always-on provider behavior", () => {
@@ -223,6 +226,18 @@ describe("selectV5PlannerStateProviderNames — realtime voice owner-private rou
 
 		expect(selected).toContain("OWNER_MEMORY");
 		expect(selected).toContain("OWNER_UNGATED");
+		expect(selected).toContain("FACTS");
+	});
+
+	it("preserves native VOICE_DM fact recall outside the browser realtime transport", () => {
+		const selected = selectForMessage(
+			[publicAlwaysOn, ownerMemory, ownerUngated],
+			["general"],
+			msg({ channelType: ChannelType.VOICE_DM }),
+		);
+
+		expect(selected).toContain("FACTS");
+		expect(selected).toContain("RECENT_MESSAGES");
 	});
 });
 

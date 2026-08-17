@@ -41,6 +41,7 @@ import {
 import {
   CloudTextPrewarmError,
   prewarmCloudTextGateway,
+  shouldPrewarmCloudTextGateway,
 } from "./routes/cloud-text-prewarm";
 
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
@@ -224,6 +225,17 @@ async function cloudTextPrewarmHandler(
   }
   if (!runtime || typeof runtime !== "object") {
     sendJson(httpRes, { error: "Runtime is unavailable" }, 503);
+    return;
+  }
+
+  const config = getRuntimeConfig(runtime);
+  if (
+    !shouldPrewarmCloudTextGateway(
+      config.serviceRouting,
+      process.env.ELIZAOS_CLOUD_USE_INFERENCE,
+    )
+  ) {
+    sendJson(httpRes, { ok: true, state: "not-needed" });
     return;
   }
 

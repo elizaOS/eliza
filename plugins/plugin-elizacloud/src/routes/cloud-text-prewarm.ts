@@ -1,4 +1,8 @@
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  type ServiceRoutingConfig,
+} from "@elizaos/core";
 
 // The Cloud inference auth context has a 60-second physical TTL and refreshes
 // off-response after 30 seconds. Refreshing this local lease at 45 seconds keeps
@@ -8,6 +12,21 @@ const DEFAULT_PREWARM_COOLDOWN_MS = 45_000;
 
 export type CloudTextPrewarmResult = "warmed" | "already-warm";
 export type CloudTextPrewarmLane = "response-handler" | "committed-reply";
+
+/**
+ * The loopback voice probe exists to refresh Eliza Cloud's short-lived text
+ * admission/auth leases. An explicitly direct text route has no such lease;
+ * probing it would instead launch two unrelated provider generations beside
+ * the user's real turn. Keep legacy/missing routing eligible so existing Cloud
+ * proxy installs preserve their warmup behavior.
+ */
+export function shouldPrewarmCloudTextGateway(
+  serviceRouting: ServiceRoutingConfig | null | undefined,
+  cloudUseInference: string | undefined,
+): boolean {
+  if (cloudUseInference?.trim().toLowerCase() === "false") return false;
+  return serviceRouting?.llmText?.transport !== "direct";
+}
 
 export class CloudTextPrewarmError extends Error {
   readonly causeClass: string;
