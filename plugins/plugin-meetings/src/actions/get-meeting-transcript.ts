@@ -70,9 +70,10 @@ async function handler(
       `No speech has been transcribed in the ${label} meeting yet (status: ${transcript.status}).`,
     );
   }
+  const suffix = `\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`;
   const clipped =
     text.length > MAX_REPLY_CHARS
-      ? `${text.slice(0, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
+      ? `${text.slice(0, MAX_REPLY_CHARS - suffix.length)}${suffix}`
       : text;
   return reply(
     callback,
