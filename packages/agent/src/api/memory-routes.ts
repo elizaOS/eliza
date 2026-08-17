@@ -46,6 +46,8 @@ const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
  * writes (remember/delete/patch) invalidate explicitly and a row-count check
  * runs before every reuse, so the TTL only bounds staleness from
  * out-of-band *edits* that change text without changing the row count.
+ * Expiry triggers a background refresh (the cached corpus is still served),
+ * so the warm path never pays the multi-second rebuild synchronously.
  */
 const MEMORY_SEARCH_CACHE_TTL_MS = 10_000;
 const MEMORY_SEARCH_CACHE_MAX_ENTRIES = 4;
@@ -227,9 +229,22 @@ type MemorySearchCorpus = {
  *    count-preserving out-of-band edits.
  */
 const memorySearchCorpusCache = new Map<string, MemorySearchCorpus>();
+const memorySearchRefreshInFlight = new Map<
+  string,
+  Promise<MemorySearchCorpus>
+>();
+// Bumped on invalidation; an in-flight rebuild only publishes to the cache if
+// no invalidation happened after its scan began (prevents a background
+// refresh started before a delete/patch from resurrecting pre-mutation data).
+let memorySearchCacheGeneration = 0;
 
 export function invalidateMemorySearchCache(): void {
+  memorySearchCacheGeneration += 1;
   memorySearchCorpusCache.clear();
+  // In-flight rebuilds began against pre-invalidation data; drop them so no
+  // caller reuses a scan that predates the mutation (the generation check
+  // already stops them from publishing).
+  memorySearchRefreshInFlight.clear();
 }
 
 async function countRoomMessages(
@@ -246,17 +261,12 @@ async function countRoomMessages(
   }
 }
 
-async function getMemorySearchCorpus(
+async function buildMemorySearchCorpus(
   runtime: AgentRuntime,
   roomId: UUID,
+  key: string,
 ): Promise<MemorySearchCorpus> {
-  const key = `${runtime.agentId}:${roomId}`;
-  const cached = memorySearchCorpusCache.get(key);
-  if (cached && Date.now() - cached.builtAt <= MEMORY_SEARCH_CACHE_TTL_MS) {
-    const rowCount = await countRoomMessages(runtime, roomId);
-    if (rowCount !== null && rowCount === cached.rowCount) return cached;
-  }
-
+  const generationAtStart = memorySearchCacheGeneration;
   const [memories, countedRows] = await Promise.all([
     runtime.getMemories({
       roomId,
@@ -295,7 +305,13 @@ async function getMemorySearchCorpus(
     builtAt: Date.now(),
   };
 
-  if (countedRows !== null) {
+  // Only publish when (a) a freshness signal exists (COUNT worked) and (b) no
+  // invalidation raced this build; a stale publish could resurrect
+  // pre-mutation data for up to a TTL.
+  if (
+    countedRows !== null &&
+    generationAtStart === memorySearchCacheGeneration
+  ) {
     memorySearchCorpusCache.set(key, corpus);
     // Bounded: this endpoint is effectively single-room per agent, so the map
     // should hold one live entry; the cap only guards against key churn.
@@ -313,6 +329,48 @@ async function getMemorySearchCorpus(
   }
 
   return corpus;
+}
+
+async function getMemorySearchCorpus(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<MemorySearchCorpus> {
+  const key = `${runtime.agentId}:${roomId}`;
+  const cached = memorySearchCorpusCache.get(key);
+  if (cached) {
+    const rowCount = await countRoomMessages(runtime, roomId);
+    if (rowCount !== null && rowCount === cached.rowCount) {
+      if (Date.now() - cached.builtAt <= MEMORY_SEARCH_CACHE_TTL_MS) {
+        return cached;
+      }
+      // Row count still matches but the entry aged out: serve the cached
+      // corpus (bounded staleness for count-preserving out-of-band edits)
+      // and refresh in the background so no request pays the rebuild.
+      if (!memorySearchRefreshInFlight.has(key)) {
+        const refresh = buildMemorySearchCorpus(runtime, roomId, key);
+        memorySearchRefreshInFlight.set(key, refresh);
+        refresh
+          .catch(() => {
+            // Background refresh failure keeps serving the cached corpus;
+            // the next TTL expiry retries.
+          })
+          .finally(() => {
+            // Only clear our own registration; invalidation may have
+            // replaced it with a newer rebuild.
+            if (memorySearchRefreshInFlight.get(key) === refresh) {
+              memorySearchRefreshInFlight.delete(key);
+            }
+          });
+      }
+      return cached;
+    }
+    // Count mismatch (out-of-band create/delete) or unknown count: rebuild
+    // synchronously so results reflect the mutation immediately.
+  }
+
+  const inFlight = memorySearchRefreshInFlight.get(key);
+  if (inFlight) return inFlight;
+  return buildMemorySearchCorpus(runtime, roomId, key);
 }
 
 async function searchMemoryNotes(

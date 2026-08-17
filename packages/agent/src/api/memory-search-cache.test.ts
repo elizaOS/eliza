@@ -250,7 +250,7 @@ describe("GET /api/memory/search corpus cache", () => {
     expect(results.some((r) => r.text.includes("meteor shower"))).toBe(true);
   });
 
-  test("count-preserving out-of-band edit is served fresh after the TTL", async () => {
+  test("count-preserving out-of-band edit is picked up after the TTL (background refresh)", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-17T00:00:00Z"));
     const target = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -264,10 +264,13 @@ describe("GET /api/memory/search corpus cache", () => {
     if (row)
       row.content = { text: "kestrel sighting", source: HASH_MEMORY_SOURCE };
 
-    // Within the TTL the cached corpus may be served (bounded staleness).
-    vi.advanceTimersByTime(1_000);
-    // After the TTL the rebuild must observe the edit.
-    vi.advanceTimersByTime(15_000);
+    // After the TTL the first search may still serve the cached corpus
+    // (stale-while-revalidate) but must kick off a refresh.
+    vi.advanceTimersByTime(16_000);
+    await search(runtime, "kestrel");
+    // Let the background rebuild's microtasks settle (mock I/O is instant).
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
     const results = await search(runtime, "kestrel");
     expect(results.some((r) => r.text === "kestrel sighting")).toBe(true);
   });
