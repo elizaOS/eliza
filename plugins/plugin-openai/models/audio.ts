@@ -162,6 +162,7 @@ export async function handleTranscription(
       method: "POST",
       headers: getAuthHeader(runtime),
       body: formData,
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -255,6 +256,7 @@ export async function handleTextToSpeech(
         ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {

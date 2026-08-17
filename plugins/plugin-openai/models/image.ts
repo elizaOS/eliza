@@ -90,6 +90,7 @@ export async function handleImageGeneration(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -184,6 +185,7 @@ export async function handleImageDescription(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
