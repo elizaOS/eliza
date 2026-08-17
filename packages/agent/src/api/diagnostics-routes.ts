@@ -1,6 +1,7 @@
 /**
  * Diagnostics and observability HTTP routes for the local control API. Mounts:
- * GET/DELETE `/api/logs` (filtered read + clear of the in-memory log buffer),
+ * GET/DELETE `/api/logs` (filtered read + clear of the in-memory log buffer;
+ * `since` is a canonical epoch-ms or ISO cursor, same grammar as audit),
  * POST `/api/logs/export` (validated JSON/CSV download), GET `/api/agent/events`
  * (replayable autonomy/heartbeat event feed with runId/seq/after cursors), GET
  * `/api/security/audit` (filtered audit feed as a JSON snapshot or a live SSE
@@ -140,11 +141,26 @@ function parseAuditSince(raw: string | null): {
     };
   }
 
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric)) {
-    return { value: Math.trunc(numeric) };
+  // Canonical integer epoch only. Number("1e2") is 100 and Number("Infinity")
+  // is Infinity — both used to silently filter the live log viewer (or empty
+  // it) instead of rejecting the cursor.
+  if (/^-?(0|[1-9]\d*)$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (Number.isSafeInteger(numeric)) {
+      return { value: numeric };
+    }
+    return {
+      error: 'Invalid "since" filter: expected epoch ms or ISO timestamp.',
+    };
   }
 
+  // Date.parse("007") / Date.parse("1.5") are implementation-defined and
+  // must not become a silent cursor. Only ISO-shaped timestamps fall through.
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
+    return {
+      error: 'Invalid "since" filter: expected epoch ms or ISO timestamp.',
+    };
+  }
   const parsed = Date.parse(trimmed);
   if (!Number.isFinite(parsed)) {
     return {
@@ -263,8 +279,12 @@ export async function handleDiagnosticsRoutes(
     const sinceRaw = url.searchParams.get("since");
     let sinceMs: number | undefined;
     if (sinceRaw) {
-      const numeric = Number(sinceRaw);
-      if (!Number.isNaN(numeric)) sinceMs = numeric;
+      const sinceFilter = parseAuditSince(sinceRaw);
+      if (sinceFilter.error) {
+        json(res, { error: sinceFilter.error }, 400);
+        return true;
+      }
+      sinceMs = sinceFilter.value;
     }
     const entries = applyLogFilter(logBuffer, {
       source: url.searchParams.get("source") ?? undefined,
@@ -313,14 +333,21 @@ export async function handleDiagnosticsRoutes(
 
     let sinceMs: number | undefined;
     if (typeof body.since === "string" && body.since.trim()) {
-      const numeric = Number(body.since);
-      if (Number.isFinite(numeric)) {
-        sinceMs = numeric;
-      } else {
-        const parsed = Date.parse(body.since);
-        if (Number.isFinite(parsed)) sinceMs = parsed;
+      const sinceFilter = parseAuditSince(body.since);
+      if (sinceFilter.error) {
+        errorFn(res, sinceFilter.error, 400);
+        return true;
       }
-    } else if (typeof body.since === "number" && Number.isFinite(body.since)) {
+      sinceMs = sinceFilter.value;
+    } else if (typeof body.since === "number") {
+      if (!Number.isSafeInteger(body.since)) {
+        errorFn(
+          res,
+          'Invalid "since" filter: expected epoch ms or ISO timestamp.',
+          400,
+        );
+        return true;
+      }
       sinceMs = body.since;
     }
 
