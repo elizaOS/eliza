@@ -4,6 +4,10 @@ function describeRelativeTime(
 	timestamp: number,
 	style: "compact" | "verbose",
 ): string {
+	if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+		return "just now";
+	}
+
 	// Match packages/ui formatRelativeTime: construct the Date first and
 	// require a finite getTime(). That rejects NaN/±Infinity and finite
 	// values outside the ±8.64e15 Date range (which still pass
