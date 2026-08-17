@@ -31,6 +31,7 @@ export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
+export * from "./contracts/computer-use";
 // Linked-account contract literals are pure data (no Node deps); browser
 // clients validate untrusted /api/accounts payloads against them.
 export {

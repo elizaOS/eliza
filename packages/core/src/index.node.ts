@@ -55,6 +55,7 @@ export {
 	SECRET_KEY_ALIASES,
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
+export * from "./contracts/computer-use";
 export {
 	type CharacterFailureTemplates,
 	getDirectAccountProviderForFirstRunProvider,
