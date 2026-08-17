@@ -1,6 +1,6 @@
 # @elizaos/plugin-browser
 
-Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome/Safari Agent Browser Bridge companion extension.
+Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome, Firefox, and Safari Agent Browser Bridge companion extension.
 
 ## What this plugin provides
 
@@ -37,7 +37,7 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 | `cursor_hide` | Hide the cursor overlay |
 | `autofill_login` | Fill saved credentials into a browser tab (vault-gated; requires `domain`) |
 
-**MANAGE_BROWSER_BRIDGE** — Manages the Chrome/Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (`chrome://extensions`), `refresh` (report paired companions and settings). Owner-only.
+**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report paired companions and settings). Owner-only.
 
 ### Browser targets
 
@@ -46,7 +46,7 @@ The plugin uses a pluggable target registry in `BrowserService`. Targets are sel
 | Target ID | Backend | When available |
 |---|---|---|
 | `workspace` | Electrobun `BrowserView` (desktop) or JSDOM (web) | Always |
-| `bridge` | Paired Chrome/Safari via companion extension | At least one companion paired |
+| `bridge` | Paired Chrome, Firefox, or Safari via companion extension | At least one companion paired |
 | `stagehand` | Playwright/Stagehand via HTTP endpoint | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` set |
 
 External plugins can register additional targets by calling `BrowserService.registerTarget(target)`.
@@ -100,6 +100,9 @@ The plugin is opt-in. It activates when `config.features.browser` is truthy in t
 | `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | Set `false` to disable automatic stagehand-server install/build |
 | `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | Set `true` to allow stagehand target on mobile |
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | Platform hint for target scoring (`ios`/`android`/`mobile`) |
+| `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | Chrome Web Store listing override |
+| `ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL` | Firefox Add-ons listing override |
+| `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | Safari App Store listing override |
 
 ### Vault keys (set by the user, not env vars)
 

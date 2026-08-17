@@ -19,8 +19,10 @@ import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
+  BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type BrowserBridgeCompanionAuthErrorCode,
+  type BrowserBridgeKind,
   type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
@@ -43,6 +45,10 @@ import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
 } from "../service.js";
+
+function isBrowserBridgeKind(value: string): value is BrowserBridgeKind {
+  return BROWSER_BRIDGE_KINDS.some((kind) => kind === value);
+}
 
 export interface BrowserBridgeRouteContext {
   req: http.IncomingMessage;
@@ -748,8 +754,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -779,8 +789,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -800,8 +814,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
