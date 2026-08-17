@@ -24,6 +24,8 @@ export function baseSnapshot(
 ): ShellControllerSnapshot {
   return {
     phase: "idle",
+    authGate: { gated: false, phase: "clear" },
+    signingIn: false,
     responding: false,
     turnStatus: null,
     messages: EMPTY_MESSAGES,

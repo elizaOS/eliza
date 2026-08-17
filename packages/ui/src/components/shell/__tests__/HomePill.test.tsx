@@ -192,6 +192,7 @@ describe("HomePill", () => {
     );
     const btn = screen.getByRole("button", { name: /sign in to eliza/i });
     expect(btn.getAttribute("data-phase")).toBe("needs-auth");
+    expect(btn.hasAttribute("aria-pressed")).toBe(false);
     expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
       "Sign in to Eliza",
     );
@@ -215,6 +216,9 @@ describe("HomePill", () => {
     expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
       "animate-pulse",
     );
+    const btn = screen.getByRole("button", { name: /signing in to eliza/i });
+    expect(btn.getAttribute("aria-busy")).toBe("true");
+    expect(btn.hasAttribute("aria-pressed")).toBe(false);
   });
 
   it("stays available while booting and opens on click", () => {

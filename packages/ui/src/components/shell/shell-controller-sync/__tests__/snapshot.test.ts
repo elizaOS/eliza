@@ -9,9 +9,13 @@ describe("deriveShellControllerSnapshot", () => {
     const controller = makeFakeShellController();
     controller.recording = true;
     controller.transcript = "hi";
+    controller.authGate = { gated: true, phase: "needs-auth" };
+    controller.signingIn = true;
     const snap = deriveShellControllerSnapshot(controller);
     expect(snap.recording).toBe(true);
     expect(snap.transcript).toBe("hi");
+    expect(snap.authGate).toEqual({ gated: true, phase: "needs-auth" });
+    expect(snap.signingIn).toBe(true);
     expect("analyser" in snap).toBe(false);
     expect(snap.conversationNav).toEqual({
       hasPrev: false,
@@ -27,6 +31,9 @@ describe("snapshotsEqual", () => {
     expect(snapshotsEqual(baseSnapshot(), baseSnapshot())).toBe(true);
     expect(
       snapshotsEqual(baseSnapshot(), baseSnapshot({ recording: true })),
+    ).toBe(false);
+    expect(
+      snapshotsEqual(baseSnapshot(), baseSnapshot({ signingIn: true })),
     ).toBe(false);
   });
   it("compares messages by reference (identity-preserving projection)", () => {
