@@ -18,7 +18,7 @@ export class Lru<K, V> {
     if (value === undefined) return undefined;
     this.map.delete(key);
     this.map.set(key, value);
-    return value;
+    return structuredClone(value as unknown as object) as V;
   }
 
   set(key: K, value: V): void {
@@ -28,7 +28,7 @@ export class Lru<K, V> {
       const oldest = this.map.keys().next();
       if (!oldest.done) this.map.delete(oldest.value);
     }
-    this.map.set(key, value);
+    this.map.set(key, structuredClone(value as unknown as object) as V);
   }
 
   delete(key: K): boolean {
