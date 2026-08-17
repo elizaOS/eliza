@@ -5,6 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const DNS_ONLY_TYPES = new Set(["CNAME", "TXT"]);
 const REQUIRED_TUNNEL_ROLES = [
@@ -197,4 +198,5 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  main();

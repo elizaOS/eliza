@@ -14,6 +14,7 @@
  * Divergence, missing successor proof, and unverifiable state all fail hard.
  */
 import { appendFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   execFileSync,
   spawnSync,
@@ -376,7 +377,10 @@ async function main() {
   process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     // error-policy:J1 the CLI boundary translates remote resolution failures
     // into a visible, fail-closed workflow result before provider mutation.

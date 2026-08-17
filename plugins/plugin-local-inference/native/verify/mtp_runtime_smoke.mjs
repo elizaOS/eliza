@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   buildSpeculativeBenchmarkReport,
   latestSpeculativeReportPath,
@@ -421,6 +421,6 @@ function main() {
   if (!mtp.pass) process.exitCode = 3;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
