@@ -24,30 +24,33 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+const BILLING_SOURCES = [
+  "gateway",
+  "bitrouter",
+  "cerebras",
+  "openai",
+  "groq",
+  "vast",
+  "fal",
+  "elevenlabs",
+  "suno",
+] as const;
+const PRODUCT_FAMILIES = [
+  "language",
+  "embedding",
+  "image",
+  "video",
+  "music",
+  "tts",
+  "stt",
+  "voice_clone",
+] as const;
+
 const OverrideSchema = z.object({
-  billingSource: z.enum([
-    "gateway",
-    "bitrouter",
-    "cerebras",
-    "openai",
-    "groq",
-    "vast",
-    "fal",
-    "elevenlabs",
-    "suno",
-  ]),
+  billingSource: z.enum(BILLING_SOURCES),
   provider: z.string().min(1),
   model: z.string().min(1),
-  productFamily: z.enum([
-    "language",
-    "embedding",
-    "image",
-    "video",
-    "music",
-    "tts",
-    "stt",
-    "voice_clone",
-  ]),
+  productFamily: z.enum(PRODUCT_FAMILIES),
   chargeType: z.string().min(1),
   unit: z.enum([
     "token",
@@ -89,10 +92,51 @@ app.get("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    const billingSource = c.req.query("billingSource") || undefined;
+    // Admin pricing-catalog identity, not leftover tax on admin metrics
+    // timeRange or analytics export type. The prior `|| undefined` passed
+    // GATEWAY / LANGUAGE / foo into listPersistedPricingEntries, so
+    // operators asking for the gateway catalog received an empty page.
+    // Missing / empty still means unfiltered. Garbage 400s before the
+    // catalog sinks. provider / model / chargeType stay free-form.
+    const requestedSource = c.req.query("billingSource");
+    if (
+      requestedSource != null &&
+      requestedSource !== "" &&
+      !BILLING_SOURCES.includes(
+        requestedSource as (typeof BILLING_SOURCES)[number],
+      )
+    ) {
+      return c.json(
+        {
+          error: "invalid_billing_source",
+          message:
+            'billingSource must be "gateway", "bitrouter", "cerebras", "openai", "groq", "vast", "fal", "elevenlabs", or "suno".',
+        },
+        400,
+      );
+    }
+    const requestedFamily = c.req.query("productFamily");
+    if (
+      requestedFamily != null &&
+      requestedFamily !== "" &&
+      !PRODUCT_FAMILIES.includes(
+        requestedFamily as (typeof PRODUCT_FAMILIES)[number],
+      )
+    ) {
+      return c.json(
+        {
+          error: "invalid_product_family",
+          message:
+            'productFamily must be "language", "embedding", "image", "video", "music", "tts", "stt", or "voice_clone".',
+        },
+        400,
+      );
+    }
+
+    const billingSource = requestedSource || undefined;
     const provider = c.req.query("provider") || undefined;
     const model = c.req.query("model") || undefined;
-    const productFamily = c.req.query("productFamily") || undefined;
+    const productFamily = requestedFamily || undefined;
     const chargeType = c.req.query("chargeType") || undefined;
 
     const [entries, refreshRuns] = await Promise.all([
