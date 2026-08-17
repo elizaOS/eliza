@@ -490,4 +490,77 @@ describe("handleNotificationRoute", () => {
       503,
     );
   });
+
+  it("POST /api/notifications/:id/read returns 400 on malformed percent-encoded id", async () => {
+    const helpers = makeHelpers();
+    const markRead = vi.spyOn(service, "markRead");
+    for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const path = `/api/notifications/${badId}/read`;
+      await handleNotificationRoute(
+        req(path),
+        res,
+        path,
+        "POST",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "invalid notification id",
+        400,
+      );
+    }
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it("DELETE /api/notifications/:id returns 400 on malformed percent-encoded id", async () => {
+    const helpers = makeHelpers();
+    const remove = vi.spyOn(service, "remove");
+    for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const path = `/api/notifications/${badId}`;
+      await handleNotificationRoute(
+        req(path),
+        res,
+        path,
+        "DELETE",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "invalid notification id",
+        400,
+      );
+    }
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("decodes valid percent-encoded notification id on markRead and remove", async () => {
+    const n = await service.notify({ title: "Encoded" });
+    const encodedId = encodeURIComponent(n.id);
+    const helpers = makeHelpers();
+    const markRead = vi.spyOn(service, "markRead");
+    await handleNotificationRoute(
+      req(`/api/notifications/${encodedId}/read`),
+      res,
+      `/api/notifications/${encodedId}/read`,
+      "POST",
+      { runtime },
+      helpers,
+    );
+    expect(markRead).toHaveBeenCalledWith(n.id);
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+
+    const remove = vi.spyOn(service, "remove");
+    await handleNotificationRoute(
+      req(`/api/notifications/${encodedId}`),
+      res,
+      `/api/notifications/${encodedId}`,
+      "DELETE",
+      { runtime },
+      helpers,
+    );
+    expect(remove).toHaveBeenCalledWith(n.id);
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+  });
 });

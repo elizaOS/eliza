@@ -101,7 +101,15 @@ export async function handlePushTokenRoute(
     /^\/api\/notifications\/push-tokens\/([^/]+)$/,
   );
   if (method === "DELETE" && tokenMatch) {
-    const ok = await registry.unregister(decodeURIComponent(tokenMatch[1]));
+    let token: string;
+    try {
+      token = decodeURIComponent(tokenMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid push token", 400);
+      return true;
+    }
+    const ok = await registry.unregister(token);
     helpers.json(res, { ok });
     return true;
   }
