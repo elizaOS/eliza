@@ -23,7 +23,10 @@ const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
 const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
-  it("rejects a list_agents alias on the promoted spawn tool before spawning", async () => {
+  it("executes a declared list_agents alias on the promoted spawn tool instead of spawning or stranding", async () => {
+    // New virtual-pin contract: an explicit DECLARED discriminator runs the
+    // requested operation — the old corrective refusal stranded turns whose
+    // surface lacked the named replacement tool.
     const spawn = promoteSubactionsToActions(spawnAgentAction).find(
       (action) => action.name === "TASKS_SPAWN_AGENT",
     );
@@ -38,10 +41,7 @@ describe("TASKS:spawn_agent", () => {
       callback(),
     );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Call TASKS_LIST_AGENTS"),
-    });
+    expect((result as { success?: boolean }).success).toBe(true);
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
