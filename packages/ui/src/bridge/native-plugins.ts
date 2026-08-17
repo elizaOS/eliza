@@ -967,9 +967,13 @@ export interface ElizaVoicePluginLike extends NativePlugin {
  */
 export type DictationActivityPhase =
   | "recording"
+  | "ready"
+  | "listening"
   | "transcribing"
   | "thinking"
-  | "speaking";
+  | "speaking"
+  | "error"
+  | "ended";
 
 /** Native-localized titles for app-owned Live Activity session kinds. */
 export type LiveActivitySessionTitleKind = "keyboard-dictation";

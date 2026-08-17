@@ -14,14 +14,18 @@ import Foundation
 @available(iOS 16.1, *)
 struct ElizaDictationAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
-        // The four states a voice turn passes through. `recording` and
-        // `transcribing` are the Wispr dictation UX; `thinking`/`speaking`
-        // cover the continuous-chat turn once the agent responds.
+        // `recording` remains for the keyboard-dictation handoff. The other
+        // states mirror the canonical batch-or-realtime Eliza voice session;
+        // error/ended are terminal and may be displayed only briefly.
         enum Phase: String, Codable, Hashable {
             case recording
+            case ready
+            case listening
             case transcribing
             case thinking
             case speaking
+            case error
+            case ended
         }
 
         var phase: Phase
@@ -29,7 +33,8 @@ struct ElizaDictationAttributes: ActivityAttributes {
         // (`Text(timerInterval:)`), so elapsed time renders without a per-second
         // Activity update burning the ActivityKit budget.
         var startedAt: Date
-        // Latest partial/committed transcript, trimmed by the app before push.
+        // Retained for ActivityKit state compatibility, but the app writes an
+        // empty value and the extension never renders private transcript text.
         var transcriptSnippet: String
     }
 
