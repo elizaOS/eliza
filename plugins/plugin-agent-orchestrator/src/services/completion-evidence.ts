@@ -143,7 +143,7 @@ export interface CompletionEvidenceBundle {
 
 /** Total cap for the assembled evidence string. Sits under the verifier's own
  *  {@link trimEvidence} budget so the section structure survives intact. */
-const MAX_EVIDENCE_CHARS = 8_000;
+const MAX_EVIDENCE_CHARS = 24_000;
 const MAX_DIFF_CHARS = 3_000;
 const MAX_DELIVERABLE_CHARS = 1_500;
 const MAX_REPLY_CHARS = 1_500;
