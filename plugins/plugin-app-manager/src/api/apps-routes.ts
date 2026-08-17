@@ -70,6 +70,14 @@ import {
   parseAppPermissions,
 } from "@elizaos/shared";
 
+function decodeAppPathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".png": "image/png",
@@ -908,9 +916,14 @@ export async function handleAppsRoutes(
   }
 
   if (method === "GET" && pathname.startsWith("/api/apps/hero/")) {
-    const slug = decodeURIComponent(
+    const decoded = decodeAppPathSegment(
       pathname.slice("/api/apps/hero/".length),
-    ).trim();
+    );
+    if (decoded === null) {
+      error(res, "path segment is not valid percent-encoding", 400);
+      return true;
+    }
+    const slug = decoded.trim();
     if (!slug) {
       error(res, "app slug is required", 400);
       return true;
@@ -1048,8 +1061,12 @@ export async function handleAppsRoutes(
 
   if (method === "GET" && pathname.startsWith("/api/apps/runs/")) {
     const parts = pathname.split("/").filter(Boolean);
-    const runId = parts[3] ? decodeURIComponent(parts[3]) : "";
+    const runId = parts[3] ? decodeAppPathSegment(parts[3]) : "";
     const subroute = parts[4] ?? "";
+    if (runId === null) {
+      error(res, "path segment is not valid percent-encoding", 400);
+      return true;
+    }
     if (!runId) {
       error(res, "runId is required");
       return true;
@@ -1085,8 +1102,12 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname.startsWith("/api/apps/runs/")) {
     const parts = pathname.split("/").filter(Boolean);
-    const runId = parts[3] ? decodeURIComponent(parts[3]) : "";
+    const runId = parts[3] ? decodeAppPathSegment(parts[3]) : "";
     const subroute = parts[4] ?? "";
+    if (runId === null) {
+      error(res, "path segment is not valid percent-encoding", 400);
+      return true;
+    }
     if (!runId || !subroute) {
       error(res, "runId is required");
       return true;
@@ -1309,9 +1330,13 @@ export async function handleAppsRoutes(
   }
 
   if (method === "GET" && pathname.startsWith("/api/apps/info/")) {
-    const appName = decodeURIComponent(
+    const appName = decodeAppPathSegment(
       pathname.slice("/api/apps/info/".length),
     );
+    if (appName === null) {
+      error(res, "path segment is not valid percent-encoding", 400);
+      return true;
+    }
     if (!appName) {
       error(res, "app name is required");
       return true;
@@ -1490,9 +1515,13 @@ export async function handleAppsRoutes(
     (method === "GET" || method === "PUT") &&
     pathname.startsWith("/api/apps/permissions/")
   ) {
-    const slug = decodeURIComponent(
+    const slug = decodeAppPathSegment(
       pathname.slice("/api/apps/permissions/".length),
     );
+    if (slug === null) {
+      error(res, "path segment is not valid percent-encoding", 400);
+      return true;
+    }
     if (!slug || slug.includes("/")) {
       error(res, "slug is required");
       return true;

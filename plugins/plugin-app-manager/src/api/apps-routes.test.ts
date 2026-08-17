@@ -293,6 +293,57 @@ describe("handleAppsRoutes", () => {
     },
   );
 
+  it("rejects illegal percent-encoding in app path segments before service calls", async () => {
+    const appManager = createAppManager();
+    const refreshRegistry = vi.fn(async () => new Map());
+    const getPluginManager = () =>
+      ({
+        installPlugin: vi.fn(),
+        getInstalledPlugins: vi.fn(async () => []),
+        searchPlugins: vi.fn(async () => []),
+        refreshRegistry,
+      }) as never;
+
+    for (const { method, pathname } of [
+      { method: "GET", pathname: "/api/apps/hero/%" },
+      { method: "GET", pathname: "/api/apps/info/%2" },
+      { method: "GET", pathname: "/api/apps/runs/%ZZ" },
+      { method: "GET", pathname: "/api/apps/permissions/%" },
+    ]) {
+      const result = await callRoute({
+        method,
+        pathname,
+        appManager,
+        getPluginManager,
+      });
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(400);
+      expect(result.res.body).toEqual({
+        error: expect.stringContaining("percent-encoding"),
+      });
+    }
+    expect(appManager.getRun).not.toHaveBeenCalled();
+    expect(appManager.getInfo).not.toHaveBeenCalled();
+    expect(refreshRegistry).not.toHaveBeenCalled();
+  });
+
+  it("still loads a canonically encoded app info slug", async () => {
+    const appManager = createAppManager();
+    appManager.getInfo = vi.fn(async () => ({ name: "demo-app" }));
+    const result = await callRoute({
+      method: "GET",
+      pathname: "/api/apps/info/demo%2Dapp",
+      appManager,
+    });
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(result.res.body).toEqual({ name: "demo-app" });
+    expect(appManager.getInfo).toHaveBeenCalledWith(
+      expect.anything(),
+      "demo-app",
+    );
+  });
+
   it("reuses the app hero registry lookup across adjacent image requests", async () => {
     const packageDir = await mkdtemp(
       path.join(os.tmpdir(), "app-manager-hero-"),
