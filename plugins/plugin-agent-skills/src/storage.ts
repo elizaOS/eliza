@@ -6,11 +6,27 @@
  * - FileSystemSkillStore: For Node.js/native environments (skills on disk)
  *
  * Both implement the same interface for seamless switching.
+ *
+ * Zip packages are untrusted input (registry downloads). Extraction rejects
+ * entries with backslashes, absolute paths, or `..` segments, refuses archives
+ * whose central directory declares an uncompressed total over
+ * MAX_ZIP_UNCOMPRESSED_SIZE, and asserts every filesystem write and delete
+ * resolves inside the target skill directory.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { unzipSync } from "fflate";
 import { parseFrontmatter, validateFrontmatter } from "./parser";
 import type { Skill } from "./types";
+
+/**
+ * Maximum total uncompressed size of a skill zip (100 MB). The download cap in
+ * services/skills.ts bounds only the compressed bytes; this bound stops
+ * zip-bomb expansion before any entry is materialized. fflate's `unzipSync`
+ * allocates exactly the per-entry uncompressed size declared in the central
+ * directory, so summing those declared sizes is a hard memory bound.
+ */
+export const MAX_ZIP_UNCOMPRESSED_SIZE = 100 * 1024 * 1024;
 
 // ============================================================
 // STORAGE INTERFACE
@@ -199,6 +215,7 @@ export class MemorySkillStore implements ISkillStorage {
 	 * Load a skill from a zip buffer (for registry downloads).
 	 */
 	async loadFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
+		assertZipUncompressedSizeWithinLimit(zipBuffer);
 		const unzipped = unzipSync(zipBuffer);
 
 		const files = new Map<string, SkillFile>();
@@ -206,13 +223,9 @@ export class MemorySkillStore implements ISkillStorage {
 		for (const [fileName, data] of Object.entries(unzipped)) {
 			if (fileName.endsWith("/")) continue;
 
-			// Sanitize path
-			const parts = fileName
-				.split("/")
-				.filter((p) => p && p !== ".." && p !== ".");
-			if (parts.length === 0) continue;
+			const relativePath = sanitizeZipEntryPath(fileName);
+			if (relativePath === null) continue;
 
-			const relativePath = parts.join("/");
 			const isText = isTextFile(relativePath);
 
 			files.set(relativePath, {
@@ -380,6 +393,8 @@ export class FileSystemSkillStore implements ISkillStorage {
 		const { fs, path } = this.requireNodeModules();
 
 		const skillDir = path.join(this.basePath, pkg.slug);
+		assertContainedPath(path, path.resolve(this.basePath), skillDir, pkg.slug);
+		const resolvedSkillDir = path.resolve(skillDir);
 
 		// Create skill directory
 		if (!fs.existsSync(skillDir)) {
@@ -389,6 +404,7 @@ export class FileSystemSkillStore implements ISkillStorage {
 		// Write all files
 		for (const [relativePath, file] of pkg.files) {
 			const fullPath = path.join(skillDir, relativePath);
+			assertContainedPath(path, resolvedSkillDir, fullPath, relativePath);
 			const dir = path.dirname(fullPath);
 
 			// Ensure directory exists
@@ -409,6 +425,7 @@ export class FileSystemSkillStore implements ISkillStorage {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
 		const skillDir = path.join(this.basePath, slug);
+		assertContainedPath(path, path.resolve(this.basePath), skillDir, slug);
 		if (!fs.existsSync(skillDir)) return false;
 
 		// Recursive delete
@@ -426,6 +443,7 @@ export class FileSystemSkillStore implements ISkillStorage {
 	 * Save a skill from a zip buffer.
 	 */
 	async saveFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
+		assertZipUncompressedSizeWithinLimit(zipBuffer);
 		const unzipped = unzipSync(zipBuffer);
 
 		const files = new Map<string, SkillFile>();
@@ -433,12 +451,9 @@ export class FileSystemSkillStore implements ISkillStorage {
 		for (const [fileName, data] of Object.entries(unzipped)) {
 			if (fileName.endsWith("/")) continue;
 
-			const parts = fileName
-				.split("/")
-				.filter((p) => p && p !== ".." && p !== ".");
-			if (parts.length === 0) continue;
+			const relativePath = sanitizeZipEntryPath(fileName);
+			if (relativePath === null) continue;
 
-			const relativePath = parts.join("/");
 			const isText = isTextFile(relativePath);
 
 			files.set(relativePath, {
@@ -455,6 +470,131 @@ export class FileSystemSkillStore implements ISkillStorage {
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
+
+/**
+ * Sum the uncompressed sizes declared in a zip's central directory and reject
+ * archives over MAX_ZIP_UNCOMPRESSED_SIZE before any entry is decompressed.
+ * `unzipSync` materializes every entry at its declared size, so the declared
+ * total is the exact peak allocation. Malformed and zip64 archives are
+ * rejected: a skill package under the 10 MB compressed cap never needs zip64.
+ */
+function assertZipUncompressedSizeWithinLimit(zipBuffer: Uint8Array): void {
+	const data = zipBuffer;
+	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+	// Locate the End Of Central Directory record by scanning backwards through
+	// the maximum comment window, mirroring fflate's own search bounds.
+	let eocd = -1;
+	const scanFloor = Math.max(0, data.length - 22 - 0xffff);
+	for (let i = data.length - 22; i >= scanFloor; i--) {
+		if (
+			data[i] === 0x50 &&
+			data[i + 1] === 0x4b &&
+			data[i + 2] === 0x05 &&
+			data[i + 3] === 0x06
+		) {
+			eocd = i;
+			break;
+		}
+	}
+	if (eocd < 0) {
+		throw new ElizaError("Skill zip is not a valid archive", {
+			code: "SKILL_ZIP_INVALID",
+			context: { reason: "end of central directory not found" },
+		});
+	}
+
+	const entryCount = view.getUint16(eocd + 10, true);
+	const cdOffset = view.getUint32(eocd + 16, true);
+	if (entryCount === 0xffff || cdOffset === 0xffffffff) {
+		throw new ElizaError("Skill zip uses zip64, which skill packages do not support", {
+			code: "SKILL_ZIP_INVALID",
+			context: { reason: "zip64 central directory" },
+		});
+	}
+
+	let totalUncompressed = 0;
+	let offset = cdOffset;
+	for (let i = 0; i < entryCount; i++) {
+		if (offset + 46 > data.length || view.getUint32(offset, true) !== 0x02014b50) {
+			throw new ElizaError("Skill zip is not a valid archive", {
+				code: "SKILL_ZIP_INVALID",
+				context: { reason: "malformed central directory entry", entryIndex: i },
+			});
+		}
+		totalUncompressed += view.getUint32(offset + 24, true);
+		if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_SIZE) {
+			throw new ElizaError("Skill zip expands beyond the uncompressed size limit", {
+				code: "SKILL_ZIP_TOO_LARGE",
+				context: {
+					declaredBytes: totalUncompressed,
+					maxBytes: MAX_ZIP_UNCOMPRESSED_SIZE,
+				},
+			});
+		}
+		const nameLen = view.getUint16(offset + 28, true);
+		const extraLen = view.getUint16(offset + 30, true);
+		const commentLen = view.getUint16(offset + 32, true);
+		offset += 46 + nameLen + extraLen + commentLen;
+	}
+}
+
+/**
+ * Normalize a zip entry name to a safe relative path, or return null for
+ * entries that carry no file (e.g. bare `.` segments). Throws on any entry
+ * that could escape the skill directory: backslashes (path separators on
+ * Windows, invisible to a `/`-split filter), absolute paths (POSIX root or
+ * drive letter), and `..` segments. Rejecting the whole archive rather than
+ * silently filtering keeps a malicious package from installing in a
+ * half-sanitized shape.
+ */
+function sanitizeZipEntryPath(fileName: string): string | null {
+	if (
+		fileName.includes("\\") ||
+		fileName.startsWith("/") ||
+		/^[A-Za-z]:/.test(fileName)
+	) {
+		throw new ElizaError("Skill zip entry has an unsafe path", {
+			code: "SKILL_ZIP_ENTRY_UNSAFE",
+			context: { entry: fileName },
+		});
+	}
+
+	const parts = fileName.split("/");
+	if (parts.some((p) => p === "..")) {
+		throw new ElizaError("Skill zip entry has an unsafe path", {
+			code: "SKILL_ZIP_ENTRY_UNSAFE",
+			context: { entry: fileName },
+		});
+	}
+
+	const kept = parts.filter((p) => p && p !== ".");
+	return kept.length === 0 ? null : kept.join("/");
+}
+
+/**
+ * Assert that a filesystem target resolves strictly inside a base directory.
+ * `path.resolve` collapses both separators on Windows, so this is the
+ * platform-correct backstop behind entry-name validation. Throws on equality
+ * too: the base directory itself is never a valid write/delete target.
+ */
+function assertContainedPath(
+	path: typeof import("path"),
+	resolvedBase: string,
+	target: string,
+	label: string,
+): void {
+	const resolvedTarget = path.resolve(target);
+	if (
+		resolvedTarget === resolvedBase ||
+		!resolvedTarget.startsWith(resolvedBase + path.sep)
+	) {
+		throw new ElizaError("Skill path escapes the skill directory", {
+			code: "SKILL_PATH_TRAVERSAL",
+			context: { path: label },
+		});
+	}
+}
 
 /**
  * Determine if a file is text-based by extension.
