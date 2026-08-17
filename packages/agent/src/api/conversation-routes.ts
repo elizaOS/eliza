@@ -2516,7 +2516,7 @@ function buildMessageSearchSnippet(text: string, query: string): string {
   if (index < 0) {
     return normalizedText.length <= MESSAGE_SEARCH_SNIPPET_RADIUS * 2
       ? normalizedText
-      : `${normalizedText.slice(0, MESSAGE_SEARCH_SNIPPET_RADIUS * 2).trimEnd()}...`;
+      : `${normalizedText.slice(0, MESSAGE_SEARCH_SNIPPET_RADIUS * 2 - 3).trimEnd()}...`;
   }
   const start = Math.max(0, index - MESSAGE_SEARCH_SNIPPET_RADIUS);
   const end = Math.min(

@@ -83,10 +83,10 @@ function trimDemonstrationInput(rawInput: string): string {
 		return candidate;
 	}
 	if (candidate && candidate.length > 0) {
-		return `${candidate.slice(0, 600).trimEnd()} …`;
+		return `${candidate.slice(0, 598).trimEnd()} …`;
 	}
 	if (rawInput.length <= 600) return rawInput;
-	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+	return `${rawInput.slice(0, 397).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
 }
 
 function injectDemonstrations(

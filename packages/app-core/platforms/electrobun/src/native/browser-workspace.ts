@@ -259,7 +259,7 @@ function resolveEventLogLimit(): number {
 
 function sanitizeEventString(value: string): string {
   return value.length > MAX_EVENT_STRING_LENGTH
-    ? `${value.slice(0, MAX_EVENT_STRING_LENGTH)}...`
+    ? `${value.slice(0, MAX_EVENT_STRING_LENGTH - 3)}...`
     : value;
 }
 
