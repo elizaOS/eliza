@@ -262,11 +262,64 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/favicons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <script>
-    // The app has one curated dark appearance. Apply it before first paint so
-    // persisted legacy values and OS color-scheme changes cannot flash white.
+    // One bundle serves both the dark agent app and the light public marketing
+    // pages. Seed the marketing launch surface before the inline FOUC CSS is
+    // parsed so #root cannot paint the app's black fallback while the public
+    // renderer and its lazy landing-page chunk are still downloading.
+    (() => {
+      const marketingHostnames = [
+        "eliza.app",
+        "www.eliza.app",
+        "staging.eliza.app",
+        "elizacloud.ai",
+        "www.elizacloud.ai",
+        "dev.elizacloud.ai",
+        "b.eliza.app",
+        "eliza-app-b.pages.dev",
+      ];
+      const hostname = (location.hostname || "").toLowerCase().replace(/\.$/, "");
+      if (marketingHostnames.indexOf(hostname) === -1) return;
+
+      const root = document.documentElement;
+      root.setAttribute("data-public-marketing", "true");
+      root.style.setProperty("--launch-bg", "#fdfaf7");
+      root.style.setProperty("--launch-foreground", "#000000");
+      root.style.colorScheme = "light";
+
+      const themeColor = document.querySelector('meta[name="theme-color"]');
+      const colorScheme = document.querySelector('meta[name="color-scheme"]');
+      if (themeColor) themeColor.setAttribute("content", "#fdfaf7");
+      if (colorScheme) colorScheme.setAttribute("content", "light");
+
+      // These are the only above-the-fold image requests in the desktop
+      // static hero. Start them from the HTML parse instead of waiting for
+      // the entry -> public shell -> landing-page module chain.
+      if (window.matchMedia("(min-width: 641px)").matches) {
+        for (const href of [
+          "/brand/logos/logo_white_orangebg.svg",
+          "/brand/logos/eliza_text_black.svg",
+        ]) {
+          const preload = document.createElement("link");
+          preload.rel = "preload";
+          preload.as = "image";
+          preload.href = href;
+          preload.setAttribute("fetchpriority", "high");
+          document.head.appendChild(preload);
+        }
+      }
+    })();
+  </script>
+  <script>
+    // The agent app has one curated dark appearance. Public marketing was
+    // classified above and keeps its light launch surface through first paint.
     (() => {
       try {
         const root = document.documentElement;
+        if (root.getAttribute('data-public-marketing') === 'true') {
+          root.classList.remove('dark');
+          root.setAttribute('data-theme', 'light');
+          return;
+        }
         root.classList.add('dark');
         root.style.colorScheme = 'dark';
         root.setAttribute('data-theme', 'dark');
@@ -418,28 +471,11 @@
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
       if (!shell) return;
-      // Public marketing hosts render a static landing page, not the agent
-      // app, so there is nothing to boot and the branded "Booting up…" splash
-      // would only flash dark chrome over a light page. Drop it synchronously
-      // (this script runs immediately after the element parses, before any
-      // paint) and let the page's own background show. Hostnames mirror the
-      // marketing + legacy-marketing roles in
-      // packages/shared/src/elizacloud/domain-contract.ts.
-      const MARKETING_HOSTNAMES = [
-        "eliza.app",
-        "www.eliza.app",
-        "staging.eliza.app",
-        "elizacloud.ai",
-        "www.elizacloud.ai",
-        "dev.elizacloud.ai",
-        "b.eliza.app",
-        "eliza-app-b.pages.dev",
-      ];
-      const hostname = (location.hostname || "").toLowerCase().replace(/\.$/, "");
-      if (MARKETING_HOSTNAMES.indexOf(hostname) !== -1) {
+      // The head classified public marketing before any CSS could paint. Drop
+      // the agent-branded boot shell synchronously and leave the already-white
+      // root visible until the static hero commits.
+      if (document.documentElement.getAttribute("data-public-marketing") === "true") {
         shell.remove();
-        document.documentElement.style.background = "#fdfaf7";
-        document.body.style.background = "#fdfaf7";
         return;
       }
       if (!root || typeof MutationObserver !== "function") return;

@@ -36,6 +36,7 @@ const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 const BRAND_ORANGE = "#FF5800";
 const LAUNCH_BLACK = "#000000";
 const LAUNCH_FOREGROUND = "#fdfaf7";
+const PUBLIC_MARKETING_WHITE = "#fdfaf7";
 const SPLASH_BLACK = "#000000";
 const SPLASH_BLACK_RGB = [0, 0, 0];
 const ANDROID_SPLASH_TEMPLATE_FILES = [
@@ -202,6 +203,37 @@ describe("brand surfaces", () => {
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
+  it("seeds public marketing hosts with a white first paint before the dark app theme", () => {
+    const html = read("index.html");
+    const marketingSeed = html.indexOf(
+      'root.setAttribute("data-public-marketing", "true")',
+    );
+    const foucStyles = html.indexOf("/* FOUC guard");
+
+    expect(marketingSeed).toBeGreaterThan(-1);
+    expect(marketingSeed).toBeLessThan(foucStyles);
+    expect(html).toContain(
+      `root.style.setProperty("--launch-bg", "${PUBLIC_MARKETING_WHITE}")`,
+    );
+    expect(html).toContain(
+      `themeColor.setAttribute("content", "${PUBLIC_MARKETING_WHITE}")`,
+    );
+    expect(html).toContain(
+      "root.getAttribute('data-public-marketing') === 'true'",
+    );
+    expect(html).toContain(
+      'document.documentElement.getAttribute("data-public-marketing") === "true"',
+    );
+  });
+
+  it("preloads the above-the-fold desktop marketing marks from the document head", () => {
+    const html = read("index.html");
+    expect(html).toContain('window.matchMedia("(min-width: 641px)").matches');
+    expect(html).toContain('"/brand/logos/logo_white_orangebg.svg"');
+    expect(html).toContain('"/brand/logos/eliza_text_black.svg"');
+    expect(html).toContain('preload.setAttribute("fetchpriority", "high")');
+  });
+
   it("keeps the branded preboot status visible until React takes over", () => {
     const html = read("index.html");
     expect(html).toContain('class="eliza-preboot-shell__mark"');
@@ -218,9 +250,7 @@ describe("brand surfaces", () => {
     const html = read("index.html");
     expect(html).toMatch(/<div id="root"><\/div>/);
     expect(html).toMatch(/<div id="eliza-preboot-shell"/);
-    expect(html).toMatch(
-      /\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s,
-    );
+    expect(html).toMatch(/\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s);
     expect(html).toContain("new MutationObserver");
     expect(html).toContain("hasMeaningfulContent");
   });
