@@ -44,6 +44,47 @@ describe("HomePill", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
+  it("expands the resting handle into a compact composer preview on hover", () => {
+    const onPreviewHoverChange = vi.fn();
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.mouseEnter(btn);
+
+    expect(btn.className).toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "h-16",
+    );
+    expect(
+      screen.getByTestId("shell-home-pill-preview-label").textContent,
+    ).toBe("Message Eliza");
+    expect(screen.getByTestId("shell-home-pill-preview-plus")).toBeTruthy();
+    expect(screen.getByTestId("shell-home-pill-preview-waveform")).toBeTruthy();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.mouseLeave(btn);
+    expect(btn.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("uses the same hover composer while Cloud auth is required", () => {
+    render(
+      <HomePill phase="needs-auth" onOpen={() => {}} onClose={() => {}} />,
+    );
+    fireEvent.mouseEnter(screen.getByRole("button"));
+    expect(
+      screen.getByTestId("shell-home-pill-preview-label").textContent,
+    ).toBe("Message Eliza");
+    expect(screen.queryByTestId("shell-home-pill-sign-in")).toBeNull();
+  });
+
   it("calls onClose when clicked from summoned", () => {
     const onClose = vi.fn();
     render(<HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />);
@@ -179,7 +220,7 @@ describe("HomePill", () => {
     expect(mark.className).not.toContain("animate-pulse");
   });
 
-  it("grows into a labeled sign-in chip while needs-auth and does not arm hold", () => {
+  it("keeps the neutral resting handle while needs-auth and does not arm hold", () => {
     const onOpen = vi.fn();
     const hold = holdHandlers();
     render(
@@ -195,22 +236,20 @@ describe("HomePill", () => {
     });
     expect(btn.getAttribute("data-phase")).toBe("needs-auth");
     expect(btn.hasAttribute("aria-pressed")).toBe(false);
-    expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
-      "Sign in with Eliza Cloud",
-    );
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(btn.className).toContain("h-12");
-    expect(btn.className).toContain("w-[18rem]");
-    expect(mark.className).toContain("h-11");
-    expect(mark.className).toContain("w-full");
-    expect(mark.className).toContain("bg-[#FF5800]");
-    expect(screen.getByTestId("shell-home-pill-sign-in-icon")).toBeTruthy();
+    expect(btn.className).toContain("h-8");
+    expect(btn.className).toContain("w-16");
+    expect(mark.className).toContain("h-2.5");
+    expect(mark.className).toContain("w-12");
+    expect(mark.className).toContain("bg-white/95");
+    expect(mark.className).not.toContain("bg-[#FF5800]");
+    expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
     expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
     fireEvent.click(btn);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the sign-in chip opaque and shows a spinner during Cloud login", () => {
+  it("keeps the neutral handle and accessible busy state during Cloud login", () => {
     render(
       <HomePill
         phase="needs-auth"
@@ -222,7 +261,9 @@ describe("HomePill", () => {
     const mark = screen.getByTestId("shell-home-pill-mark");
     expect(mark.className).not.toContain("opacity-65");
     expect(mark.className).not.toContain("animate-pulse");
-    expect(screen.getByTestId("shell-home-pill-sign-in-spinner")).toBeTruthy();
+    expect(mark.className).toContain("bg-white/95");
+    expect(mark.className).not.toContain("bg-[#FF5800]");
+    expect(screen.queryByTestId("shell-home-pill-sign-in-spinner")).toBeNull();
     expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
     const btn = screen.getByRole("button", {
       name: /signing in to eliza cloud/i,
