@@ -1745,25 +1745,35 @@ export class AcpService extends Service {
     // cooperative cancellation and protocol errors may retain a child with
     // filesystem capability and credentials, so close every such client before
     // retention can delete the durable row that gives the reaper authority.
-    for (const session of sessions) {
-      if (
-        !TERMINAL_SESSION_STATUSES.has(session.status) ||
-        !this.nativeClients.has(session.id)
-      ) {
-        continue;
+    const sessionsById = new Map(
+      sessions.map((session) => [session.id, session]),
+    );
+    const nativeTeardownIds = new Set(this.failedSessionStopIds);
+    for (const [sessionId] of this.nativeClients) {
+      const session = sessionsById.get(sessionId);
+      if (session && TERMINAL_SESSION_STATUSES.has(session.status)) {
+        nativeTeardownIds.add(sessionId);
       }
+    }
+    for (const sessionId of nativeTeardownIds) {
+      // A failed hard close is stronger evidence than the logical row status:
+      // the caller may deliberately swallow the close error (for example an
+      // independent verifier cleaning up best-effort), leaving a ready/running
+      // row whose process handle is still retained behind the fail-closed gate.
+      // Retry every retained failed stop, not just clients whose row happened
+      // to reach a terminal status before close failed.
       try {
-        await this.closeSession(session.id);
+        await this.closeSession(sessionId);
       } catch (err) {
         // error-policy:J7 containment remains visible and retryable. The
         // protected-id sweep below preserves both durable and in-memory
         // authority until a later health check or explicit stop succeeds.
         this.runtime.reportError?.("AcpService.runHealthCheck", err, {
           phase: "terminalNativeTeardown",
-          sessionId: session.id,
+          sessionId,
         });
         this.log("warn", "health-check: native teardown remains unproven", {
-          sessionId: session.id,
+          sessionId,
           err,
         });
       }
@@ -1777,6 +1787,7 @@ export class AcpService extends Service {
     try {
       const protectedSessionIds = new Set([
         ...this.nativeClients.keys(),
+        ...this.failedSessionStopIds,
         ...this.promptAdmissions.keys(),
         ...this.nativePromptAttachmentAdmissions.keys(),
         ...this.nativePromptSessionIds,

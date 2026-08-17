@@ -3250,6 +3250,92 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     expect(client.close).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["ready", "running"] as const)(
+    "retries retained failed native teardown from a %s session on the next health check",
+    async (status) => {
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "native" }),
+      );
+      await service.start();
+      const { sessionId } = await service.spawnSession({
+        name: `failed-${status}-native-health-check`,
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      const client = firstNativeClient();
+      const store = Reflect.get(service, "store") as {
+        updateStatus: (id: string, next: string) => Promise<void>;
+      };
+      await store.updateStatus(sessionId, status);
+      client.close.mockRejectedValueOnce(new Error("process group survived"));
+
+      // Models a caller such as the independent verifier recording the first
+      // close failure and continuing. The service must retain reaper authority
+      // even though the logical row is still ready/busy rather than terminal.
+      await service.closeSession(sessionId).catch(() => undefined);
+      expect(client.close).toHaveBeenCalledTimes(1);
+      expect((await service.getSession(sessionId))?.status).toBe(status);
+
+      await (
+        service as unknown as { runHealthCheck: () => Promise<void> }
+      ).runHealthCheck();
+
+      expect(client.close).toHaveBeenCalledTimes(2);
+      expect((await service.getSession(sessionId))?.status).toBe("stopped");
+      expect(
+        (Reflect.get(service, "failedSessionStopIds") as Set<string>).has(
+          sessionId,
+        ),
+      ).toBe(false);
+      await service.stop();
+    },
+  );
+
+  it("retries a failed stop after the process closed but terminal status persistence failed", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "failed-post-close-health-check",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    const store = Reflect.get(service, "store") as {
+      updateStatus: (id: string, next: string) => Promise<void>;
+    };
+    const updateStatus = vi
+      .spyOn(store, "updateStatus")
+      .mockRejectedValueOnce(new Error("status store unavailable"));
+
+    await expect(service.closeSession(sessionId)).rejects.toThrow(
+      /status store unavailable/,
+    );
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect(
+      (Reflect.get(service, "nativeClients") as Map<string, unknown>).has(
+        sessionId,
+      ),
+    ).toBe(false);
+    expect(
+      (Reflect.get(service, "failedSessionStopIds") as Set<string>).has(
+        sessionId,
+      ),
+    ).toBe(true);
+
+    await (
+      service as unknown as { runHealthCheck: () => Promise<void> }
+    ).runHealthCheck();
+
+    expect(updateStatus).toHaveBeenCalledTimes(2);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+    expect(
+      (Reflect.get(service, "failedSessionStopIds") as Set<string>).has(
+        sessionId,
+      ),
+    ).toBe(false);
+    await service.stop();
+  });
+
   it("protects a terminal row while native prompt attachment is in flight", async () => {
     const store = new InMemorySessionStore();
     const sessionId = "native-attach-health-sweep-race";

@@ -43,7 +43,7 @@ import {
   createRouterLoopState,
   routerLoopTransition,
 } from "../../src/services/router-loop-guard.js";
-import type { SessionInfo } from "../../src/services/types.js";
+import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
 import { CodingWorkspaceService } from "../../src/services/workspace-service.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
@@ -854,6 +854,299 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(acp.stopAttempts).toEqual([spawned.sessionId]);
     expect(acp.stopped).toEqual([]);
     await service.stop();
+  });
+
+  it("re-arms pending teardown when a new-session retry fails to spawn", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+
+    acp.failSpawn = true;
+    await expect(
+      service.retryTaskTurn(task.id, {
+        mode: "new-session",
+        instruction: "retry cleanly",
+      }),
+    ).rejects.toThrow(/spawn failed/);
+
+    expect(
+      must(await service.getTask(task.id), "task").metadata
+        .terminalSessionTeardown,
+    ).toMatchObject({
+      state: "pending",
+      sessionIds: [spawned.sessionId],
+    });
+    await service.stop();
+  });
+
+  it("re-arms pending teardown when a same-session retry fails to send", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+    // The transport can reconnect before the operator retries even though the
+    // completed task still owns a pending teardown marker.
+    await store.updateSession(spawned.sessionId, { status: "ready" });
+    acp.failSend = true;
+
+    await expect(
+      service.retryTaskTurn(task.id, {
+        sessionId: spawned.sessionId,
+        instruction: "retry in place",
+      }),
+    ).rejects.toThrow(/send failed/);
+
+    expect(
+      must(await service.getTask(task.id), "task").metadata
+        .terminalSessionTeardown,
+    ).toMatchObject({
+      state: "pending",
+      sessionIds: [spawned.sessionId],
+    });
+    await service.stop();
+  });
+
+  it("keeps a failed rerun terminal and re-arms its teardown marker", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+    await store.addEvent({
+      id: "rerun-source-event",
+      taskId: task.id,
+      sessionId: spawned.sessionId,
+      eventType: "tool_result",
+      summary: "source",
+      data: {},
+      timestamp: Date.now(),
+      createdAt: new Date().toISOString(),
+    });
+
+    acp.failSpawn = true;
+    await expect(
+      service.rerunFromEvent(task.id, {
+        eventId: "rerun-source-event",
+        preserveHistory: true,
+      }),
+    ).rejects.toThrow(/spawn failed/);
+
+    const detail = must(await service.getTask(task.id), "task");
+    expect(detail.status).toBe("done");
+    expect(detail.metadata.terminalSessionTeardown).toMatchObject({
+      state: "pending",
+      sessionIds: [spawned.sessionId],
+    });
+    await service.stop();
+  });
+
+  it("serializes concurrent reactivations so a failed owner cannot re-arm live work", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+
+    const originalSpawn = acp.spawnSession.bind(acp);
+    let rejectFirst!: (error: Error) => void;
+    const spawnSpy = vi
+      .spyOn(acp, "spawnSession")
+      .mockImplementationOnce(
+        () =>
+          new Promise<SpawnResult>((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementation(originalSpawn);
+
+    const first = service.retryTaskTurn(task.id, {
+      mode: "new-session",
+      instruction: "first recovery",
+    });
+    const firstFailure = expect(first).rejects.toThrow(/first spawn failed/);
+    await vi.waitFor(() => expect(spawnSpy).toHaveBeenCalledTimes(1));
+    const second = service.retryTaskTurn(task.id, {
+      mode: "new-session",
+      instruction: "second recovery",
+    });
+    await Promise.resolve();
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+
+    rejectFirst(new Error("first spawn failed"));
+    await firstFailure;
+    await expect(second).resolves.not.toBeNull();
+
+    const detail = must(await service.getTask(task.id), "task");
+    expect(spawnSpy).toHaveBeenCalledTimes(2);
+    expect(detail.status).toBe("active");
+    expect(detail.metadata.terminalSessionTeardown).toMatchObject({
+      state: "paused",
+      sessionIds: [spawned.sessionId],
+    });
+    spawnSpy.mockRestore();
+    await service.stop();
+  });
+
+  it("does not re-arm teardown after a live spawn if the later status write fails", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+    const beforeSessions = acp.liveSessions.size;
+    vi.spyOn(
+      service as unknown as {
+        completeTaskReactivation: (taskId: string) => Promise<void>;
+      },
+      "completeTaskReactivation",
+    ).mockRejectedValueOnce(new Error("status write failed"));
+
+    await expect(
+      service.retryTaskTurn(task.id, {
+        mode: "new-session",
+        instruction: "spawn then fail bookkeeping",
+      }),
+    ).rejects.toThrow(/status write failed/);
+
+    expect(acp.liveSessions.size).toBe(beforeSessions + 1);
+    expect(
+      must(await service.getTask(task.id), "task").metadata
+        .terminalSessionTeardown,
+    ).toMatchObject({ state: "paused", sessionIds: [spawned.sessionId] });
+    await service.stop();
+  });
+
+  it("keeps a cap-parked reactivation open so startup can rebuild its admission", async () => {
+    const acp = new FakeAcp();
+    acp.failStop = true;
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const spawned = await acp.spawnSession({
+      agentType: "elizaos",
+      workdir: "/repo",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await service.attachSession(task.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: spawned.status,
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await drive(acp, spawned.sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, task.id, "validating");
+    await service.validateTask(task.id, { passed: true, summary: "verified" });
+    const spawnSpy = vi
+      .spyOn(acp, "spawnSession")
+      .mockRejectedValue(new SessionCapError("worker", 1, 1));
+
+    await expect(
+      service.retryTaskTurn(task.id, {
+        mode: "new-session",
+        instruction: "queue this recovery",
+      }),
+    ).resolves.not.toBeNull();
+
+    // The explicit kick may transiently clear then re-park on the same cap.
+    // Await the serialized drain before asserting the durable restart state.
+    await (Reflect.get(service, "admissionDrainLock") as Promise<void>);
+
+    const detail = must(await service.getTask(task.id), "task");
+    expect(detail.status).toBe("open");
+    expect(detail.admission).toMatchObject({ state: "queued" });
+    expect(detail.metadata.terminalSessionTeardown).toMatchObject({
+      state: "paused",
+      sessionIds: [spawned.sessionId],
+    });
+    await service.stop();
+
+    const restarted = new OrchestratorTaskService(runtime(acp), { store });
+    await restarted.start();
+    await expect(restarted.getAdmissionSnapshot()).resolves.toMatchObject({
+      queueDepth: 1,
+      queuedTaskIds: [task.id],
+    });
+    await restarted.stop();
+    spawnSpy.mockRestore();
   });
 
   it("bounds a hung completed one-shot teardown attempt and leaves it pending", async () => {

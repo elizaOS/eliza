@@ -384,6 +384,12 @@ interface TerminalSessionTeardownMarker {
   lastError?: string;
 }
 
+interface TerminalSessionTeardownPauseToken {
+  requestedAt: number;
+  pausedAt: number;
+  sessionIds: string[];
+}
+
 type TerminalSessionTeardownOutcome =
   | {
       sessionId: string;
@@ -549,6 +555,13 @@ export interface SpawnAgentForTaskOptions {
    * enqueuedAt and push the task to the back of its band.
    */
   parkOnCap?: boolean;
+  /**
+   * Internal recovery transaction: persist a cap admission but do not start its
+   * drain until the caller has moved a formerly-terminal task to durable
+   * `open`. Without this hand-off, the eager drain sees `done` and deletes the
+   * just-written admission before recovery can make it restart-rebuildable.
+   */
+  deferAdmissionDrain?: boolean;
 }
 
 /**
@@ -1181,6 +1194,14 @@ export class OrchestratorTaskService extends Service {
    * the lock call the `*Locked` bodies directly (the lock is not reentrant). */
   private readonly taskWriteLocks = new Map<string, Promise<void>>();
 
+  /** Recovery requests can arrive concurrently from API/UI retries. Serialize
+   * the pause + external spawn/send boundary so one failed owner cannot re-arm
+   * teardown while another request has already established live work. */
+  private readonly terminalSessionReactivationLocks = new Map<
+    string,
+    Promise<void>
+  >();
+
   private withTaskWriteLock<T>(
     taskId: string,
     fn: () => Promise<T>,
@@ -1197,6 +1218,26 @@ export class OrchestratorTaskService extends Service {
     void tail.then(() => {
       if (this.taskWriteLocks.get(taskId) === tail) {
         this.taskWriteLocks.delete(taskId);
+      }
+    });
+    return run;
+  }
+
+  private withTerminalSessionReactivationLock<T>(
+    taskId: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const prev =
+      this.terminalSessionReactivationLocks.get(taskId) ?? Promise.resolve();
+    const run = prev.then(fn);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.terminalSessionReactivationLocks.set(taskId, tail);
+    void tail.then(() => {
+      if (this.terminalSessionReactivationLocks.get(taskId) === tail) {
+        this.terminalSessionReactivationLocks.delete(taskId);
       }
     });
     return run;
@@ -3306,20 +3347,172 @@ export class OrchestratorTaskService extends Service {
    * a periodic pass reads `done`, then stops the session after restart/reopen
    * has made it active. A later verified `done` merges these ids back into a
    * pending marker; until then active work is never reaped. */
-  private async pauseTerminalSessionTeardown(taskId: string): Promise<void> {
+  private async pauseTerminalSessionTeardown(
+    taskId: string,
+  ): Promise<TerminalSessionTeardownPauseToken | null> {
+    let token: TerminalSessionTeardownPauseToken | null = null;
     await this.withTaskWriteLock(taskId, async () => {
       const doc = await this.store.getTask(taskId);
       if (!doc) return;
+      const before = readTerminalSessionTeardownMarker(doc.task.metadata);
+      if (before?.state !== "pending") return;
+      const pausedAt = Date.now();
       const metadata = pausedTerminalSessionTeardownMetadata(
         doc.task.metadata,
-        Date.now(),
+        pausedAt,
       );
       if (!metadata) return;
       await this.store.updateTask(taskId, {
         metadata,
         lastActivityAt: doc.task.lastActivityAt,
       });
+      token = {
+        requestedAt: before.requestedAt,
+        pausedAt,
+        sessionIds: before.sessionIds,
+      };
     });
+    return token;
+  }
+
+  /** Re-arm a marker when an operator recovery failed before it established a
+   * replacement worker/follow-up. The pause token is a narrow compare-and-set:
+   * a later writer that superseded this pause keeps its state rather than being
+   * rolled back by a stale failure. */
+  private async restoreTerminalSessionTeardownAfterFailedReactivation(
+    taskId: string,
+    token: TerminalSessionTeardownPauseToken | null,
+  ): Promise<void> {
+    if (!token) return;
+    await this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      const marker = readTerminalSessionTeardownMarker(doc.task.metadata);
+      if (
+        marker?.state !== "paused" ||
+        marker.requestedAt !== token.requestedAt ||
+        marker.updatedAt !== token.pausedAt ||
+        marker.sessionIds.length !== token.sessionIds.length ||
+        marker.sessionIds.some(
+          (sessionId, index) => sessionId !== token.sessionIds[index],
+        )
+      ) {
+        return;
+      }
+      const nowMs = Date.now();
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          [TERMINAL_SESSION_TEARDOWN_METADATA_KEY]: {
+            ...marker,
+            state: "pending",
+            updatedAt: nowMs,
+            nextAttemptAt: Math.min(marker.nextAttemptAt, nowMs),
+          } satisfies TerminalSessionTeardownMarker,
+        },
+        lastActivityAt: doc.task.lastActivityAt,
+      });
+    });
+  }
+
+  private async withTerminalSessionTeardownPaused<T>(
+    taskId: string,
+    reactivate: (markReactivationEstablished: () => void) => Promise<T>,
+  ): Promise<T> {
+    return this.withTerminalSessionReactivationLock(taskId, async () => {
+      const token = await this.pauseTerminalSessionTeardown(taskId);
+      let reactivationEstablished = false;
+      try {
+        return await reactivate(() => {
+          reactivationEstablished = true;
+        });
+      } catch (error) {
+        // Once a prompt/session (or durable admission record) exists, restoring
+        // `pending` would let the reaper kill that newly-established work merely
+        // because a later task-status write failed. Roll back only failures that
+        // happened before the external/durable reactivation boundary.
+        if (!reactivationEstablished) {
+          try {
+            await this.restoreTerminalSessionTeardownAfterFailedReactivation(
+              taskId,
+              token,
+            );
+          } catch (restoreError) {
+            // Preserve the original operator-visible failure while making the
+            // durable recovery failure observable for an explicit retry.
+            this.runtime.reportError?.(
+              "OrchestratorTask.restoreTerminalSessionTeardown",
+              restoreError,
+              { taskId },
+            );
+          }
+        }
+        throw error;
+      }
+    });
+  }
+
+  /** Finish a spawn-based recovery without confusing a cap-parked admission
+   * with a live worker. A queued task must remain `open` so startup can rebuild
+   * the durable queue; only a detail without `admission` proves a live spawn. */
+  private async completeSpawnReactivation(
+    taskId: string,
+    detail: TaskThreadDetailDto | null,
+    markReactivationEstablished: () => void,
+  ): Promise<void> {
+    if (!detail) {
+      throw new Error(`Task disappeared during reactivation: ${taskId}`);
+    }
+    if (detail.admission?.state === "queued") {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) {
+        throw new Error(
+          `Queued task disappeared during reactivation: ${taskId}`,
+        );
+      }
+      try {
+        await this.store.updateTask(taskId, {
+          paused: false,
+          status: TERMINAL_TASK_STATUSES.has(doc.task.status)
+            ? nextTaskStatus(doc.task.status, "reopened")
+            : doc.task.status,
+        });
+      } catch (error) {
+        // The drain was deliberately deferred. Remove an admission whose
+        // required `open` state could not be persisted, then let the outer
+        // transaction re-arm terminal teardown.
+        await this.dequeueAdmission(taskId).catch((cleanupError) => {
+          this.runtime.reportError?.(
+            "OrchestratorTask.queuedReactivationCleanup",
+            cleanupError,
+            { taskId },
+          );
+        });
+        throw error;
+      }
+      // The queue record and restart-rebuildable `open` state are now durable.
+      markReactivationEstablished();
+      void this.drainAdmissionQueue();
+      return;
+    }
+
+    // spawnAgentForTask returned a live-session detail. Protect that process
+    // before any subsequent status write that can still fail independently.
+    markReactivationEstablished();
+    await this.completeTaskReactivation(taskId);
+  }
+
+  /** Complete recovery only after its external spawn/send succeeded. A task
+   * carrying a terminal teardown marker is terminal by construction, so use
+   * the explicit restarted edge rather than a weak session event. */
+  private async completeTaskReactivation(taskId: string): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    await this.store.updateTask(taskId, { paused: false });
+    await this.advanceTaskStatus(
+      taskId,
+      TERMINAL_TASK_STATUSES.has(doc.task.status) ? "restarted" : "retrying",
+    );
   }
 
   /** Fill the DTO's `admission.position` from the live DISPATCH order (1-based,
@@ -3491,27 +3684,32 @@ export class OrchestratorTaskService extends Service {
   }
 
   async reopenTask(taskId: string): Promise<TaskThreadDetailDto | null> {
-    await this.pauseTerminalSessionTeardown(taskId);
-    const doc = await this.store.getTask(taskId);
-    if (!doc) return null;
-    // Route the revival through the table: a task that already ran resumes
-    // `active` (`restarted`), an untouched one returns to `open` (`reopened`).
-    // A reopen of a task that is not in a reopenable state (e.g. already
-    // `active`) resolves to a self/no-op rather than a forced literal write.
-    const trigger: TaskLifecycleTrigger =
-      doc.sessions.length > 0 ? "restarted" : "reopened";
-    const status =
-      resolveTaskTransition(doc.task.status, trigger) ?? doc.task.status;
-    await this.store.updateTask(taskId, {
-      archived: false,
-      // A paused-then-archived task must not reopen frozen: paused:true would
-      // keep advanceTaskStatus inert with no archive surface left to clear it.
-      paused: false,
-      status,
-      archivedAt: null,
-      closedAt: null,
-    });
-    return this.getTask(taskId);
+    return this.withTerminalSessionTeardownPaused(
+      taskId,
+      async (markReactivationEstablished) => {
+        const doc = await this.store.getTask(taskId);
+        if (!doc) return null;
+        // Route the revival through the table: a task that already ran resumes
+        // `active` (`restarted`), an untouched one returns to `open` (`reopened`).
+        // A reopen of a task that is not in a reopenable state (e.g. already
+        // `active`) resolves to a self/no-op rather than a forced literal write.
+        const trigger: TaskLifecycleTrigger =
+          doc.sessions.length > 0 ? "restarted" : "reopened";
+        const status =
+          resolveTaskTransition(doc.task.status, trigger) ?? doc.task.status;
+        await this.store.updateTask(taskId, {
+          archived: false,
+          // A paused-then-archived task must not reopen frozen: paused:true would
+          // keep advanceTaskStatus inert with no archive surface left to clear it.
+          paused: false,
+          status,
+          archivedAt: null,
+          closedAt: null,
+        });
+        markReactivationEstablished();
+        return this.getTask(taskId);
+      },
+    );
   }
 
   async deleteTask(taskId: string): Promise<boolean> {
@@ -5272,11 +5470,22 @@ export class OrchestratorTaskService extends Service {
     );
     const mode = input.mode ?? "same-session";
     if (mode === "new-session") {
-      await this.pauseTerminalSessionTeardown(taskId);
-      await this.spawnAgentForTask(taskId, {
-        ...input.agent,
-        task: instruction,
-      });
+      await this.withTerminalSessionTeardownPaused(
+        taskId,
+        async (markReactivationEstablished) => {
+          const detail = await this.spawnAgentForTask(taskId, {
+            ...input.agent,
+            task: instruction,
+            deferAdmissionDrain: true,
+          });
+          await this.completeSpawnReactivation(
+            taskId,
+            detail,
+            markReactivationEstablished,
+          );
+          return detail;
+        },
+      );
       if (planRevision) {
         await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
       }
@@ -5315,14 +5524,20 @@ export class OrchestratorTaskService extends Service {
         "Cannot retry in a terminal session; use new-session mode",
       );
     }
-    await this.pauseTerminalSessionTeardown(taskId);
-    const sent = await this.sendToTaskAgent(
+    await this.withTerminalSessionTeardownPaused(
       taskId,
-      sessionId,
-      instruction,
-      "validation_failed",
+      async (markReactivationEstablished) => {
+        const sent = await this.sendToTaskAgent(
+          taskId,
+          sessionId,
+          instruction,
+          "validation_failed",
+        );
+        if (!sent) throw new Error("Failed to send retry instruction");
+        markReactivationEstablished();
+        await this.completeTaskReactivation(taskId);
+      },
     );
-    if (!sent) throw new Error("Failed to send retry instruction");
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
     }
@@ -5342,12 +5557,6 @@ export class OrchestratorTaskService extends Service {
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
-    // Clear `paused` first (advanceTaskStatus is inert on a paused task), then
-    // route the reactivation through the transition table as a `retrying`
-    // move: an illegal `(from, retrying)` — e.g. the task is still `open` —
-    // drops as a no-op instead of stomping the status with a literal write.
-    await this.store.updateTask(taskId, { paused: false });
-    await this.advanceTaskStatus(taskId, "retrying");
     return this.getTask(taskId);
   }
 
@@ -5368,39 +5577,45 @@ export class OrchestratorTaskService extends Service {
     }
     const event = doc.events.find((item) => item.id === input.eventId);
     if (!event) throw new RecoveryConflictError("Source event not found");
-    await this.pauseTerminalSessionTeardown(taskId);
-    if (input.stopActive === true) await this.stopActiveSessions(doc);
-    if (planRevision) {
-      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
-    }
-    await this.store.addEvent({
-      id: randomUUID(),
+    await this.withTerminalSessionTeardownPaused(
       taskId,
-      sessionId: event.sessionId,
-      eventType: "rerun_from_event_requested",
-      summary: "Rerun from event requested",
-      data: {
-        eventId: input.eventId,
-        stopActive: input.stopActive === true,
-        instruction: input.instruction,
-        planRevisionId: planRevision?.id,
+      async (markReactivationEstablished) => {
+        if (input.stopActive === true) await this.stopActiveSessions(doc);
+        if (planRevision) {
+          await this.store.updateTask(taskId, {
+            currentPlan: planRevision.plan,
+          });
+        }
+        await this.store.addEvent({
+          id: randomUUID(),
+          taskId,
+          sessionId: event.sessionId,
+          eventType: "rerun_from_event_requested",
+          summary: "Rerun from event requested",
+          data: {
+            eventId: input.eventId,
+            stopActive: input.stopActive === true,
+            instruction: input.instruction,
+            planRevisionId: planRevision?.id,
+          },
+          timestamp: Date.now(),
+          createdAt: nowIso(),
+        });
+        const detail = await this.spawnAgentForTask(taskId, {
+          ...input.agent,
+          deferAdmissionDrain: true,
+          task: withPlanRevisionContext(
+            rerunInstruction(event, input.instruction),
+            planRevision,
+          ),
+        });
+        await this.completeSpawnReactivation(
+          taskId,
+          detail,
+          markReactivationEstablished,
+        );
       },
-      timestamp: Date.now(),
-      createdAt: nowIso(),
-    });
-    // Clear `paused` first (advanceTaskStatus is inert on a paused task), then
-    // route the reactivation through the transition table as a `retrying`
-    // move: an illegal `(from, retrying)` — e.g. the task is still `open` —
-    // drops as a no-op instead of stomping the status with a literal write.
-    await this.store.updateTask(taskId, { paused: false });
-    await this.advanceTaskStatus(taskId, "retrying");
-    await this.spawnAgentForTask(taskId, {
-      ...input.agent,
-      task: withPlanRevisionContext(
-        rerunInstruction(event, input.instruction),
-        planRevision,
-      ),
-    });
+    );
     return this.getTask(taskId);
   }
 
@@ -5419,23 +5634,32 @@ export class OrchestratorTaskService extends Service {
         "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
       planRevision,
     );
-    await this.pauseTerminalSessionTeardown(taskId);
-    const restartDoc = (await this.store.getTask(taskId)) ?? doc;
-    // Open a fresh budget epoch BEFORE the first spawn of the new run so the
-    // prior (failed) run's dead errored sessions no longer count toward the
-    // crash-retry budget — otherwise a restarted task re-fails on its first
-    // recoverable blip while the router respawns anyway (#14104). Merge into the
-    // existing bag: `updateTask` replaces `metadata` wholesale.
-    await this.store.updateTask(taskId, {
-      metadata: {
-        ...restartDoc.task.metadata,
-        [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
+    const restartedDetail = await this.withTerminalSessionTeardownPaused(
+      taskId,
+      async (markReactivationEstablished) => {
+        const restartDoc = (await this.store.getTask(taskId)) ?? doc;
+        // Open a fresh budget epoch BEFORE the first spawn of the new run so
+        // the prior run's dead sessions no longer consume the new run's retry
+        // budget. Merge because updateTask replaces metadata wholesale.
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...restartDoc.task.metadata,
+            [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
+          },
+        });
+        const detail = await this.spawnAgentForTask(taskId, {
+          ...input.agent,
+          task: instruction,
+          deferAdmissionDrain: true,
+        });
+        await this.completeSpawnReactivation(
+          taskId,
+          detail,
+          markReactivationEstablished,
+        );
+        return detail;
       },
-    });
-    const restartedDetail = await this.spawnAgentForTask(taskId, {
-      ...input.agent,
-      task: instruction,
-    });
+    );
     const firstRestartedSessionId = restartedDetail?.sessions.at(-1)?.sessionId;
     if (firstRestartedSessionId) {
       const afterSpawn = await this.store.getTask(taskId);
@@ -5775,16 +5999,21 @@ export class OrchestratorTaskService extends Service {
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
       ) {
-        return this.enqueueAdmission(taskId, doc.task.priority, {
-          framework: opts.framework,
-          model: opts.model ?? policy.model,
-          workdir: opts.workdir,
-          repo: opts.repo,
-          label: opts.label,
-          task: opts.task,
-          approvalPreset: opts.approvalPreset,
-          providerSource: opts.providerSource ?? policy.providerSource,
-        });
+        return this.enqueueAdmission(
+          taskId,
+          doc.task.priority,
+          {
+            framework: opts.framework,
+            model: opts.model ?? policy.model,
+            workdir: opts.workdir,
+            repo: opts.repo,
+            label: opts.label,
+            task: opts.task,
+            approvalPreset: opts.approvalPreset,
+            providerSource: opts.providerSource ?? policy.providerSource,
+          },
+          { deferDrain: opts.deferAdmissionDrain === true },
+        );
       }
       throw new WaveConcurrencyCapError(
         wave?.waveId ?? "unknown",
@@ -5854,16 +6083,21 @@ export class OrchestratorTaskService extends Service {
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
       ) {
-        return this.enqueueAdmission(taskId, doc.task.priority, {
-          framework: opts.framework,
-          model: opts.model ?? policy.model,
-          workdir: opts.workdir,
-          repo: opts.repo,
-          label: opts.label,
-          task: opts.task,
-          approvalPreset: opts.approvalPreset,
-          providerSource: opts.providerSource ?? policy.providerSource,
-        });
+        return this.enqueueAdmission(
+          taskId,
+          doc.task.priority,
+          {
+            framework: opts.framework,
+            model: opts.model ?? policy.model,
+            workdir: opts.workdir,
+            repo: opts.repo,
+            label: opts.label,
+            task: opts.task,
+            approvalPreset: opts.approvalPreset,
+            providerSource: opts.providerSource ?? policy.providerSource,
+          },
+          { deferDrain: opts.deferAdmissionDrain === true },
+        );
       }
       throw err;
     }
@@ -6719,6 +6953,7 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     priority: OrchestratorTaskPriority,
     spawnOpts: SerializableSpawnOpts,
+    opts: { deferDrain?: boolean } = {},
   ): Promise<TaskThreadDetailDto | null> {
     if (
       !this.admissionQueue.includes(taskId) &&
@@ -6740,7 +6975,10 @@ export class OrchestratorTaskService extends Service {
       depth: this.admissionQueue.length,
     });
     // A slot may have freed between the cap rejection and this write; try now.
-    void this.drainAdmissionQueue();
+    // Recovery from a terminal task defers this until its caller has persisted
+    // `open`, otherwise the drain correctly classifies `done` as stale and
+    // deletes the brand-new admission before it becomes restart-rebuildable.
+    if (!opts.deferDrain) void this.drainAdmissionQueue();
     return this.getTask(taskId);
   }
 
