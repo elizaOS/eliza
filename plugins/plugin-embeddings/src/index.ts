@@ -31,6 +31,7 @@ import {
 import {
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
+  getEmbeddingPooling,
   hasEmbeddingConfig,
   logResolvedConfig,
 } from "./utils/config";
@@ -71,6 +72,7 @@ export const embeddingsPlugin: Plugin = {
     EMBEDDING_FALLBACK_API_KEY: env.EMBEDDING_FALLBACK_API_KEY ?? null,
     EMBEDDING_FALLBACK_MODEL: env.EMBEDDING_FALLBACK_MODEL ?? null,
     EMBEDDING_DIMENSIONS: env.EMBEDDING_DIMENSIONS ?? null,
+    EMBEDDING_POOLING: env.EMBEDDING_POOLING ?? null,
     EMBEDDING_BROWSER_URL: env.EMBEDDING_BROWSER_URL ?? null,
   },
 
@@ -85,6 +87,7 @@ export const embeddingsPlugin: Plugin = {
     // Validate the dimension up-front so a misconfiguration surfaces at boot,
     // not on the first embedding call.
     validateEmbeddingDimension(getEmbeddingDimensions(runtime));
+    getEmbeddingPooling(runtime);
     if (!getEmbeddingBaseURL(runtime)) {
       logger.warn(
         "[Embeddings] EMBEDDING_API_KEY is set but EMBEDDING_BASE_URL is not — " +

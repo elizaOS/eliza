@@ -14,6 +14,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/node/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
@@ -124,6 +129,12 @@
         "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
         "required": false,
         "default": "1536",
+        "sensitive": false
+      },
+      "EMBEDDING_POOLING": {
+        "type": "string",
+        "description": "Optional provider-side pooling strategy sent as `pooling`. Must be `mean` or `cls`. Different pooling strategies are incompatible vector spaces even at the same width.",
+        "required": false,
         "sensitive": false
       },
       "EMBEDDING_BROWSER_URL": {

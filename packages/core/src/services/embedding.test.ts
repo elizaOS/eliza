@@ -32,6 +32,7 @@ function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 		reportError: vi.fn(),
 		agentId: AGENT_ID,
 		logger: { info: noop, warn: noop, debug: noop, error: noop },
+		isEmbeddingGenerationDisabled: () => false,
 		getModel: (type: string) => models[type],
 		useModel: (type: string, params: unknown) => {
 			const handler = models[type] as
@@ -187,6 +188,42 @@ describe("EmbeddingGenerationService drain config", () => {
 
 		expect(service.getQueueSize()).toBe(1);
 		process.env.ELIZA_FAST_SHUTDOWN = "1";
+		await service.stop();
+	});
+
+	test("quiesces incoming and already-queued work after the runtime disables embeddings", async () => {
+		let disabled = false;
+		const embedHandler = vi.fn(async () => [0.2]);
+		const batchHandler = vi.fn(async () => [[0.2]]);
+		const runtime = makeRuntime({
+			batch: true,
+			embedHandler,
+			batchHandler,
+		});
+		runtime.isEmbeddingGenerationDisabled = () => disabled;
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+
+		// Simulate a deferred probe disabling embeddings after admission but
+		// before the scheduled drain. The admitted item is discarded as a
+		// successful degraded no-op, and later events are not admitted at all.
+		// biome-ignore lint/suspicious/noExplicitAny: exercise the service event boundary directly
+		await (service as any).handleEmbeddingRequest(
+			makeItem("id-before-disable", "queued while available"),
+		);
+		expect(service.getQueueSize()).toBe(1);
+		disabled = true;
+		// biome-ignore lint/suspicious/noExplicitAny: exercise the service event boundary directly
+		await (service as any).handleEmbeddingRequest(
+			makeItem("id-after-disable", "must not be admitted"),
+		);
+		// biome-ignore lint/suspicious/noExplicitAny: drive the real scheduled drain deterministically
+		await (service as any).batchQueue.drain();
+
+		expect(service.getQueueSize()).toBe(0);
+		expect(batchHandler).not.toHaveBeenCalled();
+		expect(embedHandler).not.toHaveBeenCalled();
 		await service.stop();
 	});
 });

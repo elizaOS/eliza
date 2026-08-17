@@ -10680,14 +10680,23 @@ ${section_end}`;
 			return;
 		}
 
-		// Every registered handler reported "no backing provider configured"
-		// (e.g. a cloud proxy handler before login). Nothing can emit vectors,
-		// so a default-width column cannot cause a dimension mismatch — keep the
-		// long-standing benign skip.
+		// Every registered handler explicitly reported "no backing provider
+		// configured" (e.g. a cloud proxy before login, or an intentionally
+		// unavailable local profile). This is a supported text-only mode, but it
+		// must still set the runtime latch: otherwise the embedding service queues
+		// every memory, retries the same known-unavailable handlers, and logs a
+		// failure storm. A later successful probe clears the latch normally.
 		if (allFailuresBenign) {
+			const reason =
+				attempts.length > 0
+					? `No backing TEXT_EMBEDDING provider configured — ${attempts
+							.map((attempt) => `${attempt.provider}: ${attempt.error}`)
+							.join("; ")}`
+					: "No backing TEXT_EMBEDDING provider configured";
+			this.disableEmbeddingGeneration(reason);
 			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+				{ src: "agent", agentId: this.agentId, attempts },
+				"No backing TEXT_EMBEDDING provider configured; embedding generation is quiescent and memory writes will persist without vectors",
 			);
 			return;
 		}

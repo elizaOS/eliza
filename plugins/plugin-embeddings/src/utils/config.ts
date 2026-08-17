@@ -96,6 +96,27 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "EMBEDDING_MODEL") ?? "text-embedding-3-small";
 }
 
+export type EmbeddingPooling = "mean" | "cls";
+
+/**
+ * Optional provider-side pooling contract.
+ *
+ * Pooling changes the semantic vector space even when the output width stays
+ * the same, so accept only the two values supported by Workers AI and never
+ * silently coerce an unknown strategy.
+ */
+export function getEmbeddingPooling(runtime: IAgentRuntime): EmbeddingPooling | undefined {
+  const value = getSetting(runtime, "EMBEDDING_POOLING");
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "mean" || normalized === "cls") {
+    return normalized;
+  }
+  throw new Error(`Setting 'EMBEDDING_POOLING' must be one of: mean, cls; got: ${value}`);
+}
+
 export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
   const baseURL = getSetting(runtime, "EMBEDDING_FALLBACK_BASE_URL");
   return baseURL && baseURL.trim() !== "" ? baseURL.trim() : undefined;
@@ -159,6 +180,6 @@ export function logResolvedConfig(runtime: IAgentRuntime): void {
   logger.info(
     `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(
       runtime
-    )} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
+    )} pooling=${getEmbeddingPooling(runtime) ?? "(provider default)"} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
   );
 }

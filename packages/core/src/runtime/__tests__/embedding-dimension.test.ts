@@ -28,7 +28,14 @@ import {
 	EmbeddingDimensionProbeError,
 	NoModelProviderConfiguredError,
 } from "../../runtime";
-import { type Character, type Memory, ModelType, type UUID } from "../../types";
+import { EmbeddingGenerationService } from "../../services/embedding";
+import {
+	type Character,
+	EventType,
+	type Memory,
+	ModelType,
+	type UUID,
+} from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 
@@ -381,24 +388,69 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(ensureDim).toHaveBeenLastCalledWith(1536);
 	});
 
-	it("keeps the benign skip when every handler reports no backing provider configured", async () => {
+	it("quiesces explicitly unavailable embeddings while persisting memory without provider retries", async () => {
 		const runtime = makeRuntime();
-		const proxyHandler = vi.fn(async () => {
+		const unavailableHandler = vi.fn(async () => {
 			throw new NoModelProviderConfiguredError();
 		});
 		runtime.registerModel(
 			ModelType.TEXT_EMBEDDING,
-			proxyHandler,
+			unavailableHandler,
 			"elizacloud",
 			100,
 		);
-		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			unavailableHandler,
+			"elizacloud",
+			100,
+		);
 
-		// "No backing provider at all" means nothing will ever emit vectors, so
-		// a default-width column cannot cause a mismatch — not a degradation.
-		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
-		expect(ensureDim).not.toHaveBeenCalled();
-		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
+		try {
+			await expect(runtime.initialize()).resolves.toBeUndefined();
+			const service = (await runtime.getServiceLoadPromise(
+				EmbeddingGenerationService.serviceType,
+			)) as EmbeddingGenerationService;
+
+			const memory = {
+				...makeMemory("persist even though embeddings are unavailable"),
+				id: "00000000-0000-0000-0000-000000000004" as UUID,
+			};
+			await expect(runtime.createMemory(memory, "messages")).resolves.toBe(
+				memory.id,
+			);
+			await runtime.queueEmbeddingGeneration(memory);
+			// The service also guards its event boundary, so an internal producer
+			// cannot bypass the runtime queue helper and resurrect retry churn.
+			await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+				runtime,
+				memory,
+				priority: "normal",
+				source: "test",
+			});
+
+			// Drive the real queue deterministically. Before the quiescent contract,
+			// this calls the unavailable batch handler, falls back per-item, and
+			// retries it four times even though the probe already proved no backing
+			// provider exists.
+			// biome-ignore lint/suspicious/noExplicitAny: exercise the service's real scheduled drain boundary
+			await (service as any).batchQueue?.drain();
+
+			const persisted = await runtime.getMemoryById(memory.id);
+			expect(persisted).toMatchObject({
+				id: memory.id,
+				content: memory.content,
+			});
+			expect(persisted?.embedding).toBeUndefined();
+			// Exactly one invocation is the boot-time dimension probe. Persisting and
+			// queueing memories must not invoke or retry an explicitly unavailable
+			// provider.
+			expect(unavailableHandler).toHaveBeenCalledTimes(1);
+			expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+			expect(service.getQueueSize()).toBe(0);
+		} finally {
+			await runtime.stop();
+		}
 	});
 });
 
