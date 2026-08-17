@@ -75,7 +75,9 @@ export function decrypt(
   if (nonce.length !== NONCE_BYTES || tag.length !== TAG_BYTES) {
     throw new CryptoError("malformed ciphertext");
   }
-  const decipher = createDecipheriv("aes-256-gcm", masterKey, nonce);
+  const decipher = createDecipheriv("aes-256-gcm", masterKey, nonce, {
+    authTagLength: TAG_BYTES,
+  });
   decipher.setAAD(Buffer.from(aad, "utf8"));
   decipher.setAuthTag(tag);
   try {

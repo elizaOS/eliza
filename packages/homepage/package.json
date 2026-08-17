@@ -33,7 +33,7 @@
     "react-router-dom": "^7.10.0",
     "three": "^0.184.0",
     "tailwind-merge": "^3.4.0",
-    "viem": "2.49.3",
+    "viem": "2.55.17",
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {

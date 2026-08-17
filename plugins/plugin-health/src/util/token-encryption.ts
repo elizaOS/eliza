@@ -126,7 +126,9 @@ export function decryptTokenEnvelope(
   const iv = Buffer.from(envelope.iv, "base64");
   const tag = Buffer.from(envelope.tag, "base64");
   const ciphertext = Buffer.from(envelope.ct, "base64");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, {
+    authTagLength: AUTH_TAG_BYTES,
+  });
   decipher.setAuthTag(tag);
   const plaintext = Buffer.concat([
     decipher.update(ciphertext),

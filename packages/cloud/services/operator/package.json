@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "ioredis": "^5.10.1",
-    "kubernetes-fluent-client": "^3.11.7",
+    "kubernetes-fluent-client": "^3.11.11",
     "pepr": "^1.1.7"
   },
   "devDependencies": {

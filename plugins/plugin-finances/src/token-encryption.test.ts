@@ -69,6 +69,18 @@ describe("integrity / authentication", () => {
     expect(() => decryptTokenEnvelope(tamperedTag, KEY)).toThrow();
   });
 
+  it("rejects a valid tag truncated below 128 bits", () => {
+    const env = encryptTokenPayload("secret", KEY);
+    const truncatedTag = Buffer.from(env.tag, "base64").subarray(0, 4);
+
+    expect(() =>
+      decryptTokenEnvelope(
+        { ...env, tag: truncatedTag.toString("base64") },
+        KEY,
+      ),
+    ).toThrow();
+  });
+
   it("rejects an unsupported algorithm or version", () => {
     const env = encryptTokenPayload("x", KEY);
     expect(() =>
