@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { CATEGORY_IDS } from "@/lib/constants/character-categories";
 
 const search = mock(
   async (
@@ -71,15 +72,18 @@ describe("GET /api/my-agents/characters catalog category identity", () => {
     },
   );
 
-  test("accepts category=assistant as the assistant character catalog", async () => {
-    const response = await listCharacters("?category=assistant");
-    expect(response.status).toBe(200);
-    expect(search).toHaveBeenCalledTimes(1);
-    expect(search.mock.calls[0][0]).toMatchObject({
-      category: "assistant",
-      source: "cloud",
-    });
-  });
+  test.each([...CATEGORY_IDS])(
+    "accepts category=%s as a character catalog",
+    async (category) => {
+      const response = await listCharacters(`?category=${category}`);
+      expect(response.status).toBe(200);
+      expect(search).toHaveBeenCalledTimes(1);
+      expect(search.mock.calls[0][0]).toMatchObject({
+        category,
+        source: "cloud",
+      });
+    },
+  );
 
   test.each(["ASSISTANT", "bot", "foo", "1e2"])(
     "rejects category=%s before catalog search",

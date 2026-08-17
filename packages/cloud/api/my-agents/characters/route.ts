@@ -12,6 +12,7 @@ import type { NewUserCharacter } from "@/db/repositories";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { isCategoryId } from "@/lib/constants/character-categories";
 import { charactersService } from "@/lib/services/characters/characters";
 import { discordService } from "@/lib/services/discord";
 import type { ElizaCharacter } from "@/lib/types";
@@ -27,31 +28,15 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const search = c.req.query("search") || undefined;
-    // Character-catalog category identity, not leftover tax on
-    // my-agents sortBy. The prior `as CategoryId` cast passed
-    // ASSISTANT / bot / foo into eq(userCharacters.category), so
-    // operators asking for assistants received an empty catalog.
-    // Missing / empty still means unfiltered. Garbage 400s before
-    // count/search.
     const rawCategory = c.req.query("category");
-    const allowedCategory = new Set([
-      "assistant",
-      "anime",
-      "creative",
-      "gaming",
-      "learning",
-      "entertainment",
-      "history",
-      "lifestyle",
-    ]);
     if (
       rawCategory !== undefined &&
       rawCategory !== "" &&
-      !allowedCategory.has(rawCategory)
+      !isCategoryId(rawCategory)
     ) {
       return c.json({ error: "Invalid category" }, 400);
     }
-    const category = (rawCategory || undefined) as CategoryId | undefined;
+    const category: CategoryId | undefined = rawCategory || undefined;
     // Catalog-sort identity, not leftover database-rows page tax. Unknown
     // sortBy used to fall through the repository switch onto popularity_score
     // while the route advertised a newest default. Unknown order silently
