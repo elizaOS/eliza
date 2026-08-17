@@ -8,7 +8,12 @@ export type PathComponentDecodeResult =
   | { ok: true; value: string }
   | { ok: false; reason: "malformed-encoding" };
 
-export function decodeUrlPathComponent(raw: string): PathComponentDecodeResult {
+export function decodeUrlPathComponent(
+  raw: string | null | undefined,
+): PathComponentDecodeResult {
+  if (typeof raw !== "string") {
+    return { ok: false, reason: "malformed-encoding" };
+  }
   try {
     return { ok: true, value: decodeURIComponent(raw) };
   } catch {

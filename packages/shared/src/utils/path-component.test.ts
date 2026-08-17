@@ -30,4 +30,19 @@ describe("decodeUrlPathComponent", () => {
       value: "a%2Fb",
     });
   });
+
+  it("rejects non-string inputs as malformed encoding", () => {
+    expect(decodeUrlPathComponent(null)).toEqual({
+      ok: false,
+      reason: "malformed-encoding",
+    });
+    expect(decodeUrlPathComponent(undefined)).toEqual({
+      ok: false,
+      reason: "malformed-encoding",
+    });
+    expect(decodeUrlPathComponent(123 as unknown as string)).toEqual({
+      ok: false,
+      reason: "malformed-encoding",
+    });
+  });
 });
