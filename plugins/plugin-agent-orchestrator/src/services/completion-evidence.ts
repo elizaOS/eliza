@@ -122,6 +122,11 @@ export interface CompletionEvidenceBundle {
     path: string;
     reason: "rejected-write" | "no-write-observed";
   }>;
+  /** Files verified by direct fs inspection of the session workdir (exists +
+   *  mtime after session start) when the structured tool ledger is absent —
+   *  observation-grade evidence for adapters that fold tool results into
+   *  messages (#20794 live residual). */
+  fsVerifiedFiles?: string[];
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
@@ -440,6 +445,20 @@ export function buildCompletionEvidenceString(
 
   if (bundle.verifiedUrls.length > 0) {
     sections.push(renderUrlsSection(bundle.verifiedUrls));
+    hasRicherSection = true;
+  }
+
+  // Observation-grade file evidence for ledger-less adapters (#20794): each
+  // path was stat-verified in the session workdir with a post-start mtime —
+  // direct inspection, not worker narration — so it counts as richer evidence.
+  const fsVerified = bundle.fsVerifiedFiles ?? [];
+  if (fsVerified.length > 0) {
+    sections.push(
+      [
+        "## FS-VERIFIED FILES (stat-observed in the session workdir, modified after session start)",
+        ...fsVerified.map((file) => `- ${file}`),
+      ].join("\n"),
+    );
     hasRicherSection = true;
   }
 

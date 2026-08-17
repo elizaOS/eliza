@@ -199,6 +199,12 @@ import {
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
 import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  mineCandidatePaths,
+  probeMappedUrls,
+} from "./quick-app-evidence.js";
+import {
   readSmithersDurableRunLink,
   runDurableTask,
   type SmithersDurableRunLink,
@@ -2446,6 +2452,46 @@ export class OrchestratorTaskService extends Service {
       extractWriteLedger(sessionEvents),
     );
 
+    // Ledger-less adapters starve the deterministic pre-pass (#20794 live
+    // residual): recover observation-grade evidence by direct inspection.
+    // Claims (mined paths, captured change set) only select WHAT to inspect;
+    // fs stat inside the session workdir and a real HTTP probe of the route's
+    // operator-configured public mapping are what produce evidence.
+    let fsVerifiedFiles: string[] = [];
+    const reportingSession = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    if (
+      reportingSession?.workdir &&
+      (!ledgerVerdict.ledgerObserved ||
+        ledgerVerdict.verifiedClaims.length === 0)
+    ) {
+      fsVerifiedFiles = collectFsObservedFiles({
+        workdir: reportingSession.workdir,
+        candidatePaths: [
+          ...(changeSet?.changedFiles ?? []),
+          ...mineCandidatePaths([summary, ...subAgentReplies]),
+        ],
+        sessionStartedAt: reportingSession.registeredAt,
+      });
+      if (fsVerifiedFiles.length > 0 && verifiedUrls.length === 0) {
+        const routeMeta = isRecord(reportingSession.metadata)
+          ? reportingSession.metadata.workdirRoute
+          : undefined;
+        const urlMappings =
+          isRecord(routeMeta) && Array.isArray(routeMeta.urlMappings)
+            ? (routeMeta.urlMappings as {
+                urlPrefix: string;
+                localPath: string;
+              }[])
+            : undefined;
+        const probed = await probeMappedUrls(
+          deriveRouteMappedUrls(fsVerifiedFiles, urlMappings),
+        );
+        verifiedUrls.push(...probed);
+      }
+    }
+
     return {
       summary,
       diffSummary,
@@ -2458,6 +2504,7 @@ export class OrchestratorTaskService extends Service {
             unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
           }
         : {}),
+      ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -4072,7 +4119,10 @@ export class OrchestratorTaskService extends Service {
           verifiedPublicUrls: bundle.verifiedUrls.filter(
             isPubliclyReachableUrl,
           ),
-          ledgerVerifiedFiles: bundle.ledgerVerifiedFiles ?? [],
+          ledgerVerifiedFiles: [
+            ...(bundle.ledgerVerifiedFiles ?? []),
+            ...(bundle.fsVerifiedFiles ?? []),
+          ],
           hasChangeSet: Boolean(bundle.diffSummary?.trim()),
           greenChecks: {
             test: isGreenCheckOutput(deterministicToolOutput?.test),
