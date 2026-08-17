@@ -23,6 +23,7 @@ function makeShareCtx(search = ""): {
       id: "share-1",
       source: "android-share-sheet",
       title: "Design doc",
+      suggestedPrompt: "Review the shared design doc",
       receivedAt: 1,
     },
   ];
@@ -83,6 +84,7 @@ describe("GET /api/ingest/share consume identity", () => {
             id: "share-1",
             source: "android-share-sheet",
             title: "Design doc",
+            suggestedPrompt: "Review the shared design doc",
             receivedAt: 1,
           },
         ],
