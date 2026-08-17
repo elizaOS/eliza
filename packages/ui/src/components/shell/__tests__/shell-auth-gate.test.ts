@@ -20,7 +20,13 @@ const AUTH_PHASES: AuthStatusState["phase"][] = [
 describe("deriveShellAuthGate", () => {
   it("never gates a non-cloud-only build, including a local owner-key session", () => {
     for (const authPhase of AUTH_PHASES) {
-      expect(deriveShellAuthGate({ cloudOnly: false, authPhase })).toEqual({
+      expect(
+        deriveShellAuthGate({
+          cloudOnly: false,
+          authPhase,
+          hasUsableCloudSession: false,
+        }),
+      ).toEqual({
         gated: false,
         phase: "clear",
       });
@@ -29,24 +35,50 @@ describe("deriveShellAuthGate", () => {
 
   it("treats cloud-only authenticated as clear", () => {
     expect(
-      deriveShellAuthGate({ cloudOnly: true, authPhase: "authenticated" }),
+      deriveShellAuthGate({
+        cloudOnly: true,
+        authPhase: "authenticated",
+        hasUsableCloudSession: true,
+      }),
     ).toEqual({ gated: false, phase: "clear" });
   });
 
   it("treats cloud-only unauthenticated as needs-auth", () => {
     expect(
-      deriveShellAuthGate({ cloudOnly: true, authPhase: "unauthenticated" }),
+      deriveShellAuthGate({
+        cloudOnly: true,
+        authPhase: "unauthenticated",
+        hasUsableCloudSession: false,
+      }),
     ).toEqual({ gated: true, phase: "needs-auth" });
   });
 
-  it("keeps loading and server_unavailable on checking so the chip cannot flash", () => {
+  it.each(["loading", "authenticated", "server_unavailable"] as const)(
+    "requires sign-in without a stored Cloud session while auth is %s",
+    (authPhase) => {
+      expect(
+        deriveShellAuthGate({
+          cloudOnly: true,
+          authPhase,
+          hasUsableCloudSession: false,
+        }),
+      ).toEqual({ gated: true, phase: "needs-auth" });
+    },
+  );
+
+  it("keeps loading and server_unavailable on checking when a Cloud session exists", () => {
     expect(
-      deriveShellAuthGate({ cloudOnly: true, authPhase: "loading" }),
+      deriveShellAuthGate({
+        cloudOnly: true,
+        authPhase: "loading",
+        hasUsableCloudSession: true,
+      }),
     ).toEqual({ gated: true, phase: "checking" });
     expect(
       deriveShellAuthGate({
         cloudOnly: true,
         authPhase: "server_unavailable",
+        hasUsableCloudSession: true,
       }),
     ).toEqual({ gated: true, phase: "checking" });
   });

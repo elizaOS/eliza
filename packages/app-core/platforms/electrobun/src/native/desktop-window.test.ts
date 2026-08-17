@@ -415,7 +415,7 @@ describe("DesktopManager main window controls", () => {
     expect(window.setFrame).toHaveBeenLastCalledWith(502, 694, 96, 56);
 
     await manager.setBottomBarExpanded({ expanded: false, chip: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(430, 694, 240, 56);
+    expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
     await manager.dispose();
   });
 
@@ -430,7 +430,7 @@ describe("DesktopManager main window controls", () => {
       manager.setMainWindow(window as never);
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(430, 694, 240, 56);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();
@@ -451,7 +451,7 @@ describe("DesktopManager main window controls", () => {
       ).rejects.toThrow("native frame unavailable");
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(430, 694, 240, 56);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
       expect(window.setFrame).toHaveBeenCalledTimes(2);
       await manager.dispose();
     } finally {
@@ -469,7 +469,7 @@ describe("DesktopManager main window controls", () => {
       expect(window.setFrame).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(window.setFrame).toHaveBeenLastCalledWith(430, 694, 240, 56);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();

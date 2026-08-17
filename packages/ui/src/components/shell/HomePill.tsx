@@ -14,6 +14,8 @@
  * On a cloud-only build the `needs-auth` phase replaces both gestures with a
  * labeled chip that launches Cloud sign-in. Hold is not armed there.
  */
+
+import { LoaderCircle, LogIn } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
@@ -86,7 +88,7 @@ const PROCESS_DOTS = [
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
  *   booting     — dim pulsing handle ("waking up").
- *   needs-auth  — dark labeled chip ("Sign in to {appName}").
+ *   needs-auth  — orange labeled action ("Sign in with {appName} Cloud").
  *   idle        — solid white handle ("here, ready").
  *   listening   — dark chip, live waveform bars ("mic is hot").
  *   processing  — dark chip, pulsing dots — mic closed,
@@ -215,12 +217,12 @@ export function HomePill({
     else onOpen();
   }, [isOpen, onOpen, onClose]);
 
-  const signInLabel = `Sign in to ${appName}`;
+  const signInLabel = `Sign in with ${appName} Cloud`;
   const chipExpanded =
     phase === "listening" || phase === "processing" || needsAuth;
   const label = needsAuth
     ? signingIn
-      ? `Signing in to ${appName}`
+      ? `Signing in to ${appName} Cloud`
       : signInLabel
     : phase === "listening"
       ? `${appName} is listening — release to send`
@@ -247,9 +249,10 @@ export function HomePill({
       onPointerCancel={handlePointerCancel}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative mb-2 flex h-8 items-center justify-center rounded-full bg-transparent p-0",
-        needsAuth ? "w-[13rem]" : "w-16",
-        "transition-transform duration-200 hover:bg-transparent active:scale-95",
+        "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
+        needsAuth ? "h-12 w-[18rem]" : "h-8 w-16",
+        "transition-transform duration-200 hover:bg-transparent",
+        needsAuth ? "active:scale-[0.96]" : "active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
@@ -263,11 +266,13 @@ export function HomePill({
           // Listening carries live bars; processing swaps them for dots;
           // needs-auth fills the chip with the sign-in label.
           needsAuth
-            ? "h-7 min-w-[11.5rem] px-3 bg-neutral-900/95"
+            ? "h-11 w-full gap-2 bg-[#FF5800] px-5 group-hover:bg-[#D94B00]"
             : chipExpanded
               ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
               : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
+          needsAuth
+            ? "shadow-[0_8px_24px_rgba(255,88,0,0.42),0_0_0_1px_rgba(255,255,255,0.18)]"
+            : chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
             (phase === "responding"
               ? speaking
@@ -276,7 +281,7 @@ export function HomePill({
                   "shadow-[0_0_14px_rgba(255,138,42,0.85),0_0_0_1px_rgba(255,138,42,0.5)]"
                 : "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
               : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"),
-          (phase === "booting" || (needsAuth && signingIn)) &&
+          phase === "booting" &&
             "animate-pulse opacity-65 motion-reduce:animate-none",
           phase === "responding" &&
             !speaking &&
@@ -284,12 +289,29 @@ export function HomePill({
         )}
       >
         {needsAuth && (
-          <span
-            data-testid="shell-home-pill-sign-in"
-            className="whitespace-nowrap text-[11px] font-medium tracking-tight text-white/95"
-          >
-            {signInLabel}
-          </span>
+          <>
+            {signingIn ? (
+              <LoaderCircle
+                aria-hidden="true"
+                data-testid="shell-home-pill-sign-in-spinner"
+                className="size-4 shrink-0 animate-spin text-white motion-reduce:animate-none"
+                strokeWidth={2}
+              />
+            ) : (
+              <LogIn
+                aria-hidden="true"
+                data-testid="shell-home-pill-sign-in-icon"
+                className="size-4 shrink-0 text-white"
+                strokeWidth={2}
+              />
+            )}
+            <span
+              data-testid="shell-home-pill-sign-in"
+              className="whitespace-nowrap text-sm font-semibold leading-none text-white"
+            >
+              {signInLabel}
+            </span>
+          </>
         )}
         {phase === "listening" &&
           WAVE_BARS.map((bar) => (
