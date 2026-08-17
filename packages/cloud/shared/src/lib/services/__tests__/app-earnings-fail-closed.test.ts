@@ -201,6 +201,53 @@ describe("AppEarningsService.updatePayoutThreshold validation", () => {
   );
 });
 
+describe("AppEarningsService.requestWithdrawal idempotent replay", () => {
+  test(
+    "a corrupt persisted withdrawal amount makes the replay throw, not fabricate success",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnings("50.000000");
+      // Simulate a corrupted persisted withdrawal row carrying the replay key:
+      // Postgres NUMERIC accepts the literal 'NaN'.
+      await dbWrite.execute(
+        `INSERT INTO app_earnings_transactions (app_id, type, amount, metadata)
+         VALUES ('${APP_ID}', 'withdrawal', 'NaN',
+                 '{"idempotencyKey": "replay-corrupt"}'::jsonb);`,
+      );
+
+      await expect(
+        appEarningsService.requestWithdrawal(APP_ID, 10, "replay-corrupt"),
+      ).rejects.toThrow("withdrawal_amount");
+
+      // The replay wrote nothing: still exactly the seeded corrupt row, and the
+      // balance never moved.
+      expect(await transactionCount()).toBe(1);
+      expect(Number(await withdrawableBalance())).toBeCloseTo(50, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a healthy sequential replay returns the original transaction without a second debit",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnings("50.000000");
+
+      const first = await appEarningsService.requestWithdrawal(APP_ID, 10, "replay-healthy");
+      const second = await appEarningsService.requestWithdrawal(APP_ID, 10, "replay-healthy");
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(second.transactionId).toBe(first.transactionId);
+      expect(second.message).toContain("$10.00");
+      // Exactly one withdrawal row; the balance moved exactly once.
+      expect(await transactionCount()).toBe(1);
+      expect(Number(await withdrawableBalance())).toBeCloseTo(40, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
 describe("AppEarningsService.getEarningsSummary corrupt-row handling", () => {
   test(
     "a corrupt NUMERIC balance throws instead of reporting $NaN",
@@ -230,4 +277,11 @@ describe("AppEarningsService.getEarningsSummary corrupt-row handling", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// Without this, a broken import or schema setup would skip every DB case above
+// and the suite would pass vacuously.
+test("PGlite harness initialized (DB cases above are not vacuous)", () => {
+  expect(pgliteReady).toBe(true);
 });
