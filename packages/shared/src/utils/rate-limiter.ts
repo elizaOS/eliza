@@ -72,7 +72,14 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
     (sweepTimer as NodeJS.Timeout).unref();
   }
 
+  function assertKey(key: string): void {
+    if (typeof key !== "string" || key.trim().length === 0) {
+      throw new TypeError("rate-limiter: key must be a non-empty string");
+    }
+  }
+
   function peekImpl(key: string): RateLimitCheck {
+    assertKey(key);
     const last = map.get(key);
     if (last === undefined) return { allowed: true, retryAfterSeconds: 0 };
     const elapsed = Date.now() - last;
