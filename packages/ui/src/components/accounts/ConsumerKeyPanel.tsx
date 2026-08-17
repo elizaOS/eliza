@@ -138,6 +138,7 @@ export function ConsumerKeyPanelBody({
   api?: ConsumerKeyPanelApi;
 }) {
   const t = useAppSelector((s) => s.t);
+  const uiLanguage = useAppSelector((s) => s.uiLanguage);
   const [keys, setKeys] = useState<ConsumerKeySummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -384,7 +385,8 @@ export function ConsumerKeyPanelBody({
                         })
                       : t("consumerKeys.quotaPerDay", {
                           defaultValue: "{{quota}} tokens/day",
-                          quota: entry.dailyTokenQuota.toLocaleString("en-US"),
+                          quota:
+                            entry.dailyTokenQuota.toLocaleString(uiLanguage),
                         })}
                   </span>
                 </div>

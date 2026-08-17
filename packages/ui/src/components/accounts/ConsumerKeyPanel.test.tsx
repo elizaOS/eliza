@@ -31,11 +31,21 @@ vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;
+      uiLanguage: string;
     }) => unknown,
-  ) => selector({ t: (key, vars) => String(vars?.defaultValue ?? key) }),
+  ) =>
+    selector({
+      t: (key, vars) =>
+        String(vars?.defaultValue ?? key).replace(
+          "{{quota}}",
+          String(vars?.quota ?? ""),
+        ),
+      uiLanguage: mockUiLanguage,
+    }),
 }));
 
 let mockRole = "OWNER";
+let mockUiLanguage = "en";
 vi.mock("../../hooks/useRole.tsx", () => ({
   useRole: () => ({ role: mockRole }),
 }));
@@ -44,6 +54,7 @@ const clipboardWrites: string[] = [];
 
 beforeEach(() => {
   mockRole = "OWNER";
+  mockUiLanguage = "en";
   clipboardWrites.length = 0;
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -134,7 +145,20 @@ describe("list states", () => {
     expect(screen.getAllByText(/eliza_cp_abcdef1234/)).toHaveLength(2);
     expect(screen.getByText("Enabled")).toBeTruthy();
     expect(screen.getByText("Disabled")).toBeTruthy();
+    expect(screen.getByText("1,000,000 tokens/day")).toBeTruthy();
     expect(screen.getByText("No quota")).toBeTruthy();
+  });
+
+  it("formats quotas with the explicit app language", async () => {
+    mockUiLanguage = "es";
+    render(
+      <ConsumerKeyPanelBody
+        api={makeApi({ listConsumerKeys: vi.fn().mockResolvedValue([key()]) })}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("1.000.000 tokens/day")).toBeTruthy(),
+    );
   });
 });
 
