@@ -126,6 +126,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
+import { transferSharedMemoriesToDedicated } from "./shared-runtime/shared-memory-transfer";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   formatWakeRestoreIntegrityError,
@@ -3517,6 +3518,55 @@ export class ElizaSandboxService {
             agentId: rec.id,
             backupId: backup.id,
           });
+        }
+
+        // 6. Shared→Dedicated memory transfer (#20923 rebuild), DEFAULT OFF —
+        // ELIZA_SHARED_MEMORY_TRANSFER_ENABLED must be exactly "true". Fires
+        // only when the container boots EMPTY (no backup existed, nothing
+        // restored, not an explicit fresh-boot consent, not a pool row): the
+        // in-Worker shared runtime served this agent during its bootstrap
+        // window and wrote its turns to shared_agent_memories; a first
+        // container otherwise boots with none of that history. The push is
+        // sealed + conservation-validated end to end and the importer is
+        // idempotent, so an interrupted transfer converges on the next empty
+        // boot or explicit re-run.
+        if (
+          process.env.ELIZA_SHARED_MEMORY_TRANSFER_ENABLED === "true" &&
+          !isWarmPoolProvision &&
+          rec.execution_tier !== "shared" &&
+          !backup &&
+          !restoreState &&
+          restoreOverride?.kind !== "fresh-boot"
+        ) {
+          const transferToken = (
+            (rec.environment_vars ?? {}) as Record<string, string>
+          ).ELIZA_API_TOKEN?.trim();
+          try {
+            if (!transferToken) {
+              throw new Error("agent ELIZA_API_TOKEN is unavailable for the memory transfer");
+            }
+            const transfer = await transferSharedMemoriesToDedicated(
+              { id: rec.id, organization_id: rec.organization_id, user_id: rec.user_id },
+              { baseUrl: handle.bridgeUrl, apiToken: transferToken },
+            );
+            if (transfer.rows > 0) {
+              logger.info("[agent-sandbox] Shared memory history transferred", {
+                agentId: rec.id,
+                ...transfer,
+              });
+            }
+          } catch (error) {
+            // error-policy:J4 designed degrade — the history copy is additive
+            // and re-runnable against the sealed idempotent importer; failing
+            // the provision would trade a booting agent for a memory copy.
+            logger.warn(
+              "[agent-sandbox] Shared memory transfer failed; container boots without transferred history",
+              {
+                agentId: rec.id,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          }
         }
 
         let completed = updated;

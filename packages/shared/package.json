@@ -313,6 +313,16 @@
       "import": "./dist/contracts/scheduled-task-execution.js",
       "default": "./dist/contracts/scheduled-task-execution.js"
     },
+    "./contracts/shared-memory-transfer": {
+      "types": "./dist/contracts/shared-memory-transfer.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/shared-memory-transfer.ts",
+        "import": "./src/contracts/shared-memory-transfer.ts",
+        "default": "./src/contracts/shared-memory-transfer.ts"
+      },
+      "import": "./dist/contracts/shared-memory-transfer.js",
+      "default": "./dist/contracts/shared-memory-transfer.js"
+    },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": {

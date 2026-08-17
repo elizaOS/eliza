@@ -3459,7 +3459,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
-      const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
+      const cleanVector = embedding.map((n) => (Number.isFinite(n) ? n : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
       const count = params.count ?? 10;
 
@@ -3674,9 +3674,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
         };
 
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-        );
+        const cleanVector = memory.embedding.map((n) => (Number.isFinite(n) ? n : 0));
 
         embeddingValues[this.embeddingDimension] = cleanVector;
 
@@ -3746,9 +3744,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 "Skipping embedding update: dimension mismatch with configured column"
               );
             } else {
-              const cleanVector = memory.embedding.map((n) =>
-                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-              );
+              const cleanVector = memory.embedding.map((n) => (Number.isFinite(n) ? n : 0));
 
               // Check if embedding exists
               const existingEmbedding = await tx
