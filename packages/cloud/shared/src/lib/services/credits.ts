@@ -675,8 +675,13 @@ export class CreditsService {
       stripePaymentIntentId,
     } = params;
 
-    if (amount <= 0) {
-      throw new Error("Amount must be positive");
+    // Authoritative money-write guard: `<= 0` alone lets NaN through (the
+    // comparison is false), after which `String(amount)::numeric` would reach
+    // the balance/ledger CTE as 'NaN'. Every debit path funnels through here,
+    // so the finite check lives at this lowest shared boundary (the reserve()
+    // wrapper keeps its own guard as defense-in-depth).
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Amount must be a positive, finite number");
     }
 
     const committedKeyedDeduction = async (): Promise<{
