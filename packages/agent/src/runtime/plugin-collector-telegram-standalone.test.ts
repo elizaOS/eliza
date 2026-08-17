@@ -29,15 +29,12 @@ afterEach(() => {
 });
 
 describe("collectPluginNames standalone Telegram policy", () => {
-  it("keeps standalone Telegram dormant on a default full boot (PA default-on, #17023)", () => {
-    // personal-assistant is default-loaded on full boots and declares
-    // passiveConnectorsByDefault, so the pre-runtime prediction now matches
-    // the runtime gate: passive unless explicitly overridden.
+  it("loads Telegram for a plain standalone agent", () => {
     process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
 
     const names = collectPluginNames({} as ElizaConfig);
-    expect(names).toContain("@elizaos/plugin-personal-assistant");
-    expect(names).not.toContain("@elizaos/plugin-telegram");
+    expect(names).not.toContain("@elizaos/plugin-personal-assistant");
+    expect(names).toContain("@elizaos/plugin-telegram");
   });
 
   it("loads Telegram for a plain agent that opts into the standalone poller with PA disabled", () => {
@@ -55,11 +52,15 @@ describe("collectPluginNames standalone Telegram policy", () => {
     expect(names).toContain("@elizaos/plugin-telegram");
   });
 
-  it("loads Telegram for a default full boot that explicitly opts out of passive mode", () => {
+  it("loads Telegram for a LifeOps app that explicitly opts out of passive mode", () => {
     process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
     process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({
+      plugins: {
+        entries: { "personal-assistant": { enabled: true } },
+      },
+    } as ElizaConfig);
     expect(names).toContain("@elizaos/plugin-personal-assistant");
     expect(names).toContain("@elizaos/plugin-telegram");
   });

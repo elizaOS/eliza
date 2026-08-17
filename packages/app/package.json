@@ -258,6 +258,14 @@
   },
   "private": true,
   "elizaos": {
+    "app": {
+      "defaults": {
+        "personal-assistant": {
+          "enabled": true,
+          "requiredForReady": true
+        }
+      }
+    },
     "scripts": {
       "testLanes": [
         "client"
