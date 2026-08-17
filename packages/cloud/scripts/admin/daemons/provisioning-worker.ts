@@ -194,10 +194,31 @@ const DEFAULT_DB_LIVENESS_MAX_AGE_HOURS = 24;
 const DEFAULT_DB_HEARTBEAT_MAX_AGE_MINUTES = 15;
 const workerStartedAt = new Date();
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  label = "integer",
+  maximum = Number.MAX_SAFE_INTEGER,
+): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  if (/^[1-9]\d*$/.test(value)) {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) {
+      throw new Error(
+        `${label} must be a canonical positive integer no greater than ${maximum} (received ${JSON.stringify(value)})`,
+      );
+    }
+    return parsed;
+  }
+  // parseInt("1e4", 10) === 1 would silently set a 1ms poll loop.
+  // Prefix-numeric tokens fail closed. Non-numeric garbage still falls back
+  // so documented "nope"/"soon" knobs keep their default.
+  if (/^[-+0-9]/.test(value)) {
+    throw new Error(
+      `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
+    );
+  }
+  return fallback;
 }
 
 function hasFlag(argv: readonly string[], flag: string): boolean {
@@ -219,12 +240,19 @@ export function readWorkerConfig(
     pollIntervalMs: parsePositiveInt(
       env.WORKER_POLL_INTERVAL,
       DEFAULT_POLL_INTERVAL_MS,
+      "WORKER_POLL_INTERVAL",
+      MAX_POLL_INTERVAL_MS,
     ),
-    batchSize: parsePositiveInt(env.WORKER_BATCH_SIZE, DEFAULT_BATCH_SIZE),
+    batchSize: parsePositiveInt(
+      env.WORKER_BATCH_SIZE,
+      DEFAULT_BATCH_SIZE,
+      "WORKER_BATCH_SIZE",
+    ),
     runOnce: env.WORKER_RUN_ONCE === "1" || hasFlag(argv, "--once"),
     nodeHealthIntervalMs: parsePositiveInt(
       env.WORKER_NODE_HEALTH_INTERVAL,
       DEFAULT_NODE_HEALTH_INTERVAL_MS,
+      "WORKER_NODE_HEALTH_INTERVAL",
     ),
     jobTypes: resolveJobTypesForLanes(env.PROVISIONING_JOB_LANES),
     selfRestartEnabled: parseBooleanDefaultTrue(
@@ -233,6 +261,7 @@ export function readWorkerConfig(
     watchdogConsecutiveTicks: parsePositiveInt(
       env.PROVISIONING_WORKER_WATCHDOG_TICKS,
       DEFAULT_WATCHDOG_CONSECUTIVE_TICKS,
+      "PROVISIONING_WORKER_WATCHDOG_TICKS",
     ),
     orphanReconcilerEnabled: env.ORPHAN_RECONCILER_ENABLED === "1",
     deletionReconcileEnabled: parseBooleanDefaultTrue(
@@ -241,10 +270,12 @@ export function readWorkerConfig(
     dbLivenessMaxAgeHours: parsePositiveInt(
       env.CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS,
       DEFAULT_DB_LIVENESS_MAX_AGE_HOURS,
+      "CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS",
     ),
     dbHeartbeatMaxAgeMinutes: parsePositiveInt(
       env.CONTAINERS_DB_HEARTBEAT_MAX_AGE_MINUTES,
       DEFAULT_DB_HEARTBEAT_MAX_AGE_MINUTES,
+      "CONTAINERS_DB_HEARTBEAT_MAX_AGE_MINUTES",
     ),
   };
 }
@@ -1281,6 +1312,13 @@ const PHASE_TIMEOUT_MS = 60_000;
  * unit test pins it too (FIX F).
  */
 const WORK_CYCLE_TIMEOUT_MS = 4 * 60_000;
+
+/**
+ * Longest configurable sleep that still leaves the bounded work cycle inside
+ * the watchdog window. The strict one-millisecond margin preserves the
+ * invariant's `<`, rather than `<=`, contract.
+ */
+const MAX_POLL_INTERVAL_MS = WATCHDOG_MAX_CYCLE_MS - WORK_CYCLE_TIMEOUT_MS - 1;
 
 /**
  * The watchdog invariant, surfaced for the unit test (FIX F) so adding a phase
