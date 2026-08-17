@@ -1,8 +1,6 @@
 /**
- * Planner-arg attendee sanitization: invented non-email attendees ("lunch with
- * dana" → {email: "dana"}) must be dropped, not forwarded to the calendar
- * service where the strict boundary validator 400s the whole create.
- * Deterministic unit harness over the exported normalizer.
+ * Deterministic coverage for attendee sanitization at the planner-output
+ * boundary, before strict calendar-service validation.
  */
 
 import { describe, expect, it } from "vitest";

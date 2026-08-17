@@ -65,6 +65,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
+import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -3613,18 +3614,6 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
-/**
- * The planner routinely invents attendees from bare names in the request
- * ("lunch with dana" → {email: "dana"}). The calendar service boundary
- * strict-400s any non-email attendee, which failed the WHOLE create for an
- * event that never needed the invite (live: "add lunch with dana thursday
- * noon" → CALENDAR_SERVICE_400 attendees[0].email). Planner output is
- * untrusted, so this normalizer DROPS non-email attendees instead of
- * forwarding them to die at the service; the service validator keeps its
- * strict contract for direct API callers.
- */
-const CALENDAR_ATTENDEE_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
@@ -3636,7 +3625,7 @@ export function normalizeCalendarAttendees(
     attendees.map((attendee) => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return CALENDAR_ATTENDEE_EMAIL_RE.test(email) ? { email } : null;
+        return basicEmailValid(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -3647,8 +3636,7 @@ export function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" &&
-        CALENDAR_ATTENDEE_EMAIL_RE.test(record.email.trim())
+        typeof record.email === "string" && basicEmailValid(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {
