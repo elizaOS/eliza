@@ -2425,6 +2425,8 @@ function AppContent() {
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
   const persistentShellController = useShellControllerContext();
+  const persistentShellOpen = persistentShellController?.open;
+  const persistentShellClose = persistentShellController?.close;
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
   useEffect(() => {
@@ -2470,10 +2472,10 @@ function AppContent() {
   }, []);
   const handlePersistentOverlaySizeClassChange = useCallback(
     (sizeClass: ChatOverlayWindowSizeClass): void => {
-      if (sizeClass === "sheet") persistentShellController?.open();
-      else persistentShellController?.close();
+      if (sizeClass === "sheet") persistentShellOpen?.();
+      else persistentShellClose?.();
     },
-    [persistentShellController],
+    [persistentShellClose, persistentShellOpen],
   );
 
   useEffect(() => {

@@ -125,8 +125,13 @@ describe("App standalone chat-overlay wiring", () => {
       "onWindowSizeClassChange={handlePersistentOverlaySizeClassChange}",
     );
     expect(APP_TSX).toContain('sizeClass === "sheet"');
-    expect(APP_TSX).toContain("persistentShellController?.open()");
-    expect(APP_TSX).toContain("persistentShellController?.close()");
+    expect(APP_TSX).toContain(
+      "const persistentShellOpen = persistentShellController?.open",
+    );
+    expect(APP_TSX).toContain(
+      "const persistentShellClose = persistentShellController?.close",
+    );
+    expect(APP_TSX).toContain("[persistentShellClose, persistentShellOpen]");
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
