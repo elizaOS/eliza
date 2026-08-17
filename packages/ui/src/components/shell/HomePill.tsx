@@ -283,6 +283,11 @@ export function HomePill({
       onPointerCancel={handlePointerCancel}
       onMouseEnter={() => setPreviewHover(true)}
       onMouseLeave={() => setPreviewHover(false)}
+      // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
+      // the wide hover host on the first scroll gesture so subsequent trackpad
+      // momentum reaches the application underneath instead of being trapped
+      // by a decorative preview.
+      onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",

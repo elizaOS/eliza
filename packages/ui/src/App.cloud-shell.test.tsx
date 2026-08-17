@@ -77,12 +77,16 @@ describe("App standalone chat-overlay wiring", () => {
 
     expect(overlayShell).toContain("<GlassStyles />");
     expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
     expect(foundation).toContain("if (useWebChatPanel && shellIsOpen)");
     expect(foundation).toContain("<ChatOverlayMount");
     expect(foundation).toContain("onPilledChange={closeWebChatWhenPilled}");
     expect(foundation).toContain(
-      "hovered: useWebChatPanel && shellPreviewHovered",
+      'expanded: shellIsOpen && shellHostDetent !== "input"',
+    );
+    expect(foundation).toContain(
+      '(shellIsOpen && shellHostDetent === "input")',
     );
     expect(foundation).toContain(
       "useWebChatPanel ? setShellPreviewHovered : undefined",

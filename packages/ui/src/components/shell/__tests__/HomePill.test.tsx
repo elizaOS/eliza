@@ -105,6 +105,26 @@ describe("HomePill", () => {
     expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
   });
 
+  it("dismisses the wide preview on wheel so scrolling continues behind it", () => {
+    const onPreviewHoverChange = vi.fn();
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+
+    fireEvent.wheel(button, { deltaY: 120 });
+
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("uses the same hover composer while Cloud auth is required", () => {
     render(
       <HomePill phase="needs-auth" onOpen={() => {}} onClose={() => {}} />,

@@ -103,7 +103,6 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-import { useChatOverlayWindowBounds } from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -320,18 +319,6 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
-  const setActionNotice = useAppSelector((state) => state.setActionNotice);
-  const handleWindowBoundsFailure = useCallback((): void => {
-    if (overlayOpen) {
-      controller?.close();
-    }
-    setActionNotice(
-      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
-      "error",
-      6_000,
-    );
-  }, [controller, overlayOpen, setActionNotice]);
-  useChatOverlayWindowBounds(overlayOpen, handleWindowBoundsFailure);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -1809,6 +1796,9 @@ function ShellFoundationMount({
   const shellIsOpen = controller?.isOpen ?? false;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
+  const [shellHostDetent, setShellHostDetent] = useState<
+    "pill" | "input" | "half" | "full"
+  >(shellIsOpen ? "input" : "pill");
   const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
@@ -1906,8 +1896,11 @@ function ShellFoundationMount({
         rpcMethod: "desktopSetBottomBarExpanded",
         ipcChannel: "desktop:setBottomBarExpanded",
         params: {
-          expanded: shellIsOpen,
-          hovered: useWebChatPanel && shellPreviewHovered,
+          expanded: shellIsOpen && shellHostDetent !== "input",
+          hovered:
+            useWebChatPanel &&
+            (shellPreviewHovered ||
+              (shellIsOpen && shellHostDetent === "input")),
         },
         timeoutMs: 1_000,
       });
@@ -1927,7 +1920,13 @@ function ShellFoundationMount({
     return () => {
       cancelled = true;
     };
-  }, [hasController, shellIsOpen, shellPreviewHovered, useWebChatPanel]);
+  }, [
+    hasController,
+    shellHostDetent,
+    shellIsOpen,
+    shellPreviewHovered,
+    useWebChatPanel,
+  ]);
   useEffect(() => {
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
@@ -1956,6 +1955,7 @@ function ShellFoundationMount({
         releaseFirstRunToHalf={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
+        onDetentChange={setShellHostDetent}
       />
     );
   }
@@ -1968,6 +1968,7 @@ function ShellFoundationMount({
         signingIn={controller.signingIn}
         onOpen={() => {
           focusComposerOnOpenRef.current = useWebChatPanel;
+          if (useWebChatPanel) setShellHostDetent("input");
           controller.open();
         }}
         onClose={controller.close}
@@ -2038,10 +2039,12 @@ function ChatOverlayMount({
   releaseFirstRunToHalf,
   onFirstRunReleaseHandled,
   onPilledChange,
+  onDetentChange,
 }: {
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
   onPilledChange?: (pilled: boolean) => void;
+  onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2074,6 +2077,7 @@ function ChatOverlayMount({
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
+      onDetentChange={onDetentChange}
     />
   );
 }
