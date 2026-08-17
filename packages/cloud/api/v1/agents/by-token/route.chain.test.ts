@@ -83,9 +83,7 @@ describe("GET /api/v1/agents/by-token token-rail identity", () => {
   );
 
   test("accepts chain=solana as the Solana public token rail", async () => {
-    const response = await lookup(
-      `?address=${SOLANA_TOKEN}&chain=solana`,
-    );
+    const response = await lookup(`?address=${SOLANA_TOKEN}&chain=solana`);
     expect(response.status).toBe(200);
     expect(findByTokenAddress).toHaveBeenCalledTimes(1);
     expect(findByTokenAddress.mock.calls[0][1]).toBe("solana");
@@ -104,6 +102,13 @@ describe("GET /api/v1/agents/by-token token-rail identity", () => {
     const body = (await response.json()) as { data: { id: string } };
     expect(body.data.id).toBe("char-eth");
     expect(findByTokenAddress.mock.calls[0][1]).toBe("eth");
+  });
+
+  test("accepts an extensible canonical lowercase chain id", async () => {
+    const response = await lookup(`?address=${EVM_TOKEN}&chain=arbitrum`);
+
+    expect(response.status).toBe(200);
+    expect(findByTokenAddress.mock.calls[0][1]).toBe("arbitrum");
   });
 
   test.each(["SOLANA", "ETH", "Ethereum", "foo!", "1e2"])(
