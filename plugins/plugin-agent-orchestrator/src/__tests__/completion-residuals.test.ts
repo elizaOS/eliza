@@ -31,6 +31,7 @@ import {
   type OrchestratorOwnedArtifact,
   readOwnedArtifactsFromMetadata,
 } from "../services/orchestrator-artifact-ownership.js";
+import { captureWorkspacePathFingerprints } from "../services/workspace-diff.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -139,6 +140,26 @@ describe("collectCompletionResiduals — real git legs", () => {
     // The listed item is the real unpushed sha.
     const head = git(workdir, "rev-parse", "HEAD").trim();
     expect(residual?.items?.[0]).toBe(head);
+  });
+
+  it("detects a no-upstream commit and never instructs a no-commit task to publish or rewrite it", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const baselineSha = git(workdir, "rev-parse", "HEAD").trim();
+    writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "unexpected commit");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      baselineSha,
+      gitDeliveryPolicy: "leave_uncommitted",
+    });
+    const correction = residualsCorrection(result);
+    expect(correction).toContain("leave-uncommitted delivery contract");
+    expect(correction).toContain("authoritative recovery");
+    expect(correction).not.toMatch(/\bpush\b/i);
+    expect(correction).not.toMatch(/\bdiscard\b/i);
+    expect(correction).not.toMatch(/\breset\b/i);
   });
 
   it("clears after the unpushed commit is pushed", async () => {
@@ -420,7 +441,9 @@ describe("collectCompletionResiduals — orchestrator-owned scaffold paths", () 
     const residual = result.residuals.find(
       (row) => row.kind === "uncommitted_changes",
     );
-    expect(residual?.items).toEqual(["?? .eliza/"]);
+    expect(residual?.items).toEqual([
+      "?? .eliza/trajectories/completion-evidence.jsonl",
+    ]);
   });
 
   it("still blocks tracked scaffold-path modifications even without a tool-path signal", async () => {
@@ -508,13 +531,171 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
 });
 
 describe("collectCompletionResiduals — spawn-time baseline + shared route workdirs", () => {
+  it("surfaces post-spawn damage to baseline paths even under a no-commit allowlist", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "preserve-tracked.txt"), "tracked seed\n");
+    git(workdir, "add", "preserve-tracked.txt");
+    git(workdir, "commit", "-q", "-m", "tracked sentinel");
+    git(workdir, "push", "-q");
+    writeFileSync(
+      join(workdir, "preserve-tracked.txt"),
+      "tracked dirty before spawn\n",
+    );
+    writeFileSync(
+      join(workdir, "preserve-untracked.txt"),
+      "untracked before spawn\n",
+    );
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "preserve-tracked.txt",
+      "preserve-untracked.txt",
+    ]);
+
+    writeFileSync(
+      join(workdir, "preserve-tracked.txt"),
+      "agent damaged tracked sentinel\n",
+    );
+    rmSync(join(workdir, "preserve-untracked.txt"));
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineSha: git(workdir, "rev-parse", "HEAD").trim(),
+      baselineDirtyPaths: ["preserve-tracked.txt"],
+      baselineUntrackedPaths: ["preserve-untracked.txt"],
+      baselinePathFingerprints,
+      // Simulate the child having written both paths: the no-commit policy
+      // must never outrank byte-preservation for a pre-existing dirty path.
+      allowedUncommittedPaths: [
+        "preserve-tracked.txt",
+        "preserve-untracked.txt",
+      ],
+      gitDeliveryPolicy: "leave_uncommitted",
+    });
+
+    const residual = result.residuals.find(
+      (row) => row.kind === "baseline_integrity_changed",
+    );
+    expect(residual?.items).toEqual([
+      "preserve-tracked.txt (contents changed after spawn)",
+      "preserve-untracked.txt (deleted after spawn)",
+    ]);
+    expect(
+      result.residuals.filter((row) => row.kind === "uncommitted_changes"),
+    ).toEqual([]);
+  });
+
+  it("surfaces mode-only damage to a tracked baseline path", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "script.sh"), "#!/bin/sh\nexit 0\n");
+    git(workdir, "add", "script.sh");
+    git(workdir, "commit", "-q", "-m", "script");
+    git(workdir, "push", "-q");
+    writeFileSync(join(workdir, "script.sh"), "#!/bin/sh\nexit 1\n");
+    chmodSync(join(workdir, "script.sh"), 0o644);
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "script.sh",
+    ]);
+    chmodSync(join(workdir, "script.sh"), 0o755);
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths: ["script.sh"],
+      baselinePathFingerprints,
+    });
+    expect(
+      result.residuals.find((row) => row.kind === "baseline_integrity_changed")
+        ?.items,
+    ).toEqual(["script.sh (permissions changed after spawn)"]);
+  });
+
+  it("keeps pre-existing dirt out of cleanup targets and permits scoped no-commit outputs", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "preserve-tracked.txt"), "baseline\n");
+    git(workdir, "add", "preserve-tracked.txt");
+    git(workdir, "commit", "-q", "-m", "tracked sentinel");
+    git(workdir, "push", "-q");
+    writeFileSync(
+      join(workdir, "preserve-tracked.txt"),
+      "pre-existing dirty\n",
+    );
+    writeFileSync(
+      join(workdir, "preserve-untracked.txt"),
+      "pre-existing untracked\n",
+    );
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "preserve-tracked.txt",
+      "preserve-untracked.txt",
+    ]);
+    mkdirSync(join(workdir, "src"));
+    mkdirSync(join(workdir, "test"));
+    writeFileSync(
+      join(workdir, "src", "stats.mjs"),
+      "export const ok = true;\n",
+    );
+    writeFileSync(
+      join(workdir, "test", "stats.test.mjs"),
+      "// passing output\n",
+    );
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineSha: git(workdir, "rev-parse", "HEAD").trim(),
+      baselineDirtyPaths: ["preserve-tracked.txt"],
+      baselineUntrackedPaths: ["preserve-untracked.txt"],
+      baselinePathFingerprints,
+      allowedUncommittedPaths: ["src/stats.mjs", "test/stats.test.mjs"],
+      gitDeliveryPolicy: "leave_uncommitted",
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("preserve-tracked.txt");
+    expect(JSON.stringify(result)).not.toContain("preserve-untracked.txt");
+
+    writeFileSync(join(workdir, "AGENTS.md"), "worker-created scaffold\n");
+    writeFileSync(
+      join(workdir, "src", "not-requested.tmp"),
+      "unrelated residual\n",
+    );
+    const adversarial = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineSha: git(workdir, "rev-parse", "HEAD").trim(),
+      baselineDirtyPaths: ["preserve-tracked.txt"],
+      baselineUntrackedPaths: ["preserve-untracked.txt"],
+      baselinePathFingerprints,
+      allowedUncommittedPaths: ["src/stats.mjs", "test/stats.test.mjs"],
+      gitDeliveryPolicy: "leave_uncommitted",
+    });
+    const residual = adversarial.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual([
+      "?? AGENTS.md",
+      "?? src/not-requested.tmp",
+    ]);
+    const correction = residualsCorrection(adversarial);
+    expect(correction).toContain("AGENTS.md");
+    expect(correction).toContain("src/not-requested.tmp");
+    expect(correction).not.toContain("preserve-tracked.txt");
+    expect(correction).not.toContain("preserve-untracked.txt");
+    expect(correction).not.toContain("src/stats.mjs");
+    expect(correction).not.toContain("test/stats.test.mjs");
+    expect(correction).not.toContain("Commit (or intentionally discard)");
+  });
+
   it("does not count tracked paths already dirty at spawn (pre-existing churn)", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "README.md"), "pre-existing churn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "README.md",
+    ]);
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineDirtyPaths: ["README.md"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("clean");
     expect(result.residuals).toEqual([]);
@@ -524,11 +705,15 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
   it("still counts run-produced paths alongside baseline-dirty ones", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "README.md"), "pre-existing churn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "README.md",
+    ]);
     writeFileSync(join(workdir, "run-output.ts"), "export {};\n");
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineDirtyPaths: ["README.md"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("residuals");
     const residual = result.residuals.find(
@@ -541,10 +726,14 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
   it("never exempts an untracked path via the tracked-dirty baseline", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "untracked.ts"), "export {};\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "untracked.ts",
+    ]);
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineDirtyPaths: ["untracked.ts"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("residuals");
   });
@@ -552,10 +741,14 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
   it("does not count untracked paths already present at spawn (lived-in workdir)", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "pre-existing.txt",
+    ]);
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineUntrackedPaths: ["pre-existing.txt"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("clean");
     expect(result.residuals).toEqual([]);
@@ -564,11 +757,15 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
   it("still counts untracked paths that appear after spawn", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "pre-existing.txt",
+    ]);
     writeFileSync(join(workdir, "new-work.ts"), "export {};\n");
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineUntrackedPaths: ["pre-existing.txt"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("residuals");
     const residual = result.residuals.find(
@@ -577,14 +774,18 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
     expect(residual?.items).toEqual(["?? new-work.ts"]);
   });
 
-  it("exempts a wholly-untracked directory via its collapsed porcelain path", async () => {
+  it("fingerprints concrete files inside a wholly-untracked directory", async () => {
     const { workdir } = makeRepo();
     mkdirSync(join(workdir, "notes"));
     writeFileSync(join(workdir, "notes", "old.md"), "before spawn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "notes/old.md",
+    ]);
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
-      baselineUntrackedPaths: ["notes/"],
+      baselineUntrackedPaths: ["notes/old.md"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("clean");
   });
@@ -592,13 +793,31 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
   it("still counts a baseline-untracked path the worker staged (no longer ??)", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    const baselinePathFingerprints = captureWorkspacePathFingerprints(workdir, [
+      "pre-existing.txt",
+    ]);
     git(workdir, "add", "pre-existing.txt");
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineUntrackedPaths: ["pre-existing.txt"],
+      baselinePathFingerprints,
     });
     expect(result.status).toBe("residuals");
+  });
+
+  it("fails closed when a baseline path has no valid spawn fingerprint", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "README.md"), "pre-existing churn\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths: ["README.md"],
+    });
+    expect(
+      result.residuals.find((row) => row.kind === "baseline_integrity_changed")
+        ?.items,
+    ).toEqual(["README.md (spawn fingerprint unavailable)"]);
   });
 
   it("shared route workdir: skips the git legs on a dirty, unpushed shared checkout and records the skip", async () => {
