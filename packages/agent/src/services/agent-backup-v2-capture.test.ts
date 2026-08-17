@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
@@ -356,6 +358,103 @@ describe("streamAgentBackupV2Capture", () => {
       await fs.promises.rm(root, { recursive: true, force: true });
     }
   });
+
+  it("captures and restores a real filesystem-backed PGlite producer", async () => {
+    const root = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "eliza-backup-real-pglite-"),
+    );
+    const stateDir = path.join(root, "state");
+    const pgliteDir = path.join(stateDir, ".pgdata");
+    const restoredDir = path.join(root, "restored");
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousPgliteDir = process.env.PGLITE_DATA_DIR;
+    const previousPostgresUrl = process.env.POSTGRES_URL;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    const previousDisableExtensions =
+      process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS;
+    const availableMemory = vi
+      .spyOn(process, "availableMemory")
+      .mockReturnValue(512 * MIB);
+    type RealPgliteAdapter = ReturnType<typeof createDatabaseAdapter> & {
+      getRawConnection(): PGlite;
+      getPgliteDataDir(): string | null;
+      dumpPgliteDataDirAfterPreflight<T>(
+        preflight: () => Promise<T>,
+        compression?: "gzip",
+      ): Promise<{ dump: File | Blob; preflight: T; release: () => void }>;
+      close(): Promise<void>;
+    };
+    let adapter: RealPgliteAdapter | undefined;
+    let restored: PGlite | undefined;
+    try {
+      await fs.promises.mkdir(stateDir, { recursive: true });
+      process.env.ELIZA_STATE_DIR = stateDir;
+      process.env.PGLITE_DATA_DIR = pgliteDir;
+      process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS = "1";
+      delete process.env.POSTGRES_URL;
+      delete process.env.DATABASE_URL;
+      adapter = createDatabaseAdapter(
+        { dataDir: pgliteDir },
+        ids.agent,
+      ) as RealPgliteAdapter;
+
+      const source = adapter.getRawConnection();
+      await source.waitReady;
+      await source.exec(
+        "CREATE TABLE capture_e2e (id integer PRIMARY KEY, value text NOT NULL); INSERT INTO capture_e2e VALUES (7, 'real-pglite');",
+      );
+
+      const components = createDefaultAgentBackupV2CaptureSources(
+        {
+          agentId: ids.agent,
+          character: null,
+          adapter,
+          getSetting: () => undefined,
+        },
+        {},
+      );
+      const databaseParts: Uint8Array[] = [];
+      for await (const frame of parseAgentBackupCaptureV2Frames(
+        streamAgentBackupV2Capture({
+          request: request(),
+          agentId: ids.agent,
+          components,
+        }),
+        { digest: nodeDigest, sha256StreamFactory: nodeStreamFactory },
+      )) {
+        if (
+          frame.header.kind === "data" &&
+          frame.header.componentName === "database"
+        ) {
+          databaseParts.push(frame.payload.slice());
+        }
+      }
+      expect(databaseParts.length).toBeGreaterThan(0);
+
+      restored = new PGlite({
+        dataDir: restoredDir,
+        loadDataDir: new Blob([concat(databaseParts)]),
+      });
+      await restored.waitReady;
+      const restoredRows = await restored.query<{ id: number; value: string }>(
+        "SELECT id, value FROM capture_e2e",
+      );
+      expect(restoredRows.rows).toEqual([{ id: 7, value: "real-pglite" }]);
+    } finally {
+      await restored?.close();
+      await adapter?.close();
+      availableMemory.mockRestore();
+      restoreEnvironmentValue("ELIZA_STATE_DIR", previousStateDir);
+      restoreEnvironmentValue("PGLITE_DATA_DIR", previousPgliteDir);
+      restoreEnvironmentValue("POSTGRES_URL", previousPostgresUrl);
+      restoreEnvironmentValue("DATABASE_URL", previousDatabaseUrl);
+      if (previousDisableExtensions === undefined)
+        delete process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS;
+      else
+        process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS = previousDisableExtensions;
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("fails closed without the fenced managed exporter and never falls back to live files", async () => {
     const root = await fs.promises.mkdtemp(

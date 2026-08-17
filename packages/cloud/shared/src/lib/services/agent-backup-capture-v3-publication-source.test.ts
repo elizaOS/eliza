@@ -692,7 +692,7 @@ describe("capture-v3 publication source", () => {
     }
   });
 
-  test("retains a durable cleanup intent after pending and retries it", async () => {
+  test("retains a durable cleanup intent across retention expiry and retries it", async () => {
     const directory = await stateDirectory();
     try {
       const artifacts = await capturedFixture(directory);
@@ -707,6 +707,7 @@ describe("capture-v3 publication source", () => {
       const authority =
         await deriveAgentBackupCaptureV3SpoolAuthorityFromCatalogBackup(protectedBackup);
       let cleanupStatus: "complete" | "pending" = "pending";
+      let authorizedBackup: AgentBackupOperationClaim["backup"] = protectedBackup;
       let authorizations = 0;
       let closes = 0;
       const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
@@ -726,7 +727,7 @@ describe("capture-v3 publication source", () => {
           listCandidates: async () => [protectedBackup],
           authorize: async () => {
             authorizations += 1;
-            return protectedBackup;
+            return authorizedBackup;
           },
           openExisting: async () =>
             ({
@@ -749,6 +750,11 @@ describe("capture-v3 publication source", () => {
       const outbox = path.join(directory, "agent-backup-capture-v3-cleanup-outbox");
       expect(await fs.promises.readdir(outbox)).toContain(`${OPERATION_ID}.json`);
 
+      authorizedBackup = {
+        ...protectedBackup,
+        catalog_state: "deleting",
+        retention_until: new Date(NOW_MS - 1),
+      };
       cleanupStatus = "complete";
       const completed = await janitor.runCycle();
       expect(completed).toMatchObject({ authorized: 0, completed: 1, pending: 0 });

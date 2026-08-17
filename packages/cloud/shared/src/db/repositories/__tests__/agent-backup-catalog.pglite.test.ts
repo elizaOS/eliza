@@ -65,6 +65,10 @@ import {
   finalizeAgentBackupDeletion,
   settleAgentBackupGc,
 } from "../agent-backup-gc";
+import {
+  authorizeAgentBackupProtectedSpoolCleanup,
+  listAgentBackupProtectedSpoolCleanupCandidates,
+} from "../agent-backup-publication";
 import { agentSandboxesRepository } from "../agent-sandboxes";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -819,6 +823,104 @@ async function protectBackup(objectCount = 1) {
   };
 }
 
+async function protectManifestV3Backup() {
+  const reserved = await reserveAgentBackupOperation(
+    exactReservation({ retentionUntil: new Date("2020-01-01T00:00:00.000Z") }),
+  );
+  const [claim] = await claimDueAgentBackupOperations({
+    ownerId: "capture-worker-v3",
+    limit: 1,
+    leaseMs: 60_000,
+  });
+  if (!claim) throw new Error("Expected one manifest-v3 capture claim");
+  const execution = { ownerId: claim.ownerId, generation: claim.generation };
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "scheduled",
+    to: "capturing",
+    execution,
+  });
+  const descriptor = objectDescriptor();
+  const manifest = await capturedManifestV3([descriptor], {
+    createdAt: reserved.created_at.toISOString(),
+  });
+  await recordCapturedAgentBackupManifest({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    expectedActivationGeneration: LIFECYCLE_GENERATION,
+    expectedLifecycleRevision: "0",
+    execution,
+    manifest,
+  });
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "captured",
+    to: "uploading",
+    execution,
+  });
+  const primary = await reserveCopy(reserved.id, "primary", execution, descriptor);
+  await markAgentBackupObjectUploading({ organizationId: ORG_ID, objectId: primary.id, execution });
+  await recordAgentBackupObjectPresent({
+    organizationId: ORG_ID,
+    objectId: primary.id,
+    providerEtag: "etag-primary-v3",
+    uploadReceiptDigest: SHA_D,
+    execution,
+  });
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "uploading",
+    to: "primary_uploaded",
+    execution,
+  });
+  await markAgentBackupObjectVerified({
+    organizationId: ORG_ID,
+    objectId: primary.id,
+    uploadReceiptDigest: SHA_D,
+    execution,
+  });
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "primary_uploaded",
+    to: "primary_verified",
+    execution,
+  });
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "primary_verified",
+    to: "secondary_pending",
+    execution,
+  });
+  const secondary = await reserveCopy(reserved.id, "secondary", execution, descriptor);
+  await markPresentAndVerified(secondary.id, execution, SHA_C);
+  await transitionAgentBackupOperation({
+    organizationId: ORG_ID,
+    backupId: reserved.id,
+    operationId: OPERATION_ID,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    expectedState: "secondary_pending",
+    to: "protected",
+    execution,
+  });
+  return { backupId: reserved.id, manifest };
+}
+
 beforeAll(async () => {
   try {
     const { apply } = await pushSchema(
@@ -1046,6 +1148,40 @@ describe("agent backup catalogue on primary PGlite", () => {
       vault_key_generation_id: VAULT_KEY_GENERATION_ID,
       vault_key_authority_receipt_digest: SHA_D,
     });
+  });
+
+  test("keeps exact spool cleanup authority after retention enters object GC", async () => {
+    const { backupId, manifest } = await protectManifestV3Backup();
+    const authorization = {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId,
+      operationId: OPERATION_ID,
+      activationGeneration: LIFECYCLE_GENERATION,
+      lifecycleRevision: "0",
+      manifestDigest: manifest.digest,
+      objectInventoryDigest: manifest.objectInventoryDigest,
+    };
+
+    await expect(authorizeAgentBackupProtectedSpoolCleanup(authorization)).resolves.toMatchObject({
+      id: backupId,
+      catalog_state: "protected",
+    });
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+
+    await expect(authorizeAgentBackupProtectedSpoolCleanup(authorization)).resolves.toMatchObject({
+      id: backupId,
+      catalog_state: "deleting",
+    });
+    const candidates = await listAgentBackupProtectedSpoolCleanupCandidates({
+      operationId: OPERATION_ID,
+    });
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ id: backupId, catalog_state: "deleting" });
   });
 
   test("rejects capture when the active runtime image changes after reservation", async () => {

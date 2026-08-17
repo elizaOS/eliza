@@ -46,6 +46,8 @@ const DOCKER_ID_PATTERN = /^[0-9a-f]{64}$/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROVIDER_SERVER_ID_PATTERN = /^[1-9][0-9]{0,19}$/;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
+const LEGACY_WRITER_DRAIN_FORMAT =
+  "elizaos.agent-backup.capture-v3-legacy-writer-drain.v1" as const;
 
 export interface AgentBackupCaptureV2RuntimeAttestation {
   organizationId: string;
@@ -104,6 +106,29 @@ export interface ExecuteAgentBackupCaptureV2CatalogClaimDependencies {
   }): Promise<unknown>;
   now?: () => number;
   captureDeadlineMs?: number;
+}
+
+/** Deployment evidence that every pre-v3 spool writer has exited before activation. */
+export interface AgentBackupCaptureV3LegacyWriterDrainReceipt {
+  format: typeof LEGACY_WRITER_DRAIN_FORMAT;
+  deploymentId: string;
+  drainedAt: string;
+}
+
+function assertLegacyWriterDrainReceipt(
+  receipt: Readonly<AgentBackupCaptureV3LegacyWriterDrainReceipt>,
+): void {
+  if (
+    receipt.format !== LEGACY_WRITER_DRAIN_FORMAT ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(receipt.deploymentId) ||
+    !Number.isFinite(Date.parse(receipt.drainedAt)) ||
+    new Date(receipt.drainedAt).toISOString() !== receipt.drainedAt
+  ) {
+    executorError(
+      "AGENT_BACKUP_V3_LEGACY_WRITERS_NOT_DRAINED",
+      "Capture-v3 activation requires a canonical legacy-writer drain receipt",
+    );
+  }
 }
 
 export interface ExecuteAgentBackupCaptureV2CatalogClaimInput {
@@ -539,7 +564,12 @@ export { AgentBackupCaptureV2CatalogExecutorError } from "./agent-backup-capture
 /** Bind deployment authorities once, then inject this executor into the catalogue runtime. */
 export function createAgentBackupCaptureV2CatalogExecutor(
   dependencies: ExecuteAgentBackupCaptureV2CatalogClaimDependencies,
+  legacyWriterDrain: Readonly<AgentBackupCaptureV3LegacyWriterDrainReceipt>,
 ): AgentBackupCatalogRuntimeCaptureExecutor {
+  // A filesystem lock can fence other v3 claimants, but code deployed before
+  // that lock existed cannot observe it. Requiring a deployment-produced drain
+  // receipt makes rolling activation fail closed until those processes exit.
+  assertLegacyWriterDrainReceipt(legacyWriterDrain);
   return {
     execute: ({ claim, leaseMs, signal }) =>
       executeAgentBackupCaptureV2CatalogClaim({

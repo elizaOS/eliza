@@ -18,7 +18,12 @@ import {
 } from "./agent-backup-catalog";
 
 const UINT64_MAX = 18_446_744_073_709_551_615n;
-const PROTECTED_SPOOL_CLEANUP_STATES = ["protected", "retained", "restore_verified"] as const;
+const PUBLISHED_SPOOL_CLEANUP_STATES = ["protected", "retained", "restore_verified"] as const;
+const EXPIRED_SPOOL_CLEANUP_STATES = ["expiration_pending", "deleting", "deleted"] as const;
+const PROTECTED_SPOOL_CLEANUP_STATES = [
+  ...PUBLISHED_SPOOL_CLEANUP_STATES,
+  ...EXPIRED_SPOOL_CLEANUP_STATES,
+] as const;
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
@@ -171,7 +176,24 @@ export async function listAgentBackupProtectedSpoolCleanupCandidates(params: {
         eq(agentSandboxBackups.manifest_version, 3),
         eq(agentSandboxBackups.backup_operation_id, params.operationId),
         inArray(agentSandboxBackups.catalog_state, PROTECTED_SPOOL_CLEANUP_STATES),
-        sql`${agentSandboxBackups.secondary_verified_at} IS NOT NULL`,
+        sql`(
+          (
+            ${agentSandboxBackups.catalog_state} IN ('protected', 'retained', 'restore_verified')
+            AND ${agentSandboxBackups.secondary_verified_at} IS NOT NULL
+          )
+          OR (
+            ${agentSandboxBackups.catalog_state} IN ('expiration_pending', 'deleting')
+            AND ${agentSandboxBackups.retention_until} <= NOW()
+            AND ${agentSandboxBackups.retention_reason} <> 'legal-hold'
+          )
+          OR (
+            ${agentSandboxBackups.catalog_state} = 'deleted'
+            AND ${agentSandboxBackups.retention_until} <= NOW()
+            AND ${agentSandboxBackups.retention_reason} <> 'legal-hold'
+            AND ${agentSandboxBackups.catalog_delete_receipt_digest} IS NOT NULL
+            AND ${agentSandboxBackups.catalog_deleted_at} IS NOT NULL
+          )
+        )`,
       ),
     )
     .orderBy(agentSandboxBackups.created_at, agentSandboxBackups.id)
@@ -212,7 +234,24 @@ export async function authorizeAgentBackupProtectedSpoolCleanup(
           eq(agentSandboxBackups.manifest_digest, input.manifestDigest),
           eq(agentSandboxBackups.object_inventory_digest, input.objectInventoryDigest),
           inArray(agentSandboxBackups.catalog_state, PROTECTED_SPOOL_CLEANUP_STATES),
-          sql`${agentSandboxBackups.secondary_verified_at} IS NOT NULL`,
+          sql`(
+            (
+              ${agentSandboxBackups.catalog_state} IN ('protected', 'retained', 'restore_verified')
+              AND ${agentSandboxBackups.secondary_verified_at} IS NOT NULL
+            )
+            OR (
+              ${agentSandboxBackups.catalog_state} IN ('expiration_pending', 'deleting')
+              AND ${agentSandboxBackups.retention_until} <= NOW()
+              AND ${agentSandboxBackups.retention_reason} <> 'legal-hold'
+            )
+            OR (
+              ${agentSandboxBackups.catalog_state} = 'deleted'
+              AND ${agentSandboxBackups.retention_until} <= NOW()
+              AND ${agentSandboxBackups.retention_reason} <> 'legal-hold'
+              AND ${agentSandboxBackups.catalog_delete_receipt_digest} IS NOT NULL
+              AND ${agentSandboxBackups.catalog_deleted_at} IS NOT NULL
+            )
+          )`,
         ),
       )
       .for("update")
@@ -221,6 +260,18 @@ export async function authorizeAgentBackupProtectedSpoolCleanup(
       throw new AgentBackupCatalogConflictError(
         "Protected spool cleanup authority is absent or incomplete",
       );
+    }
+
+    // Once the primary DB has authoritatively expired this exact backup, local
+    // ciphertext cleanup remains safe even while provider GC mutates or removes
+    // the object rows. The immutable manifest identity above and DB-clock
+    // retention/tombstone proof replace the earlier dual-receipt proof.
+    if (
+      EXPIRED_SPOOL_CLEANUP_STATES.includes(
+        backup.catalog_state as (typeof EXPIRED_SPOOL_CLEANUP_STATES)[number],
+      )
+    ) {
+      return backup;
     }
 
     const objects = await tx

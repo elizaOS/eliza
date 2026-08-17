@@ -22,6 +22,8 @@ import type { AgentBackupOperationClaim } from "../../db/repositories/agent-back
 import {
   type AgentBackupCaptureV2CatalogExecutionContext,
   type AgentBackupCaptureV2RuntimeAttestation,
+  createAgentBackupCaptureV2CatalogExecutor,
+  type ExecuteAgentBackupCaptureV2CatalogClaimDependencies,
   executeAgentBackupCaptureV2CatalogClaim,
 } from "./agent-backup-capture-v2-catalog-executor";
 import { isTrustedAgentBackupCaptureV2TerminalDisposition } from "./agent-backup-capture-v2-failure-disposition";
@@ -44,6 +46,29 @@ const vaultKeyAuthority = {
   receiptDerivation: "elizaos.agent-vault-key.authority-receipt.v1" as const,
   receiptDigest: "f".repeat(64),
 };
+
+describe("capture-v3 legacy-writer rollout fence", () => {
+  const dependencies = {} as ExecuteAgentBackupCaptureV2CatalogClaimDependencies;
+
+  it("refuses activation without a canonical deployment drain receipt", () => {
+    expect(() =>
+      createAgentBackupCaptureV2CatalogExecutor(dependencies, {
+        format: "elizaos.agent-backup.capture-v3-legacy-writer-drain.v1",
+        deploymentId: "rollout-42",
+        drainedAt: "not-a-timestamp",
+      }),
+    ).toThrow("legacy-writer drain receipt");
+  });
+
+  it("binds the executor only after the deployment drain receipt is valid", () => {
+    const executor = createAgentBackupCaptureV2CatalogExecutor(dependencies, {
+      format: "elizaos.agent-backup.capture-v3-legacy-writer-drain.v1",
+      deploymentId: "rollout-42",
+      drainedAt: "2026-08-17T00:00:00.000Z",
+    });
+    expect(executor.execute).toBeTypeOf("function");
+  });
+});
 
 function claim(): AgentBackupOperationClaim {
   return {
