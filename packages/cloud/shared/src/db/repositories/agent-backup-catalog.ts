@@ -37,6 +37,7 @@ import {
   type AgentBackupObjectTransport,
   agentBackupCatalogAuthorities,
   agentBackupObjects,
+  agentBackupRestoreLeases,
 } from "../schemas/agent-backup-catalog";
 import {
   type AgentBackupCatalogState,
@@ -55,6 +56,7 @@ import {
   requireCanonicalProviderServerId,
   resolveAgentBackupManifestSourceAuthorityInTransaction,
 } from "./agent-backup-source-authority";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const EMPTY_BACKUP_STATE: AgentBackupPlainStateData = {
   memories: [],
@@ -163,7 +165,7 @@ export async function advanceAgentBackupCatalogRevision(
     .update(agentBackupCatalogAuthorities)
     .set({
       catalog_revision: sql`${agentBackupCatalogAuthorities.catalog_revision} + 1`,
-      updated_at: sql`NOW()`,
+      updated_at: sql`clock_timestamp()`,
     })
     .where(
       and(
@@ -456,8 +458,8 @@ export async function reserveAgentBackupOperation(
 /**
  * Transaction-aware reservation used by lifecycle authorities that must make
  * the catalogue row and their owning operation visible in one commit. Callers
- * own the outer lock order; this function locks the sandbox source authority,
- * then the exact backup row, source node, and per-agent catalogue authority.
+ * own the outer lock order; this function locks the sandbox source, source
+ * node, any parent chain, exact operation backup, then catalogue authority.
  */
 export async function reserveAgentBackupOperationInTransaction(
   tx: DbTransaction,
@@ -610,6 +612,21 @@ export async function reserveAgentBackupOperationInTransaction(
     }
   }
 
+  // Replay must join the global backup -> catalogue-authority lock order used
+  // by restore, vault binding, and GC. A missing row is safe: authority locking
+  // serializes repository creates before the insert below is attempted.
+  await tx
+    .select({ id: agentSandboxBackups.id })
+    .from(agentSandboxBackups)
+    .where(
+      and(
+        eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
+        eq(agentSandboxBackups.catalog_agent_id, input.agentId),
+        eq(agentSandboxBackups.backup_operation_id, input.operationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
   const reservationAuthority = await createAndLockCatalogAuthority(
     tx,
     input.organizationId,
@@ -1868,14 +1885,26 @@ export async function transitionAgentBackupOperation(params: {
         "Retry must resume the exact state recorded by the failed operation",
       );
     }
+    let expirationAuthority:
+      | Awaited<ReturnType<typeof lockAgentBackupCatalogAuthority>>
+      | undefined;
     if (params.to === "expiration_pending") {
+      if (!row.catalog_organization_id || !row.catalog_agent_id) {
+        throw new AgentBackupCatalogConflictError("Backup catalogue authority is missing");
+      }
+      expirationAuthority = await lockAgentBackupCatalogAuthority(
+        tx,
+        row.catalog_organization_id,
+        row.catalog_agent_id,
+      );
+      const databaseNow = await readPostLockDatabaseNow(tx);
       const [retentionEligible] = await tx
         .select({ id: agentSandboxBackups.id })
         .from(agentSandboxBackups)
         .where(
           and(
             eq(agentSandboxBackups.id, row.id),
-            lte(agentSandboxBackups.retention_until, sql`NOW()`),
+            lte(agentSandboxBackups.retention_until, databaseNow),
             sql`${agentSandboxBackups.retention_reason} <> 'legal-hold'`,
           ),
         )
@@ -1915,6 +1944,22 @@ export async function transitionAgentBackupOperation(params: {
           "Backup cannot expire before every dependent incremental is deleted",
         );
       }
+      const [activeLease] = await tx
+        .select({ id: agentBackupRestoreLeases.id })
+        .from(agentBackupRestoreLeases)
+        .where(
+          and(
+            eq(agentBackupRestoreLeases.organization_id, row.catalog_organization_id),
+            eq(agentBackupRestoreLeases.agent_id, row.catalog_agent_id),
+            eq(agentBackupRestoreLeases.backup_id, row.id),
+            isNull(agentBackupRestoreLeases.released_at),
+            gt(agentBackupRestoreLeases.expires_at, databaseNow),
+          ),
+        )
+        .limit(1);
+      if (activeLease) {
+        throw new AgentBackupCatalogConflictError("Backup has an active restore lease");
+      }
     }
     assertAgentBackupCatalogTransition({
       from: row.catalog_state,
@@ -1925,11 +1970,13 @@ export async function transitionAgentBackupOperation(params: {
     if (!row.catalog_organization_id || !row.catalog_agent_id) {
       throw new AgentBackupCatalogConflictError("Backup catalogue authority is missing");
     }
-    const authority = await lockAgentBackupCatalogAuthority(
-      tx,
-      row.catalog_organization_id,
-      row.catalog_agent_id,
-    );
+    const authority =
+      expirationAuthority ??
+      (await lockAgentBackupCatalogAuthority(
+        tx,
+        row.catalog_organization_id,
+        row.catalog_agent_id,
+      ));
     const catalogRevision = await advanceAgentBackupCatalogRevision(tx, {
       organizationId: row.catalog_organization_id,
       agentId: row.catalog_agent_id,
