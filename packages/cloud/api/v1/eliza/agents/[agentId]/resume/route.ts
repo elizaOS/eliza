@@ -39,7 +39,29 @@ async function __hono_POST(
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
-    const sync = new URL(request.url).searchParams.get("sync") === "true";
+    // Agent-resume wait identity, not leftover tax on agent-create
+    // autoProvision. sync=TRUE used to silently stay async (202 job)
+    // instead of blocking provision.
+    const requestedSync = new URL(request.url).searchParams.get("sync");
+    if (
+      requestedSync != null &&
+      requestedSync !== "" &&
+      requestedSync !== "true" &&
+      requestedSync !== "false"
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Invalid sync",
+            message: 'sync must be "true" or "false".',
+          },
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    const sync = requestedSync === "true";
 
     logger.info("[agent-api] Resume requested", {
       agentId,
