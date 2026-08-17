@@ -225,6 +225,85 @@ describe("BillingTab buy-credits accessibility", () => {
   });
 });
 
+describe("BillingTab navigation guards", () => {
+  it("refuses a non-http(s) Stripe checkout URL instead of navigating", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/credits/balance")) {
+        return Promise.resolve({ balance: 12.5 });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({ enabled: false });
+      }
+      if (url.startsWith("/api/stripe/create-checkout-session")) {
+        return Promise.resolve({ url: "javascript:alert(1)" });
+      }
+      return Promise.resolve({});
+    });
+    const { toast } = await import("sonner");
+    const originalHref = window.location.href;
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    await screen.findAllByTestId("invoice-row");
+    const input = screen.getByLabelText("Amount (USD)");
+    await actor.type(input, "25");
+    await actor.click(screen.getByRole("button", { name: /Buy credits/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Checkout URL is not a valid URL",
+      );
+    });
+    // The top window never left: the wire URL was rejected before assignment.
+    expect(window.location.href).toBe(originalHref);
+    // The processing state resets so the user can retry.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy();
+    });
+  });
+
+  it("refuses a non-http(s) crypto payment link instead of navigating", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/credits/balance")) {
+        return Promise.resolve({ balance: 12.5 });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({ enabled: true });
+      }
+      if (url.startsWith("/api/crypto/payments")) {
+        return Promise.resolve({ payLink: "javascript:alert(1)" });
+      }
+      return Promise.resolve({});
+    });
+    const { toast } = await import("sonner");
+    const originalHref = window.location.href;
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    await screen.findAllByTestId("invoice-row");
+    await actor.click(screen.getByRole("button", { name: /Crypto/i }));
+    const input = screen.getByLabelText("Amount (USD)");
+    await actor.type(input, "25");
+    await actor.click(screen.getByRole("button", { name: /Pay with Crypto/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Payment link is not a valid URL",
+      );
+    });
+    expect(window.location.href).toBe(originalHref);
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Redirecting to payment page...",
+    );
+  });
+});
+
 describe("BillingTab hero + invoice presentation", () => {
   it("renders hero, amount, and invoice totals with tabular numbers", async () => {
     routeApi();

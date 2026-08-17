@@ -107,6 +107,32 @@ describe("DocumentViewer detail load", () => {
     );
   });
 
+  it("sandboxes the PDF reader iframe (same posture as the chat PdfTile)", async () => {
+    getDocument.mockResolvedValue({
+      document: {
+        id: "d1",
+        filename: "q3-strategy.pdf",
+        contentType: "application/pdf",
+        url: `/api/media/${"b".repeat(64)}.pdf`,
+        fileSize: 1024,
+        createdAt: 1_700_000_000_000,
+        fragmentCount: 0,
+        source: "upload",
+        provenance: { kind: "upload", label: "Uploaded file" },
+        canEditText: false,
+        canDelete: true,
+        content: { text: "Q3 strategy notes" },
+      },
+    });
+    render(<DocumentViewer documentId="d1" />);
+    await waitFor(() => expect(screen.getByTestId("reader-pdf")).toBeTruthy());
+    // Same-origin so the native viewer's resources load, but no script,
+    // forms, popups, or top navigation for the served bytes.
+    expect(screen.getByTestId("reader-pdf").getAttribute("sandbox")).toBe(
+      "allow-same-origin",
+    );
+  });
+
   it("manages retained meeting artifacts from the routed Knowledge reader", async () => {
     const meetingTranscript = {
       id: "t1",

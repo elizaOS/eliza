@@ -302,4 +302,35 @@ describe("GetStartedPage", () => {
         .getAttribute("href"),
     ).toBe("sms:+18087881821");
   });
+
+  it("suppresses the return link when the server sends a non-http(s)/sms URL", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "discord",
+      platformUserId: "1234567890",
+      platformDisplayName: "attested-discord-user",
+      returnUrl: "javascript:alert(1)",
+    });
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("attested-discord-user")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Discord account/ }),
+    );
+    expect(await screen.findByText("You're connected")).toBeTruthy();
+    // The unsafe wire URL must never reach an href — no back link renders.
+    expect(screen.queryByRole("link", { name: /Back to Discord/ })).toBeNull();
+    // The in-app fallback remains available instead.
+    expect(
+      screen.getByRole("button", { name: "Or chat here instead" }),
+    ).toBeTruthy();
+  });
 });
