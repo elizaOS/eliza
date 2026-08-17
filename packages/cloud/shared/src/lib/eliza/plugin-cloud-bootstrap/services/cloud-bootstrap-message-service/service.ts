@@ -26,6 +26,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { v4 } from "uuid";
+import { parseClampedInteger } from "@elizaos/shared";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";
 import {
@@ -531,9 +532,14 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     const maxIterations =
       options?.maxNativePlannerIterations ??
-      parseInt(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"));
-    const maxConsecutiveFailures = parseInt(
+      parseClampedInteger(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"), {
+        min: 1,
+        max: 20,
+        fallback: 6,
+      });
+    const maxConsecutiveFailures = parseClampedInteger(
       String(runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES") ?? "2"),
+      { min: 1, max: 10, fallback: 2 },
     );
     let iterationCount = 0;
     let consecutiveFailures = 0;
