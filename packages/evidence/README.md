@@ -1,14 +1,15 @@
 # @elizaos/evidence
 
 Evidence-bundle foundation for the unified evidence harness and develop→main
-certification pipeline (epic #14541, design doc:
-`docs/ongoing-development/unified-evidence-harness.md`).
+certification pipeline (epic #14541). The maintained architecture and
+certification contract live in this README and the package `CLAUDE.md`.
 
 One harness run produces one bundle: `evidence/runs/<run-id>/` with a
 `manifest.json` listing every artifact and a `meta.json` recording provenance
-(commit, branch, runner, tier, env fingerprint). Existing evidence producers
-are **not rewritten** — ingestors copy/hardlink their output into the bundle
-and stamp provenance at ingest time. Certification (#14546) signs
+(commit, branch, runner, tier, env fingerprint). Named ingestors copy/hardlink
+each producer's canonical output into the bundle and stamp provenance at ingest
+time. The reviewer never crawls those producer directories on its normal path;
+it verifies and reads the bundle manifest. Certification (#14546) signs
 sha256(manifest bytes), which is why the manifest is written in a canonical,
 byte-stable form.
 
@@ -81,7 +82,7 @@ linux (NFC) produce identical manifest bytes for the same logical filename.
 
 ## Ingestors
 
-Pure discovery + copy; producers untouched. Each silo reports honestly:
+Pure discovery + copy. Each named silo reports honestly:
 `absent` (no root exists) is a different result from `ingested` with zero
 artifacts (root exists but is empty).
 
@@ -89,14 +90,19 @@ artifacts (root exists but is empty).
 | --- | --- | --- |
 | `e2e-recordings` | `e2e-recordings/` | e2e |
 | `aesthetic-audit` | `packages/app/aesthetic-audit-output/` | — |
-| `device-e2e` | `device-e2e-output/`, `packages/app/device-e2e-output/` | native |
+| `device-e2e` | `packages/app/device-e2e-output/` | native |
 | `playwright-test-results` | `packages/app/test-results/` | e2e |
-| `walkthrough-reports` | `reports/walkthrough/`, `packages/app/reports/walkthrough/` | — |
+| `ios-device-capture` | `packages/app/ios/build/boot-capture/`, `packages/app/ios/build/device-logs/` | native |
+| `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |
-| `scenario-runner` | `packages/scenario-runner/reports/`, `reports/scenarios/` | scenario |
+| `scenario-runner` | `reports/scenarios/` | scenario |
 
-Multi-root silos namespace bundle paths by a per-root label so roots cannot
-collide. Artifacts are hardlinked when the silo shares a volume with the
+The former roots `device-e2e-output/`,
+`packages/app/reports/walkthrough/`, and
+`packages/scenario-runner/reports/` have no live writer and are not part of
+normal ingestion. Operators inspecting archived material may pass them to the
+reviewer with explicit `--source`; that compatibility mode never runs
+implicitly. Artifacts are hardlinked when the silo shares a volume with the
 bundle, copied otherwise, and hashed **as stored** so a corrupt copy fails at
 add time.
 
@@ -105,12 +111,14 @@ add time.
 ```bash
 bun run --cwd packages/evidence bundle:create -- --tier cpu [--out evidence/runs] [--repo-root <dir>]
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
+bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 ```
 
 `create` collects git provenance (fails loud outside a repo), resolves the
 runner (`ELIZA_EVIDENCE_RUNNER` ∈ local|vast|ci, else `CI` env, else local),
-ingests every silo, finalizes, and prints a per-silo summary plus the manifest
-sha256. `verify` re-hashes every artifact and reports `missing` /
+ingests every silo plus explicit `--lane-report <lane>=<json-file>` inputs,
+finalizes, and prints a per-silo summary plus the manifest sha256. `verify`
+re-hashes every artifact and reports `missing` /
 `size-mismatch` / `hash-mismatch` / `unlisted` / `symlink` / `meta-mismatch`
 findings; non-zero exit on any issue. Verification is lstat-based: a verified
 bundle contains no symlinks anywhere — a symlinked artifact would be mutable

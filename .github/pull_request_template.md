@@ -171,8 +171,15 @@ video click-through of the flow.
 ```bash
   bun run evidence:doctor                 (check capture tools; prints fixes for any missing)
   bun run test:e2e:record                 (general E2E recordings)
+  bun run test:matrix:review              (capture into one verified evidence bundle)
+  bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
+                                          (re-open the exact matrix run)
   bun run --cwd packages/app audit:app    (app + cloud UI — REQUIRED for UI changes)
 ```
+
+The matrix command creates and verifies one named bundle, then passes that
+exact run to the reviewer. Do not replace the `--bundle` path with raw producer
+directories; `--source` is only for explicit archived/ad-hoc compatibility.
 
 A UI-touching diff (rendered `.tsx`/`.css`/`.svg` under `packages/app`,
 `packages/ui`, `apps/app`, …) MUST attach real screenshot/video/OCR artifacts —

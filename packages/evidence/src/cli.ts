@@ -30,6 +30,7 @@ import { TIERS, type Tier } from "./schema.ts";
 
 const USAGE = `Usage:
   bundle:create -- --tier <cpu|gpu|full> [--out <dir>] [--repo-root <dir>]
+                   [--lane-report <lane>=<json-file>]... [--json]
   bundle:verify -- <bundle-dir>
   certify       -- --tier <cpu|gpu|full> --reviewer-id <id> --reviewer-kind <agent|human>
                    [--reviewer-model <m>] [--reviewer-verdicts <file>] [--skip-matrix]
@@ -39,7 +40,8 @@ const USAGE = `Usage:
                    [--out <dir>] [--repo-root <dir>]
                    [--gpu-queue <queue-dir>] [--gpu-queue-timeout-ms <n>]
 
-create   Open a new evidence bundle, ingest every known silo, finalize.
+create   Open a new evidence bundle, ingest every known silo plus explicit
+         matrix lane reports, finalize.
 verify   Re-hash every artifact in an existing bundle and report integrity.
 certify  One command: matrix → ingest → analyze → vision-qa → rollup →
          reviewer merge → sign → self-verify. Writes a signed certification.json
@@ -59,10 +61,14 @@ function parseCreateArgs(argv: string[]): {
   tier: Tier;
   outDir?: string;
   repoRoot?: string;
+  laneReports: Array<{ lane: string; filePath: string }>;
+  json: boolean;
 } {
   let tier: Tier | undefined;
   let outDir: string | undefined;
   let repoRoot: string | undefined;
+  const laneReports: Array<{ lane: string; filePath: string }> = [];
+  let json = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const value = () => {
@@ -75,7 +81,9 @@ function parseCreateArgs(argv: string[]): {
       index += 1;
       return next;
     };
-    if (arg === "--tier") {
+    if (arg === "--json") {
+      json = true;
+    } else if (arg === "--tier") {
       const raw = value();
       if (!(TIERS as readonly string[]).includes(raw)) {
         throw new EvidenceError(
@@ -88,6 +96,23 @@ function parseCreateArgs(argv: string[]): {
       outDir = value();
     } else if (arg === "--repo-root") {
       repoRoot = value();
+    } else if (arg === "--lane-report") {
+      const raw = value();
+      const separator = raw.indexOf("=");
+      const lane = separator === -1 ? "" : raw.slice(0, separator);
+      const filePath = separator === -1 ? "" : raw.slice(separator + 1);
+      if (!/^[a-z0-9][a-z0-9-]*$/u.test(lane) || filePath.trim() === "") {
+        throw new EvidenceError(
+          "--lane-report must be <lowercase-lane>=<json-file>",
+          { code: "CLI_USAGE" },
+        );
+      }
+      if (laneReports.some((entry) => entry.lane === lane)) {
+        throw new EvidenceError(`duplicate --lane-report lane: ${lane}`, {
+          code: "CLI_USAGE",
+        });
+      }
+      laneReports.push({ lane, filePath });
     } else {
       throw new EvidenceError(`unknown argument: ${arg}`, {
         code: "CLI_USAGE",
@@ -97,7 +122,7 @@ function parseCreateArgs(argv: string[]): {
   if (tier === undefined) {
     throw new EvidenceError("--tier is required", { code: "CLI_USAGE" });
   }
-  return { tier, outDir, repoRoot };
+  return { tier, outDir, repoRoot, laneReports, json };
 }
 
 function defaultRepoRoot(): string {
@@ -113,6 +138,11 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
   );
   const git = collectGitProvenance(repoRoot);
   const runner = resolveRunnerKind(process.env);
+  const laneReports = args.laneReports.map((report) => {
+    const filePath = path.resolve(report.filePath);
+    readJson(filePath, `lane report ${report.lane}`);
+    return { ...report, filePath };
+  });
   const bundle = createBundle({
     rootDir,
     provenance: {
@@ -125,10 +155,37 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
   });
   const ingestStart = Date.now();
   const results = await ingestAllSilos(bundle, repoRoot);
+  for (const report of laneReports) {
+    await bundle.addArtifact(report.filePath, {
+      kind: "report",
+      source: "test-matrix",
+      lane: report.lane,
+      producedBy: "bundle:create --lane-report",
+      bundlePath: `lanes/${report.lane}/matrix-run.json`,
+    });
+  }
   const finalized = await bundle.finalize({
     timings: { "ingest.all": Date.now() - ingestStart },
   });
 
+  const total =
+    results.reduce((sum, result) => sum + result.artifactCount, 0) +
+    args.laneReports.length;
+  if (args.json) {
+    io.out(
+      JSON.stringify({
+        schema: 1,
+        command: "bundle:create",
+        runId: bundle.runId,
+        bundleDir: bundle.dir,
+        manifestPath: finalized.manifestPath,
+        manifestSha256: finalized.manifestSha256,
+        artifactCount: total,
+        silos: results,
+      }),
+    );
+    return 0;
+  }
   const siloWidth = Math.max(...results.map((result) => result.silo.length));
   io.out(`bundle ${bundle.runId}`);
   io.out(
@@ -142,7 +199,6 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
       }`,
     );
   }
-  const total = results.reduce((sum, result) => sum + result.artifactCount, 0);
   io.out("");
   io.out(`  artifacts: ${total}`);
   io.out(`  manifest:  ${finalized.manifestPath}`);
