@@ -28,7 +28,8 @@ function parseAcceptLanguage(value: string | string[] | undefined): string[] {
         .map((param) => param.trim())
         .find((param) => param.toLowerCase().startsWith("q="));
       const q = qParam ? Number(qParam.slice(2)) : 1;
-      if (!Number.isFinite(q) || q <= 0) return null;
+      // RFC 7231 q is 0–1. Number("1e2") === 100 used to win the sort.
+      if (!Number.isFinite(q) || q <= 0 || q > 1) return null;
       return { index, q, tag };
     })
     .filter((candidate): candidate is LanguageCandidate => candidate != null)
