@@ -170,12 +170,33 @@ async function __hono_GET(
   }
 
   const url = new URL(request.url);
-  const platform = url.searchParams.get("platform") as
-    | "meta"
-    | "google"
-    | "twitter"
-    | "linkedin"
-    | null;
+  // Catalog-platform identity, not leftover my-agents sortBy tax. The
+  // service fallback `|| ["twitter_card"]` mapped META / facebook / foo
+  // onto Twitter sizes. Missing / empty still means the full AD_SIZES
+  // catalog. Garbage 400s before getRecommendedSizes.
+  const requestedPlatform = url.searchParams.get("platform");
+  const PROMOTE_PLATFORMS = ["meta", "google", "twitter", "linkedin"] as const;
+  type PromotePlatform = (typeof PROMOTE_PLATFORMS)[number];
+  if (
+    requestedPlatform !== null &&
+    requestedPlatform !== "" &&
+    !PROMOTE_PLATFORMS.includes(requestedPlatform as PromotePlatform)
+  ) {
+    return Response.json(
+      {
+        error: "invalid_platform",
+        message: 'platform must be "meta", "google", "twitter", or "linkedin".',
+      },
+      { status: 400 },
+    );
+  }
+  const platform =
+    requestedPlatform === "meta" ||
+    requestedPlatform === "google" ||
+    requestedPlatform === "twitter" ||
+    requestedPlatform === "linkedin"
+      ? requestedPlatform
+      : null;
 
   const recommendedSizes = platform
     ? appPromotionAssetsService.getRecommendedSizes(platform)
