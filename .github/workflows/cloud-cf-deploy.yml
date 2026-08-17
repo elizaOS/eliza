@@ -451,11 +451,11 @@ jobs:
             echo "::error::Certification upload did not return an artifact id"
             exit 1
           }
-          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || {
             echo "::error::Certification upload did not return a SHA-256 digest"
             exit 1
           }
-          echo "Certified staging tree ${TREE_SHA} with artifact ${ARTIFACT_ID} (${ARTIFACT_DIGEST}) after all release and routing checks passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Certified staging tree ${TREE_SHA} with artifact ${ARTIFACT_ID} (sha256:${ARTIFACT_DIGEST}) after all release and routing checks passed." >> "$GITHUB_STEP_SUMMARY"
 
   resolve-pages-preview-config:
     name: Resolve Pages preview configuration
