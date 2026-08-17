@@ -158,7 +158,9 @@ function reminderTrigger(
   }
   const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
   if (inMinutes !== undefined) {
-    const at = now.getTime() + inMinutes * 60_000;
+    const milliseconds = minuteDurationMilliseconds(inMinutes);
+    if (milliseconds === undefined) return undefined;
+    const at = now.getTime() + milliseconds;
     if (!Number.isFinite(at) || Math.abs(at) > MAX_DATE_TIMESTAMP_MS) {
       return undefined;
     }
@@ -213,15 +215,37 @@ function formatUtcInstant(atIso: string): string {
 }
 
 function formatDuration(milliseconds: number): string {
-  const totalSeconds = Math.max(1, Math.round(milliseconds / 1_000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+  if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
+    throw new Error(
+      "Shared reminder duration must be a positive whole millisecond",
+    );
+  }
+  const minutes = Math.floor(milliseconds / 60_000);
+  const remainder = milliseconds % 60_000;
   const parts: string[] = [];
   if (minutes > 0)
     parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
-  if (seconds > 0)
-    parts.push(`${seconds} ${seconds === 1 ? "second" : "seconds"}`);
+  if (remainder >= 1_000) {
+    const seconds = Math.floor(remainder / 1_000);
+    const fraction = remainder % 1_000;
+    const amount =
+      fraction === 0
+        ? String(seconds)
+        : `${seconds}.${String(fraction).padStart(3, "0").replace(/0+$/, "")}`;
+    parts.push(`${amount} ${amount === "1" ? "second" : "seconds"}`);
+  } else if (remainder > 0) {
+    parts.push(
+      `${remainder} ${remainder === 1 ? "millisecond" : "milliseconds"}`,
+    );
+  }
   return parts.join(" and ");
+}
+
+function minuteDurationMilliseconds(minutes: number): number | undefined {
+  const milliseconds = minutes * 60_000;
+  return Number.isSafeInteger(milliseconds) && milliseconds > 0
+    ? milliseconds
+    : undefined;
 }
 
 function scheduleDescription(trigger: ScheduledTaskTrigger): string {
@@ -250,9 +274,11 @@ function requestedScheduleDescription(
     return `in ${formatDuration(explicitDelayMilliseconds)}`;
   }
   const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
-  return inMinutes === undefined
+  const inMilliseconds =
+    inMinutes === undefined ? undefined : minuteDurationMilliseconds(inMinutes);
+  return inMilliseconds === undefined
     ? scheduleDescription(trigger)
-    : `in ${formatDuration(inMinutes * 60_000)}`;
+    : `in ${formatDuration(inMilliseconds)}`;
 }
 
 function taskSummary(task: ScheduledTask): string {
@@ -401,6 +427,7 @@ export function createSharedRemindersEdgeAction(
         const tasks = await options.runner.list({
           kind: "reminder",
           ownerVisibleOnly: true,
+          status: ["scheduled", "fired", "acknowledged"],
         });
         const text =
           tasks.length === 0
@@ -411,6 +438,9 @@ export function createSharedRemindersEdgeAction(
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, tasks },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          turnComplete: true,
         };
       }
 
@@ -429,6 +459,21 @@ export function createSharedRemindersEdgeAction(
         );
         if (explicitDelay.kind === "invalid") {
           return await actionFailure(explicitDelay.reason, callback);
+        }
+        const inputMinutes = positiveNumber(
+          input,
+          "inMinutes",
+          "minutesFromNow",
+        );
+        if (
+          explicitDelay.kind === "absent" &&
+          inputMinutes !== undefined &&
+          minuteDurationMilliseconds(inputMinutes) === undefined
+        ) {
+          return await actionFailure(
+            "Reminder delay must resolve to a positive whole millisecond.",
+            callback,
+          );
         }
         const trigger = reminderTrigger(
           input,
@@ -474,9 +519,10 @@ export function createSharedRemindersEdgeAction(
                 ? explicitDelay.milliseconds
                 : undefined,
             );
+        const persistedBody = reminderText(scheduled.task);
         const text = scheduled.replayed
-          ? `That reminder is already set ${schedule}: ${body}`
-          : `Got it — I'll remind you ${schedule}: ${body}`;
+          ? `That reminder is already set ${schedule}: ${persistedBody}`
+          : `Got it — I'll remind you ${schedule}: ${persistedBody}`;
         const receipt = creationReceipt(scheduled);
         await callback?.({ text });
         return {
@@ -505,13 +551,23 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         }
+        const snoozeMilliseconds = minuteDurationMilliseconds(minutes);
+        if (snoozeMilliseconds === undefined) {
+          return await actionFailure(
+            "Snooze duration must resolve to a positive whole millisecond.",
+            callback,
+          );
+        }
         const task = await options.runner.apply(taskId, "snooze", { minutes });
-        const text = `Reminder snoozed for ${formatDuration(minutes * 60_000)}: ${reminderText(task)}`;
+        const text = `Reminder snoozed for ${formatDuration(snoozeMilliseconds)}: ${reminderText(task)}`;
         await callback?.({ text });
         return {
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, task },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          turnComplete: true,
         };
       }
 
@@ -529,6 +585,9 @@ export function createSharedRemindersEdgeAction(
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, task },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          turnComplete: true,
         };
       }
 

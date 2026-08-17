@@ -238,7 +238,15 @@ describe("Shared reminders edge plugin", () => {
     const { options, scheduleWithResult } = harness();
     scheduleWithResult.mockImplementationOnce(
       async (input: ScheduledTaskInput) => ({
-        task: scheduledTask(input),
+        task: scheduledTask({
+          ...input,
+          promptInstructions: "Persisted Stretch",
+          output: {
+            destination: "channel",
+            target: "current_dm",
+            fallback: { body: "Persisted Stretch" },
+          },
+        }),
         commit: {
           logId: "scheduled-log-1",
           taskId: "reminder-1",
@@ -258,7 +266,7 @@ describe("Shared reminders edge plugin", () => {
       {
         parameters: {
           operation: "create",
-          reminderText: "Stretch",
+          reminderText: "Call mom",
           inMinutes: 2,
         },
       },
@@ -266,7 +274,7 @@ describe("Shared reminders edge plugin", () => {
 
     expect(result).toMatchObject({
       success: true,
-      text: "That reminder is already set on Aug 14, 2026 at 8:02 PM UTC: Stretch",
+      text: "That reminder is already set on Aug 14, 2026 at 8:02 PM UTC: Persisted Stretch",
       verifiedUserFacing: true,
       turnComplete: true,
       effectReceipts: [
@@ -285,7 +293,7 @@ describe("Shared reminders edge plugin", () => {
 
   it("lists one-off, interval, and cron reminders without storage internals", async () => {
     const { options, list } = harness();
-    list.mockResolvedValueOnce([
+    const stored = [
       scheduledTask(
         reminderInput("Stretch", {
           kind: "once",
@@ -308,7 +316,23 @@ describe("Shared reminders edge plugin", () => {
         ),
         taskId: "reminder-3",
       },
-    ]);
+      {
+        ...scheduledTask(
+          reminderInput("Already dismissed", {
+            kind: "once",
+            atIso: "2026-08-15T20:00:00.000Z",
+          }),
+        ),
+        taskId: "reminder-4",
+        state: { status: "dismissed" as const, followupCount: 0 },
+      },
+    ];
+    list.mockImplementationOnce(async (filter) => {
+      const statuses = Array.isArray(filter?.status)
+        ? filter.status
+        : [filter?.status];
+      return stored.filter((task) => statuses.includes(task.state.status));
+    });
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
     const result = await action?.handler(
       {} as IAgentRuntime,
@@ -324,8 +348,23 @@ describe("Shared reminders edge plugin", () => {
         "• Weekly planning — on its recurring schedule in America/Los_Angeles",
     );
     expect(result?.text).not.toMatch(
-      /reminder-[123]|scheduled|2026-08-14T|0 9 \* \* 1/,
+      /reminder-[1234]|scheduled|dismissed|2026-08-14T|0 9 \* \* 1/,
     );
+    expect(result?.text).not.toContain("Already dismissed");
+    expect(list).toHaveBeenCalledWith({
+      kind: "reminder",
+      ownerVisibleOnly: true,
+      status: ["scheduled", "fired", "acknowledged"],
+    });
+    expect(result).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText:
+        "Your reminders:\n" +
+        "• Stretch — on Aug 14, 2026 at 8:02 PM UTC\n" +
+        "• Drink water — every 1 minute\n" +
+        "• Weekly planning — on its recurring schedule in America/Los_Angeles",
+      turnComplete: true,
+    });
     expect(result?.data).toMatchObject({
       tasks: [
         { taskId: "reminder-1" },
@@ -364,6 +403,11 @@ describe("Shared reminders edge plugin", () => {
     expect(snoozed?.text).toBe("Reminder snoozed for 1 minute: Stretch");
     expect(snoozed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(snoozed?.text).not.toContain("reminder-1");
+    expect(snoozed).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText: "Reminder snoozed for 1 minute: Stretch",
+      turnComplete: true,
+    });
 
     const completed = await action?.handler(
       {} as IAgentRuntime,
@@ -374,5 +418,87 @@ describe("Shared reminders edge plugin", () => {
     expect(completed?.text).toBe("Reminder completed: Stretch");
     expect(completed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(completed?.text).not.toContain("reminder-1");
+    expect(completed).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText: "Reminder completed: Stretch",
+      turnComplete: true,
+    });
+
+    const dismissed = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-dismiss" } as Memory,
+      undefined,
+      { parameters: { operation: "dismiss", taskId: "reminder-1" } },
+    );
+    expect(dismissed).toMatchObject({
+      text: "Reminder dismissed: Stretch",
+      verifiedUserFacing: true,
+      userFacingText: "Reminder dismissed: Stretch",
+      turnComplete: true,
+    });
+  });
+
+  it("states exact millisecond delays and rejects sub-millisecond model durations", async () => {
+    const { options, scheduleWithResult, apply } = harness();
+    apply.mockResolvedValueOnce(
+      scheduledTask(
+        reminderInput("Stretch", {
+          kind: "once",
+          atIso: "2026-08-14T20:00:00.006Z",
+        }),
+      ),
+    );
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const created = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-six-ms" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Stretch",
+          inMinutes: 0.0001,
+        },
+      },
+    );
+    expect(created?.text).toBe(
+      "Got it — I'll remind you in 6 milliseconds: Stretch",
+    );
+    expect(scheduleWithResult.mock.calls[0]?.[0]).toMatchObject({
+      trigger: { kind: "once", atIso: "2026-08-14T20:00:00.006Z" },
+    });
+
+    const snoozed = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-snooze-six-ms" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "snooze",
+          taskId: "reminder-1",
+          snoozeMinutes: 0.0001,
+        },
+      },
+    );
+    expect(snoozed?.text).toBe("Reminder snoozed for 6 milliseconds: Stretch");
+
+    const rejected = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-sub-ms" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Stretch",
+          inMinutes: 0.000001,
+        },
+      },
+    );
+    expect(rejected).toMatchObject({
+      success: false,
+      text: "Reminder delay must resolve to a positive whole millisecond.",
+    });
+    expect(scheduleWithResult).toHaveBeenCalledTimes(1);
   });
 });
