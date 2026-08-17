@@ -2428,8 +2428,10 @@ export class CreditsService {
     if (!description) {
       throw new Error("reserve() requires description");
     }
-    if (params.amount !== undefined && params.amount < 0) {
-      throw new Error("reserve() amount must be non-negative");
+    // `< 0` alone lets NaN through (the comparison is false), and a NaN
+    // reservation amount would be written as a 'NaN'::numeric debit row.
+    if (params.amount !== undefined && (!Number.isFinite(params.amount) || params.amount < 0)) {
+      throw new Error("reserve() amount must be a finite, non-negative number");
     }
     if (
       params.estimatedCostMultiplier !== undefined &&

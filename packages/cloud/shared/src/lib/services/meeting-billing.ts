@@ -50,9 +50,20 @@ function readPositiveNumber(value: unknown): number | null {
 }
 
 export function resolveMeetingUsdPerMinute(env: Record<string, string | undefined> = process.env) {
-  return (
-    readPositiveNumber(env.ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE) ?? DEFAULT_USD_PER_MINUTE
-  );
+  const raw = env.ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE;
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_USD_PER_MINUTE;
+  }
+  // A present-but-invalid override must throw, not silently bill at the
+  // default rate — a typo'd price would otherwise go unnoticed while every
+  // meeting is charged the wrong amount.
+  const parsed = readPositiveNumber(raw);
+  if (parsed === null) {
+    throw new Error(
+      `ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE must be a positive finite number, got: ${raw}`,
+    );
+  }
+  return parsed;
 }
 
 function dollarsForMs(ms: number, usdPerMinute: number): number {
@@ -92,6 +103,22 @@ export class MeetingCreditBillingSession {
   private reconcilePromise: Promise<MeetingBillingState> | null = null;
 
   constructor(options: MeetingCreditBillingSessionOptions) {
+    // Money inputs must be finite and positive up front. A NaN maxDurationMs
+    // disables the spend cap (`nextConsumedMs > NaN` is false) and a NaN or
+    // negative rate/window flows into reservation amounts, so a malformed
+    // option must fail here rather than at settlement time.
+    if (!Number.isFinite(options.maxDurationMs) || options.maxDurationMs <= 0) {
+      throw new Error("MeetingCreditBillingSession requires a positive, finite maxDurationMs");
+    }
+    for (const [name, value] of [
+      ["usdPerMinute", options.usdPerMinute],
+      ["initialWindowMs", options.initialWindowMs],
+      ["chunkWindowMs", options.chunkWindowMs],
+    ] as const) {
+      if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+        throw new Error(`MeetingCreditBillingSession ${name} must be a positive, finite number`);
+      }
+    }
     this.organizationId = options.organizationId;
     this.userId = options.userId;
     this.sessionId = options.sessionId;

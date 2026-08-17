@@ -1,0 +1,122 @@
+/**
+ * Meeting billing fail-closed input contract (#13415 slice).
+ *
+ * Deterministic unit coverage (no DB needed — every case fails before any
+ * ledger write) for three former fail-open paths:
+ *
+ *  1. `MeetingCreditBillingSession` accepted a NaN `maxDurationMs`, which
+ *     disables the spend cap (`nextConsumedMs > NaN` is false), and NaN or
+ *     negative rate/window options that flow into reservation amounts. The
+ *     constructor must now reject non-finite / non-positive money inputs.
+ *  2. `resolveMeetingUsdPerMinute` silently fell back to the default rate when
+ *     ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE was present but invalid, so
+ *     a typo'd price billed every meeting at the wrong rate. Present-but-
+ *     invalid must now throw; unset/blank still uses the default.
+ *  3. `creditsService.reserve()` guarded amounts with `< 0` only, which NaN
+ *     passes — a NaN amount would be written as a 'NaN'::numeric debit row.
+ *     Non-finite amounts must now be refused. (Validation throws before any
+ *     DB access, so this asserts the guard directly.)
+ */
+
+import { describe, expect, test } from "bun:test";
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.NODE_ENV ||= "test";
+
+import { creditsService } from "../credits";
+import { createMeetingCreditBillingSession, resolveMeetingUsdPerMinute } from "../meeting-billing";
+
+const BASE_OPTIONS = {
+  organizationId: "00000000-0000-0000-0000-000000001627",
+  sessionId: "meeting-session-1",
+  maxDurationMs: 3_600_000,
+};
+
+describe("MeetingCreditBillingSession constructor validation", () => {
+  test("rejects NaN maxDurationMs (would disable the spend cap)", () => {
+    expect(() =>
+      createMeetingCreditBillingSession({ ...BASE_OPTIONS, maxDurationMs: Number.NaN }),
+    ).toThrow("positive, finite maxDurationMs");
+  });
+
+  test("rejects zero and negative maxDurationMs", () => {
+    for (const maxDurationMs of [0, -1]) {
+      expect(() => createMeetingCreditBillingSession({ ...BASE_OPTIONS, maxDurationMs })).toThrow(
+        "positive, finite maxDurationMs",
+      );
+    }
+  });
+
+  test("rejects non-finite and non-positive rate/window options", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -0.01]) {
+      expect(() =>
+        createMeetingCreditBillingSession({ ...BASE_OPTIONS, usdPerMinute: bad }),
+      ).toThrow("usdPerMinute");
+      expect(() =>
+        createMeetingCreditBillingSession({ ...BASE_OPTIONS, initialWindowMs: bad }),
+      ).toThrow("initialWindowMs");
+      expect(() =>
+        createMeetingCreditBillingSession({ ...BASE_OPTIONS, chunkWindowMs: bad }),
+      ).toThrow("chunkWindowMs");
+    }
+  });
+
+  test("accepts valid options (guard is not over-broad)", () => {
+    const session = createMeetingCreditBillingSession({
+      ...BASE_OPTIONS,
+      usdPerMinute: 0.006,
+      initialWindowMs: 60_000,
+      chunkWindowMs: 60_000,
+    });
+    expect(session.state.status).toBe("reserved");
+    expect(session.state.capMs).toBe(BASE_OPTIONS.maxDurationMs);
+  });
+});
+
+describe("resolveMeetingUsdPerMinute env parsing", () => {
+  test("unset or blank uses the default", () => {
+    expect(resolveMeetingUsdPerMinute({})).toBeCloseTo(0.006, 9);
+    expect(
+      resolveMeetingUsdPerMinute({ ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE: "  " }),
+    ).toBeCloseTo(0.006, 9);
+  });
+
+  test("a valid override is used", () => {
+    expect(
+      resolveMeetingUsdPerMinute({ ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE: "0.01" }),
+    ).toBeCloseTo(0.01, 9);
+  });
+
+  test("present-but-invalid values throw instead of billing at the default rate", () => {
+    for (const bad of ["0..01", "abc", "-1", "0", "NaN", "Infinity"]) {
+      expect(() =>
+        resolveMeetingUsdPerMinute({ ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE: bad }),
+      ).toThrow("ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE");
+    }
+  });
+});
+
+describe("creditsService.reserve amount validation", () => {
+  test("refuses NaN and Infinity amounts before any DB access", async () => {
+    for (const amount of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        creditsService.reserve({
+          organizationId: BASE_OPTIONS.organizationId,
+          amount,
+          description: "meeting billing guard test",
+        }),
+      ).rejects.toThrow("finite, non-negative");
+    }
+  });
+
+  test("still refuses negative amounts", async () => {
+    await expect(
+      creditsService.reserve({
+        organizationId: BASE_OPTIONS.organizationId,
+        amount: -1,
+        description: "meeting billing guard test",
+      }),
+    ).rejects.toThrow("finite, non-negative");
+  });
+});
