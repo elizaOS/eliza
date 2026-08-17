@@ -9761,11 +9761,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		// visible-TEXT set, and deliberate silence (suppressPlannerReply
 		// terminals, ambient IGNORE after tool work) is a contract this
 		// invariant must honor, not a failure for it to "fix" into filler.
+		// An early ack ("on it.") is a PROMISE of work. When the planner then
+		// dies toolless with nothing else delivered, leaving only the ack turns
+		// the promise into a lie by omission — the recovery below must still
+		// fire and own up (live 2026-08-17: "on it." then silence on a repo
+		// ask). Tool-ful turns keep the stricter early-reply exclusion: their
+		// ack was followed by real result delivery paths.
+		const earlyAckBrokenPromise =
+			earlyReplySent && actionResults.length === 0 && !ambientTurn;
 		if (
 			!shouldSendPlannedText &&
-			!earlyReplySent &&
+			(!earlyReplySent || earlyAckBrokenPromise) &&
 			!suppressesPlannerReply &&
-			deliveredVisibleTexts.size === 0 &&
+			(deliveredVisibleTexts.size === 0 || earlyAckBrokenPromise) &&
 			deliveredMediaUrls.length === 0 &&
 			// Toolless planner deaths on an ADDRESSED turn are the same
 			// recoverable silence: the planner exhausted its retries with no
