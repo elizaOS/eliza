@@ -209,6 +209,30 @@ describe("postManagedAgentMessageWithRetry", () => {
     expect(slept).toBe(false);
     expect(refreshed).toBe(false);
   });
+
+  test("preserves the successful Cloud trace and inner timing split", async () => {
+    const outcome = await postManagedAgentMessageWithRetry({
+      doPost: async () =>
+        new Response(JSON.stringify({ handled: true, replyText: "ready" }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Trace-Id": "trace-discord-1",
+            "Server-Timing":
+              'account;dur=14.2;desc="sender-projection-hit", prewarm;dur=1.1, shared;dur=472.8',
+          },
+        }),
+      sleep: noSleep,
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.traceId).toBe("trace-discord-1");
+      expect(outcome.serverTiming).toBe(
+        'account;dur=14.2;desc="sender-projection-hit", prewarm;dur=1.1, shared;dur=472.8',
+      );
+    }
+  });
 });
 
 describe("isRetryableRouteStatus", () => {

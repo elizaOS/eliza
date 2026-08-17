@@ -2621,6 +2621,12 @@ export class GatewayManager {
         elapsedMs: Date.now() - startedAt,
         attempts: outcome.attempts,
         ok: outcome.ok,
+        ...(outcome.ok
+          ? {
+              traceId: outcome.traceId,
+              serverTiming: outcome.serverTiming,
+            }
+          : {}),
       });
 
       if (!outcome.ok) {
