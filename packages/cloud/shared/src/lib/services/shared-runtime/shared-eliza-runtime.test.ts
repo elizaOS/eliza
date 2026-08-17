@@ -802,8 +802,9 @@ describe("Shared Eliza Workerd runtime", () => {
               content: JSON.stringify({
                 success: true,
                 decision: "FINISH",
-                thought: "The reminder is stored.",
-                messageToUser: "i'll remind you in two minutes",
+                thought: "The completion claim is not verified.",
+                messageToUser:
+                  "I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?",
               }),
             },
             finish_reason: "stop",
@@ -840,7 +841,8 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toBe("i'll remind you in two minutes");
+    expect(result.reply).toMatch(/^Reminder set for shared-reminder-1:/);
+    expect(result.reply).not.toContain("couldn't verify");
     expect(scheduledInputs).toHaveLength(1);
     expect(scheduledInputs[0]).toMatchObject({
       kind: "reminder",
