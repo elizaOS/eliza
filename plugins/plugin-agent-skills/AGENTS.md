@@ -80,6 +80,7 @@ plugins/plugin-agent-skills/
 │   ├── services/
 │   │   ├── skills.ts           # AgentSkillsService (AGENT_SKILLS_SERVICE)
 │   │   ├── install.ts          # Dependency install helpers (brew/apt/pip/cargo/npm)
+│   │   ├── bin-lookup.ts       # Shared allowlisted PATH probe (argv form, no shell) for requires/install bins
 │   │   ├── skill-catalog-client.ts  # Cached catalog client (skills/.cache/catalog.json)
 │   │   └── skill-marketplace.ts     # Marketplace install/uninstall/search
 │   ├── api/

@@ -52,6 +52,7 @@ import type {
 	SkillSource,
 } from "../types";
 import { SKILL_SOURCE_PRECEDENCE } from "../types";
+import { binaryExistsInPath } from "./bin-lookup";
 
 // ============================================================
 // CONSTANTS
@@ -986,28 +987,13 @@ export class AgentSkillsService extends Service {
 		const missing: string[] = [];
 
 		for (const bin of bins) {
-			const exists = await this.binaryExists(bin);
+			const exists = await binaryExistsInPath(bin);
 			if (!exists) {
 				missing.push(bin);
 			}
 		}
 
 		return missing;
-	}
-
-	/**
-	 * Check if a binary exists in PATH.
-	 */
-	private async binaryExists(name: string): Promise<boolean> {
-		try {
-			const { execSync } = await import("node:child_process");
-			const platform = process.platform;
-			const command = platform === "win32" ? `where ${name}` : `which ${name}`;
-			execSync(command, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-			return true;
-		} catch {
-			return false;
-		}
 	}
 
 	/**
