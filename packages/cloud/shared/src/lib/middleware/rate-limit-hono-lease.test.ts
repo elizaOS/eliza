@@ -3,7 +3,8 @@
  * inference gateway hot path. The Redis client is fake, but the Hono middleware
  * and lease accounting are real: flag-off behavior stays authoritative, repeat
  * allowed decisions skip Redis, carried usage flushes into the next Redis
- * check, and denials lease without repeated backend round-trips.
+ * check, denials lease without repeated backend round-trips, and sensitive
+ * routes can opt out while the global hot-path flag stays enabled.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -107,6 +108,20 @@ describe("Hono rateLimit lease (#15428)", () => {
   test("INFERENCE_HOT_PATH_CACHES off keeps every request authoritative", async () => {
     const app = makeApp({ windowMs: 60_000, maxRequests: 20 });
     const env = { ...BASE_ENV, INFERENCE_HOT_PATH_CACHES: "false" };
+
+    for (let i = 0; i < 4; i++) {
+      const res = await app.fetch(req(), env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-RateLimit-Policy")).toBe("redis");
+    }
+
+    expect(redis.incrCalls).toBe(4);
+    expect(redis.pipelineExecCalls).toBe(4);
+  });
+
+  test("localLease false keeps every request authoritative while the flag is on", async () => {
+    const app = makeApp({ windowMs: 60_000, maxRequests: 20, localLease: false });
+    const env = { ...BASE_ENV, INFERENCE_HOT_PATH_CACHES: "true" };
 
     for (let i = 0; i < 4; i++) {
       const res = await app.fetch(req(), env);
