@@ -46,8 +46,10 @@ export class BackendNotSignedInError extends Error {
  * Subprocess executor injected by the manager (tests pass a test executor).
  *
  * Mirrors `node:child_process.execFile` with promises: returns combined
- * stdout/stderr, throws on non-zero exit. The `env` option matters for
- * Bitwarden (BW_SESSION) — 1Password uses an explicit `--session` flag.
+ * stdout/stderr, throws on non-zero exit. The `env` option is how session
+ * tokens reach the CLI (Bitwarden `BW_SESSION`, 1Password `OP_SESSION_*`) so
+ * they never appear in argv, where `ps`/`/proc/<pid>/cmdline` would expose
+ * them to other local users.
  */
 export type ExecFn = (
   cmd: string,
@@ -93,7 +95,8 @@ export async function listOnePasswordLogins(
   vault: Vault,
   exec: ExecFn,
 ): Promise<readonly ExternalLoginListEntry[]> {
-  const sessionArgs = await readOnePasswordSessionArgs(vault, exec);
+  const { args: sessionArgs, env: sessionEnv } =
+    await readOnePasswordSessionArgs(vault, exec);
 
   // Step 1: list Login items as JSON. `--format=json` is the documented
   // machine-readable form; the example in `op item list --help` chains it
@@ -103,7 +106,7 @@ export async function listOnePasswordLogins(
   const listOut = await exec(
     "op",
     [...sessionArgs, "item", "list", "--categories", "Login", "--format=json"],
-    { timeoutMs: 10_000 },
+    { ...(sessionEnv ? { env: sessionEnv } : {}), timeoutMs: 10_000 },
   );
   const items = parseJsonArray<OnePasswordListItem>(listOut.stdout);
 
@@ -142,14 +145,15 @@ export async function revealOnePasswordLogin(
 ): Promise<ExternalLoginReveal> {
   if (!externalId)
     throw new TypeError("revealOnePasswordLogin: externalId required");
-  const sessionArgs = await readOnePasswordSessionArgs(vault, exec);
+  const { args: sessionArgs, env: sessionEnv } =
+    await readOnePasswordSessionArgs(vault, exec);
 
   // `op item get <id> --format=json` includes the full `fields` array with
   // values for username/password/totp.
   const out = await exec(
     "op",
     [...sessionArgs, "item", "get", externalId, "--format=json"],
-    { timeoutMs: 10_000 },
+    { ...(sessionEnv ? { env: sessionEnv } : {}), timeoutMs: 10_000 },
   );
   const item = parseJsonObject<OnePasswordEnrichedItem>(out.stdout);
 
@@ -339,7 +343,7 @@ async function readSessionToken(
 }
 
 /**
- * Resolve op-invocation args (account + session) for one CLI call.
+ * Resolve op-invocation args + env (account + session) for one CLI call.
  *
  * 1Password 8's `op` CLI refuses to pick a default account when more than
  * one is registered — `op whoami` exits 1 with "account is not signed in"
@@ -349,20 +353,39 @@ async function readSessionToken(
  * integration triggers the normal Touch ID flow and the session-token
  * fallback is only used when no account is registered at all.
  *
- * Returns `["--account=<sh>"]` for desktop-app and
- * `["--account=<sh>", "--session=<token>"]` for session-token.
+ * The session token is passed via the `OP_SESSION_<account-shorthand>` env
+ * var, never argv — `--session=<token>` is visible to every local user via
+ * `ps` / `/proc/<pid>/cmdline`. The lone exception is the degenerate
+ * no-registered-account case, where the env var cannot be named and the
+ * (already non-functional) `--session` flag is the only form `op` accepts.
+ *
+ * Returns `{ args: ["--account=<sh>"] }` for desktop-app and
+ * `{ args: ["--account=<sh>"], env: { OP_SESSION_<sh>: token } }` for
+ * session-token.
  */
 async function readOnePasswordSessionArgs(
   vault: Vault,
   exec: ExecFn,
-): Promise<readonly string[]> {
+): Promise<{
+  readonly args: readonly string[];
+  readonly env?: NodeJS.ProcessEnv;
+}> {
   const account = await readDefaultOpAccount(exec);
   const accountArg = account ? [`--account=${account}`] : [];
   if (await isOnePasswordDesktopActiveWithExec(exec, accountArg)) {
-    return accountArg;
+    return { args: accountArg };
   }
   const session = await readSessionToken(vault, "1password");
-  return [...accountArg, `--session=${session}`];
+  if (!account) {
+    // No shorthand → the OP_SESSION_* var cannot be named. A session token
+    // without an account is rejected by `op` anyway, so this path only
+    // preserves the historical behavior for the error to surface.
+    return { args: [...accountArg, `--session=${session}`] };
+  }
+  return {
+    args: accountArg,
+    env: { ...process.env, [`OP_SESSION_${account}`]: session },
+  };
 }
 
 async function readDefaultOpAccount(exec: ExecFn): Promise<string | null> {
