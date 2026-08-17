@@ -6,7 +6,7 @@
  * and get/set/reset of an installed bridge. Deterministic and in-process — the
  * real default bridge plus a hand-built stub, no actual host.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   _resetAgentHostBridge,
   type AgentHostBridge,
@@ -81,6 +81,24 @@ describe("agent host bridge (downward injection seam)", () => {
     expect(keepAliveStarted).toBe(true);
     expect(typeof bridge.handleCloudPairRoute).toBe("function");
     expect(typeof bridge.handleDesktopAuthBootstrapRoute).toBe("function");
+  });
+
+  it("shares the installed bridge across source and compiled module instances", async () => {
+    const installed: AgentHostBridge = {
+      ...defaultAgentHostBridge,
+      getDefaultAccountPool: () => ({ id: "process-shared-pool" }),
+    };
+    setAgentHostBridge(installed);
+
+    // Desktop app-core can load the Bun source export while the packaged agent
+    // server executes the compiled module. The injected capability is process
+    // state, so those module instances must observe the same bridge.
+    vi.resetModules();
+    const reloaded = await import("./host-bridge.ts");
+
+    expect(reloaded.getAgentHostBridge()).toBe(installed);
+    reloaded._resetAgentHostBridge();
+    expect(getAgentHostBridge()).toBe(defaultAgentHostBridge);
   });
 
   it("resets back to the default after _resetAgentHostBridge", () => {
