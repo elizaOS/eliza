@@ -145,7 +145,8 @@ describe("resolveInferenceSessionAuthContext", () => {
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
 
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
+    expect(result.kind === "warming" && result.hydration).toBeTruthy();
     expect(waited).toHaveLength(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
@@ -263,8 +264,8 @@ describe("resolveInferenceSessionAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(userReads).toBe(1);
     expect(firstWaited).toHaveLength(1);
     expect(secondWaited).toHaveLength(1);

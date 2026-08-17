@@ -77,4 +77,20 @@ describe("canonical generative cache-only hot path", () => {
     expect(source).toContain("cacheOnly: Boolean(resolution.ctx.admission)");
     expect(source).toContain("inferenceRateLimitConfig(");
   });
+
+  test("only voice STT/TTS opt into bounded warming hydration", async () => {
+    for (const routePath of [
+      "v1/voice/tts/route.ts",
+      "v1/voice/stt/route.ts",
+    ]) {
+      const source = await Bun.file(
+        new URL(`../${routePath}`, import.meta.url),
+      ).text();
+      expect(source).toContain("awaitWarmingMs: 1500");
+    }
+    const chat = await Bun.file(
+      new URL("../v1/generate-image/route.ts", import.meta.url),
+    ).text();
+    expect(chat).not.toContain("awaitWarmingMs");
+  });
 });

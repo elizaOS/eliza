@@ -276,7 +276,8 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
+    expect(result.kind === "warming" && result.hydration).toBeTruthy();
     expect(waited.length).toBeGreaterThan(0);
     await waited[0];
     await Promise.all(waited);
@@ -316,8 +317,8 @@ describe("resolveInferenceAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(waited).toHaveLength(2);
     expect(waited[0]).toBe(waited[1]);
 
@@ -341,7 +342,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
 
@@ -365,7 +366,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(moderationCalls).toBe(1);
 
@@ -571,7 +572,7 @@ describe("resolveInferenceAuthContext", () => {
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       });
 
-      expect(result).toEqual({ kind: "warming" });
+      expect(result).toMatchObject({ kind: "warming" });
       expect(chainCalls).toBe(0);
       expect(waited).toHaveLength(0);
     } finally {

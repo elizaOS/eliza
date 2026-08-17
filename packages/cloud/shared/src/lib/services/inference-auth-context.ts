@@ -245,7 +245,7 @@ export type InferenceAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" }
+  | { kind: "warming"; hydration?: Promise<unknown> }
   | { kind: "slow_path"; reason: "non_api_key" };
 
 /**
@@ -571,6 +571,7 @@ export async function resolveInferenceAuthContext(
       if (cacheAvailable && options.executionCtx) {
         const hydration = getOrCreateApiKeyHydration(req, keyHash, options.traceId);
         options.executionCtx.waitUntil(hydration);
+        return { kind: "warming", hydration };
       }
       return { kind: "warming" };
     }
