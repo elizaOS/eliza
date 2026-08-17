@@ -533,6 +533,112 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
+	it("keeps a MIXED disclosure+validate-false rejection set on the planner path (#20869)", async () => {
+		// The #20679 fix routed mixed sets correctly for the four actionGateRejection
+		// kinds, but a candidate rejected by validate()===false was warned and
+		// dropped WITHOUT being recorded as a non-disclosure rejection, so
+		// {disclosure-denied + validate-false-denied} still looked like a pure
+		// disclosure set to the privacy short-circuit — the same mislabel class,
+		// one corner further out.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and an unavailable action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "UNAVAILABLE_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that the second action is not available right now.",
+				toolCalls: [],
+				messageToUser: "That action is not available in the current state.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "UNAVAILABLE_TASK",
+				contexts: ["general"],
+				validate: async () => false,
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That action is not available in the current state.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+account-policy rejection set on the planner path (#20869)", async () => {
+		// Twin of the validate-false case: a connector-account-policy denial (a
+		// required policy for a provider with no registered accounts) is likewise a
+		// non-disclosure rejection and must be recorded so the privacy template
+		// stands down for the compound turn.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought:
+					"The user asked for an owner read and a connector-bound action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "CONNECTOR_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought:
+					"Explain that no connector account is available for the action.",
+				toolCalls: [],
+				messageToUser: "No connected account is available for that action.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "CONNECTOR_TASK",
+				contexts: ["general"],
+				connectorAccountPolicy: { provider: "unregistered-provider" },
+			} as Action,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000020" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"No connected account is available for that action.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
 	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
 		const actionEnvelope =
 			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}';
