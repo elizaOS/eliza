@@ -39,6 +39,7 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -97,9 +98,15 @@ const TEST_WALLET_ACCOUNT = privateKeyToAccount(
 
 async function signedWalletHeaders(
   path: string,
+  body?: unknown,
 ): Promise<Record<string, string>> {
   const timestamp = Date.now();
-  const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: ${path}`;
+  const rawBody = body === undefined ? "" : JSON.stringify(body);
+  const canonicalQuery = ""; // the e2e wallet calls carry no query string
+  const payloadHash = createHash("sha256")
+    .update(`${canonicalQuery}\n${rawBody}`)
+    .digest("hex");
+  const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: ${path}\nPayload-SHA256: ${payloadHash}`;
   const signature = await TEST_WALLET_ACCOUNT.signMessage({ message });
 
   return {
@@ -491,17 +498,17 @@ describeE2E("POST /api/v1/user/wallets/rpc", () => {
   });
 
   test("happy path: signed wallet auth reaches ownership or RPC checks", async () => {
-    const res = await api.post(
-      "/api/v1/user/wallets/rpc",
-      {
-        clientAddress: "0x0000000000000000000000000000000000000000",
-        payload: { method: "personal_sign", params: ["hello"] },
-        signature: "0xdead",
-        timestamp: Date.now(),
-        nonce: `n-${Date.now()}`,
-      },
-      { headers: await signedWalletHeaders("/api/v1/user/wallets/rpc") },
-    );
+    const rpcBody = {
+      clientAddress: "0x0000000000000000000000000000000000000000",
+      payload: { method: "personal_sign", params: ["hello"] },
+      signature: "0xdead",
+      timestamp: Date.now(),
+      nonce: `n-${Date.now()}`,
+    };
+    const res = await api.post("/api/v1/user/wallets/rpc", rpcBody, {
+      // The signed payload hash must commit to the exact bytes sent.
+      headers: await signedWalletHeaders("/api/v1/user/wallets/rpc", rpcBody),
+    });
     // The signature verifies, but TEST_WALLET is not a provisioned wallet for
     // any org → ownership check rejects with 401.
     expect(res.status).toBe(401);
