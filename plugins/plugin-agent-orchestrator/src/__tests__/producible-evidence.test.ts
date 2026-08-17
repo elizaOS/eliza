@@ -370,3 +370,44 @@ describe("static-only deliverable check inapplicability (ember-tide live shape)"
     expect(verdict.results[0]?.basis).toBe("green test output captured");
   });
 });
+
+describe("check-surface inapplicability (dawn-mesa live shape)", () => {
+  const dawnMesaFacts = {
+    verifiedPublicUrls: ["https://nubilio.org/apps/dawn-mesa/"],
+    ledgerVerifiedFiles: [
+      "data/apps/dawn-mesa/index.html",
+      "data/apps/dawn-mesa/script.js",
+    ],
+    hasChangeSet: false,
+    greenChecks: { test: false, build: false, lint: false },
+    checkSurfaces: { typecheck: false, lint: false, test: false },
+  };
+
+  test("a vanilla script.js deliverable with no surfaces satisfies check criteria vacuously", () => {
+    const verdict = deterministicLedgerVerdict(
+      ["typecheck passes", "lint passes", "tests pass"],
+      dawnMesaFacts,
+    );
+    expect(verdict.allMet).toBe(true);
+    for (const result of verdict.results) {
+      expect(result.basis).toContain("inapplicable: no");
+    }
+  });
+
+  test("a present surface keeps that check strict even with script.js", () => {
+    const verdict = deterministicLedgerVerdict(["typecheck passes"], {
+      ...dawnMesaFacts,
+      checkSurfaces: { typecheck: true, lint: false, test: false },
+    });
+    expect(verdict.allMet).toBe(false);
+  });
+
+  test("absent surface facts stay strict for code deliverables", () => {
+    const { checkSurfaces: _omit, ...withoutSurfaces } = dawnMesaFacts;
+    const verdict = deterministicLedgerVerdict(
+      ["typecheck passes"],
+      withoutSurfaces,
+    );
+    expect(verdict.allMet).toBe(false);
+  });
+});

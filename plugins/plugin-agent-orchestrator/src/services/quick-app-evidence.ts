@@ -148,3 +148,86 @@ export async function probeMappedUrls(
   }
   return verified;
 }
+
+/** Tooling manifests that make a check-class criterion RUNNABLE where the
+ *  deliverable lives. Grouped by the check they enable. */
+const TYPECHECK_SURFACE_FILES = [
+  "tsconfig.json",
+  "tsconfig.base.json",
+  "jsconfig.json",
+];
+const LINT_SURFACE_FILES = [
+  "biome.json",
+  "biome.jsonc",
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  "eslint.config.js",
+  "eslint.config.mjs",
+];
+const TEST_SURFACE_FILES = [
+  "vitest.config.ts",
+  "vitest.config.js",
+  "jest.config.js",
+  "jest.config.ts",
+  "package.json",
+];
+const TEST_FILE_RE = /\.(?:test|spec)\.[jt]sx?$/i;
+
+export interface CheckSurfaces {
+  typecheck: boolean;
+  lint: boolean;
+  test: boolean;
+}
+
+/**
+ * Detect which check classes are RUNNABLE for the verified deliverable, by
+ * direct inspection of the deliverable's OWN directories — deliberately not
+ * the workdir root. A route workdir's root tooling (e.g. the static server's
+ * Next.js package.json/tsconfig) governs the server code, not the static app
+ * bundles it serves; a vanilla script.js beside index.html with no manifest
+ * in its directory is exactly as untypecheckable as the HTML (#20794
+ * dawn-mesa). Deliverables that live AT a tooling boundary (a file next to
+ * package.json / tsconfig, or a sub-package with its own manifests) detect as
+ * runnable and keep the strict path.
+ */
+export function detectCheckSurfaces(
+  workdir: string,
+  relativeFiles: readonly string[],
+  existsImpl?: (absolutePath: string) => boolean,
+): CheckSurfaces {
+  const exists =
+    existsImpl ??
+    ((absolutePath: string): boolean => {
+      try {
+        return fs.statSync(absolutePath).isFile();
+      } catch {
+        // error-policy:J3 an unreadable marker is explicitly not a surface
+        return false;
+      }
+    });
+  const root = path.resolve(workdir);
+  const dirs = new Set<string>();
+  for (const file of relativeFiles.slice(0, MAX_CANDIDATE_PATHS)) {
+    const dir = path.resolve(root, path.dirname(file));
+    const relative = path.relative(root, dir);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    dirs.add(dir);
+  }
+  const anyMarker = (names: readonly string[]): boolean => {
+    for (const dir of dirs) {
+      for (const name of names) {
+        if (exists(path.join(dir, name))) return true;
+      }
+    }
+    return false;
+  };
+  return {
+    typecheck: anyMarker(TYPECHECK_SURFACE_FILES),
+    lint: anyMarker(LINT_SURFACE_FILES),
+    test:
+      anyMarker(TEST_SURFACE_FILES) ||
+      relativeFiles.some((file) => TEST_FILE_RE.test(file)),
+  };
+}

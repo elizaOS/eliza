@@ -127,6 +127,9 @@ export interface CompletionEvidenceBundle {
    *  observation-grade evidence for adapters that fold tool results into
    *  messages (#20794 live residual). */
   fsVerifiedFiles?: string[];
+  /** Check classes runnable where the verified deliverable lives (tooling
+   *  manifests observed in its own directories); absent = unknown. */
+  checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
