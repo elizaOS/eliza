@@ -56,6 +56,7 @@ import {
 const CHAT_API_BASE = "https://chat.googleapis.com/v1";
 const CHAT_UPLOAD_BASE = "https://chat.googleapis.com/upload/v1";
 const CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
+const CHAT_FETCH_TIMEOUT_MS = 30_000;
 
 function normalizeGoogleChatQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -545,6 +546,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -601,6 +603,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private async fetchApi<T>(url: string, init: RequestInit = {}, accountId?: string): Promise<T> {
     const token = await this.getAccessToken(accountId);
+    const timeoutSignal = AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS);
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
 
     const response = await fetch(url, {
       ...init,
@@ -609,6 +615,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      signal,
     });
 
     if (!response.ok) {
@@ -719,6 +726,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -777,6 +785,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -847,6 +856,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         "Content-Type": `multipart/related; boundary=${boundary}`,
       },
       body,
+      signal: AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -878,6 +888,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(CHAT_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
