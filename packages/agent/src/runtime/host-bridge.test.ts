@@ -33,6 +33,7 @@ describe("agent host bridge (downward injection seam)", () => {
     await expect(bridge.sharedVault().has("ANY")).resolves.toBe(false);
     await expect(bridge.sharedVault().get("ANY")).resolves.toBe("");
     expect(bridge.handleCloudPairRoute).toBeUndefined();
+    expect(bridge.handleDesktopAuthBootstrapRoute).toBeUndefined();
   });
 
   it("honors ELIZA_BUILD_VARIANT in the default build-variant flags", () => {
@@ -68,6 +69,7 @@ describe("agent host bridge (downward injection seam)", () => {
       getBuildVariant: () => "direct",
       isStoreBuild: () => false,
       handleCloudPairRoute: () => Promise.resolve(true),
+      handleDesktopAuthBootstrapRoute: () => Promise.resolve(true),
     };
 
     setAgentHostBridge(installed);
@@ -78,6 +80,7 @@ describe("agent host bridge (downward injection seam)", () => {
     bridge.startAccountPoolKeepAlive();
     expect(keepAliveStarted).toBe(true);
     expect(typeof bridge.handleCloudPairRoute).toBe("function");
+    expect(typeof bridge.handleDesktopAuthBootstrapRoute).toBe("function");
   });
 
   it("resets back to the default after _resetAgentHostBridge", () => {

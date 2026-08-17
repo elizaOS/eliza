@@ -21,6 +21,7 @@ import { getBuildVariant, isStoreBuild } from "@elizaos/core";
 import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
 import { resolveAuthorizedRouteRole } from "../api/auth";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
+import { handleDesktopAuthBootstrapRoute } from "../api/desktop-auth-bootstrap-routes";
 import {
   captureWalletEnvBootBaseline,
   hydrateWalletKeysFromNodePlatformSecureStore,
@@ -86,6 +87,12 @@ export function installAgentHostBridge(): void {
     getBuildVariant,
     isStoreBuild,
     handleCloudPairRoute,
+    handleDesktopAuthBootstrapRoute: (req, res, runtime) =>
+      handleDesktopAuthBootstrapRoute(req, res, {
+        current: runtime,
+        pendingAgentName: null,
+        pendingRestartReasons: [],
+      }),
     resolveHttpRequestAuthorization,
     isHttpRequestAuthorized: async (req, runtime) =>
       (await resolveHttpRequestAuthorization(req, runtime)).ok,

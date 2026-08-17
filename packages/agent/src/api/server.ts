@@ -1751,6 +1751,19 @@ async function handleRequest(
     return;
   }
 
+  // The packaged desktop runs the agent listener directly, but app-core owns
+  // its browser-session store. The host consumes the one-shot local socket
+  // proof here; its handler enforces loopback peer+Host, originlessness,
+  // socket ownership, and socket mode before minting anything.
+  const handleDesktopAuthBootstrapRoute =
+    getAgentHostBridge().handleDesktopAuthBootstrapRoute;
+  if (
+    typeof handleDesktopAuthBootstrapRoute === "function" &&
+    (await handleDesktopAuthBootstrapRoute(req, res, state.runtime))
+  ) {
+    return;
+  }
+
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
   // while steward-managed containers can still reach the built-in dashboard.

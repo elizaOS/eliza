@@ -23,6 +23,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import {
+  _resetAgentHostBridge,
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "../runtime/host-bridge.ts";
 import { startApiServer } from "./server.ts";
 import {
   __resetPendingWebSocketsForTests,
@@ -95,6 +100,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  _resetAgentHostBridge();
   if (api) {
     await api.close();
     api = null;
@@ -104,6 +110,34 @@ afterEach(async () => {
     stateDir = null;
   }
   restoreEnvironment();
+});
+
+describe("packaged desktop bootstrap host boundary", () => {
+  it("dispatches the host-owned bootstrap before generic API auth", async () => {
+    let calls = 0;
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      handleDesktopAuthBootstrapRoute: async (req, res) => {
+        if (req.url !== "/api/auth/desktop-bootstrap") return false;
+        calls += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ desktopBootstrap: true }));
+        return true;
+      },
+    });
+    const baseUrl = await bootServer();
+
+    const response = await fetch(`${baseUrl}/api/auth/desktop-bootstrap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ socketPath: "/unused-by-host-test" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ desktopBootstrap: true });
+    expect(calls).toBe(1);
+  }, 120_000);
 });
 
 async function bootServer(): Promise<string> {
