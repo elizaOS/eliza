@@ -1,7 +1,6 @@
 /**
- * Verifies JobsRepository.findByFilters honors limit=0 via real PGlite.
- * Covers the ||1000 → ??1000 fix: limit 0 must return 0 rows, not 1000.
- * Uses real in-process PGlite with minimal jobs table, no mocks.
+ * Exercises JobsRepository.findByFilters against real in-process PGlite.
+ * Zero, omitted, and positive limits must retain distinct SQL semantics.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
@@ -14,19 +13,16 @@ const USER_ID = "00000000-0000-4000-8000-00000000a002";
 const PGLITE_TIMEOUT = 60_000;
 
 let dbWrite: typeof import("../../client").dbWrite;
-let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
+let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests;
 let repo: typeof import("../jobs").jobsRepository;
-let ready = true;
 
 beforeAll(async () => {
-  try {
-    const client = await import("../../client");
-    dbWrite = client.dbWrite;
-    closeDb = client.closeDatabaseConnectionsForTests;
-    const mod = await import("../jobs");
-    repo = mod.jobsRepository;
-    // Minimal jobs table sufficient for findByFilters (id, type, status, data, organization_id, created_at)
-    await dbWrite.execute(`
+  const client = await import("../../client");
+  dbWrite = client.dbWrite;
+  closeDb = client.closeDatabaseConnectionsForTests;
+  const mod = await import("../jobs");
+  repo = mod.jobsRepository;
+  await dbWrite.execute(`
       CREATE TABLE IF NOT EXISTS jobs (
         id uuid PRIMARY KEY,
         type text NOT NULL,
@@ -60,33 +56,31 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT NOW(),
         updated_at timestamp NOT NULL DEFAULT NOW()
       )
-    `);
-    await dbWrite.execute(`
+  `);
+  await dbWrite.execute(`
       CREATE TABLE IF NOT EXISTS organizations (id uuid PRIMARY KEY, name text, slug text)
-    `);
-    await dbWrite.execute(`
+  `);
+  await dbWrite.execute(`
       CREATE TABLE IF NOT EXISTS users (id uuid PRIMARY KEY, organization_id uuid, steward_user_id text)
-    `);
-    await dbWrite.execute(`INSERT INTO organizations (id, name, slug) VALUES ('${ORG_ID}', 'test-org', 'test-org') ON CONFLICT DO NOTHING`);
-    await dbWrite.execute(`INSERT INTO users (id, organization_id, steward_user_id) VALUES ('${USER_ID}', '${ORG_ID}', 'steward') ON CONFLICT DO NOTHING`);
-  } catch (e) {
-    ready = false;
-    console.error("[jobs.limit-zero] PGlite setup failed", e);
-  }
+  `);
+  await dbWrite.execute(
+    `INSERT INTO organizations (id, name, slug) VALUES ('${ORG_ID}', 'test-org', 'test-org') ON CONFLICT DO NOTHING`,
+  );
+  await dbWrite.execute(
+    `INSERT INTO users (id, organization_id, steward_user_id) VALUES ('${USER_ID}', '${ORG_ID}', 'steward') ON CONFLICT DO NOTHING`,
+  );
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  expect(ready).toBe(true);
   await dbWrite.execute(`DELETE FROM jobs WHERE organization_id = '${ORG_ID}'`);
 });
 
 afterAll(async () => {
-  if (closeDb) await closeDb();
+  await closeDb();
 });
 
 describe("JobsRepository.findByFilters limit=0 (real PGlite)", () => {
   test("limit=0 returns 0 rows, undefined returns all, positive caps", async () => {
-    // seed 3 jobs
     for (let i = 0; i < 3; i++) {
       await dbWrite.execute(`
         INSERT INTO jobs (id, type, status, data, organization_id, user_id, scheduled_for, created_at, updated_at)
@@ -104,8 +98,6 @@ describe("JobsRepository.findByFilters limit=0 (real PGlite)", () => {
 
     const withTwo = await repo.findByFilters({ organizationId: ORG_ID, limit: 2 });
     expect(withTwo.length).toBe(2);
-
-    // old ||1000 would have returned 3 for limit 0, not 0
     expect(withZero.length).not.toBe(allUndefined.length);
   });
 });
