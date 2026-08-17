@@ -37,7 +37,7 @@ const MAX_CACHE_ENTRIES = 20;
 async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
   const now = Date.now();
   const entry = cache.get(dir);
-  if (entry && now - entry.at < CACHE_TTL_MS) return entry.files;
+  if (entry && now - entry.at < CACHE_TTL_MS) return structuredClone(entry.files);
 
   // Evict expired entries and enforce size cap before inserting
   for (const [key, val] of cache) {
@@ -50,8 +50,8 @@ async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
   }
 
   const files = await loadWorkspaceInitFiles(dir);
-  cache.set(dir, { files, at: now });
-  return files;
+  cache.set(dir, { files: structuredClone(files), at: now });
+  return structuredClone(files);
 }
 
 /** @internal Exported for testing. */
