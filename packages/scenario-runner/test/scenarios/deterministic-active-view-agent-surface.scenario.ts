@@ -26,15 +26,14 @@ import type {
   ViewDeclaration,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
   finalMessageUserText,
-  matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
+  stage1ResponseHandlerFixture,
 } from "@elizaos/core/testing";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -223,6 +222,40 @@ function promptHasActiveViewElements(value: string): boolean {
   ].every((needle) => value.includes(needle));
 }
 
+function evaluatorFixture({
+  capability,
+  elementId,
+  thought,
+}: {
+  capability: "agent-click" | "agent-fill";
+  elementId: string;
+  thought: string;
+}) {
+  return {
+    name: `active-view-evaluator-${capability}-${elementId}`,
+    match: (call: DeterministicModelCall) => {
+      if (call.modelType !== ModelType.TEXT_SMALL) return false;
+      const promptText =
+        call.params.prompt ??
+        (Array.isArray(call.params.messages)
+          ? call.params.messages
+              .map((m: { content?: string }) => m.content ?? "")
+              .join("\n")
+          : "");
+      return (
+        promptText.includes("task: Evaluate latest action") &&
+        promptText.includes(elementId)
+      );
+    },
+    response: {
+      success: true,
+      decision: "FINISH",
+      thought,
+    },
+    times: 1,
+  };
+}
+
 function plannerFixture({
   capability,
   elementId,
@@ -398,6 +431,11 @@ export default scenario({
             messageToUser: "Filled the active ledger title.",
             value: "Close Issue 11355",
           }),
+          evaluatorFixture({
+            capability: "agent-fill",
+            elementId: "ledger-title",
+            thought: "Filled the active ledger title element successfully.",
+          }),
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
@@ -416,6 +454,11 @@ export default scenario({
             elementId: "save-ledger",
             input: CLICK_TEXT,
             messageToUser: "Saved the active ledger.",
+          }),
+          evaluatorFixture({
+            capability: "agent-click",
+            elementId: "save-ledger",
+            thought: "Clicked the save ledger element successfully.",
           }),
         );
         return undefined;
