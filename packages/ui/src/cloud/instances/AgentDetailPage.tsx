@@ -45,7 +45,7 @@ export function formatDate(date: string | null): string {
   });
 }
 
-function formatTime(date: string | null): string {
+export function formatTime(date: string | null): string {
   if (!date) return "—";
   const timestamp = new Date(date).getTime();
   if (!Number.isFinite(timestamp)) return "—";
@@ -80,6 +80,19 @@ export function formatRelativeShort(
       n: diffH,
     });
   return formatDate(date);
+}
+
+export function formatHeartbeatSecondary(date: string | null): string | null {
+  if (!date) return null;
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return "—";
+  const diffMs = Date.now() - timestamp;
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) {
+    return formatDate(date);
+  }
+  return formatTime(date);
 }
 
 export default function AgentDetailPage() {
@@ -275,7 +288,7 @@ export default function AgentDetailPage() {
           </p>
           {agent.lastHeartbeatAt && (
             <p className="text-2xs text-muted tabular-nums">
-              {formatDate(agent.lastHeartbeatAt)}
+              {formatHeartbeatSecondary(agent.lastHeartbeatAt)}
             </p>
           )}
         </div>
