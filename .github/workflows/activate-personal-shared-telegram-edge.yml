@@ -3,8 +3,16 @@ name: Activate Personal Shared Telegram Edge
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: Protected environment whose edge gate will be changed
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
       expected_source_sha:
-        description: Exact currently served staging Worker source SHA
+        description: Exact currently served Worker source SHA
         required: true
         type: string
       enabled:
@@ -12,26 +20,131 @@ on:
         required: true
         default: false
         type: boolean
+      production_approval_comment_url:
+        description: NubsCarson approval comment bound to production source and state; blank for staging
+        required: false
+        type: string
 
 permissions:
   actions: read
   contents: read
-
-concurrency:
-  group: activate-personal-shared-telegram-edge-staging
-  cancel-in-progress: false
+  issues: read
 
 jobs:
-  cutover:
-    name: Cut over Personal Shared Telegram edge
+  validate-request:
+    name: Validate Personal Shared Telegram edge request
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    environment: staging
+    timeout-minutes: 2
     env:
+      REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EDGE_SECRET_NAME: ${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}
       EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
       DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
-      HEALTH_URL: https://api-staging.eliza.app/api/health
-      GATEWAY_URL: https://gateway-webhook-stg-staging.up.railway.app
+      PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
+      HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
+      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate protected target and production approval
+        run: |
+          set -euo pipefail
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the protected $TARGET_ENVIRONMENT cutover contract"
+              exit 1
+            fi
+          }
+
+          require_exact REQUESTED_ENVIRONMENT "$REQUESTED_ENVIRONMENT" "$TARGET_ENVIRONMENT"
+          case "$TARGET_ENVIRONMENT" in
+            staging)
+              require_exact EXPECTED_BRANCH "$EXPECTED_BRANCH" develop
+              require_exact GITHUB_REF "$GITHUB_REF" refs/heads/develop
+              require_exact EDGE_SECRET_NAME "$EDGE_SECRET_NAME" PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
+              require_exact HEALTH_URL "$HEALTH_URL" https://api-staging.eliza.app/api/health
+              require_exact GATEWAY_URL "$GATEWAY_URL" https://gateway-webhook-stg-staging.up.railway.app
+              if [ -n "$PRODUCTION_APPROVAL_COMMENT_URL" ]; then
+                echo "::error::Production approval must not be supplied to a staging cutover"
+                exit 1
+              fi
+              ;;
+            production)
+              require_exact EXPECTED_BRANCH "$EXPECTED_BRANCH" main
+              require_exact GITHUB_REF "$GITHUB_REF" refs/heads/main
+              require_exact EDGE_SECRET_NAME "$EDGE_SECRET_NAME" PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED
+              require_exact HEALTH_URL "$HEALTH_URL" https://api.eliza.app/api/health
+              require_exact GATEWAY_URL "$GATEWAY_URL" https://gateway-webhook-production.up.railway.app
+
+              if [[ ! "$PRODUCTION_APPROVAL_COMMENT_URL" =~ ^https://github\.com/elizaOS/eliza/(issues|pull)/[0-9]+#issuecomment-([0-9]+)$ ]]; then
+                echo "::error::Production cutover requires a canonical NubsCarson approval comment URL"
+                exit 1
+              fi
+              approval_comment_id="${BASH_REMATCH[2]}"
+              approval="$(mktemp)"
+              gh api "repos/$GITHUB_REPOSITORY/issues/comments/$approval_comment_id" > "$approval"
+              expected_approval="[production-telegram-edge] APPROVE source=$EXPECTED_SOURCE_SHA enabled=$DESIRED_ENABLED"
+              if ! jq -e --arg expected "$expected_approval" \
+                '.user.login == "NubsCarson" and (.body | split("\n") | index($expected) != null)' \
+                "$approval" >/dev/null; then
+                rm -f "$approval"
+                echo "::error::Production approval is not authored by NubsCarson and bound to the exact source and desired state"
+                exit 1
+              fi
+              rm -f "$approval"
+              ;;
+            *)
+              echo "::error::Unsupported protected environment"
+              exit 1
+              ;;
+          esac
+
+  authorize-target:
+    name: Authorize Personal Shared Telegram edge (${{ inputs.environment == 'production' && 'production' || 'staging' }})
+    needs: validate-request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # Approval must finish before the mutation job enters the shared release
+    # lock. Otherwise a waiting protected-environment review can block every
+    # Cloudflare or gateway release for this environment.
+    environment: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+    steps:
+      - name: Record protected-environment authorization
+        run: echo "${{ inputs.environment }} Telegram edge operation authorized"
+
+  cutover:
+    name: Cut over Personal Shared Telegram edge (${{ inputs.environment == 'production' && 'production' || 'staging' }})
+    needs: authorize-target
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+    # Cloudflare releases, gateway releases, and edge mutation share one
+    # post-authorization critical section. The gateway receipt therefore
+    # cannot become stale behind our final active-deployment check.
+    concurrency:
+      group: cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
+      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EDGE_SECRET_NAME: ${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}
+      EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
+      PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
+      HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
+      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      EXPECTED_GATEWAY_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       GH_TOKEN: ${{ github.token }}
@@ -45,20 +158,17 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Validate exact served Worker source
+      - name: Validate exact served Worker source before enable
+        if: inputs.enabled == true
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
-            echo "::error::Staging edge cutover must run from refs/heads/develop"
-            exit 1
-          fi
           if [[ ! "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::expected_source_sha must be an exact lowercase commit SHA"
             exit 1
           fi
           git cat-file -e "$EXPECTED_SOURCE_SHA^{commit}"
           if ! git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"; then
-            echo "::error::Expected Worker source is not in canonical develop history"
+            echo "::error::Expected Worker source is not in canonical $EXPECTED_BRANCH history"
             exit 1
           fi
 
@@ -67,28 +177,76 @@ jobs:
             code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$HEALTH_URL" || echo '000')"
             if [ "$code" = "200" ] && jq -e \
               --arg sha "$EXPECTED_SOURCE_SHA" \
+              --arg environment "$TARGET_ENVIRONMENT" \
               '.status == "ok" and
-               .environment == "staging" and
+               .environment == $environment and
                .commit == $sha and
                (.personalSharedTelegramEdge.enabled | type == "boolean")' \
               "$health" >/dev/null; then
               rm -f "$health"
-              echo "Staging Worker serves the exact requested source."
+              echo "$TARGET_ENVIRONMENT Worker serves the exact requested source."
               exit 0
             fi
             [ "$attempt" -lt 6 ] && sleep 10
           done
           rm -f "$health"
-          echo "::error::Staging Worker does not serve the exact requested source and edge beacon"
+          echo "::error::$TARGET_ENVIRONMENT Worker does not serve the exact requested source and edge beacon"
           exit 1
 
-      - name: Verify exact-source gateway before enable
+      - name: Install pinned Railway CLI
+        if: inputs.enabled == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli"
+          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
+          mkdir -p "$cli_root"
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Verify exact active gateway before enable
+        id: gateway_proof
         if: inputs.enabled == true
         run: |
           set -euo pipefail
+          required_settings=(
+            EXPECTED_GATEWAY_SERVICE_NAME
+            RAILWAY_PROJECT_ID
+            RAILWAY_ENVIRONMENT_ID
+            RAILWAY_SERVICE_ID
+            RAILWAY_TOKEN
+          )
+          for name in "${required_settings[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              echo "::error::Missing protected $TARGET_ENVIRONMENT gateway setting name: $name"
+              exit 1
+            fi
+          done
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "::error::$name must be a Railway UUID on the protected $TARGET_ENVIRONMENT environment"
+              exit 1
+            fi
+          done
+
           gateway_run="$(mktemp)"
           gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-gateway-webhook.yml/runs?branch=develop&event=workflow_dispatch&per_page=1" \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-gateway-webhook.yml/runs?branch=$EXPECTED_BRANCH&event=workflow_dispatch&per_page=1" \
             > "$gateway_run"
           if ! jq -e \
             --arg sha "$EXPECTED_SOURCE_SHA" \
@@ -98,17 +256,64 @@ jobs:
              .[0].conclusion == "success"' \
             "$gateway_run" >/dev/null; then
             rm -f "$gateway_run"
-            echo "::error::Latest protected staging gateway release is not successful on the exact Worker source"
+            echo "::error::Latest protected $TARGET_ENVIRONMENT gateway release is not successful on the exact Worker source"
             exit 1
           fi
           gateway_run_id="$(jq -r '.workflow_runs[0].id' "$gateway_run")"
           rm -f "$gateway_run"
 
+          receipt_dir="$RUNNER_TEMP/gateway-webhook-deployment-receipt"
+          artifact_name="gateway-webhook-deployment-$TARGET_ENVIRONMENT-$EXPECTED_SOURCE_SHA"
+          mkdir -p "$receipt_dir"
+          gh run download "$gateway_run_id" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$artifact_name" \
+            --dir "$receipt_dir"
+          receipt="$receipt_dir/gateway-webhook-deployment.json"
+          if ! jq -e \
+            --arg sha "$EXPECTED_SOURCE_SHA" \
+            --arg environment "$TARGET_ENVIRONMENT" \
+            --arg service "$EXPECTED_GATEWAY_SERVICE_NAME" \
+            '.sourceSha == $sha and
+             .environment == $environment and
+             .service == $service and
+             (.deploymentId | type == "string" and
+              test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' \
+            "$receipt" >/dev/null; then
+            echo "::error::Protected gateway deployment receipt is absent or does not match the exact source and environment"
+            exit 1
+          fi
+          gateway_deployment_id="$(jq -r '.deploymentId' "$receipt")"
+
+          active_gateway="$RUNNER_TEMP/gateway-webhook-active-deployment.json"
+          assert_active_gateway() {
+            local phase="$1"
+            railway service status \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --json > "$active_gateway"
+            jq -e \
+              --arg id "$gateway_deployment_id" \
+              --arg service "$RAILWAY_SERVICE_ID" \
+              --arg name "$EXPECTED_GATEWAY_SERVICE_NAME" \
+              '.id == $service and
+               .name == $name and
+               .deploymentId == $id and
+               .status == "SUCCESS" and
+               .stopped == false' \
+              "$active_gateway" >/dev/null || {
+              echo "::error::Exact-source gateway deployment is not active $phase public verification"
+              exit 1
+            }
+          }
+
+          assert_active_gateway before
           health="$(mktemp)"
           code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$GATEWAY_URL/health" || echo '000')"
           if [ "$code" != "200" ] || ! jq -e '.status == "healthy"' "$health" >/dev/null; then
             rm -f "$health"
-            echo "::error::Exact-source staging gateway is not healthy"
+            echo "::error::Exact-source $TARGET_ENVIRONMENT gateway is not healthy"
             exit 1
           fi
           rm -f "$health"
@@ -124,21 +329,67 @@ jobs:
              .status == "enforced"' \
             "$readiness" >/dev/null; then
             rm -f "$readiness"
-            echo "::error::Exact-source staging gateway forwarder gate is not enforced"
+            echo "::error::Exact-source $TARGET_ENVIRONMENT gateway forwarder gate is not enforced"
             exit 1
           fi
           rm -f "$readiness"
-          echo "Protected gateway run $gateway_run_id is healthy on the exact Worker source."
+          assert_active_gateway after
+          echo "deployment_id=$gateway_deployment_id" >> "$GITHUB_OUTPUT"
+          echo "Protected gateway run $gateway_run_id has active deployment $gateway_deployment_id on the exact Worker source."
 
       - name: Apply and verify served edge state
         working-directory: packages/cloud/api
+        env:
+          EXPECTED_GATEWAY_DEPLOYMENT_ID: ${{ steps.gateway_proof.outputs.deployment_id }}
         run: |
           set -euo pipefail
 
-          disable_edge() {
+          remove_edge_secret() {
             node "$GITHUB_WORKSPACE/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
-              PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging >/dev/null
+              "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT" >/dev/null
           }
+
+          prove_edge_disabled() {
+            local health code
+            health="$(mktemp)"
+            for attempt in 1 2 3 4 5 6; do
+              code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$HEALTH_URL" || echo '000')"
+              if [ "$code" = "200" ] && jq -e \
+                --arg environment "$TARGET_ENVIRONMENT" \
+                '.status == "ok" and
+                 .environment == $environment and
+                 (.commit | type == "string" and test("^[0-9a-f]{40}$")) and
+                 .personalSharedTelegramEdge.enabled == false' \
+                "$health" >/dev/null; then
+                rm -f "$health"
+                return 0
+              fi
+              [ "$attempt" -lt 6 ] && sleep 10
+            done
+            rm -f "$health"
+            return 1
+          }
+
+          disable_edge() {
+            remove_edge_secret && prove_edge_disabled
+          }
+
+          # Disable is the emergency-safe path: once the target and protected
+          # environment are authorized, remove the binding before consulting
+          # Worker health. A down or drifted Worker makes served-off proof
+          # unavailable, but must never prevent the deletion attempt.
+          if [ "$DESIRED_ENABLED" != "true" ]; then
+            if ! remove_edge_secret; then
+              echo "::error::$TARGET_ENVIRONMENT edge secret removal could not be confirmed"
+              exit 1
+            fi
+            if prove_edge_disabled; then
+              echo "Personal Shared Telegram edge is confirmed disabled in $TARGET_ENVIRONMENT."
+              exit 0
+            fi
+            echo "::error::$TARGET_ENVIRONMENT edge secret removal was confirmed, but served-off proof is unavailable"
+            exit 1
+          fi
 
           # A secret mutation can reach Cloudflare even when the CLI response is
           # ambiguous. Until the served health beacon proves the desired state,
@@ -154,21 +405,51 @@ jobs:
           trap rollback_on_unproven_exit EXIT
           trap 'exit 1' INT TERM
 
-          if [ "$DESIRED_ENABLED" = "true" ]; then
-            activation_cli_confirmed=false
-            for attempt in 1 2 3; do
-              if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
-                PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging; then
-                activation_cli_confirmed=true
-                break
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
-            if [ "$activation_cli_confirmed" != "true" ]; then
-              echo "::warning::Telegram edge activation CLI result was ambiguous; requiring served-state proof"
+          assert_active_gateway() {
+            local phase="$1"
+            if [ "$DESIRED_ENABLED" != "true" ]; then
+              return 0
             fi
-          else
-            disable_edge
+            if [[ ! "$EXPECTED_GATEWAY_DEPLOYMENT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "::error::Exact active gateway deployment proof is absent"
+              return 1
+            fi
+            active_gateway="$(mktemp)"
+            railway service status \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --json > "$active_gateway"
+            if ! jq -e \
+              --arg id "$EXPECTED_GATEWAY_DEPLOYMENT_ID" \
+              --arg service "$RAILWAY_SERVICE_ID" \
+              --arg name "$EXPECTED_GATEWAY_SERVICE_NAME" \
+              '.id == $service and
+               .name == $name and
+               .deploymentId == $id and
+               .status == "SUCCESS" and
+               .stopped == false' \
+              "$active_gateway" >/dev/null; then
+              rm -f "$active_gateway"
+              echo "::error::Exact-source gateway deployment is not active $phase edge mutation"
+              return 1
+            fi
+            rm -f "$active_gateway"
+          }
+
+          assert_active_gateway before
+
+          activation_cli_confirmed=false
+          for attempt in 1 2 3; do
+            if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
+              "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"; then
+              activation_cli_confirmed=true
+              break
+            fi
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          if [ "$activation_cli_confirmed" != "true" ]; then
+            echo "::warning::Telegram edge activation CLI result was ambiguous; requiring served-state proof"
           fi
 
           for attempt in 1 2 3 4 5 6; do
@@ -176,13 +457,15 @@ jobs:
             code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$HEALTH_URL" || echo '000')"
             if [ "$code" = "200" ] && jq -e \
               --arg sha "$EXPECTED_SOURCE_SHA" \
+              --arg environment "$TARGET_ENVIRONMENT" \
               --argjson enabled "$DESIRED_ENABLED" \
               '.status == "ok" and
-               .environment == "staging" and
+               .environment == $environment and
                .commit == $sha and
                .personalSharedTelegramEdge.enabled == $enabled' \
               "$health" >/dev/null; then
               rm -f "$health"
+              assert_active_gateway after
               rollback_needed=false
               echo "Personal Shared Telegram edge serves the requested state on the exact Worker source."
               exit 0
@@ -193,7 +476,7 @@ jobs:
 
           if disable_edge; then
             rollback_needed=false
-            echo "::warning::Telegram edge proof failed; staging was rolled back off"
+            echo "::warning::Telegram edge proof failed; $TARGET_ENVIRONMENT was rolled back off"
           else
             echo "::error::Telegram edge proof failed and rollback could not be confirmed"
           fi
@@ -205,8 +488,14 @@ jobs:
           {
             echo "### Personal Shared Telegram edge"
             echo
+            echo "- Environment: $TARGET_ENVIRONMENT"
             echo "- Worker source: $EXPECTED_SOURCE_SHA"
             echo "- Desired enabled state: $DESIRED_ENABLED"
             echo "- Served-state proof: passed"
-            echo "- Production: untouched"
+            echo "- Mutated binding: $EDGE_SECRET_NAME"
+            if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+              echo "- Production: untouched"
+            else
+              echo "- Production approval: $PRODUCTION_APPROVAL_COMMENT_URL"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
