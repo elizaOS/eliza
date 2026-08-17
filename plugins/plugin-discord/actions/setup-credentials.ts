@@ -70,6 +70,7 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://api.github.com/user", {
+				signal: AbortSignal.timeout(15_000),
 				headers: {
 					Authorization: `Bearer ${credentials.token}`,
 					Accept: "application/vnd.github+json",
@@ -104,6 +105,7 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://api.vercel.com/v9/projects", {
+				signal: AbortSignal.timeout(15_000),
 				headers: { Authorization: `Bearer ${credentials.token}` },
 			});
 			if (!response.ok) {
@@ -143,6 +145,7 @@ registerPreset({
 			const response = await fetch(
 				"https://api.cloudflare.com/client/v4/zones",
 				{
+					signal: AbortSignal.timeout(15_000),
 					headers: {
 						"X-Auth-Key": credentials.apiKey,
 						"X-Auth-Email": credentials.email,
@@ -184,6 +187,7 @@ registerPreset({
 		try {
 			// @duplicate-component-audit-allow: credential probe validates the key; response content is ignored.
 			const response = await fetch("https://api.anthropic.com/v1/messages", {
+				signal: AbortSignal.timeout(15_000),
 				method: "POST",
 				headers: {
 					"x-api-key": credentials.apiKey,
@@ -221,6 +225,7 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://api.openai.com/v1/models", {
+				signal: AbortSignal.timeout(15_000),
 				headers: { Authorization: `Bearer ${credentials.apiKey}` },
 			});
 			if (response.ok || response.status === 429) {
@@ -248,6 +253,7 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://rest.fal.run/fal-ai/fast-sdxl", {
+				signal: AbortSignal.timeout(15_000),
 				method: "POST",
 				headers: {
 					Authorization: `Key ${credentials.apiKey}`,
