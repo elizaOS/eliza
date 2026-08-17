@@ -187,6 +187,7 @@ import {
   capabilitiesForBackend,
   DETERMINISTIC_LEDGER_VERIFIER_NAME,
   deterministicLedgerVerdict,
+  isCompletedToolEvidence,
   isGreenCheckOutput,
   isPubliclyReachableUrl,
   renderDeterministicVerdict,
@@ -2466,6 +2467,7 @@ export class OrchestratorTaskService extends Service {
    *  carries the command/title so {@link classifyToolOutput} can class it. */
   private extractToolSignals(
     events: OrchestratorTaskDocument["events"],
+    completedOnly = false,
   ): EvidenceSignal[] {
     const signals: EvidenceSignal[] = [];
     for (const event of events) {
@@ -2477,6 +2479,7 @@ export class OrchestratorTaskService extends Service {
       const toolCall = isRecord(event.data.toolCall)
         ? event.data.toolCall
         : event.data;
+      if (completedOnly && !isCompletedToolEvidence(toolCall)) continue;
       const output = str(toolCall.output) ?? str(event.data.output);
       if (!output) continue;
       const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
@@ -4062,6 +4065,7 @@ export class OrchestratorTaskService extends Service {
               (event) =>
                 event.sessionId === sessionId || event.sessionId === undefined,
             ),
+            true,
           ),
         );
         const detVerdict = deterministicLedgerVerdict(acceptanceCriteria, {

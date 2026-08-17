@@ -9,6 +9,7 @@ import { generateDefaultAcceptanceCriteria } from "../services/acceptance-criter
 import {
   capabilitiesForBackend,
   deterministicLedgerVerdict,
+  isCompletedToolEvidence,
   isGreenCheckOutput,
   isPubliclyReachableUrl,
   renderDeterministicVerdict,
@@ -204,6 +205,22 @@ describe("deterministicLedgerVerdict", () => {
     expect(verdict.allMet).toBe(true);
   });
 
+  test("behavior words inside a matching URL path do not change its claim", () => {
+    const url = "https://example.com/status/get-and-delete/";
+    expect(
+      deterministicLedgerVerdict([`${url} is reachable`], {
+        ...quickAppFacts,
+        verifiedPublicUrls: [url],
+      }).allMet,
+    ).toBe(true);
+    expect(
+      deterministicLedgerVerdict([`${url} returns HTTP 200`], {
+        ...quickAppFacts,
+        verifiedPublicUrls: [url],
+      }).allMet,
+    ).toBe(false);
+  });
+
   test("empty criteria never auto-pass", () => {
     expect(deterministicLedgerVerdict([], quickAppFacts).allMet).toBe(false);
   });
@@ -253,6 +270,25 @@ describe("green check output", () => {
 
   test("accepts an explicit zero-failure summary", () => {
     expect(isGreenCheckOutput("12 passed, 0 failed")).toBe(true);
+  });
+});
+
+describe("deterministic tool-result admission", () => {
+  test.each(["running", "in_progress", "failed", "error", ""])(
+    "rejects %s tool events",
+    (status) => {
+      expect(isCompletedToolEvidence({ status })).toBe(false);
+    },
+  );
+
+  test("accepts only an explicit completed transition", () => {
+    expect(isCompletedToolEvidence({ status: "completed" })).toBe(true);
+    expect(isCompletedToolEvidence({ status: " COMPLETED " })).toBe(true);
+  });
+
+  test("rejects pass-looking output from a non-zero process", () => {
+    expect(isGreenCheckOutput("PASS\n$ bun test → exit 1")).toBe(false);
+    expect(isGreenCheckOutput("ok\nexit_code: 2")).toBe(false);
   });
 });
 
