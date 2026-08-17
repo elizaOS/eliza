@@ -124,7 +124,12 @@ function readUserText(message: Memory): string {
 export async function requireConfirmation(
 	args: RequireConfirmationArgs,
 ): Promise<ConfirmationDecision> {
-	const ttlMs = args.ttlMs ?? DEFAULT_TTL_MS;
+	const ttlMs =
+		typeof args.ttlMs === "number" &&
+		Number.isFinite(args.ttlMs) &&
+		args.ttlMs > 0
+			? args.ttlMs
+			: DEFAULT_TTL_MS;
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
 	const userId = String(args.message.entityId);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);

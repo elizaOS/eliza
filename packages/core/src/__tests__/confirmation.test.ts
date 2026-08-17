@@ -140,4 +140,39 @@ describe("requireConfirmation", () => {
 			});
 		},
 	);
+
+	it.each([
+		0,
+		-1000,
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		"5000" as unknown as number,
+	])(
+		"sanitizes invalid or non-positive ttlMs (%j) to DEFAULT_TTL_MS",
+		async (invalidTtl) => {
+			const runtime = createRuntimeStub();
+			const args = {
+				runtime,
+				actionName: "DELETE_RESOURCE",
+				pendingKey: "res:1",
+				prompt: "Delete res 1?",
+				ttlMs: invalidTtl,
+			};
+
+			await expect(
+				requireConfirmation({
+					...args,
+					message: message("delete res 1"),
+				}),
+			).resolves.toEqual({ status: "pending" });
+
+			// Should successfully confirm on the second turn rather than being immediately expired
+			await expect(
+				requireConfirmation({
+					...args,
+					message: message("yes"),
+				}),
+			).resolves.toEqual({ status: "confirmed", metadata: undefined });
+		},
+	);
 });
