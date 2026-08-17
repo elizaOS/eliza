@@ -463,9 +463,20 @@ function rateLimitCutoverAt(windowMs: number): Promise<number> {
 async function activeRateLimitGate(
   organizationId: string,
   windowMs: number,
-): Promise<RuntimeDurableObjectStub> {
+): Promise<{
+  stub: RuntimeDurableObjectStub;
+  windowStartedAt: number;
+}> {
   const cutoverAt = await rateLimitCutoverAt(windowMs);
-  return Date.now() >= cutoverAt ? rateLimitGateStub(organizationId) : gateStub(organizationId);
+  // Capture the fixed-window identity together with the lane decision. A
+  // legacy request can otherwise enter just before cutover, wait behind a
+  // ledger input gate, and start a second copy of the new window after v2 has
+  // already begun accepting traffic.
+  const now = Date.now();
+  return {
+    stub: now >= cutoverAt ? rateLimitGateStub(organizationId) : gateStub(organizationId),
+    windowStartedAt: Math.floor(now / windowMs) * windowMs,
+  };
 }
 
 /** Warm only the strongly ordered rate-limit window, without reading the balance database. */
@@ -549,6 +560,7 @@ export async function consumeInferenceRateLimit(params: {
     );
   }
 
+  const activeGate = await activeRateLimitGate(params.organizationId, params.windowMs);
   const response = await gateFetch(
     params.organizationId,
     "/rate-limit",
@@ -556,8 +568,9 @@ export async function consumeInferenceRateLimit(params: {
       endpointType: params.endpointType,
       windowMs: params.windowMs,
       maxRequests: params.maxRequests,
+      windowStartedAt: activeGate.windowStartedAt,
     },
-    await activeRateLimitGate(params.organizationId, params.windowMs),
+    activeGate.stub,
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (response.status !== 200 && response.status !== 429) {

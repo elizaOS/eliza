@@ -344,12 +344,16 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
 
-  test("a separate rate-limit identity answers while the legacy ledger input gate is blocked", async () => {
+  test("a separate rate-limit identity answers without duplicating a window across cutover", async () => {
+    const windowMs = 1_000;
+    const legacyWindowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
     const policy = {
       endpointType: "completions",
-      windowMs: 60_000,
-      maxRequests: 2,
+      windowMs,
+      maxRequests: 1,
+      windowStartedAt: legacyWindowStartedAt,
     };
+    expect((await post("/rate-limit", policy)).status).toBe(200);
     expect((await post("/test-block-ledger", {})).status).toBe(202);
 
     const blockedLegacy = post("/rate-limit", policy);
@@ -359,8 +363,20 @@ describe("Miniflare Durable Object integration", () => {
     ]);
     expect(legacyAnsweredEarly).toBe(false);
 
+    const cutoverDelay = Math.max(
+      0,
+      legacyWindowStartedAt + windowMs - Date.now() + 10,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, cutoverDelay));
     const isolated = await Promise.race([
-      post("/rate-limit", policy, "rate-limit:v2:org-miniflare"),
+      post(
+        "/rate-limit",
+        {
+          ...policy,
+          windowStartedAt: legacyWindowStartedAt + windowMs,
+        },
+        "rate-limit:v2:org-miniflare",
+      ),
       new Promise<never>((_, reject) => {
         setTimeout(
           () => reject(new Error("isolated rate limit waited behind ledger")),
@@ -369,7 +385,7 @@ describe("Miniflare Durable Object integration", () => {
       }),
     ]);
     expect(isolated.status).toBe(200);
-    expect((await blockedLegacy).status).toBe(200);
+    expect((await blockedLegacy).status).toBe(429);
   }, 120_000);
 
   test("the cutover coordinator chooses the next exact fixed-window boundary", async () => {

@@ -84,6 +84,8 @@ interface RateLimitRequest {
   endpointType: string;
   windowMs: number;
   maxRequests: number;
+  /** Fixed-window identity captured before this request enters a Durable Object queue. */
+  windowStartedAt?: number;
 }
 
 type CredentialCheckRequest =
@@ -956,12 +958,34 @@ export class InferenceAdmissionGate {
     ) {
       return jsonError("Invalid inference rate-limit request", 400);
     }
-
     const now = Date.now();
-    const windowStartedAt =
+    const currentWindowStartedAt =
       Math.floor(now / request.windowMs) * request.windowMs;
+    if (
+      request.windowStartedAt !== undefined &&
+      (!Number.isSafeInteger(request.windowStartedAt) ||
+        request.windowStartedAt < 0 ||
+        request.windowStartedAt % request.windowMs !== 0 ||
+        request.windowStartedAt > currentWindowStartedAt)
+    ) {
+      return jsonError("Invalid inference rate-limit request", 400);
+    }
+
+    const windowStartedAt = request.windowStartedAt ?? currentWindowStartedAt;
     const windows = cloneRateLimitWindows(await this.loadRateLimitWindows());
     const existing = windows[request.endpointType];
+    if (existing && existing.windowStartedAt > windowStartedAt) {
+      const resetAt = existing.windowStartedAt + existing.windowMs;
+      return Response.json(
+        {
+          allowed: false,
+          remaining: 0,
+          resetAt,
+          retryAfter: Math.max(1, Math.ceil((resetAt - now) / 1_000)),
+        },
+        { status: 429 },
+      );
+    }
     const current =
       existing &&
       existing.windowStartedAt === windowStartedAt &&
