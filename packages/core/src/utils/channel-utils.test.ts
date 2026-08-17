@@ -185,6 +185,24 @@ describe("formatLocationText", () => {
 				accuracy: Number.NaN,
 			}),
 		).toBe("📍 37.774900, -122.419400");
+
+		expect(
+			formatLocationText({
+				latitude: 37.7749,
+				longitude: -122.4194,
+				accuracy: Number.POSITIVE_INFINITY,
+			}),
+		).toBe("📍 37.774900, -122.419400");
+	});
+
+	it("preserves zero accuracy as a valid non-negative measurement", () => {
+		expect(
+			formatLocationText({
+				latitude: 37.7749,
+				longitude: -122.4194,
+				accuracy: 0,
+			}),
+		).toBe("📍 37.774900, -122.419400 ±0m");
 	});
 
 	it("formats named place location with label and coordinates", () => {
@@ -242,6 +260,18 @@ describe("toLocationContext", () => {
 		});
 
 		expect(context.LocationAccuracy).toBe(25);
+	});
+
+	it("omits non-finite accuracy without fabricating a measurement", () => {
+		for (const accuracy of [Number.NaN, Number.POSITIVE_INFINITY]) {
+			const context = toLocationContext({
+				latitude: 37.7749,
+				longitude: -122.4194,
+				accuracy,
+			});
+
+			expect(context.LocationAccuracy).toBeUndefined();
+		}
 	});
 });
 
