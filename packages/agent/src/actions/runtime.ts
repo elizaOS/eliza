@@ -225,10 +225,13 @@ async function selfStatusOp(
     detailLevel === "full"
       ? MAX_SELF_STATUS_FULL_CHARS
       : MAX_SELF_STATUS_BRIEF_CHARS;
+  const suffix = "\n…[self-status truncated]";
   const text =
     rawText.length <= maxChars
       ? rawText
-      : `${rawText.slice(0, maxChars)}\n…[self-status truncated]`;
+      : maxChars <= suffix.length
+        ? suffix.slice(0, maxChars)
+        : `${rawText.slice(0, maxChars - suffix.length)}${suffix}`;
   return {
     success: true,
     text,
