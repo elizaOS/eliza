@@ -23,6 +23,7 @@ import {
 	type InteractionOutcomeStatus,
 	type InteractionSession,
 	type InteractionSurfaceRef,
+	interactionActionDigest,
 	normalizeInteractionActionResult,
 	normalizeInteractionCapabilitySet,
 	normalizeInteractionConfirmationPreview,
@@ -175,7 +176,7 @@ function resultFor(input: InteractionAction): InteractionActionResult {
 					destination: "https://recipient.test",
 					disclosures: ["draft text"],
 					consequence: "Sends a message to the configured recipient.",
-					actionDigest: "sha256:confirmation-digest",
+					actionDigest: interactionActionDigest(input),
 					requestedAt: now,
 					expiresAt: "2026-01-01T00:05:00.000Z",
 				}
@@ -214,7 +215,12 @@ const adapter: InteractionAdapter = {
 	id: adapterId,
 	capabilities: async () => capabilities,
 	observe: async () => observation,
-	execute: async (input) => resultFor(input),
+	execute: async (input) => {
+		if (input.actionId === "case-invalid_payload") {
+			return { invalid: true } as unknown as InteractionActionResult;
+		}
+		return resultFor(input);
+	},
 };
 
 describe("computer-use interaction contracts", () => {
@@ -287,10 +293,14 @@ describe("computer-use interaction contracts", () => {
 	});
 
 	it("reuses canonical effect receipts in successful action results", () => {
-		const normalized = normalizeInteractionActionResult({
-			...resultFor(action("case-success")),
-			ignored: "discard me",
-		});
+		const succeededAction = action("case-success");
+		const normalized = normalizeInteractionActionResult(
+			{
+				...resultFor(succeededAction),
+				ignored: "discard me",
+			},
+			succeededAction,
+		);
 		expect(normalized.status).toBe("SUCCEEDED");
 		expect(normalized.effectReceipts).toHaveLength(1);
 		expect(normalized.effectReceipts[0]?.outcome).toBe("applied");
@@ -298,12 +308,16 @@ describe("computer-use interaction contracts", () => {
 	});
 
 	it("forbids automatic retry after an uncertain effect", () => {
-		const uncertain = resultFor(action("case-uncertain_effect"));
+		const uncertainAction = action("case-uncertain_effect");
+		const uncertain = resultFor(uncertainAction);
 		expect(() =>
-			normalizeInteractionActionResult({
-				...uncertain,
-				error: { ...uncertain.error, retryable: true },
-			}),
+			normalizeInteractionActionResult(
+				{
+					...uncertain,
+					error: { ...uncertain.error, retryable: true },
+				},
+				uncertainAction,
+			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
@@ -318,7 +332,7 @@ describe("computer-use interaction contracts", () => {
 			destination: "https://merchant.test/checkout",
 			disclosures: ["shipping address"],
 			consequence: "Places the order.",
-			actionDigest: "sha256:action",
+			actionDigest: `sha256:${"a".repeat(64)}`,
 			requestedAt: now,
 			expiresAt: later,
 		});
@@ -343,7 +357,7 @@ describe("computer-use interaction contracts", () => {
 				destination: null,
 				disclosures: [],
 				consequence: "Places the order.",
-				actionDigest: "sha256:action",
+				actionDigest: `sha256:${"a".repeat(64)}`,
 				requestedAt: "2026-02-30T00:00:00.000Z",
 				expiresAt: later,
 			}),
@@ -353,28 +367,67 @@ describe("computer-use interaction contracts", () => {
 	});
 
 	it("binds confirmation and observation evidence to the result action", () => {
-		const confirmationResult = resultFor(action("case-confirmation"));
+		const confirmationAction = action("case-confirmation");
+		const confirmationResult = resultFor(confirmationAction);
 		expect(() =>
-			normalizeInteractionActionResult({
-				...confirmationResult,
-				confirmation: {
-					...confirmationResult.confirmation,
-					actionId: "another-action",
+			normalizeInteractionActionResult(
+				{
+					...confirmationResult,
+					confirmation: {
+						...confirmationResult.confirmation,
+						actionId: "another-action",
+					},
 				},
-			}),
+				confirmationAction,
+			),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+		expect(() =>
+			normalizeInteractionActionResult(
+				{
+					...confirmationResult,
+					confirmation: {
+						...confirmationResult.confirmation,
+						actionDigest: `sha256:${"b".repeat(64)}`,
+					},
+				},
+				confirmationAction,
+			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
 
 		const succeeded = resultFor(action("case-success"));
+		const succeededAction = action("case-success");
 		expect(() =>
-			normalizeInteractionActionResult({
-				...succeeded,
-				evidence: {
-					...succeeded.evidence,
-					afterObservationId: "another-observation",
+			normalizeInteractionActionResult(
+				{
+					...succeeded,
+					evidence: {
+						...succeeded.evidence,
+						afterObservationId: "another-observation",
+					},
 				},
-			}),
+				succeededAction,
+			),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("rejects committed effect proof on non-success outcomes", () => {
+		const failedAction = action("case-failed_no_effect");
+		const failed = resultFor(failedAction);
+		const applied = resultFor(action("case-success")).effectReceipts;
+		expect(() =>
+			normalizeInteractionActionResult(
+				{
+					...failed,
+					effectReceipts: applied,
+				},
+				failedAction,
+			),
 		).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
 		);
@@ -398,6 +451,14 @@ describe("computer-use interaction contracts", () => {
 			expect.objectContaining({
 				code: "INTERACTION_CROSS_SESSION_REFERENCE",
 			}),
+		);
+		expect(() =>
+			assertInteractionSurfaceCurrent(session, {
+				...surface,
+				parentSurfaceId: "forged-parent",
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INTERACTION_SURFACE_NOT_FOUND" }),
 		);
 	});
 
@@ -440,6 +501,19 @@ describe("computer-use interaction contracts", () => {
 			ttlMs: 100,
 		});
 		expect(coordinator.release(second)).toBe(true);
+		expect(() =>
+			coordinator.acquire({
+				leaseId: "lease-overflow",
+				sessionId,
+				ownerId: "owner-1",
+				resourceKind: "clipboard",
+				resourceId: "overflow",
+				generation: 1,
+				ttlMs: Number.MAX_VALUE,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
 	});
 });
 

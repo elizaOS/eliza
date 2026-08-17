@@ -5,11 +5,13 @@
  * that reuse the runtime's existing effect receipts as mutation proof.
  */
 
+import { sha256 } from "@noble/hashes/sha2.js";
 import { ElizaError } from "../errors.ts";
 import {
 	type EffectReceipt,
 	normalizeEffectReceipts,
 } from "../types/effects.ts";
+import { stableStringify } from "../utils/deterministic.ts";
 
 export const INTERACTION_CONTRACT_VERSION = 1 as const;
 
@@ -325,6 +327,12 @@ export interface InteractionConfirmationPreview {
 	actionDigest: string;
 	requestedAt: string;
 	expiresAt: string;
+}
+
+/** Return the canonical digest a confirmation preview must bind to. */
+export function interactionActionDigest(action: InteractionAction): string {
+	const digest = sha256(new TextEncoder().encode(stableStringify(action)));
+	return `sha256:${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 export interface InteractionActionError {
@@ -928,6 +936,17 @@ export function normalizeInteractionConfirmationPreview(
 			context,
 		);
 	}
+	const actionDigest = nonEmptyString(
+		raw.actionDigest,
+		"actionDigest",
+		context,
+	);
+	if (!/^sha256:[0-9a-f]{64}$/i.test(actionDigest)) {
+		return invalid(
+			"Interaction confirmation actionDigest must be a SHA-256 digest.",
+			context,
+		);
+	}
 	return Object.freeze({
 		confirmationId,
 		actionId: nonEmptyString(raw.actionId, "actionId", context),
@@ -936,7 +955,7 @@ export function normalizeInteractionConfirmationPreview(
 		destination: nullableString(raw.destination, "destination", context),
 		disclosures: stringArray(raw.disclosures, "disclosures", context),
 		consequence: nonEmptyString(raw.consequence, "consequence", context),
-		actionDigest: nonEmptyString(raw.actionDigest, "actionDigest", context),
+		actionDigest: actionDigest.toLowerCase(),
 		requestedAt,
 		expiresAt,
 	});
@@ -944,6 +963,7 @@ export function normalizeInteractionConfirmationPreview(
 
 export function normalizeInteractionActionResult(
 	value: unknown,
+	expectedAction: InteractionAction,
 ): InteractionActionResult {
 	const raw = asRecord(value);
 	if (!raw) return invalid("Interaction action result must be an object.");
@@ -1007,6 +1027,26 @@ export function normalizeInteractionActionResult(
 			context,
 		);
 	}
+	if (
+		confirmation &&
+		(Date.parse(confirmation.requestedAt) < Date.parse(startedAt) ||
+			Date.parse(confirmation.requestedAt) > Date.parse(completedAt) ||
+			Date.parse(confirmation.expiresAt) <= Date.parse(completedAt))
+	) {
+		return invalid(
+			"Interaction confirmation must be requested during execution and remain unexpired after the result.",
+			context,
+		);
+	}
+	if (
+		confirmation &&
+		confirmation.actionDigest !== interactionActionDigest(expectedAction)
+	) {
+		return invalid(
+			"Interaction confirmation does not authorize the exact requested action.",
+			context,
+		);
+	}
 	if (status === "NEEDS_CONFIRMATION" && error) {
 		return invalid(
 			"NEEDS_CONFIRMATION results cannot also carry an execution error.",
@@ -1063,6 +1103,41 @@ export function normalizeInteractionActionResult(
 			context,
 		);
 	}
+	const effectReceipts = normalizeEffectReceipts(raw.effectReceipts);
+	const hasCommittedEffect = effectReceipts.some(
+		(receipt) =>
+			receipt.outcome === "applied" ||
+			(receipt.outcome === "noop" && receipt.idempotency.replayed),
+	);
+	if (status !== "SUCCEEDED" && hasCommittedEffect) {
+		return invalid(
+			`Interaction result '${status}' cannot carry committed mutation proof.`,
+			context,
+		);
+	}
+	if (
+		actionId !== expectedAction.actionId ||
+		sessionId !== expectedAction.sessionId ||
+		adapterId !== expectedAction.adapterId
+	) {
+		return invalid(
+			"Interaction result does not belong to the requested action.",
+			context,
+		);
+	}
+	if (
+		observation &&
+		(observation.surface.surfaceId !== expectedAction.surface.surfaceId ||
+			observation.surface.kind !== expectedAction.surface.kind ||
+			observation.surface.generation !== expectedAction.surface.generation ||
+			observation.surface.parentSurfaceId !==
+				expectedAction.surface.parentSurfaceId)
+	) {
+		return invalid(
+			"Interaction result observation escaped the requested action surface.",
+			context,
+		);
+	}
 	return Object.freeze({
 		contractVersion: INTERACTION_CONTRACT_VERSION,
 		actionId,
@@ -1095,7 +1170,7 @@ export function normalizeInteractionActionResult(
 				context,
 			),
 		}),
-		effectReceipts: normalizeEffectReceipts(raw.effectReceipts),
+		effectReceipts,
 		observation,
 	});
 }
@@ -1139,7 +1214,8 @@ export function assertInteractionSurfaceCurrent(
 		(candidate) =>
 			candidate.surfaceId === surface.surfaceId &&
 			candidate.kind === surface.kind &&
-			candidate.generation === surface.generation,
+			candidate.generation === surface.generation &&
+			candidate.parentSurfaceId === surface.parentSurfaceId,
 	);
 	if (!registered) {
 		throw new ElizaError(
@@ -1168,11 +1244,20 @@ export class InteractionLeaseCoordinator {
 
 	acquire(request: AcquireInteractionLeaseRequest): InteractionLease {
 		const now = this.clock();
+		if (!Number.isFinite(now)) {
+			return invalid("Interaction lease clock must return a finite timestamp.");
+		}
 		if (!Number.isInteger(request.generation) || request.generation < 0) {
 			return invalid("Interaction lease generation must be non-negative.");
 		}
 		if (!Number.isFinite(request.ttlMs) || request.ttlMs <= 0) {
 			return invalid("Interaction lease ttlMs must be positive.");
+		}
+		const expiresAt = now + request.ttlMs;
+		if (!Number.isFinite(expiresAt) || expiresAt > 8.64e15) {
+			return invalid(
+				"Interaction lease expiry exceeds the supported date range.",
+			);
 		}
 		for (const field of [
 			"leaseId",
@@ -1215,7 +1300,7 @@ export class InteractionLeaseCoordinator {
 			resourceId: request.resourceId,
 			generation: request.generation,
 			acquiredAt: new Date(now).toISOString(),
-			expiresAt: new Date(now + request.ttlMs).toISOString(),
+			expiresAt: new Date(expiresAt).toISOString(),
 		});
 		this.leases.set(key, lease);
 		return lease;
