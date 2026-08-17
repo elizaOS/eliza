@@ -194,7 +194,7 @@ df -h / /home
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
 		// Wire-shape contract: evaluator emits ONLY `messages`.
 		expect(evaluatorParams.prompt).toBeUndefined();
-		expect(evaluatorParams.maxTokens).toBe(1024);
+		expect(evaluatorParams.maxTokens).toBe(2048);
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
@@ -1348,5 +1348,120 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			expect(result.decision).toBe("FINISH");
 			expect(result.messageToUser).toBe(answer);
 		}
+	});
+});
+
+describe("completion-truncation guard: one bounded retry, never a loop", () => {
+	// Bidirectional contract for the 2026-08-17 truncation spiral: an envelope
+	// cut off at the completion cap must trigger EXACTLY ONE retry at a doubled
+	// cap. Without the guard (the old behavior) the truncated JSON parsed as a
+	// protocol failure and the planner burned extra full-prompt rounds; with it,
+	// the second (complete) envelope is used directly.
+	const truncatedEnvelope = {
+		// A JSON envelope cut mid-string — unparseable by construction.
+		text: '{"success": true, "decision": "FINISH", "thought": "long reasoning that got cut o',
+		finishReason: "length",
+		usage: { promptTokens: 100, completionTokens: 2048 },
+	};
+	const completeEnvelope = {
+		text: '{"success": true, "decision": "FINISH", "thought": "Recovered on the retry."}',
+		finishReason: "stop",
+		usage: { promptTokens: 100, completionTokens: 40 },
+	};
+	const baseParams = (useModel: ReturnType<typeof vi.fn>) => ({
+		runtime: { useModel },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "Check status." },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+	});
+
+	it("detects truncation via finishReason and via usage-at-cap", async () => {
+		const { evaluatorHitCompletionLimit } = await import("../evaluator");
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "length", usage: { completionTokens: 10 } },
+				2048,
+			),
+		).toBe(true);
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 2048 } },
+				2048,
+			),
+		).toBe(true);
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 40 } },
+				2048,
+			),
+		).toBe(false);
+		// String results carry no metadata and are never treated as truncated.
+		expect(evaluatorHitCompletionLimit("plain text", 2048)).toBe(false);
+	});
+
+	it("retries ONCE with a doubled cap when the truncated envelope is unparseable, then uses the retry result", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		const firstCap = useModel.mock.calls[0][1].maxTokens;
+		const secondCap = useModel.mock.calls[1][1].maxTokens;
+		expect(firstCap).toBe(2048);
+		expect(secondCap).toBe(4096);
+		expect(result.decision).toBe("FINISH");
+		expect(result.success).toBe(true);
+		expect(result.protocolFailure).toBeUndefined();
+	});
+
+	it("does NOT retry when the completion hit the cap but still parsed", async () => {
+		const parseableAtCap = {
+			text: '{"success": true, "decision": "FINISH", "thought": "Fits exactly."}',
+			finishReason: "stop",
+			usage: { promptTokens: 100, completionTokens: 2048 },
+		};
+		const useModel = vi.fn().mockResolvedValue(parseableAtCap);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(result.decision).toBe("FINISH");
+	});
+
+	it("never loops: a still-truncated retry proceeds to parse-recovery with exactly two calls total", async () => {
+		const useModel = vi.fn().mockResolvedValue(truncatedEnvelope);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		// One initial call + one retry. NEVER a third.
+		expect(useModel).toHaveBeenCalledTimes(2);
+		// The unparseable envelope routes through the existing protocol-failure
+		// path (CONTINUE + replan), not an exception and not a user-visible leak.
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.messageToUser).toBeUndefined();
 	});
 });
