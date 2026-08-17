@@ -27,14 +27,28 @@ const RESERVED_APP_ROUTE_SLUGS = new Set([
   "stop",
 ]);
 
-function extractAppSlug(pathname: string): string | null {
+type AppSlugParseResult =
+  | { kind: "unmatched" }
+  | { kind: "invalid" }
+  | { kind: "slug"; value: string };
+
+function parseAppSlug(pathname: string): AppSlugParseResult {
   const match = pathname.match(/^\/api\/apps\/([^/]+)(?:\/|$)/);
-  if (!match?.[1]) return null;
-  const slug = decodeURIComponent(match[1]).trim();
-  if (!slug || RESERVED_APP_ROUTE_SLUGS.has(slug)) {
-    return null;
+  if (!match?.[1]) return { kind: "unmatched" };
+
+  let slug: string;
+  try {
+    slug = decodeURIComponent(match[1]).trim();
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed path encoding is
+    // reported by the route boundary instead of escaping as URIError.
+    return { kind: "invalid" };
   }
-  return slug;
+
+  if (!slug || RESERVED_APP_ROUTE_SLUGS.has(slug)) {
+    return { kind: "unmatched" };
+  }
+  return { kind: "slug", value: slug };
 }
 
 function toLegacyHandlerName(slug: string): string {
@@ -65,8 +79,13 @@ function resolveAppRouteHandler(
 export async function handleAppPackageRoutes(
   ctx: AppPackageRouteDispatchContext,
 ): Promise<boolean> {
-  const slug = extractAppSlug(ctx.pathname);
-  if (!slug) return false;
+  const parsedSlug = parseAppSlug(ctx.pathname);
+  if (parsedSlug.kind === "unmatched") return false;
+  if (parsedSlug.kind === "invalid") {
+    ctx.error(ctx.res, "Invalid app slug: malformed URL encoding", 400);
+    return true;
+  }
+  const slug = parsedSlug.value;
 
   const routeModule = await importAppRouteModule(slug);
   if (!routeModule) return false;
