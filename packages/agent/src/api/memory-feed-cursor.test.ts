@@ -6,7 +6,7 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
-import { handleMemoryRoutes } from "./memory-routes.ts";
+import { handleMemoryRoutes, parseMemoryTableFilter } from "./memory-routes.ts";
 
 describe("GET /api/memories/feed cursor", () => {
   test("honors a before cursor at the Unix epoch", async () => {
@@ -51,5 +51,65 @@ describe("GET /api/memories/feed cursor", () => {
       limit: 50,
       hasMore: false,
     });
+  });
+
+  test("rejects an unknown type before scanning tables", async () => {
+    const getMemories = vi.fn(async () => []);
+    const runtime = {
+      agentId: "11111111-1111-4111-8111-111111111111" as UUID,
+      character: { name: "Eliza" },
+      ensureConnection: vi.fn(async () => undefined),
+      getMemories,
+    } as unknown as AgentRuntime;
+    const errors: Array<{ message: string; status?: number }> = [];
+    const context: MemoryRouteContext = {
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/memories/feed",
+      url: new URL("https://agent.test/api/memories/feed?type=notes"),
+      runtime,
+      agentName: "Eliza",
+      json: () => {
+        throw new Error("unexpected 200");
+      },
+      error: (_res, message, status) => {
+        errors.push({ message, status });
+      },
+      readJsonBody: async <T extends object>() => ({}) as T,
+    };
+
+    expect(await handleMemoryRoutes(context)).toBe(true);
+    expect(errors).toEqual([
+      {
+        message: "type must be one of: messages, memories, facts, documents",
+        status: 400,
+      },
+    ]);
+    expect(getMemories).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseMemoryTableFilter", () => {
+  test("omitted and empty keep the unfiltered all-tables scan", () => {
+    expect(parseMemoryTableFilter(null)).toEqual({ ok: true });
+    expect(parseMemoryTableFilter("")).toEqual({ ok: true });
+  });
+
+  test("accepts the viewer table identities", () => {
+    expect(parseMemoryTableFilter("messages")).toEqual({
+      ok: true,
+      tables: ["messages"],
+    });
+    expect(parseMemoryTableFilter("FACTS")).toEqual({
+      ok: true,
+      tables: ["facts"],
+    });
+  });
+
+  test("rejects unknown tokens instead of returning every table", () => {
+    expect(parseMemoryTableFilter("notes").ok).toBe(false);
+    expect(parseMemoryTableFilter("message").ok).toBe(false);
+    expect(parseMemoryTableFilter("all").ok).toBe(false);
   });
 });
