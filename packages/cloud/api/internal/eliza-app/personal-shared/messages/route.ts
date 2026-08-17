@@ -267,11 +267,11 @@ app.post("/", async (c) => {
     const accountStartedAt = performance.now();
     let account: { userId: string; organizationId: string };
     let accountResolution = "phone-query";
-    let isNewPersonalAccount = false;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
       | undefined;
+    let isNewPersonalAccount = false;
     if (parsed.data.platform === "telegram") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -326,17 +326,18 @@ app.post("/", async (c) => {
       userId: account.userId,
       organizationId: account.organizationId,
     });
-    const personalPrewarm = isNewPersonalAccount
-      ? (() => {
+    const personalPrewarm = dedicated
+      ? null
+      : (() => {
           const startedAt = performance.now();
           const timing = prewarmPersonalSharedAgentTurnCaches(
             agent,
             worker.namespace,
+            { warmConversation: isNewPersonalAccount },
           ).then(() => performance.now() - startedAt);
           worker.executionCtx.waitUntil(timing);
           return timing;
-        })()
-      : null;
+        })();
     let deliveryMessage = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
@@ -596,7 +597,10 @@ app.post("/", async (c) => {
       });
     }
     stage = "shared_runtime";
-    const prewarmMs = personalPrewarm ? await personalPrewarm : undefined;
+    if (!personalPrewarm) {
+      throw new Error("Shared turn reached inference with a Dedicated target");
+    }
+    const prewarmMs = await personalPrewarm;
     const sharedStartedAt = performance.now();
     const trustedDelivery =
       parsed.data.platform === "telegram"
@@ -630,9 +634,9 @@ app.post("/", async (c) => {
     );
     c.header(
       "Server-Timing",
-      `${accountTiming}, ${
-        prewarmMs === undefined ? "" : `prewarm;dur=${prewarmMs.toFixed(1)}, `
-      }shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
+      `${accountTiming}, prewarm;dur=${prewarmMs.toFixed(1)}, shared;dur=${(
+        performance.now() - sharedStartedAt
+      ).toFixed(1)}`,
     );
 
     return c.json({
