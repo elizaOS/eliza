@@ -119,6 +119,7 @@ async function postForm(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams(form).toString(),
+      signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
     // error-policy:J2 context-adding rethrow — a network failure reaching
