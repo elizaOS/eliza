@@ -9,7 +9,10 @@ import { canonicalTestEmbedding } from "../testing/canonical-embedding";
 import { EventType } from "../types/events";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
-import { EmbeddingGenerationService } from "./embedding";
+import {
+	EmbeddingGenerationService,
+	prepareMemoryEmbeddingChunks,
+} from "./embedding";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const v = canonicalTestEmbedding;
@@ -69,6 +72,26 @@ function makeItem(id: string, text: string | undefined) {
 		priority: "normal" as const,
 	};
 }
+
+describe("memory embedding backfill input preparation", () => {
+	test("splits oversized legacy text completely into strict canonical chunks", () => {
+		const source = `  ${"a".repeat(509)}😀${"b".repeat(520)}  `;
+		const chunks = prepareMemoryEmbeddingChunks(source);
+
+		expect(chunks.length).toBeGreaterThan(1);
+		expect(chunks.every((chunk) => chunk.length <= 510)).toBe(true);
+		expect(chunks.join("")).toBe(source.trim());
+	});
+
+	test("classifies document-sized and malformed legacy rows as terminal", () => {
+		expect(() => prepareMemoryEmbeddingChunks("x".repeat(510 * 8 + 1))).toThrow(
+			expect.objectContaining({ code: "MEMORY_EMBEDDING_INPUT_TERMINAL" }),
+		);
+		expect(() => prepareMemoryEmbeddingChunks("valid\ud800invalid")).toThrow(
+			expect.objectContaining({ code: "MEMORY_EMBEDDING_INPUT_TERMINAL" }),
+		);
+	});
+});
 
 describe("EmbeddingGenerationService drain config", () => {
 	const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
@@ -345,6 +368,36 @@ describe("EmbeddingGenerationService drain config", () => {
 });
 
 describe("EmbeddingGenerationService processBatch", () => {
+	test("single-item path embeds every bounded legacy chunk and persists one canonical vector", async () => {
+		let lastTexts: string[] = [];
+		const written: { id: string; embedding: number[] }[] = [];
+		const runtime = makeRuntime({
+			batch: true,
+			batchHandler: async ({ texts }) => {
+				lastTexts = texts;
+				return texts.map((_, index) => v(index + 1));
+			},
+			updateMemory: async ({ id, embedding }) => {
+				written.push({ id, embedding });
+			},
+		});
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		const source = `${"a".repeat(510)}${"b".repeat(90)}`;
+
+		// biome-ignore lint/suspicious/noExplicitAny: exercise private per-item fallback
+		await (service as any).generateEmbedding(makeItem("legacy-long", source));
+
+		expect(lastTexts.map((text) => text.length)).toEqual([510, 90]);
+		expect(lastTexts.join("")).toBe(source);
+		expect(written).toHaveLength(1);
+		expect(written[0].id).toBe("legacy-long");
+		expect(written[0].embedding).toHaveLength(384);
+		expect(runtime.reportError).not.toHaveBeenCalled();
+		await service.stop();
+	});
+
 	test("single-item generation retries an empty vector but preserves idempotency", async () => {
 		const written: { id: string; embedding: number[] }[] = [];
 		const embedHandler = vi.fn(async () => v(2));
@@ -411,6 +464,73 @@ describe("EmbeddingGenerationService processBatch", () => {
 			{ id: "id-b", embedding: v(2) },
 		]);
 
+		await service.stop();
+	});
+
+	test("batch path expands bounded legacy memories without losing item-to-vector mapping", async () => {
+		let lastTexts: string[] = [];
+		const written: string[] = [];
+		const runtime = makeRuntime({
+			batch: true,
+			batchHandler: async ({ texts }) => {
+				lastTexts = texts;
+				return texts.map((_, index) => v(index + 1));
+			},
+			updateMemory: async ({ id }) => {
+				written.push(id);
+			},
+		});
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: drive private batch processor
+		const processBatch = (service as any).batchQueue.options.processBatch as (
+			items: unknown[],
+		) => Promise<{ success: boolean }[]>;
+		const long = `${"l".repeat(510)}${"o".repeat(80)}`;
+
+		const outcomes = await processBatch([
+			makeItem("legacy-long", long),
+			makeItem("short", "short"),
+		]);
+
+		expect(lastTexts.map((text) => text.length)).toEqual([510, 80, 5]);
+		expect(lastTexts.slice(0, 2).join("")).toBe(long);
+		expect(outcomes.every((outcome) => outcome.success)).toBe(true);
+		expect(written).toEqual(["legacy-long", "short"]);
+		await service.stop();
+	});
+
+	test("terminal legacy rows fail once without provider calls, retries, or escalation", async () => {
+		const embedHandler = vi.fn(async () => v(1));
+		const runtime = makeRuntime({ batch: false, embedHandler });
+		const log = vi.fn(async () => {});
+		Object.assign(runtime, { log });
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: exercise queue terminal policy
+		await (service as any).handleEmbeddingRequest(
+			makeItem("legacy-document", "x".repeat(510 * 8 + 1)),
+		);
+		// biome-ignore lint/suspicious/noExplicitAny: deterministically drain once
+		await (service as any).batchQueue.drain();
+
+		expect(embedHandler).not.toHaveBeenCalled();
+		expect(runtime.reportError).not.toHaveBeenCalled();
+		expect(log).toHaveBeenCalledTimes(1);
+		expect(log).toHaveBeenCalledWith(
+			expect.objectContaining({
+				body: expect.objectContaining({
+					status: "failed",
+					metadata: {
+						terminal: true,
+						code: "MEMORY_EMBEDDING_INPUT_TERMINAL",
+					},
+				}),
+			}),
+		);
+		expect(runtime.emitEvent).toHaveBeenCalledTimes(1);
 		await service.stop();
 	});
 
