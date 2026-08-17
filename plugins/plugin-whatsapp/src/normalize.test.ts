@@ -10,6 +10,8 @@ import {
   getWhatsAppChatType,
   isWhatsAppGroupJid,
   isWhatsAppUserTarget,
+  normalizeBaileysSendTarget,
+  normalizeCloudApiSendTarget,
   normalizeE164,
   normalizeWhatsAppTarget,
   truncateText,
@@ -30,6 +32,26 @@ describe("normalizeE164", () => {
     expect(normalizeE164("14155550123")).toBe("+14155550123");
     expect(normalizeE164("123")).toBe("123"); // too short, returned as-is
     expect(normalizeE164("abc")).toBe("");
+  });
+
+  it("rejects embedded or repeated plus signs", () => {
+    for (const value of ["12+3456789012", "+1+4155550123", "++14155550123"]) {
+      expect(normalizeE164(value)).toBe("");
+      expect(normalizeWhatsAppTarget(value)).toBeNull();
+    }
+  });
+
+  it("rejects alphabetic junk, invalid country codes, and overlong numbers", () => {
+    for (const value of [
+      "+1abc4155550123",
+      "+012345678901",
+      "+1234567890123456",
+      "001234567890123456",
+      "1234567890123456",
+    ]) {
+      expect(normalizeE164(value)).toBe("");
+      expect(normalizeWhatsAppTarget(value)).toBeNull();
+    }
   });
 });
 
@@ -61,6 +83,22 @@ describe("normalizeWhatsAppTarget", () => {
 describe("buildWhatsAppUserJid", () => {
   it("builds a bare-digit @s.whatsapp.net jid", () => {
     expect(buildWhatsAppUserJid("+41796666864")).toBe("41796666864@s.whatsapp.net");
+  });
+});
+
+describe("outbound transport target normalization", () => {
+  it("requires canonical E.164 output for Cloud API sends", () => {
+    expect(normalizeCloudApiSendTarget("+1 (415) 555-0123")).toBe("+14155550123");
+    expect(normalizeCloudApiSendTarget("14155550123@s.whatsapp.net")).toBe("+14155550123");
+    expect(() => normalizeCloudApiSendTarget("123")).toThrow("valid E.164 phone number");
+  });
+
+  it("rejects LIDs and groups on Cloud while preserving recognized LIDs for Baileys", () => {
+    expect(() => normalizeCloudApiSendTarget("1234567890@lid")).toThrow("valid E.164 phone number");
+    expect(() => normalizeCloudApiSendTarget("123456789-987654321@g.us")).toThrow(
+      "valid E.164 phone number"
+    );
+    expect(normalizeBaileysSendTarget("1234567890@lid")).toBe("1234567890@lid");
   });
 });
 
