@@ -189,6 +189,19 @@ describe("resolveRetentionConfig — config parsing", () => {
       intervalMinutes: undefined,
     });
   });
+
+  it("rejects fractional row and deletion counts instead of rounding to zero", () => {
+    const config = cfg({
+      ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM: "0.5",
+      ELIZA_MEMORY_RETENTION_MAX_DELETE_PER_SWEEP: "2.5",
+    });
+
+    expect(config.maxRowsPerRoom).toBeUndefined();
+    expect(config.maxDeletePerSweep).toBeUndefined();
+    expect(
+      planRetention([row("keep", "r1", 1)], config, NOW).deleteIds,
+    ).toEqual([]);
+  });
 });
 
 /** In-memory adapter that records every table it is asked about + deletes. */
