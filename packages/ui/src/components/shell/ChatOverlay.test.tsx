@@ -247,6 +247,17 @@ function AppComposerHarness({
 }
 
 describe("ChatOverlay", () => {
+  it("reports the shallow input detent before chat history opens", () => {
+    const onDetentChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onDetentChange={onDetentChange}
+      />,
+    );
+    expect(onDetentChange).toHaveBeenLastCalledWith("input");
+  });
+
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();

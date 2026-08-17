@@ -1174,6 +1174,7 @@ export function ChatOverlay({
   releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
+  onDetentChange,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
@@ -1205,6 +1206,8 @@ export function ChatOverlay({
    * entire transition local to the shared chat surface.
    */
   onPilledChange?: (pilled: boolean) => void;
+  /** Reports the settled visible footprint to transparent desktop hosts. */
+  onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
 }): React.JSX.Element {
   const {
     messages,
@@ -5387,6 +5390,10 @@ export function ChatOverlay({
           : expanded
             ? "full"
             : "half";
+
+  React.useEffect(() => {
+    onDetentChange?.(detentLabel === "collapsed" ? "input" : detentLabel);
+  }, [detentLabel, onDetentChange]);
 
   // Onboarding-state probe: the newest first-run CHOICE turn's step id + option
   // values, surfaced as sr-only static AX text (mirrors chat-detent-probe /

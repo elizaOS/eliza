@@ -45,9 +45,9 @@ export interface HomePillProps {
   /** Reports the idle pill's shallow composer-preview hover state. Desktop
    *  uses this to widen the transparent native hit area before painting it. */
   onPreviewHoverChange?: (hovered: boolean) => void;
-  /** True once the native host has acknowledged its wider hover frame. The
-   *  preview stays compact until then so WKWebView cannot clip the wide
-   *  composer into the resting 96px window. Web callers leave this unset. */
+  /** True once the native host has acknowledged its wider shallow frame. Hover
+   *  and listening lanes stay compact until then so WKWebView cannot clip them
+   *  into the resting 96px window. Web callers leave this unset. */
   previewHostReady?: boolean;
 }
 
@@ -251,8 +251,9 @@ export function HomePill({
 
   const signInLabel = `Sign in with ${appName} Cloud`;
   const previewVisible = previewHovered && previewHostReady;
-  const listeningExpanded = phase === "listening";
-  const chipExpanded = listeningExpanded || phase === "processing";
+  const listening = phase === "listening";
+  const listeningExpanded = listening && previewHostReady;
+  const chipExpanded = listening || phase === "processing";
   const composerSized = previewVisible || listeningExpanded;
   const label = needsAuth
     ? signingIn
@@ -283,6 +284,11 @@ export function HomePill({
       onPointerCancel={handlePointerCancel}
       onMouseEnter={() => setPreviewHover(true)}
       onMouseLeave={() => setPreviewHover(false)}
+      // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
+      // the wide hover host on the first scroll gesture so subsequent trackpad
+      // momentum reaches the application underneath instead of being trapped
+      // by a decorative preview.
+      onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
