@@ -151,12 +151,59 @@ export interface SwapParams {
   readonly slippageBps?: number;
 }
 
+const MIN_EVM_SLIPPAGE_BPS = 0;
+const MAX_EVM_SLIPPAGE_BPS = 10_000;
+
+/**
+ * EVM swap/bridge `slippageBps` is swap-tolerance identity, leftover tax
+ * after wallet-router `slippageBps`. Stock develop used z.coerce.number(),
+ * which treated string `1e2` / `007` / `0x10` as a slippage instead of a
+ * parse failure. fromToken / toToken / amount stay untouched. Missing
+ * still means the chain default. Exact integers above 10000 stay invalid.
+ * 0 is a legal zero-slippage quote.
+ */
+function parseEvmSlippageBps(raw: unknown): number {
+  if (typeof raw === "number") {
+    if (
+      !Number.isSafeInteger(raw) ||
+      raw < MIN_EVM_SLIPPAGE_BPS ||
+      raw > MAX_EVM_SLIPPAGE_BPS
+    ) {
+      throw new Error("Invalid slippageBps");
+    }
+    return raw;
+  }
+  if (typeof raw !== "string" || !/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new Error("Invalid slippageBps");
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_EVM_SLIPPAGE_BPS ||
+    parsed > MAX_EVM_SLIPPAGE_BPS
+  ) {
+    throw new Error("Invalid slippageBps");
+  }
+  return parsed;
+}
+
+const evmSlippageBpsSchema = z
+  .custom<number>((value) => {
+    try {
+      parseEvmSlippageBps(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Invalid slippageBps")
+  .transform((value) => parseEvmSlippageBps(value));
+
 export const SwapParamsSchema = z.object({
   chain: SupportedChainSchema,
   fromToken: z.union([AddressSchema, z.string().min(1)]),
   toToken: z.union([AddressSchema, z.string().min(1)]),
   amount: AmountSchema,
-  slippageBps: z.coerce.number().int().min(0).max(10_000).optional(),
+  slippageBps: evmSlippageBpsSchema.optional(),
 });
 
 export function parseSwapParams(input: unknown): SwapParams {
@@ -208,7 +255,7 @@ export const BridgeParamsSchema = z.object({
   toToken: z.union([AddressSchema, z.string().min(1)]),
   amount: AmountSchema,
   toAddress: AddressSchema.optional(),
-  slippageBps: z.coerce.number().int().min(0).max(10_000).optional(),
+  slippageBps: evmSlippageBpsSchema.optional(),
 });
 
 export function parseBridgeParams(input: unknown): BridgeParams {
