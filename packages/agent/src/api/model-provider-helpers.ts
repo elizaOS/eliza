@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -288,8 +288,33 @@ const PROVIDER_ENV_KEYS: Record<
 
 // ── Per-provider cache read/write ────────────────────────────────────────
 
+/**
+ * Canonical provider-id grammar. Cache paths are built by joining
+ * `${providerId}.json` under the models cache dir, so anything outside this
+ * shape (path separators, `.` segments) is rejected before a filesystem path
+ * exists — a `../` id would otherwise traverse out of the cache directory
+ * into an arbitrary unlink/read (W1-024).
+ */
+export const MODEL_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
 export function providerCachePath(providerId: string): string {
-  return path.join(resolveModelsCacheDir(), `${providerId}.json`);
+  if (!MODEL_PROVIDER_ID_PATTERN.test(providerId)) {
+    throw new ElizaError(`Invalid model provider id: ${providerId}`, {
+      code: "INVALID_MODEL_PROVIDER_ID",
+      context: { providerId },
+    });
+  }
+  const cacheDir = resolveModelsCacheDir();
+  const result = path.join(cacheDir, `${providerId}.json`);
+  // Defense in depth: the joined path must stay directly inside the cache
+  // dir even if the id grammar above is ever loosened.
+  if (path.dirname(result) !== cacheDir) {
+    throw new ElizaError(
+      `Model provider cache path escapes the cache directory: ${providerId}`,
+      { code: "INVALID_MODEL_PROVIDER_ID", context: { providerId } },
+    );
+  }
+  return result;
 }
 
 export function readProviderCache(providerId: string): ProviderCache | null {

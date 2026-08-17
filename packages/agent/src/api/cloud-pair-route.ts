@@ -5,15 +5,15 @@
  */
 
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { isPrivateIpAddress, logger } from "@elizaos/core";
+import { isLoopbackRemoteAddress } from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
-import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
-import { resolveRequestOrigin } from "./request-origin.js";
+import { resolveDirectRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -58,20 +58,17 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    return isLoopbackBindHost(new URL(origin).hostname);
-  } catch {
-    // error-policy:J3 malformed request origins are never trusted as loopback.
-    return false;
-  }
-}
-
 function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
-  return (
-    process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY === "1" &&
-    isLoopbackOrigin(resolveRequestOrigin(req))
-  );
+  if (process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY !== "1") return false;
+  // The local-only gate must key on the TCP peer, never on request headers:
+  // Host and X-Forwarded-Host are client-controlled, so a remote caller
+  // could previously spoof a loopback origin and redeem a held pairing token
+  // through this relay (W1-037). Private-range peers are accepted because
+  // the supported local-Docker deployment publishes the port on the host's
+  // loopback, so inside the container the peer is the bridge gateway rather
+  // than 127.0.0.1.
+  const peer = req.socket?.remoteAddress;
+  return isLoopbackRemoteAddress(peer) || isPrivateIpAddress(peer ?? "");
 }
 
 function escapeHtml(value: string): string {
@@ -224,7 +221,10 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
-  const origin = resolveRequestOrigin(req);
+  // The origin forwarded to the Cloud exchange is reconstructed from direct
+  // request metadata only — forwarded headers are client-controlled and must
+  // not be able to rewrite the origin the exchange is bound to (W1-037).
+  const origin = resolveDirectRequestOrigin(req);
   if (!origin) {
     sendHtml(
       res,

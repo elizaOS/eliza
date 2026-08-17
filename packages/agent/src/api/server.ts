@@ -1531,13 +1531,13 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // app-core authenticates these session-tier dashboard reads before
-  // forwarding into the agent server. Do not require a second token here:
-  // browser sessions are stored by app-core and are intentionally opaque to
-  // the lower agent HTTP boundary.
-  const isAppCoreSessionCloudRead =
-    method === "GET" &&
-    (pathname === "/api/cloud/status" || pathname === "/api/cloud/credits");
+  // app-core authenticates the session-tier dashboard reads
+  // (/api/cloud/status, /api/cloud/credits) before forwarding into the agent
+  // server. They need no dedicated exemption here: app-core's forwarded
+  // requests arrive over trusted loopback and already pass `isAuthorized`,
+  // while exempting the paths let ANY unauthenticated caller who could reach
+  // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
+  // and live credit balance (W1-010).
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
@@ -1758,7 +1758,6 @@ async function handleRequest(
     !isAuthEndpoint &&
     !isHealthEndpoint &&
     !isCloudFirstRunStatusEndpoint &&
-    !isAppCoreSessionCloudRead &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -4060,6 +4059,28 @@ export async function startApiServer(opts?: {
     });
   }
 
+  // The device-bridge WebSocket endpoint delegates authentication to the
+  // capacitor bridge's own upgrade handler (a pairing-token check that closes
+  // unauthorized sockets with 4001). That delegation is only valid when the
+  // bridge can actually be attached: the plugin refuses to attach without a
+  // pairing token, so with none configured nothing is listening on the path —
+  // fall through to the standard upgrade rejection instead of skipping auth
+  // and leaving the socket unanswered (W1-011).
+  const isDeviceBridgeDelegationExpected = (): boolean => {
+    if (
+      !isMobilePlatform() &&
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() !== "1"
+    ) {
+      return false;
+    }
+    // Mirrors the pairing-token env contract enforced by
+    // @elizaos/plugin-capacitor-bridge's attachMobileDeviceBridgeToServer.
+    return Boolean(
+      process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
+        process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim(),
+    );
+  };
+
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
@@ -4081,7 +4102,10 @@ export async function startApiServer(opts?: {
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,
       );
-      if (wsUrl.pathname === "/api/local-inference/device-bridge") {
+      if (
+        wsUrl.pathname === "/api/local-inference/device-bridge" &&
+        isDeviceBridgeDelegationExpected()
+      ) {
         return;
       }
       const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
