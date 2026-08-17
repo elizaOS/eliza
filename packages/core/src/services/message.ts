@@ -9767,11 +9767,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			!suppressesPlannerReply &&
 			deliveredVisibleTexts.size === 0 &&
 			deliveredMediaUrls.length === 0 &&
-			actionResults.length > 0
+			// Toolless planner deaths on an ADDRESSED turn are the same
+			// recoverable silence: the planner exhausted its retries with no
+			// tool call and no usable terminal text, every fallback above
+			// rejected the ack-shaped Stage-1 reply, and the user saw nothing
+			// (live 2026-08-17: casual-phrased coding asks after the
+			// gpt-oss-120b cutover ended [messageHandler, toolSearch, planner]
+			// with zero deliveries). Ambient turns keep their silence contract.
+			(actionResults.length > 0 || !ambientTurn)
 		) {
+			// On a toolless recovery the Stage-1 ack is a false promise of work
+			// that never happened ("On it." then nothing) — skip straight to
+			// the honest line instead.
+			const recoverableAck = actionResults.length > 0 ? stageOneAck : "";
 			const recoveredText =
 				effectiveDeliveredReplyText ||
-				stageOneAck ||
+				recoverableAck ||
 				actionResults
 					.map((result) =>
 						typeof result.userFacingText === "string"
