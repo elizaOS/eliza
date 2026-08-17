@@ -223,6 +223,7 @@ export function makeScheduledTasksRouteHandler(
     try {
       return await handleScheduledTasks(ctx, deps);
     } catch (err) {
+      // error-policy:J1 translate malformed path input at the HTTP boundary.
       if (err instanceof ScheduledTaskPathEncodingError) {
         ctx.error(ctx.res, err.message, 400);
         return true;
@@ -236,281 +237,276 @@ async function handleScheduledTasks(
   ctx: SchedulingRouteContext,
   deps: ScheduledTaskRouteDeps,
 ): Promise<boolean> {
-    const { method, pathname, json, error, readJsonBody, req, res } = ctx;
+  const { method, pathname, json, error, readJsonBody, req, res } = ctx;
 
-    // Spine registry introspection — loopback only.
-    if (method === "GET" && pathname === DEV_REGISTRIES_PATH) {
+  // Spine registry introspection — loopback only.
+  if (method === "GET" && pathname === DEV_REGISTRIES_PATH) {
+    if (!isLoopback(ctx)) {
+      error(res, "dev endpoints are loopback-only", 403);
+      return true;
+    }
+    const runner = await deps.resolveRunner(ctx);
+    if (!runner) return true;
+    json(res, runner.inspectRegistries());
+    return true;
+  }
+
+  {
+    const devLog = matchDevLog(pathname);
+    if (method === "GET" && devLog) {
       if (!isLoopback(ctx)) {
         error(res, "dev endpoints are loopback-only", 403);
         return true;
       }
       const runner = await deps.resolveRunner(ctx);
       if (!runner) return true;
-      json(res, runner.inspectRegistries());
-      return true;
-    }
-
-    {
-      const devLog = matchDevLog(pathname);
-      if (method === "GET" && devLog) {
-        if (!isLoopback(ctx)) {
-          error(res, "dev endpoints are loopback-only", 403);
-          return true;
-        }
-        const runner = await deps.resolveRunner(ctx);
-        if (!runner) return true;
-        const history = await runner.list({});
-        const found = history.find((t) => t.taskId === devLog.id);
-        if (!found) {
-          error(res, `task ${devLog.id} not found`, 404);
-          return true;
-        }
-        json(res, {
-          taskId: devLog.id,
-          state: found.state,
-          historyEndpoint: `${PATH_PREFIX}/${devLog.id}/history`,
-        });
+      const history = await runner.list({});
+      const found = history.find((t) => t.taskId === devLog.id);
+      if (!found) {
+        error(res, `task ${devLog.id} not found`, 404);
         return true;
       }
-    }
-
-    // User-visible history endpoint.
-    {
-      const hist = matchTaskHistory(pathname);
-      if (method === "GET" && hist) {
-        const runner = await deps.resolveRunner(ctx);
-        if (!runner) return true;
-        const tasks = await runner.list({});
-        const found = tasks.find((t) => t.taskId === hist.id);
-        if (!found) {
-          error(res, `task ${hist.id} not found`, 404);
-          return true;
-        }
-        json(res, {
-          taskId: hist.id,
-          status: found.state.status,
-          firedAt: found.state.firedAt,
-          completedAt: found.state.completedAt,
-          acknowledgedAt: found.state.acknowledgedAt,
-          followupCount: found.state.followupCount,
-          lastFollowupAt: found.state.lastFollowupAt,
-          lastDecisionLog: found.state.lastDecisionLog,
-        });
-        return true;
-      }
-    }
-
-    // List.
-    if (method === "GET" && pathname === PATH_PREFIX) {
-      const runner = await deps.resolveRunner(ctx);
-      if (!runner) return true;
-      const url = ctx.url;
-      const filterParse = scheduledTaskFilterSchema.safeParse({
-        kind: url.searchParams.get("kind") ?? undefined,
-        status: url.searchParams.get("status") ?? undefined,
-        source: url.searchParams.get("source") ?? undefined,
-        firedSince: url.searchParams.get("firedSince") ?? undefined,
-        ownerVisibleOnly: url.searchParams.get("ownerVisibleOnly") === "1",
+      json(res, {
+        taskId: devLog.id,
+        state: found.state,
+        historyEndpoint: `${PATH_PREFIX}/${devLog.id}/history`,
       });
-      if (!filterParse.success) {
-        error(
-          res,
-          `invalid filter: ${filterParse.error.issues
-            .map((i) => i.message)
-            .join("; ")}`,
-          400,
-        );
-        return true;
-      }
-      const tasks = await runner.list(filterParse.data);
-      json(res, { tasks });
       return true;
     }
+  }
 
-    // Schedule.
-    if (method === "POST" && pathname === PATH_PREFIX) {
+  // User-visible history endpoint.
+  {
+    const hist = matchTaskHistory(pathname);
+    if (method === "GET" && hist) {
       const runner = await deps.resolveRunner(ctx);
       if (!runner) return true;
-      const body = await readJsonBody<Record<string, unknown>>(req, res);
-      if (body === null) return true;
-      const parsed = scheduledTaskInputSchema.safeParse(body);
-      if (!parsed.success) {
-        error(
-          res,
-          `invalid task: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
-          400,
-        );
+      const tasks = await runner.list({});
+      const found = tasks.find((t) => t.taskId === hist.id);
+      if (!found) {
+        error(res, `task ${hist.id} not found`, 404);
         return true;
       }
-      try {
-        const task = await runner.schedule(
-          parsed.data as Omit<ScheduledTask, "taskId" | "state">,
-        );
-        json(res, { task }, 201);
-      } catch (err) {
-        // error-policy:J1 boundary translation — only malformed task input
-        // degrades to 400; a genuine runner failure rethrows to the outer
-        // server handler as a 5xx rather than being masked here.
-        if (
-          err instanceof ScheduledTaskValidationError ||
-          err instanceof ChannelKeyError
-        ) {
-          error(res, err.message, 400);
-          return true;
-        }
-        throw err;
-      }
+      json(res, {
+        taskId: hist.id,
+        status: found.state.status,
+        firedAt: found.state.firedAt,
+        completedAt: found.state.completedAt,
+        acknowledgedAt: found.state.acknowledgedAt,
+        followupCount: found.state.followupCount,
+        lastFollowupAt: found.state.lastFollowupAt,
+        lastDecisionLog: found.state.lastDecisionLog,
+      });
       return true;
     }
+  }
 
-    // Test probe — the one-click "run a live LifeOps validation" entry point.
-    // Seeds a due-now reminder (or check-in) and fires it in the same call, so a
-    // HITL tester can confirm the real schedule → fire → dispatch path works
-    // end-to-end with their connected model/connectors, without hand-crafting a
-    // ScheduledTaskInput. The seeded row is owner-visible and tagged
-    // `metadata.liveTest` so it is identifiable in the task list.
-    if (method === "POST" && pathname === `${PATH_PREFIX}/test-probe`) {
-      const runner = await deps.resolveRunner(ctx);
-      if (!runner) return true;
-      const contentLength = Number.parseInt(
-        (req.headers["content-length"] as string | undefined) ?? "0",
-        10,
+  // List.
+  if (method === "GET" && pathname === PATH_PREFIX) {
+    const runner = await deps.resolveRunner(ctx);
+    if (!runner) return true;
+    const url = ctx.url;
+    const filterParse = scheduledTaskFilterSchema.safeParse({
+      kind: url.searchParams.get("kind") ?? undefined,
+      status: url.searchParams.get("status") ?? undefined,
+      source: url.searchParams.get("source") ?? undefined,
+      firedSince: url.searchParams.get("firedSince") ?? undefined,
+      ownerVisibleOnly: url.searchParams.get("ownerVisibleOnly") === "1",
+    });
+    if (!filterParse.success) {
+      error(
+        res,
+        `invalid filter: ${filterParse.error.issues
+          .map((i) => i.message)
+          .join("; ")}`,
+        400,
       );
-      let body: Record<string, unknown> = {};
-      if (Number.isFinite(contentLength) && contentLength > 0) {
-        const parsed = await readJsonBody<Record<string, unknown>>(req, res);
-        if (parsed === null) return true;
-        body = parsed;
-      }
-      const probeKind = body.kind === "checkin" ? "checkin" : "reminder";
-      const nowIso = new Date().toISOString();
-      const probeInput = {
-        kind: probeKind,
-        promptInstructions:
-          probeKind === "checkin"
-            ? "LifeOps live test: a check-in probe — confirm the scheduler fires and the check-in dispatches to you."
-            : "LifeOps live test: a reminder probe — confirm the scheduler fires and this reminder dispatches to you.",
-        trigger: { kind: "once", atIso: nowIso },
-        priority: "medium",
-        respectsGlobalPause: false,
-        source: "plugin",
-        createdBy: "lifeops-live-test",
-        ownerVisible: true,
-        metadata: { liveTest: true, seededAtIso: nowIso },
-      };
-      const parsedProbe = scheduledTaskInputSchema.safeParse(probeInput);
-      if (!parsedProbe.success) {
-        error(
-          res,
-          `invalid probe: ${parsedProbe.error.issues.map((i) => i.message).join("; ")}`,
-          400,
-        );
+      return true;
+    }
+    const tasks = await runner.list(filterParse.data);
+    json(res, { tasks });
+    return true;
+  }
+
+  // Schedule.
+  if (method === "POST" && pathname === PATH_PREFIX) {
+    const runner = await deps.resolveRunner(ctx);
+    if (!runner) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (body === null) return true;
+    const parsed = scheduledTaskInputSchema.safeParse(body);
+    if (!parsed.success) {
+      error(
+        res,
+        `invalid task: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+        400,
+      );
+      return true;
+    }
+    try {
+      const task = await runner.schedule(
+        parsed.data as Omit<ScheduledTask, "taskId" | "state">,
+      );
+      json(res, { task }, 201);
+    } catch (err) {
+      // error-policy:J1 boundary translation — only malformed task input
+      // degrades to 400; a genuine runner failure rethrows to the outer
+      // server handler as a 5xx rather than being masked here.
+      if (
+        err instanceof ScheduledTaskValidationError ||
+        err instanceof ChannelKeyError
+      ) {
+        error(res, err.message, 400);
         return true;
       }
+      throw err;
+    }
+    return true;
+  }
+
+  // Test probe — the one-click "run a live LifeOps validation" entry point.
+  // Seeds a due-now reminder (or check-in) and fires it in the same call, so a
+  // HITL tester can confirm the real schedule → fire → dispatch path works
+  // end-to-end with their connected model/connectors, without hand-crafting a
+  // ScheduledTaskInput. The seeded row is owner-visible and tagged
+  // `metadata.liveTest` so it is identifiable in the task list.
+  if (method === "POST" && pathname === `${PATH_PREFIX}/test-probe`) {
+    const runner = await deps.resolveRunner(ctx);
+    if (!runner) return true;
+    const contentLength = Number.parseInt(
+      (req.headers["content-length"] as string | undefined) ?? "0",
+      10,
+    );
+    let body: Record<string, unknown> = {};
+    if (Number.isFinite(contentLength) && contentLength > 0) {
+      const parsed = await readJsonBody<Record<string, unknown>>(req, res);
+      if (parsed === null) return true;
+      body = parsed;
+    }
+    const probeKind = body.kind === "checkin" ? "checkin" : "reminder";
+    const nowIso = new Date().toISOString();
+    const probeInput = {
+      kind: probeKind,
+      promptInstructions:
+        probeKind === "checkin"
+          ? "LifeOps live test: a check-in probe — confirm the scheduler fires and the check-in dispatches to you."
+          : "LifeOps live test: a reminder probe — confirm the scheduler fires and this reminder dispatches to you.",
+      trigger: { kind: "once", atIso: nowIso },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: "lifeops-live-test",
+      ownerVisible: true,
+      metadata: { liveTest: true, seededAtIso: nowIso },
+    };
+    const parsedProbe = scheduledTaskInputSchema.safeParse(probeInput);
+    if (!parsedProbe.success) {
+      error(
+        res,
+        `invalid probe: ${parsedProbe.error.issues.map((i) => i.message).join("; ")}`,
+        400,
+      );
+      return true;
+    }
+    try {
+      const task = await runner.schedule(
+        parsedProbe.data as Omit<ScheduledTask, "taskId" | "state">,
+      );
+      const result = await runner.fireWithResult(task.taskId, {
+        allowTerminalRefire: true,
+      });
+      json(res, { task, fire: serializeFireResult(result) }, 201);
+    } catch (err) {
+      // error-policy:J1 boundary translation — malformed input → 400,
+      // not-found → 404, and a genuine schedule/fire failure → 500 instead
+      // of the prior blanket 400 that hid runner failures from the tester.
+      const { status, message } = classifyRunnerError(err);
+      error(res, message, status);
+    }
+    return true;
+  }
+
+  // Fire now — the interactive HITL live-test trigger. Runs the task
+  // immediately regardless of due-ness (the same strict-fire path the
+  // scheduler tick uses via `processDueScheduledTasks → runner.fireWithResult`),
+  // returning the typed outcome (fired / skipped / dispatch_deferred /
+  // dispatch_failed / raced) plus the post-fire task. Placed before the
+  // generic verb block so `fire` is not rejected by the apply-verb allowlist.
+  {
+    const fireMatch = matchTaskFire(pathname);
+    if (method === "POST" && fireMatch) {
+      const runner = await deps.resolveRunner(ctx);
+      if (!runner) return true;
       try {
-        const task = await runner.schedule(
-          parsedProbe.data as Omit<ScheduledTask, "taskId" | "state">,
-        );
-        const result = await runner.fireWithResult(task.taskId, {
+        const result = await runner.fireWithResult(fireMatch.id, {
           allowTerminalRefire: true,
         });
-        json(res, { task, fire: serializeFireResult(result) }, 201);
+        json(res, { fire: serializeFireResult(result) });
       } catch (err) {
-        // error-policy:J1 boundary translation — malformed input → 400,
-        // not-found → 404, and a genuine schedule/fire failure → 500 instead
-        // of the prior blanket 400 that hid runner failures from the tester.
+        // error-policy:J1 boundary translation — distinguish not-found (404)
+        // and runner failure (500) from client input error (400).
         const { status, message } = classifyRunnerError(err);
         error(res, message, status);
       }
       return true;
     }
+  }
 
-    // Fire now — the interactive HITL live-test trigger. Runs the task
-    // immediately regardless of due-ness (the same strict-fire path the
-    // scheduler tick uses via `processDueScheduledTasks → runner.fireWithResult`),
-    // returning the typed outcome (fired / skipped / dispatch_deferred /
-    // dispatch_failed / raced) plus the post-fire task. Placed before the
-    // generic verb block so `fire` is not rejected by the apply-verb allowlist.
-    {
-      const fireMatch = matchTaskFire(pathname);
-      if (method === "POST" && fireMatch) {
+  // Apply verb.
+  {
+    const verbed = matchTaskVerb(pathname);
+    if (method === "POST" && verbed) {
+      const verb = applyVerbToString(verbed.verb);
+      if (!verb) {
+        if (verbed.verb !== "history") {
+          error(res, `unknown verb: ${verbed.verb}`, 400);
+          return true;
+        }
+      } else {
         const runner = await deps.resolveRunner(ctx);
         if (!runner) return true;
+        const contentLength = Number.parseInt(
+          (req.headers["content-length"] as string | undefined) ?? "0",
+          10,
+        );
+        let body: unknown;
+        if (Number.isFinite(contentLength) && contentLength > 0) {
+          const parsed = await readJsonBody<Record<string, unknown>>(req, res);
+          if (parsed === null) return true;
+          body = parsed;
+        }
+        let payload: unknown = body ?? undefined;
+        if (verb === "snooze") {
+          const parsed = scheduledTaskSnoozePayloadSchema.safeParse(body ?? {});
+          if (!parsed.success) {
+            error(
+              res,
+              `invalid snooze payload: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+              400,
+            );
+            return true;
+          }
+          payload = parsed.data;
+        }
         try {
-          const result = await runner.fireWithResult(fireMatch.id, {
-            allowTerminalRefire: true,
-          });
-          json(res, { fire: serializeFireResult(result) });
+          const updated = await runner.apply(
+            verbed.id,
+            verb as Parameters<ScheduledTaskRunnerHandle["apply"]>[1],
+            payload,
+          );
+          json(res, { task: updated });
         } catch (err) {
-          // error-policy:J1 boundary translation — distinguish not-found (404)
-          // and runner failure (500) from client input error (400).
+          // error-policy:J1 boundary translation — not-found → 404, runner
+          // failure → 500; only malformed input degrades to 400.
           const { status, message } = classifyRunnerError(err);
           error(res, message, status);
         }
         return true;
       }
     }
+  }
 
-    // Apply verb.
-    {
-      const verbed = matchTaskVerb(pathname);
-      if (method === "POST" && verbed) {
-        const verb = applyVerbToString(verbed.verb);
-        if (!verb) {
-          if (verbed.verb !== "history") {
-            error(res, `unknown verb: ${verbed.verb}`, 400);
-            return true;
-          }
-        } else {
-          const runner = await deps.resolveRunner(ctx);
-          if (!runner) return true;
-          const contentLength = Number.parseInt(
-            (req.headers["content-length"] as string | undefined) ?? "0",
-            10,
-          );
-          let body: unknown;
-          if (Number.isFinite(contentLength) && contentLength > 0) {
-            const parsed = await readJsonBody<Record<string, unknown>>(
-              req,
-              res,
-            );
-            if (parsed === null) return true;
-            body = parsed;
-          }
-          let payload: unknown = body ?? undefined;
-          if (verb === "snooze") {
-            const parsed = scheduledTaskSnoozePayloadSchema.safeParse(
-              body ?? {},
-            );
-            if (!parsed.success) {
-              error(
-                res,
-                `invalid snooze payload: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
-                400,
-              );
-              return true;
-            }
-            payload = parsed.data;
-          }
-          try {
-            const updated = await runner.apply(
-              verbed.id,
-              verb as Parameters<ScheduledTaskRunnerHandle["apply"]>[1],
-              payload,
-            );
-            json(res, { task: updated });
-          } catch (err) {
-            // error-policy:J1 boundary translation — not-found → 404, runner
-            // failure → 500; only malformed input degrades to 400.
-            const { status, message } = classifyRunnerError(err);
-            error(res, message, status);
-          }
-          return true;
-        }
-      }
-    }
-
-    return false;
+  return false;
 }
 
 export const SCHEDULED_TASKS_ROUTE_PATHS = [
