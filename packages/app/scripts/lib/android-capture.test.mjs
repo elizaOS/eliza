@@ -11,6 +11,7 @@ import path from "node:path";
 import {
   captureAndroidScreenshot,
   isFinalizedMp4,
+  stopAndroidScreenrecordProcess,
 } from "./android-capture.mjs";
 import { resolveMediaProbeBinary } from "./device-video.mjs";
 
@@ -81,6 +82,26 @@ function writePlayableH264Recording() {
 }
 
 describe("Android screenrecord finalization", () => {
+  test("signals once while the encoder flushes and waits for process exit", async () => {
+    let signals = 0;
+    let polls = 0;
+    const exited = await stopAndroidScreenrecordProcess({
+      signal: () => {
+        signals += 1;
+      },
+      isRunning: () => {
+        polls += 1;
+        return polls < 4;
+      },
+      wait: async () => {},
+      timeoutMs: 1_000,
+    });
+
+    expect(exited).toBe(true);
+    expect(signals).toBe(1);
+    expect(polls).toBe(4);
+  });
+
   test("accepts a complete MP4 with file type and movie metadata", () => {
     const file = writePlayableH264Recording();
     expect(isFinalizedMp4(file)).toBe(true);

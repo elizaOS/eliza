@@ -12,6 +12,22 @@ export { isFinalizedMp4 } from "./device-video.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export async function stopAndroidScreenrecordProcess({
+  signal,
+  isRunning,
+  wait = delay,
+  timeoutMs = 15_000,
+  pollMs = 500,
+}) {
+  signal();
+  const exitDeadline = Date.now() + timeoutMs;
+  while (Date.now() < exitDeadline) {
+    if (!isRunning()) return true;
+    await wait(pollMs);
+  }
+  return !isRunning();
+}
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -70,26 +86,33 @@ export async function startAndroidScreenRecord({
     localPath,
     remotePath,
     async stop() {
-      spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
-        stdio: "ignore",
-      });
       // Keep the adb shell transport alive while the device encoder handles
-      // SIGINT and appends the trailing moov atom. Signaling the local adb
-      // process here can hang up screenrecord before finalization.
-      const exitDeadline = Date.now() + 15_000;
-      while (Date.now() < exitDeadline) {
-        const pid = spawnSync(
-          adb,
-          ["-s", serial, "shell", "pidof", "screenrecord"],
-          { encoding: "utf8" },
-        );
-        if (!pid.stdout || pid.stdout.trim() === "") break;
+      // one SIGINT and appends the trailing moov atom. Repeated SIGINTs can
+      // interrupt that flush; signaling the local adb process can instead hang
+      // up screenrecord before finalization.
+      const exited = await stopAndroidScreenrecordProcess({
+        signal: () =>
+          spawnSync(
+            adb,
+            ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
+            { stdio: "ignore" },
+          ),
+        isRunning: () => {
+          const pid = spawnSync(
+            adb,
+            ["-s", serial, "shell", "pidof", "screenrecord"],
+            { encoding: "utf8" },
+          );
+          return Boolean(pid.stdout?.trim());
+        },
+      });
+      if (!exited) {
+        log(`Android screenrecord did not exit after SIGINT: ${remotePath}`);
         spawnSync(
           adb,
-          ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
+          ["-s", serial, "shell", "pkill", "-TERM", "screenrecord"],
           { stdio: "ignore" },
         );
-        await delay(500);
       }
       if (recorder.exitCode === null) {
         await Promise.race([
@@ -98,19 +121,25 @@ export async function startAndroidScreenRecord({
         ]);
       }
       if (recorder.exitCode === null) recorder.kill("SIGTERM");
+      spawnSync(adb, ["-s", serial, "shell", "sync"], { stdio: "ignore" });
       // Belt over the pid check: require the remote file size to hold steady
-      // across consecutive samples so a mid-flush pull can never grab a
+      // across four consecutive samples so a mid-flush pull can never grab a
       // truncated file (covers a transient pidof miss or the exit-wait
       // timing out above).
       let settledSize = -1;
-      for (let i = 0; i < 10; i += 1) {
+      let stableSamples = 0;
+      for (let i = 0; i < 16; i += 1) {
         const stat = spawnSync(
           adb,
           ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
           { encoding: "utf8" },
         );
         const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
-        if (Number.isFinite(size) && size > 0 && size === settledSize) break;
+        stableSamples =
+          Number.isFinite(size) && size > 0 && size === settledSize
+            ? stableSamples + 1
+            : 0;
+        if (stableSamples >= 3) break;
         settledSize = Number.isFinite(size) ? size : -1;
         await delay(500);
       }
