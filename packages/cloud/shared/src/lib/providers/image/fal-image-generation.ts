@@ -102,6 +102,7 @@ export async function generateFalImage(request: ImageGenRequest): Promise<Genera
       ...(request.aspectRatio ? { aspect_ratio: request.aspectRatio } : {}),
       ...(request.size ? { image_size: request.size } : {}),
     }),
+    signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS),
   });
 
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
