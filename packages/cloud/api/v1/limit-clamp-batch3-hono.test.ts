@@ -1,16 +1,11 @@
 /**
- * Strict limit clamp — Batch 3 (Hono) — Ship 27
+ * Hono route tests for gallery explore and apps analytics limit/offset clamp.
  *
- * Proves strict `^\d+$` + Number.isSafeInteger + clamp vs weak parseInt.
- * Weak `parseInt("5junk",10)` → 5, `parseInt("1e4",10)` → 1, `parseInt("5.5",10)` → 5,
- * `parseInt("-5",10)` → -5 slip through; strict regex rejects them and falls back.
- * Also guards unsafe integers (>MAX_SAFE_INTEGER) via isSafeInteger, so
- * `9007199254740992` → fallback, not DB pressure. Mutation-proof: any revert to
- * loose parseInt/Math.min without regex/NaN/isSafeInteger trips these asserts.
- *
- * Routes:
- * - gallery/explore: limit fallback 20, max 100
- * - apps/[id]/analytics/requests: limit fallback 50 max 100, offset fallback 0
+ * Exercises the live gallery and analytics handlers via app.request with mocked
+ * services, asserting the strict contract: decimal digits only via /^\d+$/, safe
+ * integers, positive limits and non-negative offsets, with documented fallbacks
+ * (gallery 20, analytics 50/0) and max 100. Malformed representations such as
+ * "5junk", "1e4", "5.5" map to fallback instead of partial parsing.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";

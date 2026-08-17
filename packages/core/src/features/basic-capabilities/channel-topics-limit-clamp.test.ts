@@ -1,14 +1,10 @@
 /**
- * Ship 27 — strict limit clamp proof for GET /api/channel-topics/search.
+ * Route-level tests for GET /api/channel-topics/search limit clamp.
  *
- * The route now uses strict parsing: rawLimitStr.trim() + /^\d+$/ + Number.isSafeInteger
- * + Math.min(...,100) with fallback 20. This rejects exponential ("1e4"), float
- * ("5.5"), signed ("-5","+5"), partially numeric ("5junk"), zero, and unsafe
- * integers — all falling back to 20. Weak parsing via Number(firstQueryValue(...))
- * + Number.isInteger accepted "1e4" as 10000 → clamped to 100 (and "1e2" →100),
- * allowing attacker-controlled large limits and scientific-notation bypass. This
- * file proves the strict path diverges on those inputs and correctly clamps/handles
- * the rest.
+ * Exercises CHANNEL_TOPICS_SEARCH_ROUTE handler with a mocked service, asserting
+ * the strict contract: trimmed decimal digits via /^\d+$/, safe integers, positive
+ * limits with fallback 20 and max 100. Malformed inputs such as "5junk", "1e4",
+ * "5.5", signed and unsafe integers map to the documented fallback.
  */
 import { describe, expect, it, vi } from "vitest";
 import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";
@@ -35,7 +31,7 @@ function runtimeWith(svc: unknown) {
 	} as never;
 }
 
-describe("channel-topics strict limit clamp (Ship 27)", () => {
+describe("channel-topics strict limit clamp", () => {
 	it('falls back to 20 for partially numeric "5junk" (strict: regex rejects)', async () => {
 		const searchTopics = vi.fn(() => []);
 		const res = makeRes();
