@@ -26,10 +26,16 @@ const requireAdmin = mock(async () => ({
   organization_id: "org-1",
   role: "super_admin",
 }));
-const getMetricsOverview = mock(async (days: number) => ({ view: "overview", days }));
+const getMetricsOverview = mock(async (days: number) => ({
+  view: "overview",
+  days,
+}));
 const getDailyMetrics = mock(async () => ({ view: "daily" }));
 const getRetentionCohorts = mock(async () => ({ view: "retention" }));
-const getActiveUsers = mock(async (range: string) => ({ view: "active", range }));
+const getActiveUsers = mock(async (range: string) => ({
+  view: "active",
+  range,
+}));
 const getNewSignups = mock(async () => ({ view: "signups" }));
 const getOAuthConnectionRate = mock(async () => ({ view: "oauth" }));
 
@@ -68,28 +74,34 @@ describe("GET /api/v1/admin/metrics timeRange identity", () => {
     getOAuthConnectionRate.mockClear();
   });
 
-  test.each(["", "?timeRange="])("accepts %s as the 30-day overview", async (query) => {
-    const response = await request(query);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { view: string; days: number };
-    expect(body).toEqual({ view: "overview", days: 30 });
-    expect(getMetricsOverview).toHaveBeenCalledTimes(1);
-    expect(getMetricsOverview.mock.calls[0][0]).toBe(30);
-    expect(getDailyMetrics).not.toHaveBeenCalled();
-    expect(getRetentionCohorts).not.toHaveBeenCalled();
-    expect(getActiveUsers).not.toHaveBeenCalled();
-  });
+  test.each(["", "?timeRange="])(
+    "accepts %s as the 30-day overview",
+    async (query) => {
+      const response = await request(query);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { view: string; days: number };
+      expect(body).toEqual({ view: "overview", days: 30 });
+      expect(getMetricsOverview).toHaveBeenCalledTimes(1);
+      expect(getMetricsOverview.mock.calls[0][0]).toBe(30);
+      expect(getDailyMetrics).not.toHaveBeenCalled();
+      expect(getRetentionCohorts).not.toHaveBeenCalled();
+      expect(getActiveUsers).not.toHaveBeenCalled();
+    },
+  );
 
   test.each([
     ["7d", 7],
     ["30d", 30],
     ["90d", 90],
-  ] as const)("accepts timeRange=%s as a %s-day overview", async (token, days) => {
-    const response = await request(`?timeRange=${token}`);
-    expect(response.status).toBe(200);
-    expect(getMetricsOverview).toHaveBeenCalledTimes(1);
-    expect(getMetricsOverview.mock.calls[0][0]).toBe(days);
-  });
+  ] as const)(
+    "accepts timeRange=%s as a %s-day overview",
+    async (token, days) => {
+      const response = await request(`?timeRange=${token}`);
+      expect(response.status).toBe(200);
+      expect(getMetricsOverview).toHaveBeenCalledTimes(1);
+      expect(getMetricsOverview.mock.calls[0][0]).toBe(days);
+    },
+  );
 
   test("accepts view=daily&timeRange=7d as the 7-day daily series", async () => {
     const response = await request("?view=daily&timeRange=7d");
