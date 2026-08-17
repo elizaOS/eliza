@@ -13,7 +13,12 @@ import {
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
-export const TOKEN_TRADE_TYPES = ["swap", "add", "remove", "all"] as const;
+export const TOKEN_TRADE_TYPES = Object.freeze([
+  "swap",
+  "add",
+  "remove",
+  "all",
+] as const);
 const TOKEN_TRADE_TYPE_SET = new Set<string>(TOKEN_TRADE_TYPES);
 
 function isTokenTradeType(

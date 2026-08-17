@@ -7,21 +7,15 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import type {
-  ProxyRequestBody,
-  ServiceConfig,
-  ServiceHandler,
-} from "@/lib/services/proxy/types";
 
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
+const EXPECTED_TOKEN_TRADE_TYPES = ["swap", "add", "remove", "all"] as const;
 
-const executeWithBody = mock(
-  async (
-    _config: ServiceConfig,
-    _work: ServiceHandler,
-    _request: Request,
-    _body: ProxyRequestBody,
-  ) => Response.json({ success: true }),
+type ExecuteWithBody =
+  typeof import("@/lib/services/proxy/engine").executeWithBody;
+
+const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
+  Response.json({ success: true }),
 );
 
 mock.module("@/lib/services/proxy/engine", () => ({
@@ -68,7 +62,12 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     },
   );
 
-  test.each([...TOKEN_TRADE_TYPES])(
+  test("keeps the canonical Birdeye token-trade contract exhaustive", () => {
+    expect(TOKEN_TRADE_TYPES).toEqual(EXPECTED_TOKEN_TRADE_TYPES);
+    expect(Object.isFrozen(TOKEN_TRADE_TYPES)).toBe(true);
+  });
+
+  test.each([...EXPECTED_TOKEN_TRADE_TYPES])(
     "accepts tx_type=%s as a canonical Birdeye trade series",
     async (txType) => {
       const response = await trades(`?tx_type=${txType}`);
@@ -85,8 +84,12 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     async (token) => {
       const response = await trades(`?tx_type=${encodeURIComponent(token)}`);
       expect(response.status).toBe(400);
-      const body = (await response.json()) as { error: string };
+      const body = (await response.json()) as {
+        error: string;
+        details: string;
+      };
       expect(body.error).toBe("Invalid tx_type");
+      expect(body.details).toContain("swap, add, remove, all");
       expect(executeWithBody).not.toHaveBeenCalled();
     },
   );
