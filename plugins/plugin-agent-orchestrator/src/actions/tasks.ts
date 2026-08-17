@@ -1100,11 +1100,12 @@ async function runCreateLegacy(
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
       let createProvisionedWorkspaceId: string | undefined;
-      const createRequestedRepo = await resolveRequestedRepo(
-        runtime,
-        params as Record<string, unknown>,
-        [task, requestText(message)],
-      );
+      const createRequestedRepo =
+        typeof (params as Record<string, unknown>).repo === "string"
+          ? normalizeRepositoryInput(
+              (params as Record<string, unknown>).repo as string,
+            )
+          : undefined;
       if (createRequestedRepo && !route && !explicitWorkdir) {
         const createWorkspaceService = getCodingWorkspaceService(runtime);
         if (createWorkspaceService) {
@@ -1115,6 +1116,7 @@ async function runCreateLegacy(
             });
             sessionWorkdir = workspace.path;
             isolateWorkdir = false;
+            createProvisionedWorkspaceId = workspace.id;
             logger(runtime).info(
               `[TASKS:create] provisioned repo workspace: ${createRequestedRepo} -> ${workspace.path}`,
             );
@@ -1169,6 +1171,9 @@ async function runCreateLegacy(
         timeoutMs,
         metadata: {
           ...extraMetadata,
+          ...(createProvisionedWorkspaceId
+            ? { provisionedWorkspaceId: createProvisionedWorkspaceId }
+            : {}),
           ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
           requestedType: baseAgentType,
           messageId: message.id,
@@ -2076,11 +2081,12 @@ async function runSpawnAgent(
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
     let provisionedWorkspaceId: string | undefined;
-    const requestedRepo = await resolveRequestedRepo(
-      runtime,
-      params as Record<string, unknown>,
-      [task, requestText(message)],
-    );
+    const requestedRepo =
+      typeof (params as Record<string, unknown>).repo === "string"
+        ? normalizeRepositoryInput(
+            (params as Record<string, unknown>).repo as string,
+          )
+        : undefined;
     if (requestedRepo && !effectiveRoute && !explicitWorkdir) {
       const workspaceService = getCodingWorkspaceService(runtime);
       if (workspaceService) {
@@ -2092,6 +2098,7 @@ async function runSpawnAgent(
           effectiveWorkdir = workspace.path;
           isolateWorkdir = false;
           provisionedRepo = requestedRepo;
+          provisionedWorkspaceId = workspace.id;
           logger(runtime).info(
             `[TASKS:spawn_agent] provisioned repo workspace for spawn: ${requestedRepo} -> ${workspace.path}`,
           );
@@ -2196,6 +2203,7 @@ async function runSpawnAgent(
       metadata: {
         ...extraMetadata,
         ...(provisionedRepo ? { repo: provisionedRepo } : {}),
+        ...(provisionedWorkspaceId ? { provisionedWorkspaceId } : {}),
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
         // Persist the stable root id so SubAgentRouter re-stamps it onto the
         // next synthetic re-spawn inbound (keeping the per-origin spawn cap
