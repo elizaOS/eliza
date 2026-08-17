@@ -625,6 +625,13 @@ export async function runSharedAgentTurnStream(
     });
 
     const providerReader = result.fullStream.getReader();
+    // error-policy:J5 cancel(reason) rejects the SDK's pending result
+    // promises; the parts iterator below is the observed failure channel, so
+    // mark these handled here to keep a barge-in from surfacing its
+    // cancellation reason as an unhandled rejection on the event loop.
+    void Promise.resolve(result.text).catch(() => {});
+    void Promise.resolve(result.totalUsage).catch(() => {});
+    void Promise.resolve(result.finishReason).catch(() => {});
     let providerStreamDone = false;
     let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;
