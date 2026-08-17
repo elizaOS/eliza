@@ -47,7 +47,19 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      // Pooled credential probe/write must not run on garbage.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
     const validated = contributeSchema.parse(body);
 
     const credential = await contributePooledCredential({
