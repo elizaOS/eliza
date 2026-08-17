@@ -111,7 +111,27 @@ app.get("/", async (c) => {
         400,
       );
     }
-    const includeMetadata = c.req.query("includeMetadata") === "true";
+    // Metadata changes the export schema, so reject ambiguous or non-canonical
+    // input before any analytics lookup or output generation can begin.
+    const requestedMetadataValues = c.req.queries("includeMetadata") ?? [];
+    const requestedMetadata = requestedMetadataValues[0];
+    if (
+      requestedMetadataValues.length > 1 ||
+      (requestedMetadata != null &&
+        requestedMetadata !== "" &&
+        requestedMetadata !== "true" &&
+        requestedMetadata !== "false")
+    ) {
+      return c.json(
+        {
+          error: "Invalid includeMetadata",
+          message:
+            'includeMetadata must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeMetadata = requestedMetadata === "true";
 
     const exportOptions: ExportOptions = {
       includeTimestamp: true,
