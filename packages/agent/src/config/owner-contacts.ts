@@ -112,6 +112,29 @@ function sourceSupportsOwnerEntityFallback(source: string): boolean {
   return source === MESSAGE_SOURCE_CLIENT_CHAT || source === "discord";
 }
 
+/**
+ * Resolve the SEND source for an owner-contact key. Keys are contact names,
+ * not necessarily handler names: a scoped key like "discord-nubs-test" means
+ * "the discord handler, this specific contact". The full key wins when a
+ * handler is registered under it; otherwise the longest "-"-boundary prefix
+ * with a registered handler carries the delivery. No handler at any boundary
+ * returns the full key so the caller's missing-handler path still reports the
+ * configured name.
+ */
+export function resolveScopedSendSource(
+  key: string,
+  hasHandler: (source: string) => boolean,
+): string {
+  const trimmed = key.trim();
+  if (!trimmed || hasHandler(trimmed)) return trimmed;
+  const parts = trimmed.split("-");
+  for (let end = parts.length - 1; end >= 1; end--) {
+    const prefix = parts.slice(0, end).join("-");
+    if (hasHandler(prefix)) return prefix;
+  }
+  return trimmed;
+}
+
 export function resolveOwnerContactSource(
   ownerContacts: OwnerContactsConfig,
   source: string | null | undefined,
