@@ -126,6 +126,9 @@ mock.module("@/lib/services/credits", () => ({
   },
   DEFAULT_OUTPUT_TOKENS: 500,
   InsufficientCreditsError: TestInsufficientCreditsError,
+  // credit-reservation.ts (in the route graph) binds this named export; a
+  // whole-module mock must re-export every bound name or bun fails linking.
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
 }));
 
 mock.module("@/lib/services/organization-inference-admission", () => ({

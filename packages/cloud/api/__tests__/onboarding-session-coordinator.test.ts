@@ -25,6 +25,7 @@ mock.module("../../shared/src/lib/cache/client", () => ({
 }));
 
 let provisioningFailure: Error | undefined;
+let provisioningStatusFailure: Error | undefined;
 
 mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
   elizaAppUserService: {
@@ -39,7 +40,10 @@ mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
     if (provisioningFailure) throw provisioningFailure;
     return noProvisioning;
   }),
-  getElizaAppProvisioningStatus: mock(async () => noProvisioning),
+  getElizaAppProvisioningStatus: mock(async () => {
+    if (provisioningStatusFailure) throw provisioningStatusFailure;
+    return noProvisioning;
+  }),
 }));
 
 const { OnboardingSessionCoordinator: OnboardingSessionCoordinatorValue } =
@@ -1232,15 +1236,18 @@ describe("OnboardingSessionCoordinator", () => {
           }),
         );
 
-      // The browser continuation binds the account in memory, then
-      // provisioning throws BEFORE the durable transaction commits. The turn
-      // fails and the greeting must not exist anywhere: the user would be
-      // DMed "you're all set" for a sign-in that did not persist.
-      provisioningFailure = new Error("transient provisioning outage");
+      // The browser continuation binds the account in memory, then an infra
+      // call inside the turn throws BEFORE the durable transaction commits.
+      // (Onboarding turns no longer provision compute — that is the dedicated
+      // lifecycle route's job — so the in-turn failure lever is the
+      // provisioning STATUS read the turn still performs.) The turn fails and
+      // the greeting must not exist anywhere: the user would be DMed
+      // "you're all set" for a sign-in that did not persist.
+      provisioningStatusFailure = new Error("transient provisioning outage");
       try {
         expect((await browserTurn()).status).toBe(500);
       } finally {
-        provisioningFailure = undefined;
+        provisioningStatusFailure = undefined;
       }
       expect(await greetingsOf(await drain(queue))).toEqual([]);
 

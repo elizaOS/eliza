@@ -130,8 +130,13 @@ describe("onboarding coordinator error integration", () => {
             }));
             build.onLoad({ filter: ROUTE_BOUNDARIES.managedLaunch }, () => ({
               loader: "ts",
+              // The stub must cover every named export onboarding-chat binds,
+              // or the bundle fails at build time ("No matching export").
               contents: `export async function launchManagedElizaAgent() {
                 throw new Error("launch is outside this authorization test");
+              }
+              export async function readManagedElizaAgentConnection() {
+                throw new Error("connection reads are outside this authorization test");
               }`,
             }));
             build.onLoad(

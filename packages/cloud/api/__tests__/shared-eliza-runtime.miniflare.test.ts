@@ -621,8 +621,12 @@ describe("Shared Eliza runtime in Workerd", () => {
       };
       scheduledTasks: Array<Record<string, unknown>>;
     };
+    // The REMINDERS action returns verifiedUserFacing:true, so the planner
+    // loop finishes deterministically by echoing the action's verbatim
+    // confirmation instead of spending a third model call on the completion
+    // evaluator (verified-echo contract): two model calls, not three.
     expect(payload.result).toMatchObject({
-      reply: "i'll remind you in two minutes",
+      reply: "Got it — I'll remind you in 2 minutes: stretch",
       degraded: false,
     });
     expect(payload.result.actionResults).toHaveLength(1);
@@ -648,7 +652,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         },
       },
     });
-    expect(modelRequests.length - requestsBefore).toBe(3);
+    expect(modelRequests.length - requestsBefore).toBe(2);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(
