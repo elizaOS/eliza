@@ -167,7 +167,7 @@ describe("BrowserWorkspaceView native surface error states", () => {
       await screen.findByText("Secure browsing not supported here"),
     ).not.toBeNull();
     expect(
-      screen.getByText(/system WebView is too old to isolate web pages/),
+      screen.getByText(/system WebView cannot provide the isolation/),
     ).not.toBeNull();
     // Fail-closed with an escape hatch: no Retry that can never succeed.
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();

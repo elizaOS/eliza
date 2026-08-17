@@ -2998,7 +2998,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 {nativeTabSurfaces.error.permanent
                   ? t("browserworkspace.NativeSurfaceUnsupportedDescription", {
                       defaultValue:
-                        "This device's system WebView is too old to isolate web pages safely, so Eliza will not open them inside the app. You can open the page in the device browser instead.",
+                        "This device's system WebView cannot provide the isolation Eliza requires, so Eliza will not open pages inside the app. You can open the page in the device browser instead.",
                     })
                   : t("browserworkspace.NativeSurfaceUnavailableDescription", {
                       defaultValue:

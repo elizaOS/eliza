@@ -280,7 +280,7 @@ for (const [vpName, viewport] of [
   );
   assert(
     (await page
-      .locator("text=system WebView is too old to isolate web pages")
+      .locator("text=system WebView cannot provide the isolation")
       .count()) === 1,
     `${vpName}/permanent: capability explanation renders`,
   );
