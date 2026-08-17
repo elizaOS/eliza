@@ -282,14 +282,14 @@ export async function loadAgentLogs({
         },
       ),
     );
-    const startBody = await withinRequestDeadline(
-      readJson(startResponse, "The log request"),
-    );
     if (!startResponse.ok) {
       throw new AgentLogsProtocolError(
         readHttpFailureMessage("request", startResponse.status),
       );
     }
+    const startBody = await withinRequestDeadline(
+      readJson(startResponse, "The log request"),
+    );
 
     const start = parseAgentLogsStart(startBody);
     if (start.kind === "complete") return start.result;
@@ -302,14 +302,14 @@ export async function loadAgentLogs({
           signal: requestSignal,
         }),
       );
-      const body = await withinRequestDeadline(
-        readJson(response, "The log job"),
-      );
       if (!response.ok) {
         throw new AgentLogsProtocolError(
           readHttpFailureMessage("job", response.status),
         );
       }
+      const body = await withinRequestDeadline(
+        readJson(response, "The log job"),
+      );
 
       const job = parseAgentLogsJob(body);
       if (job.kind === "complete") return job.result;
