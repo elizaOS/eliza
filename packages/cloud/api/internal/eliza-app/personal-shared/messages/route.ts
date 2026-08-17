@@ -21,6 +21,7 @@ import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/sh
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
+import { consumePreverifiedPersonalSharedRequest } from "../preverified-auth";
 
 // Telegram's hosted Bot API download ceiling is 20 MiB. This stricter product
 // ceiling keeps the base64 JSON body (~10.7 MiB) and decoded copies bounded in
@@ -201,7 +202,9 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   let stage: DeliveryStage = "authentication";
   try {
-    const auth = await requireInternalAuth(c);
+    const auth =
+      consumePreverifiedPersonalSharedRequest(c.req.raw) ??
+      (await requireInternalAuth(c));
     if (auth instanceof Response) return auth;
     if (
       auth.service !== "webhook-gateway" &&
