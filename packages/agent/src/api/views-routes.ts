@@ -910,7 +910,15 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
-    const decodedSubResource = decodeURIComponent(subResource);
+    let decodedSubResource: string;
+    try {
+      decodedSubResource = decodeURIComponent(subResource);
+    } catch {
+      // error-policy:J3 malformed view asset path bytes are untrusted input,
+      // not an internal filesystem or route-dispatch failure.
+      error(res, "Malformed view asset path", 400);
+      return true;
+    }
     const assetPath = path.resolve(bundleDir, decodedSubResource);
     const relative = path.relative(bundleDir, assetPath);
     if (

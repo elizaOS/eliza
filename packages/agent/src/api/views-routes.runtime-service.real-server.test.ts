@@ -4,8 +4,11 @@
  * routes, while the planner action uses the same registered stateful view.
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { type Action, type IAgentRuntime, Service } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearActiveViewContext } from "../runtime/view-action-affinity.ts";
@@ -166,6 +169,7 @@ async function getJson(
 }
 
 let server: http.Server | null = null;
+let pluginRoot: string | null = null;
 
 beforeEach(async () => {
   clearCurrentViewState();
@@ -189,9 +193,64 @@ afterEach(async () => {
     );
     server = null;
   }
+  if (pluginRoot) {
+    await rm(pluginRoot, { recursive: true, force: true });
+    pluginRoot = null;
+  }
 });
 
 describe("runtime-owned view interactions over the real HTTP route", () => {
+  it("rejects malformed asset encoding while preserving encoded asset names", async () => {
+    const service = new RuntimeOwnedRecordsService();
+    const runtime = makeRuntime(service);
+    pluginRoot = await mkdtemp(path.join(tmpdir(), "eliza-view-assets-"));
+    const bundleDir = path.join(pluginRoot, "dist", "views");
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(path.join(bundleDir, "bundle.js"), "export {};\n");
+    await writeFile(
+      path.join(bundleDir, "chunk name.js"),
+      "export const asset = true;\n",
+    );
+
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "Static asset encoding fixture.",
+        views: [
+          {
+            id: VIEW_ID,
+            label: "Static asset encoding fixture",
+            bundlePath: "dist/views/bundle.js",
+          },
+        ],
+      },
+      pluginRoot,
+      runtime,
+    );
+
+    const started = await startViewsServer(runtime);
+    server = started.server;
+
+    const encodedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/chunk%20name.js`,
+    );
+    expect(encodedAsset.status).toBe(200);
+    expect(await encodedAsset.text()).toBe("export const asset = true;\n");
+
+    const malformedGet = await getJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/%E0%A4`,
+      400,
+    );
+    expect(malformedGet.error).toBe("Malformed view asset path");
+
+    const malformedHead = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/%E0%A4`,
+      { method: "HEAD" },
+    );
+    expect(malformedHead.status).toBe(400);
+  });
+
   it("keeps CRUD on one runtime service across interact, activate, and planner paths", async () => {
     const service = new RuntimeOwnedRecordsService();
     const runtime = makeRuntime(service);
