@@ -1,9 +1,9 @@
 /**
- * Wire types for the browser-companion bridge (Chrome/Safari): tracking mode,
+ * Wire types for the Chrome, Firefox, and Safari browser-companion bridge: tracking mode,
  * site-access mode, connection state, and workspace tab shapes shared by the
  * client and the desktop bridge.
  */
-export type BrowserBridgeKind = "chrome" | "safari";
+export type BrowserBridgeKind = "chrome" | "firefox" | "safari";
 
 export type BrowserBridgeTrackingMode = "off" | "current_tab" | "active_tabs";
 
@@ -163,11 +163,13 @@ export interface SyncBrowserBridgeStateRequest {
 export interface BrowserBridgeCompanionReleaseAsset {
   fileName: string;
   downloadUrl: string | null;
+  sha256: string | null;
 }
 
 export interface BrowserBridgeCompanionReleaseTarget {
   installKind:
     | "chrome_web_store"
+    | "firefox_addons"
     | "apple_app_store"
     | "github_release"
     | "local_download";
@@ -184,9 +186,11 @@ export interface BrowserBridgeCompanionReleaseManifest {
   releasePageUrl: string | null;
   chromeVersion: string;
   chromeVersionName: string;
+  firefoxVersion: string;
   safariMarketingVersion: string;
   safariBuildVersion: string;
   chrome: BrowserBridgeCompanionReleaseTarget;
+  firefox: BrowserBridgeCompanionReleaseTarget;
   safari: BrowserBridgeCompanionReleaseTarget;
   generatedAt: string;
 }
@@ -195,6 +199,8 @@ export interface BrowserBridgeCompanionPackageStatus {
   extensionPath: string | null;
   chromeBuildPath: string | null;
   chromePackagePath: string | null;
+  firefoxBuildPath: string | null;
+  firefoxPackagePath: string | null;
   safariWebExtensionPath: string | null;
   safariAppPath: string | null;
   safariPackagePath: string | null;

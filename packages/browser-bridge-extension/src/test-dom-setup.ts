@@ -1,0 +1,38 @@
+/**
+ * Bun test preload that installs a minimal jsdom browser surface on globalThis.
+ */
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM(
+  "<!doctype html><html><head></head><body></body></html>",
+  {
+    url: "https://unit-test.local/",
+    pretendToBeVisual: true,
+  },
+);
+
+const globals: Record<string, unknown> = {
+  window: dom.window,
+  document: dom.window.document,
+  navigator: dom.window.navigator,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  HTMLAnchorElement: dom.window.HTMLAnchorElement,
+  HTMLFormElement: dom.window.HTMLFormElement,
+  Node: dom.window.Node,
+  NodeFilter: dom.window.NodeFilter,
+  Event: dom.window.Event,
+  InputEvent: dom.window.InputEvent,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+};
+
+for (const [key, value] of Object.entries(globals)) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}

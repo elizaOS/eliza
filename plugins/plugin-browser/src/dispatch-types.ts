@@ -18,7 +18,7 @@
  *
  * Replay is forbidden for ALL subactions once execution begins — even
  * read-only ones. Registered targets are distinct browser sessions (the
- * embedded workspace vs. the user's real Chrome/Safari via the bridge), so
+ * embedded workspace vs. the user's real Chrome, Firefox, or Safari via the bridge), so
  * retrying a failed read against a different target would silently answer
  * from a different browser. The classification only controls error shape: a
  * failed read rethrows its original cause, while an opaquely failed mutation

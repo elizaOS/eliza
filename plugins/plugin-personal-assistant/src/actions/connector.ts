@@ -72,7 +72,7 @@ type ConnectorActionParams = {
   recentLimit?: number;
   query?: string;
   channelId?: string;
-  browser?: "chrome" | "safari";
+  browser?: "chrome" | "firefox" | "safari";
   profileId?: string;
   profileLabel?: string;
   redirectUrl?: string;
@@ -1806,11 +1806,11 @@ export const connectorAction: Action & {
     },
     {
       name: "browser",
-      description: "browser_bridge connect only: chrome | safari.",
+      description: "browser_bridge connect only: chrome | firefox | safari.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: ["chrome", "safari"],
+        enum: ["chrome", "firefox", "safari"],
       },
     },
     {

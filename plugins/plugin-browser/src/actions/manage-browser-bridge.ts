@@ -357,7 +357,7 @@ export const manageBrowserBridgeAction: Action = {
     "BROWSER_BRIDGE_REFRESH",
   ],
   description:
-    "Owner-only Agent Browser Bridge management for Chrome/Safari. Actions: refresh status/settings/connection, install build+reveal setup, reveal_folder open build folder, open_manager chrome://extensions only on explicit ask. Infer action if omitted.",
+    "Owner-only Agent Browser Bridge management for Chrome, Firefox, and Safari. Actions: refresh status/settings/connection, install build+reveal setup, reveal_folder open build folder, open_manager browser extension settings only on explicit ask. Infer action if omitted.",
   descriptionCompressed:
     "Browser Bridge: refresh|install|reveal_folder|open_manager chrome://extensions",
   validate: async (

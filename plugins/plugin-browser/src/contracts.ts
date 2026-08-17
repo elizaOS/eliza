@@ -8,7 +8,7 @@
 
 import type { LifeOpsBrowserSession } from "./lifeops-session-contracts.js";
 
-export const BROWSER_BRIDGE_KINDS = ["chrome", "safari"] as const;
+export const BROWSER_BRIDGE_KINDS = ["chrome", "firefox", "safari"] as const;
 export type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
 
 export const BROWSER_BRIDGE_TRACKING_MODES = [
@@ -289,6 +289,8 @@ export const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = [
   "extension_root",
   "chrome_build",
   "chrome_package",
+  "firefox_build",
+  "firefox_package",
   "safari_web_extension",
   "safari_app",
   "safari_package",
@@ -300,6 +302,8 @@ export interface BrowserBridgeCompanionPackageStatus {
   extensionPath: string | null;
   chromeBuildPath: string | null;
   chromePackagePath: string | null;
+  firefoxBuildPath: string | null;
+  firefoxPackagePath: string | null;
   safariWebExtensionPath: string | null;
   safariAppPath: string | null;
   safariPackagePath: string | null;
@@ -309,11 +313,13 @@ export interface BrowserBridgeCompanionPackageStatus {
 export interface BrowserBridgeCompanionReleaseAsset {
   fileName: string;
   downloadUrl: string | null;
+  sha256: string | null;
 }
 
 export interface BrowserBridgeCompanionReleaseTarget {
   installKind:
     | "chrome_web_store"
+    | "firefox_addons"
     | "apple_app_store"
     | "github_release"
     | "local_download";
@@ -330,9 +336,11 @@ export interface BrowserBridgeCompanionReleaseManifest {
   releasePageUrl: string | null;
   chromeVersion: string;
   chromeVersionName: string;
+  firefoxVersion: string;
   safariMarketingVersion: string;
   safariBuildVersion: string;
   chrome: BrowserBridgeCompanionReleaseTarget;
+  firefox: BrowserBridgeCompanionReleaseTarget;
   safari: BrowserBridgeCompanionReleaseTarget;
   generatedAt: string;
 }

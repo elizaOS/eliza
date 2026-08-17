@@ -17,7 +17,7 @@ export interface BrowserSessionRegistration {
   readonly deviceId: string;
   readonly userAgent: string;
   readonly extensionVersion: string;
-  readonly browserVendor: "chrome" | "safari" | "unknown";
+  readonly browserVendor: "chrome" | "firefox" | "safari" | "unknown";
   readonly registeredAt: string;
 }
 

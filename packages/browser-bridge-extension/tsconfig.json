@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["bun-types", "vitest/globals"]
+  },
+  "include": ["entrypoints/**/*.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/test-dom-setup.ts"]
+}

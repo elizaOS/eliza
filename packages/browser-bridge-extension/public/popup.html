@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Browser Bridge</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel-header">
+        <p class="eyebrow">Agent Browser Bridge</p>
+        <h1>Connect Your Browser</h1>
+        <p class="lede">Use the exact browser profile that contains your real accounts. Automatic connection is the default. Manual tokens are the fallback.</p>
+      </header>
+
+      <section class="status-hero">
+        <div class="status-topline">
+          <span id="statusBadge" class="status-badge" data-kind="syncing">Loading</span>
+        </div>
+        <h2 id="statusTitle" class="status-title">Loading extension state…</h2>
+        <p id="statusDetail" class="status-detail"></p>
+        <ul id="statusChecklist" class="status-checklist"></ul>
+        <div id="summary" class="summary-grid"></div>
+      </section>
+
+      <section class="auto-card">
+        <div class="import-copy">
+          <h2>Automatic Connection</h2>
+          <p>Keep Eliza open in this same browser profile. If you are using a cloud-hosted Eliza app, log in there first.</p>
+        </div>
+        <div class="actions">
+          <button id="autoPair" class="primary" type="button">Auto Connect This Browser</button>
+          <button id="sync" type="button">Sync This Browser</button>
+        </div>
+      </section>
+
+      <details class="advanced-card">
+        <summary>Advanced Tools</summary>
+
+        <section class="form-grid">
+          <label>
+            <span>API Base URL</span>
+            <input id="apiBaseUrl" type="url" placeholder="http://127.0.0.1:31337" />
+          </label>
+          <label>
+            <span>Browser</span>
+            <select id="browser" disabled>
+              <option value="chrome">Chrome</option>
+              <option value="safari">Safari</option>
+            </select>
+          </label>
+          <label>
+            <span>Companion ID</span>
+            <input id="companionId" type="text" placeholder="UUID from Eliza pairing" />
+          </label>
+          <label>
+            <span>Pairing Token</span>
+            <input id="pairingToken" type="password" placeholder="lobr_…" />
+          </label>
+          <label>
+            <span>Profile ID</span>
+            <input id="profileId" type="text" placeholder="default" />
+          </label>
+          <label>
+            <span>Profile Label</span>
+            <input id="profileLabel" type="text" placeholder="Default" />
+          </label>
+          <label>
+            <span>Companion Label</span>
+            <input id="label" type="text" placeholder="Agent Browser Bridge chrome Default" />
+          </label>
+        </section>
+
+        <section class="import-card">
+          <div class="import-copy">
+            <h2>Manual Pairing JSON</h2>
+            <p>Only use this if automatic connection cannot reach your Eliza app. Paste the JSON copied from Eliza, then import it here.</p>
+          </div>
+          <textarea
+            id="pairingJson"
+            rows="7"
+            placeholder='{"apiBaseUrl":"http://127.0.0.1:31337","companionId":"...","pairingToken":"...","browser":"chrome"}'
+          ></textarea>
+          <div class="advanced-actions">
+            <button id="import" class="secondary" type="button">Import Pairing JSON</button>
+            <button id="save" class="secondary" type="button">Save Manual Pairing</button>
+            <button id="clear" class="danger" type="button">Clear</button>
+          </div>
+        </section>
+      </details>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+  </html>

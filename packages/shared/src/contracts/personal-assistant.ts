@@ -937,7 +937,7 @@ export interface LifeOpsWorkflowPermissionPolicy {
 // `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
 // `LifeOpsBrowserActionKind`, and `LifeOpsBrowserAction` remain here
 // because workflow-linked session shapes below still reference them.
-export const LIFEOPS_BROWSER_KINDS = ["chrome", "safari"] as const;
+export const LIFEOPS_BROWSER_KINDS = ["chrome", "firefox", "safari"] as const;
 export type LifeOpsBrowserKind = (typeof LIFEOPS_BROWSER_KINDS)[number];
 
 export const LIFEOPS_BROWSER_ACTION_KINDS = [
