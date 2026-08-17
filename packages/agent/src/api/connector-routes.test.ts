@@ -131,4 +131,32 @@ describe("connector routes", () => {
       expect.objectContaining({ connector: "slack", op: "POST-disconnect" }),
     );
   });
+
+  it("DELETE /api/connectors/:name returns 400 on malformed percent-encoded name", async () => {
+    for (const badName of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const { ctx, captured } = createHarness({
+        method: "DELETE",
+        pathname: `/api/connectors/${badName}`,
+      });
+      await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(400);
+      expect(captured.body).toEqual({
+        error: "Invalid connector name encoding",
+      });
+    }
+  });
+
+  it("DELETE /api/connectors/:name decodes valid percent-encoded connector name", async () => {
+    const config: ConnectorRouteContext["state"]["config"] = {
+      connectors: { "custom-connector": { enabled: true } },
+    };
+    const { ctx, captured, state } = createHarness({
+      method: "DELETE",
+      pathname: "/api/connectors/custom%2Dconnector",
+      state: { config },
+    });
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status).toBe(200);
+    expect(state.config.connectors?.["custom-connector"]).toBeUndefined();
+  });
 });

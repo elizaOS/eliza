@@ -75,7 +75,14 @@ export async function handleConsumerKeyRoutes(
     return true;
   }
 
-  const id = decodeURIComponent(segments[0] ?? "");
+  let id: string;
+  try {
+    id = decodeURIComponent(segments[0] ?? "");
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+    error(res, "Invalid consumer-key id encoding", 400);
+    return true;
+  }
   if (!id) {
     error(res, "Missing consumer-key id", 400);
     return true;
