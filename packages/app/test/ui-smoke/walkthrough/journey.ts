@@ -649,6 +649,62 @@ async function installMockLaneWrites(page: Page): Promise<void> {
     }
     await route.fallback();
   });
+  // Settings mounts local-device, voice-update, and consumer-key panels in
+  // parallel. They are optional on a fresh zero-key runtime, but the fallback
+  // server's 501 responses are real diagnostics failures. Return each route's
+  // canonical empty/default contract so the walkthrough still exercises the
+  // panels' designed zero states instead of hiding errors in the gate.
+  await page.route("**/api/local-inference/device/stream**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `data: ${JSON.stringify({
+          type: "status",
+          status: {
+            connected: false,
+            devices: [],
+            primaryDeviceId: null,
+            pendingRequests: 0,
+            deviceId: null,
+            capabilities: null,
+            loadedPath: null,
+            connectedSince: null,
+          },
+        })}\n\n`,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/local-inference/voice-models**", async (route) => {
+    if (route.request().method() === "GET") {
+      const pathname = new URL(route.request().url()).pathname;
+      await fulfillJson(
+        route,
+        200,
+        pathname.endsWith("/preferences")
+          ? {
+              preferences: {
+                autoUpdateOnWifi: true,
+                autoUpdateOnCellular: false,
+                autoUpdateOnMetered: false,
+                quietHours: [{ start: "22:00", end: "08:00" }],
+              },
+            }
+          : { installations: [] },
+      );
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/accounts/consumer-keys", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { keys: [] });
+      return;
+    }
+    await route.fallback();
+  });
   // Chat collapse/reopen fires a best-effort turn abort; ack it so the gate
   // sees no 5xx on a write the mock lane cannot execute.
   await page.route("**/api/turns/*/abort", async (route) => {
