@@ -349,6 +349,106 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
+    "retains distinct concurrent lifecycle receipts and settles each terminal pipeline once",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const child = receiptReminderInput();
+      const created = await runner.scheduleWithResult({
+        ...receiptReminderInput("distinct-lifecycle-complete-task"),
+        pipeline: { onComplete: [child as never] },
+      });
+      const requests = [
+        { idempotencyKey: "message-distinct-a:complete" },
+        { idempotencyKey: "message-distinct-b:complete" },
+      ] as const;
+
+      const applied = await Promise.all(
+        requests.map((options) =>
+          runner.applyWithResult(
+            created.task.taskId,
+            "complete",
+            undefined,
+            options,
+          ),
+        ),
+      );
+
+      expect(applied.map((result) => result.replayed)).toEqual([false, false]);
+      expect(new Set(applied.map((result) => result.commit.logId)).size).toBe(
+        2,
+      );
+
+      const persisted = await harness.pg.query<{
+        completed_logs: number;
+        metadata_json: string;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}'
+              AND transition = 'completed') AS completed_logs,
+          (SELECT metadata_json
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist'
+              AND id = '${created.task.taskId}') AS metadata_json
+      `);
+      const persistedRow = persisted.rows[0];
+      if (!persistedRow) throw new Error("expected persisted lifecycle row");
+      expect(persistedRow.completed_logs).toBe(2);
+      const metadata = JSON.parse(persistedRow.metadata_json) as {
+        schedulingApplyReceipts?: Record<string, unknown>;
+      };
+      const receiptMarkers = metadata.schedulingApplyReceipts;
+      if (!receiptMarkers)
+        throw new Error("expected lifecycle receipt markers");
+      expect(Object.keys(receiptMarkers)).toHaveLength(2);
+
+      const replayed = await Promise.all(
+        requests.map((options) =>
+          runner.applyWithResult(
+            created.task.taskId,
+            "complete",
+            { reason: "must not replace the committed receipt" },
+            options,
+          ),
+        ),
+      );
+      expect(replayed.map((result) => result.replayed)).toEqual([true, true]);
+      expect(replayed.map((result) => result.commit.logId).sort()).toEqual(
+        applied.map((result) => result.commit.logId).sort(),
+      );
+
+      const tasks = await runner.list();
+      expect(
+        tasks.filter(
+          (task) =>
+            task.taskId !== created.task.taskId &&
+            task.state.pipelineParentId === created.task.taskId,
+        ),
+      ).toHaveLength(2);
+      const finalCounts = await harness.pg.query<{
+        completed_logs: number;
+        tasks: number;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}'
+              AND transition = 'completed') AS completed_logs,
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist') AS tasks
+      `);
+      expect(finalCounts.rows[0]).toEqual({ completed_logs: 2, tasks: 3 });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "rolls back task state when the atomic lifecycle receipt insert fails",
     async () => {
       const harness = await createRuntimeHarness();
