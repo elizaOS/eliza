@@ -4,7 +4,11 @@
 // Thin React binding over deriveShellAuthGate. Real hook; branding and the
 // auth snapshot are injected through their public test/context seams.
 
-import { cleanup, renderHook } from "@testing-library/react";
+import {
+  clearStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BrandingConfig } from "../../../config/branding-base";
@@ -29,6 +33,7 @@ function wrapperFor(cloudOnly: boolean) {
 
 afterEach(() => {
   cleanup();
+  clearStoredStewardToken();
   __resetAuthStatusForTests();
 });
 
@@ -46,6 +51,31 @@ describe("useShellAuthGate", () => {
     const { result } = renderHook(() => useShellAuthGate(), {
       wrapper: wrapperFor(true),
     });
+    expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
+  });
+
+  it.each(["loading", "server_unavailable"] as const)(
+    "shows needs-auth without a stored Cloud session while auth is %s",
+    (phase) => {
+      __setAuthStatusForTests({ phase });
+      const { result } = renderHook(() => useShellAuthGate(), {
+        wrapper: wrapperFor(true),
+      });
+      expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
+    },
+  );
+
+  it("reacts to the canonical Cloud session event", () => {
+    __setAuthStatusForTests({ phase: "loading" });
+    const { result } = renderHook(() => useShellAuthGate(), {
+      wrapper: wrapperFor(true),
+    });
+    expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
+
+    act(() => writeStoredStewardToken("opaque-cloud-session"));
+    expect(result.current).toEqual({ gated: true, phase: "checking" });
+
+    act(() => clearStoredStewardToken());
     expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
   });
 });

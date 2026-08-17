@@ -178,6 +178,20 @@ function urlCriterionBasis(
   return hit ? `probed URL answered: ${hit}` : undefined;
 }
 
+/** File extensions with no typecheck/lint/test surface. A deliverable made
+ *  ONLY of these cannot satisfy a check-class criterion by running anything —
+ *  the check is vacuous, and demanding it burned every verify attempt on live
+ *  quick-apps (ember-tide: typecheck/lint criteria against one static page). */
+const STATIC_ASSET_RE =
+  /\.(?:html?|css|svg|png|jpe?g|gif|webp|ico|md|txt|json|woff2?)$/i;
+
+function staticOnlyDeliverable(facts: DeterministicEvidenceFacts): boolean {
+  return (
+    facts.ledgerVerifiedFiles.length > 0 &&
+    facts.ledgerVerifiedFiles.every((file) => STATIC_ASSET_RE.test(file))
+  );
+}
+
 /** Deterministic facts the orchestrator already holds at completion. */
 export interface DeterministicEvidenceFacts {
   /** Router-probed URLs that answered, non-loopback only. */
@@ -259,11 +273,27 @@ export function deterministicCriterionCheck(
       : { criterion, status: "undetermined" };
   }
   if (TEST_CRITERION_RE.test(criterion)) {
+    if (!facts.greenChecks.test && staticOnlyDeliverable(facts)) {
+      return {
+        criterion,
+        status: "met",
+        basis:
+          "inapplicable: verified deliverable contains only static assets (no test surface)",
+      };
+    }
     return facts.greenChecks.test
       ? { criterion, status: "met", basis: "green test output captured" }
       : { criterion, status: "undetermined" };
   }
   if (BUILD_CRITERION_RE.test(criterion)) {
+    if (!facts.greenChecks.build && staticOnlyDeliverable(facts)) {
+      return {
+        criterion,
+        status: "met",
+        basis:
+          "inapplicable: verified deliverable contains only static assets (no build surface)",
+      };
+    }
     return facts.greenChecks.build
       ? {
           criterion,
@@ -273,6 +303,14 @@ export function deterministicCriterionCheck(
       : { criterion, status: "undetermined" };
   }
   if (LINT_CRITERION_RE.test(criterion)) {
+    if (!facts.greenChecks.lint && staticOnlyDeliverable(facts)) {
+      return {
+        criterion,
+        status: "met",
+        basis:
+          "inapplicable: verified deliverable contains only static assets (no lint surface)",
+      };
+    }
     return facts.greenChecks.lint
       ? { criterion, status: "met", basis: "green lint output captured" }
       : { criterion, status: "undetermined" };

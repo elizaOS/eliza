@@ -115,9 +115,9 @@ export function resolveDesktopShellWindowPresentation(
 export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
 
-/** Intermediate hit area around the cloud-only "Sign in to Eliza" chip. */
-export const AUTH_GATE_BOTTOM_BAR_WIDTH = 240;
-export const AUTH_GATE_BOTTOM_BAR_HEIGHT = DEFAULT_BOTTOM_BAR_HEIGHT;
+/** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
+export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
+export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
