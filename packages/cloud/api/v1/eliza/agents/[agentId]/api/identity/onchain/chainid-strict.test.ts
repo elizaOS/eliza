@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const src = readFileSync(decodeURIComponent(new URL("./route.ts", import.meta.url).pathname), "utf8");
-const clampSrc = readFileSync("/tmp/eliza-verify2/packages/cloud/shared/src/lib/utils/clamp-limit.ts", "utf8");
-const numberParsingSrc = readFileSync("/tmp/eliza-verify2/packages/shared/src/utils/number-parsing.ts", "utf8");
+const clampSrc = readFileSync(new URL("../../../../../../../../shared/src/lib/utils/clamp-limit.ts", import.meta.url).pathname, "utf8");
+const numberParsingSrc = readFileSync(new URL("../../../../../../../../../shared/src/utils/number-parsing.ts", import.meta.url).pathname, "utf8");
 
 describe("onchain chainId strict clamp", () => {
 	it("uses strict /^\\d+$/ + isSafeInteger for chainId, not weak Number||", () => {
