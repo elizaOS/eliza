@@ -104,7 +104,47 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"recommendedToolCallId",
 ]);
 
-const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
+/**
+ * Base completion budget for the evaluator envelope. Raised from 1024 after a
+ * live incident (sol-dev 2026-08-17): fable completions hitting exactly 1024
+ * truncated the JSON envelope mid-string, the parse failed with "unparseable
+ * output", and the planner burned 1-2 extra full-prompt rounds per affected
+ * turn recovering. Observed envelopes are 100-450 tokens; 2048 gives 4x
+ * headroom while the single doubled retry below covers pathological ramblers.
+ */
+const DEFAULT_EVALUATOR_MAX_TOKENS = 2048;
+
+/**
+ * Whether an evaluator model result was cut off by the completion-token cap:
+ * the provider's finish reason names a length/token limit, or the reported
+ * completion usage reached the requested cap. String results carry no
+ * finish/usage metadata and are never treated as truncated. Exported for
+ * regression coverage of the single-retry truncation guard.
+ */
+export function evaluatorHitCompletionLimit(
+	raw: string | object,
+	maxTokens: number,
+): boolean {
+	if (typeof raw === "string") return false;
+	const record = raw as { finishReason?: unknown; usage?: unknown };
+	const finishReason =
+		typeof record.finishReason === "string"
+			? record.finishReason.toLowerCase()
+			: "";
+	if (
+		/\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
+			finishReason,
+		)
+	) {
+		return true;
+	}
+	const usage = record.usage as { completionTokens?: unknown } | undefined;
+	return (
+		typeof usage?.completionTokens === "number" &&
+		Number.isFinite(usage.completionTokens) &&
+		usage.completionTokens >= maxTokens
+	);
+}
 
 type EvaluatorBudgetResolution = {
 	contextWindowTokens?: number;
@@ -506,36 +546,65 @@ export async function runEvaluator(
 	}
 	let raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>;
 	try {
-		raw = await runWithStreamingContext(
-			streamingContext
-				? {
-						...streamingContext,
-						onStreamChunk: async () => undefined,
-					}
-				: undefined,
-			() => {
-				const modelRequest = {
-					messages: renderedInput.messages,
+		const callEvaluatorModel = (maxTokens: number) =>
+			runWithStreamingContext(
+				streamingContext
+					? {
+							...streamingContext,
+							onStreamChunk: async () => undefined,
+						}
+					: undefined,
+				() => {
+					const modelRequest = {
+						messages: renderedInput.messages,
+						maxTokens,
+						responseSchema: evaluatorSchema,
+						promptSegments: renderedInput.promptSegments,
+						providerOptions,
+						prepareModelAttempt: (
+							attempt: ModelAttemptContext,
+							attemptParams: {
+								messages: ChatMessage[];
+								promptSegments?: PromptSegment[];
+								providerOptions?: Record<string, unknown>;
+							},
+						) => prepareModelAttempt(attempt, attemptParams),
+					};
+					return params.runtime.useModel(
+						modelType,
+						modelRequest,
+						params.provider,
+					);
+				},
+			);
+		raw = await callEvaluatorModel(DEFAULT_EVALUATOR_MAX_TOKENS);
+		// Truncation guard: a completion cut off at the cap yields an unparseable
+		// envelope, and each unparseable evaluation costs the planner a full extra
+		// replan round (live sol-dev 2026-08-17: 1024-cap truncations chained into
+		// 30-117s turns). Retry exactly ONCE with a doubled budget — never loop —
+		// and only when the truncated output actually failed to parse; a result
+		// that happens to be both complete-and-parseable at the cap stands.
+		if (
+			evaluatorHitCompletionLimit(raw, DEFAULT_EVALUATOR_MAX_TOKENS) &&
+			parseEvaluatorOutput(raw).protocolFailure === true
+		) {
+			const retryMaxTokens = DEFAULT_EVALUATOR_MAX_TOKENS * 2;
+			params.runtime.logger?.warn?.(
+				{
+					modelType: String(modelType),
 					maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
-					responseSchema: evaluatorSchema,
-					promptSegments: renderedInput.promptSegments,
-					providerOptions,
-					prepareModelAttempt: (
-						attempt: ModelAttemptContext,
-						attemptParams: {
-							messages: ChatMessage[];
-							promptSegments?: PromptSegment[];
-							providerOptions?: Record<string, unknown>;
-						},
-					) => prepareModelAttempt(attempt, attemptParams),
-				};
-				return params.runtime.useModel(
-					modelType,
-					modelRequest,
-					params.provider,
+					retryMaxTokens,
+				},
+				"[evaluator] completion truncated at token cap and unparseable; retrying once with a doubled cap",
+			);
+			raw = await callEvaluatorModel(retryMaxTokens);
+			if (evaluatorHitCompletionLimit(raw, retryMaxTokens)) {
+				params.runtime.logger?.warn?.(
+					{ modelType: String(modelType), retryMaxTokens },
+					"[evaluator] retry completion still truncated; proceeding with parse-recovery (no further retries)",
 				);
-			},
-		);
+			}
+		}
 	} catch (error) {
 		if (
 			error instanceof ElizaError &&
