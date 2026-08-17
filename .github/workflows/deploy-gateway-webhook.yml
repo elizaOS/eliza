@@ -212,6 +212,14 @@ jobs:
               AGENT_ROUTER_ORIGIN_HOST: .AGENT_ROUTER_ORIGIN_HOST,
               ELIZA_CLOUD_AGENT_BASE_DOMAIN: .ELIZA_CLOUD_AGENT_BASE_DOMAIN
             },
+            staging_blooio_nonblank_names: [
+              to_entries[] |
+              select(.key == "ELIZA_APP_BLOOIO_API_KEY" or
+                     .key == "ELIZA_APP_BLOOIO_PHONE_NUMBER" or
+                     .key == "ELIZA_APP_BLOOIO_WEBHOOK_SECRET") |
+              select((.value | type) == "string" and (.value | test("\\S"))) |
+              .key
+            ],
             nonblank_sensitive_names: [
               to_entries[] |
               select(.value | type == "string" and length > 0) |
@@ -238,6 +246,15 @@ jobs:
               exit 1
             fi
           }
+          require_staging_blooio_name() {
+            local name="$1"
+            if ! jq -e --arg name "$name" \
+              '.staging_blooio_nonblank_names | index($name) != null' \
+              "$variables_path" >/dev/null; then
+              echo "::error::Required sensitive Railway variable name is absent or blank: $name"
+              exit 1
+            fi
+          }
 
           require_exact_variable ELIZA_CLOUD_URL "$EXPECTED_CLOUD_URL"
           require_exact_variable AGENT_ROUTER_ORIGIN_HOST "$EXPECTED_ROUTER_ORIGIN"
@@ -249,6 +266,14 @@ jobs:
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET; do
             require_sensitive_name "$name"
           done
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
+              require_staging_blooio_name "$name"
+            done
+          fi
           if ! jq -e '.nonblank_sensitive_names as $names |
             (($names | index("REDIS_URL")) != null or
              ((($names | index("KV_REST_API_URL")) != null) and
