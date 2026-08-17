@@ -43,6 +43,14 @@ describe("isMemoryRecallSearchCall", () => {
 				params: { op: "search" },
 			}),
 		).toBe(true);
+		for (const alias of ["operation", "verb", "subAction", "__subaction"]) {
+			expect(
+				isMemoryRecallSearchCall({
+					name: "MEMORY",
+					params: { [alias]: "search" },
+				}),
+			).toBe(true);
+		}
 	});
 
 	it("does NOT match non-recall tools or non-search MEMORY ops", () => {
@@ -123,6 +131,32 @@ describe("partitionMemorySearchBudget", () => {
 		const out = partitionMemorySearchBudget([reformulated], trajectory, 5);
 		expect(out.allowed).toEqual([]);
 		expect(out.skippedNearDuplicate).toEqual([reformulated]);
+	});
+
+	it("allows a rephrased query after a successful search returned no matches", () => {
+		const trajectory = {
+			...emptyTrajectory(),
+			steps: [
+				{
+					toolCall: {
+						name: "SEARCH_KNOWLEDGE",
+						params: { query: "alexis gym signup" },
+					},
+					result: {
+						success: true,
+						text: "No knowledge items match that query.",
+						data: { count: 0, items: [] },
+					},
+				},
+			],
+		};
+		const reformulated = {
+			name: "SEARCH_KNOWLEDGE",
+			params: { query: "gym signup alexis" },
+		};
+		const out = partitionMemorySearchBudget([reformulated], trajectory, 5);
+		expect(out.allowed).toEqual([reformulated]);
+		expect(out.skippedNearDuplicate).toEqual([]);
 	});
 
 	it("counts executed rounds from archived (compacted) steps too", () => {

@@ -53,6 +53,7 @@ import {
 import type {
 	ContextObject,
 	EvaluatorEffects,
+	EvaluatorModelResult,
 	EvaluatorOutput,
 	EvaluatorRoute,
 	EvaluatorRuntime,
@@ -121,27 +122,22 @@ const DEFAULT_EVALUATOR_MAX_TOKENS = 2048;
  * regression coverage of the single-retry truncation guard.
  */
 export function evaluatorHitCompletionLimit(
-	raw: string | object,
+	raw: EvaluatorModelResult,
 	maxTokens: number,
 ): boolean {
 	if (typeof raw === "string") return false;
-	const record = raw as { finishReason?: unknown; usage?: unknown };
-	const finishReason =
-		typeof record.finishReason === "string"
-			? record.finishReason.toLowerCase()
-			: "";
+	const finishReason = raw.finishReason?.toLowerCase() ?? "";
 	if (
-		/\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
+		/(?:^|[^a-z0-9])(?:length|max(?:imum)?(?:[-_\s]completion)?[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)(?:$|[^a-z0-9])/u.test(
 			finishReason,
 		)
 	) {
 		return true;
 	}
-	const usage = record.usage as { completionTokens?: unknown } | undefined;
 	return (
-		typeof usage?.completionTokens === "number" &&
-		Number.isFinite(usage.completionTokens) &&
-		usage.completionTokens >= maxTokens
+		typeof raw.usage?.completionTokens === "number" &&
+		Number.isFinite(raw.usage.completionTokens) &&
+		raw.usage.completionTokens >= maxTokens
 	);
 }
 
