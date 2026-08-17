@@ -105,6 +105,9 @@ function methodAllowed(
 
 function parseOptionalMs(value: string | null): number | undefined | null {
   if (value === null || value === "") return undefined;
+  // Canonical non-negative integers only. Number("1e2") === 100 and
+  // Number("0x10") === 16 used to become real usage-window bounds.
+  if (!/^(0|[1-9]\d*)$/.test(value)) return null;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
   return parsed;
