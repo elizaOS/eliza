@@ -51,7 +51,45 @@ type CombinableView = (typeof CombinableViews)[number];
 function isCombinableView(value: string): value is CombinableView {
   return (CombinableViews as readonly string[]).includes(value);
 }
-const LimitSchema = z.coerce.number().int().min(1).max(1000).default(100);
+const DEFAULT_MODERATION_LIMIT = 100;
+const MAX_MODERATION_LIMIT = 1000;
+
+class ModerationLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "ModerationLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/admin/moderation `limit` is violations page-size identity.
+ * Stock develop used z.coerce.number(), which treated `1e2` / `007` /
+ * `0x10` as a page size instead of a 400. view / userId stay untouched.
+ * Missing / empty still means 100. Exact integers above 1000 stay 400.
+ */
+function parseModerationLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new ModerationLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_MODERATION_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new ModerationLimitError();
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_MODERATION_LIMIT
+  ) {
+    throw new ModerationLimitError();
+  }
+  return parsed;
+}
+
 const AdminRoleSchema = z.enum(["super_admin", "moderator", "viewer"]);
 
 type AdminUserRecord = Awaited<
@@ -288,11 +326,17 @@ app.get("/", async (c) => {
 
   const rawView = c.req.query("view") ?? "overview";
 
-  const parsedLimit = LimitSchema.safeParse(c.req.query("limit"));
-  if (!parsedLimit.success) {
-    throw ValidationError("limit must be an integer from 1 to 1000");
+  let limit: number;
+  try {
+    limit = parseModerationLimitQuery(
+      new URL(c.req.url, "http://localhost").searchParams,
+    );
+  } catch (limitError) {
+    if (limitError instanceof ModerationLimitError) {
+      return c.json({ error: limitError.message }, 400);
+    }
+    throw limitError;
   }
-  const limit = parsedLimit.data;
   const userId = c.req.query("userId");
 
   // Multi-view path: comma-separated list of combinable views. user-detail is
