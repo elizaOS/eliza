@@ -32,7 +32,11 @@ export function extractAndParseJSONObjectFromText(
 
 	// Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
 	try {
-		return JSON5.parse(textToParse) as Record<string, unknown>;
+		const parsed = JSON5.parse(textToParse);
+		if (parsed === null || typeof parsed !== "object") {
+			throw new Error("Parsed JSON must be an object or array");
+		}
+		return parsed as Record<string, unknown> | unknown[];
 	} catch (error) {
 		// error-policy:J2 Give callers a stable parse error while retaining the
 		// native JSON parser's location and syntax detail as the cause.
