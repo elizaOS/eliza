@@ -85,13 +85,44 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
       upstreamUrl.searchParams.set(key, value);
     });
 
-    const upstreamResponse = await fetch(upstreamUrl.toString(), {
-      headers: {
-        Accept: "application/json",
-        "x-chain": c.req.header("x-chain") ?? "solana",
-        "X-API-KEY": birdeyeApiKey,
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: "application/json",
+          "x-chain": c.req.header("x-chain") ?? "solana",
+          "X-API-KEY": birdeyeApiKey,
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        await creditsService
+          .refundCredits({
+            organizationId: organization_id,
+            amount: cost,
+            description: `API proxy refund: market-data — ${pricedMethod} (upstream timeout)`,
+            metadata: {
+              type: "proxy_market-data_refund",
+              service: "market-data",
+              provider: "birdeye",
+              method: pricedMethod,
+            },
+          })
+          .catch((refundError) => {
+            logger.warn("[BirdeyeProxy] refund after upstream timeout failed", {
+              method: pricedMethod,
+              error: refundError instanceof Error ? refundError.message : String(refundError),
+            });
+          });
+        return c.json({ error: "Upstream service timeout" }, 504);
+      }
+      throw error;
+    }
+    clearTimeout(timeoutId);
 
     const body = await upstreamResponse.text();
 
