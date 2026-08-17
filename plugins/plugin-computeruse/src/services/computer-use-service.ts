@@ -255,6 +255,9 @@ function renderPlainData(value: unknown, indent = 0): string {
  * the scientific spelling of the documented 10000ms default. Prefix junk
  * (`12px`, `007`, `5000abc`) is the same hole. Those spellings are rejected
  * so loadConfig keeps the default instead of silently shrinking the timeout.
+ * Values above Node's timer ceiling are also rejected: Node clamps an
+ * overflowing delay to 1ms, recreating the same failure with a different
+ * spelling.
  */
 export function parseComputerUseActionTimeoutMs(
   raw: string | undefined,
@@ -264,7 +267,9 @@ export function parseComputerUseActionTimeoutMs(
   if (trimmed === "") return undefined;
   if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
   const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) return undefined;
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2_147_483_647) {
+    return undefined;
+  }
   return parsed;
 }
 
