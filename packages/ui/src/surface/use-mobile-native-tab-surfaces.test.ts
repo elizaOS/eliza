@@ -17,6 +17,7 @@ import {
   CapacitorNativeSurfaceShell,
   type ElizaSurfaceManagerPlugin,
   type ElizaSurfaceManagerState,
+  NativeSurfaceUnavailableError,
 } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfaceCreateRequest,
@@ -105,6 +106,27 @@ class DropFirstBoundsShell extends RecordingShell {
       return Promise.reject(new Error("bounds rejected"));
     }
     return super.setBounds(id, bounds);
+  }
+}
+
+class CapabilityDenyingShell extends RecordingShell {
+  attempts = 0;
+
+  override createSurface(req: NativeSurfaceCreateRequest): Promise<void> {
+    this.attempts += 1;
+    // The exact production shape: the shell's typed transport error wrapping
+    // the native Capacitor rejection as its cause.
+    return Promise.reject(
+      new NativeSurfaceUnavailableError({
+        surfaceId: req.id,
+        generation: 1,
+        operation: `createSurface(${req.id})`,
+        revision: 1,
+        cause: new Error(
+          "isolated storage requires WebView multi-profile support; system WebView is too old",
+        ),
+      }),
+    );
   }
 }
 
@@ -568,6 +590,72 @@ describe("useMobileNativeTabSurfaces", () => {
       shell.commands.filter((command) => command === "create:browser-tab:a"),
     ).toHaveLength(1);
     expect(shell.navigations).toEqual([]);
+  });
+
+  it("marks a WebView capability denial permanent while a transient fault stays retryable", async () => {
+    // Permanent direction: the multi-profile denial (LP3, WebView 113) is
+    // classified permanent so the renderer can suppress Retry.
+    const denying = new CapabilityDenyingShell();
+    const permanent = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell: denying }),
+    );
+    await act(async () => Promise.resolve());
+    expect(permanent.result.current.error?.permanent).toBe(true);
+    expect(permanent.result.current.error?.message).toContain("createSurface");
+    permanent.unmount();
+
+    // Opposite direction: an ordinary transport fault must NOT be permanent —
+    // Retry stays meaningful and still converges.
+    const dropping = new DropFirstBoundsShell();
+    const surface = elementAt({ left: 12, top: 34, width: 300, height: 500 });
+    const transient = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell: dropping }),
+    );
+    act(() => transient.result.current.registerSurfaceElement("a", surface));
+    await act(async () => Promise.resolve());
+    expect(transient.result.current.error?.permanent).toBe(false);
+    act(() => transient.result.current.retry());
+    await act(async () => Promise.resolve());
+    expect(transient.result.current.error).toBeNull();
+    transient.unmount();
+  });
+
+  it("surfaces the permanent denial over an earlier transient failure", async () => {
+    // Two tabs: tab a fails transiently on bounds, tab b hits the permanent
+    // capability denial on create. The rendered error must be the permanent
+    // one even though the transient failure was recorded first.
+    class MixedShell extends RecordingShell {
+      override setBounds(id: string, bounds: SurfaceBounds): Promise<void> {
+        if (id === "browser-tab:a") {
+          return Promise.reject(new Error("bounds rejected"));
+        }
+        return super.setBounds(id, bounds);
+      }
+      override createSurface(req: NativeSurfaceCreateRequest): Promise<void> {
+        if (req.id === "browser-tab:b") {
+          return Promise.reject(
+            new Error(
+              "isolated storage requires WebView multi-profile support; system WebView is too old",
+            ),
+          );
+        }
+        return super.createSurface(req);
+      }
+    }
+    const shell = new MixedShell();
+    const twoTabs = { ...base, tabs: [tab("a"), tab("b")] };
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...twoTabs, shell }),
+    );
+    act(() => {
+      result.current.registerSurfaceElement(
+        "a",
+        elementAt({ left: 0, top: 0, width: 300, height: 500 }),
+      );
+    });
+    await act(async () => Promise.resolve());
+    expect(result.current.error?.permanent).toBe(true);
+    expect(result.current.error?.key).toBe("browser-tab:b:lifecycle");
   });
 
   it("uses the app-resume edge as one bounded retry for failed desired state", async () => {
