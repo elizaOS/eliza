@@ -414,13 +414,17 @@ export async function waitForShellReady(
 
 /**
  * Client-side SPA navigation. Capacitor's WebView has no server-side fallback
- * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. We drive
- * the app's own router via the History API instead, exactly like a user tap.
+ * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. Dispatch
+ * the public shell navigation event used by agent actions and deep links; raw
+ * History writes correctly fail once a sandboxed view realm is foregrounded.
  */
 export async function gotoRoute(page: Page, routePath: string): Promise<void> {
   await page.evaluate((path: string) => {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewPath: path },
+      }),
+    );
   }, routePath);
 }
 

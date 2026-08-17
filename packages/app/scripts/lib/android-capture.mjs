@@ -275,6 +275,7 @@ export function captureAndroidScreenshot({
   artifactDir,
   filename = "screenshot.png",
   log = () => {},
+  timeoutMs = 10_000,
 }) {
   if (!serial) throw new Error("serial is required for Android screenshot");
   if (!artifactDir) {
@@ -283,7 +284,9 @@ export function captureAndroidScreenshot({
 
   ensureDir(artifactDir);
   const localPath = path.join(artifactDir, filename);
-  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"]);
+  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
+    timeout: timeoutMs,
+  });
   if (result.status !== 0 || !result.stdout?.length) {
     const detail = result.stderr?.toString("utf8").trim();
     throw new Error(
@@ -305,6 +308,7 @@ export function captureAndroidLogcat({
   filename = "logcat.txt",
   lines = 500,
   log = () => {},
+  timeoutMs = 10_000,
 }) {
   if (!serial) throw new Error("serial is required for Android logcat");
   if (!artifactDir)
@@ -315,7 +319,7 @@ export function captureAndroidLogcat({
   const result = spawnSync(
     adb,
     ["-s", serial, "logcat", "-d", "-t", String(lines)],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: timeoutMs },
   );
   fs.writeFileSync(
     localPath,

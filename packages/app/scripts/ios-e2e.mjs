@@ -50,6 +50,7 @@ import {
   setBundleDevice,
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
+import { normalizedImageDifference } from "./lib/device-image.mjs";
 import { acquireDeviceLease } from "./lib/device-lease.mjs";
 import {
   assertCandidateIosAppRendererFresh,
@@ -152,28 +153,64 @@ function captureSimulatorScreenshot(bundle, udid) {
   return outPath;
 }
 
-async function recordSimulatorVideo(bundle, udid, appId, durationSeconds = 3) {
+async function recordSimulatorVideo(bundle, udid, appId, loadedScreenPath) {
   const recording = startIosSimulatorVideo({
     target: udid,
     artifactDir: bundle.rawDir,
     filename: "ios-final.mp4",
     log,
   });
-  // A completely static Simulator screen is encoded as one 0.067s frame even
-  // when recordVideo runs for several wall-clock seconds. Drive a real app
-  // lifecycle so the evidence has activity at both ends of the capture and is
-  // a genuine multi-second walkthrough rather than a mislabeled still image.
-  trySimctl(["terminate", udid, appId]);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  simctl(["launch", udid, appId]);
-  await new Promise((resolve) =>
-    setTimeout(resolve, Math.max(1, durationSeconds) * 1000),
+  const readinessPath = path.join(bundle.rawDir, "ios-walkthrough-ready.png");
+  const readinessReport = path.join(
+    bundle.reportsDir,
+    "ios-walkthrough-readiness.json",
   );
-  trySimctl(["terminate", udid, appId]);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  const video = await recording.stop();
-  trySimctl(["launch", udid, appId]);
-  return video;
+  const threshold = 0.04;
+  const timeoutMs = 20_000;
+  const startedAt = Date.now();
+  try {
+    // A static Simulator screen can be encoded as one 0.067s frame. Relaunch
+    // the real app, then keep recording until its pixels match the already
+    // captured loaded state. This rejects black/splash-only videos while
+    // bounding readiness independently of codec validation.
+    trySimctl(["terminate", udid, appId]);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    simctl(["launch", udid, appId]);
+    let difference = Number.POSITIVE_INFINITY;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      simctl(["io", udid, "screenshot", "--type=png", readinessPath]);
+      difference = await normalizedImageDifference(
+        loadedScreenPath,
+        readinessPath,
+      );
+      log(`walkthrough readiness visual difference=${difference.toFixed(4)}`);
+      if (difference <= threshold) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        fs.writeFileSync(
+          readinessReport,
+          `${JSON.stringify(
+            {
+              result: "passed",
+              normalizedDifference: difference,
+              threshold,
+              elapsedMs: Date.now() - startedAt,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        recordBundleArtifact(bundle, readinessReport, "log");
+        return await recording.stop();
+      }
+    }
+    throw new Error(
+      `iOS walkthrough did not reach the loaded reference screen within ${timeoutMs}ms (difference=${difference.toFixed(4)}, threshold=${threshold})`,
+    );
+  } catch (error) {
+    await recording.stop();
+    throw error;
+  }
 }
 
 function captureSimulatorLog(bundle, udid, appId) {
@@ -463,12 +500,10 @@ async function main() {
     recordBundleRunnerFailure(bundle, error);
   } finally {
     if (udid && appId) {
+      let loadedScreenPath = null;
       try {
-        recordBundleArtifact(
-          bundle,
-          captureSimulatorScreenshot(bundle, udid),
-          "screenshot",
-        );
+        loadedScreenPath = captureSimulatorScreenshot(bundle, udid);
+        recordBundleArtifact(bundle, loadedScreenPath, "screenshot");
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(
@@ -476,8 +511,19 @@ async function main() {
         );
       }
       try {
-        const video = await recordSimulatorVideo(bundle, udid, appId);
-        if (video) recordBundleArtifact(bundle, video, "video");
+        if (loadedScreenPath) {
+          const video = await recordSimulatorVideo(
+            bundle,
+            udid,
+            appId,
+            loadedScreenPath,
+          );
+          if (video) recordBundleArtifact(bundle, video, "video");
+        } else {
+          bundle.warnings.push(
+            "final iOS video failed: loaded reference screenshot is unavailable",
+          );
+        }
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(

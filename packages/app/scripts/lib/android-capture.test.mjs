@@ -8,14 +8,19 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isFinalizedMp4 } from "./android-capture.mjs";
+import {
+  captureAndroidScreenshot,
+  isFinalizedMp4,
+} from "./android-capture.mjs";
 import { resolveMediaProbeBinary } from "./device-video.mjs";
 
 const files = [];
 setDefaultTimeout(60_000);
 
 afterEach(() => {
-  for (const file of files.splice(0)) fs.rmSync(file, { force: true });
+  for (const file of files.splice(0)) {
+    fs.rmSync(file, { force: true, recursive: true });
+  }
 });
 
 function box(type, payload = Buffer.alloc(0)) {
@@ -92,5 +97,34 @@ describe("Android screenrecord finalization", () => {
     ]);
     const file = writeRecording(box("ftyp"), box("mdat"), partialMovie);
     expect(isFinalizedMp4(file)).toBe(false);
+  });
+});
+
+describe("Android failure capture", () => {
+  test("bounds screenshot diagnostics when adb stops responding", () => {
+    const fakeAdb = path.join(
+      os.tmpdir(),
+      `eliza-hanging-adb-${process.pid}-${files.length}`,
+    );
+    fs.writeFileSync(fakeAdb, "#!/bin/sh\nwhile :; do :; done\n");
+    fs.chmodSync(fakeAdb, 0o755);
+    files.push(fakeAdb);
+    const artifactDir = path.join(
+      os.tmpdir(),
+      `eliza-adb-capture-${process.pid}-${files.length}`,
+    );
+    fs.mkdirSync(artifactDir);
+    files.push(artifactDir);
+
+    const startedAt = Date.now();
+    expect(() =>
+      captureAndroidScreenshot({
+        adb: fakeAdb,
+        serial: "lost-device",
+        artifactDir,
+        timeoutMs: 50,
+      }),
+    ).toThrow(/adb screencap failed/);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 });

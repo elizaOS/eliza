@@ -13,6 +13,17 @@ const runner = fs.readFileSync(
   path.join(scriptsDir, "android-e2e.mjs"),
   "utf8",
 );
+const androidHarness = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "packages",
+    "app",
+    "test",
+    "android",
+    "android-harness.ts",
+  ),
+  "utf8",
+);
 const workflow = fs.readFileSync(
   path.join(repoRoot, ".github", "workflows", "device-e2e.yml"),
   "utf8",
@@ -66,6 +77,13 @@ describe("Android device-e2e host-agent contract", () => {
     expect(runner).toContain('"test/android/console-sweep.android.spec.ts"');
     expect(runner).toContain("{ timeoutMs: 20 * 60_000 }");
     expect(runner).not.toContain('"stage Android voice models"');
+  });
+
+  it("navigates through the privileged shell event instead of raw view history", () => {
+    expect(androidHarness).toContain('new CustomEvent("eliza:navigate:view"');
+    expect(androidHarness).not.toContain(
+      'window.history.pushState({}, "", path)',
+    );
   });
 
   it("owns the image decoder imported by the Android route suite", () => {
