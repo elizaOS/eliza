@@ -7,15 +7,18 @@
  * stack is a dead pipeline.
  *
  * Flow (native only — a no-op on web/desktop where the plugin is absent):
- *   1. Gate on a *granted* notification permission. Registration never prompts;
+ *   1. On iOS, require the same build-time APNs flag that patches the native
+ *      Info.plist. Direct/simulator builds default off because they do not carry
+ *      the `aps-environment` entitlement. Android remains enabled.
+ *   2. Gate on a *granted* notification permission. Registration never prompts;
  *      the ask is primed elsewhere (the onboarding permission modal). We only
  *      register once the user has already said yes, so an unregistered token is
  *      the honest signal "permission not granted", not a swallowed failure.
- *   2. Attach the `registration` listener, then call `register()`. The OS mints
+ *   3. Attach the `registration` listener, then call `register()`. The OS mints
  *      the token asynchronously and fires the listener; we POST it. iOS routes
  *      the APNs token through the AppDelegate → Capacitor bridge; Android reads
  *      the FCM token directly.
- *   3. Attach `pushNotificationActionPerformed` so a tapped push deep-links via
+ *   4. Attach `pushNotificationActionPerformed` so a tapped push deep-links via
  *      the same scheme-checked `navigateDeepLink` the in-app center uses.
  *
  * The listeners live for the app's lifetime; `initPushRegistration` is
@@ -40,12 +43,13 @@ import { navigateDeepLink } from "./navigate-deep-link";
 
 /**
  * Injectable boundaries. The Capacitor push plugin, the platform detector, the
- * HTTP client, and the deep-link navigator are the four seams to the outside
+ * build gate, HTTP client, and deep-link navigator are the five seams to the outside
  * world; injecting them lets the registration flow be driven end-to-end in a
  * test without a real device, while production wires the real singletons.
  */
 export interface PushRegistrationDeps {
   getPlatform: () => FrontendPlatform;
+  isRemotePushEnabled: (platform: "ios" | "android") => boolean;
   getPlugin: () => PushNotificationsPluginLike;
   registerToken: (
     platform: "ios" | "android",
@@ -57,6 +61,7 @@ export interface PushRegistrationDeps {
 
 const defaultDeps: PushRegistrationDeps = {
   getPlatform: getFrontendPlatform,
+  isRemotePushEnabled: isRemotePushTransportEnabled,
   getPlugin: getPushNotificationsPlugin,
   registerToken: (platform, token) => client.registerPushToken(platform, token),
   unregisterToken: (token) => client.unregisterPushToken(token),
@@ -71,6 +76,18 @@ let registeredToken: string | null = null;
 /** Only the native mobile platforms carry a remote-push transport. */
 function pushPlatform(platform: FrontendPlatform): "ios" | "android" | null {
   return platform === "ios" || platform === "android" ? platform : null;
+}
+
+/**
+ * Resolve the build-time remote-push transport gate. iOS is fail-closed unless
+ * the native plist patcher receives the same explicit `1`; Android continues
+ * to use FCM without depending on the APNs-only flag.
+ */
+export function isRemotePushTransportEnabled(
+  platform: "ios" | "android",
+  iosApnsFlag = import.meta.env?.VITE_ELIZA_APNS_ENABLED,
+): boolean {
+  return platform === "android" || iosApnsFlag === "1";
 }
 
 /**
@@ -123,6 +140,7 @@ async function startPushRegistration(
 ): Promise<boolean> {
   const platform = pushPlatform(deps.getPlatform());
   if (!platform) return false;
+  if (!deps.isRemotePushEnabled(platform)) return false;
 
   const plugin = deps.getPlugin();
   if (

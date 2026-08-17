@@ -2,7 +2,8 @@
  * Drives the real push-registration flow through a fake Capacitor
  * PushNotifications plugin (the OS boundary): permission gate → register() →
  * `registration` event → token POST, tapped-push → deep-link, and idempotency.
- * Only the four injected seams (plugin, platform, client, navigate) are faked;
+ * Only the five injected seams (plugin, platform, build gate, client, navigate)
+ * are faked;
  * the registration logic under test is the production module.
  */
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -17,6 +18,7 @@ import type { FrontendPlatform } from "../../platform/platform-guards";
 import {
   __resetPushRegistrationForTests,
   initPushRegistration,
+  isRemotePushTransportEnabled,
   type PushRegistrationDeps,
   unregisterPushToken,
 } from "./push-registration";
@@ -60,9 +62,11 @@ function makePlugin(
 function makeDeps(
   plugin: FakePlugin,
   platform: FrontendPlatform,
+  remotePushEnabled = true,
 ): PushRegistrationDeps {
   return {
     getPlatform: () => platform,
+    isRemotePushEnabled: () => remotePushEnabled,
     getPlugin: () => plugin,
     registerToken: vi.fn(async () => ({ ok: true })),
     unregisterToken: vi.fn(async () => ({ ok: true })),
@@ -114,6 +118,30 @@ describe("initPushRegistration", () => {
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledWith("android", "fcm-token");
+  });
+
+  it("does not touch the iOS plugin when the APNs build gate is disabled", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios", false);
+    plugin.checkPermissions = vi.fn(plugin.checkPermissions);
+
+    await initPushRegistration(deps);
+
+    expect(plugin.checkPermissions).not.toHaveBeenCalled();
+    expect(plugin.__registerCalls).toBe(0);
+    expect(plugin.__listeners.registration).toHaveLength(0);
+    expect(plugin.__listeners.registrationError).toHaveLength(0);
+    expect(plugin.__listeners.pushNotificationActionPerformed).toHaveLength(0);
+    expect(deps.registerToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps Android registration enabled independently of the iOS APNs flag", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "android", true);
+
+    await initPushRegistration(deps);
+
+    expect(plugin.__registerCalls).toBe(1);
   });
 
   it("does not re-POST an unchanged token when registration re-fires", async () => {
@@ -230,5 +258,19 @@ describe("initPushRegistration", () => {
 
     await unregisterPushToken(deps);
     expect(deps.unregisterToken).toHaveBeenCalledWith("tok-to-drop");
+  });
+});
+
+describe("isRemotePushTransportEnabled", () => {
+  it("fails closed for iOS unless the build flag is exactly 1", () => {
+    expect(isRemotePushTransportEnabled("ios", undefined)).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "0")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "true")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "1")).toBe(true);
+  });
+
+  it("keeps Android FCM enabled independently of the APNs flag", () => {
+    expect(isRemotePushTransportEnabled("android", undefined)).toBe(true);
+    expect(isRemotePushTransportEnabled("android", "0")).toBe(true);
   });
 });

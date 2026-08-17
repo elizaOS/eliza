@@ -5,7 +5,13 @@
 import { describe, expect, it } from "vitest";
 
 import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
-import { hasKey, KEYS, patchPlist } from "./patch-ios-plist.mjs";
+import {
+  APNS_ENABLED_KEY,
+  hasKey,
+  KEYS,
+  patchPlist,
+  readApnsBuildFlag,
+} from "./patch-ios-plist.mjs";
 
 const MINIMAL_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,6 +35,47 @@ describe("patch-ios-plist", () => {
     expect(next).toContain("<string>audio</string>");
     expect(next).toContain("NSMicrophoneUsageDescription");
     expect(next).toContain("NSSpeechRecognitionUsageDescription");
+    expect(next).toMatch(
+      /<key>ELIZA_APNS_ENABLED<\/key>\s*<string>0<\/string>/,
+    );
+  });
+
+  it("enables native APNs only when the same explicit build flag is on", () => {
+    const disabled = patchPlist(MINIMAL_PLIST, "elizaos").next;
+    const enabled = patchPlist(disabled, "elizaos", {
+      apnsEnabled: true,
+    });
+
+    expect(enabled.changed).toBe(true);
+    expect(enabled.next).toMatch(
+      /<key>ELIZA_APNS_ENABLED<\/key>\s*<string>1<\/string>/,
+    );
+    expect(hasKey(enabled.next, APNS_ENABLED_KEY)).toBe(true);
+
+    const disabledAgain = patchPlist(enabled.next, "elizaos");
+    expect(disabledAgain.changed).toBe(true);
+    expect(disabledAgain.next).toMatch(
+      /<key>ELIZA_APNS_ENABLED<\/key>\s*<string>0<\/string>/,
+    );
+  });
+
+  it("accepts only an explicit 0 or 1 APNs build flag", () => {
+    expect(readApnsBuildFlag(undefined)).toBe(false);
+    expect(readApnsBuildFlag("")).toBe(false);
+    expect(readApnsBuildFlag("0")).toBe(false);
+    expect(readApnsBuildFlag("1")).toBe(true);
+    expect(() => readApnsBuildFlag("true")).toThrow(/must be "0" or "1"/);
+  });
+
+  it("rejects an existing APNs key with the wrong plist value type", () => {
+    const malformed = MINIMAL_PLIST.replace(
+      "</dict>",
+      "\t<key>ELIZA_APNS_ENABLED</key>\n\t<false/>\n</dict>",
+    );
+
+    expect(() => patchPlist(malformed, "elizaos")).toThrow(
+      /ELIZA_APNS_ENABLED must be a string/,
+    );
   });
 
   it("is idempotent — no changes on the second patch", () => {
