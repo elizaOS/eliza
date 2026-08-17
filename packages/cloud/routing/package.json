@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -46,5 +46,8 @@
     "scripts": {
       "coreBuild": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
