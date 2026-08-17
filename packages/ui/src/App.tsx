@@ -1794,6 +1794,7 @@ function ShellFoundationMount({
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
+  const shellPhase = controller?.phase;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
@@ -1900,6 +1901,7 @@ function ShellFoundationMount({
           hovered:
             useWebChatPanel &&
             (shellPreviewHovered ||
+              shellPhase === "listening" ||
               (shellIsOpen && shellHostDetent === "input")),
         },
         timeoutMs: 1_000,
@@ -1907,12 +1909,12 @@ function ShellFoundationMount({
       if (
         !cancelled &&
         useWebChatPanel &&
-        shellPreviewHovered &&
+        (shellPreviewHovered || shellPhase === "listening") &&
         !shellIsOpen
       ) {
-        // Paint only after the native host is 600px wide. Before this
-        // acknowledgement, a wide DOM preview is clipped through the resting
-        // 96px WKWebView and appears as a narrow center slice.
+        // Paint hover and Fn-listening lanes only after the native host is
+        // 600px wide. Before this acknowledgement, wide DOM is clipped through
+        // the resting 96px WKWebView and appears as a narrow center slice.
         setShellPreviewHostReady(true);
       }
     })();
@@ -1924,6 +1926,7 @@ function ShellFoundationMount({
     hasController,
     shellHostDetent,
     shellIsOpen,
+    shellPhase,
     shellPreviewHovered,
     useWebChatPanel,
   ]);

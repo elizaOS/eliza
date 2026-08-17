@@ -88,6 +88,10 @@ describe("App standalone chat-overlay wiring", () => {
     expect(foundation).toContain(
       '(shellIsOpen && shellHostDetent === "input")',
     );
+    expect(foundation).toContain('shellPhase === "listening"');
+    expect(foundation).toContain(
+      'shellPreviewHovered || shellPhase === "listening"',
+    );
     expect(foundation).toContain(
       "useWebChatPanel ? setShellPreviewHovered : undefined",
     );

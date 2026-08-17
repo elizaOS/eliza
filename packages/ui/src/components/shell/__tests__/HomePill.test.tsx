@@ -207,6 +207,24 @@ describe("HomePill", () => {
     }
   });
 
+  it("keeps listening compact until the native shallow host is ready", () => {
+    render(
+      <HomePill
+        phase="listening"
+        onOpen={() => {}}
+        onClose={() => {}}
+        previewHostReady={false}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(button.className).toContain("w-16");
+    expect(button.className).not.toContain("w-[36rem]");
+    expect(mark.className).toContain("w-20");
+    expect(mark.className).not.toContain("w-full");
+  });
+
   it("keeps the capsule white with no waveform bars outside listening", () => {
     for (const phase of [
       "booting",
