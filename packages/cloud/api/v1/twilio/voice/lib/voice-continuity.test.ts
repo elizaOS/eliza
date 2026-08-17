@@ -3,7 +3,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   callEndedEvent,
-  callOpeningGreeting,
+  callOpeningClientMessageId,
+  callOpeningPrompt,
   callStartedEvent,
   prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
@@ -25,9 +26,45 @@ describe("voice continuity", () => {
     );
   });
 
-  test("uses the exact model-free first and returning call openers", () => {
-    expect(callOpeningGreeting(false)).toBe("hello? who's this?");
-    expect(callOpeningGreeting(true)).toBe("hey whats up");
+  test("promotes rounded interaction ages into natural units", () => {
+    expect(relativeInteractionAge(now - 59.6 * 60_000, now)).toBe("1 hour");
+    expect(relativeInteractionAge(now - 23.6 * 60 * 60_000, now)).toBe("1 day");
+  });
+
+  test("generates a first-contact prompt without implied familiarity", () => {
+    const prompt = callOpeningPrompt(false, undefined, now);
+
+    expect(prompt).toContain("first recorded interaction");
+    expect(prompt).toContain("without pretending familiarity");
+    expect(prompt).not.toContain("prior private conversation history");
+    expect(prompt).not.toContain("last recorded interaction was about");
+  });
+
+  test("generates a returning prompt from elapsed time and private history", () => {
+    const prompt = callOpeningPrompt(true, now - 3 * 60 * 60_000, now);
+
+    expect(prompt).toContain("last recorded interaction was about 3 hours ago");
+    expect(prompt).toContain("private conversation history");
+    expect(prompt).toContain("exactly one brief, natural spoken greeting");
+    expect(prompt).toContain("Do not quote or recite raw history");
+  });
+
+  test("keeps returning status when elapsed time is unavailable", () => {
+    for (const previousInteractionAt of [undefined, now + 1]) {
+      const prompt = callOpeningPrompt(true, previousInteractionAt, now);
+      expect(prompt).toContain("prior private conversation history");
+      expect(prompt).toContain("no reliable elapsed-time value");
+      expect(prompt).not.toContain("first recorded interaction");
+    }
+  });
+
+  test("uses a distinct stable identity for the generated opening turn", () => {
+    expect(callOpeningClientMessageId("CA123")).toBe(
+      "twilio-call:CA123:opening",
+    );
+    expect(callOpeningClientMessageId("CA123")).not.toBe(
+      "twilio-call:CA123:started",
+    );
   });
 
   test("sanitizes teardown reasons", () => {

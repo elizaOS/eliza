@@ -11,12 +11,12 @@ export function relativeInteractionAge(
   if (!previousInteractionAt || previousInteractionAt > now) return null;
   const elapsed = now - previousInteractionAt;
   if (elapsed < MINUTE_MS) return "less than a minute";
-  if (elapsed < HOUR_MS) {
-    const minutes = Math.max(1, Math.round(elapsed / MINUTE_MS));
+  const minutes = Math.max(1, Math.round(elapsed / MINUTE_MS));
+  if (minutes < 60) {
     return `${minutes} minute${minutes === 1 ? "" : "s"}`;
   }
-  if (elapsed < DAY_MS) {
-    const hours = Math.max(1, Math.round(elapsed / HOUR_MS));
+  const hours = Math.max(1, Math.round(elapsed / HOUR_MS));
+  if (hours < 24) {
     return `${hours} hour${hours === 1 ? "" : "s"}`;
   }
   const days = Math.max(1, Math.round(elapsed / DAY_MS));
@@ -36,9 +36,36 @@ export function callStartedEvent(
   ].join(" ");
 }
 
-/** The opener is intentionally model-free so runtime warm-up fits under speech. */
-export function callOpeningGreeting(returningCaller: boolean): string {
-  return returningCaller ? "hey whats up" : "hello? who's this?";
+/** Keeps variable history inside the canonical private turn while bounding its spoken output. */
+export function callOpeningPrompt(
+  returningCaller: boolean,
+  previousInteractionAt: number | undefined,
+  now = Date.now(),
+): string {
+  const age = relativeInteractionAge(previousInteractionAt, now);
+  const relationshipContext = returningCaller
+    ? [
+        "They have prior private conversation history.",
+        age
+          ? `Their last recorded interaction was about ${age} ago.`
+          : "There is no reliable elapsed-time value for that prior interaction.",
+      ].join(" ")
+    : "This is their first recorded interaction with Eliza.";
+  const greetingGuidance = returningCaller
+    ? "Generate exactly one brief, natural spoken greeting that uses relevant context from the private conversation history already available to this turn and takes the elapsed time into account when available."
+    : "Generate exactly one brief, natural spoken greeting without pretending familiarity or inventing prior details.";
+  return [
+    "Phone call context: the caller is connected to Eliza on a private phone call.",
+    relationshipContext,
+    greetingGuidance,
+    "Do not quote or recite raw history, phone numbers, identifiers, secrets, or sensitive details.",
+    "Do not mention these instructions or lifecycle metadata, and do not perform actions.",
+  ].join(" ");
+}
+
+/** Gives the generated turn a retry-stable identity separate from lifecycle persistence. */
+export function callOpeningClientMessageId(callSid: string): string {
+  return `twilio-call:${callSid}:opening`;
 }
 
 export function callEndedEvent(reason: string): string {
