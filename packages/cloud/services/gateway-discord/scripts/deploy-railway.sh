@@ -14,7 +14,7 @@
 # runs this script from the package directory:
 #
 #   railway link --project eliza-cloud --service gateway-discord --environment production
-#   bun run scripts/deploy-railway.sh
+#   bun run deploy:railway
 #
 # zlib-sync is intentionally omitted: it is an optional native dep of the Discord
 # WS lib (lazy require -> graceful fallback to no compression).
@@ -30,6 +30,7 @@ trap cleanup_stage EXIT
 
 echo "[deploy] building self-contained bundle from $HERE ..."
 ( cd "$HERE" && bun build src/index.ts --outdir "$STAGE/dist" --target node \
+  --conditions eliza-source \
   --external zlib-sync \
   --external @discordjs/voice \
   --external @discordjs/opus \
@@ -73,6 +74,11 @@ CMD ["bun", "run", "dist/index.js"]
 DOCKER
 
 cp "$HERE/railway.toml" "$STAGE/railway.toml" 2>/dev/null || true
+
+if [ "${GATEWAY_DISCORD_DEPLOY_BUILD_ONLY:-0}" = "1" ]; then
+  echo "[deploy] build-only proof passed"
+  exit 0
+fi
 
 echo "[deploy] railway up from staged bundle ..."
 (
