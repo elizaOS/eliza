@@ -1,8 +1,8 @@
 /**
  * Verifies the runtime-chooser gate through the package's jsdom harness.
- * Cloud-only onboarding is the production default; Vite development and
- * explicit overrides expose local and remote choices, while the Play-Store
- * cloud-locked Android invariant remains absolute.
+ * Hosted production stays cloud-only by default; full desktop shells, Vite
+ * development, and explicit overrides expose local and remote choices, while
+ * cloud-only builds remain absolute.
  */
 // @vitest-environment jsdom
 
@@ -10,10 +10,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isAndroidCloudBuild: vi.fn(() => false),
+  isElectrobunRuntime: vi.fn(() => false),
 }));
 
 vi.mock("../platform/android-runtime", () => ({
   isAndroidCloudBuild: mocks.isAndroidCloudBuild,
+}));
+
+vi.mock("../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: mocks.isElectrobunRuntime,
 }));
 
 import {
@@ -25,6 +30,7 @@ import {
 beforeEach(() => {
   localStorage.clear();
   mocks.isAndroidCloudBuild.mockReturnValue(false);
+  mocks.isElectrobunRuntime.mockReturnValue(false);
 });
 
 afterEach(() => {
@@ -48,6 +54,11 @@ describe("isRuntimeChooserEnabled", () => {
     expect(isRuntimeChooserEnabled()).toBe(true);
   });
 
+  it("defaults the full Electrobun desktop shell to the runtime chooser", () => {
+    mocks.isElectrobunRuntime.mockReturnValue(true);
+    expect(isRuntimeChooserEnabled()).toBe(true);
+  });
+
   it("garbage override values fall back to the build default", () => {
     localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "yes please");
     expect(isRuntimeChooserEnabled()).toBe(false);
@@ -67,6 +78,7 @@ describe("resolveRuntimeChooserEnabled", () => {
     override: null,
     isViteDev: false,
     isBuildEnabled: false,
+    isDesktopShell: false,
   } as const;
 
   it("keeps an unflagged production build cloud-only", () => {
@@ -82,11 +94,21 @@ describe("resolveRuntimeChooserEnabled", () => {
     ).toBe(true);
   });
 
+  it("enables an unflagged full desktop shell", () => {
+    expect(
+      resolveRuntimeChooserEnabled({
+        ...productionDefaults,
+        isDesktopShell: true,
+      }),
+    ).toBe(true);
+  });
+
   it("allows an explicit build flag in production", () => {
     expect(
       resolveRuntimeChooserEnabled({
         ...productionDefaults,
         isBuildEnabled: true,
+        isDesktopShell: true,
       }),
     ).toBe(true);
   });
@@ -104,6 +126,7 @@ describe("resolveRuntimeChooserEnabled", () => {
         override: false,
         isViteDev: true,
         isBuildEnabled: true,
+        isDesktopShell: true,
       }),
     ).toBe(false);
   });
@@ -116,6 +139,7 @@ describe("resolveRuntimeChooserEnabled", () => {
         override: true,
         isViteDev: true,
         isBuildEnabled: true,
+        isDesktopShell: true,
       }),
     ).toBe(false);
   });
@@ -128,6 +152,7 @@ describe("resolveRuntimeChooserEnabled", () => {
         override: true,
         isViteDev: true,
         isBuildEnabled: true,
+        isDesktopShell: true,
       }),
     ).toBe(false);
   });

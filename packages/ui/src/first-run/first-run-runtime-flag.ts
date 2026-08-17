@@ -1,10 +1,10 @@
 /**
  * Gate for the first-run runtime chooser (the local / remote onboarding paths).
  *
- * The product onboards through Eliza Cloud only by default in production
- * (#13377/#15527): the chooser is OFF unless a developer/test build explicitly
- * enables it. In Vite dev mode (`bun run dev`), the chooser defaults to ON so
- * developers see the full local/cloud/remote options without manual flag-wiring.
+ * Hosted production onboards through Eliza Cloud by default (#13377/#15527),
+ * while a full Electrobun desktop package exposes its embedded local runtime.
+ * Vite dev mode also defaults the chooser ON so developers see the complete
+ * local/cloud/remote options without manual flag-wiring.
  * The Play-Store cloud-locked Android variant can never enable the chooser
  * because that build must not expose a local backend regardless of developer
  * overrides. The local and remote paths stay in-tree for development: a
@@ -14,6 +14,7 @@
  * build default).
  */
 
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isAndroidCloudBuild } from "../platform/android-runtime";
 
 /** localStorage override: "1" enables the chooser, "0" disables, unset defers to the build default. */
@@ -70,6 +71,7 @@ export interface RuntimeChooserGateInputs {
   override: boolean | null;
   isViteDev: boolean;
   isBuildEnabled: boolean;
+  isDesktopShell: boolean;
 }
 
 /**
@@ -83,21 +85,20 @@ export function resolveRuntimeChooserEnabled({
   override,
   isViteDev,
   isBuildEnabled,
+  isDesktopShell,
 }: RuntimeChooserGateInputs): boolean {
   if (isCloudOnlyBuild || isCloudLockedAndroid) return false;
   if (override !== null) return override;
-  return isViteDev || isBuildEnabled;
+  return isDesktopShell || isViteDev || isBuildEnabled;
 }
 
 /**
  * Whether onboarding offers the full runtime chooser (cloud / local / remote).
- * False (the default on production builds) means cloud-only onboarding:
+ * False (the default on hosted production builds) means cloud-only onboarding:
  * sign in to Eliza Cloud is the one and only path, and completing it completes
- * first-run. In Vite dev mode (`bun run dev`) the chooser defaults to ON so
- * developers can choose local without manual configuration. Production and
- * test builds opt into the local/remote chooser via the Vite flag or the
- * localStorage override; Android local sideloads no longer special-case the
- * production default.
+ * first-run. Full Electrobun packages and Vite dev mode default the chooser ON
+ * because they can host the embedded runtime. Other production and test builds
+ * opt in through the Vite flag or localStorage override.
  */
 export function isRuntimeChooserEnabled(isCloudOnlyBuild = false): boolean {
   return resolveRuntimeChooserEnabled({
@@ -106,5 +107,6 @@ export function isRuntimeChooserEnabled(isCloudOnlyBuild = false): boolean {
     override: readOverride(),
     isViteDev: readDevMode(),
     isBuildEnabled: readBuildDefault(),
+    isDesktopShell: isElectrobunRuntime(),
   });
 }
