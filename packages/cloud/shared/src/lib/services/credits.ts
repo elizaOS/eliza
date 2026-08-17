@@ -2,6 +2,7 @@
  * Credits service for managing organization credit balances and transactions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
@@ -83,15 +84,21 @@ export const RESERVATION_SWEEP_GRACE_MS =
  * the legacy caller-trusted lane would mint a refund for a hold that was never
  * verified, so the settlement is refused instead.
  */
-export class ReservationNotFoundError extends Error {
+export class ReservationNotFoundError extends ElizaError {
+  override readonly name = "ReservationNotFoundError";
+
   constructor(
     public readonly reservationTransactionId: string,
     public readonly organizationId: string,
   ) {
     super(
       `Reservation transaction ${reservationTransactionId} not found for organization ${organizationId}`,
+      {
+        code: "CREDIT_RESERVATION_NOT_FOUND",
+        context: { organizationId, reservationTransactionId },
+        severity: "fatal",
+      },
     );
-    this.name = "ReservationNotFoundError";
   }
 }
 

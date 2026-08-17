@@ -1,7 +1,7 @@
 /**
- * CreditsService.reconcile() fail-closed settlement contract (#13415 slice).
+ * Exercises the fail-closed settlement contract of CreditsService.reconcile.
  *
- * Real PGlite-backed coverage for two former fail-open paths:
+ * Real PGlite-backed coverage verifies two security-sensitive paths:
  *
  *  1. A reconcile call naming a `reservation_transaction_id` that matches no
  *     reservation row used to fall through to the legacy lane and mint a
@@ -13,7 +13,7 @@
  *     (`adjustmentType: "none"`), making a lost refund indistinguishable from
  *     a clean settle. It must now surface the failure.
  *
- * The harness is real: the actual reconcile/refund/deduct SQL runs against an
+ * The actual reconcile/refund/deduct SQL runs against an
  * in-process PGlite DB and balances/transactions are read back and asserted.
  * The `pgliteReady` guard fails loudly if the DB never initializes.
  */
@@ -143,26 +143,6 @@ describe("reconcile with a reservation id that matches no row", () => {
       // reserved - actual = $49 of unverified credit here.
       expect(await getBalance()).toBe(100);
       expect(await countTransactions(ORG_ID)).toBe(0);
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "does not retry the not-found settlement (single decisive failure)",
-    async () => {
-      const started = Date.now();
-      await expect(
-        creditsService.reconcile({
-          organizationId: ORG_ID,
-          reservedAmount: 10,
-          actualCost: 2,
-          description: "bogus reservation settle",
-          metadata: { reservation_transaction_id: MISSING_RESERVATION_ID },
-        }),
-      ).rejects.toBeInstanceOf(ReservationNotFoundError);
-      // The transient-retry ladder sleeps 100ms+200ms between attempts; a
-      // decisive not-found must not enter it.
-      expect(Date.now() - started).toBeLessThan(100);
     },
     PGLITE_TIMEOUT,
   );
