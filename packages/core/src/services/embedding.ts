@@ -286,6 +286,10 @@ export class EmbeddingGenerationService extends Service {
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
 			batchSize: 10,
+			// A local fused BGE call is synchronous FFI. Claim only one low-priority
+			// migration row per drain so chat/voice work arriving meanwhile can run
+			// next. Remote batch providers keep the existing ten-item throughput.
+			lowPriorityBatchSize: hasBatchModel ? undefined : 1,
 			drainIntervalMs: 100,
 			getPriority: (item) => item.priority,
 			maxParallel: 10,

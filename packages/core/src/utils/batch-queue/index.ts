@@ -39,6 +39,13 @@ export interface BatchQueueOptions<T> {
 	/** Task worker name and repeat task name (e.g. `EMBEDDING_DRAIN`). */
 	name: string;
 	batchSize: number;
+	/**
+	 * Optional cap for a drain whose remaining work is low priority. When set,
+	 * foreground (high/normal) items are never co-batched with low items, so a
+	 * later drain can observe newly arrived foreground work before claiming more
+	 * background work. Foreground-only drains keep the normal `batchSize`.
+	 */
+	lowPriorityBatchSize?: number;
 	drainIntervalMs: number;
 	getPriority: (item: T) => QueuePriority;
 	process: (item: T) => Promise<void>;
@@ -141,7 +148,19 @@ export class BatchQueue<T> {
 		this.isDraining = true;
 		const started = Date.now();
 		try {
-			const batch = this.priorityQueue.dequeueBatch(this.batchSize);
+			let drainBatchSize = this.batchSize;
+			if (this.options.lowPriorityBatchSize !== undefined) {
+				const stats = this.priorityQueue.stats();
+				const foregroundCount = stats.high + stats.normal;
+				drainBatchSize =
+					foregroundCount > 0
+						? Math.min(this.batchSize, foregroundCount)
+						: Math.min(
+								this.batchSize,
+								Math.max(1, this.options.lowPriorityBatchSize),
+							);
+			}
+			const batch = this.priorityQueue.dequeueBatch(drainBatchSize);
 			if (batch.length === 0) {
 				return;
 			}

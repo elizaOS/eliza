@@ -83,3 +83,62 @@ describe("BatchQueue processBatch", () => {
 		expect(perItem.sort()).toEqual([7, 8]);
 	});
 });
+
+describe("BatchQueue low-priority yield boundary", () => {
+	type Item = { id: string; priority: "high" | "normal" | "low" };
+
+	test("claims one low item and lets newly arrived high work preempt the backlog", async () => {
+		const processed: string[] = [];
+		let queue: BatchQueue<Item>;
+		queue = new BatchQueue<Item>({
+			name: "PREEMPTIBLE_LOW_DRAIN",
+			batchSize: 10,
+			lowPriorityBatchSize: 1,
+			drainIntervalMs: 100,
+			getPriority: (item) => item.priority,
+			maxParallel: 10,
+			process: async (item) => {
+				processed.push(item.id);
+				if (item.id === "low-1") {
+					queue.enqueue({ id: "high-live", priority: "high" });
+				}
+			},
+		});
+		queue.enqueue({ id: "low-1", priority: "low" });
+		queue.enqueue({ id: "low-2", priority: "low" });
+		queue.enqueue({ id: "low-3", priority: "low" });
+
+		await queue.drain();
+		expect(processed).toEqual(["low-1"]);
+		expect(queue.size).toBe(3);
+
+		await queue.drain();
+		expect(processed).toEqual(["low-1", "high-live"]);
+		expect(queue.size).toBe(2);
+	});
+
+	test("keeps the configured batch throughput for high and normal work", async () => {
+		const batches: string[][] = [];
+		const queue = new BatchQueue<Item>({
+			name: "FOREGROUND_BATCH_DRAIN",
+			batchSize: 10,
+			lowPriorityBatchSize: 1,
+			drainIntervalMs: 100,
+			getPriority: (item) => item.priority,
+			process: async () => {},
+			processBatch: async (items) => {
+				batches.push(items.map((item) => item.id));
+				return items.map((item) => ({ item, success: true, retryCount: 0 }));
+			},
+		});
+		queue.enqueue({ id: "normal-1", priority: "normal" });
+		queue.enqueue({ id: "high-1", priority: "high" });
+		queue.enqueue({ id: "normal-2", priority: "normal" });
+		queue.enqueue({ id: "low-background", priority: "low" });
+
+		await queue.drain();
+
+		expect(batches).toEqual([["high-1", "normal-1", "normal-2"]]);
+		expect(queue.size).toBe(1);
+	});
+});

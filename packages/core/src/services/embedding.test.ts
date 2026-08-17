@@ -115,6 +115,7 @@ describe("EmbeddingGenerationService drain config", () => {
 		const queue = (service as any).batchQueue;
 		expect(queue).toBeTruthy();
 		expect(queue.options.drainIntervalMs).toBe(100);
+		expect(queue.options.lowPriorityBatchSize).toBeUndefined();
 		expect(typeof queue.options.processBatch).toBe("function");
 
 		await service.stop();
@@ -314,6 +315,7 @@ describe("EmbeddingGenerationService drain config", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: inspect the private queue config the service chose
 		const queue = (service as any).batchQueue;
 		expect(queue.options.drainIntervalMs).toBe(100);
+		expect(queue.options.lowPriorityBatchSize).toBe(1);
 		expect(queue.options.processBatch).toBeUndefined();
 
 		await service.stop();
