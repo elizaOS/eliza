@@ -462,10 +462,55 @@ function isoTimestamp(
 	context: Record<string, unknown> = {},
 ): string {
 	const timestamp = nonEmptyString(value, field, context);
-	const parsed = Date.parse(timestamp);
-	if (!Number.isFinite(parsed) || !/[zZ]|[+-]\d\d:\d\d$/.test(timestamp)) {
+	const match =
+		/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-](\d{2}):(\d{2}))$/.exec(
+			timestamp,
+		);
+	if (!match) {
 		return invalid(
 			`Interaction field '${field}' must be an ISO timestamp with a timezone.`,
+			{ ...context, field },
+		);
+	}
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const hour = Number(match[4]);
+	const minute = Number(match[5]);
+	const second = Number(match[6]);
+	const offsetHour = match[9] === undefined ? 0 : Number(match[9]);
+	const offsetMinute = match[10] === undefined ? 0 : Number(match[10]);
+	const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+	const daysInMonth = [
+		31,
+		leapYear ? 29 : 28,
+		31,
+		30,
+		31,
+		30,
+		31,
+		31,
+		30,
+		31,
+		30,
+		31,
+	][month - 1];
+	const parsed = Date.parse(timestamp);
+	if (
+		month < 1 ||
+		month > 12 ||
+		daysInMonth === undefined ||
+		day < 1 ||
+		day > daysInMonth ||
+		hour > 23 ||
+		minute > 59 ||
+		second > 59 ||
+		offsetHour > 23 ||
+		offsetMinute > 59 ||
+		!Number.isFinite(parsed)
+	) {
+		return invalid(
+			`Interaction field '${field}' must be a valid ISO timestamp.`,
 			{ ...context, field },
 		);
 	}
@@ -956,6 +1001,12 @@ export function normalizeInteractionActionResult(
 			context,
 		);
 	}
+	if (confirmation && confirmation.actionId !== actionId) {
+		return invalid(
+			"Interaction confirmation must authorize the result action.",
+			context,
+		);
+	}
 	if (status === "NEEDS_CONFIRMATION" && error) {
 		return invalid(
 			"NEEDS_CONFIRMATION results cannot also carry an execution error.",
@@ -996,6 +1047,19 @@ export function normalizeInteractionActionResult(
 	) {
 		return invalid(
 			"Interaction result observation belongs to another session or adapter.",
+			context,
+		);
+	}
+	if (
+		observation &&
+		nullableString(
+			evidenceRaw.afterObservationId,
+			"evidence.afterObservationId",
+			context,
+		) !== observation.observationId
+	) {
+		return invalid(
+			"Interaction result evidence must identify its attached observation.",
 			context,
 		);
 	}

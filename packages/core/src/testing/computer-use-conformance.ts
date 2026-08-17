@@ -214,6 +214,18 @@ export async function runInteractionAdapterConformance(
 		ensureActionIdentity(fixture.action, session, surface);
 		const expectedStatus = EXPECTED_STATUS[name];
 		if (
+			name === "unsupported" &&
+			capabilities.actionKinds.includes(fixture.action.kind)
+		) {
+			return fail(
+				"The unsupported fixture must use an unadvertised action kind.",
+				{
+					adapterId: adapter.id,
+					actionKind: fixture.action.kind,
+				},
+			);
+		}
+		if (
 			name !== "unsupported" &&
 			!capabilities.actionKinds.includes(fixture.action.kind)
 		) {

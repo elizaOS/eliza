@@ -333,6 +333,53 @@ describe("computer-use interaction contracts", () => {
 		);
 	});
 
+	it("rejects impossible calendar timestamps", () => {
+		expect(() =>
+			normalizeInteractionConfirmationPreview({
+				confirmationId: "confirmation-1",
+				actionId: "action-1",
+				taxonomy: "purchase",
+				origin: null,
+				destination: null,
+				disclosures: [],
+				consequence: "Places the order.",
+				actionDigest: "sha256:action",
+				requestedAt: "2026-02-30T00:00:00.000Z",
+				expiresAt: later,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
+	it("binds confirmation and observation evidence to the result action", () => {
+		const confirmationResult = resultFor(action("case-confirmation"));
+		expect(() =>
+			normalizeInteractionActionResult({
+				...confirmationResult,
+				confirmation: {
+					...confirmationResult.confirmation,
+					actionId: "another-action",
+				},
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+
+		const succeeded = resultFor(action("case-success"));
+		expect(() =>
+			normalizeInteractionActionResult({
+				...succeeded,
+				evidence: {
+					...succeeded.evidence,
+					afterObservationId: "another-observation",
+				},
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+	});
+
 	it("rejects stale and cross-session surface references", () => {
 		expect(() =>
 			assertInteractionSurfaceCurrent(session, {
@@ -454,6 +501,24 @@ describe("computer-use adapter conformance", () => {
 						`case-${name}`,
 						name === "unsupported" ? "evaluate" : "observe",
 					),
+				})),
+			}),
+		).rejects.toEqual(
+			expect.objectContaining({
+				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+			}),
+		);
+	});
+
+	it("requires the unsupported scenario to exercise an unadvertised action", async () => {
+		await expect(
+			runInteractionAdapterConformance({
+				adapter,
+				session,
+				surface,
+				fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
+					name,
+					action: action(`case-${name}`),
 				})),
 			}),
 		).rejects.toEqual(
