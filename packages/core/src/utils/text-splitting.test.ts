@@ -77,6 +77,11 @@ describe("extractFirstSentence", () => {
 		expect(paren.first).toBe("(This is inside parentheses.)");
 		expect(paren.rest).toBe("Outside text.");
 		expect(paren.complete).toBe(true);
+
+		const nested = extractFirstSentence("She replied, ‘Done.’)] Next step.");
+		expect(nested.first).toBe("She replied, ‘Done.’)]");
+		expect(nested.rest).toBe("Next step.");
+		expect(nested.complete).toBe(true);
 	});
 
 	it("returns the whole text when there is no boundary", () => {
