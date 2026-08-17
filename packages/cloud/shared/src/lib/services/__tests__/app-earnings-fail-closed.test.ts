@@ -1,25 +1,6 @@
 /**
- * AppEarningsService fail-closed money-path contract (#13415 slice).
- *
- * Pins three former fail-open paths at the service boundary:
- *
- *  1. `requestWithdrawal` accepted NaN / non-positive amounts: `amount <
- *     threshold` is false for NaN, so the minimum-payout gate was bypassed and
- *     a 'NaN'::numeric transaction row could poison every SUM aggregate over
- *     the app's history. Non-finite and non-positive amounts must now be
- *     refused before any write.
- *  2. `updatePayoutThreshold` guarded only `threshold < 1`, which NaN and
- *     Infinity both pass (comparison false) — and Postgres NUMERIC accepts the
- *     literals 'NaN'/'Infinity', permanently poisoning the row. Non-finite
- *     thresholds must now throw.
- *  3. `getEarningsSummary` coerced NUMERIC columns with bare `Number(...)`,
- *     reporting a corrupt row as a healthy-looking $NaN account. A corrupt
- *     value must now throw.
- *
- * The harness is real: the actual service + repository SQL runs against
- * in-process PGlite. Only `appsRepository.findById` (the unrelated
- * app-existence + monetization check) is stubbed. The `pgliteReady` guard
- * fails loudly if PGlite never initializes.
+ * Integration-backed fail-closed coverage for app-earnings money paths using
+ * the real service and repository against in-process PGlite.
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
@@ -74,8 +55,6 @@ beforeAll(async () => {
     ({ appEarningsService } = await import("../app-earnings"));
     ({ appsRepository } = await import("../../../db/repositories/apps"));
 
-    // DDL mirrors app-earnings-withdrawal-idempotency.test.ts, including the
-    // migration-0156 idempotency gate the withdrawal path relies on.
     const ddl = [
       `CREATE TABLE IF NOT EXISTS app_earnings (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -207,8 +186,6 @@ describe("AppEarningsService.requestWithdrawal idempotent replay", () => {
     async () => {
       if (!pgliteReady) return;
       await seedEarnings("50.000000");
-      // Simulate a corrupted persisted withdrawal row carrying the replay key:
-      // Postgres NUMERIC accepts the literal 'NaN'.
       await dbWrite.execute(
         `INSERT INTO app_earnings_transactions (app_id, type, amount, metadata)
          VALUES ('${APP_ID}', 'withdrawal', 'NaN',
@@ -219,8 +196,6 @@ describe("AppEarningsService.requestWithdrawal idempotent replay", () => {
         appEarningsService.requestWithdrawal(APP_ID, 10, "replay-corrupt"),
       ).rejects.toThrow("withdrawal_amount");
 
-      // The replay wrote nothing: still exactly the seeded corrupt row, and the
-      // balance never moved.
       expect(await transactionCount()).toBe(1);
       expect(Number(await withdrawableBalance())).toBeCloseTo(50, 6);
     },
@@ -240,7 +215,6 @@ describe("AppEarningsService.requestWithdrawal idempotent replay", () => {
       expect(second.success).toBe(true);
       expect(second.transactionId).toBe(first.transactionId);
       expect(second.message).toContain("$10.00");
-      // Exactly one withdrawal row; the balance moved exactly once.
       expect(await transactionCount()).toBe(1);
       expect(Number(await withdrawableBalance())).toBeCloseTo(40, 6);
     },
@@ -253,8 +227,6 @@ describe("AppEarningsService.getEarningsSummary corrupt-row handling", () => {
     "a corrupt NUMERIC balance throws instead of reporting $NaN",
     async () => {
       if (!pgliteReady) return;
-      // Postgres NUMERIC accepts the literal 'NaN'; this is exactly the
-      // corruption the summary used to render as a healthy-looking account.
       await seedEarnings("NaN");
 
       await expect(appEarningsService.getEarningsSummary(APP_ID)).rejects.toThrow(
@@ -279,9 +251,6 @@ describe("AppEarningsService.getEarningsSummary corrupt-row handling", () => {
   );
 });
 
-// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
-// Without this, a broken import or schema setup would skip every DB case above
-// and the suite would pass vacuously.
 test("PGlite harness initialized (DB cases above are not vacuous)", () => {
   expect(pgliteReady).toBe(true);
 });

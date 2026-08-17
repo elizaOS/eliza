@@ -2,6 +2,7 @@
  * Service for managing app earnings and revenue tracking.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   type AppEarningsTransaction,
   appEarningsRepository,
@@ -46,9 +47,6 @@ export class AppEarningsService {
       return null;
     }
 
-    // Corrupt NUMERIC must throw, not render as NaN: the summary feeds the
-    // creator's withdrawable balance and payout threshold, and a NaN here
-    // would present a broken row as a healthy-looking $NaN account.
     return {
       totalLifetimeEarnings: parseEarningsNumber(
         earnings.total_lifetime_earnings,
@@ -183,11 +181,13 @@ export class AppEarningsService {
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
-    // `threshold < 1` alone lets NaN and Infinity through (both comparisons are
-    // false), and Postgres NUMERIC accepts the literal strings 'NaN' and
-    // 'Infinity' — a poisoned row would then fail every later withdrawal parse.
+    // NaN and Infinity bypass a comparison-only guard and PostgreSQL NUMERIC
+    // accepts both, so validate finiteness before writing the threshold.
     if (!Number.isFinite(threshold) || threshold < 1) {
-      throw new Error("Payout threshold must be a finite amount of at least $1.00");
+      throw new ElizaError("Payout threshold must be a finite amount of at least $1.00", {
+        code: "APP_EARNINGS_PAYOUT_THRESHOLD_INVALID",
+        context: { appId, threshold },
+      });
     }
 
     await appEarningsRepository.updatePayoutThreshold(appId, threshold);
@@ -212,11 +212,8 @@ export class AppEarningsService {
     amount: number,
     idempotencyKey?: string,
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
-    // Refuse non-finite and non-positive amounts before any write. The
-    // repository's minimum-payout gate (`amount < threshold`) is bypassed by
-    // NaN (comparison is false), and a NaN amount would otherwise be recorded
-    // as a 'NaN'::numeric transaction row that poisons every SUM aggregate
-    // over this app's earnings history.
+    // NaN bypasses the repository's comparison guards and would poison the
+    // NUMERIC transaction history, so reject invalid amounts before any write.
     if (!Number.isFinite(amount) || amount <= 0) {
       return {
         success: false,
