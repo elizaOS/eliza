@@ -433,7 +433,7 @@ describe("streamAgentBackupV2Capture", () => {
 
       restored = new PGlite({
         dataDir: restoredDir,
-        loadDataDir: new Blob([concat(databaseParts)]),
+        loadDataDir: new Blob([new Uint8Array(concat(databaseParts))]),
       });
       await restored.waitReady;
       const restoredRows = await restored.query<{ id: number; value: string }>(
