@@ -158,7 +158,9 @@ function reminderTrigger(
   }
   const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
   if (inMinutes !== undefined) {
-    const at = now.getTime() + inMinutes * 60_000;
+    const milliseconds = minuteDurationMilliseconds(inMinutes);
+    if (milliseconds === undefined) return undefined;
+    const at = now.getTime() + milliseconds;
     if (!Number.isFinite(at) || Math.abs(at) > MAX_DATE_TIMESTAMP_MS) {
       return undefined;
     }
@@ -181,16 +183,167 @@ function reminderTrigger(
   return undefined;
 }
 
+const UTC_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const CRON_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+function reminderText(task: ScheduledTask): string {
+  return task.output?.fallback?.body ?? task.promptInstructions;
+}
+
+function formatUtcInstant(atIso: string): string {
+  const instant = new Date(atIso);
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error("Shared reminder has an invalid one-off schedule");
+  }
+  const hour = instant.getUTCHours();
+  const hour12 = hour % 12 || 12;
+  const minute = String(instant.getUTCMinutes()).padStart(2, "0");
+  const seconds = instant.getUTCSeconds();
+  const milliseconds = instant.getUTCMilliseconds();
+  const preciseTime =
+    seconds === 0 && milliseconds === 0
+      ? `${hour12}:${minute}`
+      : `${hour12}:${minute}:${String(seconds).padStart(2, "0")}${
+          milliseconds === 0 ? "" : `.${String(milliseconds).padStart(3, "0")}`
+        }`;
+  const meridiem = hour < 12 ? "AM" : "PM";
+  return `on ${UTC_MONTHS[instant.getUTCMonth()]} ${instant.getUTCDate()}, ${instant.getUTCFullYear()} at ${preciseTime} ${meridiem} UTC`;
+}
+
+function formatDuration(milliseconds: number): string {
+  if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
+    throw new Error(
+      "Shared reminder duration must be a positive whole millisecond",
+    );
+  }
+  const minutes = Math.floor(milliseconds / 60_000);
+  const remainder = milliseconds % 60_000;
+  const parts: string[] = [];
+  if (minutes > 0)
+    parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+  if (remainder >= 1_000) {
+    const seconds = Math.floor(remainder / 1_000);
+    const fraction = remainder % 1_000;
+    const amount =
+      fraction === 0
+        ? String(seconds)
+        : `${seconds}.${String(fraction).padStart(3, "0").replace(/0+$/, "")}`;
+    parts.push(`${amount} ${amount === "1" ? "second" : "seconds"}`);
+  } else if (remainder > 0) {
+    parts.push(
+      `${remainder} ${remainder === 1 ? "millisecond" : "milliseconds"}`,
+    );
+  }
+  return parts.join(" and ");
+}
+
+function minuteDurationMilliseconds(minutes: number): number | undefined {
+  const milliseconds = minutes * 60_000;
+  return Number.isSafeInteger(milliseconds) && milliseconds > 0
+    ? milliseconds
+    : undefined;
+}
+
+function formatClockTime(hour: number, minute: number): string {
+  const hour12 = hour % 12 || 12;
+  const meridiem = hour < 12 ? "AM" : "PM";
+  return `${hour12}:${String(minute).padStart(2, "0")} ${meridiem}`;
+}
+
+function cronScheduleDescription(expression: string, timezone: string): string {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length === 5) {
+    const [minuteField, hourField, dayOfMonth, month, dayOfWeek] = fields;
+    const minute = Number(minuteField);
+    const hour = Number(hourField);
+    const simpleTime =
+      /^\d{1,2}$/.test(minuteField ?? "") &&
+      /^\d{1,2}$/.test(hourField ?? "") &&
+      minute >= 0 &&
+      minute <= 59 &&
+      hour >= 0 &&
+      hour <= 23;
+    if (simpleTime && dayOfMonth === "*" && month === "*") {
+      if (dayOfWeek === "*") {
+        return `every day at ${formatClockTime(hour, minute)} in ${timezone}`;
+      }
+      if (/^[0-7]$/.test(dayOfWeek ?? "")) {
+        const weekday = CRON_WEEKDAYS[Number(dayOfWeek) % 7];
+        return `every ${weekday} at ${formatClockTime(hour, minute)} in ${timezone}`;
+      }
+    }
+  }
+  return `on its recurring schedule in ${timezone}`;
+}
+
+function scheduleDescription(trigger: ScheduledTaskTrigger): string {
+  switch (trigger.kind) {
+    case "once":
+      return formatUtcInstant(trigger.atIso);
+    case "interval":
+      return `every ${trigger.everyMinutes} ${trigger.everyMinutes === 1 ? "minute" : "minutes"}`;
+    case "cron":
+      return cronScheduleDescription(trigger.expression, trigger.tz);
+    case "event":
+      return "when its scheduled event occurs";
+    case "after_task":
+      return "after its linked task";
+    case "manual":
+      return "when you ask it to run";
+    case "relative_to_anchor":
+      return "relative to its scheduled anchor";
+    case "during_window":
+      return "during its scheduled window";
+  }
+}
+
+function requestedScheduleDescription(
+  input: Record<string, unknown>,
+  trigger: ScheduledTaskTrigger,
+  explicitDelayMilliseconds?: number,
+): string {
+  if (explicitDelayMilliseconds !== undefined) {
+    return `in ${formatDuration(explicitDelayMilliseconds)}`;
+  }
+  const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
+  const inMilliseconds =
+    inMinutes === undefined ? undefined : minuteDurationMilliseconds(inMinutes);
+  return inMilliseconds === undefined
+    ? scheduleDescription(trigger)
+    : `in ${formatDuration(inMilliseconds)}`;
+}
+
 function taskSummary(task: ScheduledTask): string {
-  const when =
-    task.trigger.kind === "once"
-      ? task.trigger.atIso
-      : task.trigger.kind === "interval"
-        ? `every ${task.trigger.everyMinutes} minutes`
-        : task.trigger.kind === "cron"
-          ? `${task.trigger.expression} (${task.trigger.tz})`
-          : task.trigger.kind;
-  return `${task.taskId}: ${task.output?.fallback?.body ?? task.promptInstructions} — ${when} [${task.state.status}]`;
+  return `${reminderText(task)} — ${taskScheduleDescription(task)}`;
+}
+
+function taskScheduleDescription(task: ScheduledTask): string {
+  if (task.state.status === "scheduled" && task.state.firedAt) {
+    return formatUtcInstant(task.state.firedAt);
+  }
+  return scheduleDescription(task.trigger);
 }
 
 function creationReceipt(args: {
@@ -335,16 +488,20 @@ export function createSharedRemindersEdgeAction(
         const tasks = await options.runner.list({
           kind: "reminder",
           ownerVisibleOnly: true,
+          status: ["scheduled", "fired", "acknowledged"],
         });
         const text =
           tasks.length === 0
             ? "You have no reminders."
-            : tasks.map(taskSummary).join("\n");
+            : `Your reminders:\n${tasks.map((task) => `• ${taskSummary(task)}`).join("\n")}`;
         await callback?.({ text });
         return {
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, tasks },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          turnComplete: true,
         };
       }
 
@@ -363,6 +520,21 @@ export function createSharedRemindersEdgeAction(
         );
         if (explicitDelay.kind === "invalid") {
           return await actionFailure(explicitDelay.reason, callback);
+        }
+        const inputMinutes = positiveNumber(
+          input,
+          "inMinutes",
+          "minutesFromNow",
+        );
+        if (
+          explicitDelay.kind === "absent" &&
+          inputMinutes !== undefined &&
+          minuteDurationMilliseconds(inputMinutes) === undefined
+        ) {
+          return await actionFailure(
+            "Reminder delay must resolve to a positive whole millisecond.",
+            callback,
+          );
         }
         const trigger = reminderTrigger(
           input,
@@ -399,9 +571,19 @@ export function createSharedRemindersEdgeAction(
           metadata: { delivery },
           executionProfile: "notify-only",
         });
+        const schedule = scheduled.replayed
+          ? taskScheduleDescription(scheduled.task)
+          : requestedScheduleDescription(
+              input,
+              scheduled.task.trigger,
+              explicitDelay.kind === "resolved"
+                ? explicitDelay.milliseconds
+                : undefined,
+            );
+        const persistedBody = reminderText(scheduled.task);
         const text = scheduled.replayed
-          ? `Reminder already set for ${taskSummary(scheduled.task)}`
-          : `Reminder set for ${taskSummary(scheduled.task)}`;
+          ? `That reminder is already set ${schedule}: ${persistedBody}`
+          : `Got it — I'll remind you ${schedule}: ${persistedBody}`;
         const receipt = creationReceipt(scheduled);
         await callback?.({ text });
         return {
@@ -430,8 +612,15 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         }
+        const snoozeMilliseconds = minuteDurationMilliseconds(minutes);
+        if (snoozeMilliseconds === undefined) {
+          return await actionFailure(
+            "Snooze duration must resolve to a positive whole millisecond.",
+            callback,
+          );
+        }
         const task = await options.runner.apply(taskId, "snooze", { minutes });
-        const text = `Reminder ${task.taskId} snoozed for ${minutes} minutes.`;
+        const text = `Reminder snoozed for ${formatDuration(snoozeMilliseconds)}: ${reminderText(task)}`;
         await callback?.({ text });
         return {
           success: true,
@@ -448,7 +637,7 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         const task = await options.runner.apply(taskId, operation);
-        const text = `Reminder ${task.taskId} ${operation === "complete" ? "completed" : "dismissed"}.`;
+        const text = `Reminder ${operation === "complete" ? "completed" : "dismissed"}: ${reminderText(task)}`;
         await callback?.({ text });
         return {
           success: true,
