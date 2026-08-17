@@ -3361,6 +3361,22 @@ export class OrchestratorTaskService extends Service {
       await this.store.updateTask(taskId, {
         metadata: { ...doc.task.metadata, autoSubmittedAt: nowIso() },
       });
+      // The ACP git wrapper commits on its own exec branch; the workspace
+      // service pushes/PRs its REGISTERED branch. Point the registered branch
+      // at the child's actual work first, or the PR is opened from a branch
+      // with no commits (live: push landed the exec branch, createPR 422'd).
+      const { execFile } = await import("node:child_process");
+      const gitIn = (args: string[]) =>
+        new Promise<void>((resolve, reject) =>
+          execFile(
+            "git",
+            ["-C", workspace.path, ...args],
+            { timeout: 30_000 },
+            (err) => (err ? reject(err) : resolve()),
+          ),
+        );
+      await gitIn(["branch", "-f", workspace.branch, "HEAD"]);
+      await gitIn(["checkout", workspace.branch]);
       await workspaceService.push(workspaceId, { setUpstream: true });
       const title = (doc.task.title || workspace.branch).slice(0, 120);
       const pr = await workspaceService.createPR(workspaceId, {
@@ -3418,6 +3434,19 @@ export class OrchestratorTaskService extends Service {
         sessionId,
         error: error instanceof Error ? error.message : String(error),
       });
+      // Re-arm: a failed submit must not permanently claim the once-per-task
+      // stamp — a later genuine task_complete (verify re-engage, retry)
+      // deserves another attempt.
+      try {
+        const latest = await this.store.getTask(taskId);
+        if (latest?.task.metadata?.autoSubmittedAt) {
+          const { autoSubmittedAt: _dropped, ...rest } =
+            latest.task.metadata as Record<string, unknown>;
+          await this.store.updateTask(taskId, { metadata: rest });
+        }
+      } catch {
+        // error-policy:J6 best-effort re-arm; the warn above already reported the submit failure
+      }
     }
   }
 
