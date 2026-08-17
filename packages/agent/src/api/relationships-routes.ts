@@ -228,7 +228,14 @@ export async function handleRelationshipsRoutes(
       const action = pathname.endsWith("/accept") ? "accept" : "reject";
       const idStart = "/api/relationships/candidates/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      let candidateId: string;
+      try {
+        candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+        error(res, "Invalid candidate id encoding.", 400);
+        return true;
+      }
       if (!candidateId) {
         error(res, "Missing merge candidate id.", 400);
         return true;
@@ -245,7 +252,14 @@ export async function handleRelationshipsRoutes(
     if (isPersonLinkRoute) {
       const idStart = "/api/relationships/people/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      let sourceEntityId: string;
+      try {
+        sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+        error(res, "Invalid source entity id encoding.", 400);
+        return true;
+      }
       if (!sourceEntityId) {
         error(res, "Missing source entity id.", 400);
         return true;
@@ -447,9 +461,16 @@ export async function handleRelationshipsRoutes(
     return true;
   }
 
-  const primaryEntityId = decodeURIComponent(
-    pathname.slice("/api/relationships/people/".length),
-  );
+  let primaryEntityId: string;
+  try {
+    primaryEntityId = decodeURIComponent(
+      pathname.slice("/api/relationships/people/".length),
+    );
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+    error(res, "Invalid relationships person identifier encoding.", 400);
+    return true;
+  }
   if (!primaryEntityId) {
     error(res, "Missing relationships person identifier.", 400);
     return true;
