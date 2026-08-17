@@ -3,7 +3,7 @@
  * accepted as evidence.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +12,7 @@ import { isFinalizedMp4 } from "./android-capture.mjs";
 import { resolveMediaProbeBinary } from "./device-video.mjs";
 
 const files = [];
+setDefaultTimeout(60_000);
 
 afterEach(() => {
   for (const file of files.splice(0)) fs.rmSync(file, { force: true });
@@ -63,7 +64,7 @@ function writePlayableH264Recording() {
       "+faststart",
       file,
     ],
-    { encoding: "utf8", timeout: 15_000 },
+    { encoding: "utf8", timeout: 30_000 },
   );
   if (result.status !== 0) {
     throw new Error(

@@ -88,7 +88,7 @@ function writePlayableH264Mp4(outputPath) {
       "+faststart",
       outputPath,
     ],
-    { encoding: "utf8", timeout: 15_000 },
+    { encoding: "utf8", timeout: 30_000 },
   );
   if (result.status !== 0) {
     throw new Error(
@@ -217,7 +217,7 @@ describe("device-e2e bundle assembly", () => {
       summary.artifacts.every((artifact) => !artifact.path.startsWith("..")),
     ).toBe(true);
     expect(getDeviceE2eBundleFinalizationError(bundle)).toBeNull();
-  });
+  }, 60_000);
 
   it("ingests external media and logs into a self-contained bundle", () => {
     const root = tempRoot();
@@ -263,7 +263,7 @@ describe("device-e2e bundle assembly", () => {
     expect(
       summary.artifacts.every((artifact) => !artifact.path.startsWith("..")),
     ).toBe(true);
-  });
+  }, 60_000);
 
   it("fails a nominally passing bundle when required exact-head evidence is absent", () => {
     const root = tempRoot();

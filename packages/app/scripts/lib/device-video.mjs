@@ -9,6 +9,8 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
+const verifiedCommands = new Set();
+const MEDIA_PROBE_TIMEOUT_MS = 30_000;
 
 function isNonEmptyFile(filePath) {
   try {
@@ -19,14 +21,15 @@ function isNonEmptyFile(filePath) {
 }
 
 function commandWorks(command, spawnSyncDep) {
-  return (
-    typeof command === "string" &&
-    command.length > 0 &&
+  if (typeof command !== "string" || command.length === 0) return false;
+  if (spawnSyncDep === spawnSync && verifiedCommands.has(command)) return true;
+  const works =
     spawnSyncDep(command, ["-version"], {
       stdio: "ignore",
-      timeout: 5_000,
-    }).status === 0
-  );
+      timeout: MEDIA_PROBE_TIMEOUT_MS,
+    }).status === 0;
+  if (works && spawnSyncDep === spawnSync) verifiedCommands.add(command);
+  return works;
 }
 
 export function resolveMediaProbeBinary({
@@ -105,7 +108,7 @@ function hasRenderableH264Stream(
       "json",
       filePath,
     ],
-    { encoding: "utf8", timeout: 15_000 },
+    { encoding: "utf8", timeout: MEDIA_PROBE_TIMEOUT_MS },
   );
   if (result.status !== 0) return false;
   try {
@@ -149,7 +152,7 @@ function decodesVideoFrame(
       "null",
       "-",
     ],
-    { stdio: "ignore", timeout: 15_000 },
+    { stdio: "ignore", timeout: MEDIA_PROBE_TIMEOUT_MS },
   );
   return result.status === 0;
 }

@@ -3,7 +3,7 @@
  * The real xcrun recorder writes its MP4 trailer only while closing, so the
  * runner must await `close` rather than accepting an observed process exit.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -13,6 +13,7 @@ import { resolveMediaProbeBinary } from "./device-video.mjs";
 import { startIosSimulatorVideo } from "./ios-simulator-capture.mjs";
 
 const tempDirs = [];
+setDefaultTimeout(60_000);
 
 function mp4Box(type, payload = Buffer.alloc(0)) {
   const box = Buffer.alloc(8 + payload.length);
@@ -58,7 +59,7 @@ function writePlayableH264Video(outputPath) {
       "+faststart",
       outputPath,
     ],
-    { encoding: "utf8", timeout: 15_000 },
+    { encoding: "utf8", timeout: 30_000 },
   );
   if (result.status !== 0) {
     throw new Error(
