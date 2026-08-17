@@ -375,7 +375,10 @@ function createConnectorAccountHarness(options: {
     statusCode: 200,
     setHeader: vi.fn(),
     write: vi.fn(),
-    end: vi.fn(),
+    end: vi.fn((body?: string) => {
+      captured.status = res.statusCode;
+      captured.body = body ? JSON.parse(body) : null;
+    }),
   } as unknown as ServerResponse;
   const pathname = options.pathname.split("?")[0];
   const ctx: ConnectorAccountRouteContext = {
@@ -417,6 +420,8 @@ describe("connector account routes", () => {
     ["namespace", "/api/connectors/slack/%ZZ"],
     ["account id", "/api/connectors/slack/accounts/%E0%A4"],
     ["action", "/api/connectors/slack/accounts/acct_1/%2"],
+    ["OAuth tail", "/api/connectors/slack/oauth/%"],
+    ["audit tail", "/api/connectors/slack/audit/%ZZ"],
   ])(
     "rejects malformed %s encoding before authorization or storage",
     async (_segment, pathname) => {
@@ -431,7 +436,7 @@ describe("connector account routes", () => {
 
       expect(captured.status).toBe(400);
       expect(captured.body).toEqual({
-        error: "Invalid connector route encoding",
+        error: "Invalid connector route: malformed URL encoding",
       });
       expect(authorize).not.toHaveBeenCalled();
       expect(runtime.getService).not.toHaveBeenCalled();
