@@ -174,15 +174,35 @@ describe("agent log protocol", () => {
     });
   });
 
-  it("surfaces HTTP failures without accepting their data", async () => {
+  it.each([
+    [403, "You do not have permission to read this agent's logs."],
+    [404, "This agent is no longer available."],
+    [429, "Log requests are temporarily limited. Try again in a moment."],
+  ])(
+    "surfaces non-JSON request HTTP %i without parsing or accepting its body",
+    async (status, message) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response("not-json", { status }));
+
+      await expect(
+        loadAgentLogs({
+          agentId: "agent-1",
+          tail: 100,
+          signal: new AbortController().signal,
+          fetchImpl,
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
+
+  it("surfaces a non-JSON job HTTP failure before parsing its body", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(
-        jsonResponse(
-          { success: false, error: "You cannot read this agent's logs." },
-          403,
-        ),
-      );
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, data: { jobId: "job-1" } }),
+      )
+      .mockResolvedValueOnce(new Response("not-json", { status: 404 }));
 
     await expect(
       loadAgentLogs({
@@ -191,7 +211,7 @@ describe("agent log protocol", () => {
         signal: new AbortController().signal,
         fetchImpl,
       }),
-    ).rejects.toThrow("You do not have permission to read this agent's logs.");
+    ).rejects.toThrow("This log collection job is no longer available.");
   });
 
   it("surfaces malformed JSON as a protocol failure", async () => {
