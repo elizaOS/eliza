@@ -7,7 +7,6 @@
  * Drizzle query-helper subpath, RLS management functions, and the PGlite
  * live-query / Electric Sync status/reset/close accessors used by hosts.
  */
-import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import {
@@ -38,6 +37,7 @@ import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import {
+  ensurePrivateDir,
   type LiveNamespace,
   PGliteClientManager,
   type PgliteSyncStatus,
@@ -165,7 +165,7 @@ export function createDatabaseAdapter(
   // reserved `:` makes mkdirSync throw (on POSIX it silently creates a junk
   // `:memory:` directory), so skip directory creation for it and for URLs.
   if (dataDir && !dataDir.includes("://") && dataDir !== ":memory:") {
-    mkdirSync(dataDir, { recursive: true });
+    ensurePrivateDir(dataDir);
   }
 
   const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {

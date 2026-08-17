@@ -8,6 +8,12 @@
  * the list, and appends a short instruction so the agent can attempt a fix or
  * tell the owner. It renders nothing (and costs no prompt tokens) when there are
  * no recent errors — no prompt bloat on the healthy path.
+ *
+ * Error text is third-party-controlled: a plugin can report an error whose
+ * message or context embeds a credential (a `?key=` URL, an Authorization
+ * header). Everything rendered into the prompt therefore goes through
+ * `runtime.redactSecrets` first, so reported errors can't ship secrets to
+ * external model providers.
  */
 
 import type { ReportedError } from "../errors";
@@ -92,11 +98,14 @@ function selectRecentErrors(
 		.slice(0, MAX_RECENT_ERRORS);
 }
 
-function renderText(selected: ReportedError[]): string {
+function renderText(
+	selected: ReportedError[],
+	redact: (text: string) => string,
+): string {
 	const lines = selected.map((entry) => {
 		const ctx = serializeContext(entry.context);
-		const suffix = ctx ? ` — ${ctx}` : "";
-		return `- [${entry.scope}] ${entry.code}: ${entry.message}${suffix}`;
+		const suffix = ctx ? ` — ${redact(ctx)}` : "";
+		return `- [${entry.scope}] ${entry.code}: ${redact(entry.message)}${suffix}`;
 	});
 	// The framing must make the block self-quarantining: rendered into a group
 	// turn, an unframed error list reads like conversation topic material — a
@@ -138,7 +147,7 @@ export const recentErrorsProvider: Provider = {
 		const selected = selectRecentErrors(entries, Date.now());
 		if (selected.length === 0) return EMPTY_RESULT;
 
-		const text = renderText(selected);
+		const text = renderText(selected, (value) => runtime.redactSecrets(value));
 		logger.debug(
 			{ src: "agent", count: selected.length },
 			"[RecentErrorsProvider] Surfacing recent reported errors",

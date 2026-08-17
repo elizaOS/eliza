@@ -6,11 +6,24 @@
  * sensitivity hints for arbitrary config paths.
  */
 const SENSITIVE_CONFIG_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$|(?:^|[._-])pat$/i;
+  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$|(?:^|[._-])pat$|(?:^|[._-])webhook[a-z]*$|(?:^|[._-])(?:dsn|url|uri|jwt|bearer|cookie|mnemonic)$|(?:^|[._-])key$/i;
+
+/**
+ * camelCase companions for the separator-anchored names above, so
+ * `sessionKey`, `encryptionKey`, `webhookUrl`, `discordWebhook`, and
+ * `accessJwt` classify the same as their SCREAMING_SNAKE forms.
+ * Case-sensitive on purpose: all-lower and all-upper lookalikes (`monkey`,
+ * `turnkey`, `hotkey`, `KEYBOARD`) must stay non-sensitive.
+ */
+const SENSITIVE_CAMEL_KEY_RE =
+  /[a-z](?:Key|Url|Uri|Jwt|Bearer|Cookie|Mnemonic|Webhook)$/;
 
 export function isSensitiveConfigKey(key: string): boolean {
   const lastSegment = key.split(".").at(-1) ?? key;
   const normalized = lastSegment.replace(/[-_\s]/g, "").toLowerCase();
   if (/^maxtokens?$/.test(normalized)) return false;
-  return SENSITIVE_CONFIG_KEY_RE.test(key);
+  return (
+    SENSITIVE_CONFIG_KEY_RE.test(key) ||
+    SENSITIVE_CAMEL_KEY_RE.test(lastSegment)
+  );
 }

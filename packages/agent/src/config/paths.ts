@@ -23,6 +23,23 @@ function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
 export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
 
 /**
+ * Create a state directory (and parents) owner-only, then heal the mode on
+ * directories left behind by older installs. The state tree holds the PGlite
+ * memory DB, `config.env`, and `secret-salt` — all credential-bearing — so it
+ * must never be group/other-readable. `mkdir` only applies `mode` to newly
+ * created directories, hence the explicit chmod for the pre-existing case.
+ */
+export function ensurePrivateDir(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(dir, 0o700);
+  } catch {
+    // error-policy:J6 best-effort heal for directories created by older
+    // installs; platforms without POSIX chmod semantics skip.
+  }
+}
+
+/**
  * Ordered list of on-disk config filenames to look for under the state dir,
  * given the active namespace. The first existing file wins; if none exist,
  * callers fall back to the first entry (the file to create/write).

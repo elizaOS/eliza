@@ -98,3 +98,66 @@ describe("PAT credential names (#16564)", () => {
     }
   });
 });
+
+/**
+ * W1-021: the GET /api/config masking contract must cover URL-shaped and misc
+ * credential carriers, not just *KEY/*SECRET names — a `postgres://user:pw@…`
+ * DSN or a Discord webhook URL is itself the credential.
+ */
+describe("URL-shaped and misc secret keys (W1-021)", () => {
+  it("classifies DSN/URL/URI/webhook names as sensitive", () => {
+    for (const key of [
+      "DATABASE_URL",
+      "POSTGRES_URL",
+      "REDIS_URL",
+      "MONGODB_URI",
+      "DISCORD_WEBHOOK_URL",
+      "webhookUrl",
+      "app.database.dsn",
+    ]) {
+      expect(isSensitiveConfigKey(key), key).toBe(true);
+    }
+  });
+
+  it("classifies misc credential names as sensitive", () => {
+    for (const key of [
+      "sessionKey",
+      "mnemonic",
+      "jwt",
+      "bearer",
+      "cookie",
+      "encryptionKey",
+      "masterKey",
+      "sshKey",
+      "signingKey",
+      "accessKey",
+      "SESSION_KEY",
+      "ENCRYPTION_KEY",
+    ]) {
+      expect(isSensitiveConfigKey(key), key).toBe(true);
+    }
+  });
+
+  it("keeps key-suffix lookalikes non-sensitive", () => {
+    for (const key of [
+      "monkey",
+      "turnkey",
+      "hotkey",
+      "KEYBOARD",
+      "maxTokens",
+    ]) {
+      expect(isSensitiveConfigKey(key), key).toBe(false);
+    }
+  });
+
+  it("round-trips DATABASE_URL through GET /api/config redaction", () => {
+    const redacted = redactConfigSecrets({
+      env: {
+        DATABASE_URL: "postgres://user:pw@host/db",
+        LOG_LEVEL: "info",
+      },
+    }) as { env: Record<string, unknown> };
+    expect(redacted.env.DATABASE_URL).toBe("[REDACTED]");
+    expect(redacted.env.LOG_LEVEL).toBe("info");
+  });
+});

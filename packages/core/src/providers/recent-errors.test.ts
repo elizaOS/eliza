@@ -6,11 +6,17 @@
 
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
+import { redactWithSecrets } from "../security/redact";
 import type { IAgentRuntime, Memory, State } from "../types";
 import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
-	return { getRecentReportedErrors: () => entries } as unknown as IAgentRuntime;
+	return {
+		getRecentReportedErrors: () => entries,
+		// The real AgentRuntime scrubs via redactWithSecrets; identity is the
+		// right default for tests that don't exercise the scrubbing path.
+		redactSecrets: (text: string) => text,
+	} as unknown as IAgentRuntime;
 }
 
 const message = {} as Memory;
@@ -197,5 +203,40 @@ describe("RECENT_ERRORS provider", () => {
 		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
 		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);
 		expect(QUIET_ERROR_CODES.has("WALLET_RPC_DOWN")).toBe(false);
+	});
+
+	it("scrubs credentials from reported errors before they reach the prompt (W1-062)", async () => {
+		// A third-party plugin reports an error echoing a credential — in the
+		// message (value-shape pattern) and in the serialized context (literal
+		// configured secret). Neither may ship to the model provider.
+		const entries: ReportedError[] = [
+			{
+				scope: "ThirdPartyPlugin",
+				code: "UPLOAD_FAILED",
+				message: "POST https://api.example.com/upload failed",
+				context: {
+					authorization: "Bearer sk-livekey-notconfigured99",
+					password: "hunter2plainpass123",
+				},
+				at: Date.now(),
+			},
+		];
+		const runtime = {
+			getRecentReportedErrors: () => entries,
+			// Mirror AgentRuntime.redactSecrets: literal secrets + patterns.
+			redactSecrets: (text: string) =>
+				redactWithSecrets(text, {
+					secrets: { SERVICE_PASSWORD: "hunter2plainpass123" },
+				}),
+		} as unknown as IAgentRuntime;
+
+		const result = await recentErrorsProvider.get(runtime, message, state);
+
+		expect(result.text).not.toContain("sk-livekey-notconfigured99");
+		expect(result.text).not.toContain("hunter2plainpass123");
+		// Masked in both slots (the combined redactor re-masks its own marker,
+		// so assert the mask shape, not the exact marker format).
+		expect(result.text).toContain("[REDAC…ORD]");
+		expect(result.text).toContain("UPLOAD_FAILED");
 	});
 });

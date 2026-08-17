@@ -959,10 +959,8 @@
       "version": "2.0.12-beta.0",
       "dependencies": {
         "adze": "^2.2.5",
-        "fast-redact": "^3.5.0",
       },
       "devDependencies": {
-        "@types/fast-redact": "^3.0.4",
         "@types/node": "^24.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
       },

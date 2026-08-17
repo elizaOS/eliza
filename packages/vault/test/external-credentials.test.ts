@@ -215,7 +215,10 @@ describe("external-credentials — 1Password", () => {
       username: "bob@example.com",
       domain: "example.slack.com",
     });
-    // Session token must be passed via --session=, not BW_SESSION env.
+    // No registered account → the OP_SESSION_* env var cannot be named, so
+    // the degenerate fallback keeps the historical `--session=` argv form
+    // (a token without an account is rejected by `op` anyway). The env-var
+    // path for a registered account is covered by the next test.
     const listCall = calls.find(
       (c) => c.args.includes("item") && c.args.includes("list"),
     );
@@ -257,6 +260,39 @@ describe("external-credentials — 1Password", () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.domain).toBeNull();
     expect(out[0]?.url).toBeNull();
+  });
+
+  it("passes the session token via OP_SESSION_* env, never argv (W1-058)", async () => {
+    // Registered account + stored session, desktop integration inactive →
+    // the token must travel as OP_SESSION_<shorthand> in the child env.
+    await vault.set("pm.1password.session", "TOKEN-OP", { sensitive: true });
+    const calls: ExecCall[] = [];
+    const exec = fakeExec(
+      [
+        accountListMy,
+        whoamiFails,
+        {
+          match: (_cmd, args) => args.includes("item") && args.includes("list"),
+          stdout: "[]",
+        },
+      ],
+      calls,
+    );
+
+    const out = await listOnePasswordLogins(vault, exec);
+    expect(out).toEqual([]);
+
+    const listCall = calls.find(
+      (c) => c.args.includes("item") && c.args.includes("list"),
+    );
+    expect(
+      listCall?.args.some((a) => a.startsWith("--session=")),
+      "session token must never appear in argv",
+    ).toBe(false);
+    expect(listCall?.args).toContain("--account=my");
+    expect(listCall?.env?.OP_SESSION_my).toBe("TOKEN-OP");
+    // The token string must not leak anywhere else in the argv list either.
+    expect(listCall?.args.join(" ")).not.toContain("TOKEN-OP");
   });
 
   it("returns [] for empty list (skips enrichment)", async () => {
