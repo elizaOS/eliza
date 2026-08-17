@@ -39,6 +39,17 @@ function isTcpRedisUrl(url: string): boolean {
   return /^rediss?:\/\//i.test(url);
 }
 
+/** Percent-decode Redis URL userinfo; malformed escapes keep the raw text. */
+export function decodeRedisUrlUserinfo(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 malformed userinfo percent-escape is the literal
+    // credential text, not a registry crash.
+    return raw;
+  }
+}
+
 export interface SandboxRegistryConfig {
   redisUrl: string;
   /**
@@ -212,8 +223,8 @@ export class SandboxRegistry {
     const secure = url.protocol === "rediss:";
     const host = url.hostname;
     const port = url.port ? Number(url.port) : 6379;
-    const username = decodeURIComponent(url.username || "");
-    const password = decodeURIComponent(url.password || "");
+    const username = decodeRedisUrlUserinfo(url.username || "");
+    const password = decodeRedisUrlUserinfo(url.password || "");
     const db = url.pathname.length > 1 ? url.pathname.slice(1) : "";
 
     const preamble: string[][] = [];
