@@ -65,7 +65,7 @@ export async function fetchJsonOk(url, fetchImpl = globalThis.fetch) {
       ok: res.ok,
       status: res.status,
       json,
-      bodyPreview: text.length > 400 ? `${text.slice(0, 400)}…` : text,
+      bodyPreview: text.length > 400 ? `${text.slice(0, 399)}…` : text,
     };
   } catch (e) {
     const err = /** @type {Error} */ (e);
