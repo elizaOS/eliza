@@ -19,7 +19,7 @@ import {
 	transcriptsRoutes,
 } from "./transcripts-routes";
 
-const WORLD = "00000000-0000-0000-0000-0000000000ww" as UUID;
+const WORLD = "00000000-0000-4000-8000-000000000001" as UUID;
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
 const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
@@ -57,6 +57,9 @@ function fakeRuntime(storage?: {
 		},
 		getMemories: async () => [...rows.values()],
 		getMemoryById: async (id: UUID) => rows.get(id) ?? null,
+		getRoom: async (id: UUID) => ({ id, worldId: WORLD }),
+		getRoomsForParticipants: async () => [ROOM],
+		reportError: () => undefined,
 		updateMemory: async (m: Partial<Memory> & { id: UUID }) => {
 			const existing = rows.get(m.id);
 			if (!existing) return false;
@@ -305,6 +308,147 @@ describe("transcripts routes", () => {
 			"/api/transcripts/:id",
 		)(ctx({ runtime: runtime as never, params: { id: "x" }, body: {} }));
 		expect(res.status).toBe(400);
+	});
+
+	it("POST derives tenant scope from the canonical room for an authorized participant", async () => {
+		const { rows, runtime } = fakeRuntime();
+		const created = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: runtime as never,
+				accessContext: access(ENTITY),
+				body: {
+					segments,
+					roomId: ROOM,
+					worldId: WORLD,
+					entityId: ENTITY,
+				},
+			}),
+		);
+
+		expect(created.status).toBe(201);
+		expect([...rows.values()][0]).toMatchObject({
+			worldId: WORLD,
+			roomId: ROOM,
+			entityId: ENTITY,
+		});
+	});
+
+	it("POST rejects mismatched tenant scope and non-participant rooms", async () => {
+		const { runtime } = fakeRuntime();
+		const otherWorld = "00000000-0000-4000-8000-000000000099" as UUID;
+		const mismatch = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: runtime as never,
+				accessContext: access(ENTITY),
+				body: { segments, roomId: ROOM, worldId: otherWorld },
+			}),
+		);
+		expect(mismatch.status).toBe(403);
+
+		const nonParticipantRuntime = {
+			...(runtime as object),
+			getRoomsForParticipants: async () => [],
+		};
+		const nonParticipant = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: nonParticipantRuntime as never,
+				accessContext: access(ENTITY),
+				body: { segments, roomId: ROOM },
+			}),
+		);
+		expect(nonParticipant.status).toBe(403);
+	});
+
+	it("POST rejects identity spoofing and reports canonical-room lookup failure", async () => {
+		const { runtime } = fakeRuntime();
+		const spoofed = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: runtime as never,
+				accessContext: access(ENTITY),
+				body: { segments, entityId: OTHER_ENTITY },
+			}),
+		);
+		expect(spoofed.status).toBe(403);
+
+		const lookupFailure = new Error("database unavailable");
+		const reported: unknown[][] = [];
+		const failingRuntime = {
+			...(runtime as object),
+			getRoom: async () => {
+				throw lookupFailure;
+			},
+			reportError: (...args: unknown[]) => reported.push(args),
+		};
+		const unavailable = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: failingRuntime as never,
+				body: { segments, roomId: ROOM },
+			}),
+		);
+		expect(unavailable.status).toBe(503);
+		expect(reported).toEqual([
+			["transcripts.create-scope", lookupFailure, { roomId: ROOM }],
+		]);
+	});
+
+	it("PUT preserves the persisted tenant scope and rejects relocation", async () => {
+		const { rows, runtime } = fakeRuntime();
+		const created = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(
+			ctx({
+				runtime: runtime as never,
+				body: { segments, roomId: ROOM, worldId: WORLD, entityId: ENTITY },
+			}),
+		);
+		const id = (created.body as { transcript: { id: string } }).transcript.id;
+		const otherRoom = "00000000-0000-4000-8000-000000000098" as UUID;
+
+		const update = await handlerFor(
+			"PUT",
+			"/api/transcripts/:id",
+		)(
+			ctx({
+				runtime: runtime as never,
+				params: { id },
+				body: { title: "relocated", roomId: otherRoom },
+			}),
+		);
+
+		expect(update.status).toBe(403);
+		expect(rows.get(id)).toMatchObject({
+			worldId: WORLD,
+			roomId: ROOM,
+			entityId: ENTITY,
+		});
+
+		const malformed = await handlerFor(
+			"PUT",
+			"/api/transcripts/:id",
+		)(
+			ctx({
+				runtime: runtime as never,
+				params: { id },
+				body: { title: "malformed", worldId: "not-a-uuid" },
+			}),
+		);
+		expect(malformed.status).toBe(400);
 	});
 
 	it("filters GET list and get-by-id for a non-owner requester", async () => {

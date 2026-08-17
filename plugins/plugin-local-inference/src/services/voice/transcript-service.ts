@@ -82,7 +82,7 @@ export class TranscriptService {
 		const record = knowledgeDocumentId
 			? { ...transcript, knowledgeDocumentId }
 			: transcript;
-		return this.store.create({ roomId, entityId, transcript: record });
+		return this.store.create({ worldId, roomId, entityId, transcript: record });
 	}
 
 	list(
