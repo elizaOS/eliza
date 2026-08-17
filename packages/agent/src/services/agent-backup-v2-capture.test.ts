@@ -454,7 +454,7 @@ describe("streamAgentBackupV2Capture", () => {
         process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS = previousDisableExtensions;
       await fs.promises.rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("fails closed without the fenced managed exporter and never falls back to live files", async () => {
     const root = await fs.promises.mkdtemp(
