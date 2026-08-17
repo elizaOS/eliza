@@ -31,12 +31,13 @@ function publicAgent(overrides: {
   };
 }
 
-const findByTokenAddress = mock(async () =>
-  publicAgent({
-    id: "char-sol",
-    token_address: SOLANA_TOKEN,
-    token_chain: "solana",
-  }),
+const findByTokenAddress = mock(
+  async (_tokenAddress: string, _tokenChain?: string) =>
+    publicAgent({
+      id: "char-sol",
+      token_address: SOLANA_TOKEN,
+      token_chain: "solana",
+    }),
 );
 
 mock.module("@/db/repositories/characters", () => ({

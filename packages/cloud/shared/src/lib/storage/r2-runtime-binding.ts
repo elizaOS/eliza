@@ -7,6 +7,15 @@
  */
 
 export interface RuntimeR2Object {
+  /** Native R2 response body. Absent only on legacy narrow test shims. */
+  readonly body?: ReadableStream<Uint8Array>;
+  readonly bodyUsed?: boolean;
+  /** Exact-generation metadata returned alongside a native R2 GET. */
+  readonly version?: string;
+  readonly size?: number;
+  readonly etag?: string;
+  readonly checksums?: RuntimeR2ObjectMetadata["checksums"];
+  readonly customMetadata?: Record<string, string>;
   text(): Promise<string>;
   /**
    * Binary access — Workers' real R2 object exposes this; the in-memory test
@@ -16,17 +25,61 @@ export interface RuntimeR2Object {
   arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
+/** Metadata returned by the native Workers `R2Bucket.head()` operation. */
+export interface RuntimeR2ObjectMetadata {
+  /** Opaque upload generation assigned by R2. */
+  version?: string;
+  size: number;
+  etag: string;
+  checksums?: {
+    md5?: ArrayBuffer;
+    sha1?: ArrayBuffer;
+    sha256?: ArrayBuffer;
+  };
+  customMetadata?: Record<string, string>;
+}
+
+export interface RuntimeR2PutOptions {
+  /** Native R2 conditional write contract (for example `If-None-Match: *`). */
+  onlyIf?:
+    | Headers
+    | {
+        etagMatches?: string;
+        etagDoesNotMatch?: string;
+        uploadedBefore?: Date;
+        uploadedAfter?: Date;
+      };
+  httpMetadata?: {
+    contentType?: string;
+  };
+  customMetadata?: Record<string, string>;
+  sha256?: ArrayBuffer | ArrayBufferView | string;
+}
+
+export interface RuntimeR2GetOptions {
+  /** Native R2 conditional GET contract. */
+  onlyIf?:
+    | Headers
+    | {
+        etagMatches?: string;
+        etagDoesNotMatch?: string;
+        uploadedBefore?: Date;
+        uploadedAfter?: Date;
+      };
+}
+
 export interface RuntimeR2Bucket {
-  get(key: string): Promise<RuntimeR2Object | null>;
+  /**
+   * Optional only for backwards compatibility with narrow non-storage test
+   * shims. Real R2 bindings always expose `head`; lifecycle operations fail
+   * closed when a registered shim does not.
+   */
+  head?(key: string): Promise<RuntimeR2ObjectMetadata | null>;
+  get(key: string, options?: RuntimeR2GetOptions): Promise<RuntimeR2Object | null>;
   put(
     key: string,
     value: string | ArrayBuffer | ArrayBufferView | Blob | null,
-    options?: {
-      httpMetadata?: {
-        contentType?: string;
-      };
-      customMetadata?: Record<string, string>;
-    },
+    options?: RuntimeR2PutOptions,
   ): Promise<unknown>;
   delete(key: string): Promise<unknown>;
 }

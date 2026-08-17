@@ -148,8 +148,14 @@ through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
 
-Production Cloud admission is also tree-bound to staging. After every
-successful automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
+Production Cloud admission is also tree-bound to staging. A staging release
+whose run SHA the `develop` head has fast-forwarded past ends neutrally before
+any mutation only when GitHub proves that an active Cloud CF Deploy push run
+exists for the exact new head (the canonical-source guard reports
+`superseded=true`, every deploy job skips, and no certification is uploaded).
+Ancestry without a successor run, production staleness, divergence, or any
+unverifiable source still fails the run. After every successful, non-superseded
+automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
 14-day immutable certification whose JSON names the repository, workflow,
 source SHA, root Git tree, run/attempt, environment, and deterministic artifact
 name. A production dispatch checks out the exact requested `main` SHA and must

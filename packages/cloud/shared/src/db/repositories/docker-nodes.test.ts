@@ -124,6 +124,30 @@ describe("DockerNodesRepository environment guard", () => {
     expect(Date.parse(parsed.embeddingSidecar.checkedAt)).toBeGreaterThan(0);
   });
 
+  test("generic update rejects every Docker authority identity field", async () => {
+    const { DockerNodesRepository } = await import("./docker-nodes");
+    const repository = new DockerNodesRepository();
+    const identityMutations = [
+      ["id", "replacement-row"],
+      ["node_id", "replacement-node"],
+      ["node_incarnation", "99999999-9999-4999-8999-999999999999"],
+      ["fleet_kind", "cloud"],
+      ["infrastructure_provider", "hetzner"],
+      ["provider_server_id", "12345"],
+      ["host_key_fingerprint", "replacement-pin"],
+    ] as const;
+
+    for (const [field, value] of identityMutations) {
+      await expect(repository.update("row-1", { [field]: value } as never)).rejects.toThrow(
+        `cannot mutate identity field '${field}'`,
+      );
+      expect(capturedSet).toBeUndefined();
+    }
+
+    await expect(repository.update("row-1", { enabled: false })).resolves.toBeNull();
+    expect(capturedSet).toMatchObject({ enabled: false });
+  });
+
   test("findLeastLoaded applies the same environment guard to schedulable capacity", async () => {
     const { DockerNodesRepository } = await import("./docker-nodes");
 
@@ -149,7 +173,6 @@ describe("DockerNodesRepository environment guard", () => {
         hostname: "203.0.113.10",
         ssh_port: 22,
         ssh_user: "root",
-        host_key_fingerprint: "SHA256:node",
         status: "unknown",
       },
       {

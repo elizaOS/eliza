@@ -30,13 +30,17 @@ export const REQUIRED_INTERACTION_CONFORMANCE_CASES = [
 	"unsupported",
 	"stale_observation",
 	"lease_conflict",
+	"invalid_payload",
 ] as const;
 
 export type InteractionConformanceCaseName =
 	(typeof REQUIRED_INTERACTION_CONFORMANCE_CASES)[number];
 
 const EXPECTED_STATUS: Readonly<
-	Record<InteractionConformanceCaseName, InteractionOutcomeStatus>
+	Record<
+		Exclude<InteractionConformanceCaseName, "invalid_payload">,
+		InteractionOutcomeStatus
+	>
 > = Object.freeze({
 	success: "SUCCEEDED",
 	failed_no_effect: "FAILED_NO_EFFECT",
@@ -93,7 +97,9 @@ function ensureActionIdentity(
 		action.surface.sessionId !== surface.sessionId ||
 		action.surface.adapterId !== surface.adapterId ||
 		action.surface.surfaceId !== surface.surfaceId ||
-		action.surface.generation !== surface.generation
+		action.surface.kind !== surface.kind ||
+		action.surface.generation !== surface.generation ||
+		action.surface.parentSurfaceId !== surface.parentSurfaceId
 	) {
 		fail("Conformance action does not target the supplied session surface.", {
 			actionId: action.actionId,
@@ -176,12 +182,33 @@ export async function runInteractionAdapterConformance(
 			surfaceKind: surface.kind,
 		});
 	}
+	const assertAdvertisedObservationChannels = (
+		channels: readonly string[],
+		observationId: string,
+	) => {
+		const advertised = new Set<string>(capabilities.observationChannels);
+		const unadvertised = channels.filter((channel) => !advertised.has(channel));
+		if (unadvertised.length > 0) {
+			return fail(
+				"Adapter emitted observation channels it did not advertise.",
+				{
+					adapterId: adapter.id,
+					observationId,
+					unadvertised,
+				},
+			);
+		}
+	};
 
 	const rawObservation = await adapter.observe(session, surface);
 	const observation = normalizeAdapterPayload(
 		"observation",
 		() => normalizeInteractionObservation(rawObservation),
 		{ adapterId: adapter.id },
+	);
+	assertAdvertisedObservationChannels(
+		observation.channels,
+		observation.observationId,
 	);
 	assertInteractionSurfaceCurrent(session, observation.surface);
 	if (
@@ -212,7 +239,6 @@ export async function runInteractionAdapterConformance(
 		const fixture = fixtureByName.get(name);
 		if (!fixture) return fail(`Missing conformance fixture '${name}'.`);
 		ensureActionIdentity(fixture.action, session, surface);
-		const expectedStatus = EXPECTED_STATUS[name];
 		if (
 			name === "unsupported" &&
 			capabilities.actionKinds.includes(fixture.action.kind)
@@ -238,9 +264,42 @@ export async function runInteractionAdapterConformance(
 			);
 		}
 		const rawResult = await adapter.execute(fixture.action);
+		if (name === "invalid_payload") {
+			let rejected = false;
+			try {
+				normalizeAdapterPayload(
+					"action result",
+					() => normalizeInteractionActionResult(rawResult, fixture.action),
+					{
+						adapterId: adapter.id,
+						actionId: fixture.action.actionId,
+						case: name,
+					},
+				);
+			} catch (error) {
+				rejected =
+					error instanceof ElizaError &&
+					error.code === "INTERACTION_ADAPTER_CONFORMANCE_FAILED";
+				if (!rejected) throw error;
+			}
+			if (!rejected) {
+				return fail("The invalid_payload fixture returned a valid result.", {
+					adapterId: adapter.id,
+					actionId: fixture.action.actionId,
+				});
+			}
+			checks.push({
+				name,
+				passed: true,
+				detail:
+					"Malformed adapter output was rejected at the contract boundary.",
+			});
+			continue;
+		}
+		const expectedStatus = EXPECTED_STATUS[name];
 		const result = normalizeAdapterPayload(
 			"action result",
-			() => normalizeInteractionActionResult(rawResult),
+			() => normalizeInteractionActionResult(rawResult, fixture.action),
 			{ adapterId: adapter.id, actionId: fixture.action.actionId, case: name },
 		);
 		if (
@@ -262,6 +321,10 @@ export async function runInteractionAdapterConformance(
 		}
 		if (result.observation) {
 			assertInteractionSurfaceCurrent(session, result.observation.surface);
+			assertAdvertisedObservationChannels(
+				result.observation.channels,
+				result.observation.observationId,
+			);
 		}
 		checks.push({
 			name,

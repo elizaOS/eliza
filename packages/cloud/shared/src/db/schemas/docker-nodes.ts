@@ -1,17 +1,21 @@
 // Defines the docker nodes Drizzle table shape used by cloud repositories and services.
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
 export type DockerNodeStatus = "healthy" | "degraded" | "offline" | "unknown";
+export type DockerNodeFleetKind = "robot" | "cloud";
+export type DockerNodeInfrastructureProvider = "hetzner";
 
 /**
  * Whether a node may receive NEW placements, independent of whether it is
@@ -47,6 +51,17 @@ export const dockerNodes = pgTable(
     last_health_check: timestamp("last_health_check", { withTimezone: true }),
     ssh_user: text("ssh_user").notNull().default("root"),
     host_key_fingerprint: text("host_key_fingerprint"),
+    /**
+     * Typed backup-source identity. All four fields remain nullable for
+     * pre-authority rows; callers must never infer them from metadata,
+     * hostname, or the mutable node handle.
+     */
+    fleet_kind: text("fleet_kind").$type<DockerNodeFleetKind>(),
+    infrastructure_provider:
+      text("infrastructure_provider").$type<DockerNodeInfrastructureProvider>(),
+    provider_server_id: text("provider_server_id"),
+    /** Exact lowercase Linux boot UUID attested over host-key-verified SSH. */
+    node_incarnation: uuid("node_incarnation"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -55,6 +70,39 @@ export const dockerNodes = pgTable(
     node_id_idx: index("docker_nodes_node_id_idx").on(table.node_id),
     status_idx: index("docker_nodes_status_idx").on(table.status),
     enabled_idx: index("docker_nodes_enabled_idx").on(table.enabled),
+    provider_server_uidx: uniqueIndex("docker_nodes_provider_server_uidx")
+      .on(table.infrastructure_provider, table.provider_server_id)
+      .where(sql`${table.provider_server_id} IS NOT NULL`),
+    node_incarnation_uidx: uniqueIndex("docker_nodes_node_incarnation_uidx")
+      .on(table.node_incarnation)
+      .where(sql`${table.node_incarnation} IS NOT NULL`),
+    backup_source_authority_shape_check: check(
+      "docker_nodes_backup_source_authority_shape_check",
+      sql`((
+        ${table.fleet_kind} IS NULL
+        AND ${table.infrastructure_provider} IS NULL
+        AND ${table.provider_server_id} IS NULL
+        AND ${table.node_incarnation} IS NULL
+      ) OR (
+        ${table.infrastructure_provider} = 'hetzner'
+        AND (${table.node_incarnation} IS NULL OR (
+          ${table.host_key_fingerprint} IS NOT NULL
+          AND btrim(${table.host_key_fingerprint}) <> ''
+        ))
+        AND (
+          (${table.fleet_kind} = 'robot' AND ${table.provider_server_id} IS NULL)
+          OR (
+            ${table.fleet_kind} = 'cloud'
+            AND ${table.provider_server_id} IS NOT NULL
+            AND CASE
+              WHEN ${table.provider_server_id} ~ '^[1-9][0-9]{0,19}$'
+                THEN ${table.provider_server_id}::numeric <= 18446744073709551615
+              ELSE false
+            END
+          )
+        )
+      )) IS TRUE`,
+    ),
   }),
 );
 

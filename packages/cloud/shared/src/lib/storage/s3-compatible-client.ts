@@ -21,7 +21,38 @@ import { S3Client } from "@aws-sdk/client-s3";
 
 export type ObjectStorageProvider = "r2" | "supabase" | "s3";
 
+/** Explicit S3-compatible transport configuration for durable storage domains. */
+export interface S3CompatibleClientConfig {
+  endpoint: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  forcePathStyle?: boolean;
+  maxAttempts?: number;
+  responseChecksumValidation?: "WHEN_SUPPORTED" | "WHEN_REQUIRED";
+}
+
 let cached: S3Client | null | undefined;
+let singleAttemptCached: S3Client | null | undefined;
+
+/**
+ * Construct a client without consulting process-global storage configuration.
+ * Durable backup callers use this so an endpoint alias resolves to one exact
+ * backend for the entire operation.
+ */
+export function createS3CompatibleClient(config: S3CompatibleClientConfig): S3Client {
+  return new S3Client({
+    region: config.region,
+    endpoint: config.endpoint,
+    forcePathStyle: config.forcePathStyle ?? false,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+    maxAttempts: config.maxAttempts,
+    responseChecksumValidation: config.responseChecksumValidation,
+  });
+}
 
 function readBool(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
@@ -110,6 +141,31 @@ export function getObjectStorageClient(): S3Client | null {
   return cached;
 }
 
+/**
+ * Dedicated transport for operations that own their retry budget.
+ *
+ * The AWS SDK retries throttles and 5xx responses by default. Immutable backup
+ * uploads reconcile every ambiguous write with HEAD before retrying, so hidden
+ * transport retries would multiply the bounded operation budget.
+ */
+export function getSingleAttemptObjectStorageClient(): S3Client | null {
+  if (singleAttemptCached !== undefined) return singleAttemptCached;
+  const provider = resolveProvider();
+  if (!provider) {
+    singleAttemptCached = null;
+    return null;
+  }
+  const credentials = resolveCredentials(provider);
+  singleAttemptCached = new S3Client({
+    region: resolveRegion(provider),
+    endpoint: resolveEndpoint(provider),
+    forcePathStyle: resolveForcePathStyle(provider),
+    credentials,
+    maxAttempts: 1,
+  });
+  return singleAttemptCached;
+}
+
 export function objectStorageConfigured(): boolean {
   const provider = resolveProvider();
   if (!provider) return false;
@@ -128,4 +184,5 @@ export function objectStorageConfigured(): boolean {
 
 export function resetObjectStorageClientForTests(): void {
   cached = undefined;
+  singleAttemptCached = undefined;
 }

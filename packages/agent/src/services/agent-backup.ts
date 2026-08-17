@@ -19,6 +19,12 @@ import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
+import {
+  AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,
+  type PglitePhysicalPreflight,
+  preflightPglitePhysicalDirectory,
+  resolveAgentBackupAvailableMemoryBytes,
+} from "./agent-backup-v2-capture.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -916,11 +922,14 @@ function isBlobLike(value: unknown): value is {
   arrayBuffer: () => Promise<ArrayBuffer>;
   size: number;
 } {
+  const size = (value as { size?: unknown } | null)?.size;
   return (
     value !== null &&
     typeof value === "object" &&
     typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
-    typeof (value as { size?: unknown }).size === "number"
+    typeof size === "number" &&
+    Number.isSafeInteger(size) &&
+    size >= 0
   );
 }
 
@@ -938,6 +947,13 @@ export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT =
   "PGlite snapshot temporarily unavailable (connection closing)";
 export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE =
   "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
+
+const PGLITE_BOUNDED_SNAPSHOT_TRANSIENT_CODES = new Set([
+  "PGLITE_DATA_DIR_EXPORT_BUSY",
+  "AGENT_BACKUP_V2_PGLITE_RSS_BUDGET_EXCEEDED",
+  "AGENT_BACKUP_V2_PGLITE_PREFLIGHT_CHANGED",
+]);
+const LEGACY_PGLITE_POST_DUMP_COPY_FACTOR = 4;
 
 /**
  * A PGlite handle that is mid-close throws with these shapes. Kept narrow so a
@@ -958,63 +974,156 @@ function isPgliteClosingError(err: unknown): boolean {
 
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
+  pgliteDir: string,
+  signal: AbortSignal,
   budget?: SnapshotBudget,
 ): Promise<AgentBackupPgliteDump | null> {
   const adapter = runtime.adapter as
     | {
-        dumpPgliteDataDir?: (compression?: "gzip") => Promise<unknown>;
-        getRawConnection?: () => unknown;
+        dumpPgliteDataDirAfterPreflight?: (
+          preflight: () => Promise<PglitePhysicalPreflight>,
+          compression?: "gzip",
+        ) => Promise<unknown>;
+        getPgliteDataDir?: () => unknown;
       }
     | undefined;
-  const managedDump = adapter?.dumpPgliteDataDir;
-  const raw = adapter?.getRawConnection?.();
-  const rawDump =
-    raw && typeof raw === "object"
-      ? (raw as { dumpDataDir?: (compression?: "gzip") => Promise<unknown> })
-          .dumpDataDir
-      : undefined;
-  if (typeof managedDump !== "function" && typeof rawDump !== "function") {
+  const managedDump = adapter?.dumpPgliteDataDirAfterPreflight;
+  if (typeof managedDump !== "function") {
     return null;
   }
+  if (typeof adapter?.getPgliteDataDir !== "function") {
+    throw new Error(
+      "The bounded PGlite exporter cannot attest its physical data directory",
+    );
+  }
+  const managedDataDir = adapter.getPgliteDataDir();
+  if (
+    typeof managedDataDir !== "string" ||
+    managedDataDir.length === 0 ||
+    managedDataDir === ":memory:" ||
+    managedDataDir.includes("://")
+  ) {
+    throw new Error(
+      "The bounded PGlite exporter is not backed by a physical data directory",
+    );
+  }
 
-  let dump: unknown;
+  const [physicalPgliteDir, physicalManagedDataDir] = await Promise.all([
+    fs.realpath(path.resolve(pgliteDir)),
+    fs.realpath(path.resolve(managedDataDir)),
+  ]);
+  if (physicalPgliteDir !== physicalManagedDataDir) {
+    throw new Error(
+      "The bounded PGlite exporter data directory does not match backup configuration",
+    );
+  }
+
+  let bounded: unknown;
+  let provenPreflight: PglitePhysicalPreflight | undefined;
   try {
-    dump = managedDump
-      ? await managedDump.call(adapter, "gzip")
-      : await rawDump?.call(raw, "gzip");
+    bounded = await managedDump.call(
+      adapter,
+      async () => {
+        const proof = await preflightPglitePhysicalDirectory(
+          physicalPgliteDir,
+          signal,
+          runtime.agentId,
+        );
+        provenPreflight = proof;
+        return proof;
+      },
+      "gzip",
+    );
   } catch (err) {
-    if (isPgliteClosingError(err)) {
+    const code =
+      err && typeof err === "object"
+        ? (err as { code?: unknown }).code
+        : undefined;
+    if (
+      isPgliteClosingError(err) ||
+      (typeof code === "string" &&
+        PGLITE_BOUNDED_SNAPSHOT_TRANSIENT_CODES.has(code))
+    ) {
       throw new Error(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
     } else {
       throw err;
     }
   }
-  if (!isBlobLike(dump)) {
-    throw new Error("PGlite dumpDataDir() did not return a Blob/File");
+  if (!bounded || typeof bounded !== "object") {
+    throw new Error("The bounded PGlite exporter returned an invalid result");
   }
-  // Refuse from Blob.size BEFORE arrayBuffer(): the dump would otherwise be
-  // resident three times over (ArrayBuffer + Buffer + base64) with the budget
-  // none the wiser.
-  const hold = budget?.reserve(dump.size);
-  let committed = false;
+  const { dump, preflight, release } = bounded as {
+    dump?: unknown;
+    preflight?: unknown;
+    release?: unknown;
+  };
+  if (typeof release !== "function") {
+    throw new Error(
+      "The bounded PGlite exporter did not provide a consumer-lifetime lease",
+    );
+  }
+
+  let released = false;
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    release();
+  };
   try {
-    const bytes = Buffer.from(await dump.arrayBuffer());
-    const file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
-    hold?.commit(Buffer.byteLength(JSON.stringify(file), "utf8"));
-    committed = true;
-    return withPgliteDumpHash({
-      kind: "pglite-dump",
-      compression: "gzip",
-      file,
-      sha256: "",
-    });
+    if (preflight !== provenPreflight || !provenPreflight) {
+      throw new Error(
+        "The bounded PGlite exporter skipped its required preflight",
+      );
+    }
+    if (!isBlobLike(dump)) {
+      throw new Error("PGlite dumpDataDir() did not return a Blob/File");
+    }
+    if (dump.size > provenPreflight.estimatedArchiveBytes) {
+      throw new Error("PGlite export exceeds its preflighted archive bound");
+    }
+    // The shared eight-copy preflight bounds PGlite's directory/tar/gzip/Blob
+    // materialization. Legacy JSON then retains up to one ArrayBuffer copy plus
+    // 4/3-size base64 and JSON-string copies: 1 + 4/3 + 4/3 < 4. Re-check the
+    // remaining memory against those four actual compressed-dump copies before
+    // reading the Blob, while the shared export lease is still held.
+    const legacyAdditionalMemoryBudgetBytes =
+      dump.size * LEGACY_PGLITE_POST_DUMP_COPY_FACTOR;
+    const legacyRequiredAvailableMemoryBytes =
+      legacyAdditionalMemoryBudgetBytes +
+      AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.availableMemoryHeadroomBytes;
+    if (
+      resolveAgentBackupAvailableMemoryBytes() <
+      legacyRequiredAvailableMemoryBytes
+    ) {
+      throw new Error(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
+    }
+    // Refuse from Blob.size BEFORE arrayBuffer(): the dump would otherwise be
+    // resident three times over (ArrayBuffer + Buffer + base64) with the budget
+    // none the wiser.
+    const hold = budget?.reserve(dump.size);
+    let committed = false;
+    try {
+      const bytes = Buffer.from(await dump.arrayBuffer());
+      const file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
+      hold?.commit(Buffer.byteLength(JSON.stringify(file), "utf8"));
+      committed = true;
+      return withPgliteDumpHash({
+        kind: "pglite-dump",
+        compression: "gzip",
+        file,
+        sha256: "",
+      });
+    } finally {
+      if (!committed) hold?.release();
+    }
   } finally {
-    if (!committed) hold?.release();
+    releaseOnce();
   }
 }
 
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  signal: AbortSignal,
   budget?: SnapshotBudget,
 ): Promise<AgentBackupDatabaseComponent> {
   const postgresUrl = hasPostgresUrl(runtime);
@@ -1037,7 +1146,12 @@ async function captureDatabaseComponent(
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
-  const pgliteDump = await capturePgliteDump(runtime, budget);
+  const pgliteDump = await capturePgliteDump(
+    runtime,
+    pgliteDir,
+    signal,
+    budget,
+  );
   if (pgliteDump) {
     return {
       kind: "pglite-dump",
@@ -1137,7 +1251,7 @@ export async function createAgentSnapshot(
     }
   };
   const captures = [
-    guarded(captureDatabaseComponent(runtime, budget)),
+    guarded(captureDatabaseComponent(runtime, signal, budget)),
     guarded(
       collectFileSet({
         root: path.join(stateDir, MEDIA_DIR_NAME),

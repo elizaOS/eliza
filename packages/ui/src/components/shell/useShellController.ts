@@ -479,8 +479,9 @@ export function useShellController(): ShellController {
     handleInteractiveCloudLogin,
   } = useAppSelectorShallow(selectShellController);
   const authGate = useShellAuthGate();
-  // Ref mirror for async continuations (permission probes, timers) that must
-  // read the gate as it is at fire time, not as it was when they were armed.
+  // Async voice transitions must read the current auth boundary, not the render
+  // that created their callback. Permission probes, recorder drains, and
+  // conversation creation can all outlive a sign-out render.
   const authGateRef = React.useRef(authGate);
   authGateRef.current = authGate;
   const [signingIn, setSigningIn] = React.useState(false);
@@ -1210,7 +1211,7 @@ export function useShellController(): ShellController {
       // Cloud-only, signed out: refuse capture. User-initiated paths call
       // requestSignIn themselves; auto-engage must not pop a login from an
       // effect (that would lose the gesture and fall into same-tab).
-      if (authGate.gated) return;
+      if (authGateRef.current.gated) return;
       // Cartesia realtime owns conversational Talk end to end. Every legacy
       // boot/re-listen/wake path converges here, so this guard is the hard
       // boundary that prevents an effect from silently reopening batch Cloud
@@ -1521,7 +1522,6 @@ export function useShellController(): ShellController {
         });
     },
     [
-      authGate.gated,
       realtimeVoiceEnabled,
       send,
       stopCapture,
@@ -1625,7 +1625,7 @@ export function useShellController(): ShellController {
         }
         // Recovered (or now-unknown): guard against a capture that opened via
         // another path during the await, then open the mic.
-        if (captureRef.current) return;
+        if (authGateRef.current.gated || captureRef.current) return;
         onProceed();
       });
     },
@@ -1698,8 +1698,13 @@ export function useShellController(): ShellController {
       // double-opened / overridden. The auth gate is re-read through the ref —
       // sign-out during the await must not light hands-free or summon the
       // overlay against a startCapture that will refuse.
-      if (authGateRef.current.gated) return;
-      if (captureRef.current || handsFreeRef.current) return;
+      if (
+        authGateRef.current.gated ||
+        captureRef.current ||
+        handsFreeRef.current
+      ) {
+        return;
+      }
       setHandsFree(true);
       setIsOpen(true);
       startCapture("converse");
@@ -1942,7 +1947,7 @@ export function useShellController(): ShellController {
   }, [stopCapture, voiceOutput.stopSpeaking]);
 
   const startRealtimeVoice = React.useCallback(async () => {
-    if (authGate.gated) return;
+    if (authGateRef.current.gated) return;
     if (!realtimeVoiceEnabled) return;
     if (
       realtimeVoiceWantedRef.current ||
@@ -1966,7 +1971,7 @@ export function useShellController(): ShellController {
     let conversationId = activeConversationIdRef.current?.trim() || null;
     if (!conversationId) {
       conversationId = await ensureActiveConversationForVoice();
-      if (!realtimeVoiceWantedRef.current) return;
+      if (authGateRef.current.gated || !realtimeVoiceWantedRef.current) return;
     }
     if (!conversationId) {
       const message =
@@ -1980,6 +1985,7 @@ export function useShellController(): ShellController {
       return;
     }
 
+    if (authGateRef.current.gated) return;
     const outcome = await realtimeVoiceRef.current.start();
     if (!realtimeVoiceWantedRef.current) {
       if (outcome.kind === "live") void realtimeVoiceRef.current.stop();
@@ -2002,7 +2008,6 @@ export function useShellController(): ShellController {
     }
     setActionNotice(message, "error", 6000);
   }, [
-    authGate.gated,
     ensureActiveConversationForVoice,
     realtimeVoiceEnabled,
     setActionNotice,
@@ -2154,6 +2159,7 @@ export function useShellController(): ShellController {
         const payload = event.payload as VoiceSettingsApplyPayload;
         const continuous = readAppliedContinuousMode(payload.continuous);
         if (!continuous) return;
+        if (authGateRef.current.gated) return;
         saveContinuousChatMode(continuous);
 
         if (continuous === "always-on") {
@@ -2206,11 +2212,14 @@ export function useShellController(): ShellController {
   // native subscription, no mic effect).
   const wakeWordEnabled = loadWakeWordEnabled();
   useWakeListenWindow({
-    enabled: wakeWordEnabled,
+    enabled: wakeWordEnabled && !authGate.gated,
     alwaysOn: wakeAlreadyAlwaysOn,
     agentBusy: responding,
     characterName: wakeCharacterName,
     onOpen: React.useCallback(() => {
+      // A native wake notification may already be queued when sign-out disables
+      // the subscription. The callback itself is the final boundary.
+      if (authGateRef.current.gated) return;
       setIsOpen(true);
       if (realtimeVoiceEnabled) {
         startRealtimeVoiceRef.current();
@@ -2241,6 +2250,10 @@ export function useShellController(): ShellController {
   // phrase) finalizes the session, which drops the transcript into the composer
   // as an attachment the user sends with their next message.
   const toggleTranscriptionMode = React.useCallback(async () => {
+    if (authGateRef.current.gated) {
+      requestSignIn();
+      return;
+    }
     if (transcriptionModeRef.current) {
       setTranscriptionMode(false);
       transcriptionModeRef.current = false;
@@ -2283,6 +2296,7 @@ export function useShellController(): ShellController {
       // both captures reach ASR in order and the old handle cannot dispose the
       // new capture's state.
       if (captureRef.current) await stopCaptureAndDrain();
+      if (authGateRef.current.gated || !transcriptionModeRef.current) return;
       startCapture("transcription");
     }
   }, [
@@ -2292,6 +2306,7 @@ export function useShellController(): ShellController {
     beginTranscriptSession,
     finalizeTranscriptSession,
     realtimeVoiceEnabled,
+    requestSignIn,
   ]);
 
   // The mic button while transcribing: turn the mic (and thus transcript) fully
@@ -2319,6 +2334,7 @@ export function useShellController(): ShellController {
   // "stop" while idle) is a no-op.
   React.useEffect(() => {
     const onVoiceControl = (e: Event) => {
+      if (authGateRef.current.gated) return;
       const detail = (e as CustomEvent<VoiceControlEventDetail>).detail;
       if (!detail) return;
       if (detail.command === "start" && !transcriptionModeRef.current) {
@@ -2392,6 +2408,7 @@ export function useShellController(): ShellController {
     const timer = window.setTimeout(() => {
       if (
         transcriptionModeRef.current &&
+        !authGateRef.current.gated &&
         !captureRef.current &&
         !chatSending &&
         !voiceOutput.speaking
@@ -2432,6 +2449,7 @@ export function useShellController(): ShellController {
     const timer = window.setTimeout(() => {
       if (
         handsFreeRef.current &&
+        !authGateRef.current.gated &&
         !captureRef.current &&
         !chatSending &&
         !voiceOutput.speaking &&
@@ -2582,19 +2600,20 @@ export function useShellController(): ShellController {
   // a later sign-in clears the gate — without a fresh voice gesture.
   React.useEffect(() => {
     if (!authGate.gated) return;
+    // Authentication is a terminal boundary for every voice loop. Discard the
+    // partial transcription session instead of finalizing it into a healthy
+    // attachment after its authenticated owner has disappeared.
+    setTranscriptionMode(false);
+    transcriptionModeRef.current = false;
+    transcriptSessionRef.current = null;
+    transcriptSessionStartRef.current = 0;
+    resumeHandsFreeAfterTranscriptRef.current = false;
+    recordReplyIntoTranscriptRef.current = false;
+    wasCapturingAtSuspendRef.current = false;
+    autoEngagedHandsFreeRef.current = true;
     if (captureRef.current) cancelCapture();
     if (isOpen) setIsOpen(false);
     stopRealtimeVoiceRef.current();
-    if (handsFreeRef.current) {
-      saveContinuousChatMode(priorContinuousModeRef.current);
-      setHandsFree(false);
-      handsFreeRef.current = false;
-    }
-    resumeHandsFreeAfterTranscriptRef.current = false;
-    if (transcriptionModeRef.current) {
-      setTranscriptionMode(false);
-      transcriptionModeRef.current = false;
-    }
   }, [authGate.gated, cancelCapture, isOpen]);
 
   const startRecording = React.useCallback(

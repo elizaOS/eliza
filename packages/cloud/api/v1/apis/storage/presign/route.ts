@@ -2,16 +2,15 @@
  * Mints a short-lived signed URL for a single attachment object.
  *
  * Routes:
- *   POST /api/v1/apis/storage/presign  { key, operation, expiresIn? }
+ *   POST /api/v1/apis/storage/presign  { key, operation: "get", expiresIn? }
  *                                      → { url, expiresAt }
  *
  * Auth: requireUserOrApiKeyWithOrg.
  * Pricing: flat per-request charge against the `storage:presign` row.
  *
- * The URL is a direct R2 S3 signed URL — clients hit R2 directly with it,
- * NOT this proxy. Presign for `put` is supported but the signed URL bypasses
- * the proxy's quota enforcement; clients SHOULD prefer `PUT /objects/{key+}`
- * for writes that should count against the org quota.
+ * The URL grants direct, temporary GET access through the R2 S3 endpoint;
+ * clients hit R2 directly rather than this proxy. Writes continue through
+ * `PUT /objects/{key+}` so organization quota enforcement remains authoritative.
  */
 
 import { Hono } from "hono";
@@ -29,7 +28,7 @@ const MAX_OBJECT_KEY_LENGTH = 1024;
 
 const presignRequestSchema = z.object({
   key: z.string().min(1).max(MAX_OBJECT_KEY_LENGTH),
-  operation: z.enum(["get", "put"]),
+  operation: z.literal("get"),
   expiresIn: z.number().int().min(60).max(3600).optional(),
 });
 
@@ -40,19 +39,10 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      logger.error("[storage proxy] R2_* env vars not set; presign rejected");
-      return c.json(
-        {
-          error:
-            "Attachment storage proxy not available — server misconfigured",
-        },
-        503,
-      );
-    }
-
-    const rawBody = await c.req.json().catch(() => null);
+    const rawBody = await c.req.json().catch(() => {
+      // error-policy:J3 malformed JSON remains an explicit invalid request.
+      return null;
+    });
     const parsed = presignRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
@@ -67,6 +57,18 @@ app.post("/", async (c) => {
       trimmedKey.split("/").some((s) => s === "..")
     ) {
       return c.json({ error: "Invalid object key" }, 400);
+    }
+
+    const adapter = getR2StorageAdapter(c.env);
+    if (!adapter) {
+      logger.error("[storage proxy] R2_* env vars not set; presign rejected");
+      return c.json(
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
+        503,
+      );
     }
 
     const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "presign");
@@ -95,11 +97,13 @@ app.post("/", async (c) => {
 
     const ttlSeconds = expiresIn ?? 3600;
     const scopedKey = `org/${organization_id}/${trimmedKey}`;
-    const url = await adapter.presign(scopedKey, ttlSeconds);
+    const url = await adapter.presignGet(scopedKey, ttlSeconds);
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
     return c.json({ url, expiresAt });
   } catch (error) {
+    // error-policy:J1 the route boundary translates authentication, pricing,
+    // debit, configuration, and signing failures into the canonical response.
     return failureResponse(c, error);
   }
 });

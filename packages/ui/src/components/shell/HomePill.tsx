@@ -219,7 +219,9 @@ export function HomePill({
   const chipExpanded =
     phase === "listening" || phase === "processing" || needsAuth;
   const label = needsAuth
-    ? signInLabel
+    ? signingIn
+      ? `Signing in to ${appName}`
+      : signInLabel
     : phase === "listening"
       ? `${appName} is listening — release to send`
       : phase === "processing"
@@ -234,7 +236,8 @@ export function HomePill({
     <Button
       variant="ghost"
       aria-label={label}
-      aria-pressed={isOpen}
+      aria-busy={needsAuth && signingIn ? true : undefined}
+      aria-pressed={needsAuth ? undefined : isOpen}
       data-phase={phase}
       data-speaking={speaking || undefined}
       data-testid="shell-home-pill"

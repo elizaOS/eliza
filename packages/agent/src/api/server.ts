@@ -68,6 +68,7 @@ import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
+import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
@@ -1906,6 +1907,18 @@ async function handleRequest(
     return;
   }
 
+  if (method === "POST" && pathname === "/api/snapshot/v2") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    await handleAgentBackupV2SnapshotRequest(req, res, {
+      runtime: state.runtime,
+      config: state.config,
+    });
+    return;
+  }
+
   if (method === "POST" && pathname === "/api/restore") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -2556,6 +2569,7 @@ async function handleRequest(
         error,
         readJsonBody,
         readBody,
+        decodePathComponent,
         discoverSkills,
       })
     ) {

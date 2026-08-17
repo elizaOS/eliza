@@ -22,7 +22,7 @@ import { decodeOsIntent } from "../../../os-intent/decode";
  * The native authority rejects a renderer whose version differs rather than
  * trusting a field that may have moved.
  */
-export const SHELL_SYNC_PROTOCOL_VERSION = "2";
+export const SHELL_SYNC_PROTOCOL_VERSION = "3";
 
 export type ShellWindowRole = "owner" | "follower";
 
@@ -30,6 +30,7 @@ export type ShellWindowRole = "owner" | "follower";
  *  owner switches exhaustively so a new command cannot be silently dropped. */
 export type ShellControllerCommand =
   | { kind: "open" }
+  | { kind: "requestSignIn" }
   | { kind: "close" }
   | {
       kind: "send";
@@ -127,6 +128,7 @@ function isImageAttachment(value: unknown): value is ImageAttachment {
 
 const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
   "open",
+  "requestSignIn",
   "close",
   "captureVision",
   "toggleRecording",

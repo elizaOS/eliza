@@ -76,6 +76,8 @@ export interface TranscriptStoreRuntime {
 }
 
 export interface CreateTranscriptInput {
+	/** Canonical tenant scope supplied by TranscriptService; legacy direct-store callers may omit it. */
+	worldId?: UUID;
 	roomId: UUID;
 	/** The owner/speaker entity the recording is attributed to. */
 	entityId: UUID;
@@ -493,7 +495,7 @@ export class TranscriptStore {
 
 	/** Persist a transcript record; returns it unchanged. */
 	async create(input: CreateTranscriptInput): Promise<Transcript> {
-		const { roomId, entityId, transcript } = input;
+		const { worldId, roomId, entityId, transcript } = input;
 		const metadata: MemoryMetadata = {
 			type: "custom",
 			source: TRANSCRIPT_METADATA_TYPE,
@@ -507,6 +509,7 @@ export class TranscriptStore {
 		};
 		const memory: Memory = {
 			id: transcript.id as UUID,
+			...(worldId ? { worldId } : {}),
 			entityId,
 			roomId,
 			agentId: this.runtime.agentId,

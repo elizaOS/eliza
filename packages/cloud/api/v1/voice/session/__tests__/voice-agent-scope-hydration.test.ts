@@ -62,8 +62,10 @@ mock.module("@/lib/services/inference-admission-snapshot", () => ({
   warmInferenceAdmissionSnapshot,
 }));
 const warmInferenceAdmissionGate = mock(async () => undefined);
+const warmInferenceRateLimitGate = mock(async () => undefined);
 mock.module("@/lib/services/inference-admission-gate", () => ({
   warmInferenceAdmissionGate,
+  warmInferenceRateLimitGate,
 }));
 const calculateCost = mock(async () => ({
   inputCost: 0,
@@ -108,6 +110,7 @@ afterEach(async () => {
   findByIdInOrganization.mockClear();
   warmInferenceAdmissionSnapshot.mockClear();
   warmInferenceAdmissionGate.mockClear();
+  warmInferenceRateLimitGate.mockClear();
   calculateCost.mockClear();
   findByIdInOrganization.mockImplementation(async () => linkedCharacter);
 });
@@ -134,6 +137,7 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
       ORGANIZATION_ID,
     );
     expect(warmInferenceAdmissionGate).toHaveBeenCalledWith(ORGANIZATION_ID);
+    expect(warmInferenceRateLimitGate).toHaveBeenCalledWith(ORGANIZATION_ID);
     expect(calculateCost).toHaveBeenCalledWith(
       "gemma-4-31b",
       "cerebras",

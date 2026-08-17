@@ -27,8 +27,8 @@ const MIN_GOAL_CHARS = 8;
 
 /**
  * The base coding criteria. Every "build something in the repo" task type
- * extends this set, so a coding task and an app-build task share the same
- * green-bar checks and the app-build only ADDS its live-URL criterion.
+ * extends this set; app-build deliberately does NOT inherit it (see the
+ * template comment below).
  */
 const CODING_CRITERIA: readonly string[] = [
   "typecheck passes",
@@ -47,7 +47,16 @@ export const DEFAULT_CRITERIA_TEMPLATES: Readonly<
   Record<OrchestratorTaskType, readonly string[]>
 > = {
   coding: CODING_CRITERIA,
-  "app-build": [...CODING_CRITERIA, "the live URL is reachable"],
+  // Serve-focused on purpose (#20794 live residual): a quick one-file app has
+  // no test/typecheck surface, so inheriting the coding checks manufactured
+  // criteria NO static deliverable could ever satisfy and burned every verify
+  // attempt. A goal that genuinely involves code checks says so, and the model
+  // refinement adds them back from the goal text.
+  "app-build": [
+    "the live URL is reachable",
+    "the deliverable file exists in the workdir",
+    "the page serves the requested content",
+  ],
   "view-create": [
     "a Plugin.views entry is declared with a viewKind",
     "the view appears in /api/views",

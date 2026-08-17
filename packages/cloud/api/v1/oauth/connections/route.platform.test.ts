@@ -103,7 +103,8 @@ describe("GET /api/v1/oauth/connections catalog platform identity", () => {
     const response = await request("?platform=google");
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    const body = (await response.json()) as { error: string };
+    expect(body).toEqual({
       error: "Failed to list OAuth connections",
     });
     expect(loggerError).toHaveBeenCalledWith(

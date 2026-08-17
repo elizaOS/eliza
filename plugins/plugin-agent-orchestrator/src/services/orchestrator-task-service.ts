@@ -192,6 +192,7 @@ import {
   capabilitiesForBackend,
   DETERMINISTIC_LEDGER_VERIFIER_NAME,
   deterministicLedgerVerdict,
+  isCompletedToolEvidence,
   isGreenCheckOutput,
   isPubliclyReachableUrl,
   renderDeterministicVerdict,
@@ -203,6 +204,12 @@ import {
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
 import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
+import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  mineCandidatePaths,
+  probeMappedUrls,
+} from "./quick-app-evidence.js";
 import {
   readSmithersDurableRunLink,
   runDurableTask,
@@ -2521,6 +2528,46 @@ export class OrchestratorTaskService extends Service {
       extractWriteLedger(sessionEvents),
     );
 
+    // Ledger-less adapters starve the deterministic pre-pass (#20794 live
+    // residual): recover observation-grade evidence by direct inspection.
+    // Claims (mined paths, captured change set) only select WHAT to inspect;
+    // fs stat inside the session workdir and a real HTTP probe of the route's
+    // operator-configured public mapping are what produce evidence.
+    let fsVerifiedFiles: string[] = [];
+    const reportingSession = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    if (
+      reportingSession?.workdir &&
+      (!ledgerVerdict.ledgerObserved ||
+        ledgerVerdict.verifiedClaims.length === 0)
+    ) {
+      fsVerifiedFiles = collectFsObservedFiles({
+        workdir: reportingSession.workdir,
+        candidatePaths: [
+          ...(changeSet?.changedFiles ?? []),
+          ...mineCandidatePaths([summary, ...subAgentReplies]),
+        ],
+        sessionStartedAt: reportingSession.registeredAt,
+      });
+      if (fsVerifiedFiles.length > 0 && verifiedUrls.length === 0) {
+        const routeMeta = isRecord(reportingSession.metadata)
+          ? reportingSession.metadata.workdirRoute
+          : undefined;
+        const urlMappings =
+          isRecord(routeMeta) && Array.isArray(routeMeta.urlMappings)
+            ? (routeMeta.urlMappings as {
+                urlPrefix: string;
+                localPath: string;
+              }[])
+            : undefined;
+        const probed = await probeMappedUrls(
+          deriveRouteMappedUrls(fsVerifiedFiles, urlMappings),
+        );
+        verifiedUrls.push(...probed);
+      }
+    }
+
     return {
       summary,
       diffSummary,
@@ -2533,6 +2580,7 @@ export class OrchestratorTaskService extends Service {
             unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
           }
         : {}),
+      ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -2542,6 +2590,7 @@ export class OrchestratorTaskService extends Service {
    *  carries the command/title so {@link classifyToolOutput} can class it. */
   private extractToolSignals(
     events: OrchestratorTaskDocument["events"],
+    completedOnly = false,
   ): EvidenceSignal[] {
     const signals: EvidenceSignal[] = [];
     for (const event of events) {
@@ -2553,6 +2602,7 @@ export class OrchestratorTaskService extends Service {
       const toolCall = isRecord(event.data.toolCall)
         ? event.data.toolCall
         : event.data;
+      if (completedOnly && !isCompletedToolEvidence(toolCall)) continue;
       const output = str(toolCall.output) ?? str(event.data.output);
       if (!output) continue;
       const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
@@ -4276,13 +4326,17 @@ export class OrchestratorTaskService extends Service {
               (event) =>
                 event.sessionId === sessionId || event.sessionId === undefined,
             ),
+            true,
           ),
         );
         const detVerdict = deterministicLedgerVerdict(acceptanceCriteria, {
           verifiedPublicUrls: bundle.verifiedUrls.filter(
             isPubliclyReachableUrl,
           ),
-          ledgerVerifiedFiles: bundle.ledgerVerifiedFiles ?? [],
+          ledgerVerifiedFiles: [
+            ...(bundle.ledgerVerifiedFiles ?? []),
+            ...(bundle.fsVerifiedFiles ?? []),
+          ],
           hasChangeSet: Boolean(bundle.diffSummary?.trim()),
           greenChecks: {
             test: isGreenCheckOutput(deterministicToolOutput?.test),

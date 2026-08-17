@@ -2,6 +2,7 @@
  * Exercises the relationships route query boundary with pure helpers and a
  * mocked graph service; no live HTTP server, database, or model is used.
  */
+import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleRelationshipsRoutes,
@@ -9,6 +10,20 @@ import {
   parseRelationshipsQueryInteger,
   parseRelationshipsScope,
 } from "./relationships-routes.ts";
+
+function createWireResponse(): {
+  res: http.ServerResponse;
+  end: ReturnType<typeof vi.fn>;
+} {
+  const end = vi.fn();
+  return {
+    res: {
+      setHeader: vi.fn(),
+      end,
+    } as unknown as http.ServerResponse,
+    end,
+  };
+}
 
 describe("parseRelationshipsQueryInteger", () => {
   it("preserves omitted values and parses complete unsigned decimals", () => {
@@ -226,5 +241,157 @@ describe("GET /api/relationships/graph scope identity", () => {
       scope: "relevant",
     });
     expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
+  });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/candidates/:id/accept with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const acceptMerge = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge,
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/candidates/%/accept" } as never,
+      res,
+      method: "POST",
+      pathname: "/api/relationships/candidates/%/accept",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid merge candidate id: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(acceptMerge).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/people/:id/link with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const proposeMerge = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+        proposeMerge,
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%/link" } as never,
+      res,
+      method: "POST",
+      pathname: "/api/relationships/people/%/link",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid source entity id: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(proposeMerge).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed percent-encoding on GET /api/relationships/people/:id with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const getPersonDetail = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail,
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%" } as never,
+      res,
+      method: "GET",
+      pathname: "/api/relationships/people/%",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error:
+          "Invalid relationships person identifier: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(getPersonDetail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/api/relationships/candidates/not%2Da%2Duuid/accept", "POST"],
+    ["/api/relationships/people/not%2Da%2Duuid/link", "POST"],
+    ["/api/relationships/people/not%2Da%2Duuid", "GET"],
+  ])("rejects a decoded non-UUID on %s", async (pathname, method) => {
+    const error = vi.fn();
+    const acceptMerge = vi.fn();
+    const proposeMerge = vi.fn();
+    const getPersonDetail = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail,
+        getCandidateMerges: vi.fn(),
+        acceptMerge,
+        rejectMerge: vi.fn(),
+        proposeMerge,
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: pathname } as never,
+      res: {} as never,
+      method,
+      pathname,
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      400,
+    );
+    expect(acceptMerge).not.toHaveBeenCalled();
+    expect(proposeMerge).not.toHaveBeenCalled();
+    expect(getPersonDetail).not.toHaveBeenCalled();
   });
 });

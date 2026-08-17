@@ -21,6 +21,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  if?: string;
   env?: Record<string, string>;
   environment?: string;
   needs?: string | string[];
@@ -39,6 +40,11 @@ interface WorkflowJob {
 }
 
 interface Workflow {
+  concurrency?: {
+    group?: string;
+    "cancel-in-progress"?: boolean;
+    queue?: string;
+  };
   jobs?: Record<string, WorkflowJob>;
 }
 
@@ -98,6 +104,9 @@ const requiredAuthWorkerSecretNames = [
 
 describe("canonical cloud deployment environment contract", () => {
   test("records the staging certificate with the upload action digest shape", () => {
+    expect(cloudDeploy.jobs?.["certify-staging-release"]?.if).toContain(
+      "needs.release.outputs.superseded != 'true'",
+    );
     const record = step(
       cloudDeploy,
       "certify-staging-release",
@@ -112,6 +121,32 @@ describe("canonical cloud deployment environment contract", () => {
     expect(record.run).toContain(`(sha256:${digestVariable})`);
     expect(record.run).not.toContain(
       '[[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]',
+    );
+  });
+
+  test("queues apps-worker deploys per environment without per-SHA races", () => {
+    expect(appsWorker.concurrency?.group).toContain("deploy-apps-worker-");
+    expect(appsWorker.concurrency?.group).not.toContain("github.sha");
+    expect(appsWorker.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(appsWorker.concurrency?.queue).toBe("max");
+    const source = step(appsWorker, "deploy", "Resolve exact deploy source");
+    const deploy = step(appsWorker, "deploy", "Deploy and restart apps worker");
+    const health = step(appsWorker, "deploy", "Health check");
+    expect(source.run).toContain("/git/ref/heads/$TARGET_BRANCH");
+    expect(source.run).toContain('echo "sha=$target_sha"');
+    expect(deploy.with?.envs).toContain("TARGET_SHA");
+    expect(deploy.with?.script).toContain("apps-worker-deployed-sha");
+    expect(deploy.with?.script).toContain("skipping redundant queued build");
+    expect(deploy.with?.script).toContain(
+      'deployed_head" = "$TARGET_SHA"',
+    );
+    expect(deploy.with?.script).toContain('origin "$TARGET_SHA"');
+    expect(health.with?.envs).toContain("TARGET_SHA");
+    expect(health.with?.script).toContain(
+      "sudo tee /var/lib/eliza/apps-worker-deployed-sha",
+    );
+    expect(health.with?.script).toContain(
+      'deployed_head" != "$TARGET_SHA"',
     );
   });
 

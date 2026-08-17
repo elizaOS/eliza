@@ -5,16 +5,16 @@
  * (`host_key_fingerprint = NULL`), `DockerNodeManager.sshClientForNode(node)`
  * wires an `onHostKeyDiscovered` callback into the SSH client. After the client
  * accepts the presented key on first connect and captures its fingerprint, that
- * callback persists the fingerprint via
- * `dockerNodesRepository.setHostKeyFingerprint(node_id, fingerprint)` — so every
- * later connect verifies against a real pin.
+ * callback persists the fingerprint via the repository's compare-and-swap pin
+ * rotation API — so every later connect verifies against a real pin.
  *
  * These drive the REAL manager (`healthCheckNode`) with a stubbed repository and
  * a stubbed SSH client that models the boundary: `getClient` captures the wired
  * `onHostKeyDiscovered`, and `connect()` fires it with a concrete captured
  * fingerprint exactly as docker-ssh's post-`ready` handler does — but only when
  * a callback was actually wired (i.e. the row was NULL-pinned). We assert:
- *   1. an unpinned node persists the discovered fingerprint exactly once;
+ *   1. an unpinned node persists the discovered fingerprint exactly once
+ *      through the CAS rotation API that also clears any boot authority;
  *   2. a pinned node wires NO callback and NEVER persists.
  */
 
@@ -35,7 +35,7 @@ const DISCOVERED_FP = "abc123discoveredfingerprint";
 
 const repoCalls = {
   updateStatus: [] as Array<{ nodeId: string; status: string }>,
-  setHostKeyFingerprint: [] as Array<{ nodeId: string; fingerprint: string }>,
+  rotateNodeHostKeyFingerprint: [] as Array<Record<string, unknown>>,
 };
 
 /**
@@ -53,9 +53,9 @@ mock.module("../../db/repositories/docker-nodes", () => ({
       repoCalls.updateStatus.push({ nodeId, status });
       return Promise.resolve();
     },
-    setHostKeyFingerprint: (nodeId: string, fingerprint: string) => {
-      repoCalls.setHostKeyFingerprint.push({ nodeId, fingerprint });
-      return Promise.resolve();
+    rotateNodeHostKeyFingerprint: (input: Record<string, unknown>) => {
+      repoCalls.rotateNodeHostKeyFingerprint.push(input);
+      return Promise.resolve({ host_key_fingerprint: input.observedFingerprint });
     },
   },
 }));
@@ -119,6 +119,10 @@ function node(nodeId: string, hostKeyFingerprint: string | null): DockerNode {
     last_health_check: null,
     ssh_user: "root",
     host_key_fingerprint: hostKeyFingerprint,
+    fleet_kind: null,
+    infrastructure_provider: null,
+    provider_server_id: null,
+    node_incarnation: null,
     metadata: {},
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     updated_at: new Date("2026-01-01T00:00:00.000Z"),
@@ -128,7 +132,7 @@ function node(nodeId: string, hostKeyFingerprint: string | null): DockerNode {
 beforeEach(() => {
   __resetNodeHealthFailureStateForTests();
   repoCalls.updateStatus = [];
-  repoCalls.setHostKeyFingerprint = [];
+  repoCalls.rotateNodeHostKeyFingerprint = [];
   wiredCallbacks.length = 0;
 });
 
@@ -148,8 +152,13 @@ describe("DockerNodeManager TOFU-persist wiring", () => {
     expect(status).toBe("healthy");
     expect(wiredCallbacks).toHaveLength(1);
     expect(wiredCallbacks[0]).toBeDefined();
-    expect(repoCalls.setHostKeyFingerprint).toEqual([
-      { nodeId: "unpinned-node", fingerprint: DISCOVERED_FP },
+    expect(repoCalls.rotateNodeHostKeyFingerprint).toEqual([
+      {
+        id: "unpinned-node-uuid",
+        nodeId: "unpinned-node",
+        expectedFingerprint: null,
+        observedFingerprint: DISCOVERED_FP,
+      },
     ]);
   });
 
@@ -166,6 +175,6 @@ describe("DockerNodeManager TOFU-persist wiring", () => {
     // never a silent re-pin.
     expect(status).toBe("healthy");
     expect(wiredCallbacks).toEqual([undefined]);
-    expect(repoCalls.setHostKeyFingerprint).toHaveLength(0);
+    expect(repoCalls.rotateNodeHostKeyFingerprint).toHaveLength(0);
   });
 });

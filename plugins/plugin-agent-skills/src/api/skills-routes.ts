@@ -17,6 +17,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger, readWorkspaceFolderConfig } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  decodeUrlPathComponent,
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,
   PostSkillAcknowledgeRequestSchema,
@@ -33,6 +34,7 @@ import {
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
+import { SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN } from "../types";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
 
 const WORKSPACE_MARKERS = [
@@ -187,6 +189,24 @@ function validateSkillId(
     return null;
   }
   return skillId;
+}
+
+function decodeAndValidateSkillId(
+  rawSkillId: string,
+  res: http.ServerResponse,
+  errorFn: SkillsRouteContext["error"],
+): string | null {
+  const decoded = decodeUrlPathComponent(rawSkillId);
+  if (!decoded.ok) {
+    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input.
+    errorFn(res, "Invalid skill ID: malformed URL encoding", 400);
+    return null;
+  }
+  return validateSkillId(decoded.value, res, errorFn);
+}
+
+function isValidCatalogSkillSlug(slug: string): boolean {
+  return slug.length <= SKILL_NAME_MAX_LENGTH && SKILL_NAME_PATTERN.test(slug);
 }
 
 // ---------------------------------------------------------------------------
@@ -481,9 +501,19 @@ export async function handleSkillsRoutes(
 
   // ── GET /api/skills/catalog/:slug ──────────────────────────────────────
   if (method === "GET" && pathname.startsWith("/api/skills/catalog/")) {
-    const slug = decodeURIComponent(
+    const decoded = decodeUrlPathComponent(
       pathname.slice("/api/skills/catalog/".length),
     );
+    if (!decoded.ok) {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid skill slug: malformed URL encoding", 400);
+      return true;
+    }
+    const slug = decoded.value;
+    if (!isValidCatalogSkillSlug(slug)) {
+      error(res, "Invalid skill slug", 400);
+      return true;
+    }
     // Exclude "search" which is handled above
     if (slug && slug !== "search") {
       if (!shouldExposeBinanceSkillId(slug)) {
@@ -731,8 +761,8 @@ export async function handleSkillsRoutes(
 
   // ── GET /api/skills/:id/scan ───────────────────────────────────────────
   if (method === "GET" && pathname.match(/^\/api\/skills\/[^/]+\/scan$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -756,8 +786,8 @@ export async function handleSkillsRoutes(
     method === "POST" &&
     pathname.match(/^\/api\/skills\/[^/]+\/acknowledge$/)
   ) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -907,8 +937,8 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/:id/open ─────────────────────────────────────────
   if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/open$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -989,8 +1019,8 @@ export async function handleSkillsRoutes(
 
   // ── GET /api/skills/:id/source ──────────────────────────────────────────
   if (method === "GET" && pathname.match(/^\/api\/skills\/[^/]+\/source$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -1072,8 +1102,8 @@ export async function handleSkillsRoutes(
   // Canonical verb endpoint for enabling a skill. Honors scan acknowledgment
   // requirements; returns 409 when an unack'd scan blocks enabling.
   if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/enable$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -1136,8 +1166,8 @@ export async function handleSkillsRoutes(
   // ── POST /api/skills/:id/disable ────────────────────────────────────────
   // Canonical verb endpoint for disabling a skill.
   if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/disable$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -1170,8 +1200,8 @@ export async function handleSkillsRoutes(
 
   // ── PUT /api/skills/:id/source ──────────────────────────────────────────
   if (method === "PUT" && pathname.match(/^\/api\/skills\/[^/]+\/source$/)) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.split("/")[3]),
+    const skillId = decodeAndValidateSkillId(
+      pathname.split("/")[3],
       res,
       error,
     );
@@ -1269,8 +1299,8 @@ export async function handleSkillsRoutes(
     pathname.match(/^\/api\/skills\/[^/]+$/) &&
     !pathname.includes("/marketplace")
   ) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.slice("/api/skills/".length)),
+    const skillId = decodeAndValidateSkillId(
+      pathname.slice("/api/skills/".length),
       res,
       error,
     );

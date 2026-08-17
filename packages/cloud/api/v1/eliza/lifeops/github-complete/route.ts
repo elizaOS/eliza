@@ -29,6 +29,18 @@ async function __hono_GET(
   const agentId = searchParams.get("agent_id");
   const postMessage = searchParams.get("post_message") === "1";
   const returnUrl = searchParams.get("return_url");
+  // GitHub OAuth landing identity, not leftover tax on Life Ops inbox
+  // bools, X connectionRole, or influencer bookings party. Unknown
+  // tokens (AGENT / OWNER / foo) used to fall through to the owner
+  // connections tab.
+  if (
+    rawTarget != null &&
+    rawTarget !== "" &&
+    rawTarget !== "owner" &&
+    rawTarget !== "agent"
+  ) {
+    return Response.json({ error: "Invalid target" }, { status: 400 });
+  }
   const target = rawTarget === "agent" && agentId ? "agent" : "owner";
   const dashboardUrl = `${baseUrl}/cloud/settings?tab=${
     target === "agent" ? "agents" : "connections"

@@ -18,6 +18,10 @@ import type {
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
+import { decodePathComponent } from "./server-helpers.ts";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -228,9 +232,14 @@ export async function handleRelationshipsRoutes(
       const action = pathname.endsWith("/accept") ? "accept" : "reject";
       const idStart = "/api/relationships/candidates/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
-      if (!candidateId) {
-        error(res, "Missing merge candidate id.", 400);
+      const candidateId = decodePathComponent(
+        pathname.slice(idStart, idEnd),
+        res,
+        "merge candidate id",
+      );
+      if (candidateId === null) return true;
+      if (!UUID_REGEX.test(candidateId)) {
+        error(res, "Invalid merge candidate id.", 400);
         return true;
       }
       if (action === "accept") {
@@ -245,9 +254,14 @@ export async function handleRelationshipsRoutes(
     if (isPersonLinkRoute) {
       const idStart = "/api/relationships/people/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
-      if (!sourceEntityId) {
-        error(res, "Missing source entity id.", 400);
+      const sourceEntityId = decodePathComponent(
+        pathname.slice(idStart, idEnd),
+        res,
+        "source entity id",
+      );
+      if (sourceEntityId === null) return true;
+      if (!UUID_REGEX.test(sourceEntityId)) {
+        error(res, "Invalid source entity id.", 400);
         return true;
       }
       const rawLink = await readJsonBody<Record<string, unknown>>(req, res);
@@ -447,11 +461,14 @@ export async function handleRelationshipsRoutes(
     return true;
   }
 
-  const primaryEntityId = decodeURIComponent(
+  const primaryEntityId = decodePathComponent(
     pathname.slice("/api/relationships/people/".length),
+    res,
+    "relationships person identifier",
   );
-  if (!primaryEntityId) {
-    error(res, "Missing relationships person identifier.", 400);
+  if (primaryEntityId === null) return true;
+  if (!UUID_REGEX.test(primaryEntityId)) {
+    error(res, "Invalid relationships person identifier.", 400);
     return true;
   }
 

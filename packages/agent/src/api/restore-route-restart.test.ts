@@ -3,12 +3,20 @@
  * replacing PGlite files, using a real snapshot, TCP API host, and PGlite dump.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS } from "../services/agent-backup-v2-capture.ts";
 import { startApiServer } from "./server.ts";
 
 const API_TOKEN = "restore-runtime-restart-token";
@@ -26,12 +34,22 @@ const touchedEnv = [
 const originalEnv = new Map<string, string | undefined>();
 
 class PgliteDumpAdapter extends InMemoryDatabaseAdapter {
-  constructor(private readonly dump: Blob) {
+  constructor(
+    private readonly dataDir: string,
+    private readonly dump: Blob,
+  ) {
     super();
   }
 
-  getRawConnection(): unknown {
-    return { dumpDataDir: async () => this.dump };
+  getPgliteDataDir(): string {
+    return this.dataDir;
+  }
+
+  async dumpPgliteDataDirAfterPreflight<T>(
+    preflight: () => Promise<T>,
+  ): Promise<{ dump: Blob; preflight: T; release: () => void }> {
+    const proof = await preflight();
+    return { dump: this.dump, preflight: proof, release: () => undefined };
   }
 }
 
@@ -49,7 +67,28 @@ function restoreEnvironment(): void {
   originalEnv.clear();
 }
 
-afterEach(restoreEnvironment);
+async function logicalDirectoryBytes(root: string): Promise<number> {
+  let total = 0;
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!directory) break;
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(absolutePath);
+      } else {
+        total += (await lstat(absolutePath)).size;
+      }
+    }
+  }
+  return total;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  restoreEnvironment();
+});
 
 describe("POST /api/restore runtime lifecycle", () => {
   it("returns success only after a replacement runtime is active", async () => {
@@ -71,7 +110,7 @@ describe("POST /api/restore runtime lifecycle", () => {
         "utf8",
       );
       process.env.ELIZA_STATE_DIR = stateDir;
-      process.env.PGLITE_DATA_DIR = targetDir;
+      process.env.PGLITE_DATA_DIR = sourceDir;
       process.env.ELIZA_CONFIG_PATH = configPath;
       process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
       process.env.ELIZA_API_BIND_HOST = "127.0.0.1";
@@ -86,9 +125,19 @@ describe("POST /api/restore runtime lifecycle", () => {
       await source.exec("INSERT INTO restore_probe VALUES ('preserved')");
       const dump = await source.dumpDataDir("gzip");
       await source.close();
+      const sourceLogicalBytes = await logicalDirectoryBytes(sourceDir);
+      expect(sourceLogicalBytes).toBeGreaterThan(32 * 1024 * 1024);
+      expect(sourceLogicalBytes).toBeLessThanOrEqual(
+        AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.maxPhysicalBytes,
+      );
+      // A real initialized PGlite already carries a substantial WASM baseline.
+      // Admission is based on remaining memory for the additional dump copies,
+      // not on requiring the total process RSS to remain artificially low.
+      expect(process.memoryUsage().rss).toBeGreaterThan(110 * 1024 * 1024);
+      vi.spyOn(process, "availableMemory").mockReturnValue(512 * 1024 * 1024);
 
       runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
-      runtime.registerDatabaseAdapter(new PgliteDumpAdapter(dump));
+      runtime.registerDatabaseAdapter(new PgliteDumpAdapter(sourceDir, dump));
       await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
       let restartCalls = 0;
@@ -126,6 +175,7 @@ describe("POST /api/restore runtime lifecycle", () => {
       );
       expect(snapshotResponse.status).toBe(200);
       const snapshot = await snapshotResponse.json();
+      process.env.PGLITE_DATA_DIR = targetDir;
 
       const failedRestoreResponse = await fetch(
         `http://127.0.0.1:${api.port}/api/restore`,

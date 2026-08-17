@@ -22,6 +22,7 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import { decodeUrlPathComponent } from "@elizaos/shared";
 import {
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
@@ -441,12 +442,12 @@ export function decodePathComponent(
   res: http.ServerResponse,
   fieldName: string,
 ): string | null {
-  try {
-    return decodeURIComponent(raw);
-  } catch {
+  const decoded = decodeUrlPathComponent(raw);
+  if (!decoded.ok) {
     error(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
     return null;
   }
+  return decoded.value;
 }
 
 // ---------------------------------------------------------------------------

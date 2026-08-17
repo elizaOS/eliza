@@ -53,7 +53,7 @@ mock.module("../../db/repositories/docker-nodes", () => ({
     // so it mirrors findEnabled.
     findPlaceable: () => Promise.resolve(enabledNodes),
     updateStatus: () => Promise.resolve(),
-    setHostKeyFingerprint: () => Promise.resolve(),
+    rotateNodeHostKeyFingerprint: () => Promise.resolve(),
   },
 }));
 
