@@ -1,7 +1,7 @@
 /**
- * Guards edge-module resolution for packages that typecheck Cloud Shared source.
- * Each consumer must resolve the Worker-safe scheduling and web-search entrypoints
- * from source instead of depending on a concurrently generated dist directory.
+ * Guards workspace resolution for packages that typecheck Cloud Shared source.
+ * Each consumer must resolve core and Worker-safe plugin entrypoints from source
+ * instead of depending on a concurrently generated dist directory.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -16,6 +16,11 @@ const edgeModules = [
   "@elizaos/plugin-todos/edge",
   "@elizaos/plugin-web-search/edge",
 ] as const;
+const coreModules = {
+  "@elizaos/core": "src/index.node.ts",
+  "@elizaos/core/*": "src/*",
+  "@elizaos/core/edge": "src/index.edge.ts",
+} as const;
 
 type Tsconfig = {
   compilerOptions?: {
@@ -58,6 +63,15 @@ describe("Cloud Shared source-consumer edge paths", () => {
 
     for (const path of consumers) {
       const config = JSON5.parse(readFileSync(path, "utf8")) as Tsconfig;
+      for (const [moduleName, expectedSuffix] of Object.entries(coreModules)) {
+        const targets = config.compilerOptions?.paths?.[moduleName];
+        expect(
+          targets,
+          `${relative(repoRoot, path)} maps ${moduleName}`,
+        ).toHaveLength(1);
+        const target = resolve(dirname(path), targets?.[0] ?? "");
+        expect(target.endsWith(expectedSuffix)).toBe(true);
+      }
       for (const moduleName of edgeModules) {
         const targets = config.compilerOptions?.paths?.[moduleName];
         expect(
