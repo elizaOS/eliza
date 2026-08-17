@@ -11,6 +11,7 @@ import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -125,7 +126,9 @@ describe("workspace in-place fast-path", () => {
 
     expect(mod.marker).toBe("ws-inplace");
     // Loaded from the real workspace location, not a staged copy.
-    expect(mod.moduleUrl).toContain(installPath);
+    expect(fileURLToPath(mod.moduleUrl)).toBe(
+      path.join(installPath, "index.mjs"),
+    );
     expect(await listStagingEntries(name)).toEqual([]);
   });
 
@@ -149,7 +152,9 @@ describe("workspace in-place fast-path", () => {
     };
 
     expect(mod.marker).toBe("ws-bare");
-    expect(mod.moduleUrl).not.toContain(installPath);
+    expect(fileURLToPath(mod.moduleUrl)).not.toBe(
+      path.join(installPath, "index.mjs"),
+    );
     const entries = await listStagingEntries(name);
     expect(entries.filter((e) => e.startsWith("content-"))).toHaveLength(1);
   });

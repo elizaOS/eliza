@@ -9,6 +9,7 @@
  * end to end.
  */
 
+import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -150,6 +151,11 @@ describe("registerPluginViews directory binding", () => {
   });
 
   it("uses the directory bound to an imported plugin object", async () => {
+    const fixtureDir = path.resolve(
+      path.sep,
+      "tmp",
+      "generated-plugin-fixture",
+    );
     const plugin: Plugin = {
       name: PLUGIN_NAME,
       description: "directory-loaded plugin fixture",
@@ -161,13 +167,13 @@ describe("registerPluginViews directory binding", () => {
         },
       ],
     } as Plugin;
-    bindPluginPackageDirectory(plugin, "/tmp/generated-plugin-fixture");
+    bindPluginPackageDirectory(plugin, fixtureDir);
 
     await registerPluginViews(plugin);
 
     const entry = listViews({ includeAllKinds: true }).find(
       (view) => view.id === "generated-view-resolution-fixture",
     );
-    expect(entry?.pluginDir).toBe("/tmp/generated-plugin-fixture");
+    expect(entry?.pluginDir).toBe(fixtureDir);
   });
 });
