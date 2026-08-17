@@ -1509,7 +1509,10 @@ export async function handleLifeOpsRoutes(
         }
         channels = parsedChannels;
       }
-      const groupByThread = url.searchParams.get("groupByThread") === "true";
+      const groupByThread = parseBooleanQuery(
+        url.searchParams.get("groupByThread"),
+        "groupByThread",
+      );
       const rawChatTypeFilter = url.searchParams.get("chatTypeFilter");
       let chatTypeFilter: Array<"dm" | "group" | "channel"> | undefined;
       if (rawChatTypeFilter !== null && rawChatTypeFilter.trim().length > 0) {
@@ -1544,8 +1547,14 @@ export async function handleLifeOpsRoutes(
         ?.split(",")
         .map((value) => value.trim())
         .filter(Boolean);
-      const missedOnly = url.searchParams.get("missedOnly") === "true";
-      const sortByPriority = url.searchParams.get("sortByPriority") === "true";
+      const missedOnly = parseBooleanQuery(
+        url.searchParams.get("missedOnly"),
+        "missedOnly",
+      );
+      const sortByPriority = parseBooleanQuery(
+        url.searchParams.get("sortByPriority"),
+        "sortByPriority",
+      );
       const rawCacheMode = url.searchParams.get("cacheMode");
       let cacheMode: GetLifeOpsInboxRequest["cacheMode"];
       if (rawCacheMode !== null && rawCacheMode.trim().length > 0) {
