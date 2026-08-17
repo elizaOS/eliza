@@ -5,6 +5,9 @@
  * WHY: Providers often fetch a superset of data, then need to keep prompt size
  * bounded. One fetch + in-memory selection avoids extra DB round trips while
  * still adapting to item size (short items -> more fit, long items -> fewer).
+ *
+ * @throws {RangeError} When `estimateChars` returns a negative or non-finite
+ *   value, because treating a broken estimate as free would violate the budget.
  */
 
 export function sliceToFitBudget<T>(
@@ -24,7 +27,12 @@ export function sliceToFitBudget<T>(
 	// Calculate all sizes upfront to avoid double estimation
 	const sizes = items.map((item) => {
 		const size = estimateChars(item);
-		return Number.isFinite(size) && size > 0 ? size : 0;
+		if (!Number.isFinite(size) || size < 0) {
+			throw new RangeError(
+				"estimateChars must return a non-negative finite number",
+			);
+		}
+		return size;
 	});
 
 	if (fromEnd) {
