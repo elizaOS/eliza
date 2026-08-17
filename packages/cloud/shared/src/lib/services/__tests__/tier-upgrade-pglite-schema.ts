@@ -237,11 +237,34 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "replacement_cleanup_vpn_registration_started_at" timestamptz,
   "replacement_cleanup_allocation_counted" boolean,
   "replacement_cleanup_created_at" timestamptz,
+  "activation_generation" uuid,
+  "activation_lifecycle_revision" bigint,
+  "activation_phase" text,
+  "activation_receipt_hash" text,
+  "activation_container_id" text,
+  "activation_node_id" text,
+  "activation_image_digest" text,
+  "activation_boot_id" uuid,
+  "activation_authority_published_at" timestamptz,
+  "activation_dispatched_at" timestamptz,
+  "activation_completed_at" timestamptz,
+  "next_backup_at" timestamptz,
+  "backup_schedule_operation_id" uuid,
+  "backup_schedule_retry_at" timestamptz,
+  "backup_schedule_claim_owner" text,
+  "backup_schedule_claim_generation" uuid,
+  "backup_schedule_claim_expires_at" timestamptz,
+  "backup_schedule_attempts" integer NOT NULL DEFAULT 0,
+  "backup_schedule_last_error_code" text,
+  "backup_schedule_last_protected_at" timestamptz,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   "deleted_at" timestamptz,
   PRIMARY KEY ("id")
 )`,
+  `CREATE INDEX IF NOT EXISTS "agent_sandboxes_activation_generation_idx"
+  ON "agent_sandboxes" ("activation_generation")
+  WHERE "activation_generation" IS NOT NULL`,
   `CREATE OR REPLACE FUNCTION advance_agent_sandbox_lifecycle_revision()
 RETURNS trigger
 LANGUAGE plpgsql
