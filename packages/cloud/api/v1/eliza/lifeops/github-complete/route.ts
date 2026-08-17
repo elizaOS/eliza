@@ -27,7 +27,22 @@ async function __hono_GET(
   const connectionId = searchParams.get("connection_id");
   const rawTarget = searchParams.get("target");
   const agentId = searchParams.get("agent_id");
-  const postMessage = searchParams.get("post_message") === "1";
+  // Popup-return identity, leftover tax after github-oauth-complete
+  // post_message (#21201) and this route's target (#21058).
+  // post_message=true used to silently skip the postMessage landing
+  // page and fall through to a dashboard redirect. target /
+  // github_connected / return_url parsers stay untouched.
+  const requestedPostMessageValues = searchParams.getAll("post_message");
+  const requestedPostMessage = requestedPostMessageValues[0];
+  if (
+    requestedPostMessageValues.length > 1 ||
+    (requestedPostMessage != null &&
+      requestedPostMessage !== "" &&
+      requestedPostMessage !== "1")
+  ) {
+    return Response.json({ error: "Invalid post_message" }, { status: 400 });
+  }
+  const postMessage = requestedPostMessage === "1";
   const returnUrl = searchParams.get("return_url");
   // GitHub OAuth landing identity, not leftover tax on Life Ops inbox
   // bools, X connectionRole, or influencer bookings party. Unknown
