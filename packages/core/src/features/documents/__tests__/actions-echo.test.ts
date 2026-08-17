@@ -21,6 +21,7 @@ import { type DocumentListResult, DocumentService } from "../service";
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
+const WORLD_ID = "00000000-0000-0000-0000-00000000b0a1" as UUID;
 const DOC_ID = "11111111-2222-3333-4444-555555555555" as UUID;
 
 const BLOB_QUERY = `first line of a pasted document\n${"lorem ipsum ".repeat(30)}`;
@@ -90,7 +91,14 @@ function makeRuntime(service: ReturnType<typeof makeService>): IAgentRuntime {
 			return found;
 		}),
 		getSetting: vi.fn(() => undefined),
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async (roomId: UUID) =>
+			roomId === ROOM_ID ? { id: ROOM_ID, worldId: WORLD_ID } : null,
+		),
+		getWorld: vi.fn(async (worldId: UUID) =>
+			worldId === WORLD_ID
+				? { id: WORLD_ID, metadata: { roles: { [USER_ID]: "USER" } } }
+				: null,
+		),
 		reportError: vi.fn(),
 		useModel: vi.fn(async () => {
 			throw new Error("useModel must not be called on the planner-trust path");
