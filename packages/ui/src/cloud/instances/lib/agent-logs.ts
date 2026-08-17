@@ -4,12 +4,25 @@
  * components never infer success from partial job envelopes.
  */
 
+import type { AgentSandboxStatus } from "@elizaos/cloud-shared/lib/types/cloud-api";
+
 const MIN_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 export const AGENT_LOGS_TIMEOUT_MS = 30_000;
 const JOB_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const AGENT_SANDBOX_STATUSES = [
+  "pending",
+  "provisioning",
+  "running",
+  "stopped",
+  "sleeping",
+  "disconnected",
+  "error",
+  "deletion_pending",
+  "deletion_failed",
+] as const satisfies readonly AgentSandboxStatus[];
 
 export interface AgentLogsResult {
   logs: string;
@@ -79,6 +92,10 @@ function readBoundedText(value: unknown, maxLength = 500): string | null {
   normalized = normalized.trim();
   if (!normalized) return null;
   return normalized;
+}
+
+function isAgentSandboxStatus(value: unknown): value is AgentSandboxStatus {
+  return AGENT_SANDBOX_STATUSES.some((status) => status === value);
 }
 
 function clampInterval(value: unknown, fallback: number): number {
@@ -220,10 +237,10 @@ export function parseAgentLogsJob(
       "The completed log job does not match the requested log range.",
     );
   }
-  const resultStatus = readBoundedText(result.status, 64);
-  if (!resultStatus) {
+  const resultStatus = result.status;
+  if (!isAgentSandboxStatus(resultStatus)) {
     throw new AgentLogsProtocolError(
-      "The completed log job did not include an agent status.",
+      "The completed log job returned an invalid agent status.",
     );
   }
   const resultMessage = readBoundedText(result.message);
