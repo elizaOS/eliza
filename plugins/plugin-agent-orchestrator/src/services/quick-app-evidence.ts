@@ -231,3 +231,51 @@ export function detectCheckSurfaces(
       relativeFiles.some((file) => TEST_FILE_RE.test(file)),
   };
 }
+
+const MAX_CONTENT_FILES = 3;
+const MAX_CONTENT_CHARS = 2_000;
+/** Text-asset extensions worth showing the judge verbatim. */
+const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
+
+/**
+ * Read the (capped) contents of small fs-verified text files so content
+ * criteria are judged against the real file text. Same epistemic status as
+ * the stat probe: the orchestrator reads the bytes itself; worker narration
+ * never enters. Unreadable/oversized-beyond-cap files contribute a truncated
+ * or absent entry, never a fabricated one.
+ */
+export function readFsVerifiedContents(
+  workdir: string,
+  relativeFiles: readonly string[],
+  readImpl?: (absolutePath: string) => string | undefined,
+): Array<{ path: string; content: string }> {
+  const read =
+    readImpl ??
+    ((absolutePath: string): string | undefined => {
+      try {
+        return fs.readFileSync(absolutePath, "utf8");
+      } catch {
+        // error-policy:J3 an unreadable file is explicitly absent evidence
+        return undefined;
+      }
+    });
+  const root = path.resolve(workdir);
+  const out: Array<{ path: string; content: string }> = [];
+  for (const file of relativeFiles) {
+    if (out.length >= MAX_CONTENT_FILES) break;
+    if (!TEXT_CONTENT_RE.test(file)) continue;
+    const absolute = path.resolve(root, file);
+    const relative = path.relative(root, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    const content = read(absolute);
+    if (content === undefined) continue;
+    out.push({
+      path: relative,
+      content:
+        content.length > MAX_CONTENT_CHARS
+          ? `${content.slice(0, MAX_CONTENT_CHARS)}\n… [truncated]`
+          : content,
+    });
+  }
+  return out;
+}
