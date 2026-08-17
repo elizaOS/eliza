@@ -1,10 +1,11 @@
 /**
  * Covers the inbound DM policy gate and attachment persistence: the default
  * "pairing" policy holds unknown senders through the core PairingService code
- * handshake instead of defaulting open, statically allowlisted and
- * pairing-approved senders pass, and attachment URLs persisted on memories
- * never carry the BlueBubbles server password. Uses a stub runtime with a
- * mocked PairingService and message service — no live server.
+ * handshake instead of defaulting open (and fails closed when that service is
+ * not registered), statically allowlisted and pairing-approved senders pass,
+ * and attachment URLs persisted on memories never carry the BlueBubbles
+ * server password. Uses a stub runtime with a mocked PairingService and
+ * message service — no live server.
  */
 import { type IAgentRuntime, ServiceType, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -16,7 +17,11 @@ const SERVER_PASSWORD = "super-secret";
 
 function makeRuntime(
 	settings: Record<string, unknown>,
-	options: { pairingAllowed: boolean; pairingRequestCreated?: boolean },
+	options: {
+		pairingAllowed: boolean;
+		pairingRequestCreated?: boolean;
+		pairingService?: boolean;
+	},
 ) {
 	const pairingService = {
 		isAllowed: vi.fn(async () => options.pairingAllowed),
@@ -32,7 +37,9 @@ function makeRuntime(
 		character: { name: "Test Agent", settings: {} },
 		getSetting: (key: string) => settings[key],
 		getService: (serviceType: string) =>
-			serviceType === ServiceType.PAIRING ? pairingService : null,
+			serviceType === ServiceType.PAIRING && options.pairingService !== false
+				? pairingService
+				: null,
 		getEntityById: vi.fn(async () => null),
 		createEntity: vi.fn(async () => undefined),
 		ensureConnection: vi.fn(async () => undefined),
@@ -243,5 +250,30 @@ describe("BlueBubbles inbound DM pairing gate", () => {
 		expect(pairingService.isAllowed).not.toHaveBeenCalled();
 		expect(pairingService.upsertRequest).not.toHaveBeenCalled();
 		expect(createMemory).not.toHaveBeenCalled();
+	});
+
+	it("fails closed and reports when the PairingService is not registered", async () => {
+		const { runtime, createMemory, handleMessage } = makeRuntime(
+			baseSettings(),
+			{ pairingAllowed: false, pairingService: false },
+		);
+		const service = new BlueBubblesService(runtime);
+		const sendMessage = vi
+			.spyOn(service, "sendMessage")
+			.mockResolvedValue({ guid: "reply-1", dateCreated: 1 });
+
+		await service.handleWebhook({
+			type: "new-message",
+			data: makeMessage(),
+		});
+
+		// A missing PairingService under the "pairing" policy is a host
+		// misconfiguration: the sender is denied, the runtime error reporter
+		// fires, and only the static "temporarily unavailable" reply goes out.
+		expect(runtime.reportError).toHaveBeenCalled();
+		expect(createMemory).not.toHaveBeenCalled();
+		expect(handleMessage).not.toHaveBeenCalled();
+		expect(sendMessage).toHaveBeenCalledTimes(1);
+		expect(sendMessage.mock.calls[0]?.[1]).not.toContain("PAIRCODE1");
 	});
 });
