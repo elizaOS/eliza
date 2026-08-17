@@ -5,6 +5,10 @@
  */
 let cachedPrefix: string | null = null;
 
+export function resetLogPrefixCacheForTesting(): void {
+  cachedPrefix = null;
+}
+
 type RuntimeProcess = {
   argv?: string[];
   cwd?: () => string;
@@ -45,13 +49,15 @@ export function getLogPrefix(): string {
     return cachedPrefix;
   }
 
-  const nameArgMatch = runtimeProcess?.argv?.find((a) =>
-    a.startsWith("--name="),
+  const nameArgMatch = runtimeProcess?.argv?.find(
+    (a) => typeof a === "string" && a.startsWith("--name="),
   );
   if (nameArgMatch) {
-    const name = nameArgMatch.split("=")[1];
-    cachedPrefix = `[${name}]`;
-    return cachedPrefix;
+    const name = nameArgMatch.split("=")[1]?.trim();
+    if (name) {
+      cachedPrefix = `[${name}]`;
+      return cachedPrefix;
+    }
   }
 
   const cwd =
