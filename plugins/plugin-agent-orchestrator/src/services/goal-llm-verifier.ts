@@ -40,6 +40,7 @@ import {
   ModelType,
   type RecordedStage,
 } from "@elizaos/core";
+import type { EvidenceCapabilities } from "./producible-evidence.js";
 
 /** Stable identifier the verifier stamps onto the `validateTask` payload so
  *  callers can distinguish LLM judgments from human approvals or pattern
@@ -77,13 +78,22 @@ export const MAX_AUTO_VERIFY_ATTEMPTS = 3;
  * matches the kind of work the criterion describes; falls back to the
  * build/test default that fits most coding criteria.
  */
-function proofDemandFor(criterion: string): string {
+function proofDemandFor(
+  criterion: string,
+  caps?: EvidenceCapabilities,
+): string {
   const c = criterion.toLowerCase();
   if (
     /\b(ui|screen|page|view|button|render|css|layout|visual|frontend|component|storybook)\b/.test(
       c,
     )
   ) {
+    // A headless child sandbox cannot screenshot (#20794): demanding one sends
+    // the worker chasing browser tooling it can never run. Ask for evidence
+    // the sandbox CAN produce instead.
+    if (caps && !caps.browser) {
+      return "serve the page and paste the reachable URL plus the fetched response (curl output showing the requested content) — this sandbox has NO browser; do NOT attempt screenshots or install browser tooling";
+    }
     return "capture a full-page screenshot of the working UI (paste the file path) AND, if it is a route in the app, the URL you reached";
   }
   if (
@@ -115,11 +125,15 @@ function proofDemandFor(criterion: string): string {
  * (reusing {@link proofDemandFor}). A ticked box with no pasted artifact is
  * treated as not done — verification will fail again.
  */
-function buildEvidenceChecklist(missing: readonly string[]): string {
+function buildEvidenceChecklist(
+  missing: readonly string[],
+  caps?: EvidenceCapabilities,
+): string {
   return [
     "Evidence checklist — return EVERY box ticked WITH the artifact pasted inline (a ticked box and no artifact = not done):",
     ...missing.map(
-      (criterion) => `- [ ] ${criterion} — proof: ${proofDemandFor(criterion)}`,
+      (criterion) =>
+        `- [ ] ${criterion} — proof: ${proofDemandFor(criterion, caps)}`,
     ),
   ].join("\n");
 }
@@ -158,6 +172,7 @@ function buildEvidenceChecklist(missing: readonly string[]): string {
 export function buildAutoVerifyCorrection(
   missing: readonly string[],
   attempt = 1,
+  caps?: EvidenceCapabilities,
 ): string {
   const stage = Math.min(
     Math.max(Math.trunc(attempt) || 1, 1),
@@ -179,7 +194,7 @@ export function buildAutoVerifyCorrection(
     proofSection.push(
       ...missing.map(
         (criterion) =>
-          `- ${criterion}\n    → proof to produce: ${proofDemandFor(criterion)}`,
+          `- ${criterion}\n    → proof to produce: ${proofDemandFor(criterion, caps)}`,
       ),
     );
     closing.push(
@@ -194,7 +209,7 @@ export function buildAutoVerifyCorrection(
     proofSection.push(
       ...missing.map(
         (criterion) =>
-          `- ${criterion}\n    → Exactly which command did you run for this, and what was its EXACT output? Paste it. Did you actually open/observe/run it, or did you assume it works? Show: ${proofDemandFor(criterion)}`,
+          `- ${criterion}\n    → Exactly which command did you run for this, and what was its EXACT output? Paste it. Did you actually open/observe/run it, or did you assume it works? Show: ${proofDemandFor(criterion, caps)}`,
       ),
     );
     closing.push(
@@ -210,7 +225,7 @@ export function buildAutoVerifyCorrection(
     proofSection.push(
       ...missing.map(
         (criterion) =>
-          `- ${criterion}\n    → REQUIRED proof (paste it or the task is escalated): ${proofDemandFor(criterion)}`,
+          `- ${criterion}\n    → REQUIRED proof (paste it or the task is escalated): ${proofDemandFor(criterion, caps)}`,
       ),
     );
     closing.push(
@@ -224,7 +239,7 @@ export function buildAutoVerifyCorrection(
     "",
     ...closing,
     "",
-    buildEvidenceChecklist(missing),
+    buildEvidenceChecklist(missing, caps),
   ];
   return lines.join("\n");
 }
@@ -284,7 +299,10 @@ const EMPTY_EVIDENCE_SUMMARY =
 const MALFORMED_RESPONSE_SUMMARY =
   "Verifier returned a response that could not be parsed; defaulting to fail.";
 
-const MAX_EVIDENCE_CHARS = 12_000;
+// Sized to admit the full evidence bundle (24KB cap) — trimming the middle
+// of it was cutting FS-VERIFIED FILE CONTENTS exactly where content criteria
+// were judged (velvet-moth live park).
+const MAX_EVIDENCE_CHARS = 28_000;
 
 function trimEvidence(evidence: string): string {
   if (evidence.length <= MAX_EVIDENCE_CHARS) return evidence;

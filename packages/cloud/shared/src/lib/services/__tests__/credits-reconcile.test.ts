@@ -206,6 +206,8 @@ beforeAll(async () => {
         slug text NOT NULL DEFAULT 'test-org',
         credit_balance numeric(20,6) NOT NULL DEFAULT '0' CHECK (credit_balance >= 0),
         balance_revision bigint NOT NULL DEFAULT 0,
+        balance_decrease_revision bigint NOT NULL DEFAULT 0,
+        auto_top_up_covered_balance_decrease_revision bigint,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -462,18 +464,16 @@ describe("CreditsService.reconcile", () => {
   );
 
   test(
-    "overage retry/catch fallback: deductCredits that always THROWS exhausts all retries and reports an uncollected overage without a debit",
+    "overage retry/catch fallback: deductCredits that always THROWS exhausts all retries and surfaces the failure without a debit (#13415 fail-closed)",
     async () => {
       if (!pgliteReady) return;
 
       // Distinct from the uncollectable case above: there, deductCredits returns
       // success:false (a clean refusal). Here we force the THROW path — every
-      // deductCredits attempt raises — so reconcile exhausts all 3 retries and
-      // hits the terminal catch fallback. For an overage (difference < 0) that
-      // fallback must report "uncollected_overage" and, critically, write NO
-      // debit row (no money silently lost or double-charged). This is the only
-      // case that drives reconcile()'s catch arm; no existing test forces
-      // deductCredits to throw.
+      // deductCredits attempt raises — so reconcile exhausts all 3 retries.
+      // Under the #13415 fail-closed contract the terminal catch no longer
+      // fabricates a success-shaped result: the exhausted failure must
+      // SURFACE (throw), and critically, write NO debit row.
       const original = creditsService.deductCredits;
       let attempts = 0;
       creditsService.deductCredits = async () => {
@@ -482,18 +482,18 @@ describe("CreditsService.reconcile", () => {
       };
 
       try {
-        const result = await creditsService.reconcile({
-          organizationId: ORG_ID,
-          reservedAmount: 0.4,
-          actualCost: 1.0,
-          description: "reconcile throwing-overage case",
-          metadata: { user_id: USER_ID },
-        });
+        await expect(
+          creditsService.reconcile({
+            organizationId: ORG_ID,
+            reservedAmount: 0.4,
+            actualCost: 1.0,
+            description: "reconcile throwing-overage case",
+            metadata: { user_id: USER_ID },
+          }),
+        ).rejects.toThrow("simulated transient deduct failure");
 
-        // All 3 attempts ran (MAX_RETRIES) and then the terminal fallback fired.
+        // All 3 attempts ran (MAX_RETRIES) before the failure surfaced.
         expect(attempts).toBe(3);
-        expect(result.adjustmentType).toBe("uncollected_overage");
-        expect(result.settlementTransactionIds).toEqual([]);
       } finally {
         // Restore so the throwing override never bleeds into other tests.
         creditsService.deductCredits = original;
@@ -562,30 +562,36 @@ describe("CreditsService.reconcile", () => {
  * it into refundCredits / deductCredits, so a re-run of an already-settled
  * reconcile is a no-op. Re-invoking reconcile with the same reservation id is the
  * observable equivalent of the retry (the key is what protects the retry).
+ *
+ * Under the #13415 fail-closed contract a reservation id must name a REAL
+ * reservation row: these tests seed one via insertReservation and settle
+ * through the transaction-scoped lane, whose settled_at claim is what makes
+ * the re-run a no-op. (A reservation id with no matching row now throws
+ * ReservationNotFoundError — covered in credits-reconcile-fail-closed.test.ts.)
  */
 describe("CreditsService.reconcile idempotency (#10846)", () => {
-  const RES_ID = "00000000-0000-0000-0000-0000000000f6";
-
   test(
     "a re-run refund with the same reservation id does NOT double-credit",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("10");
+      const resId = await insertReservation(1.0);
       const args = {
         organizationId: ORG_ID,
         reservedAmount: 1.0,
         actualCost: 0.4,
         description: "reconcile refund idempotent",
-        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+        metadata: { user_id: USER_ID, reservation_transaction_id: resId },
       };
 
       const first = await creditsService.reconcile(args);
       const second = await creditsService.reconcile(args);
 
-      // Refund applied exactly once: balance = 10 + 0.6, one refund row.
+      // Refund applied exactly once: balance = 10 + 0.6, one refund row
+      // (plus the seeded reservation debit row).
       expect(await getBalance()).toBeCloseTo(10.6, 6);
       expect(await countByType("refund")).toBe(1);
-      expect(await countTransactions()).toBe(1);
+      expect(await countTransactions()).toBe(2);
       // Both invocations report the SAME settlement transaction.
       expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
     },
@@ -597,21 +603,23 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("20");
+      const resId = await insertReservation(0.4);
       const args = {
         organizationId: ORG_ID,
         reservedAmount: 0.4,
         actualCost: 1.0,
         description: "reconcile overage idempotent",
-        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+        metadata: { user_id: USER_ID, reservation_transaction_id: resId },
       };
 
       const first = await creditsService.reconcile(args);
       const second = await creditsService.reconcile(args);
 
-      // Overage charged exactly once: balance = 20 - 0.6, one debit row.
+      // Overage charged exactly once: balance = 20 - 0.6, one settlement debit
+      // row alongside the seeded reservation debit row.
       expect(await getBalance()).toBeCloseTo(19.4, 6);
-      expect(await countByType("debit")).toBe(1);
-      expect(await countTransactions()).toBe(1);
+      expect(await countByType("debit")).toBe(2);
+      expect(await countTransactions()).toBe(2);
       expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
     },
     PGLITE_TIMEOUT,
@@ -1165,6 +1173,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("50"); // org spent a $100 top-up down to $50
+      await dbWrite.execute(
+        `UPDATE organizations SET auto_top_up_enabled = true WHERE id = '${ORG_ID}';`,
+      );
       const r = await creditsService.clawbackCredits({
         organizationId: ORG_ID,
         amount: 100,
@@ -1179,6 +1190,12 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       expect(r.shortfallAmount).toBeCloseTo(50, 6);
       expect(r.alreadyProcessed).toBe(false);
       expect(await countByType("clawback")).toBe(1);
+      const settings = await dbWrite.execute(
+        `SELECT auto_top_up_enabled FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect((settings.rows[0] as { auto_top_up_enabled: boolean }).auto_top_up_enabled).toBe(
+        false,
+      );
 
       const clawbackRow = await dbWrite.execute(
         `SELECT amount, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'clawback';`,

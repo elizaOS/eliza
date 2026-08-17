@@ -48,16 +48,27 @@ export function extractFirstSentence(text: string): {
 	for (let i = 0; i < text.length; i++) {
 		const char = text[i];
 		if (".?!".includes(char)) {
-			// Check if it's followed by a space or end of string
+			// Check if it's followed by a space, closing delimiter, or end of string
 			const nextChar = text[i + 1];
 			if (
 				nextChar === undefined ||
 				/\s/.test(nextChar) ||
 				nextChar === '"' ||
-				nextChar === "'"
+				nextChar === "'" ||
+				nextChar === "\u201D" ||
+				nextChar === "\u2019" ||
+				nextChar === ")" ||
+				nextChar === "]" ||
+				nextChar === "}"
 			) {
 				if (!isAbbreviationPeriod(text, i)) {
 					boundaryIndex = i + 1;
+					while (
+						boundaryIndex < text.length &&
+						"\"'\u201D\u2019)]}".includes(text[boundaryIndex])
+					) {
+						boundaryIndex++;
+					}
 					break;
 				}
 			}

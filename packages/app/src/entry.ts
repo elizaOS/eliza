@@ -4,7 +4,10 @@
  * desktop, harness, and agent-app route retains the established main entry.
  */
 
-import { shouldUsePublicWebEntry } from "./web-entry-policy";
+import {
+  shouldUseMarketingHomeEntry,
+  shouldUsePublicWebEntry,
+} from "./web-entry-policy";
 
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
@@ -24,7 +27,7 @@ function hasDesktopShellMarker(): boolean {
   );
 }
 
-const usePublicEntry = shouldUsePublicWebEntry({
+const entryDecisionInput = {
   pathname: window.location.pathname,
   hostname: window.location.hostname,
   webShellEnabled: __ELIZA_WEB_SHELL__ === true,
@@ -33,11 +36,16 @@ const usePublicEntry = shouldUsePublicWebEntry({
   forceApexConsole:
     import.meta.env?.DEV === true &&
     import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true",
-});
+};
 
-const rendererEntry = usePublicEntry
-  ? import("./public-web-entry")
-  : import("./main");
+const useMarketingHomeEntry = shouldUseMarketingHomeEntry(entryDecisionInput);
+const usePublicEntry = shouldUsePublicWebEntry(entryDecisionInput);
+
+const rendererEntry = useMarketingHomeEntry
+  ? import("./marketing-home-entry")
+  : usePublicEntry
+    ? import("./public-web-entry")
+    : import("./main");
 
 // error-policy:J1 renderer-entry boundary — import failures render the same
 // actionable reload card as failures inside the established main boot.

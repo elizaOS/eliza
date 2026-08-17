@@ -169,7 +169,9 @@ function decrypt(encryptedHex: string, key: Buffer): string {
   const iv = buf.subarray(0, IV_BYTES);
   const authTag = buf.subarray(buf.length - AUTH_TAG_BYTES);
   const ciphertext = buf.subarray(IV_BYTES, buf.length - AUTH_TAG_BYTES);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv, {
+    authTagLength: AUTH_TAG_BYTES,
+  });
   decipher.setAuthTag(authTag);
   return Buffer.concat([
     decipher.update(ciphertext),

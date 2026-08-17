@@ -62,11 +62,6 @@ locals {
       cname_target = "eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }
-    legacy_blob = {
-      domain       = "blob.elizacloud.ai"
-      cname_target = "eliza-app.pages.dev"
-      zone_id      = var.elizacloud_ai_zone_id
-    }
     legacy_plugins = {
       domain       = "plugins.elizacloud.ai"
       cname_target = "eliza-app.pages.dev"
@@ -95,11 +90,6 @@ locals {
     }
     legacy_api = {
       domain       = "api-staging.elizacloud.ai"
-      cname_target = "develop.eliza-app.pages.dev"
-      zone_id      = var.elizacloud_ai_zone_id
-    }
-    legacy_blob = {
-      domain       = "blob-staging.elizacloud.ai"
       cname_target = "develop.eliza-app.pages.dev"
       zone_id      = var.elizacloud_ai_zone_id
     }

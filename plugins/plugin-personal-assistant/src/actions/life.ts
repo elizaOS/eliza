@@ -923,6 +923,28 @@ type DefinitionResult = {
   ambiguousCandidates: string[];
 };
 
+/**
+ * Definitions eligible for chat-side fuzzy/title resolution are only those
+ * bound to this runtime's own identities: agent-subject rows must belong to
+ * the agent and owner-subject rows to the configured owner entity. Rows
+ * recorded for any other subject under the same agent are invisible here, so
+ * planner text can only nominate — and mutations can only target — the
+ * caller's own definitions (#17398).
+ */
+async function listCallerDefinitions(
+  service: LifeOpsService,
+  domain?: LifeOpsDomain,
+): Promise<LifeOpsDefinitionRecord[]> {
+  const agentId = service.agentId();
+  const ownerEntityId = service.ownerEntityId();
+  return (await service.listDefinitions()).filter((entry) => {
+    if (domain && entry.definition.domain !== domain) return false;
+    const expectedSubjectId =
+      entry.definition.subjectType === "agent" ? agentId : ownerEntityId;
+    return entry.definition.subjectId === expectedSubjectId;
+  });
+}
+
 function resolveDefinitionInRecords(
   defs: LifeOpsDefinitionRecord[],
   target: string | undefined,
@@ -1006,9 +1028,7 @@ async function resolveDefinition(
   destructive = false,
 ): Promise<DefinitionResult> {
   if (!target) return { match: null, ambiguousCandidates: [] };
-  const defs = (await service.listDefinitions()).filter((e) =>
-    domain ? e.definition.domain === domain : true,
-  );
+  const defs = await listCallerDefinitions(service, domain);
   return resolveDefinitionInRecords(defs, target, destructive);
 }
 
@@ -1103,9 +1123,7 @@ async function resolveDefinitionForMutation(
   domain?: LifeOpsDomain,
   destructive = false,
 ): Promise<DefinitionResult> {
-  const defs = (await service.listDefinitions()).filter((entry) =>
-    domain ? entry.definition.domain === domain : true,
-  );
+  const defs = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
   const explicitlyNamed = defs.filter((entry) => {
     const title = normalizeTitle(entry.definition.title);
@@ -1189,9 +1207,7 @@ export async function resolveDefinitionFromIntent(
   if (direct.match || direct.ambiguousCandidates.length > 0) {
     return direct.match;
   }
-  const defs = (await service.listDefinitions()).filter((entry) =>
-    domain ? entry.definition.domain === domain : true,
-  );
+  const defs = await listCallerDefinitions(service, domain);
   const intentTokens = new Set(tokenizeTitle(intent));
   let best: LifeOpsDefinitionRecord | null = null;
   let bestScore = 0;
@@ -2853,13 +2869,24 @@ export function buildCadenceFromUpdateFields(args: {
       return dueAt ? { cadence: { kind: "once", dueAt } } : null;
     }
     if (timeOfDayMinute !== null) {
+      if (currentCadence.kind !== "once") {
+        return null;
+      }
+      const currentLocalDate = getZonedDateParts(
+        new Date(currentCadence.dueAt),
+        currentWindowPolicy.timezone,
+      );
       return {
         cadence: {
           kind: "once",
-          dueAt: buildOneOffDueAtFromMinuteOfDay({
-            minuteOfDay: timeOfDayMinute,
-            timeZone,
-          }),
+          dueAt: buildUtcDateFromLocalParts(timeZone, {
+            year: currentLocalDate.year,
+            month: currentLocalDate.month,
+            day: currentLocalDate.day,
+            hour: Math.floor(timeOfDayMinute / 60),
+            minute: timeOfDayMinute % 60,
+            second: 0,
+          }).toISOString(),
         },
       };
     }
@@ -4898,7 +4925,7 @@ async function runLifeOperationHandlerInner(
       // identical "Book report…" definition). An ACTIVE definition with the
       // same normalized title and structurally identical cadence IS the same
       // item — report it as already saved instead of stacking a twin.
-      const duplicateOf = (await service.listDefinitions()).find(
+      const duplicateOf = (await listCallerDefinitions(service)).find(
         (record) =>
           record.definition.status === "active" &&
           normalizeLifeInputText(record.definition.title).toLowerCase() ===
@@ -5973,14 +6000,25 @@ async function runLifeOperationHandlerInner(
         };
       }
       const reviewDomain = domain ?? "user_lifeops";
-      const active = (await service.listDefinitions()).filter(
+      const active = (await listCallerDefinitions(service)).filter(
         (record) =>
           record.definition.status === "active" &&
           record.definition.domain === reviewDomain &&
           definitionReviewSurface(record) === surface,
       );
       let selected = active;
-      if (targetName) {
+      // A list-shaped review sometimes arrives with the planner's own list
+      // verbiage stamped into the target ("list all my todos" → title
+      // "list all"); treating that junk as a hard filter empty-matched and
+      // answered "couldn't find an item matching \"list all\"" against a
+      // store with real rows (observed live). List verbiage is never an item
+      // name — drop the filter and list normally.
+      const isListVerbiageTarget =
+        typeof targetName === "string" &&
+        /^(?:list|show|view|all|everything|(?:list|show|view)\s+all|all\s+of\s+them|(?:all\s+)?my\s+\w+|todos?|goals?|reminders?|routines?|alarms?|habits?)$/iu.test(
+          targetName.trim(),
+        );
+      if (targetName && !isListVerbiageTarget) {
         const resolved = resolveDefinitionInRecords(active, targetName);
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
@@ -5996,6 +6034,9 @@ async function runLifeOperationHandlerInner(
           };
         }
         if (!resolved.match) {
+          // A genuine miss stays a pure not-found: disclosing other items
+          // here is a deliberate no-leak contract (see
+          // life.review-definitions.test.ts isolation coverage).
           const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
           return {
             success: false,

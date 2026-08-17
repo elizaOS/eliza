@@ -22,6 +22,10 @@ async function dispatchEntriesForSource(
     case "anthropic":
     case "groq":
       return await fetchBitRouterCatalogEntries();
+    // Self-hosted sidecar rows (e.g. bge-small-en-v1.5) ride the forced list
+    // assembled with the BitRouter catalog fetch.
+    case "selfhosted":
+      return await fetchBitRouterCatalogEntries();
     case "cerebras":
       return await fetchCerebrasPublicCatalogEntries();
     case "fal":

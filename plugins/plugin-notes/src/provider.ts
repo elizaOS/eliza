@@ -47,7 +47,7 @@ function noteLine(note: StickyNote): string {
   const body = note.body.trim();
   const full = body.length > 0 ? `${note.title} — ${body}` : note.title;
   return full.length > MAX_NOTE_LINE_LENGTH
-    ? `${full.slice(0, MAX_NOTE_LINE_LENGTH)}… (truncated)`
+    ? `${full.slice(0, MAX_NOTE_LINE_LENGTH - "… (truncated)".length)}… (truncated)`
     : full;
 }
 

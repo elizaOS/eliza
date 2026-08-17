@@ -331,6 +331,7 @@ export * from "./utils/namespace-defaults.js";
 export * from "./utils/number-parsing.js";
 export { parseClampedInteger } from "./utils/number-parsing.js";
 export * from "./utils/owner-name.js";
+export * from "./utils/path-component.js";
 export * from "./utils/permission-deep-links.js";
 export * from "./utils/rate-limiter.js";
 export * from "./utils/serialise.js";

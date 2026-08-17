@@ -20,10 +20,18 @@ const getAgentForWrite = mock(async () => ({
   organization_id: "agent-org",
   status: "running",
 }));
-const enqueueAgentRestartOnce = mock(async () => ({
-  jobId: "restart-job-1",
-  deduped: false,
-}));
+const enqueueAgentRestartOnce = mock(
+  async (): Promise<{
+    job: {
+      id: string;
+      data: { agentId: string; stateLossAcknowledged?: boolean };
+    };
+    created: boolean;
+  }> => ({
+    job: { id: "restart-job-1", data: { agentId: "cloud-agent-1" } },
+    created: true,
+  }),
+);
 const reactivateSandboxBillingAfterFunding = mock(async () => undefined);
 const checkAgentCreditGate = mock(async () => ({
   allowed: false,
@@ -96,6 +104,10 @@ describe("service agent restart route", () => {
       status: "running",
     });
     enqueueAgentRestartOnce.mockClear();
+    enqueueAgentRestartOnce.mockResolvedValue({
+      job: { id: "restart-job-1", data: { agentId: "cloud-agent-1" } },
+      created: true,
+    });
     reactivateSandboxBillingAfterFunding.mockClear();
     checkAgentCreditGate.mockClear();
     checkAgentCreditGate.mockResolvedValue({
@@ -160,11 +172,145 @@ describe("service agent restart route", () => {
       agentId: "cloud-agent-1",
       organizationId: "agent-org",
       userId: "agent-user",
+      stateLossAcknowledged: false,
     });
     expect(reactivateSandboxBillingAfterFunding).toHaveBeenCalledWith(
       "cloud-agent-1",
       expect.any(Date),
     );
+  });
+
+  test("threads an explicit state-loss waiver into the restart job (#18228)", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    enqueueAgentRestartOnce.mockResolvedValueOnce({
+      job: {
+        id: "restart-job-1",
+        data: { agentId: "cloud-agent-1", stateLossAcknowledged: true },
+      },
+      created: true,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
+        {
+          method: "POST",
+          headers: {
+            "X-Service-Key": "svc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stateLossAcknowledged: true }),
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
+      agentId: "cloud-agent-1",
+      organizationId: "agent-org",
+      userId: "agent-user",
+      stateLossAcknowledged: true,
+    });
+  });
+
+  test("treats a non-literal-true waiver value as absent", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
+        {
+          method: "POST",
+          headers: {
+            "X-Service-Key": "svc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stateLossAcknowledged: "true" }),
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith(
+      expect.objectContaining({ stateLossAcknowledged: false }),
+    );
+  });
+
+  test("refuses to silently drop the waiver when a non-waived restart is already in flight", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    enqueueAgentRestartOnce.mockResolvedValueOnce({
+      job: { id: "restart-job-1", data: { agentId: "cloud-agent-1" } },
+      created: false,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
+        {
+          method: "POST",
+          headers: {
+            "X-Service-Key": "svc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stateLossAcknowledged: true }),
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      jobId: "restart-job-1",
+    });
+    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
+  });
+
+  test("accepts a waived request that dedupes onto an in-flight job already carrying the waiver", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    enqueueAgentRestartOnce.mockResolvedValueOnce({
+      job: {
+        id: "restart-job-1",
+        data: { agentId: "cloud-agent-1", stateLossAcknowledged: true },
+      },
+      created: false,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
+        {
+          method: "POST",
+          headers: {
+            "X-Service-Key": "svc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stateLossAcknowledged: true }),
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ success: true });
   });
 
   test("rejects a restart while the agent is still provisioning", async () => {

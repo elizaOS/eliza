@@ -11,6 +11,9 @@
  *   - `upload_asset`       ← `OWNER_DOCUMENTS_UPLOAD_ASSET`
  *   - `collect_id`         ← `OWNER_DOCUMENTS_COLLECT_ID_OR_FORM`
  *   - `close_request`      ← `OWNER_DOCUMENTS_CLOSE_REQUEST`
+ *   - `guarantee_class`    ← `OWNER_DOCUMENTS_GUARANTEE_CLASS` (#14864):
+ *     installs a standing class guarantee so every future deadline-bearing
+ *     artifact of that obligation class is auto-tracked with a lead-time warn.
  *
  * Each subaction composes existing services (`SCHEDULED_TASK` runner for
  * deadline tracking, `ApprovalQueue` for owner-gated dispatch). The
@@ -35,7 +38,12 @@ import type {
 import { logger } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
-import { createDocumentObligationLedgerRecord } from "../lifeops/commitments/index.js";
+import {
+  applyCommitmentClassGuarantees,
+  createDocumentObligationLedgerRecord,
+  installCommitmentClassGuarantee,
+  normalizeObligationClass,
+} from "../lifeops/commitments/index.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   ScheduledTaskRunnerHandle,
@@ -57,6 +65,7 @@ const SUBACTIONS = [
   "upload_asset",
   "collect_id",
   "close_request",
+  "guarantee_class",
 ] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
@@ -68,6 +77,7 @@ const SIMILE_NAMES: readonly string[] = [
   "OWNER_DOCUMENTS_UPLOAD_ASSET",
   "OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
   "OWNER_DOCUMENTS_CLOSE_REQUEST",
+  "OWNER_DOCUMENTS_GUARANTEE_CLASS",
   "PAPERWORK",
 ];
 
@@ -84,6 +94,7 @@ const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
   OWNER_DOCUMENTS_UPLOAD_ASSET: "upload_asset",
   OWNER_DOCUMENTS_COLLECT_ID_OR_FORM: "collect_id",
   OWNER_DOCUMENTS_CLOSE_REQUEST: "close_request",
+  OWNER_DOCUMENTS_GUARANTEE_CLASS: "guarantee_class",
 };
 
 interface DocActionParameters {
@@ -115,6 +126,10 @@ interface DocActionParameters {
   note?: string;
   /** close_request: outcome ("completed" | "expired" | "cancelled"). */
   resolution?: "completed" | "expired" | "cancelled";
+  /** guarantee_class: obligation class to auto-track. */
+  obligationClass?: string;
+  /** guarantee_class: lead-time warn in days before each deadline (default 60). */
+  warnDaysBefore?: number;
 }
 
 /**
@@ -183,7 +198,8 @@ function kindForSubaction(subaction: Subaction): DocumentRequestKind {
       return "collect_id";
     case "track_deadline":
     case "close_request":
-      // No new kind — these operate on an existing request.
+    case "guarantee_class":
+      // No new kind — these operate on existing requests or standing rules.
       return "signature";
   }
 }
@@ -324,13 +340,6 @@ async function persistDocumentObligation(
   scheduledTaskId: string | undefined,
 ): Promise<void> {
   if (!doc.deadline) return;
-  const adapter = (scope.runtime as { adapter?: { db?: unknown } }).adapter;
-  if (!adapter?.db) {
-    logger.debug(
-      `[OWNER_DOCUMENTS] commitment ledger unavailable for ${doc.id}; runtime has no SQL adapter`,
-    );
-    return;
-  }
   const record = createDocumentObligationLedgerRecord({
     agentId: scope.agentId,
     documentId: doc.id,
@@ -345,9 +354,64 @@ async function persistDocumentObligation(
     },
     ...(doc.note ? { note: doc.note } : {}),
   });
-  await new LifeOpsRepository(scope.runtime).upsertCommitmentLedgerRecord(
-    record,
+  const adapter = (scope.runtime as { adapter?: { db?: unknown } }).adapter;
+  if (adapter?.db) {
+    await new LifeOpsRepository(scope.runtime).upsertCommitmentLedgerRecord(
+      record,
+    );
+  } else {
+    logger.debug(
+      `[OWNER_DOCUMENTS] commitment ledger unavailable for ${doc.id}; runtime has no SQL adapter`,
+    );
+  }
+  // Class-level standing guarantees (#14864): a previously installed
+  // guarantee whose obligation class matches this artifact's typed kind adds
+  // the lead-time warn watcher and fires the guarantee's event task. Runs on
+  // no-DB hosts too — the watchers live in the ScheduledTask spine.
+  await applyCommitmentClassGuarantees(scope.runtime, {
+    agentId: scope.agentId,
+    artifact: {
+      documentId: doc.id,
+      title: doc.title,
+      deadline: doc.deadline,
+      obligationKind: record.kind,
+    },
+  });
+}
+
+async function handleGuaranteeClass(
+  scope: RunnerScope,
+  params: DocActionParameters,
+): Promise<ActionResult> {
+  const subaction: Subaction = "guarantee_class";
+  const obligationClass = normalizeObligationClass(params.obligationClass);
+  if (!obligationClass) return missing("obligationClass", subaction);
+  const warnDaysBefore =
+    typeof params.warnDaysBefore === "number" && params.warnDaysBefore > 0
+      ? Math.floor(params.warnDaysBefore)
+      : undefined;
+
+  const task = await installCommitmentClassGuarantee(scope.runtime, {
+    agentId: scope.agentId,
+    obligationClass,
+    ...(warnDaysBefore ? { warnDaysBefore } : {}),
+  });
+
+  const effectiveWarnDays = warnDaysBefore ?? 60;
+  logger.info(
+    `[OWNER_DOCUMENTS] guarantee_class class=${obligationClass} warnDays=${effectiveWarnDays} task=${task.taskId}`,
   );
+
+  return {
+    success: true,
+    text: `Standing guarantee installed: every new ${obligationClass} obligation will be tracked automatically with a ${effectiveWarnDays}-day warning before its deadline.`,
+    data: {
+      subaction,
+      obligationClass,
+      warnDaysBefore: effectiveWarnDays,
+      scheduledTaskId: task.taskId,
+    },
+  };
 }
 
 // ── Subaction handlers ───────────────────────────────────
@@ -744,6 +808,21 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
+      content: {
+        text: "From now on, always track contract renewals and warn me 60 days before they lapse.",
+      },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "Standing guarantee installed: every new renewal obligation will be tracked automatically with a 60-day warning before its deadline.",
+        action: ACTION_NAME,
+      },
+    },
+  ],
+  [
+    {
+      name: "{{name1}}",
       content: { text: "Close out doc-abc123 — it's signed." },
     },
     {
@@ -770,9 +849,9 @@ export const ownerDocumentsAction: Action & {
     "surface:internal",
   ],
   description:
-    "Owner documents: signature requests, approvals, deadlines, portal uploads, ID/form collection, close-out. Ops: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
+    "Owner documents: signature requests, approvals, deadlines, portal uploads, ID/form collection, close-out, standing obligation-class guarantees. Ops: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request|guarantee_class.",
   descriptionCompressed:
-    "OWNER_DOCUMENTS signature|approval|deadline|upload_asset|collect_id|close_request",
+    "OWNER_DOCUMENTS signature|approval|deadline|upload_asset|collect_id|close_request|guarantee_class",
   routingHint:
     'owner document signature/approval/upload/portal/ID-form ("get signed", "send approval", "upload deck", "track NDA deadline", "close doc") -> OWNER_DOCUMENTS; approval queue resolution -> RESOLVE_REQUEST',
   contexts: ["docs", "tasks", "calendar", "contacts"],
@@ -783,7 +862,7 @@ export const ownerDocumentsAction: Action & {
     {
       name: "action",
       description:
-        "Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
+        "Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request|guarantee_class.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -848,6 +927,21 @@ export const ownerDocumentsAction: Action & {
         enum: ["completed", "expired", "cancelled"],
       },
     },
+    {
+      name: "obligationClass",
+      description:
+        "guarantee_class only: obligation class to auto-track (renewal covers contracts).",
+      schema: {
+        type: "string" as const,
+        enum: ["commitment", "renewal", "filing", "warranty"],
+      },
+    },
+    {
+      name: "warnDaysBefore",
+      description:
+        "guarantee_class only: warn lead time in days before each deadline; default 60.",
+      schema: { type: "number" as const },
+    },
   ],
   examples,
   handler: async (
@@ -868,7 +962,7 @@ export const ownerDocumentsAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me which document operation: request_signature, request_approval, track_deadline, upload_asset, collect_id, or close_request.",
+        text: "Tell me which document operation: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request, or guarantee_class.",
         data: { error: "MISSING_SUBACTION" },
       };
     }
@@ -893,6 +987,9 @@ export const ownerDocumentsAction: Action & {
         break;
       case "close_request":
         result = await handleCloseRequest(scope, params);
+        break;
+      case "guarantee_class":
+        result = await handleGuaranteeClass(scope, params);
         break;
     }
 

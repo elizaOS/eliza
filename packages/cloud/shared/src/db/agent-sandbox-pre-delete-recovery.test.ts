@@ -24,6 +24,7 @@ const ORG_B = "00000000-0000-4000-8000-0000000000b1";
 const AGENT_ID = "00000000-0000-4000-8000-0000000000c1";
 const BACKUP_ID = "00000000-0000-4000-8000-0000000000d1";
 const ATTEMPT_ID = "00000000-0000-4000-8000-0000000000e1";
+const USER_ID = "00000000-0000-4000-8000-0000000000f1";
 const NOW = new Date("2026-08-13T12:00:00.000Z");
 
 let dbWrite: typeof import("./helpers").dbWrite;
@@ -42,15 +43,16 @@ async function insertRecovery(params: {
   await dbWrite.execute(`
     INSERT INTO agent_sandbox_backups (
       id, sandbox_record_id, snapshot_type, state_data, state_data_storage,
-      state_data_key, backup_kind, recovery_organization_id,
+      state_data_key, backup_kind, verification_status, verified_at,
+      recovery_organization_id,
       recovery_agent_id, recovery_deletion_attempt_id, recovery_expires_at
     ) VALUES (
       '${params.id}', NULL, 'pre-delete',
       '{"memories":[],"config":{},"workspaceFiles":{}}'::jsonb,
       '${params.storage ?? "inline"}',
       ${params.key === undefined || params.key === null ? "NULL" : `'${params.key}'`},
-      'full', '${params.organizationId ?? ORG_A}',
-      '${params.agentId ?? AGENT_ID}', '${ATTEMPT_ID}',
+      'full', 'verified', now(), '${params.organizationId ?? ORG_A}',
+      '${params.agentId ?? AGENT_ID}', '${params.id}',
       '${params.expiresAt.toISOString()}'::timestamptz
     )
   `);
@@ -61,29 +63,43 @@ beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb } = await import("./client"));
   ({ agentSandboxesRepository: repository } = await import("./repositories/agent-sandboxes"));
   ({ setRuntimeR2Bucket } = await import("../lib/storage/r2-runtime-binding"));
+  // The repository selects every column of the live Drizzle schema, so the
+  // suite pushes that schema instead of mirroring DDL by hand (the earlier
+  // hand-written table drifted behind the backup-catalog migrations).
+  const { organizations } = await import("./schemas/organizations");
+  const { users } = await import("./schemas/users");
+  const { userCharacters } = await import("./schemas/user-characters");
+  const { agentSandboxes, agentSandboxBackups, agentBackupCatalogAuthorities } = await import(
+    "./schemas/agent-sandboxes"
+  );
+  const { agentBackupObjects } = await import("./schemas/agent-backup-catalog");
+  const { pushSchema } = await import("./push-schema-for-tests");
+  const { apply } = await pushSchema(
+    {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      agentSandboxBackups,
+      agentBackupCatalogAuthorities,
+      agentBackupObjects,
+    } as never,
+    dbWrite as never,
+  );
+  await apply();
   await dbWrite.execute(`
-    CREATE TABLE IF NOT EXISTS agent_sandbox_backups (
-      id uuid PRIMARY KEY,
-      sandbox_record_id uuid,
-      snapshot_type text NOT NULL,
-      state_data jsonb NOT NULL,
-      state_data_storage text NOT NULL DEFAULT 'inline',
-      state_data_key text,
-      size_bytes bigint,
-      backup_kind text NOT NULL DEFAULT 'full',
-      parent_backup_id uuid,
-      content_hash text,
-      verification_status text,
-      verified_at timestamptz,
-      verification_error text,
-      recovery_organization_id uuid,
-      recovery_agent_id uuid,
-      recovery_deletion_attempt_id uuid,
-      recovery_expires_at timestamptz,
-      created_at timestamptz NOT NULL DEFAULT now()
-    )
+    INSERT INTO organizations (id, name, slug)
+    VALUES ('${ORG_A}', 'Org A', 'org-a'), ('${ORG_B}', 'Org B', 'org-b')
   `);
-}, 30_000);
+  await dbWrite.execute(`
+    INSERT INTO users (id, organization_id, role, steward_user_id)
+    VALUES ('${USER_ID}', '${ORG_A}', 'owner', 'steward-${USER_ID}')
+  `);
+  await dbWrite.execute(`
+    INSERT INTO agent_sandboxes (id, organization_id, user_id, agent_name)
+    VALUES ('${AGENT_ID}', '${ORG_A}', '${USER_ID}', 'Recovery Agent')
+  `);
+}, 60_000);
 
 beforeEach(async () => {
   await dbWrite.execute("DELETE FROM agent_sandbox_backups");
@@ -102,10 +118,12 @@ describe("pre-delete recovery repository", () => {
   test("detaches only the exact pre-delete backup and records its deletion attempt", async () => {
     await dbWrite.execute(`
       INSERT INTO agent_sandbox_backups (
-        id, sandbox_record_id, snapshot_type, state_data, backup_kind
+        id, sandbox_record_id, snapshot_type, state_data, backup_kind,
+        verification_status, verified_at
       ) VALUES (
         '${BACKUP_ID}', '${AGENT_ID}', 'pre-delete',
-        '{"memories":[],"config":{},"workspaceFiles":{}}'::jsonb, 'full'
+        '{"memories":[],"config":{},"workspaceFiles":{}}'::jsonb, 'full',
+        'verified', now()
       )
     `);
 
@@ -167,10 +185,12 @@ describe("pre-delete recovery repository", () => {
   test("accepts only a capture created at or after the deletion intent", async () => {
     await dbWrite.execute(`
       INSERT INTO agent_sandbox_backups (
-        id, sandbox_record_id, snapshot_type, state_data, backup_kind, created_at
+        id, sandbox_record_id, snapshot_type, state_data, backup_kind,
+        verification_status, verified_at, created_at
       ) VALUES (
         '${BACKUP_ID}', '${AGENT_ID}', 'pre-delete',
         '{"memories":[],"config":{},"workspaceFiles":{}}'::jsonb, 'full',
+        'verified', now(),
         '2026-08-13T11:59:59.999Z'::timestamptz
       )
     `);

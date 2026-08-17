@@ -6,6 +6,7 @@
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
+process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -25,6 +26,8 @@ let getUser:
   | undefined;
 let userReads = 0;
 let moderationReads = 0;
+let assertSessionActive: () => Promise<void>;
+const strongCredentialChecks: Array<Record<string, unknown>> = [];
 const ADMISSION = {
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -64,6 +67,28 @@ mock.module("../steward-sync", () => ({
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
 }));
+mock.module("./inference-credential-revocation", () => ({
+  isInferenceStrongRevocationEnabled: () =>
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
+  InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {
+    constructor(readonly reason: string) {
+      super("Inference credential is revoked");
+      this.name = "InferenceCredentialRevokedError";
+    }
+  },
+  assertInferenceCredentialActive: (
+    _organizationId: string,
+    credential: Record<string, unknown>,
+  ) => {
+    strongCredentialChecks.push(credential);
+    return assertSessionActive();
+  },
+  revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
+  revokeInferenceSessionsThrough: async () => undefined,
+  setInferenceOrganizationActive: async () => undefined,
+  setInferenceSubjectActive: async () => undefined,
+}));
 
 const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContext } = await import(
   "./inference-session-auth-context"
@@ -88,6 +113,8 @@ beforeEach(async () => {
   };
   userReads = 0;
   moderationReads = 0;
+  strongCredentialChecks.length = 0;
+  assertSessionActive = async () => undefined;
   getUser = async () => ({
     id: "user-1",
     is_active: true,
@@ -118,11 +145,11 @@ describe("resolveInferenceSessionAuthContext", () => {
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
 
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
+    expect(result.kind === "warming" && result.hydration).toBeTruthy();
     expect(waited).toHaveLength(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
-
     releaseUser();
     await Promise.all(waited);
     expect(moderationReads).toBe(1);
@@ -156,6 +183,58 @@ describe("resolveInferenceSessionAuthContext", () => {
     });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
+    expect(strongCredentialChecks.at(-1)).toEqual({
+      kind: "steward_session",
+      userId: "user-1",
+      stewardUserId: "steward-1",
+      issuedAt: claims?.issuedAt,
+    });
+  });
+
+  test("warm verified session is denied when its issued-at cutoff is revoked", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    userReads = 0;
+    moderationReads = 0;
+    assertSessionActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("session_revoked");
+    };
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+    });
+
+    expect(result).toEqual({ kind: "rejected", status: 401 });
+    expect(userReads).toBe(0);
+    expect(moderationReads).toBe(0);
+  });
+
+  test("warm session is rejected when its stale Steward-to-Cloud binding is revoked", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    assertSessionActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("session_binding_revoked");
+    };
+
+    expect(
+      await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+      }),
+    ).toEqual({ kind: "rejected", status: 401 });
   });
 
   test("concurrent cold requests share one authoritative hydration", async () => {
@@ -185,8 +264,8 @@ describe("resolveInferenceSessionAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(userReads).toBe(1);
     expect(firstWaited).toHaveLength(1);
     expect(secondWaited).toHaveLength(1);

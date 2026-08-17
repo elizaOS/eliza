@@ -53,6 +53,27 @@ export function parsePositiveInteger(
     : normalizeFallback(fallback);
 }
 
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback: number,
+): number;
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback?: number,
+): number | undefined;
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback?: number,
+): number | undefined {
+  const raw = sanitizeNumericText(value);
+  if (!raw || !/^\d+$/.test(raw)) return normalizeFallback(fallback);
+
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? parsed
+    : normalizeFallback(fallback);
+}
+
 export function parsePositiveFloat(
   value: string | null | undefined,
   options?: ParsePositiveNumberOptions,
@@ -65,7 +86,8 @@ export function parsePositiveFloat(
     return normalizeFallback(options?.fallback);
   }
 
-  return options?.floor ? Math.floor(parsed) : parsed;
+  const result = options?.floor ? Math.floor(parsed) : parsed;
+  return result > 0 ? result : normalizeFallback(options?.fallback);
 }
 
 export function parseClampedFloat(
@@ -113,9 +135,7 @@ export function parseClampedInteger(
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) return normalizeFallback(options.fallback);
 
-  const { min, max } = options;
-  if (min !== undefined && parsed < min) return min;
-  if (max !== undefined && parsed > max) return max;
-
-  return parsed;
+  const min = options.min ?? -Infinity;
+  const max = options.max ?? Infinity;
+  return Math.max(min, Math.min(max, parsed));
 }

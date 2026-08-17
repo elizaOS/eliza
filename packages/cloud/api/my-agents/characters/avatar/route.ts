@@ -5,6 +5,7 @@
  */
 
 import { Hono } from "hono";
+import { orgStorageQuotaRepository } from "@/db/repositories/org-storage-quota";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -12,6 +13,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -71,19 +73,77 @@ app.post("/", async (c) => {
 
     const key = `avatars/characters/${authed.organization_id}/${authed.id}/${crypto.randomUUID()}.${ext}`;
     const buf = await entry.arrayBuffer();
+    const sizeBytes = BigInt(buf.byteLength);
 
-    const { url } = await putPublicObject(c.env, {
-      key,
-      body: buf,
-      contentType: mime,
-      customMetadata: {
-        userId: authed.id,
-        organizationId: authed.organization_id,
-      },
-    });
+    const reserved = await orgStorageQuotaRepository.tryReserveBytes(
+      authed.organization_id,
+      sizeBytes,
+    );
+    if (reserved === null) {
+      return c.json(
+        {
+          success: false,
+          error: "Storage quota exceeded for this organization",
+        },
+        413,
+      );
+    }
+
+    let url: string;
+    try {
+      ({ url } = await putPublicObject(c.env, {
+        key,
+        body: buf,
+        contentType: mime,
+        customMetadata: {
+          userId: authed.id,
+          organizationId: authed.organization_id,
+        },
+      }));
+    } catch (error) {
+      // error-policy:J6 a rejected provider write is ambiguous, so confirm
+      // object teardown before releasing quota and rethrowing the original error.
+      try {
+        await c.env.BLOB.delete(key);
+      } catch {
+        // error-policy:J6 retain the reservation when deletion cannot confirm
+        // whether the rejected write committed, and preserve the put failure.
+        logger.warn("[Character Avatar] Failed to delete ambiguous R2 upload", {
+          organizationId: logger.redact.orgId(authed.organization_id),
+          userId: logger.redact.userId(authed.id),
+          reservedBytes: sizeBytes.toString(),
+          stage: "r2_put_compensation",
+          reason: "object_delete_failed",
+        });
+        throw error;
+      }
+
+      try {
+        await orgStorageQuotaRepository.releaseBytes(
+          authed.organization_id,
+          sizeBytes,
+        );
+      } catch {
+        // error-policy:J6 object deletion is confirmed, but a failed quota
+        // release is logged without replacing the original put failure.
+        logger.warn(
+          "[Character Avatar] Failed to release quota after R2 upload cleanup",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "r2_put_compensation",
+            reason: "quota_release_failed",
+          },
+        );
+      }
+      throw error;
+    }
 
     return c.json({ success: true, url });
   } catch (error) {
+    // error-policy:J1 the route boundary translates authentication, quota,
+    // and object-storage failures through the canonical API error response.
     return failureResponse(c, error);
   }
 });

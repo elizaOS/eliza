@@ -57,7 +57,12 @@ Representative examples:
   The stable tag then triggers `release-electrobun.yml`, which resolves and
   checks out the peeled tag commit, verifies the existing release is bound to
   that commit, and uploads signed desktop assets without creating or replacing
-  the release. `snap-publish.yml` owns Snap Store publication.
+  the release. Because branch protection does not cover tags, the workflow
+  also requires the tagged commit to be an ancestor of `main` or `develop`
+  and gates every signing, release-upload, and OTA-publish job behind the
+  reviewer-approved `production-release` environment; a tag protection
+  ruleset restricting `v*` creation completes that boundary.
+  `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
@@ -96,7 +101,14 @@ Representative examples:
   of the tracked service `railway.toml`; follows the returned deployment id to
   success; proves that exact id remains active around the public probes; and
   verifies the applied Dockerfile/health manifest, live health, and canonical
-  cloud/agent fallback routing pair. It also sends a headerless `GET` to the
+  cloud/agent fallback routing pair. A successful release publishes a
+  source/environment/deployment-id receipt; the protected edge-activation
+  workflow downloads that exact run receipt, revalidates the active Railway
+  deployment before and after its probes and edge mutation, and shares this
+  workflow's per-environment concurrency key so gateway releases, canonical
+  Cloudflare releases, and cutovers cannot race. Protected-environment approval
+  completes before any of those jobs enters the shared mutation lock. It also
+  sends a headerless `GET` to the
   dedicated `/ready/forwarder-auth/eliza-app` contract and requires the exact
   enforced-gate 401 response before reasserting the active deployment. A
   disabled secret or mismatched forwarded project produces a distinct non-401
@@ -140,6 +152,23 @@ directories. Keep that source admission synchronized with package manifests
 through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
+
+Production Cloud admission is also tree-bound to staging. A staging release
+whose run SHA the `develop` head has fast-forwarded past ends neutrally before
+any mutation only when GitHub proves that an active Cloud CF Deploy push run
+exists for the exact new head (the canonical-source guard reports
+`superseded=true`, every deploy job skips, and no certification is uploaded).
+Ancestry without a successor run, production staleness, divergence, or any
+unverifiable source still fails the run. After every successful, non-superseded
+automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
+14-day immutable certification whose JSON names the repository, workflow,
+source SHA, root Git tree, run/attempt, environment, and deterministic artifact
+name. A production dispatch checks out the exact requested `main` SHA and must
+resolve that tree's non-expired artifact from a completed successful
+`push`/`develop` run before the protected `production` approval job is even
+reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+bytes, and expiry are all checked. Different merge commits are accepted only
+when their root trees are byte-identical; `force` never bypasses this gate.
 
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and

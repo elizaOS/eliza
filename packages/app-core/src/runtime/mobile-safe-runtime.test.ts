@@ -3,7 +3,9 @@
  * (JavaScriptCore/QuickJS), Android (AVF/Microdroid + isolated-process), and web
  * hosts, provider selection/fallback ordering, the in-memory virtual file system
  * (paths, quotas, snapshots/diff/rollback), the capability broker response
- * shape, and the unavailable-provider placeholders. Pure in-process assertions
+ * shape, the unavailable-provider placeholders, and the in-process applet
+ * provider's refusal to evaluate code (W1-027 — same-realm execution is not a
+ * security boundary). Pure in-process assertions
  * with synthetic probes — no native bridge attached.
  */
 import { describe, expect, it } from "vitest";
@@ -11,6 +13,7 @@ import {
   createAndroidAvfMicrodroidProvider,
   createAndroidIsolatedProcessHook,
   createAndroidIsolatedProcessProvider,
+  createInProcessSafeJsAppletProvider,
   createIosJavaScriptCoreProvider,
   createMobileSafeCapabilityBroker,
   createMobileSafeVirtualFileSystemAdapter,
@@ -363,6 +366,46 @@ describe("mobile safe runtime contracts", () => {
         code: "MOBILE_SAFE_RUNTIME_PROVIDER_UNAVAILABLE",
         provider: "javascriptcore",
       },
+    });
+  });
+
+  it("in-process safe-js applet provider hard-fails evaluation (W1-027)", async () => {
+    const provider = createInProcessSafeJsAppletProvider();
+
+    // Every evaluative mode — default evaluate and run-app alike — is refused:
+    // same-realm execution is not a security boundary.
+    for (const mode of [undefined, "evaluate", "run-app"] as const) {
+      await expect(
+        provider.execute({ code: "export default 1", mode }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: {
+          code: "MOBILE_SAFE_APPLET_EVAL_DISABLED",
+          provider: "safe-js-applet",
+        },
+      });
+    }
+
+    await expect(
+      provider.execute({ code: "echo no", mode: "shell" }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "MOBILE_SAFE_SHELL_UNSUPPORTED" },
+    });
+
+    // Compile/load tooling still routes (here: fails only for want of a VFS),
+    // so the disable is scoped to evaluation, not the whole provider.
+    await expect(
+      provider.execute({ code: "{}", mode: "compile-app" }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "MOBILE_SAFE_APPLET_VFS_REQUIRED" },
+    });
+    await expect(
+      provider.execute({ code: "", mode: "load-app" }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "MOBILE_SAFE_APPLET_VFS_REQUIRED" },
     });
   });
 

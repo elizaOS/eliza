@@ -91,10 +91,9 @@ function addStreamTimingHeaders(response: Response, timings: Record<string, numb
   const headers = new Headers(response.headers);
   const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
   if (entries.length) {
-    headers.set(
-      "Server-Timing",
-      entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", "),
-    );
+    const current = entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", ");
+    const upstream = headers.get("Server-Timing");
+    headers.set("Server-Timing", upstream ? `${upstream}, ${current}` : current);
     for (const [phase, duration] of entries) {
       headers.set(`X-Eliza-Stream-${phase}-Ms`, String(duration));
     }
@@ -263,9 +262,13 @@ export async function handleCanonicalScopedAgentStream(
     );
   }
 
+  const streamHeaders = new Headers(STREAM_HEADERS);
+  const upstreamTiming = upstream.headers.get("Server-Timing");
+  if (upstreamTiming) streamHeaders.set("Server-Timing", upstreamTiming);
+
   return addStreamTimingHeaders(
     applyCorsHeaders(
-      new Response(upstream.body, { headers: STREAM_HEADERS }),
+      new Response(upstream.body, { headers: streamHeaders }),
       CORS_METHODS,
       request.origin,
     ),

@@ -16,17 +16,24 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+type TimeRange = "daily" | "weekly" | "monthly";
+
+function isTimeRange(value: string | undefined): value is TimeRange {
+  return value === "daily" || value === "weekly" || value === "monthly";
+}
+
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const timeRange =
-      (c.req.query("timeRange") as
-        | "daily"
-        | "weekly"
-        | "monthly"
-        | undefined) || "daily";
+    const rawTimeRange = c.req.query("timeRange");
+    if (rawTimeRange && !isTimeRange(rawTimeRange)) {
+      return c.json({ error: "Invalid timeRange" }, 400);
+    }
+    const timeRange: TimeRange = isTimeRange(rawTimeRange)
+      ? rawTimeRange
+      : "daily";
 
     const overview = await analyticsService.getOverview(
       user.organization_id,

@@ -375,24 +375,31 @@ function applyStreamChatTokenEvent(
     provisional?: boolean,
   ) => void,
 ): boolean {
-  const chunk = parsed.text ?? "";
+  const chunk = typeof parsed.text === "string" ? parsed.text : null;
+  const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
+  if (chunk === null && fullText === null) {
+    // error-policy:J3 malformed SSE token frames are ignored at the transport
+    // boundary; they must not become a valid-looking empty text update.
+    return false;
+  }
+  const safeChunk = chunk ?? "";
   const nextFullText =
-    typeof parsed.fullText === "string"
+    fullText !== null
       ? // An explicit snapshot is always authoritative (delta-v2 periodic
         // snapshot AND legacy per-token fullText both land here).
-        parsed.fullText
-      : chunk
+        fullText
+      : safeChunk
         ? // No fullText: a bare delta. Under negotiated delta-v2 the server
           // guarantees pure appends, so bypass mergeStreamingText (its overlap
           // dedupe drops legitimately repeated multi-char deltas). Foreign /
           // un-negotiated streams still ride the merge heuristic.
           state.deltaProtocol
-          ? state.fullText + chunk
-          : mergeStreamingText(state.fullText, chunk)
+          ? state.fullText + safeChunk
+          : mergeStreamingText(state.fullText, safeChunk)
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
-  onToken(chunk, state.fullText, parsed.provisional === true);
+  onToken(safeChunk, state.fullText, parsed.provisional === true);
   return false;
 }
 
@@ -1977,7 +1984,46 @@ export class ElizaClient {
 
     let host: string;
     let wsProtocol: "ws:" | "wss:";
-    const wsBase = getInjectedWsBase();
+    let wsBase = getInjectedWsBase();
+    // #20342: the Vite dev server injects __ELIZA_WS_BASE__ unconditionally in
+    // serve mode (computed from the page origin) so tunnels can proxy /ws.
+    // That injection must be AMBIENT — it cannot override an HTTP(S) agent the
+    // user explicitly selected after boot. Rule: when a user-pinned HTTP(S)
+    // base exists and the injected WS base merely normalizes to the current
+    // page origin, derive realtime from the selected base instead. A genuinely
+    // separate injected WS host (different origin) remains authoritative.
+    const explicitHttpBase =
+      this._userSetBase && this.baseUrl
+        ? (() => {
+            try {
+              const protocol = new URL(this.baseUrl).protocol;
+              return protocol === "http:" || protocol === "https:";
+            } catch {
+              // error-policy:J3 malformed base URLs are explicitly ineligible
+              // for WS-base precedence; ambient derivation below still reads
+              // them exactly as before.
+              return false;
+            }
+          })()
+        : false;
+    if (wsBase && explicitHttpBase) {
+      try {
+        // Normalize ws/wss origins to their http/https equivalents for the
+        // comparison: same host+port+scheme means "just the dev origin".
+        // URL.origin keeps the ws/wss scheme, so map both spellings.
+        const toHttpOrigin = (value: string): string =>
+          value
+            .replace(/^wss:\/\//i, "https://")
+            .replace(/^ws:\/\//i, "http://");
+        const injectedOrigin = toHttpOrigin(new URL(wsBase).origin);
+        if (injectedOrigin === window.location.origin) {
+          wsBase = undefined; // fall through to the explicit client base
+        }
+      } catch {
+        // error-policy:J3 a malformed injected WS URL is not silently
+        // reinterpreted: the existing parse-and-throw below handles it.
+      }
+    }
     if (wsBase) {
       const parsed = new URL(wsBase);
       host = parsed.host;

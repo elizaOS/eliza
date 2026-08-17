@@ -23,6 +23,19 @@ export {
 export const TOKEN_LIFETIME_SECONDS = 3600;
 
 /**
+ * Gateway tokens cross the public network on every connector delivery. Their
+ * one-minute lifetime bounds replay tightly enough for local signature
+ * verification while ordinary internal tokens retain per-jti revocation.
+ */
+export const GATEWAY_TOKEN_LIFETIME_SECONDS = 60;
+
+const SHORT_LIVED_GATEWAY_SERVICES = new Set(["webhook-gateway", "discord-gateway"]);
+
+export function isShortLivedGatewayService(service: string | undefined): boolean {
+  return service !== undefined && SHORT_LIVED_GATEWAY_SERVICES.has(service);
+}
+
+/**
  * Issuer claim for internal JWTs.
  */
 const ISSUER = "eliza-cloud";
@@ -80,6 +93,12 @@ export interface SignTokenOptions {
   expiresIn?: number;
 }
 
+export function internalTokenLifetimeForService(service: string | undefined): number {
+  return isShortLivedGatewayService(service)
+    ? GATEWAY_TOKEN_LIFETIME_SECONDS
+    : TOKEN_LIFETIME_SECONDS;
+}
+
 /**
  * Sign a new JWT for an internal service.
  *
@@ -128,7 +147,7 @@ export async function signInternalToken(options: SignTokenOptions): Promise<{
  * @throws Error if token is invalid, expired, has wrong issuer/audience, is
  *   missing a required claim, has a revoked `jti`, or the denylist check fails.
  */
-export async function verifyInternalToken(token: string): Promise<VerificationResult> {
+async function verifyInternalTokenClaims(token: string): Promise<VerificationResult> {
   const publicKey = await getPublicKey();
 
   const { payload } = await jwtVerify(token, publicKey, {
@@ -145,16 +164,51 @@ export async function verifyInternalToken(token: string): Promise<VerificationRe
     throw new Error("Token missing JWT ID claim");
   }
 
-  // Revocation denylist check — fail closed. A thrown store error propagates so
-  // the token is rejected rather than accepted on an unreachable denylist.
-  if (await isJtiRevoked(payload.jti)) {
-    throw new Error("Token has been revoked");
-  }
-
   return {
     valid: true,
     payload: payload as InternalJWTPayload,
   };
+}
+
+async function requireTokenNotRevoked(payload: InternalJWTPayload): Promise<void> {
+  if (await isJtiRevoked(payload.jti)) {
+    throw new Error("Token has been revoked");
+  }
+}
+
+function isBoundedGatewayToken(payload: InternalJWTPayload): boolean {
+  if (!payload.service || !SHORT_LIVED_GATEWAY_SERVICES.has(payload.service)) {
+    return false;
+  }
+  if (
+    typeof payload.iat !== "number" ||
+    !Number.isInteger(payload.iat) ||
+    typeof payload.exp !== "number" ||
+    !Number.isInteger(payload.exp)
+  ) {
+    return false;
+  }
+  const lifetimeSeconds = payload.exp - payload.iat;
+  return lifetimeSeconds > 0 && lifetimeSeconds <= GATEWAY_TOKEN_LIFETIME_SECONDS;
+}
+
+export async function verifyInternalToken(token: string): Promise<VerificationResult> {
+  const result = await verifyInternalTokenClaims(token);
+  await requireTokenNotRevoked(result.payload);
+  return result;
+}
+
+/**
+ * Verifies tokens presented on internal request routes. Only signed gateway
+ * credentials whose complete lifetime is one minute or less avoid the remote
+ * revocation read; every other token keeps the fail-closed denylist contract.
+ */
+export async function verifyInternalRequestToken(token: string): Promise<VerificationResult> {
+  const result = await verifyInternalTokenClaims(token);
+  if (!isBoundedGatewayToken(result.payload)) {
+    await requireTokenNotRevoked(result.payload);
+  }
+  return result;
 }
 
 /**

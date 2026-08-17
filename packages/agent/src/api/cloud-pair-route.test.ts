@@ -15,13 +15,17 @@ import {
   handleStandaloneCloudPairRoute,
 } from "./cloud-pair-route.ts";
 
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
 
 interface FakeRes {
   res: http.ServerResponse;
@@ -126,7 +130,7 @@ function fakeReq(opts: {
     ...(opts.proto ? { "x-forwarded-proto": opts.proto } : {}),
   };
   Object.defineProperty(req.socket, "remoteAddress", {
-    value: opts.ip ?? "203.0.113.10",
+    value: opts.ip ?? "127.0.0.1",
     configurable: true,
   });
   return req;
@@ -240,6 +244,7 @@ describe("handleStandaloneCloudPairRoute", () => {
       search: "?token=pair-token",
       host: "eliza-staging-1.elizacloud.ai",
       proto: "https",
+      ip: "203.0.113.10",
     });
     req.headers["x-forwarded-host"] = "attacker.example";
     const harness = fakeRes();
@@ -250,15 +255,40 @@ describe("handleStandaloneCloudPairRoute", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows the explicit local-provider relay only for a loopback origin", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          apiKey: "agent_secret_value",
-          agentId: AGENT_ID,
-          agentName: "Local",
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
+  it("never exchanges for a remote peer spoofing a loopback forwarded host (W1-037)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Before the fix, X-Forwarded-Host/Host were trusted for the loopback
+    // gate, so this exact request passed it: a remote peer presenting a
+    // loopback-looking origin could redeem a held pairing token through the
+    // relay and receive the minted agent apiKey in the handoff HTML.
+    const req = fakeReq({
+      pathname: "/pair",
+      search: "?token=pair-token",
+      host: "localhost:43123",
+      ip: "203.0.113.10",
+    });
+    req.headers["x-forwarded-host"] = "localhost";
+    req.headers["x-forwarded-proto"] = "http";
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(req, harness.res);
+
+    expect(harness.status()).toBe(421);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows the explicit local-provider relay for loopback and local-Docker peers", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            apiKey: "agent_secret_value",
+            agentId: AGENT_ID,
+            agentName: "Local",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -282,6 +312,44 @@ describe("handleStandaloneCloudPairRoute", () => {
       }),
     );
 
+    // The exchange origin is reconstructed from direct request metadata only:
+    // forwarded headers must not rewrite it (W1-037).
+    fetchMock.mockClear();
+    const forwardedHarness = fakeRes();
+    const forwardedReq = fakeReq({
+      pathname: "/pair",
+      search: "?token=pair-token",
+      host: "127.0.0.1:43123",
+      proto: "http",
+    });
+    forwardedReq.headers["x-forwarded-host"] = "attacker.example";
+    await handleStandaloneCloudPairRoute(forwardedReq, forwardedHarness.res);
+    expect(forwardedHarness.status()).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.eliza.app/api/auth/pair",
+      expect.objectContaining({
+        headers: expect.objectContaining({ origin: "http://127.0.0.1:43123" }),
+      }),
+    );
+
+    // Local-Docker deployments publish the port on the host's loopback, so
+    // inside the container the TCP peer is the bridge gateway — a private
+    // address, not 127.0.0.1. That supported flow must keep working.
+    fetchMock.mockClear();
+    const dockerHarness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=pair-token",
+        host: "127.0.0.1:43123",
+        proto: "http",
+        ip: "172.17.0.1",
+      }),
+      dockerHarness.res,
+    );
+    expect(dockerHarness.status()).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
+
     fetchMock.mockClear();
     const publicHarness = fakeRes();
     await handleStandaloneCloudPairRoute(
@@ -290,6 +358,7 @@ describe("handleStandaloneCloudPairRoute", () => {
         search: "?token=pair-token",
         host: "agent.example",
         proto: "https",
+        ip: "203.0.113.10",
       }),
       publicHarness.res,
     );

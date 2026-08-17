@@ -7,7 +7,8 @@
  *  2. an unresolvable (or absent) time expression yields NO cadence so the
  *     handler asks "when?" instead of scheduling an immediate fire;
  *  3. rescheduling a one-off actually moves the stored dueAt (and reports
- *     honestly when nothing changed);
+ *     honestly when nothing changed), while a time-only edit preserves the
+ *     stored zoned local date;
  *  4. LLM-extracted snooze minutes/presets and top-level `minutes` params
  *     reach the snooze handler instead of being discarded.
  */
@@ -77,8 +78,19 @@ vi.mock("../lifeops/service.js", () => {
     }
   }
   class LifeOpsService {
+    private readonly ownerEntityIdValue: string;
+
     constructor(_runtime: IAgentRuntime, options?: { ownerEntityId?: string }) {
       serviceState.ownerEntityIds.push(options?.ownerEntityId);
+      this.ownerEntityIdValue = options?.ownerEntityId ?? "owner-test";
+    }
+
+    agentId() {
+      return "agent-test";
+    }
+
+    ownerEntityId() {
+      return this.ownerEntityIdValue;
     }
 
     repository = {
@@ -189,15 +201,27 @@ vi.mock("../lifeops/service.js", () => {
       };
     }
     async listDefinitions() {
+      // The caller-subject filter in life.ts requires each definition to be
+      // bound to the resolving owner; stamp the default subject unless a test
+      // deliberately supplies a foreign one.
       return [
         {
           definition: {
             id: "def-1",
             title: "workout",
             domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityIdValue,
           },
         },
-        ...serviceState.extraDefinitions,
+        ...serviceState.extraDefinitions.map((entry) => ({
+          ...entry,
+          definition: {
+            subjectType: "owner",
+            subjectId: this.ownerEntityIdValue,
+            ...(entry.definition as Record<string, unknown>),
+          },
+        })),
       ];
     }
     async listGoals() {
@@ -475,6 +499,70 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     expect(
       built && built.cadence.kind === "once" ? built.cadence.dueAt : null,
     ).not.toBe(currentCadence.dueAt);
+  });
+
+  it("preserves the stored local date when only the clock time changes", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        dueAt: "2026-07-03T15:00:00.000Z",
+      },
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, timeOfDay: "18:00" },
+    });
+
+    // The stored instant is July 3 at 09:00 in Denver. A time-only edit must
+    // remain July 3 instead of rebuilding the reminder from fake "today."
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-04T00:00:00.000Z",
+    });
+  });
+
+  it("preserves the stored date across a skipped DST wall time", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        dueAt: "2026-03-08T17:00:00.000Z",
+      },
+      currentWindowPolicy: {
+        timezone: "America/Los_Angeles",
+        windows: [],
+      },
+      timeZone: "America/Los_Angeles",
+      update: { ...emptyUpdate, timeOfDay: "02:30" },
+    });
+
+    // Temporal-compatible disambiguation advances the nonexistent 02:30 to
+    // 03:30 while keeping the stored March 8 local date.
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-03-08T10:30:00.000Z",
+    });
+  });
+
+  it("uses the stored timezone for the date when time and timezone change together", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        // July 3 at 23:00 in Los Angeles, but already July 4 in Tokyo.
+        dueAt: "2026-07-04T06:00:00.000Z",
+      },
+      currentWindowPolicy: {
+        timezone: "America/Los_Angeles",
+        windows: [],
+      },
+      timeZone: "Asia/Tokyo",
+      update: { ...emptyUpdate, timeOfDay: "09:00" },
+    });
+
+    // Preserve the stored July 3 calendar date, then interpret the requested
+    // wall time in the new timezone.
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-03T00:00:00.000Z",
+    });
   });
 
   it("returns null (no silent no-op) when nothing reschedulable was extracted", () => {
@@ -1557,12 +1645,16 @@ describe("runLifeConnectedQuery capability boundaries", () => {
 describe("resolveDefinitionFromIntent", () => {
   it("resolves a uniquely named definition from natural-language intent", async () => {
     const service = {
+      agentId: () => "agent-test",
+      ownerEntityId: () => "owner-test",
       listDefinitions: vi.fn(async () => [
         {
           definition: {
             id: "def-1",
             title: "workout",
             domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: "owner-test",
           },
         },
       ]),

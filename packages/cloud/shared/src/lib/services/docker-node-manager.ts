@@ -8,6 +8,7 @@
  */
 
 import crypto from "node:crypto";
+import { parseLinuxBootId } from "../../db/repositories/agent-backup-source-authority";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
@@ -30,6 +31,15 @@ import {
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import { type DiskHealthVerdict, diskHealthVerdict, probeNodeDiskUsage } from "./node-disk-manager";
+
+const NODE_BOOT_ID_COMMAND = "cat /proc/sys/kernel/random/boot_id";
+
+class BackupSourceRevocationError extends Error {
+  constructor(cause: unknown) {
+    super("Failed to revoke stale backup source authority", { cause });
+    this.name = "BackupSourceRevocationError";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Pre-pull self-heal bookkeeping (see recoverAfterTimedOutPrePull)
@@ -786,7 +796,12 @@ export class DockerNodeManager {
       node.host_key_fingerprint
         ? undefined
         : async (hostname, fingerprint) => {
-            await dockerNodesRepository.setHostKeyFingerprint(node.node_id, fingerprint);
+            await dockerNodesRepository.rotateNodeHostKeyFingerprint({
+              id: node.id,
+              nodeId: node.node_id,
+              expectedFingerprint: null,
+              observedFingerprint: fingerprint,
+            });
             logger.warn(
               `[docker-node-manager] TOFU-pinned host key for node ${node.node_id} (${hostname}): SHA256:${fingerprint}`,
             );
@@ -831,6 +846,7 @@ export class DockerNodeManager {
         const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
 
         if (dockerId.trim()) {
+          await this.attestBackupSourceBoot(node, ssh);
           // Disk-aware verdict: a node whose Docker daemon answers but whose
           // disk is critically full still can't pull images or provision agents
           // (`no space left on device`). Mark it `degraded` so the scheduler
@@ -873,10 +889,23 @@ export class DockerNodeManager {
           await dockerNodesRepository.updateStatus(node.node_id, "healthy");
           return "healthy";
         } else {
+          await this.invalidateBackupSourceBoot(node);
           lastError = "Docker returned empty ID";
         }
       } catch (error: unknown) {
         lastError = error instanceof Error ? error.message : String(error);
+        if (!(error instanceof BackupSourceRevocationError)) {
+          try {
+            await this.invalidateBackupSourceBoot(node);
+          } catch (invalidationError) {
+            // error-policy:J1 the health-loop boundary retains a failed revoke as
+            // the attempt failure and returns only an explicit offline verdict.
+            lastError =
+              invalidationError instanceof Error
+                ? invalidationError.message
+                : String(invalidationError);
+          }
+        }
         if (attempt < MAX_RETRIES) {
           logger.warn(
             `[docker-node-manager] Health check attempt ${attempt}/${MAX_RETRIES} failed for ${node.node_id}: ${lastError}, retrying in ${RETRY_DELAY_MS}ms`,
@@ -936,6 +965,74 @@ export class DockerNodeManager {
     );
     await dockerNodesRepository.updateStatus(node.node_id, "offline");
     return "offline";
+  }
+
+  /**
+   * Publish an exact boot UUID only for explicitly typed Robot/Cloud rows.
+   * An invalid observation may preserve operational health only after the old
+   * incarnation is durably CAS-invalidated; failure to revoke it propagates to
+   * the health/readiness boundary instead of leaving stale capture authority.
+   */
+  private async attestBackupSourceBoot(node: DockerNode, ssh: DockerSSHClient): Promise<void> {
+    if (!hasTypedBackupSourceClassification(node)) return;
+    let expectedHostKeyFingerprint = node.host_key_fingerprint;
+    try {
+      if (expectedHostKeyFingerprint === null) {
+        const observedFingerprint = ssh.getVerifiedHostKeyFingerprint();
+        if (!observedFingerprint) {
+          throw new Error("Verified SSH connection did not expose its host-key fingerprint");
+        }
+        const pinned = await dockerNodesRepository.rotateNodeHostKeyFingerprint({
+          id: node.id,
+          nodeId: node.node_id,
+          expectedFingerprint: null,
+          observedFingerprint,
+        });
+        expectedHostKeyFingerprint = pinned.host_key_fingerprint;
+      }
+      if (expectedHostKeyFingerprint === null) {
+        throw new Error("Backup source node has no persisted SSH host-key fingerprint");
+      }
+      const observedIncarnation = parseLinuxBootId(await ssh.exec(NODE_BOOT_ID_COMMAND, 10_000));
+      await dockerNodesRepository.attestNodeIncarnation({
+        id: node.id,
+        nodeId: node.node_id,
+        expectedIncarnation: node.node_incarnation,
+        expectedHostKeyFingerprint,
+        observedIncarnation,
+      });
+    } catch (error) {
+      // error-policy:J1 source-attestation boundary translates every failed
+      // proof into durable revocation before operational health may continue.
+      logger.error(
+        "[docker-node-manager] Backup source boot attestation failed; invalidating source authority",
+        {
+          nodeId: node.node_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      await this.invalidateBackupSourceBoot(node, expectedHostKeyFingerprint);
+    }
+  }
+
+  /** Revoke a typed source boot without inferring identity from node metadata. */
+  private async invalidateBackupSourceBoot(
+    node: DockerNode,
+    expectedHostKeyFingerprint: string | null = node.host_key_fingerprint,
+  ): Promise<void> {
+    if (!hasTypedBackupSourceClassification(node)) return;
+    try {
+      await dockerNodesRepository.invalidateNodeIncarnation({
+        id: node.id,
+        nodeId: node.node_id,
+        expectedIncarnation: node.node_incarnation,
+        expectedHostKeyFingerprint,
+      });
+    } catch (error) {
+      // error-policy:J2 callers must distinguish failed revocation from the
+      // original SSH/probe error and preserve the repository failure as cause.
+      throw new BackupSourceRevocationError(error);
+    }
   }
 
   /**
@@ -1069,6 +1166,7 @@ export class DockerNodeManager {
       const psiSection = readProbeSection(probeOutput, READINESS_PROBE_PSI_MARKER);
       const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
+        await this.attestBackupSourceBoot(node, ssh);
         if (
           !isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform) &&
           requiredArchitectureForPlatform(options.requiredPlatform)
@@ -1139,6 +1237,7 @@ export class DockerNodeManager {
         await dockerNodesRepository.updateStatus(node.node_id, "healthy");
         return true;
       }
+      await this.invalidateBackupSourceBoot(node);
       if (isAutoscaledNode(node)) {
         await dockerNodesRepository.updateStatus(node.node_id, "degraded");
       } else {
@@ -1149,7 +1248,19 @@ export class DockerNodeManager {
       logger.warn(`[docker-node-manager] Node ${node.node_id} Docker probe returned empty ID`);
       return false;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      let message = error instanceof Error ? error.message : String(error);
+      if (!(error instanceof BackupSourceRevocationError)) {
+        try {
+          await this.invalidateBackupSourceBoot(node);
+        } catch (invalidationError) {
+          // error-policy:J1 readiness fails explicitly when source revocation
+          // cannot be persisted; placement never treats this as a healthy node.
+          message =
+            invalidationError instanceof Error
+              ? invalidationError.message
+              : String(invalidationError);
+        }
+      }
       // See healthCheckNode for rationale: canonical nodes are never marked
       // offline from a transient ssh failure during scheduling.
       if (isAutoscaledNode(node)) {
@@ -1444,6 +1555,16 @@ export class DockerNodeManager {
       return null;
     }
   }
+}
+
+function hasTypedBackupSourceClassification(node: DockerNode): boolean {
+  if (node.infrastructure_provider !== "hetzner") return false;
+  return (
+    (node.fleet_kind === "robot" && node.provider_server_id === null) ||
+    (node.fleet_kind === "cloud" &&
+      typeof node.provider_server_id === "string" &&
+      node.provider_server_id.length > 0)
+  );
 }
 
 export const dockerNodeManager = DockerNodeManager.getInstance();

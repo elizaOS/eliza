@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, api } from "../lib/api-client";
+import { isSafeNavigationUrl } from "../lib/navigation-url";
 
 /**
  * A single OAuth connection row returned by
@@ -114,6 +115,13 @@ export function useOAuthConnections(
         },
       );
       if (data.authUrl) {
+        if (!isSafeNavigationUrl(data.authUrl)) {
+          // The authorization URL is a wire value assigned to the top window —
+          // only absolute http(s) may navigate; anything else is an error.
+          toast.error(`Received an invalid ${label} authorization URL`);
+          setIsConnecting(false);
+          return;
+        }
         window.location.href = data.authUrl;
         return;
       }

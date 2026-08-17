@@ -821,6 +821,7 @@ export async function listOrAutoProvisionCloudAgent(
     },
     cloudApiBase,
     authToken,
+    signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
   addAgentProfile({

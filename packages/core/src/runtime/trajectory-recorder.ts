@@ -1553,7 +1553,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			}
 		}
 		out.sort((a, b) => b.startedAt - a.startedAt);
-		if (opts.limit && out.length > opts.limit) {
+		if (opts.limit != null && out.length > opts.limit) {
 			return out.slice(0, opts.limit);
 		}
 		return out;

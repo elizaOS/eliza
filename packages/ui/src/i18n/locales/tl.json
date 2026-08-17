@@ -7127,7 +7127,7 @@
   "cloud.billingTab.amountHint": "Ilagay ang halagang gusto mong idagdag. Min: ${{min}}, Max: ${{max}}",
   "cloud.billingTab.card": "Kard",
   "cloud.billingTab.crypto": "Crypto",
-  "cloud.billingTab.redirecting": "Nagre-redirect...",
+  "cloud.billingTab.processing": "Pinoproseso…",
   "cloud.billingTab.payWithCrypto": "Magbayad gamit ang Crypto",
   "cloud.billingTab.buyCredits": "Bumili ng mga credit",
   "cloud.billingTab.willBeAdded": "${{amount}} ang idaragdag sa iyong balanse",

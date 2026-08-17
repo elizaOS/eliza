@@ -1,7 +1,8 @@
 /**
  * `ensureSubscriptionCli` (#16518): the device-login CLI bootstrap must work
  * for a NON-ROOT service user — a user-prefix npm install under the eliza
- * state dir (never `-g`, never /usr/lib/node_modules), a structured
+ * state dir (never `-g`, never /usr/lib/node_modules, `--ignore-scripts` so
+ * package lifecycle scripts never execute), a structured
  * prerequisite error when installation is impossible, no guaranteed-to-fail
  * reinstall on every OAuth attempt (cooldown-cached failure), and the tools
  * bin dir made visible to the later bare `spawn("codex"|"claude")`.
@@ -53,6 +54,7 @@ describe("ensureSubscriptionCli (#16518)", () => {
       "install",
       "--prefix",
       expectedPrefix,
+      "--ignore-scripts",
       "--no-fund",
       "--no-audit",
       "@anthropic-ai/claude-code",

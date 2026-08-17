@@ -128,6 +128,96 @@ describe("handleNotificationRoute", () => {
     expect(payload.notifications.map((n) => n.title)).toEqual(["A"]);
   });
 
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "0",
+    "0x10",
+    "-1",
+    "abc",
+    "50abc",
+    "Infinity",
+  ])(
+    "GET rejects prefix-coerced or non-canonical limit %j before list",
+    async (limit) => {
+      await service.notify({ title: "Keep" });
+      const helpers = makeHelpers();
+      const list = vi.spyOn(service, "list");
+      await handleNotificationRoute(
+        req(`/api/notifications?limit=${limit}`),
+        res,
+        "/api/notifications",
+        "GET",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "limit must be a positive integer",
+        400,
+      );
+      expect(helpers.json).not.toHaveBeenCalled();
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
+
+  it("GET rejects a malformed limit before service availability handling", async () => {
+    const helpers = makeHelpers();
+    await handleNotificationRoute(
+      req("/api/notifications?limit=1e2"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime: null },
+      helpers,
+    );
+    expect(helpers.error).toHaveBeenCalledWith(
+      res,
+      "limit must be a positive integer",
+      400,
+    );
+    expect(helpers.json).not.toHaveBeenCalled();
+    expect(setHeader).not.toHaveBeenCalled();
+  });
+
+  it("GET omitted limit still lists the unbounded inbox", async () => {
+    await service.notify({ title: "One" });
+    await service.notify({ title: "Two" });
+    const helpers = makeHelpers();
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime },
+      helpers,
+    );
+    const payload = helpers.json.mock.calls[0][1] as {
+      notifications: unknown[];
+    };
+    expect(payload.notifications).toHaveLength(2);
+  });
+
+  it("GET caps a canonical oversize limit at 500", async () => {
+    const helpers = makeHelpers();
+    const list = vi.spyOn(service, "list");
+    await handleNotificationRoute(
+      req("/api/notifications?limit=501"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime },
+      helpers,
+    );
+    expect(helpers.error).not.toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith({
+      unreadOnly: false,
+      category: undefined,
+      limit: 500,
+    });
+  });
+
   it("POST creates a notification (201) via the service", async () => {
     const helpers = makeHelpers();
     helpers.readJsonBody.mockResolvedValue({
@@ -399,5 +489,78 @@ describe("handleNotificationRoute", () => {
       },
       503,
     );
+  });
+
+  it("POST /api/notifications/:id/read returns 400 on malformed percent-encoded id", async () => {
+    const helpers = makeHelpers();
+    const markRead = vi.spyOn(service, "markRead");
+    for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const path = `/api/notifications/${badId}/read`;
+      await handleNotificationRoute(
+        req(path),
+        res,
+        path,
+        "POST",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "invalid notification id",
+        400,
+      );
+    }
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it("DELETE /api/notifications/:id returns 400 on malformed percent-encoded id", async () => {
+    const helpers = makeHelpers();
+    const remove = vi.spyOn(service, "remove");
+    for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const path = `/api/notifications/${badId}`;
+      await handleNotificationRoute(
+        req(path),
+        res,
+        path,
+        "DELETE",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "invalid notification id",
+        400,
+      );
+    }
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("decodes valid percent-encoded notification id on markRead and remove", async () => {
+    const n = await service.notify({ title: "Encoded" });
+    const encodedId = encodeURIComponent(n.id);
+    const helpers = makeHelpers();
+    const markRead = vi.spyOn(service, "markRead");
+    await handleNotificationRoute(
+      req(`/api/notifications/${encodedId}/read`),
+      res,
+      `/api/notifications/${encodedId}/read`,
+      "POST",
+      { runtime },
+      helpers,
+    );
+    expect(markRead).toHaveBeenCalledWith(n.id);
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+
+    const remove = vi.spyOn(service, "remove");
+    await handleNotificationRoute(
+      req(`/api/notifications/${encodedId}`),
+      res,
+      `/api/notifications/${encodedId}`,
+      "DELETE",
+      { runtime },
+      helpers,
+    );
+    expect(remove).toHaveBeenCalledWith(n.id);
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
   });
 });

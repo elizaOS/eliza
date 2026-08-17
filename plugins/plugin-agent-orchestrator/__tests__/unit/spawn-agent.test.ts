@@ -2,6 +2,9 @@
  * Verifies TASKS:spawn_agent.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
@@ -399,6 +402,52 @@ describe("TASKS:spawn_agent", () => {
     }
   });
 
+  it("keeps an explicit nested workdir when reverse lookup attaches its route", async () => {
+    const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
+    const routeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "spawn-route-"));
+    const appDir = path.join(routeRoot, "data", "apps", "wind-chimes");
+    fs.mkdirSync(appDir, { recursive: true });
+    process.env.TASK_AGENT_WORKDIR_ROUTES = JSON.stringify([
+      {
+        id: "agent-home",
+        workdir: routeRoot,
+        matchAny: ["wording-that-does-not-match"],
+      },
+    ]);
+    try {
+      const svc = serviceMock();
+      const result = await spawnAgentAction.handler(
+        runtimeWith(svc),
+        memory({
+          task: "Polish the chimes.",
+          agentType: "opencode",
+          workdir: appDir,
+        }),
+        state,
+        spawnOptions,
+        callback(),
+      );
+
+      expect(result?.success).toBe(true);
+      const call = svc.spawnSession.mock.calls[0]?.[0] as {
+        initialTask?: string;
+        metadata?: Record<string, unknown>;
+        workdir?: string;
+      };
+      expect(call.workdir).toBe(fs.realpathSync(appDir));
+      expect(call.metadata?.workdirRouteId).toBe("agent-home");
+      expect(call.metadata?.workdirRoute).toMatchObject({
+        id: "agent-home",
+        workdir: fs.realpathSync(appDir),
+      });
+      expect(call.initialTask).toContain(`workdir: ${fs.realpathSync(appDir)}`);
+    } finally {
+      if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
+      else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
+      fs.rmSync(routeRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps an inherited workdir route for routed sub-agent follow-up turns", async () => {
     const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
     delete process.env.TASK_AGENT_WORKDIR_ROUTES;
@@ -527,5 +576,91 @@ describe("TASKS:spawn_agent", () => {
         targetRoot: "/home/user/.eliza/workspaces",
       },
     });
+  });
+});
+
+describe("TASKS:spawn_agent durable restart owner", () => {
+  const durableRuntime = (
+    svc: unknown,
+    taskService: unknown,
+  ): ReturnType<typeof runtimeWith> => {
+    const runtime = runtimeWith(svc);
+    (runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+      (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? taskService : svc,
+    );
+    return runtime;
+  };
+
+  const taskServiceMock = () => ({
+    createTask: vi.fn(async () => ({ id: "durable-task-1" })),
+    attachSession: vi.fn(async () => true),
+  });
+
+  it("persists a durable task and attaches the session for a user-originated spawn", async () => {
+    const svc = serviceMock();
+    const tasks = taskServiceMock();
+    const result = await spawnAgentAction.handler(
+      durableRuntime(svc, tasks),
+      memory({ task: "fix bug", agentType: "codex", workdir: process.cwd() }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(tasks.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "coding", goal: "fix bug" }),
+    );
+    expect(tasks.attachSession).toHaveBeenCalledWith(
+      "durable-task-1",
+      expect.objectContaining({ sessionId: "abcdef123456" }),
+    );
+    expect(result?.data).toMatchObject({ durableTaskId: "durable-task-1" });
+  });
+
+  it("skips the durable record for routed sub-agent respawns", async () => {
+    const svc = serviceMock();
+    const tasks = taskServiceMock();
+    const result = await spawnAgentAction.handler(
+      durableRuntime(svc, tasks),
+      memory({
+        task: "fix bug",
+        agentType: "codex",
+        workdir: process.cwd(),
+        source: "sub_agent",
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(tasks.createTask).not.toHaveBeenCalled();
+    expect(result?.data).not.toMatchObject({
+      durableTaskId: expect.anything(),
+    });
+  });
+
+  it("degrades loudly but keeps the spawn when persistence fails", async () => {
+    const svc = serviceMock();
+    const tasks = {
+      createTask: vi.fn(async () => {
+        throw new Error("store offline");
+      }),
+      attachSession: vi.fn(),
+    };
+    const runtime = durableRuntime(svc, tasks);
+    const result = await spawnAgentAction.handler(
+      runtime,
+      memory({ task: "fix bug", agentType: "codex", workdir: process.cwd() }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.data).not.toMatchObject({
+      durableTaskId: expect.anything(),
+    });
+    expect(runtime.reportError).toHaveBeenCalled();
+    expect(tasks.attachSession).not.toHaveBeenCalled();
   });
 });

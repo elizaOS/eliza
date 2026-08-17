@@ -180,6 +180,11 @@ describe("WorkflowEditor", () => {
     await waitFor(() =>
       expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1),
     );
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: expect.stringContaining("retries={2}"),
+      }),
+    );
     await waitFor(() =>
       expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {}),
     );
@@ -376,6 +381,17 @@ describe("WorkflowEditor", () => {
         startedAt: now,
         stoppedAt: null,
         input: {},
+        approvals: [
+          {
+            runId: "run-approval",
+            workflowId: "workflow-1",
+            nodeId: "publish",
+            iteration: 2,
+            status: "pending",
+            prompt: "Publish the release?",
+            requestedAt: now,
+          },
+        ],
         events: [
           {
             id: "event-approval",
@@ -393,6 +409,12 @@ describe("WorkflowEditor", () => {
     ]);
     render(<WorkflowEditor initial={workflow()} />);
     fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    expect(await screen.findByText("Publish the release?")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "Inspect node.waiting-approval event",
+      }),
+    ).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
     await waitFor(() =>
       expect(api.decideWorkflowApproval).toHaveBeenCalledWith(
@@ -402,5 +424,43 @@ describe("WorkflowEditor", () => {
         true,
       ),
     );
+  });
+
+  it("reveals structured event detail only when requested", async () => {
+    api.getWorkflowExecutions.mockResolvedValue([
+      {
+        id: "run-detail",
+        workflowId: "workflow-1",
+        mode: "manual",
+        status: "finished",
+        finished: true,
+        startedAt: now,
+        stoppedAt: now,
+        input: {},
+        events: [
+          {
+            id: "event-detail",
+            sequence: 1,
+            runId: "run-detail",
+            workflowId: "workflow-1",
+            timestamp: now,
+            type: "NodeFinished",
+            nodeId: "digest",
+            payload: { attempt: 2, result: "ready" },
+          },
+        ],
+      },
+    ]);
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    const inspect = await screen.findByRole("button", {
+      name: "Inspect NodeFinished event",
+    });
+    expect(inspect.className).toContain("min-h-11");
+    expect(screen.queryByText(/"result": "ready"/)).toBeNull();
+    fireEvent.click(inspect);
+    expect(await screen.findByText(/"result": "ready"/)).toBeTruthy();
+    fireEvent.click(inspect);
+    expect(screen.queryByText(/"result": "ready"/)).toBeNull();
   });
 });

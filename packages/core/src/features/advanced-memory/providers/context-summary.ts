@@ -77,7 +77,7 @@ export const contextSummaryProvider: Provider = {
 
 			const trimmedSummary =
 				currentSummary.summary.length > MAX_SUMMARY_TEXT_LENGTH
-					? `${currentSummary.summary.slice(0, MAX_SUMMARY_TEXT_LENGTH)}...`
+					? `${currentSummary.summary.slice(0, MAX_SUMMARY_TEXT_LENGTH - 3)}...`
 					: currentSummary.summary;
 			const limitedTopics =
 				currentSummary.topics?.slice(0, MAX_SUMMARY_TOPICS) ?? [];

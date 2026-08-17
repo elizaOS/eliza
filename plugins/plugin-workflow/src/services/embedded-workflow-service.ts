@@ -25,6 +25,7 @@ import {
   workflowRevisions,
 } from '../db/schema';
 import type {
+  WorkflowApproval,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
   WorkflowExecution,
@@ -69,6 +70,15 @@ function nowIso(): string {
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function approvalPrompt(payload: Record<string, unknown>): string | undefined {
+  const request = payload.request;
+  if (!request || typeof request !== 'object') return undefined;
+  const record = request as Record<string, unknown>;
+  const title = typeof record.title === 'string' ? record.title.trim() : '';
+  const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
+  return summary || title || undefined;
 }
 
 function normalizeWorkflow(
@@ -540,25 +550,13 @@ export class EmbeddedWorkflowService extends Service {
         input: pending.input,
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
-        generate: async ({ prompt, messages, structured, signal }) => {
+        generate: async ({ prompt, messages, signal }) => {
           const promptText =
             typeof prompt === 'string' ? prompt : JSON.stringify(prompt ?? messages ?? '');
-          const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
+          return this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: promptText,
             signal,
-            ...(structured ? { responseFormat: { type: 'json_object' as const } } : {}),
           });
-          if (!structured) return response;
-          try {
-            return JSON.parse(response);
-          } catch (error) {
-            // error-policy:J2 structured output is a required Smithers task
-            // contract, so preserve the model response as failure context.
-            throw new WorkflowApiError('elizaOS model returned invalid structured output', 502, {
-              response,
-              cause: error instanceof Error ? error.message : String(error),
-            });
-          }
         },
       });
       const completed: WorkflowExecution = {
@@ -594,6 +592,24 @@ export class EmbeddedWorkflowService extends Service {
 
   private async recordEvent(execution: WorkflowExecution, event: WorkflowRunEvent): Promise<void> {
     execution.events = [...(execution.events ?? []), event];
+    if (event.type === 'ApprovalRequested' && event.nodeId && typeof event.iteration === 'number') {
+      const prompt = approvalPrompt(event.payload);
+      const pending: WorkflowApproval = {
+        runId: execution.id,
+        workflowId: execution.workflowId,
+        nodeId: event.nodeId,
+        iteration: event.iteration,
+        status: 'pending',
+        requestedAt: event.timestamp,
+        ...(prompt ? { prompt } : {}),
+      };
+      execution.approvals = [
+        ...(execution.approvals ?? []).filter(
+          (approval) => approval.nodeId !== event.nodeId || approval.iteration !== event.iteration
+        ),
+        pending,
+      ];
+    }
     await this.saveExecution(execution);
     for (const listener of this.listeners.get(execution.id) ?? []) listener(event);
     await this.runtime.emitEvent(WORKFLOW_RUN_EVENT, { runtime: this.runtime, event } as never);
@@ -622,6 +638,9 @@ export class EmbeddedWorkflowService extends Service {
     options: { note?: string; decidedBy?: string; decision?: unknown } = {}
   ): Promise<WorkflowExecution> {
     const execution = await this.getExecution(runId);
+    const pending = (execution.approvals ?? []).find(
+      (approval) => approval.nodeId === nodeId && approval.iteration === iteration
+    );
     await controlSmithersRun(this.tenantId, execution.workflowId, {
       kind: approved ? 'approve' : 'deny',
       runId,
@@ -640,7 +659,8 @@ export class EmbeddedWorkflowService extends Service {
         nodeId,
         iteration,
         status: approved ? 'approved' : 'denied',
-        requestedAt: decidedAt,
+        requestedAt: pending?.requestedAt ?? decidedAt,
+        ...(pending?.prompt ? { prompt: pending.prompt } : {}),
         decidedAt,
         ...(options.decidedBy ? { decidedBy: options.decidedBy } : {}),
         ...(options.decision !== undefined ? { decision: options.decision } : {}),

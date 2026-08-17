@@ -32,6 +32,8 @@ describe("formatTrajectoryDuration", () => {
   it("formats sub-second durations in ms", () => {
     expect(formatTrajectoryDuration(0)).toBe("0ms");
     expect(formatTrajectoryDuration(999)).toBe("999ms");
+    expect(formatTrajectoryDuration(24.7)).toBe("25ms");
+    expect(formatTrajectoryDuration(0.4)).toBe("0ms");
   });
 
   it("formats seconds with one decimal", () => {
@@ -70,6 +72,9 @@ describe("formatTrajectoryTokenCount", () => {
   it("returns the empty label for undefined or zero", () => {
     expect(formatTrajectoryTokenCount(undefined, EMPTY)).toBe("—");
     expect(formatTrajectoryTokenCount(0, EMPTY)).toBe("—");
+    expect(formatTrajectoryTokenCount(undefined)).toBe("—");
+    expect(formatTrajectoryTokenCount(0)).toBe("—");
+    expect(formatTrajectoryTokenCount(500)).toBe("500");
   });
 
   it("fails closed on non-finite or negative values", () => {

@@ -178,6 +178,10 @@ export type CliBackendConfig = {
  * Each key is a source name (e.g. "client_chat", "telegram", "discord").
  */
 export type OwnerContactEntry = {
+  /** Explicit send-handler source for this contact. A scoped key like
+   *  "discord-nubs-test" names the CONTACT; this names the CONNECTOR the
+   *  delivery must go through when the key itself is not a handler name. */
+  source?: string;
   /** Entity ID in the runtime (UUID). */
   entityId?: string;
   /** Platform-specific channel/chat ID (e.g. Telegram numeric chat ID). */

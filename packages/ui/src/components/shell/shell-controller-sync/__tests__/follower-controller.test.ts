@@ -38,10 +38,14 @@ describe("buildFollowerController reads", () => {
       recording: true,
       transcript: "live",
       handsFree: true,
+      authGate: { gated: true, phase: "needs-auth" },
+      signingIn: true,
     });
     expect(controller.recording).toBe(true);
     expect(controller.transcript).toBe("live");
     expect(controller.handsFree).toBe(true);
+    expect(controller.authGate).toEqual({ gated: true, phase: "needs-auth" });
+    expect(controller.signingIn).toBe(true);
     expect(controller.analyser).toBeNull();
   });
 });
@@ -61,12 +65,14 @@ describe("buildFollowerController commands", () => {
   it("forwards voice + nav controls", () => {
     const { controller, dispatch } = build();
     controller.startRecording("dictate");
+    controller.requestSignIn();
     controller.toggleHandsFree();
     controller.conversationNav.goNext();
     expect(dispatch).toHaveBeenCalledWith({
       kind: "startRecording",
       intent: "dictate",
     });
+    expect(dispatch).toHaveBeenCalledWith({ kind: "requestSignIn" });
     expect(dispatch).toHaveBeenCalledWith({ kind: "toggleHandsFree" });
     expect(dispatch).toHaveBeenCalledWith({
       kind: "navConversation",

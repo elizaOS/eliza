@@ -98,6 +98,10 @@ export function getProviderFromModel(model: string): string {
   // Handle non-prefixed format: "gpt-5-mini"
   if (model === "gemma-4-31b") return "cerebras";
   if (model === "gpt-oss-120b") return "cerebras";
+  // bge-* embeds on the platform-operated TEI sidecar
+  // (packages/cloud/services/embeddings), matching its "selfhosted"
+  // pricing/billing rows — not on an external provider.
+  if (model.startsWith("bge-")) return "selfhosted";
   if (model.startsWith("gpt-")) return "openai";
   if (model.startsWith("zai-glm-")) return "cerebras";
   if (model.startsWith("claude-")) return "anthropic";

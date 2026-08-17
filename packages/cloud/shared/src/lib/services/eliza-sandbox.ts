@@ -126,7 +126,6 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
-import { navIntentActionResult } from "./shared-runtime/shared-nav-intent";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   formatWakeRestoreIntegrityError,
@@ -4286,11 +4285,6 @@ export class ElizaSandboxService {
       if (turn.degraded) {
         // A failed/degraded turn isn't persisted or billed — just refund the hold.
         await settleReservation(0);
-      } else if (turn.navIntent) {
-        // A deterministic navigation turn ran NO model: persist the turn but
-        // refund the hold (nothing to meter). See shared-nav-intent.ts.
-        await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
-        await settleReservation(0);
       } else {
         await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
         if (billingContext) {
@@ -4375,10 +4369,6 @@ export class ElizaSandboxService {
           degraded: turn.degraded,
           runtime: "shared",
           transport: "shared-runtime",
-          // A deterministic navigation turn carries a VIEWS handoff so callers
-          // that surface `actionResults` (the PWA) open the view. Omitted for
-          // normal chat turns, so their result shape is unchanged.
-          ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
         },
       };
     } catch (settleError) {
@@ -4505,11 +4495,7 @@ export class ElizaSandboxService {
                 { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
               ];
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
-              // A deterministic navigation turn ran NO model, so it must not be
-              // billed — just refund the upfront hold. Only real LLM turns meter.
-              if (turn.navIntent) {
-                await settleReservation(0);
-              } else if (billingContext) {
+              if (billingContext) {
                 // The reply is final once the last token arrived and history
                 // persisted, but the billing tail (billUsage → settleReservation
                 // → analytics → audit) is ~4 serial cross-region Worker→DB
@@ -4591,17 +4577,7 @@ export class ElizaSandboxService {
                   }
                 });
               }
-              // Attach a VIEWS navigation handoff for a deterministic nav turn so
-              // the PWA opens the view (findViewActionHandoff → navigate event in
-              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it.
-              const doneData = turn.navIntent
-                ? {
-                    messageId,
-                    text: finalReply,
-                    fullText: finalReply,
-                    actionResults: [navIntentActionResult(turn.navIntent)],
-                  }
-                : { messageId, text: finalReply, fullText: finalReply };
+              const doneData = { messageId, text: finalReply, fullText: finalReply };
               controller.enqueue(encoder.encode(chatSseFrame("done", doneData)));
             }
             if (!finished) {
@@ -8036,12 +8012,28 @@ export class ElizaSandboxService {
 
   // Shutdown
 
+  /**
+   * Stops the agent's container and flips the row to `stopped`, capturing a
+   * pre-stop snapshot first. Fail-closed by default: a capture failure leaves
+   * the agent running and returns an explicit refusal. The sole sanctioned
+   * bypass is `options.stateLossAcknowledged` (#18228) — an operator's
+   * explicit acceptance that state since the last durable backup is discarded
+   * — which proceeds to stop without a capture, loudly, and reports
+   * `stateLossAcknowledged: true` in the result. It is never implied.
+   */
   async shutdown(
     agentId: string,
     orgId: string,
-  ): Promise<{ success: boolean; error?: string; retryable?: boolean }> {
+    options?: { readonly stateLossAcknowledged?: boolean },
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    retryable?: boolean;
+    stateLossAcknowledged?: boolean;
+  }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
+    let captureWaivedByOperator = false;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -8063,6 +8055,17 @@ export class ElizaSandboxService {
           logger.warn(
             "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
             { agentId },
+          );
+        } else if (options?.stateLossAcknowledged) {
+          // Sanctioned operator override (#18228): a persistent capture or
+          // transfer-hop failure otherwise makes the agent unstoppable through
+          // every safe path. The operator explicitly acknowledged the state
+          // loss, so proceed to stop WITHOUT a capture — never silently: the
+          // waiver is logged here and reported in the result.
+          captureWaivedByOperator = true;
+          logger.error(
+            "[agent-sandbox] Shutdown proceeding WITHOUT pre-stop capture: operator acknowledged state loss",
+            { agentId, captureError: message },
           );
         } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
           // TRANSIENT (PGlite closing race): do NOT weaken the fail-closed
@@ -8138,7 +8141,12 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
+      if (
+        rec.status === "running" &&
+        rec.bridge_url &&
+        !captureUnsupported &&
+        !captureWaivedByOperator
+      ) {
         // The capture must be OF THIS generation. A capture taken against a
         // different bridge_url (the row moved between the unlocked fetch and
         // this locked read) is some other container's state; persisting it
@@ -8189,6 +8197,9 @@ export class ElizaSandboxService {
       `);
 
       snapshotAgentId = rec.id;
+      if (captureWaivedByOperator) {
+        return { success: true, stateLossAcknowledged: true } as const;
+      }
       return { success: true } as const;
     });
 
@@ -8199,7 +8210,10 @@ export class ElizaSandboxService {
           error: error instanceof Error ? error.message : String(error),
         });
       });
-      logger.info("[agent-sandbox] Shutdown complete", { agentId });
+      logger.info("[agent-sandbox] Shutdown complete", {
+        agentId,
+        stateLossAcknowledged: captureWaivedByOperator || undefined,
+      });
     }
 
     return result;
@@ -8678,6 +8692,7 @@ export class ElizaSandboxService {
   async executeRestart(
     agentId: string,
     orgId: string,
+    options?: { readonly stateLossAcknowledged?: boolean },
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
@@ -8706,7 +8721,9 @@ export class ElizaSandboxService {
       await this.prepareLegacyWarmClaimCredentialRecovery(agentId, orgId);
     }
 
-    const shutdownResult = await this.shutdown(agentId, orgId);
+    const shutdownResult = await this.shutdown(agentId, orgId, {
+      stateLossAcknowledged: options?.stateLossAcknowledged,
+    });
     if (!shutdownResult.success) {
       return {
         success: false,

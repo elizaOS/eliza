@@ -7127,7 +7127,7 @@
   "cloud.billingTab.amountHint": "Nhập số tiền muốn thêm. Tối thiểu: ${{min}}, Tối đa: ${{max}}",
   "cloud.billingTab.card": "Thẻ",
   "cloud.billingTab.crypto": "Tiền mã hóa",
-  "cloud.billingTab.redirecting": "Đang chuyển hướng...",
+  "cloud.billingTab.processing": "Đang xử lý…",
   "cloud.billingTab.payWithCrypto": "Thanh toán bằng tiền mã hóa",
   "cloud.billingTab.buyCredits": "Mua tín dụng",
   "cloud.billingTab.willBeAdded": "${{amount}} sẽ được thêm vào số dư",

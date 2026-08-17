@@ -235,6 +235,86 @@ async function driveRealView(browser) {
   }
 }
 
+// ── Target 3: teardown navigation regression (#20728) ────────────────────────
+// Reproduces Settings → Models & Providers: mount an instrumented section with
+// the live AgentElementOverlay subscriber + highlight on, then navigate away so
+// the whole provider subtree unmounts. Before the fix, a descendant
+// useAgentElement unmount bumped the registry during React's deleted-tree
+// passive phase, forcing a re-render on the overlay committed for deletion
+// (React #185). Asserts ZERO page/console errors across repeated transitions.
+async function driveTeardownNavigation(browser) {
+  console.log("\n── target: teardown-navigation (#20728) ──");
+  const htmlPath = await bundleFixture(
+    "teardown",
+    join(here, "teardown-fixture.tsx"),
+  );
+  const page = await browser.newPage({
+    viewport: { width: 720, height: 520 },
+  });
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  try {
+    await page.goto(`file://${htmlPath}`);
+    await page.waitForSelector("[data-agent-id='consumer-key']");
+
+    // The instrumented Models section is live and highlighting; navigating away
+    // tears its provider subtree down. Repeat both directions to exercise the
+    // teardown path several times (each remount re-arms highlight).
+    for (const section of ["general", "models", "general", "models"]) {
+      await page.evaluate((s) => window.__navigate(s), section);
+      await page.waitForFunction(
+        (s) =>
+          document
+            .querySelector("[data-testid='active-section']")
+            ?.textContent?.includes(`section=${s}`),
+        section,
+      );
+    }
+    // Let React flush passive unmount effects for the final transition.
+    await page.waitForTimeout(50);
+
+    assert(
+      pageErrors.length === 0,
+      `no uncaught page errors across section teardown (${pageErrors.join(" | ") || "none"})`,
+    );
+    const fatalConsole = consoleErrors.filter((t) =>
+      /Maximum update depth|Minified React error #185|unmount|update on a/i.test(
+        t,
+      ),
+    );
+    assert(
+      fatalConsole.length === 0,
+      `no React teardown-notify console errors (${fatalConsole.join(" | ") || "none"})`,
+    );
+
+    // The surviving surface stays fully functional after the churn.
+    await page.evaluate(() => window.__navigate("models"));
+    await page.waitForSelector("[data-agent-id='consumer-key']");
+    const ids = await page.evaluate(() =>
+      window
+        .__agentSurface("list-elements")
+        .map((e) => e.id)
+        .sort(),
+    );
+    assert(
+      ["provider-name", "provider-key-0", "save-models"].every((id) =>
+        ids.includes(id),
+      ),
+      `models section still addressable after teardown churn (${ids.length} elements)`,
+    );
+
+    await page.screenshot({
+      path: join(outDir, "agent-surface-teardown.png"),
+    });
+  } finally {
+    await page.close();
+  }
+}
+
 async function assertArtifactsWritten() {
   for (const artifactName of AGENT_SURFACE_ARTIFACT_NAMES) {
     const artifactPath = join(outDir, artifactName);
@@ -247,6 +327,7 @@ const browser = await chromium.launch();
 try {
   await driveSyntheticFixture(browser);
   await driveRealView(browser);
+  await driveTeardownNavigation(browser);
   await assertArtifactsWritten();
   console.log(`\nScreenshots written to ${outDir}`);
 } finally {

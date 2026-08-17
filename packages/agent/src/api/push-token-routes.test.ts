@@ -126,6 +126,22 @@ describe("handlePushTokenRoute", () => {
     expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 400);
   });
 
+  it("DELETE accepts a body token without exposing it in the request URL", async () => {
+    await registry.register("ios", "private/device-token");
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({ token: "private/device-token" });
+    await handlePushTokenRoute(
+      req(PREFIX),
+      res,
+      PREFIX,
+      "DELETE",
+      { runtime },
+      helpers,
+    );
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+    expect(await registry.count()).toBe(0);
+  });
+
   it("GET returns count + per-platform breakdown", async () => {
     await registry.register("ios", "i1");
     await registry.register("ios", "i2");
@@ -185,5 +201,45 @@ describe("handlePushTokenRoute", () => {
       helpers,
     );
     expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 503);
+  });
+
+  it("DELETE :token returns 400 on malformed percent-encoded token", async () => {
+    const helpers = makeHelpers();
+    const unregister = vi.spyOn(registry, "unregister");
+    for (const badToken of ["%", "%2", "%ZZ", "%E0%A4"]) {
+      const path = `${PREFIX}/${badToken}`;
+      await handlePushTokenRoute(
+        req(path),
+        res,
+        path,
+        "DELETE",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "invalid push token",
+        400,
+      );
+    }
+    expect(unregister).not.toHaveBeenCalled();
+  });
+
+  it("DELETE :token decodes valid percent-encoded token before unregister", async () => {
+    await registry.register("ios", "tok/with-slash");
+    const helpers = makeHelpers();
+    const unregister = vi.spyOn(registry, "unregister");
+    const path = `${PREFIX}/tok%2Fwith-slash`;
+    await handlePushTokenRoute(
+      req(path),
+      res,
+      path,
+      "DELETE",
+      { runtime },
+      helpers,
+    );
+    expect(unregister).toHaveBeenCalledWith("tok/with-slash");
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+    expect(await registry.count()).toBe(0);
   });
 });

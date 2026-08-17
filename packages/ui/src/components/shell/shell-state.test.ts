@@ -105,9 +105,11 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
   it("is exhaustive over ShellPhase for the empty-assistant exception", () => {
     const phases: ShellPhase[] = [
       "booting",
+      "needs-auth",
       "idle",
       "summoned",
       "listening",
+      "processing",
       "responding",
     ];
     const thread = [msg("u1", "user", "hi"), msg("a1", "assistant", "")];
@@ -126,9 +128,11 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
     };
     const phases: ShellPhase[] = [
       "booting",
+      "needs-auth",
       "idle",
       "summoned",
       "listening",
+      "processing",
       "responding",
     ];
     for (const phase of phases) {

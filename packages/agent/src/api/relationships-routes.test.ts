@@ -2,12 +2,28 @@
  * Exercises the relationships route query boundary with pure helpers and a
  * mocked graph service; no live HTTP server, database, or model is used.
  */
+import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleRelationshipsRoutes,
   parseRelationshipsQuery,
   parseRelationshipsQueryInteger,
+  parseRelationshipsScope,
 } from "./relationships-routes.ts";
+
+function createWireResponse(): {
+  res: http.ServerResponse;
+  end: ReturnType<typeof vi.fn>;
+} {
+  const end = vi.fn();
+  return {
+    res: {
+      setHeader: vi.fn(),
+      end,
+    } as unknown as http.ServerResponse,
+    end,
+  };
+}
 
 describe("parseRelationshipsQueryInteger", () => {
   it("preserves omitted values and parses complete unsigned decimals", () => {
@@ -110,5 +126,272 @@ describe("parseRelationshipsQuery", () => {
     });
     expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseRelationshipsScope", () => {
+  it("keeps omitted and empty as the unfiltered default", () => {
+    expect(parseRelationshipsScope(null)).toEqual({
+      ok: true,
+      scope: undefined,
+    });
+    expect(parseRelationshipsScope("")).toEqual({
+      ok: true,
+      scope: undefined,
+    });
+  });
+
+  it.each(["relevant", "all"] as const)("accepts exact %s", (token) => {
+    expect(parseRelationshipsScope(token)).toEqual({
+      ok: true,
+      scope: token,
+    });
+  });
+
+  it.each(["RELEVANT", "ALL", "Relevant", "everyone", " all"])(
+    "rejects unknown scope %j",
+    (token) => {
+      const parsed = parseRelationshipsScope(token);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) {
+        expect(parsed.message).toBe("scope must be one of: all, relevant");
+      }
+    },
+  );
+});
+
+describe("GET /api/relationships/graph scope identity", () => {
+  it.each(["RELEVANT", "ALL", "Relevant"])(
+    "rejects scope=%s with 400 before getGraphSnapshot",
+    async (token) => {
+      const getGraphSnapshot = vi.fn(async () => ({
+        people: [],
+        relationships: [],
+        stats: {},
+      }));
+      const json = vi.fn();
+      const error = vi.fn();
+      const runtime = {
+        getService: () => ({
+          getGraphSnapshot,
+          getPersonDetail: vi.fn(),
+          getCandidateMerges: vi.fn(),
+          acceptMerge: vi.fn(),
+          rejectMerge: vi.fn(),
+        }),
+      };
+
+      await handleRelationshipsRoutes({
+        req: {
+          url: `/api/relationships/graph?scope=${token}`,
+        } as never,
+        res: {} as never,
+        method: "GET",
+        pathname: "/api/relationships/graph",
+        json,
+        error,
+        readJsonBody: vi.fn(),
+        runtime: runtime as never,
+      });
+
+      expect(error).toHaveBeenCalledWith(
+        expect.anything(),
+        "scope must be one of: all, relevant",
+        400,
+      );
+      expect(getGraphSnapshot).not.toHaveBeenCalled();
+      expect(json).not.toHaveBeenCalled();
+    },
+  );
+
+  it("scope=relevant still reaches the graph service", async () => {
+    const snapshot = { people: [], relationships: [], stats: {} };
+    const getGraphSnapshot = vi.fn(async () => snapshot);
+    const json = vi.fn();
+    const error = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot,
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    await handleRelationshipsRoutes({
+      req: {
+        url: "/api/relationships/graph?scope=relevant",
+      } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/relationships/graph",
+      json,
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getGraphSnapshot).toHaveBeenCalledWith({
+      search: null,
+      platform: null,
+      limit: undefined,
+      offset: undefined,
+      scope: "relevant",
+    });
+    expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
+  });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/candidates/:id/accept with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const acceptMerge = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge,
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/candidates/%/accept" } as never,
+      res,
+      method: "POST",
+      pathname: "/api/relationships/candidates/%/accept",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid merge candidate id: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(acceptMerge).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/people/:id/link with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const proposeMerge = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+        proposeMerge,
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%/link" } as never,
+      res,
+      method: "POST",
+      pathname: "/api/relationships/people/%/link",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid source entity id: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(proposeMerge).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed percent-encoding on GET /api/relationships/people/:id with 400", async () => {
+    const error = vi.fn();
+    const { res, end } = createWireResponse();
+    const getPersonDetail = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail,
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%" } as never,
+      res,
+      method: "GET",
+      pathname: "/api/relationships/people/%",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error:
+          "Invalid relationships person identifier: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+    expect(getPersonDetail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/api/relationships/candidates/not%2Da%2Duuid/accept", "POST"],
+    ["/api/relationships/people/not%2Da%2Duuid/link", "POST"],
+    ["/api/relationships/people/not%2Da%2Duuid", "GET"],
+  ])("rejects a decoded non-UUID on %s", async (pathname, method) => {
+    const error = vi.fn();
+    const acceptMerge = vi.fn();
+    const proposeMerge = vi.fn();
+    const getPersonDetail = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail,
+        getCandidateMerges: vi.fn(),
+        acceptMerge,
+        rejectMerge: vi.fn(),
+        proposeMerge,
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: pathname } as never,
+      res: {} as never,
+      method,
+      pathname,
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      400,
+    );
+    expect(acceptMerge).not.toHaveBeenCalled();
+    expect(proposeMerge).not.toHaveBeenCalled();
+    expect(getPersonDetail).not.toHaveBeenCalled();
   });
 });

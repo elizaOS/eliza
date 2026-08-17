@@ -393,7 +393,7 @@ export const settingsProvider: Provider = {
 				state,
 			);
 			if (output.length > MAX_SETTINGS_OUTPUT_LENGTH) {
-				output = `${output.slice(0, MAX_SETTINGS_OUTPUT_LENGTH)}...`;
+				output = `${output.slice(0, MAX_SETTINGS_OUTPUT_LENGTH - 3)}...`;
 			}
 
 			return {

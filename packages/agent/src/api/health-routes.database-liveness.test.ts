@@ -34,7 +34,12 @@ function makeContext(runtime: AgentRuntime | null): {
   return {
     responses,
     ctx: {
-      req: {} as HealthRouteContext["req"],
+      // Trusted-local shape: the /api/health detail payload is only served to
+      // callers that pass the trusted-local check (W1-039).
+      req: {
+        headers: { host: "127.0.0.1" },
+        socket: { remoteAddress: "127.0.0.1" },
+      } as unknown as HealthRouteContext["req"],
       res: {} as HealthRouteContext["res"],
       method: "GET",
       pathname: "/api/health",

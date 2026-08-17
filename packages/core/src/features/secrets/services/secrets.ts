@@ -12,7 +12,7 @@ import {
 	Service,
 	type ServiceTypeName,
 } from "../../../types/index.ts";
-import { KeyManager } from "../crypto/encryption.ts";
+import { deriveKeyPbkdf2, KeyManager } from "../crypto/encryption.ts";
 import {
 	BrokerSecretStorage,
 	CharacterSettingsStorage,
@@ -98,7 +98,22 @@ export class SecretsService extends Service {
 					"ENCRYPTION_SALT_REQUIRED",
 				);
 			}
+			// Legacy derivation retained as a DECRYPT-ONLY key: ciphertext
+			// written before the strong derivation existed carries keyId
+			// "default" (PBKDF2 with the agentId as password). The agentId is a
+			// public identifier — it appears in logs, API responses, URLs, and
+			// DB rows — so that password contributes zero entropy.
 			this.keyManager.initializeFromPassword(runtime.agentId, encryptionSalt);
+			// Active derivation: the high-entropy ENCRYPTION_SALT is the KDF
+			// password, bound to this agent via a domain-separated KDF salt, so
+			// the key's secrecy no longer rests on a public value. New writes
+			// carry keyId "v2"; KeyManager.decrypt selects by stored keyId.
+			const strongKey = deriveKeyPbkdf2(
+				encryptionSalt,
+				Buffer.from(`elizaos:secrets:v2:${runtime.agentId}`, "utf8"),
+			);
+			this.keyManager.addKey("v2", strongKey);
+			this.keyManager.setCurrentKey("v2");
 
 			// Initialize storage backends
 			this.globalStorage = new CharacterSettingsStorage(

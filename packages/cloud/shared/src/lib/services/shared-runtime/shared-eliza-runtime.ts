@@ -6,6 +6,9 @@
  */
 
 import {
+  type AgentEventPayload,
+  AgentEventService,
+  type AgentNotification,
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -13,7 +16,9 @@ import {
   type IAgentRuntime,
   InMemoryDatabaseAdapter,
   ModelType,
+  NOTIFICATION_STREAM,
   type Plugin,
+  ServiceType,
   type StreamingContext,
   setStreamingContextManager,
   stringToUuid,
@@ -22,6 +27,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core/edge";
+import { NotificationService } from "@elizaos/core/services/notification";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
@@ -33,6 +39,7 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import type {
@@ -57,8 +64,66 @@ type NativeTextModelResult = string & {
   providerMetadata: { modelName: string };
 };
 
+interface SharedNotificationEventBus {
+  subscribe(listener: (event: AgentEventPayload) => void): () => void;
+}
+
+type SharedMobilePushDispatch = (message: MobilePushMessage) => Promise<void>;
+
+function isSharedNotificationEventBus(value: unknown): value is SharedNotificationEventBus {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "subscribe" in value &&
+      typeof value.subscribe === "function",
+  );
+}
+
+function notificationFromEvent(event: AgentEventPayload): AgentNotification | null {
+  const notification = event.data?.notification;
+  if (
+    event.stream !== NOTIFICATION_STREAM ||
+    !notification ||
+    typeof notification !== "object" ||
+    typeof (notification as AgentNotification).id !== "string" ||
+    typeof (notification as AgentNotification).title !== "string"
+  ) {
+    return null;
+  }
+  return notification as AgentNotification;
+}
+
+/** Bridges canonical notification events to the hosting authority's push sender. */
+export function subscribeSharedMobilePush(
+  eventBus: SharedNotificationEventBus,
+  dispatch: SharedMobilePushDispatch,
+  pending: Promise<void>[],
+): () => void {
+  return eventBus.subscribe((event) => {
+    const notification = notificationFromEvent(event);
+    if (!notification) return;
+    const data: Record<string, string | number | boolean | null> = {
+      notificationId: notification.id,
+      category: notification.category,
+    };
+    if (notification.deepLink) data.deepLink = notification.deepLink;
+    if (notification.groupKey) data.groupKey = notification.groupKey;
+    pending.push(
+      dispatch({
+        title: notification.title,
+        body: notification.body,
+        collapseKey: notification.id,
+        data,
+      }),
+    );
+  });
+}
+
 let edgeStreamingContextReady: Promise<void> | undefined;
-let sharedRuntimeKernelReady: Promise<AgentRuntime> | undefined;
+let sharedRuntimeKernelReady: Promise<void> | undefined;
+
+/** Canonical notification services required by the ephemeral Shared runtime. */
+export const SHARED_NOTIFICATION_SERVICES = [AgentEventService, NotificationService] as const;
 
 async function ensureEdgeStreamingContext(): Promise<void> {
   edgeStreamingContextReady ??= import("node:async_hooks").then(({ AsyncLocalStorage }) => {
@@ -84,6 +149,7 @@ function sharedModelPlugin(
   return {
     name: "shared-cerebras-model",
     description: "Platform-funded text generation for the Shared Workerd runtime.",
+    services: [...SHARED_NOTIFICATION_SERVICES],
     models: {
       [ModelType.RESPONSE_HANDLER]: handler,
       [ModelType.ACTION_PLANNER]: handler,
@@ -150,37 +216,46 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
       },
       modelPlugin: sharedModelPlugin(async () => prewarmModelHandler()),
     });
+    let initializationError: unknown;
     try {
       await runtime.initialize({ skipMigrations: true });
+      await Promise.allSettled(
+        runtime
+          .getRegisteredServiceTypes()
+          .map((serviceType) => runtime.getServiceLoadPromise(serviceType)),
+      );
       if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
         throw new Error("Eliza Shared runtime prewarm omitted its WEB_SEARCH action");
       }
-      // Retain this state-free runtime for the isolate lifetime. Several core
-      // services finish their asynchronous start just after initialize();
-      // stopping immediately races those starts, while waiting on optional
-      // service names adds their full load timeout to every cold phone call.
-      return runtime;
     } catch (error) {
-      try {
-        await runtime.stop();
-      } catch (teardownError) {
-        // error-policy:J6 failed prewarm owns this disposable runtime, so its
-        // teardown cannot replace the initialization failure reported upstream.
-        logger.warn("[shared-eliza-runtime] failed prewarm stop failed", {
-          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
-        });
-      }
-      try {
-        await runtime.close();
-      } catch (teardownError) {
-        // error-policy:J6 failed prewarm owns this disposable runtime, so its
-        // teardown cannot replace the initialization failure reported upstream.
-        logger.warn("[shared-eliza-runtime] failed prewarm close failed", {
-          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
-        });
-      }
-      throw error;
+      initializationError = error;
     }
+
+    const cleanupErrors: unknown[] = [];
+    try {
+      await runtime.stop();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      await runtime.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (initializationError !== undefined) {
+      for (const teardownError of cleanupErrors) {
+        // error-policy:J6 failed prewarm owns this disposable runtime, so its
+        // teardown cannot replace the initialization failure reported upstream.
+        logger.warn("[shared-eliza-runtime] failed prewarm cleanup failed", {
+          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
+        });
+      }
+      throw initializationError;
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "Shared runtime prewarm cleanup failed");
+    }
+    logger.info("[shared-eliza-runtime] prewarm runtime released");
   })().catch((error) => {
     sharedRuntimeKernelReady = undefined;
     throw error;
@@ -409,6 +484,26 @@ async function executeSharedElizaRuntimeTurn(
 
   try {
     await runtime.initialize({ skipMigrations: true });
+    const pushDispatches: Promise<void>[] = [];
+    const mobilePushDispatch = input.execution?.mobilePush?.dispatch;
+    const [eventBus, notificationService] = mobilePushDispatch
+      ? await Promise.all([
+          runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT),
+          runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+        ])
+      : [runtime.getService(ServiceType.AGENT_EVENT), runtime.getService(ServiceType.NOTIFICATION)];
+    if (mobilePushDispatch && (!isSharedNotificationEventBus(eventBus) || !notificationService)) {
+      throw new Error(
+        "Eliza Shared runtime initialized mobile push without canonical notification services",
+      );
+    }
+    const unsubscribePush =
+      mobilePushDispatch && isSharedNotificationEventBus(eventBus)
+        ? subscribeSharedMobilePush(eventBus, mobilePushDispatch, pushDispatches)
+        : undefined;
+    if (runtime.actions.some((action) => action.name === "VIEWS")) {
+      throw new Error("Eliza Shared runtime must not register client view-navigation actions");
+    }
     if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
       throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
     }
@@ -496,6 +591,18 @@ async function executeSharedElizaRuntimeTurn(
           }
         : undefined,
     );
+    unsubscribePush?.();
+    const pushResults = await Promise.allSettled(pushDispatches);
+    for (const pushResult of pushResults) {
+      if (pushResult.status === "rejected") {
+        logger.warn("[shared-eliza-runtime] mobile push dispatch failed", {
+          error:
+            pushResult.reason instanceof Error
+              ? pushResult.reason.message
+              : String(pushResult.reason),
+        });
+      }
+    }
     const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model

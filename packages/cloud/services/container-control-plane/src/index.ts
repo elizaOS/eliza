@@ -40,6 +40,7 @@ import {
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { type Context, Hono } from "hono";
 
@@ -611,8 +612,7 @@ async function handleInternal(c: Context, fn: () => Promise<Response>) {
 
 async function mirrorControlPlaneNodes(nodes: DockerNode[]): Promise<void> {
   for (const node of nodes) {
-    const data = {
-      node_id: node.node_id,
+    const mutableData = {
       hostname: node.hostname,
       ssh_port: node.ssh_port,
       capacity: node.capacity,
@@ -620,16 +620,19 @@ async function mirrorControlPlaneNodes(nodes: DockerNode[]): Promise<void> {
       status: node.status,
       last_health_check: node.last_health_check,
       ssh_user: node.ssh_user,
-      host_key_fingerprint: node.host_key_fingerprint,
       metadata: stampDockerNodeEnvironmentMetadata(node.metadata),
     };
 
     const existing = await dockerNodesRepository.findByNodeId(node.node_id);
     if (existing) {
-      await dockerNodesRepository.update(existing.id, data);
+      // node_id is immutable provider authority once the row exists. The
+      // mirror may refresh operational fields but must never rewrite identity.
+      await dockerNodesRepository.update(existing.id, mutableData);
     } else {
       await dockerNodesRepository.create({
-        ...data,
+        node_id: node.node_id,
+        ...mutableData,
+        host_key_fingerprint: node.host_key_fingerprint,
         allocated_count: 0,
       });
     }
@@ -795,10 +798,7 @@ app.post("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
 
 function processProvisioningJobsResponse(c: Context) {
   return handleInternal(c, async () => {
-    const rawLimit = Number(c.req.query("limit") ?? "5");
-    const batchSize = Number.isFinite(rawLimit)
-      ? Math.max(1, Math.min(25, rawLimit))
-      : 5;
+    const batchSize = parseClampedLimit(c.req.query("limit"), 5, 25);
     const result = await provisioningJobService.processPendingJobs(batchSize);
     return c.json({
       success: true,

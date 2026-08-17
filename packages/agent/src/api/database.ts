@@ -802,6 +802,21 @@ export function parseRowsPagination(
 }
 
 /**
+ * Parse the `order` query for row retrieval. The token is interpolated into
+ * `ORDER BY ... ASC|DESC`, so only the Control UI's exact `asc`/`desc`
+ * identities are legal. `order=DESC` used to become ASC because only the
+ * lowercase `desc` token flipped the direction.
+ */
+export function parseRowsSortOrder(
+  raw: string | null,
+): { ok: true; order: "ASC" | "DESC" } | { ok: false } {
+  if (raw === null || raw === "") return { ok: true, order: "ASC" };
+  if (raw === "asc") return { ok: true, order: "ASC" };
+  if (raw === "desc") return { ok: true, order: "DESC" };
+  return { ok: false };
+}
+
+/**
  * GET /api/database/tables/:table/rows?offset=0&limit=50&sort=col&order=asc&search=term
  * Paginated row retrieval for a specific table.
  */
@@ -819,8 +834,13 @@ async function handleGetRows(
     url.searchParams.get("offset"),
     url.searchParams.get("limit"),
   );
+  const parsedOrder = parseRowsSortOrder(url.searchParams.get("order"));
+  if (!parsedOrder.ok) {
+    sendJsonError(res, "order must be asc or desc", 400);
+    return;
+  }
   const sortCol = url.searchParams.get("sort") ?? "";
-  const sortOrder = url.searchParams.get("order") === "desc" ? "DESC" : "ASC";
+  const sortOrder = parsedOrder.order;
   const search = url.searchParams.get("search") ?? "";
 
   if (!(await assertTableExists(runtime, tableName))) {

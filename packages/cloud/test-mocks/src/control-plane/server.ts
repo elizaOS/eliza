@@ -1,5 +1,6 @@
 /** Builds the container control-plane mock HTTP app: route handlers over the in-memory mock store. */
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import {
   parseSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
@@ -699,10 +700,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   });
 
   const processProvisioningJobsHandler = async (c: Context) => {
-    const rawLimit = c.req.query("limit");
-    const parsed =
-      rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
-    const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
+    const limit = parseClampedLimit(c.req.query("limit"), 1000, 1000);
     const databaseUrl =
       c.req.header("x-eliza-cloud-database-url")?.trim() ??
       process.env.DATABASE_URL;
@@ -936,10 +934,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (!container || container.organizationId !== auth.organizationId) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
-    const tailRaw = Number(c.req.query("tail") ?? "200");
-    const tail = Number.isFinite(tailRaw)
-      ? Math.max(1, Math.floor(tailRaw))
-      : 200;
+    const tail = parseClampedLimit(c.req.query("tail"), 200, 1000);
     const lines = containerLogLines.slice(-tail).join("\n");
     return c.text(lines, 200, { "content-type": "text/plain; charset=utf-8" });
   });

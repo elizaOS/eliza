@@ -39,6 +39,7 @@ export {
 	CANONICAL_LOCAL_EMBEDDING_REPOSITORY,
 	isCanonicalEmbeddingModel,
 } from "./constants";
+export * from "./contracts/computer-use";
 // Linked-account contract literals are pure data (no Node deps); browser
 // clients validate untrusted /api/accounts payloads against them.
 export {

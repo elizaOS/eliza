@@ -294,6 +294,27 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
+  // Provisioning can spend credits, so accept only one unambiguous canonical
+  // boolean token before either the billing gate or create path can run.
+  const requestedAutoProvisionValues = c.req.queries("autoProvision") ?? [];
+  const requestedAutoProvision = requestedAutoProvisionValues[0];
+  if (
+    requestedAutoProvisionValues.length > 1 ||
+    (requestedAutoProvision != null &&
+      requestedAutoProvision !== "" &&
+      requestedAutoProvision !== "true" &&
+      requestedAutoProvision !== "false")
+  ) {
+    return c.json(
+      {
+        success: false,
+        error: "Invalid autoProvision",
+        message: 'autoProvision must be "true" or "false".',
+      },
+      400,
+    );
+  }
+
   const body = await c.req.json().catch(() => {
     throw ValidationError("Invalid JSON");
   });
@@ -306,8 +327,7 @@ app.post("/", async (c) => {
   }
 
   const autoProvision =
-    c.req.query("autoProvision") !== "false" &&
-    parsed.data.autoProvision !== false;
+    requestedAutoProvision !== "false" && parsed.data.autoProvision !== false;
 
   const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
   let linkedCharacter: UserCharacter | undefined;

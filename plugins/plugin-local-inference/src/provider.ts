@@ -28,6 +28,8 @@ import {
 	inferenceRamClassFromEnv,
 	logger,
 	ModelType,
+	type PiiScrubParams,
+	type PiiScrubResult,
 	type Plugin,
 	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
@@ -47,6 +49,10 @@ import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
+import {
+	buildPiiScrubPrompt,
+	parseScrubCompletion,
+} from "./pii/scrub-handler.js";
 import { LocalPiiRecognizerService } from "./pii/service.js";
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
@@ -621,6 +627,58 @@ function createTextHandler(modelType: string) {
 	};
 }
 
+/**
+ * Production `PII_SCRUB` handler (#15973): runs the scrub-seam escalation as a
+ * constrained JSON-judgment prompt on the resident local backend, so PII never
+ * leaves the device. Defaults to `background` priority — the corpus scrub is
+ * deferred autonomous work and must never queue ahead of an interactive turn.
+ * The prompt is NOT budget-clamped: truncating the text under judgment would
+ * corrupt the verdicts, so a scrub that cannot run whole fails (and the rails
+ * retry) rather than judging a fragment.
+ */
+function createPiiScrubHandler() {
+	return async (
+		runtime: IAgentRuntime,
+		params: PiiScrubParams,
+	): Promise<PiiScrubResult> => {
+		const service = requireService(runtime, ModelType.PII_SCRUB);
+		const generate = service.generate;
+		if (typeof generate !== "function") {
+			throw unavailable(
+				ModelType.PII_SCRUB,
+				"capability_unavailable",
+				"[local-inference] Active local backend does not implement text generation for PII_SCRUB",
+			);
+		}
+		const prompt = buildPiiScrubPrompt(params);
+		const priority = params.priority ?? "background";
+		const completion = await getInferencePriorityGate().runExclusive(
+			{
+				priority,
+				label: `PII_SCRUB local-service (${prompt.length} chars)`,
+				...(params.signal ? { signal: params.signal } : {}),
+			},
+			() =>
+				generate.call(service, {
+					prompt,
+					maxTokens: 1024,
+					temperature: 0,
+				}),
+		);
+		const verdicts = parseScrubCompletion(completion, params);
+		const tier = runtime.getSetting("LOCAL_INFERENCE_ACTIVE_TIER");
+		const modelId =
+			typeof tier === "string" && tier.trim().length > 0
+				? `${LOCAL_INFERENCE_PROVIDER_ID}:${tier.trim()}`
+				: LOCAL_INFERENCE_PROVIDER_ID;
+		return {
+			verdicts,
+			modelId,
+			rulesetVersion: params.rulesetVersion,
+		};
+	};
+}
+
 function createEmbeddingHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -1139,6 +1197,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 		[ModelType.IMAGE_DESCRIPTION]: createImageDescriptionHandler(),
 		[ModelType.TEXT_TO_SPEECH]: createTextToSpeechHandler(),
 		[ModelType.TRANSCRIPTION]: createTranscriptionHandler(),
+		[ModelType.PII_SCRUB]: createPiiScrubHandler(),
 	};
 }
 

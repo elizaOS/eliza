@@ -477,10 +477,14 @@ function resolveLocation(location: NormalizedLocation): ResolvedLocation {
 }
 
 function formatAccuracy(accuracy?: number): string {
-	if (!Number.isFinite(accuracy)) {
+	if (
+		typeof accuracy !== "number" ||
+		!Number.isFinite(accuracy) ||
+		accuracy < 0
+	) {
 		return "";
 	}
-	return ` ±${Math.round(accuracy ?? 0)}m`;
+	return ` ±${Math.round(accuracy)}m`;
 }
 
 function formatCoords(latitude: number, longitude: number): string {
@@ -535,10 +539,16 @@ export function toLocationContext(
 	location: NormalizedLocation,
 ): LocationContext {
 	const resolved = resolveLocation(location);
+	const accuracy =
+		typeof resolved.accuracy === "number" &&
+		Number.isFinite(resolved.accuracy) &&
+		resolved.accuracy >= 0
+			? resolved.accuracy
+			: undefined;
 	return {
 		LocationLat: resolved.latitude,
 		LocationLon: resolved.longitude,
-		LocationAccuracy: resolved.accuracy,
+		LocationAccuracy: accuracy,
 		LocationName: resolved.name,
 		LocationAddress: resolved.address,
 		LocationSource: resolved.source,

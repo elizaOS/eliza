@@ -23,6 +23,7 @@ import {
   type AccountProviderOption,
   getAccountProviderOption,
 } from "./account-provider-options";
+import { ConsumerKeyPanel } from "./ConsumerKeyPanel";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
 
@@ -373,6 +374,9 @@ export function AccountManagementPanel({
           ) : null}
         </div>
       ) : null}
+
+      {/* ── OWNER-only account-pool consumer keys (#16478) ── */}
+      <ConsumerKeyPanel />
 
       <AddAccountDialog
         open={addDialogOpen}

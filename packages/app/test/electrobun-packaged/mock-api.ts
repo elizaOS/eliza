@@ -10,6 +10,7 @@ import { WebSocket, WebSocketServer } from "ws";
 export interface MockApiServerOptions {
   port?: number;
   firstRunComplete?: boolean;
+  assistantReplyText?: string;
   auth?: {
     token: string;
     pairingCode?: string;
@@ -854,7 +855,8 @@ export async function startMockApiServer(
       const id = decodeURIComponent(conversationStreamMatch[1]);
       const body = await readJson(req);
       const userText = typeof body.text === "string" ? body.text.trim() : "";
-      const reply = buildMockAssistantReply(userText);
+      const reply =
+        options.assistantReplyText ?? buildMockAssistantReply(userText);
       const thread = messagesByConversation.get(id) ?? [];
       thread.push({
         id: randomUUID(),
@@ -901,7 +903,8 @@ export async function startMockApiServer(
       const id = decodeURIComponent(conversationMessagesMatch[1]);
       const body = await readJson(req);
       const userText = typeof body.text === "string" ? body.text.trim() : "";
-      const reply = buildMockAssistantReply(userText);
+      const reply =
+        options.assistantReplyText ?? buildMockAssistantReply(userText);
       const thread = messagesByConversation.get(id) ?? [];
       thread.push({
         id: randomUUID(),
@@ -1287,6 +1290,18 @@ export async function startMockApiServer(
 
     if (method === "GET" && pathname === "/api/config") {
       json(res, 200, config);
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/models/config") {
+      json(res, 200, {
+        targets: { small: {}, large: {}, coding: {} },
+        activeChat: {
+          provider: "elizacloud",
+          family: "ELIZAOS_CLOUD",
+          endpoint: "mock.eliza.local",
+        },
+      });
       return;
     }
     if (method === "PUT" && pathname === "/api/config") {

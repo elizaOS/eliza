@@ -13,8 +13,10 @@
  *     Register (upsert) a device token. Body: { platform: "ios"|"android",
  *     token: string }. Returns `{ ok: true }`.
  *
- *   DELETE /api/notifications/push-tokens/:token
- *     Unregister a device token. Returns `{ ok }` (true if it existed).
+ *   DELETE /api/notifications/push-tokens
+ *     Unregister a device token from `{ token }`. The legacy token path remains
+ *     accepted for installed clients, but new clients keep identifiers out of
+ *     request URLs and access logs.
  *
  *   GET    /api/notifications/push-tokens
  *     Diagnostics: `{ count, platforms: { ios, android } }`.
@@ -96,12 +98,36 @@ export async function handlePushTokenRoute(
     return true;
   }
 
-  // ── DELETE /api/notifications/push-tokens/:token ──────────────────
+  // ── DELETE /api/notifications/push-tokens ─────────────────────────
+  if (method === "DELETE" && pathname === PUSH_TOKENS_PREFIX) {
+    const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
+      maxBytes: 8 * 1024,
+    });
+    if (body === null) return true;
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token) {
+      helpers.error(res, "token is required", 400);
+      return true;
+    }
+    const ok = await registry.unregister(token);
+    helpers.json(res, { ok });
+    return true;
+  }
+
+  // ── Legacy DELETE /api/notifications/push-tokens/:token ───────────
   const tokenMatch = pathname.match(
     /^\/api\/notifications\/push-tokens\/([^/]+)$/,
   );
   if (method === "DELETE" && tokenMatch) {
-    const ok = await registry.unregister(decodeURIComponent(tokenMatch[1]));
+    let token: string;
+    try {
+      token = decodeURIComponent(tokenMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      helpers.error(res, "invalid push token", 400);
+      return true;
+    }
+    const ok = await registry.unregister(token);
     helpers.json(res, { ok });
     return true;
   }

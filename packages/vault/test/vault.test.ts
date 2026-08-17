@@ -23,6 +23,13 @@ describe("vault — set / get / has / remove", () => {
     expect(await test.vault.get("ui.theme")).toBe("dark");
   });
 
+  it("rejects empty or whitespace-only keys", async () => {
+    await expect(test.vault.set("", "val")).rejects.toThrow(TypeError);
+    await expect(test.vault.set("   ", "val")).rejects.toThrow(TypeError);
+    await expect(test.vault.set("\t\n", "val")).rejects.toThrow(TypeError);
+    await expect(test.vault.get("   ")).rejects.toThrow(TypeError);
+  });
+
   it("atomically preserves one setIfAbsent winner", async () => {
     const outcomes = await Promise.all([
       test.vault.setIfAbsent("system.integrity", "first", {

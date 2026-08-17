@@ -39,6 +39,7 @@ function resolveCommit(): string | null {
 export function rendererBuildManifestPlugin(): Plugin {
   let outDir = "dist";
   let playwrightTestAuth = false;
+  let iosApnsEnabled: boolean | null = null;
   return {
     name: "renderer-build-manifest",
     apply: "build",
@@ -47,6 +48,10 @@ export function rendererBuildManifestPlugin(): Plugin {
       // Use Vite's resolved env so values loaded from `.env*` match the
       // `import.meta.env` value compiled into the renderer.
       playwrightTestAuth = config.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+      iosApnsEnabled =
+        process.env.ELIZA_CAPACITOR_BUILD_TARGET === "ios"
+          ? config.env.VITE_ELIZA_APNS_ENABLED === "1"
+          : null;
     },
     closeBundle() {
       // Model-tester and other secondary single-file builds emit no index.html;
@@ -62,6 +67,7 @@ export function rendererBuildManifestPlugin(): Plugin {
             process.env.ELIZA_RUNTIME_MODE ??
             null,
           playwrightTestAuth,
+          iosApnsEnabled,
         });
         this.info?.(
           `[renderer-build-manifest] wrote ${RENDERER_BUILD_MANIFEST_FILENAME} buildId=${manifest.buildId.slice(0, 12)} (${manifest.assetCount} assets)`,

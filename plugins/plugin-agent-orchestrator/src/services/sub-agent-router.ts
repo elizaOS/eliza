@@ -33,6 +33,7 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
   accountMetaFromSessionMetadata,
@@ -71,7 +72,12 @@ import {
   collectScreenshotPaths,
   deliverScreenshots,
 } from "./screenshot-delivery.js";
-import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
+import {
+  classifyIpLiteral,
+  type SafeFetchOptions,
+  SsrfBlockedError,
+  safeFetch,
+} from "./ssrf-guard.js";
 import { stripToolTranscript } from "./transcript-sanitizer.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
@@ -468,6 +474,66 @@ function isLoopbackUrl(url: string): boolean {
     // error-policy:J3 URL parse of untrusted input; unparseable = not loopback.
     return false;
   }
+}
+
+/**
+ * Is this URL a loopback probe target? Matches the guard's own classification
+ * (127.0.0.0/8, ::1 — bracketed or not — IPv4-mapped loopback, `localhost`)
+ * so the pre-filter and the per-hop enforcement agree on the set.
+ */
+function isLoopbackProbeTarget(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (host === "localhost") return true;
+    return classifyIpLiteral(host) === "loopback";
+  } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → not
+    // loopback (the probe path reports it unreachable on its own).
+    return false;
+  }
+}
+
+/** Effective TCP port of an http(s) URL — the scheme default when unstyled. */
+function urlEffectivePort(url: string): number | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.port) {
+      const port = Number.parseInt(parsed.port, 10);
+      return Number.isInteger(port) ? port : null;
+    }
+    if (parsed.protocol === "https:") return 443;
+    if (parsed.protocol === "http:") return 80;
+    return null;
+  } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → no port.
+    return null;
+  }
+}
+
+/**
+ * The loopback ports the completion-URL verifier may probe: ONLY ports the
+ * operator/supervisor actually configured — the session's route-mapping URL
+ * prefixes (`TASK_AGENT_WORKDIR_ROUTES` urlMappings) and the custom deploy
+ * host's base URL (`ELIZA_APP_DEPLOY_CUSTOM_BASE_URL`). Every other loopback
+ * URL in a sub-agent's narration is model-controlled text, and probing it
+ * would make the orchestrator a loopback port-scan/content oracle whose
+ * verdict text exfiltrates the response (W1-048).
+ */
+function supervisorAllowedLoopbackPorts(
+  routeVerification: RouteUrlVerification | undefined,
+): Set<number> {
+  const ports = new Set<number>();
+  const collect = (raw: string) => {
+    if (!isLoopbackProbeTarget(raw)) return;
+    const port = urlEffectivePort(raw);
+    if (port !== null) ports.add(port);
+  };
+  for (const mapping of routeVerification?.mappings ?? []) {
+    collect(mapping.urlPrefix);
+  }
+  const customBaseUrl = resolveAppDeployConfig().customBaseUrl;
+  if (customBaseUrl) collect(customBaseUrl);
+  return ports;
 }
 
 // Drop any http(s):// loopback URLs from `text` before the reply reaches a
@@ -1910,6 +1976,46 @@ export class SubAgentRouter extends Service {
     if (!sendToTarget) return undefined;
     const source = origin.source;
     if (!source) return undefined;
+    // A nested swarm child's origin is the parent's TASK ROOM with source
+    // `sub_agent` — a synthetic room no connector owns, so a connector send
+    // can only fail ("no conversation available to deliver message", live
+    // 2026-08-17) and the planner's reply to the child's completion was
+    // dropped. Deliver it internally instead: persist the reply into the task
+    // room, where the parent session already reads its swarm traffic.
+    if (source === MESSAGE_SOURCE_SUB_AGENT) {
+      return async (response: Content): Promise<Memory[]> => {
+        const text =
+          typeof response.text === "string" ? response.text.trim() : "";
+        if (!text) return [];
+        const memory: Memory = {
+          id: randomUUID() as UUID,
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId: origin.roomId as UUID,
+          content: {
+            text,
+            source: ACPX_ROUTER_SOURCE,
+            ...(origin.parentMessageId
+              ? { inReplyTo: origin.parentMessageId }
+              : {}),
+          },
+          createdAt: Date.now(),
+        };
+        try {
+          await this.runtime.createMemory(memory, "messages");
+          return [memory];
+        } catch (err) {
+          // error-policy:J1 internal reply-delivery boundary: warns and
+          // returns an honest empty delivery, mirroring the connector leg.
+          this.log("warn", "nested sub-agent reply persistence failed", {
+            sessionId,
+            roomId: origin.roomId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }
+      };
+    }
     return async (response: Content): Promise<Memory[]> => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";
@@ -2677,7 +2783,19 @@ function isUnsupportedAcpMethodError(data: unknown): boolean {
   return !/session\/prompt/i.test(serialized);
 }
 
-function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
+/**
+ * Guarantee the verified deliverable URLs survive the completion relay. The
+ * sub-agent's own narration routinely describes its LAST STEP instead of the
+ * deliverable ("updated app/layout.tsx metadata … verified on disk") — live
+ * 2026-08-16 website-build receipt: the user asked "tell me where it lives"
+ * and never got the URL even though the router held it in `verifiedUrls`.
+ * Model compliance with the "lead with the URL" spawn-brief line is not
+ * enforceable; this projection is. Exported for unit coverage.
+ */
+export function verifiedUrlCompletionFallback(
+  text: string,
+  verifiedUrls: string[],
+) {
   const userFacingUrls = publicPreferredUrls(verifiedUrls);
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const retained: string[] = [];
@@ -2711,6 +2829,21 @@ function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
       meaningfulLines.join("\n") !== userFacingUrls.join("\n")
     ) {
       return [header, ...userFacingUrls].filter(Boolean).join("\n");
+    }
+    // Prose narration that omits every user-facing deliverable URL: lead with
+    // the URLs (right after the planner header) instead of trusting the
+    // model's narration to mention where the result lives. Containment is
+    // checked against the PUBLIC projection — a narration that only names the
+    // loopback variant still gets the public URL surfaced.
+    if (
+      userFacingUrls.length > 0 &&
+      !userFacingUrls.some((url) => meaningful.includes(url))
+    ) {
+      const body = retained
+        .filter((line) => !line.trim().startsWith("[sub-agent:"))
+        .join("\n")
+        .trim();
+      return [header, ...userFacingUrls, body].filter(Boolean).join("\n");
     }
     return text;
   }
@@ -3544,6 +3677,9 @@ function routingKindFromPayloadBanner(data: unknown): string | undefined {
  * Conservative by design:
  *  - only runs on `task_complete` text (not errors/blocked)
  *  - caps at the first 5 distinct mentioned URLs + their sub-resources
+ *  - loopback URLs are probed ONLY on supervisor-configured ports (route
+ *    mappings / custom deploy base URL) — any other loopback port is dropped
+ *    unprobed so narration can't turn the verifier into a loopback oracle
  *  - 4s per-request timeout, failures (DNS, timeout, refused) count as
  *    unverified rather than throwing
  *  - one short settle-retry before declaring a URL dead, covering a
@@ -3563,18 +3699,35 @@ export async function annotateUnverifiedUrls(
   ignoredUrls?: ReadonlySet<string>,
   runtime?: IAgentRuntime,
   routeVerification?: RouteUrlVerification,
+  allowedLoopbackPorts?: ReadonlySet<number>,
 ): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
   if (!shouldVerifyCompletionUrls(text, referenceText, routeVerification)) {
     return { text, dead: [], verifiedUrls: [] };
   }
+  const loopbackPorts =
+    allowedLoopbackPorts ?? supervisorAllowedLoopbackPorts(routeVerification);
   const urls = expandRouteUrlAliases(
     extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
     routeVerification,
-  ).filter(
-    (url) =>
-      routeVerification === undefined ||
-      !isBareRouteMappingPrefix(url, routeVerification.mappings),
-  );
+  )
+    .filter(
+      (url) =>
+        routeVerification === undefined ||
+        !isBareRouteMappingPrefix(url, routeVerification.mappings),
+    )
+    .filter((url) => {
+      if (!isLoopbackProbeTarget(url)) return true;
+      const port = urlEffectivePort(url);
+      if (port !== null && loopbackPorts.has(port)) return true;
+      // Not dead, not verified: a narration-claimed loopback URL on a port
+      // the supervisor never started is dropped UNPROBED — it can't read the
+      // loopback interface through the verdict, and it must not count as a
+      // dead deliverable that triggers a verify-retry of a healthy build.
+      log?.(
+        `[verify] skip ${url} — loopback port ${port ?? "?"} is not supervisor-configured; left unprobed`,
+      );
+      return false;
+    });
   if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
@@ -3591,11 +3744,16 @@ export async function annotateUnverifiedUrls(
       // SSRF guard: the URL comes from untrusted sub-agent narration. Resolve
       // and reject non-public (private/link-local/metadata) hosts, and follow
       // redirects manually so a public page can't 302 us into an internal
-      // endpoint. Loopback is allowed — local build verification depends on it.
-      const res = await safeFetch(url, {
-        method: "GET",
-        signal: controller.signal,
-      });
+      // endpoint. Loopback is allowed ONLY on supervisor-configured ports —
+      // anything else is a loopback port-scan/content oracle (W1-048).
+      const res = await safeFetch(
+        url,
+        {
+          method: "GET",
+          signal: controller.signal,
+        },
+        { allowedLoopbackPorts: loopbackPorts },
+      );
       // 405/501 mean the server IS reachable — it just won't serve a GET.
       // Sub-agents routinely dump raw HTTP headers into their narration
       // (a `curl -i`), and those headers carry incidental URLs — CDN
@@ -3610,7 +3768,9 @@ export async function annotateUnverifiedUrls(
         return { status: null, servedLive: false };
       }
       if (res.status < 200 || res.status >= 300) {
-        const cachedMiss = await detectCachedMiss(url, res, controller.signal);
+        const cachedMiss = await detectCachedMiss(url, res, controller.signal, {
+          allowedLoopbackPorts: loopbackPorts,
+        });
         if (cachedMiss) {
           log?.(
             `[verify] probe ${url} → HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status}) @ ${new Date().toISOString()}`,
@@ -3981,6 +4141,7 @@ async function detectCachedMiss(
   url: string,
   res: Response,
   signal: AbortSignal,
+  fetchOptions?: SafeFetchOptions,
 ): Promise<{ status: number } | null> {
   if (res.status !== 404) return null;
   let busted: URL;
@@ -3997,12 +4158,16 @@ async function detectCachedMiss(
   // Same SSRF guard as the primary probe: the host is unchanged from the
   // already-validated URL, but route through safeFetch so a redirect on the
   // cache-bust probe can't reach an internal host either.
-  const bustedRes = await safeFetch(busted.toString(), {
-    method: "GET",
-    signal,
-    // error-policy:J3 existence probe; an unreachable cache-bust URL is an
-    // explicit "unknown" (null), handled by the guard below — not a fake hit.
-  }).catch(() => null);
+  const bustedRes = await safeFetch(
+    busted.toString(),
+    {
+      method: "GET",
+      signal,
+      // error-policy:J3 existence probe; an unreachable cache-bust URL is an
+      // explicit "unknown" (null), handled by the guard below — not a fake hit.
+    },
+    fetchOptions,
+  ).catch(() => null);
   if (!bustedRes) return null;
   return bustedRes.status >= 200 && bustedRes.status < 300
     ? { status: bustedRes.status }

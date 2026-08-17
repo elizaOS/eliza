@@ -14,6 +14,7 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { sharedRuntimeHistoryRepository } from "@/db/repositories/shared-runtime-history";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { prewarmSharedElizaRuntime } from "@/lib/services/shared-runtime/shared-eliza-runtime";
 import { logger } from "@/lib/utils/logger";
@@ -38,8 +39,16 @@ async function runKeepwarm(c: AppContext) {
       );
 
     let warmed = 0;
+    let rowlessPersonal = 0;
     let missing = 0;
     for (const agentId of agentIds) {
+      // Account-native Personal Shared identities have no agent_sandboxes row.
+      // Their process-wide kernel is warmed below; sending the namespaced id to
+      // the UUID repository aborts the whole sweep before that can happen.
+      if (isPersonalSharedAgentId(agentId)) {
+        rowlessPersonal++;
+        continue;
+      }
       const agent = await agentSandboxesRepository.findById(agentId);
       if (!agent) {
         missing++;
@@ -61,12 +70,13 @@ async function runKeepwarm(c: AppContext) {
     logger.info("[SharedKeepwarm Cron] swept recently active shared agents", {
       candidates: agentIds.length,
       warmed,
+      rowlessPersonal,
       missing,
     });
 
     return c.json({
       success: true,
-      data: { candidates: agentIds.length, warmed, missing },
+      data: { candidates: agentIds.length, warmed, rowlessPersonal, missing },
     });
   } catch (error) {
     logger.error("[SharedKeepwarm Cron] failed", {

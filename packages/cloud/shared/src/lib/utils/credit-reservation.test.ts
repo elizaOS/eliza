@@ -9,7 +9,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { CreditReconciliationResult, CreditReservation } from "../services/credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  ReservationNotFoundError,
+} from "../services/credits";
 import { createCreditReservationSettler } from "./credit-reservation";
 
 function makeReservation(
@@ -124,6 +128,21 @@ describe("createCreditReservationSettler", () => {
     expect(result?.actualCost).toBe(0.0042);
     expect(calls).toBe(2);
     expect(costs).toEqual([0.0042, 0.0042]);
+  });
+
+  test("a missing keyed reservation remains a cached decisive failure", async () => {
+    let calls = 0;
+    const error = new ReservationNotFoundError("txn-missing", "org-1");
+    const reservation = makeReservation(async () => {
+      calls++;
+      throw error;
+    }, "txn-missing");
+
+    const settle = createCreditReservationSettler(reservation);
+
+    await expect(settle(0.0042)).rejects.toBe(error);
+    await expect(settle(0)).rejects.toBe(error);
+    expect(calls).toBe(1);
   });
 
   test("#11512: concurrent call during an eventually-rejecting settle shares the rejection", async () => {

@@ -1,4 +1,4 @@
-// Coordinates cloud service schemas behavior behind route handlers.
+/** Validates advertising service inputs shared by API routes and providers. */
 import { z } from "zod";
 
 export const AdPlatformSchema = z.enum([
@@ -10,6 +10,16 @@ export const AdPlatformSchema = z.enum([
   "reddit",
   "linkedin",
   "programmatic-dsp",
+]);
+
+export const CampaignStatusSchema = z.enum([
+  "draft",
+  "pending",
+  "active",
+  "paused",
+  "completed",
+  "failed",
+  "archived",
 ]);
 
 export const CampaignObjectiveSchema = z.enum([
@@ -296,7 +306,7 @@ export const ListAccountsSchema = z.object({
 export const ListCampaignsSchema = z.object({
   adAccountId: z.string().uuid().optional(),
   platform: AdPlatformSchema.optional(),
-  status: z.string().optional(),
+  status: CampaignStatusSchema.optional(),
   appId: z.string().uuid().optional(),
 });
 

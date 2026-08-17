@@ -33,7 +33,13 @@ import { addHeader } from "../../../utils.ts";
 const spec = requireProviderSpec("ACTION_STATE");
 const ACTION_HISTORY_TARGET_CHARS = 20000;
 const MAX_RUNS = 3;
-const MAX_THOUGHT_CHARS = 2000;
+export const MAX_THOUGHT_CHARS = 2000;
+
+export function truncateThought(thought: string): string {
+	return thought.length > MAX_THOUGHT_CHARS
+		? `${thought.slice(0, MAX_THOUGHT_CHARS - 1)}…`
+		: thought;
+}
 
 type WorkingMemoryEntry = {
 	actionName: string;
@@ -251,10 +257,7 @@ export const actionStateProvider: Provider = {
 
 						const firstMemory = sortedMemories[0];
 						const rawThought = String(firstMemory?.content.planThought || "");
-						const thought =
-							rawThought.length > MAX_THOUGHT_CHARS
-								? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`
-								: rawThought;
+						const thought = truncateThought(rawThought);
 						return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
 					})
 					.join("\n\n");

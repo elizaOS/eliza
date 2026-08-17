@@ -23,6 +23,7 @@ import {
   invalidateInferenceAuthContextsByKeyHashes,
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
+import { setInferenceSubjectActive } from "./inference-credential-revocation";
 
 /**
  * Clear the inference auth-context cache (#9899) for every API key a user owns.
@@ -378,6 +379,18 @@ class AdminService {
         newStatus = "warned";
       }
 
+      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
+      const isBlocking = newStatus === "banned" || newTotalViolations >= 5;
+      if (isBlocking && !wasBlocking) {
+        const user = await dbRead.query.users.findFirst({
+          where: eq(users.id, userId),
+          columns: { organization_id: true },
+        });
+        if (user?.organization_id) {
+          await setInferenceSubjectActive(user.organization_id, userId, false, "moderation");
+        }
+      }
+
       await dbWrite
         .update(userModerationStatus)
         .set({
@@ -396,8 +409,6 @@ class AdminService {
       // inference auth-context so they stop fast-pathing inference within the
       // request, not after the IAC TTL. Wired into the authoritative mutation so
       // every moderation entrypoint (chat, messages, A2A) is covered uniformly.
-      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
-      const isBlocking = newStatus === "banned" || newTotalViolations >= 5;
       if (isBlocking && !wasBlocking) {
         await invalidateUserInferenceContext(userId);
       }
@@ -489,6 +500,13 @@ class AdminService {
     const now = new Date();
 
     const existing = await this.getUserModerationStatus(userId);
+    const user = await dbRead.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { organization_id: true },
+    });
+    if (user?.organization_id) {
+      await setInferenceSubjectActive(user.organization_id, userId, false, "moderation");
+    }
 
     if (existing) {
       await dbWrite
@@ -538,6 +556,14 @@ class AdminService {
         updatedAt: new Date(),
       })
       .where(eq(userModerationStatus.userId, userId));
+
+    const user = await dbRead.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { organization_id: true },
+    });
+    if (user?.organization_id) {
+      await setInferenceSubjectActive(user.organization_id, userId, true, "moderation");
+    }
 
     logger.info("[Admin] User unbanned", { userId, adminUserId });
   }

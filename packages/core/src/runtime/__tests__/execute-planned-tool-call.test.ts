@@ -27,6 +27,8 @@ import type {
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
+	Room,
+	UUID,
 } from "../../types";
 import { ChannelType, EventType } from "../../types";
 import type { EffectReceipt } from "../../types/effects";
@@ -37,7 +39,7 @@ import {
 	executePlannedToolCall,
 } from "../execute-planned-tool-call";
 
-type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> &
+type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions" | "agentId"> &
 	Partial<
 		Pick<
 			IAgentRuntime,
@@ -71,6 +73,7 @@ function makeRuntime(
 ): IAgentRuntime {
 	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
+		agentId: "agent-id" as UUID,
 		getRoom: vi.fn(async () => null),
 		getService: vi.fn(() => undefined),
 		reportError: vi.fn(),
@@ -1276,11 +1279,21 @@ describe("executePlannedToolCall", () => {
 				data: { id: "task-1" },
 			}),
 		});
-		const runtime = makeRuntime([action], { emitEvent });
+		const getRoom = vi.fn(
+			async () =>
+				({
+					id: "room-id" as UUID,
+					agentId: "agent-id" as UUID,
+					source: "test",
+					type: ChannelType.DM,
+					worldId: "world-id" as UUID,
+				}) satisfies Room,
+		);
+		const runtime = makeRuntime([action], { emitEvent, getRoom });
 
 		const result = await executePlannedToolCall(
 			runtime,
-			{ message: makeMessage() },
+			{ message: makeMessage(), userRoles: ["GUEST"] },
 			{ name: "CREATE_TASK", params: {} },
 		);
 
@@ -1291,7 +1304,7 @@ describe("executePlannedToolCall", () => {
 			expect.objectContaining({
 				messageId: "message-id",
 				roomId: "room-id",
-				world: "room-id",
+				world: "world-id",
 				content: expect.objectContaining({
 					text: "Executing action: CREATE_TASK",
 					actions: ["CREATE_TASK"],
@@ -1305,7 +1318,7 @@ describe("executePlannedToolCall", () => {
 			expect.objectContaining({
 				messageId: "message-id",
 				roomId: "room-id",
-				world: "room-id",
+				world: "world-id",
 				content: expect.objectContaining({
 					text: "created",
 					actions: ["CREATE_TASK"],

@@ -4,7 +4,8 @@
  * console page.
  *
  * Fetches the current user/org (the `BillingTab` needs `organization_id`,
- * `wallet_address`, and the seed `credit_balance`), then renders `BillingTab`.
+ * `wallet_address`, and the seed `credit_balance`), then renders `BillingTab`
+ * followed by the independent, read-only account-limits snapshot.
  * Wraps the subtree in {@link ConditionalWalletProviders} so the crypto
  * direct-payment wallet stack (wagmi/RainbowKit/Solana) never enters the entry
  * bundle elsewhere.
@@ -19,6 +20,7 @@ import {
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { AccountLimitsCard } from "./components/account-limits-card";
 import { BillingTab } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
@@ -31,9 +33,24 @@ function wasCheckoutCanceled(): boolean {
 /** The billing surface, rendered by the Settings → Cloud billing section. */
 export function BillingSectionBody() {
   const t = useCloudT();
-  const { user, isLoading, isAuthenticated, isError, error } = useBillingUser();
+  const {
+    user,
+    isLoading,
+    isFetching,
+    isPaused,
+    isFetchedAfterMount,
+    isAuthenticated,
+    isError,
+    error,
+  } = useBillingUser({ requireFreshOrganization: true });
 
-  if (!isAuthenticated || isLoading) {
+  if (
+    !isAuthenticated ||
+    isLoading ||
+    isFetching ||
+    isPaused ||
+    !isFetchedAfterMount
+  ) {
     return (
       <DashboardLoadingState
         label={t("cloud.billing.loading", { defaultValue: "Loading billing" })}
@@ -75,6 +92,7 @@ export function BillingSectionBody() {
         </div>
       ) : null}
       <BillingTab user={user} />
+      <AccountLimitsCard organizationId={user.organization_id} />
     </ConditionalWalletProviders>
   );
 }

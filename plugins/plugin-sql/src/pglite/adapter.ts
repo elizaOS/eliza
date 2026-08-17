@@ -23,7 +23,7 @@ import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
-import type { PGliteClientManager } from "./manager";
+import type { PGliteClientManager, PgliteBoundedDataDirExport } from "./manager";
 
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
@@ -152,8 +152,19 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.manager.getConnection();
   }
 
+  getPgliteDataDir(): string | null {
+    return this.manager.getDataDir();
+  }
+
   async dumpPgliteDataDir(compression: "gzip" = "gzip"): Promise<File | Blob> {
     return await this.manager.dumpDataDir(compression);
+  }
+
+  async dumpPgliteDataDirAfterPreflight<T>(
+    preflight: () => Promise<T>,
+    compression: "gzip" = "gzip"
+  ): Promise<PgliteBoundedDataDirExport<T>> {
+    return await this.manager.dumpDataDirAfterPreflight(preflight, compression);
   }
 
   // ── Electric write-back notification overrides ─────────────────────────

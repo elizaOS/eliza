@@ -17,8 +17,25 @@
  * - Scalars are stringified
  */
 export function flattenTextValues(value: unknown): string[] {
+	return flattenTextValuesWithAncestors(value, new WeakSet());
+}
+
+function flattenTextValuesWithAncestors(
+	value: unknown,
+	ancestors: WeakSet<object>,
+): string[] {
 	if (Array.isArray(value)) {
-		return value.flatMap((item) => flattenTextValues(item));
+		if (ancestors.has(value)) {
+			return [];
+		}
+		ancestors.add(value);
+		try {
+			return value.flatMap((item) =>
+				flattenTextValuesWithAncestors(item, ancestors),
+			);
+		} finally {
+			ancestors.delete(value);
+		}
 	}
 
 	if (value == null) {
@@ -31,12 +48,23 @@ export function flattenTextValues(value: unknown): string[] {
 	}
 
 	if (typeof value === "object") {
-		return Object.entries(value as Record<string, unknown>).flatMap(
-			([key, inner]) => {
-				const innerText = flattenTextValues(inner).join(", ");
-				return innerText ? [`${key}: ${innerText}`] : [];
-			},
-		);
+		if (ancestors.has(value)) {
+			return [];
+		}
+		ancestors.add(value);
+		try {
+			return Object.entries(value as Record<string, unknown>).flatMap(
+				([key, inner]) => {
+					const innerText = flattenTextValuesWithAncestors(
+						inner,
+						ancestors,
+					).join(", ");
+					return innerText ? [`${key}: ${innerText}`] : [];
+				},
+			);
+		} finally {
+			ancestors.delete(value);
+		}
 	}
 
 	return [String(value)];

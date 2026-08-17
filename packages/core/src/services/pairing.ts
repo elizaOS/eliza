@@ -7,6 +7,7 @@
  * 3. User is added to the allowlist and can now send DMs
  */
 
+import { ElizaError } from "../errors";
 import {
 	type ApprovePairingParams,
 	type ApprovePairingResult,
@@ -26,6 +27,23 @@ import {
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import { stringToUuid } from "../utils";
+
+/**
+ * Fill `bytes` from the platform CSPRNG, failing closed when none exists.
+ * Pairing codes gate owner approval of DM senders, so a predictable fallback
+ * such as `Math.random()` is never acceptable here. `globalThis.crypto`
+ * keeps this portable across the Node, browser, and edge build targets.
+ */
+function secureRandomFill(bytes: Uint8Array<ArrayBuffer>): void {
+	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+	if (typeof cryptoObj?.getRandomValues !== "function") {
+		throw new ElizaError(
+			"Pairing code generation requires a cryptographically secure random source",
+			{ code: "PAIRING_CSPRNG_UNAVAILABLE" },
+		);
+	}
+	cryptoObj.getRandomValues(bytes);
+}
 
 /**
  * PairingService handles secure DM pairing for messaging channels.
@@ -76,14 +94,25 @@ export class PairingService extends Service {
 	/**
 	 * Generate a random pairing code.
 	 * Uses a human-friendly alphabet that excludes ambiguous characters.
+	 *
+	 * Entropy comes from the platform CSPRNG, never `Math.random()`: a
+	 * predictable code would let an attacker forecast a victim's pending
+	 * pairing code and socially engineer the owner into approving the wrong
+	 * sender. Bytes are rejection-sampled so every alphabet index is equally
+	 * likely (no modulo bias).
 	 */
 	private generateCode(): string {
+		const alphabetLength = PAIRING_CODE_ALPHABET.length;
+		// Largest byte range evenly divisible by the alphabet size; bytes at or
+		// above it are redrawn so no index is favored.
+		const maxUnbiasedByte = 256 - (256 % alphabetLength);
+		const bytes = new Uint8Array(1);
 		let code = "";
-		for (let i = 0; i < this.pairingConfig.codeLength; i++) {
-			const randomIndex = Math.floor(
-				Math.random() * PAIRING_CODE_ALPHABET.length,
-			);
-			code += PAIRING_CODE_ALPHABET[randomIndex];
+		while (code.length < this.pairingConfig.codeLength) {
+			secureRandomFill(bytes);
+			const value = bytes[0] ?? maxUnbiasedByte;
+			if (value >= maxUnbiasedByte) continue;
+			code += PAIRING_CODE_ALPHABET[value % alphabetLength];
 		}
 		return code;
 	}

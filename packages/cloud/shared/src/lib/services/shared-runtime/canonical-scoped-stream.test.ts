@@ -85,6 +85,24 @@ describe("handleCanonicalScopedAgentStream", () => {
     });
   });
 
+  test("preserves coordinator phase timings beside route timings", async () => {
+    coordinateSharedStream.mockResolvedValueOnce(
+      new Response("event: done\ndata: {}\n\n", {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Server-Timing":
+            "turn_claim;dur=1.2, turn_hydrate;dur=3.4, turn_admission;dur=5.6, turn_provider_setup;dur=7.8",
+        },
+      }),
+    );
+
+    const res = await handleCanonicalScopedAgentStream(BASE);
+
+    expect(res.headers.get("Server-Timing")).toMatch(
+      /^turn_claim;dur=1\.2, turn_hydrate;dur=3\.4, turn_admission;dur=5\.6, turn_provider_setup;dur=7\.8, parse;dur=\d+(?:\.\d+)?, bridge;dur=\d+(?:\.\d+)?$/,
+    );
+  });
+
   test("does not trust a system role supplied in the ordinary request body", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,

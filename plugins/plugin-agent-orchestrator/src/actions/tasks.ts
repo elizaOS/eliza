@@ -966,6 +966,30 @@ async function runCreateLegacy(
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;
+  {
+    // Same skip as the spawn path: router-driven synthetic inbounds restate
+    // in-flight goals by design; only fresh user-originated creates screen.
+    const duplicate =
+      content.source !== MESSAGE_SOURCE_SUB_AGENT &&
+      extraMetadata.subAgent !== true
+        ? await findNearDuplicateInFlightWork({
+            runtime,
+            taskService,
+            candidateText: `${taskTitle} ${taskGoal}`,
+            userText: typeof content.text === "string" ? content.text : "",
+          })
+        : undefined;
+    if (duplicate) {
+      const replyText = duplicateSpawnReply(duplicate);
+      await callbackText(callback, replyText);
+      return {
+        success: true,
+        text: replyText,
+        continueChain: false,
+        data: { actionName: "TASKS", duplicateSpawnGuard: true },
+      };
+    }
+  }
   const useSmithers = shouldUseSmithersTaskRunner();
   let threadId: string | null = null;
   try {
@@ -1879,6 +1903,36 @@ async function runSpawnAgent(
       message,
       content,
     );
+    // Router-driven re-spawns (failed-verification respawn loops) and nested
+    // swarm children joining an explicit task room legitimately restate the
+    // in-flight goal — the guard only screens fresh user-originated spawns.
+    const userOriginatedSpawn =
+      content.source !== MESSAGE_SOURCE_SUB_AGENT &&
+      extraMetadata.subAgent !== true &&
+      !pickRoutingString(params, content, extraMetadata, "taskRoomId")?.trim();
+    {
+      const spawnTaskService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      const duplicate = userOriginatedSpawn
+        ? await findNearDuplicateInFlightWork({
+            runtime,
+            taskService: spawnTaskService,
+            candidateText: `${label} ${task}`,
+            userText: typeof content.text === "string" ? content.text : "",
+          })
+        : undefined;
+      if (duplicate) {
+        const replyText = duplicateSpawnReply(duplicate);
+        await callbackText(callback, replyText);
+        return {
+          success: true,
+          text: replyText,
+          continueChain: false,
+          data: { actionName: "TASKS", duplicateSpawnGuard: true },
+        };
+      }
+    }
     const inheritedRoute =
       content.source === MESSAGE_SOURCE_SUB_AGENT &&
       extraMetadata.subAgent === true
@@ -2035,6 +2089,74 @@ async function runSpawnAgent(
       })}`,
     );
 
+    // Durable restart owner for the fire-and-forget spawn path. Without a
+    // task record a runtime restart orphans the live session SILENTLY: the
+    // sub-agent's work may finish on disk, but the "result will arrive as a
+    // follow-up" promise below dies with the process and nothing resumes or
+    // relays (observed live 2026-08-16: the session built its artifact,
+    // a restart killed the relay, and no record existed to recover it).
+    // create-path tasks persist their owner BEFORE the first prompt;
+    // spawn_agent mirrors that contract post-spawn. Only user-originated
+    // top-level spawns mint a record — router respawns and swarm children
+    // are owned by their parent task. Persistence failure degrades (the
+    // session is already running; killing it over bookkeeping would trade
+    // a silent-loss bug for a loud-loss one) but is reported loudly.
+    let durableTaskId: string | null = null;
+    if (userOriginatedSpawn) {
+      const spawnDurableService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      if (
+        spawnDurableService &&
+        typeof spawnDurableService.createTask === "function" &&
+        typeof spawnDurableService.attachSession === "function"
+      ) {
+        try {
+          const detail = await spawnDurableService.createTask({
+            title: label,
+            goal: task,
+            kind: "coding",
+            priority: "normal",
+            originalRequest: requestText(message),
+            ...(session.workdir ? { workdir: session.workdir } : {}),
+            ...(message.roomId ? { roomId: message.roomId } : {}),
+            ...(resolvedTaskRoomId ? { taskRoomId: resolvedTaskRoomId } : {}),
+            metadata: {
+              ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
+              spawnPath: "spawn_agent",
+            },
+          });
+          durableTaskId = detail?.id ?? null;
+          if (durableTaskId) {
+            await spawnDurableService.attachSession(durableTaskId, {
+              sessionId: session.sessionId,
+              agentType: session.agentType,
+              workdir: session.workdir,
+              status: session.status,
+              ...(session.metadata ? { metadata: session.metadata } : {}),
+              label,
+              originalTask: taskWithRouteHints,
+            });
+          }
+        } catch (error) {
+          // error-policy:J7 durable bookkeeping must not kill the already
+          // running session; the gap is surfaced through reportError so the
+          // owner sees the restart-durability exposure instead of silence.
+          durableTaskId = null;
+          runtime.reportError?.(
+            "TASKS:spawn_agent",
+            error instanceof Error ? error : new Error(String(error)),
+            { sessionId: session.sessionId, label },
+          );
+          logger(runtime).error(
+            `[TASKS:spawn_agent] durable task persistence failed for ${session.sessionId}; session runs WITHOUT restart protection: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+    }
+
     // An empty text here left the planner finish with nothing to relay for an
     // async spawn, and it answered the user's question from thin air instead
     // (observed live: fabricated `bun --version` output). State the pending
@@ -2071,6 +2193,7 @@ async function runSpawnAgent(
         workdir: session.workdir,
         status: session.status,
         label,
+        ...(durableTaskId ? { durableTaskId } : {}),
         deferredUserReply: deferUserReply,
         suppressActionResultClipboard: true,
       },
@@ -2709,7 +2832,14 @@ function taskMatchesSearch(task: TaskThreadDto, search: string): boolean {
     .filter((part): part is string => typeof part === "string")
     .join(" ")
     .toLowerCase();
-  return haystack.includes(needle);
+  if (haystack.includes(needle)) return true;
+  // Token-AND fallback: planner-composed searches are noun phrases in the
+  // planner's word order ("nubs website"), while the stored title carries the
+  // user's ("personal website for nubs") — a whole-phrase substring miss then
+  // reads as "no task exists" against a store that plainly holds it (observed
+  // live). Every whitespace token present somewhere in the haystack matches.
+  const tokens = needle.split(/\s+/).filter((token) => token.length > 0);
+  return tokens.length > 1 && tokens.every((token) => haystack.includes(token));
 }
 
 function sessionMatchesHistoryFilters(
@@ -2763,6 +2893,152 @@ function sessionMatchesTaskStatus(
     return status === "error" || status === "errored";
   if (taskStatus === "interrupted") return status === "cancelled";
   return status === taskStatus;
+}
+
+/**
+ * Explicit user phrasing that overrides the near-duplicate spawn guard — the
+ * user is deliberately asking for a repeat/fresh attempt, not accidentally
+ * re-describing in-flight work.
+ */
+export const DUPLICATE_SPAWN_FORCE_RE =
+  /\b(?:again|another|fresh|new one|restart|retry|redo|re-?run|one more|from scratch)\b/i;
+
+/** Task statuses that mean the work is still in flight (or parked awaiting a
+ * verdict/human) — a near-identical new spawn against one of these is a
+ * duplicate, not a new request. */
+const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
+  "open",
+  "active",
+  "validating",
+  "waiting_on_user",
+  "blocked",
+]);
+
+function goalTokenSet(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 2),
+  );
+}
+
+/** Overlap over the smaller token set — the composed duplicate goal is often a
+ * compressed restatement of the original, so containment beats Jaccard here. */
+export function goalSimilarity(a: string, b: string): number {
+  const tokensA = goalTokenSet(a);
+  const tokensB = goalTokenSet(b);
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let overlap = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) overlap += 1;
+  }
+  return overlap / Math.min(tokensA.size, tokensB.size);
+}
+
+const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
+
+const SLUG_TOKEN_RE = /\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g;
+
+/**
+ * Distinct hyphenated slugs veto a near-duplicate match. Quick-app requests
+ * share nearly all their phrasing ("build a one-file page in the shared route
+ * workdir called <slug>") so token containment crosses the threshold on
+ * boilerplate alone — live: "tide-glass" matched a parked "ember-tide" on the
+ * shared "tide" token. When BOTH texts name slugs and NEITHER text mentions
+ * any of the other's, they are different deliverables, not a re-ask.
+ */
+export function hasDistinctSlugIdentity(a: string, b: string): boolean {
+  const slugsA = new Set(a.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  const slugsB = new Set(b.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  if (slugsA.size === 0 || slugsB.size === 0) return false;
+  // Boilerplate carries shared hyphenated tokens ("one-file"), so the veto
+  // requires each side to name a slug the other lacks — a mutual exclusive
+  // identity, not full disjointness.
+  const aOnly = [...slugsA].some((slug) => !slugsB.has(slug));
+  const bOnly = [...slugsB].some((slug) => !slugsA.has(slug));
+  return aOnly && bOnly;
+}
+
+/**
+ * Cross-request near-duplicate guard for create/spawn. The per-origin spawn cap
+ * only anchors ONE user request; a status-shaped follow-up ("so is my site
+ * done?? where can i see it") arrives as a NEW message, the planner re-composes
+ * a near-identical goal, and a duplicate agent spawns against work that is
+ * already in flight or parked validating (observed live: "Nubs mechanical
+ * keyboard site" re-spawned while the original build task sat `validating`,
+ * then zombied). When a non-terminal task or session with a near-identical
+ * goal exists, report it instead of spawning; explicit "again/fresh/retry"
+ * phrasing bypasses the guard.
+ */
+async function findNearDuplicateInFlightWork(args: {
+  runtime: IAgentRuntime;
+  taskService: OrchestratorTaskService | null | undefined;
+  candidateText: string;
+  userText: string;
+}): Promise<{ name: string; status: string } | undefined> {
+  const { runtime, taskService, candidateText, userText } = args;
+  if (!candidateText.trim()) return undefined;
+  if (DUPLICATE_SPAWN_FORCE_RE.test(userText)) return undefined;
+  try {
+    if (taskService && typeof taskService.listTasks === "function") {
+      const tasks = await taskService.listTasks({});
+      for (const task of tasks) {
+        if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
+        const existingText = `${task.title} ${task.originalRequest ?? ""}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
+        if (
+          goalSimilarity(candidateText, existingText) >=
+          DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
+        ) {
+          return { name: `"${task.title}"`, status: task.status };
+        }
+      }
+    }
+    const service = getAcpService(runtime);
+    if (service) {
+      for (const session of await listSessionsWithin(service)) {
+        if (TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase())) {
+          continue;
+        }
+        const label =
+          typeof session.metadata?.label === "string"
+            ? session.metadata.label
+            : session.name;
+        const initialTask =
+          typeof session.metadata?.initialTask === "string"
+            ? session.metadata.initialTask
+            : "";
+        const existingText = `${label ?? ""} ${initialTask}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
+        if (
+          goalSimilarity(candidateText, existingText) >=
+          DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
+        ) {
+          return {
+            name: label ? `"${label}"` : "a coding session",
+            status: session.status.toLowerCase(),
+          };
+        }
+      }
+    }
+  } catch {
+    // error-policy:J4 the guard is best-effort protection; an inspection
+    // failure must not block a legitimate spawn.
+    return undefined;
+  }
+  return undefined;
+}
+
+function duplicateSpawnReply(duplicate: {
+  name: string;
+  status: string;
+}): string {
+  const statusLine =
+    duplicate.status === "validating"
+      ? "it finished its work and is awaiting completion verification"
+      : `its status is ${duplicate.status}`;
+  return `That work is already underway: ${duplicate.name} — ${statusLine}. I won't start a duplicate; ask me for its status any time, or say "run it again" if you want a fresh attempt.`;
 }
 
 /**
@@ -2901,9 +3177,28 @@ async function runHistory(
         responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
       } else if (tasks.length === 0) {
         inFlight = await findInFlightWork(runtime, taskCandidates);
+        // Search-matched tasks the status/window filter excluded. A
+        // planner-guessed status list ("active, done, failed") silently hides
+        // a `validating` task, and the bare "found nothing" then reads as "no
+        // task exists" against a store that plainly holds it (observed live).
+        // Disclose what the filters hid instead of implying absence.
+        const excludedByFilters = taskCandidates
+          .filter((task) => !sessionTask || task.id === sessionTask.id)
+          .filter(
+            (task) =>
+              !taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+          )
+          .slice(0, 3);
         responseText = inFlight
           ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
-          : `I did not find any orchestrator task threads${filterSuffix}.`;
+          : excludedByFilters.length > 0
+            ? [
+                `No task threads matched${filterSuffix}, but related tasks exist outside those filters:`,
+                ...excludedByFilters.map(
+                  (task) => `- "${task.title}" — status=${task.status}`,
+                ),
+              ].join("\n")
+            : `I did not find any orchestrator task threads${filterSuffix}.`;
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [

@@ -2,7 +2,7 @@
  * Exercises standalone Telegram identity and redelivery behavior with a
  * deterministic runtime double and no network transport.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveTelegramRuntimeEntityId } from "../identity";
 import { handleTelegramStandaloneMessage } from "./handler";
@@ -117,5 +117,22 @@ describe("standalone Telegram durable identity", () => {
       expect.any(Error),
       { accountId: "default", chatId: "111" },
     );
+  });
+
+  it("keeps inbound message content out of production logs", async () => {
+    const { runtime } = makeRuntime();
+    const infoSpy = vi.spyOn(logger, "info");
+    const update = context(111, 9);
+    (update as { message: { text: string } }).message.text =
+      "secret hunter2 passphrase";
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    // The receipt is still logged at info — just without the content.
+    expect(infoSpy).toHaveBeenCalled();
+    const logged = infoSpy.mock.calls.flat().join(" ");
+    expect(logged).not.toContain("hunter2");
+    expect(logged).not.toContain("passphrase");
+    infoSpy.mockRestore();
   });
 });

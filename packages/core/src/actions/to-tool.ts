@@ -38,6 +38,10 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
+/** Shared should-respond contract for static and registry-composed schemas. */
+export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
+	'RESPOND=reply/run actions — a question, a request, an active conversation, or ambient chatter with real substance you can usefully add to. IGNORE=silent — pure content-free acknowledgements/reactions ("lol", "ok", "nice", "same", "haha", "brb"), bot/webhook/status feeds, or people clearly talking to each other. STOP=explicit user stop.';
+
 /**
  * Canonical Stage-1 HANDLE_RESPONSE parameters. This mirrors the builtin
  * ResponseHandlerFieldRegistry field order used in production. Plugin callers
@@ -51,8 +55,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		shouldRespond: {
 			type: "string",
 			enum: ["RESPOND", "IGNORE", "STOP"],
-			description:
-				"RESPOND=reply/run actions. IGNORE=silent. STOP=explicit user stop.",
+			description: SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 		},
 		contexts: {
 			type: "array",
@@ -68,7 +71,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		replyText: {
 			type: "string",
 			description:
-				'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.").',
+				'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it."). When declining a capability you lack, say plainly that you can\'t do it; do NOT invent a reason you are unsure of (e.g. "no shell access in this channel", "not connected") — an invented surface/setup cause misleads when the real reason is permission or availability.',
 		},
 		replyEffectStatus: {
 			type: "string",

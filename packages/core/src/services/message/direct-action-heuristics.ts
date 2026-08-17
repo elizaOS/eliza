@@ -646,7 +646,8 @@ type ScheduledAdminDomain =
 	| "reminders"
 	| "alarms"
 	| "routines"
-	| "scheduled-tasks";
+	| "scheduled-tasks"
+	| "calendar-events";
 
 const SCHEDULED_ADMIN_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
@@ -664,6 +665,13 @@ const SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_REMINDER_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])reminders?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+// Calendar-event mutations also arrive as "move/push/bump/shift X to <time>",
+// verbs the shared admin set deliberately omits (they are too ambiguous
+// without a calendar noun anchoring them).
+const SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:move|push|bump|shift)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|events?|meetings?|appointments?|lunch(?:es)?|dinners?|breakfasts?|brunch(?:es)?|coffees?|reservations?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 
 const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	ScheduledAdminDomain,
@@ -673,6 +681,7 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
 	routines: OWNER_ROUTINES_ACTION_NAMES,
 	"scheduled-tasks": ["SCHEDULED_TASKS"],
+	"calendar-events": ["CALENDAR"],
 };
 
 /**
@@ -686,11 +695,21 @@ function detectScheduledItemAdminDomain(
 	text: string,
 ): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (
-		!normalized ||
-		looksLikeActionExplanationRequest(normalized) ||
-		!SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)
-	) {
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return null;
+	}
+	const sharedAdminVerb = SCHEDULED_ADMIN_VERB_PATTERN.test(normalized);
+	// A calendar noun admits the move-verb family the shared set omits.
+	// Live regression: "move the lunch with dana to friday 1pm" got NO
+	// deterministic candidate, Stage-1 answered ["simple"] from stale room
+	// history ("was never on the calendar" — no tool ran) and fabricated a
+	// calendar-state claim. The mutation must reach the CALENDAR surface,
+	// which reads real state before acting.
+	const calendarMutation =
+		SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
+		(sharedAdminVerb ||
+			SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized));
+	if (!sharedAdminVerb && !calendarMutation) {
 		return null;
 	}
 	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";
@@ -708,6 +727,7 @@ function detectScheduledItemAdminDomain(
 		return "scheduled-tasks";
 	}
 	if (SCHEDULED_ADMIN_REMINDER_PATTERN.test(normalized)) return "reminders";
+	if (calendarMutation) return "calendar-events";
 	return null;
 }
 
@@ -883,7 +903,26 @@ function ownerLifeReadDomainsInPossessiveScopes(
 			"finances",
 		);
 		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
-			if (noun.test(domainScope)) domains.add(domain);
+			if (!noun.test(domainScope)) continue;
+			// A noun-modified "budget" ("my keyboard budget", "my trip budget")
+			// names a conversational figure the user told the agent, not the
+			// owner finance ledger. Treating it as a finance read injected
+			// OWNER_FINANCES on a group turn, its privacy rejection made the
+			// whole turn a "private surface" denial, and a plain memory
+			// question died (observed live: "whats my keyboard budget" →
+			// denial while the $150 fact sat in room facts). Only an
+			// unmodified budget mention — bare or with a finance-ish adjective
+			// ("monthly", "overall") — counts as the finances domain.
+			if (
+				domain === "finances" &&
+				/\b(?!(?:monthly|weekly|annual|yearly|overall|total|current|entire|whole|full|remaining)\b)[a-z][a-z-]*\s+budget\b/iu.test(
+					domainScope,
+				) &&
+				!/\b(?:finances|spending|expenses)\b/iu.test(domainScope)
+			) {
+				continue;
+			}
+			domains.add(domain);
 		}
 	}
 	return domains;
@@ -910,6 +949,50 @@ function detectOwnerLifeReadDomain(
 		)
 	) {
 		return null;
+	}
+	// Quoted examples and metalinguistic discussion are not requests to open the
+	// owner's finance ledger. This guard must run before the non-possessive money
+	// detector because those examples intentionally contain its whole phrase.
+	if (
+		/\b(?:when|if)\s+(?:i|we)\s+say\b/iu.test(normalized) ||
+		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
+			normalized,
+		) ||
+		/["“][^"”]*\b(?:how much|what)\b[^"”]*["”]/u.test(normalized) ||
+		/‘[^’]*\b(?:how much|what)\b[^’]*’/u.test(normalized)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	// Money-spend questions are finance reads even without a possessive scope:
+	// "how much did i spend this month" / "what did i spend on groceries" /
+	// "how much have i spent" / "how much do i owe" all route to the finances
+	// reader (observed live: "how much did i spend this month" mis-routed to
+	// OWNER_GOALS and returned a life summary). Anchored to money-spend phrasing
+	// to first-person amount/expense questions; common time, attention, and
+	// obligation idioms remain conversational instead of opening private data.
+	const moneyQuestion =
+		/\b(?:how much(?: money)?|what) (?:did|have|do) i (spend|spent|pay|paid|owe)\b/iu.exec(
+			normalized,
+		);
+	if (moneyQuestion) {
+		const verb = moneyQuestion[1]?.toLowerCase();
+		const tail = normalized.slice(
+			(moneyQuestion.index ?? 0) + moneyQuestion[0].length,
+		);
+		const nonFinancialSpend =
+			(verb === "spend" || verb === "spent") &&
+			/^\s+(?:time|effort|energy)\b/iu.test(tail);
+		const nonFinancialPay =
+			(verb === "pay" || verb === "paid") &&
+			/^\s+(?:attention|tribute|homage|respects?|heed)\b/iu.test(tail);
+		const nonFinancialOwe =
+			verb === "owe" &&
+			/^\s+(?:(?:you|him|her|them|someone)\s+)?(?:an?\s+)?(?:apology|explanation|favor)\b/iu.test(
+				tail,
+			);
+		if (!nonFinancialSpend && !nonFinancialPay && !nonFinancialOwe) {
+			return "finances";
+		}
 	}
 	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
 	if (domains.size === 0) return null;

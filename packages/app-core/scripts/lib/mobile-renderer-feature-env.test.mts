@@ -1,14 +1,25 @@
 /**
- * Locks the mobile renderer feature boundary that keeps LP3 realtime voice in
- * the packaged APK and prevents cross-feature reuse of debug renderer output.
+ * Locks the mobile renderer feature boundaries for local iOS onboarding and
+ * LP3 realtime voice while preventing cross-feature renderer reuse.
  */
 import { describe, expect, it } from "vitest";
 import {
   mobileRendererRequiresFreshBuild,
+  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./mobile-renderer-feature-env.mjs";
 
 describe("resolveMobileRendererFeatureEnv", () => {
+  it("enables the runtime chooser only for the local iOS lane", () => {
+    expect(resolveMobileRendererFeatureEnv({ platform: "ios-local" })).toEqual({
+      VITE_ELIZA_ENABLE_RUNTIME_CHOOSER: "1",
+    });
+
+    for (const platform of ["ios", "ios-overlay", "android"]) {
+      expect(resolveMobileRendererFeatureEnv({ platform })).toEqual({});
+    }
+  });
+
   it("enables the realtime voice client for the LP3 cloud-debug lane", () => {
     expect(
       resolveMobileRendererFeatureEnv({
@@ -47,12 +58,37 @@ describe("resolveMobileRendererFeatureEnv", () => {
 });
 
 describe("mobileRendererRequiresFreshBuild", () => {
-  it("rebuilds cloud-debug renderers because their optional flags are not stamped", () => {
+  it("rebuilds renderers whose optional flags are not stamped", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    for (const platform of ["android", "android-cloud", "ios", "ios-local"]) {
+    for (const platform of ["ios", "ios-local"]) {
+      expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
+    }
+    for (const platform of ["android", "android-cloud", "ios-overlay"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
+  });
+});
+
+describe("mobileRendererUnstampedFeatureProblem", () => {
+  it("requires explicit risk acknowledgement only for features absent from the stamp", () => {
+    expect(
+      mobileRendererUnstampedFeatureProblem({ platform: "ios-local" }),
+    ).toContain("runtime chooser");
+    expect(
+      mobileRendererUnstampedFeatureProblem({
+        platform: "android-cloud-debug",
+      }),
+    ).toContain("realtime voice flags");
+    for (const platform of ["ios", "ios-overlay", "android", "android-cloud"]) {
+      expect(mobileRendererUnstampedFeatureProblem({ platform })).toBeNull();
+    }
+  });
+
+  it("rejects a missing platform", () => {
+    expect(() => mobileRendererUnstampedFeatureProblem()).toThrow(
+      /platform is required/,
+    );
   });
 });

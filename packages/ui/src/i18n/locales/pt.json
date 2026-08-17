@@ -7134,7 +7134,7 @@
   "cloud.billingTab.amountHint": "Insira o valor que deseja adicionar. Mín: ${{min}}, Máx: ${{max}}",
   "cloud.billingTab.card": "Cartão",
   "cloud.billingTab.crypto": "Cripto",
-  "cloud.billingTab.redirecting": "Redirecionando...",
+  "cloud.billingTab.processing": "Processando…",
   "cloud.billingTab.payWithCrypto": "Pagar com cripto",
   "cloud.billingTab.buyCredits": "Comprar créditos",
   "cloud.billingTab.willBeAdded": "${{amount}} será adicionado ao seu saldo",

@@ -1174,6 +1174,7 @@ export function ChatOverlay({
   firstRunOpen = false,
   releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
+  onPilledChange,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
@@ -1198,6 +1199,13 @@ export function ChatOverlay({
   releaseFirstRunToHalf?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
   onFirstRunReleaseHandled?: () => void;
+  /**
+   * Reports entry to and exit from the component's own resting pill state.
+   * Desktop uses the pilled edge to collapse its transparent native host back
+   * to the small always-visible pill; web leaves this unset and keeps the
+   * entire transition local to the shared chat surface.
+   */
+  onPilledChange?: (pilled: boolean) => void;
 }): React.JSX.Element {
   const {
     messages,
@@ -1493,6 +1501,9 @@ export function ChatOverlay({
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
+  React.useEffect(() => {
+    onPilledChange?.(pilled);
+  }, [onPilledChange, pilled]);
   const previousSheetOpenRef = React.useRef(sheetOpen);
   React.useLayoutEffect(() => {
     const wasOpen = previousSheetOpenRef.current;
@@ -5413,6 +5424,14 @@ export function ChatOverlay({
       !restoreDragging &&
       !fullBleed &&
       !firstRunOpen,
+    // The chat sheet is dark chrome even when the device appearance is light.
+    // Match its native UIGlassEffect to the DOM fallback so the material never
+    // becomes a bright slab over the conversation.
+    colorScheme: "dark",
+    // Native glass without a tint is transparent enough for home cards and
+    // their text to compete with the conversation. Preserve refraction while
+    // giving the sheet the same dark-warm reading field as the CSS fallback.
+    tintColor: "#16090DD9",
   });
   const nativeInsetSheet = nativeSheetTier === "native";
   // Keep the CSS material identity stable through fullscreen and its restore.

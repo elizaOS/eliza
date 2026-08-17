@@ -75,12 +75,25 @@ bun run --cwd plugins/plugin-native-mobile-signals validate:ios-screen-time  # n
 
 | Variable | Required | Description |
 |---|---|---|
-| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | No | Path to the `.mobileprovision` file used by `validate:ios-screen-time` to verify Screen Time entitlements in the provisioning profile. |
+| `ELIZA_IOS_HEALTHKIT_ENABLED` | No | Exact `"1"` asks the canonical iOS build to publish `ELIZA_HEALTHKIT_ENABLED=1`. Missing, empty, or `"0"` disables HealthKit; every other value fails the build. Enabling also requires a verified provisioning profile. |
+| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | When HealthKit is enabled | Path to the app's `.mobileprovision`. The canonical build verifies bundle binding plus HealthKit and background-delivery entitlements before publishing an enabled marker; `validate:ios-screen-time` also checks Screen Time authority. |
 | `MOBILE_SIGNALS_REQUIRE_IOS_PROVISIONING_PROFILE` | No | Set to `"1"` to make `validate:ios-screen-time` fail if no provisioning profile is supplied. |
 
-No runtime environment variables are read by the plugin itself. Permission state and capabilities are determined at runtime by querying native APIs.
+No runtime environment variables are read by the plugin itself. The native
+HealthKit boundary reads the canonical build marker from the final app plist
+before calling protected APIs; permission state is queried only when that
+marker explicitly enables the capability.
 
 ## iOS requirements
+
+HealthKit calls are default-off. The canonical app build accepts only
+`ELIZA_IOS_HEALTHKIT_ENABLED=1`, requires
+`MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE`, verifies that profile is bound to
+the app id and grants both required HealthKit entitlements, then mirrors the
+decision into the final native plist. Disabled or malformed markers expose a
+truthful unavailable state and must not call HealthKit authorization, status,
+query, or background-delivery APIs. An enabled unsigned or unprovisioned build
+fails before the marker is emitted.
 
 Screen Time / DeviceActivity features require additional entitlements and Xcode targets. The `validate:ios-screen-time` script checks:
 

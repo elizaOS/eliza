@@ -271,6 +271,13 @@ export default defineConfig({
         find: /^@elizaos\/core\/atomic-json$/,
         replacement: path.join(coreSrc, "utils/atomic-json.ts"),
       },
+      {
+        // Must precede the @elizaos/core/(.+) catch-all: aliases match in
+        // array order, and the catch-all would rewrite core/edge to the
+        // nonexistent src/edge (plugin-scheduling imports @elizaos/core/edge).
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(coreSrc, "index.edge.ts"),
+      },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
       {
         find: /^@elizaos\/vault$/,

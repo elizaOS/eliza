@@ -64,6 +64,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
@@ -76,16 +77,71 @@ import {
 } from "./views-registry.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 
-function parseViewTypeParam(value: string | null): ViewType | undefined {
-  return value === "gui" || value === "tui" || value === "xr"
-    ? (value as ViewType)
-    : undefined;
+const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
+
+/**
+ * Parse the view-catalog `viewType` query. Omitted/empty keeps the historical
+ * GUI default (`listViews` / `getView` treat undefined as gui). A known
+ * modality selects that catalog. Any other token used to fall through to that
+ * same GUI catalog, so `viewType=GUI` or `viewType=web` silently served GUI
+ * views.
+ */
+export function parseViewTypeParam(
+  value: string | null,
+):
+  | { ok: true; viewType: ViewType | undefined }
+  | { ok: false; message: string } {
+  if (value === null || value === "") return { ok: true, viewType: undefined };
+  if (value === "gui" || value === "tui" || value === "xr") {
+    return { ok: true, viewType: value };
+  }
+  return { ok: false, message: VIEW_TYPE_ERROR };
 }
 
-function parseViewTypeValue(value: unknown): ViewType | undefined {
-  return value === "gui" || value === "tui" || value === "xr"
-    ? (value as ViewType)
-    : undefined;
+export function parseViewTypeValue(
+  value: unknown,
+):
+  | { ok: true; viewType: ViewType | undefined }
+  | { ok: false; message: string } {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, viewType: undefined };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, message: VIEW_TYPE_ERROR };
+  }
+  return parseViewTypeParam(value);
+}
+
+function resolveViewTypeQuery(
+  raw: string | null,
+  res: http.ServerResponse,
+  error: ViewsRouteContext["error"],
+): { reject: true } | { viewType: ViewType | undefined } {
+  const parsed = parseViewTypeParam(raw);
+  if (!parsed.ok) {
+    error(res, parsed.message, 400);
+    return { reject: true };
+  }
+  return { viewType: parsed.viewType };
+}
+
+function resolveViewTypePair(
+  bodyValue: unknown,
+  queryRaw: string | null,
+  res: http.ServerResponse,
+  error: ViewsRouteContext["error"],
+): { reject: true } | { viewType: ViewType | undefined } {
+  const fromBody = parseViewTypeValue(bodyValue);
+  if (!fromBody.ok) {
+    error(res, fromBody.message, 400);
+    return { reject: true };
+  }
+  const fromQuery = parseViewTypeParam(queryRaw);
+  if (!fromQuery.ok) {
+    error(res, fromQuery.message, 400);
+    return { reject: true };
+  }
+  return { viewType: fromBody.viewType ?? fromQuery.viewType };
 }
 
 function normalizedViewPath(value: unknown): string | null {
@@ -350,12 +406,19 @@ export async function handleViewsRoutes(
       fallback: 5,
     });
 
+    const parsedSearchViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedSearchViewType) return true;
+
     if (!query.trim()) {
       json(res, { results: [], query });
       return true;
     }
 
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const viewType = parsedSearchViewType.viewType;
     const allViews = listViews({
       developerMode: ctx.developerMode ?? false,
       viewType,
@@ -421,7 +484,13 @@ export async function handleViewsRoutes(
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
     const platform = detectClientPlatform(req);
     const dynamicAllowed = isDynamicLoadingAllowed(platform);
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedListViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedListViewType) return true;
+    const viewType = parsedListViewType.viewType;
     // Return every view (all four kinds) with its `viewKind` so the client can
     // apply the user's Settings toggles + build defaults itself. The server has
     // no way to know whether it is talking to a dev build or which kinds the
@@ -509,7 +578,13 @@ export async function handleViewsRoutes(
   if (!id) return false;
 
   if (method === "GET" && subResource === "") {
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedDetailViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedDetailViewType) return true;
+    const viewType = parsedDetailViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -536,7 +611,13 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedBundleViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedBundleViewType) return true;
+    const viewType = parsedBundleViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -680,7 +761,13 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedFrameViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedFrameViewType) return true;
+    const viewType = parsedFrameViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -790,6 +877,31 @@ export async function handleViewsRoutes(
       subResource,
     )
   ) {
+    const decodedSubResource = decodePathComponent(
+      subResource,
+      res,
+      "view asset path",
+    );
+    if (decodedSubResource === null) return true;
+
+    // URL assets use forward slashes. Reject control bytes, backslashes, and
+    // dot segments before platform policy, registry, or filesystem work.
+    const hasControlCharacter = Array.from(decodedSubResource).some((char) => {
+      const codePoint = char.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    });
+    const hasInvalidSegment = decodedSubResource
+      .split("/")
+      .some((segment) => segment === "" || segment === "." || segment === "..");
+    if (
+      decodedSubResource.includes("\\") ||
+      hasControlCharacter ||
+      hasInvalidSegment
+    ) {
+      error(res, "Malformed view asset path", 400);
+      return true;
+    }
+
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
       error(
@@ -800,7 +912,13 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedAssetViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedAssetViewType) return true;
+    const viewType = parsedAssetViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -818,11 +936,11 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
-    const decodedSubResource = decodeURIComponent(subResource);
     const assetPath = path.resolve(bundleDir, decodedSubResource);
     const relative = path.relative(bundleDir, assetPath);
     if (
-      relative.startsWith("..") ||
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
       path.isAbsolute(relative) ||
       relative === ""
     ) {
@@ -894,7 +1012,13 @@ export async function handleViewsRoutes(
 
   // ── GET /api/views/:id/hero ───────────────────────────────────────────────
   if (method === "GET" && subResource === "hero") {
-    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedHeroViewType = resolveViewTypeQuery(
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedHeroViewType) return true;
+    const viewType = parsedHeroViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -947,9 +1071,14 @@ export async function handleViewsRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
-    const viewType =
-      parseViewTypeValue(body?.viewType) ??
-      parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedNavigateViewType = resolveViewTypePair(
+      body?.viewType,
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedNavigateViewType) return true;
+    const viewType = parsedNavigateViewType.viewType;
     const entry = getView(id, { viewType });
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
@@ -1146,9 +1275,14 @@ export async function handleViewsRoutes(
       currentViewState === null &&
       getActiveViewContext() === null
     ) {
-      const viewType =
-        parseViewTypeValue(body?.viewType) ??
-        parseViewTypeParam(url.searchParams.get("viewType"));
+      const parsedElementsViewType = resolveViewTypePair(
+        body?.viewType,
+        url.searchParams.get("viewType"),
+        res,
+        error,
+      );
+      if ("reject" in parsedElementsViewType) return true;
+      const viewType = parsedElementsViewType.viewType;
       const entry = getView(id, { viewType });
       const reportedPath = normalizedViewPath(body?.viewPath);
       const registeredPath = normalizedViewPath(entry?.path);
@@ -1205,9 +1339,14 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const viewType =
-      parseViewTypeValue(body.viewType) ??
-      parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedActivateViewType = resolveViewTypePair(
+      body.viewType,
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedActivateViewType) return true;
+    const viewType = parsedActivateViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -1291,9 +1430,14 @@ export async function handleViewsRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
-    const viewType =
-      parseViewTypeValue(body.viewType) ??
-      parseViewTypeParam(url.searchParams.get("viewType"));
+    const parsedInteractViewType = resolveViewTypePair(
+      body.viewType,
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedInteractViewType) return true;
+    const viewType = parsedInteractViewType.viewType;
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);

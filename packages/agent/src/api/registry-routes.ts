@@ -7,11 +7,13 @@
  * upstream failures surface as 502.
  */
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import { isValidRegistryPackageName } from "@elizaos/registry";
 import { parseClampedInteger } from "@elizaos/shared";
 import type {
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 interface InstalledRegistryPluginLike {
   name: string;
@@ -116,9 +118,16 @@ export async function handleRegistryRoutes(
     pathname.startsWith("/api/registry/plugins/") &&
     pathname.length > "/api/registry/plugins/".length
   ) {
-    const name = decodeURIComponent(
+    const name = decodePathComponent(
       pathname.slice("/api/registry/plugins/".length),
+      res,
+      "plugin name",
     );
+    if (name === null) return true;
+    if (!isValidRegistryPackageName(name)) {
+      error(res, "Invalid plugin name", 400);
+      return true;
+    }
     try {
       const pluginManager = getPluginManager();
       const info = await pluginManager.getRegistryPlugin(name);

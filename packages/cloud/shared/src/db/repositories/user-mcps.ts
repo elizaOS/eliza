@@ -10,6 +10,7 @@ import {
   type UserMcp,
   userMcps,
 } from "../schemas";
+import { escapeLikePattern } from "../utils/like-pattern";
 
 /**
  * User MCPs Repository
@@ -101,7 +102,10 @@ export const userMcpsRepository = {
 
     if (search) {
       conditions.push(
-        or(ilike(userMcps.name, `%${search}%`), ilike(userMcps.description, `%${search}%`))!,
+        or(
+          ilike(userMcps.name, `%${escapeLikePattern(search)}%`),
+          ilike(userMcps.description, `%${escapeLikePattern(search)}%`),
+        )!,
       );
     }
 
@@ -142,7 +146,10 @@ export const userMcpsRepository = {
     }
     if (search) {
       conditions.push(
-        or(ilike(userMcps.name, `%${search}%`), ilike(userMcps.description, `%${search}%`))!,
+        or(
+          ilike(userMcps.name, `%${escapeLikePattern(search)}%`),
+          ilike(userMcps.description, `%${escapeLikePattern(search)}%`),
+        )!,
       );
     }
     const [result] = await dbRead

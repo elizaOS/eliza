@@ -200,7 +200,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 					text: "",
 					toolCalls: [{ id: "call-1", name: "APP_PICKER", args: {} }],
 				},
-				evaluatorFinish("On it."),
+				evaluatorFinish("I've listed the app options for you."),
 			],
 		});
 
@@ -242,7 +242,9 @@ describe("v5 widget markers — action callback and verified payload channels", 
 		// dedup identical text per turn, so both channels may deliver safely.
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe("On it.");
+			expect(result.result.responseContent?.text).toBe(
+				"I've listed the app options for you.",
+			);
 		}
 	});
 
@@ -268,7 +270,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 					text: "",
 					toolCalls: [{ id: "call-1", name: "APP_PICKER", args: {} }],
 				},
-				evaluatorFinish("On it."),
+				evaluatorFinish("I've listed the app options for you."),
 			],
 		});
 
@@ -282,7 +284,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") return;
 		// Verified user-facing payloads are priority 1 for the final message:
-		// the verbatim marker block wins over "On it.".
+		// the verbatim marker block wins over the evaluator paraphrase.
 		expect(result.result.responseContent?.text).toBe(CHOICE_BLOCK);
 		const { blocks } = parseInteractionBlocks(
 			String(result.result.responseContent?.text ?? ""),

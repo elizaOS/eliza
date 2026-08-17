@@ -138,5 +138,6 @@ export function createKmsClient(opts: KmsFactoryOptions = {}): KmsClient {
 }
 
 export * from "./key-namespace.js";
+export * from "./operation-key-bundle.js";
 export * from "./types.js";
 export { LocalKmsAdapter, MemoryKmsAdapter, StewardKmsAdapter };

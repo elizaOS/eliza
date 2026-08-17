@@ -122,6 +122,19 @@ export interface CompletionEvidenceBundle {
     path: string;
     reason: "rejected-write" | "no-write-observed";
   }>;
+  /** Files verified by direct fs inspection of the session workdir (exists +
+   *  mtime after session start) when the structured tool ledger is absent —
+   *  observation-grade evidence for adapters that fold tool results into
+   *  messages (#20794 live residual). */
+  fsVerifiedFiles?: string[];
+  /** Check classes runnable where the verified deliverable lives (tooling
+   *  manifests observed in its own directories); absent = unknown. */
+  checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
+  /** Capped contents of small fs-verified static files, READ BY THE
+   *  ORCHESTRATOR from the session workdir — so content criteria ("the CSS
+   *  includes …") are judged against the real file text instead of failing as
+   *  unproven narration (#20794 reed-marsh). */
+  fsVerifiedFileContents?: Array<{ path: string; content: string }>;
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
@@ -130,7 +143,7 @@ export interface CompletionEvidenceBundle {
 
 /** Total cap for the assembled evidence string. Sits under the verifier's own
  *  {@link trimEvidence} budget so the section structure survives intact. */
-const MAX_EVIDENCE_CHARS = 8_000;
+const MAX_EVIDENCE_CHARS = 24_000;
 const MAX_DIFF_CHARS = 3_000;
 const MAX_DELIVERABLE_CHARS = 1_500;
 const MAX_REPLY_CHARS = 1_500;
@@ -315,8 +328,12 @@ function renderUrlsSection(urls: readonly string[]): string {
   );
   const lines = ["## VERIFIED URLS (probed at completion)"];
   for (const url of unique) {
+    // Every URL here answered a probe the ORCHESTRATOR ran. A loopback hit is
+    // real local-serve evidence (the router/route mapping fronts it publicly),
+    // not an untrusted worker claim — the distrust label belongs to the
+    // MENTIONED section only, where nothing was probed.
     lines.push(
-      `- ${url}${isLoopbackUrl(url) ? " (LOOPBACK — not publicly reachable)" : ""}`,
+      `- ${url}${isLoopbackUrl(url) ? " (loopback probe — local serving confirmed by the orchestrator)" : ""}`,
     );
   }
   return lines.join("\n");
@@ -440,6 +457,35 @@ export function buildCompletionEvidenceString(
 
   if (bundle.verifiedUrls.length > 0) {
     sections.push(renderUrlsSection(bundle.verifiedUrls));
+    hasRicherSection = true;
+  }
+
+  // Observation-grade file evidence for ledger-less adapters (#20794): each
+  // path was stat-verified in the session workdir with a post-start mtime —
+  // direct inspection, not worker narration — so it counts as richer evidence.
+  const fsVerified = bundle.fsVerifiedFiles ?? [];
+  if (fsVerified.length > 0) {
+    sections.push(
+      [
+        "## FS-VERIFIED FILES (stat-observed in the session workdir, modified after session start)",
+        ...fsVerified.map((file) => `- ${file}`),
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
+
+  // The files' actual text, read by the orchestrator — content criteria are
+  // judged against this, not against the worker's description of it.
+  const fileContents = bundle.fsVerifiedFileContents ?? [];
+  if (fileContents.length > 0) {
+    sections.push(
+      [
+        "## FS-VERIFIED FILE CONTENTS (read by the orchestrator from the session workdir)",
+        ...fileContents.map(
+          (entry) => `--- ${entry.path} ---\n${entry.content}`,
+        ),
+      ].join("\n"),
+    );
     hasRicherSection = true;
   }
 

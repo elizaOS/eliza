@@ -94,12 +94,12 @@ export type {
 export type {
   RoutingPolicy,
   RoutingPreferences,
-} from "./routing-preferences.js";
+} from "./routing-policy.js";
 export {
   DEFAULT_ROUTING_POLICY,
   isRoutingPolicy,
   ROUTING_POLICIES,
-} from "./routing-preferences.js";
+} from "./routing-policy.js";
 export {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,

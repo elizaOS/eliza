@@ -82,14 +82,13 @@ export interface DesktopShellWindowPresentation {
 /**
  * Resolve the window presentation for the current shell mode.
  *
- * Transparency is scoped to the chromeless bottom-bar pill on macOS only. The
- * full dashboard ("default") window and kiosk stay opaque: a transparent window
- * over dark web content reads as a full-window frosted sheet (the pill is the
- * only surface that should show the desktop through it). Win/Linux transparency
- * support varies, so the pill also stays opaque there for now (fork gap G4).
- * The transparent macOS pill disables the native window shadow because its
- * visible handle already paints a neutral separator; stacking both creates a
- * heavy halo on light desktops.
+ * Transparency is scoped to the chromeless bottom-bar shell on every desktop
+ * platform. Its renderer paints only the resting pill or shared web chat panel,
+ * so the native host must not expose an opaque rectangle around those surfaces.
+ * The full dashboard ("default") window and kiosk stay opaque. The transparent
+ * pill disables the native window shadow because its visible handle already
+ * paints a neutral separator; stacking both creates a heavy halo on light
+ * desktops.
  */
 export function resolveDesktopShellWindowPresentation(
   env: Record<string, string | undefined> = process.env,
@@ -106,7 +105,7 @@ export function resolveDesktopShellWindowPresentation(
         : platform === "darwin"
           ? "hiddenInset"
           : "default",
-    transparent: bottomBar && platform === "darwin",
+    transparent: bottomBar,
     nativeShadow: !kiosk && !bottomBar,
   };
 }
@@ -115,9 +114,54 @@ export function resolveDesktopShellWindowPresentation(
 export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
 
+/** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
+export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
+export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
+
+/** Shallow host for the resting pill's composer preview while hovered. */
+export const HOVER_BOTTOM_BAR_WIDTH = 600;
+export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
 export const EXPANDED_BOTTOM_BAR_HEIGHT = 820;
+
+export interface BottomBarSizeOptions {
+  expanded: boolean;
+  /** Labeled needs-auth chip. Ignored while the overlay is expanded. */
+  chip?: boolean;
+  /** Resting composer preview. Ignored by expanded and auth-gated states. */
+  hovered?: boolean;
+}
+
+/** Resolve the native bottom-bar size for rest, hover, sign-in, or overlay. */
+export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
+  width: number;
+  height: number;
+} {
+  if (options.expanded) {
+    return {
+      width: EXPANDED_BOTTOM_BAR_WIDTH,
+      height: EXPANDED_BOTTOM_BAR_HEIGHT,
+    };
+  }
+  if (options.chip) {
+    return {
+      width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+      height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+    };
+  }
+  if (options.hovered) {
+    return {
+      width: HOVER_BOTTOM_BAR_WIDTH,
+      height: HOVER_BOTTOM_BAR_HEIGHT,
+    };
+  }
+  return {
+    width: DEFAULT_BOTTOM_BAR_WIDTH,
+    height: DEFAULT_BOTTOM_BAR_HEIGHT,
+  };
+}
 
 /**
  * Compute a bottom-centered window frame that is no larger than the visible

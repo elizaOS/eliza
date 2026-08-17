@@ -6,14 +6,47 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   detectTerminalSupport,
   missingTerminalToolForCommand,
   resolveExecutable,
   resolveTerminalShell,
 } from "../utils/terminalCapabilities";
+
+vi.mock("@elizaos/shared/host-execution-env", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/shared/host-execution-env")>();
+  const { accessSync, constants } = await import("node:fs");
+  const pathApi = await import("node:path");
+  return {
+    ...actual,
+    resolveHostExecutable: (nameOrPath: string): string | undefined => {
+      const candidates = pathApi.isAbsolute(nameOrPath)
+        ? [nameOrPath]
+        : (process.env.PATH ?? "")
+            .split(pathApi.delimiter)
+            .filter(Boolean)
+            .map((entry) => pathApi.join(entry, nameOrPath));
+      return candidates.find((candidate) => {
+        try {
+          accessSync(candidate, constants.X_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    },
+  };
+});
 
 const ENV_KEYS = [
   "ELIZA_PLATFORM",
@@ -35,7 +68,6 @@ beforeAll(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   tempDir = mkdtempSync(path.join(tmpdir(), "shell-cap-"));
   process.env.PATH = tempDir;
-  captureHostExecutionBaseline();
 });
 
 beforeEach(() => {

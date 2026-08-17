@@ -68,3 +68,31 @@ describe("approximateTokenCount", () => {
 		expect(approximateTokenCount("one")).toBe(2); // ceil(1*1.3)
 	});
 });
+
+describe("terse truncation preserves structure and real sentence boundaries", () => {
+	test("does not treat a dot inside a filename as a sentence end (live 86-char cut)", () => {
+		const text = [
+			"- layout.tsx was changed and you wanted it reverted",
+			"- ran `git checkout -- app/layout.tsx` in /home/milady/projects/agent-home — exit 0, revert done",
+			'- earlier i tried to build an app called "layout-restorer" (wrong move) and it failed verification twice',
+			"- you stopped that and clarified you just wanted the file git-reverted, not an app built",
+		].join("\n");
+		const result = enforceVerbosity(text, "terse");
+		expect(result.truncated).toBe(true);
+		// The old lastIndexOf(".") cut delivered exactly this broken prefix.
+		expect(result.text).not.toBe(
+			"- layout.tsx was changed and you wanted it reverted - ran `git checkout -- app/layout.",
+		);
+		expect(result.text.endsWith("app/layout.")).toBe(false);
+		// Newlines survive: the truncated block keeps its bullet structure.
+		expect(result.text).toContain("\n");
+	});
+
+	test("still truncates at a genuine sentence boundary", () => {
+		const sentence = "This is a real sentence that ends cleanly.";
+		const filler = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ");
+		const result = enforceVerbosity(`${sentence} ${filler}`, "terse");
+		expect(result.truncated).toBe(true);
+		expect(result.text).toBe(sentence);
+	});
+});

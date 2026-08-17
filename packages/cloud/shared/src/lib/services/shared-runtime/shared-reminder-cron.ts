@@ -10,6 +10,9 @@ import {
   type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling/edge";
 import type { Bindings } from "../../../types/cloud-worker-env";
+import { logger } from "../../utils/logger";
+import { coordinateSharedPushDispatch } from "./conversation-coordinator";
+import { isPersonalSharedAgentId } from "./personal-shared-agent";
 import { createSharedScheduledTaskRunner, executeSharedSchedulingSql } from "./shared-scheduling";
 
 function reminderDelivery(record: ScheduledTaskDispatchRecord): SharedReminderDelivery {
@@ -57,7 +60,7 @@ async function readGatewayDeliveryResponse(
   }
 }
 
-export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
+export function sharedReminderDispatcher(env: Bindings, agentId?: string): ScheduledTaskDispatcher {
   const secret = env.GATEWAY_INTERNAL_SECRET;
   if (!secret) {
     throw new Error("GATEWAY_INTERNAL_SECRET is not configured");
@@ -181,6 +184,42 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           message: "Reminder delivery returned no verifiable provider receipt.",
         };
       }
+      if (agentId && isPersonalSharedAgentId(agentId)) {
+        const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
+        if (!namespace) {
+          logger.warn("[SharedReminders] mobile push coordinator is unavailable", {
+            agentId,
+            taskId: record.taskId,
+          });
+        } else {
+          try {
+            await coordinateSharedPushDispatch(
+              agentId,
+              {
+                title: "Reminder",
+                body: text,
+                collapseKey: idempotencyKey,
+                data: {
+                  notificationId: idempotencyKey,
+                  category: "reminder",
+                  deepLink: "/chat",
+                  taskId: record.taskId,
+                  firedAtIso: record.firedAtIso,
+                },
+              },
+              { namespace },
+            );
+          } catch (error) {
+            // error-policy:J7 remote push is diagnostic fan-out after the
+            // connector's verified acceptance and cannot refire that delivery.
+            logger.warn("[SharedReminders] mobile push dispatch failed", {
+              agentId,
+              taskId: record.taskId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
       return {
         ok: true,
         channelKey: "current_dm",
@@ -216,7 +255,6 @@ export async function processDueSharedReminders(
     dueAtIso: now.toISOString(),
     limit,
   });
-  const dispatcher = sharedReminderDispatcher(env);
   let fired = 0;
   let raced = 0;
   let deferred = 0;
@@ -236,7 +274,10 @@ export async function processDueSharedReminders(
     const batch = work.slice(offset, offset + 10);
     const outcomes = await Promise.all(
       batch.map((item) =>
-        createSharedScheduledTaskRunner(item.agentId, dispatcher).fireWithResult(
+        createSharedScheduledTaskRunner(
+          item.agentId,
+          sharedReminderDispatcher(env, item.agentId),
+        ).fireWithResult(
           item.taskId,
           item.recovery ? { recoverFiredAtIso: item.firedAtIso } : { allowTerminalRefire: true },
         ),

@@ -13,9 +13,11 @@ export const DIRECT_AGENT_SURFACE_OUTPUT_DIR = join(here, "output");
 export const AGENT_SURFACE_ARTIFACT_NAMES = [
   "fixture.html",
   "real-view.html",
+  "teardown.html",
   "agent-surface-rest.png",
   "agent-surface-highlight.png",
   "agent-surface-real-view.png",
+  "agent-surface-teardown.png",
 ];
 
 export function resolveAgentSurfaceOutputDir(env = process.env) {

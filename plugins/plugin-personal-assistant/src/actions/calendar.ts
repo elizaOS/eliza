@@ -67,7 +67,10 @@ import type {
   CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import {
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "../lifeops/defaults.js";
 import {
   formatCalendarEventDateTime,
   runLifeOpsJsonModel,
@@ -1161,6 +1164,42 @@ function messageText(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : "";
 }
 
+/**
+ * Normalize model-authored timezone spellings on every calendar route before
+ * forwarding to the concrete handlers. A planner that reads a Zulu-suffixed
+ * datetime routinely stamps `timeZone: "Z"`, and the downstream Intl boundary
+ * then throws "Invalid time zone specified: Z" — which failed an entire
+ * calendar create (observed live). All snake/camel/lower aliases of the
+ * timezone field are rewritten in place, both top-level and inside `details`,
+ * via {@link normalizeTimeZone}; unknown zone names pass through untouched so
+ * genuine mistakes still surface downstream.
+ */
+function normalizeCalendarTimeZoneParams<
+  T extends Record<string, unknown> | undefined,
+>(params: T): T {
+  if (!params || typeof params !== "object") return params;
+  const TZ_KEYS = ["timeZone", "timezone", "time_zone"] as const;
+  const normalized: Record<string, unknown> = { ...params };
+  for (const key of TZ_KEYS) {
+    if (typeof normalized[key] === "string") {
+      normalized[key] = normalizeTimeZone(normalized[key] as string);
+    }
+  }
+  const details = normalized.details;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    const nextDetails: Record<string, unknown> = {
+      ...(details as Record<string, unknown>),
+    };
+    for (const key of TZ_KEYS) {
+      if (typeof nextDetails[key] === "string") {
+        nextDetails[key] = normalizeTimeZone(nextDetails[key] as string);
+      }
+    }
+    normalized.details = nextDetails;
+  }
+  return normalized as T;
+}
+
 function extractBulkRescheduleCohortLabel(text: string): string | null {
   const allMatch =
     /\ball\s+([a-z0-9][a-z0-9\s&/+-]{1,40}?)\s+meetings?\b/iu.exec(text) ??
@@ -1366,7 +1405,7 @@ async function route(
   options: HandlerOptions | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const params = getParams(options);
+  const params = normalizeCalendarTimeZoneParams(getParams(options));
   const { target, innerSubaction } = translateSubaction(subaction);
   const delegatedCallback: HandlerCallback | undefined = callback
     ? (content, actionName) => callback(content, actionName ?? ACTION_NAME)

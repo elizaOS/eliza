@@ -59,7 +59,7 @@ const SALT_LEN = 32;
 const IV_LEN = 12; // AES-256-GCM standard nonce
 const TAG_LEN = 16; // AES-GCM authentication tag
 const KEY_LEN = 32; // AES-256
-const MIN_PASSWORD_LENGTH = 4;
+const MIN_PASSWORD_LENGTH = 12;
 const HEADER_SIZE = MAGIC_BYTES.length + 4 + SALT_LEN + IV_LEN + TAG_LEN; // 15 + 4 + 32 + 12 + 16 = 79
 const EXPORT_VERSION = 1;
 const MAX_IMPORT_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB safety cap
@@ -523,7 +523,9 @@ async function decrypt(
 ): Promise<Buffer> {
   const key = await deriveKey(password, salt, iterations);
 
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(tag);
 
   const plaintext = Buffer.concat([

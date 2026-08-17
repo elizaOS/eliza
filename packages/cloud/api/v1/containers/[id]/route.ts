@@ -113,8 +113,6 @@ app.patch("/", async (c) => {
 const DeleteSchema = z.object({
   /** `stop` preserves the row (billing off); `delete` removes it. */
   mode: z.enum(["stop", "delete"]).optional(),
-  /** Destructive: also rm -rf the host volume / delete the hcloud volume. */
-  purgeVolume: z.coerce.boolean().optional(),
 });
 
 // DELETE /api/v1/containers/:id — stop (preserve row) or delete (remove row)
@@ -125,9 +123,27 @@ app.delete("/", async (c) => {
     if (!id) {
       return c.json({ success: false, error: "Missing container id" }, 400);
     }
+    // Container-delete volume identity, not leftover tax on app-delete
+    // GitHub-repo flag. z.coerce.boolean treated purgeVolume=false / FALSE
+    // as true, so a keep-volume request still rm -rf'd the host volume.
+    const requestedPurge = c.req.query("purgeVolume");
+    if (
+      requestedPurge != null &&
+      requestedPurge !== "" &&
+      requestedPurge !== "true" &&
+      requestedPurge !== "false"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid purgeVolume",
+          message: 'purgeVolume must be "true" or "false".',
+        },
+        400,
+      );
+    }
     const parsed = DeleteSchema.safeParse({
       mode: c.req.query("mode"),
-      purgeVolume: c.req.query("purgeVolume"),
     });
     if (!parsed.success) {
       return c.json(
@@ -139,7 +155,7 @@ app.delete("/", async (c) => {
       );
     }
     const mode = parsed.data.mode ?? "delete";
-    const purgeVolume = parsed.data.purgeVolume ?? false;
+    const purgeVolume = requestedPurge === "true";
     const client = getHetznerContainersClient();
 
     if (mode === "stop") {

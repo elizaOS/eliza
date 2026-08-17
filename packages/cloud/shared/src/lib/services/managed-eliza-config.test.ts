@@ -247,7 +247,11 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
   });
 
-  test("pins every embedding dimension hint to canonical gte-small/384 (#8769)", async () => {
+  test("fresh provisions pin every embedding hint to canonical gte-small/384 (#8769)", async () => {
+    // 2026-08-16 platform default: fresh agents run local gte-small (384-d)
+    // instead of paid cloud text-embedding-3-small. Both dimension hints must
+    // still agree with the handler's real output or the boot probe snaps the
+    // storage column to a width the handler won't match (#8769).
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -256,6 +260,7 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
+    expect(result.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
     expect(result.environmentVars.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
@@ -289,7 +294,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     delete process.env.NEXT_PUBLIC_API_URL;
   });
 
-  test("returns the canonical sidecar and 384-d embedding pins on an empty env", async () => {
+  test("empty env defaults to the canonical sidecar and 384-d embedding pins", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({});
@@ -306,6 +311,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       "EMBEDDING_DIMENSIONS",
       "EMBEDDING_MODEL",
     ]);
+    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");

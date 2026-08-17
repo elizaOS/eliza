@@ -29,11 +29,21 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const periodsRaw = Number(c.req.query("periods") ?? "7");
-    const periods =
-      Number.isFinite(periodsRaw) && periodsRaw > 0
-        ? Math.min(periodsRaw, 90)
-        : 7;
+    const periodsRaw = c.req.query("periods");
+    let periods = 7;
+    if (periodsRaw !== undefined && periodsRaw !== "") {
+      // Forecast horizon is a canonical positive integer. Number("1e2") is 100
+      // and Number("12px") is NaN — both used to silently forecast the wrong
+      // window (capped 90 or default 7) instead of rejecting the query.
+      if (!/^[1-9]\d*$/.test(periodsRaw)) {
+        return c.json({ error: "Invalid periods" }, 400);
+      }
+      const parsed = Number(periodsRaw);
+      if (!Number.isSafeInteger(parsed) || parsed < 1) {
+        return c.json({ error: "Invalid periods" }, 400);
+      }
+      periods = Math.min(parsed, 90);
+    }
 
     const now = new Date();
     const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

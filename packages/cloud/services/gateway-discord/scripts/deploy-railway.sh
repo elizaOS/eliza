@@ -14,11 +14,24 @@
 # runs this script from the package directory:
 #
 #   railway link --project eliza-cloud --service gateway-discord --environment production
-#   bun run scripts/deploy-railway.sh
+#   bun run deploy:railway
 #
 # zlib-sync is intentionally omitted: it is an optional native dep of the Discord
 # WS lib (lazy require -> graceful fallback to no compression).
 set -euo pipefail
+BUILD_ONLY=0
+case "${1:-}" in
+  "") ;;
+  --build-only) BUILD_ONLY=1 ;;
+  *)
+    echo "usage: $0 [--build-only]" >&2
+    exit 2
+    ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "usage: $0 [--build-only]" >&2
+  exit 2
+fi
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGES_DIR="$(cd "$HERE/../../.." && pwd)"
 CLEANUP_HELPER="$PACKAGES_DIR/scripts/rm-path-recursive.mjs"
@@ -30,6 +43,7 @@ trap cleanup_stage EXIT
 
 echo "[deploy] building self-contained bundle from $HERE ..."
 ( cd "$HERE" && bun build src/index.ts --outdir "$STAGE/dist" --target node \
+  --conditions eliza-source \
   --external zlib-sync \
   --external @discordjs/voice \
   --external @discordjs/opus \
@@ -73,6 +87,11 @@ CMD ["bun", "run", "dist/index.js"]
 DOCKER
 
 cp "$HERE/railway.toml" "$STAGE/railway.toml" 2>/dev/null || true
+
+if [ "$BUILD_ONLY" = "1" ]; then
+  echo "[deploy] build-only proof passed"
+  exit 0
+fi
 
 echo "[deploy] railway up from staged bundle ..."
 (

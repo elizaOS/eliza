@@ -107,4 +107,53 @@ describe('real Smithers runner', () => {
     expect(retainedFiles).toContain(`${workflow.versionId}.tsx`);
     expect(retainedFiles.filter((name) => name.startsWith('.run-'))).toEqual([]);
   }, 45_000);
+
+  test('extracts fenced structured text through the Smithers fallback', async () => {
+    const requests: unknown[] = [];
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow,
+      runId: `fenced-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 20_000,
+      generate: async (request) => {
+        requests.push(request);
+        return '```json\n{"message":"fenced"}\n```';
+      },
+    });
+
+    expect(result.status).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message: 'fenced' })]);
+    expect(requests).toHaveLength(1);
+  }, 45_000);
+
+  test('honors a finite task retry budget for malformed output', async () => {
+    let requests = 0;
+    const finiteWorkflow: WorkflowDefinitionResponse = {
+      ...workflow,
+      id: 'finite-retry-workflow',
+      versionId: 'finite-v1',
+      source: workflow.source.replace(
+        'id="run" output={outputs.output} agent={agent}',
+        'id="run" output={outputs.output} agent={agent} retries={1} maxSchemaRetries={0}'
+      ),
+    };
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow: finiteWorkflow,
+      runId: `malformed-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 20_000,
+      generate: async () => {
+        requests += 1;
+        return 'not json';
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(requests).toBe(2);
+    expect(result.events.filter((event) => event.type === 'NodeRetrying')).toHaveLength(1);
+  }, 45_000);
 });

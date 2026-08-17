@@ -21,6 +21,7 @@ import {
   peekPendingOnboardingSession,
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
+import { decodeJwtPayload } from "../../lib/jwt";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -37,12 +38,14 @@ async function postAuthJson(
   path: string,
   body?: Record<string, unknown>,
   method: "POST" | "DELETE" = "POST",
+  signal?: AbortSignal,
 ): Promise<Response> {
   return fetch(resolveStewardAuthEndpoint(path), {
     method,
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -240,13 +243,20 @@ export async function exchangeStewardCodeViaApi(
  * travels automatically; the server exchanges it with Steward and sets fresh
  * cookies. Throws `StewardSessionError` when the cookie is missing/revoked.
  */
-export async function refreshStewardSessionViaCookie(): Promise<{
+export async function refreshStewardSessionViaCookie(options?: {
+  signal?: AbortSignal;
+}): Promise<{
   ok: true;
   expiresAt?: number;
   expiresIn?: number;
   token?: string;
 }> {
-  const response = await postAuthJson(STEWARD_REFRESH_ENDPOINT);
+  const response = await postAuthJson(
+    STEWARD_REFRESH_ENDPOINT,
+    undefined,
+    "POST",
+    options?.signal,
+  );
   if (!response.ok) {
     const body = await readSessionError(response);
     throw new StewardSessionError(
@@ -261,6 +271,107 @@ export async function refreshStewardSessionViaCookie(): Promise<{
     expiresIn?: number;
     token?: string;
   };
+}
+
+type RefreshedStewardSession = Awaited<
+  ReturnType<typeof refreshStewardSessionViaCookie>
+>;
+
+const EMAIL_SESSION_RECOVERY_INTERVAL_MS = 250;
+const EMAIL_SESSION_RECOVERY_TIMEOUT_MS = 10_000;
+
+function normalizedEmail(value: string | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || null;
+}
+
+function waitForRecoveryDelay(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Recover the session established by a specific email challenge without ever
+ * clearing cookies. A stale marker, an expired refresh cookie, or another
+ * account's valid session is treated as "not ready" until the callback's
+ * server-verified token is returned and its email claim matches.
+ */
+export async function recoverStewardEmailSessionViaCookie(
+  expectedEmail: string,
+  options: {
+    signal?: AbortSignal;
+    intervalMs?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<RefreshedStewardSession | null> {
+  const expected = normalizedEmail(expectedEmail);
+  if (!expected) return null;
+
+  const intervalMs = options.intervalMs ?? EMAIL_SESSION_RECOVERY_INTERVAL_MS;
+  const timeoutMs = options.timeoutMs ?? EMAIL_SESSION_RECOVERY_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+
+  // One composed controller bounds every network attempt: a caller abort or
+  // the recovery deadline must cancel an in-flight fetch, not merely stop the
+  // loop between attempts — otherwise a hung refresh keeps the advertised
+  // 10s/cancellable recovery pending indefinitely.
+  const attempt = new AbortController();
+  const onCallerAbort = () => attempt.abort();
+  if (options.signal?.aborted) attempt.abort();
+  else options.signal?.addEventListener("abort", onCallerAbort, { once: true });
+  const deadlineTimer = setTimeout(() => attempt.abort(), timeoutMs);
+
+  try {
+    while (!attempt.signal.aborted && Date.now() < deadline) {
+      try {
+        const session = await refreshStewardSessionViaCookie({
+          signal: attempt.signal,
+        });
+        // Re-check cancellation before accepting: a refresh that resolves
+        // after the caller aborted or the deadline passed must not surface a
+        // session the caller already stopped waiting for.
+        if (attempt.signal.aborted || Date.now() >= deadline) return null;
+        const claims = session.token ? decodeJwtPayload(session.token) : null;
+        if (normalizedEmail(claims?.email) === expected) return session;
+      } catch (error) {
+        // error-policy:J4 a cancelled attempt resolves to the explicit null
+        // "not recovered" state and an expected 401 keeps polling until the
+        // deadline; every other failure stays a typed error for the caller.
+        if (attempt.signal.aborted || isAbortError(error)) return null;
+        if (!isRejectedCookieSession(error)) throw error;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+      const shouldContinue = await waitForRecoveryDelay(
+        Math.min(intervalMs, remainingMs),
+        attempt.signal,
+      );
+      if (!shouldContinue) return null;
+    }
+
+    return null;
+  } finally {
+    clearTimeout(deadlineTimer);
+    options.signal?.removeEventListener("abort", onCallerAbort);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 const DEAD_SESSION_RETRY_DELAY_MS = 100;

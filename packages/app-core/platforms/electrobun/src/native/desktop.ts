@@ -46,8 +46,7 @@ import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
   computeBottomBarFrame,
-  EXPANDED_BOTTOM_BAR_HEIGHT,
-  EXPANDED_BOTTOM_BAR_WIDTH,
+  resolveBottomBarFrameSize,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -94,12 +93,19 @@ import {
 } from "./agent";
 import {
   createSecurityScopedBookmark,
+  type FnMonitorStartResult,
+  getFnSystemUsageType,
   isAppActive,
+  isFnKeyDown,
+  isFnMonitorHealthy,
   isKeyWindow,
   makeKeyAndOrderFront,
   orderOut,
+  pollFnMonitor,
   startAccessingSecurityScopedBookmark,
+  startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
+  stopFnMonitor,
 } from "./mac-window-effects";
 import {
   linuxSysfsOnBattery,
@@ -350,6 +356,12 @@ export class DesktopManager {
   // toggles closed instead, so a click on the icon never double-fires.
   private trayPopoverBlurHideTimer: ReturnType<typeof setTimeout> | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
+  // Fn-hold push-to-talk (#20483): drain poller for the native CGEventTap fn
+  // monitor plus a slow watchdog — macOS silently disables a tap on callback
+  // timeout or secure-input, so health is re-checked and the tap restarted.
+  private fnHoldPoller: ReturnType<typeof setInterval> | null = null;
+  private fnHoldWatchdog: ReturnType<typeof setInterval> | null = null;
+  private fnHoldDownReported = false;
   private notificationCounter = 0;
   private notificationDiagnostics: NotificationDiagnosticsEntry[] = [];
   private sendToWebview: SendToWebview | null = null;
@@ -364,6 +376,8 @@ export class DesktopManager {
   private bottomBarReanchorEnabled = false;
   private bottomBarWorkArea: ScreenWorkArea | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
+  private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
+  private bottomBarFrameDirty = false;
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -979,6 +993,80 @@ export class DesktopManager {
     return true;
   }
 
+  // MARK: - Fn-hold push-to-talk (#20483)
+
+  /**
+   * Start the native fn (Globe) key monitor and forward hold transitions to
+   * the renderer as `desktopFnHoldChanged` pushes. macOS-only; the listen-only
+   * CGEventTap needs Accessibility (or Input Monitoring) trust, so the result
+   * distinguishes `permission-missing` from hard failure and reports the
+   * system "Press 🌐 key to..." action so the renderer can warn when a bare
+   * fn tap will also trigger emoji/dictation.
+   */
+  async startFnHoldMonitor(): Promise<{
+    status: FnMonitorStartResult;
+    fnSystemUsageType: number;
+  }> {
+    if (process.platform !== "darwin") {
+      return { status: "unavailable", fnSystemUsageType: 0 };
+    }
+    const status = startFnMonitor();
+    if (status === "started" && !this.fnHoldPoller) {
+      // 16ms drain keeps down→chip latency within one frame; the FFI call is
+      // a lock-free ring-buffer read, so the idle cost is negligible.
+      this.fnHoldPoller = setInterval(() => this.drainFnHoldEvents(), 16);
+      this.fnHoldWatchdog = setInterval(() => {
+        if (!isFnMonitorHealthy()) {
+          stopFnMonitor();
+          startFnMonitor();
+        }
+      }, 5_000);
+    }
+    return { status, fnSystemUsageType: getFnSystemUsageType() };
+  }
+
+  async stopFnHoldMonitor(): Promise<void> {
+    if (this.fnHoldPoller) {
+      clearInterval(this.fnHoldPoller);
+      this.fnHoldPoller = null;
+    }
+    if (this.fnHoldWatchdog) {
+      clearInterval(this.fnHoldWatchdog);
+      this.fnHoldWatchdog = null;
+    }
+    if (this.fnHoldDownReported) {
+      this.fnHoldDownReported = false;
+      this.send("desktopFnHoldChanged", { held: false, cancelled: true });
+    }
+    stopFnMonitor();
+  }
+
+  private drainFnHoldEvents(): void {
+    for (;;) {
+      const event = pollFnMonitor();
+      if (event === null) break;
+      if (event === "down" && !this.fnHoldDownReported) {
+        this.fnHoldDownReported = true;
+        this.send("desktopFnHoldChanged", { held: true, cancelled: false });
+      } else if (
+        (event === "up" || event === "up-chord") &&
+        this.fnHoldDownReported
+      ) {
+        this.fnHoldDownReported = false;
+        this.send("desktopFnHoldChanged", {
+          held: false,
+          cancelled: event === "up-chord",
+        });
+      }
+    }
+    // Overflow resync: if the queue dropped transitions, trust the physical
+    // key state so a stuck "held" chip cannot outlive the actual hold.
+    if (this.fnHoldDownReported && !isFnKeyDown()) {
+      this.fnHoldDownReported = false;
+      this.send("desktopFnHoldChanged", { held: false, cancelled: true });
+    }
+  }
+
   // MARK: - Auto Launch
 
   async setAutoLaunch(options: {
@@ -1451,17 +1539,23 @@ X-GNOME-Autostart-enabled=true
   }
 
   /** Expand/collapse the managed chat window without losing its bottom anchor. */
-  async setBottomBarExpanded(options: { expanded: boolean }): Promise<void> {
+  async setBottomBarExpanded(options: {
+    expanded: boolean;
+    chip?: boolean;
+    hovered?: boolean;
+  }): Promise<void> {
+    // Record desired presentation before consulting transient native state. A
+    // missing window/display must not lose a rest↔hover↔auth↔panel transition.
+    this.bottomBarSize = resolveBottomBarFrameSize(options);
+    this.bottomBarFrameDirty = true;
     if (!this.bottomBarReanchorEnabled) return;
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    const frame = computeBottomBarFrame(workArea, {
-      width: options.expanded ? EXPANDED_BOTTOM_BAR_WIDTH : undefined,
-      height: options.expanded ? EXPANDED_BOTTOM_BAR_HEIGHT : undefined,
-    });
+    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;
+    this.bottomBarFrameDirty = false;
   }
 
   private readPrimaryWorkArea(): ScreenWorkArea | null {
@@ -1488,14 +1582,24 @@ X-GNOME-Autostart-enabled=true
     const nextWorkArea = this.readPrimaryWorkArea();
     if (!nextWorkArea) return;
     if (
+      !this.bottomBarFrameDirty &&
       this.bottomBarWorkArea &&
       !shouldReanchorBottomBar(this.bottomBarWorkArea, nextWorkArea)
     ) {
       return;
     }
-    const frame = computeBottomBarFrame(nextWorkArea);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
-    this.bottomBarWorkArea = nextWorkArea;
+    const frame = computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
+    try {
+      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.bottomBarWorkArea = nextWorkArea;
+      this.bottomBarFrameDirty = false;
+    } catch (err) {
+      // error-policy:J1 The periodic native callback keeps the desired frame
+      // dirty for its next bounded retry instead of crashing the timer loop.
+      logger.warn(
+        `[Desktop] bottom-bar frame retry failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private _startFocusPoller(): void {
@@ -2841,6 +2945,7 @@ X-GNOME-Autostart-enabled=true
     this.releaseNotesView?.remove();
     this.releaseNotesView = null;
     this.releaseNotesWindow = null;
+    await this.stopFnHoldMonitor();
     await this.unregisterAllShortcuts();
     await this.destroyTray();
     this.trayMenuItems.clear();

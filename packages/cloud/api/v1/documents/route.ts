@@ -7,6 +7,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
@@ -38,14 +39,8 @@ app.get("/", async (c) => {
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;
 
-    const limit = Math.min(
-      Number.parseInt(c.req.query("limit") ?? "100", 10) || 100,
-      200,
-    );
-    const offset = Math.max(
-      Number.parseInt(c.req.query("offset") ?? "0", 10) || 0,
-      0,
-    );
+    const limit = parseClampedLimit(c.req.query("limit"), 100, 200);
+    const offset = parseClampedOffset(c.req.query("offset"), 0);
     const documents = await listDocumentRecords(scope, limit, offset);
 
     return c.json({

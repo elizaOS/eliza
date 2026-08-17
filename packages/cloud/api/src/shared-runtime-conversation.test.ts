@@ -27,7 +27,10 @@ mock.module("@/lib/api/errors", () => ({
 
 let repositoryReads = 0;
 let repositoryWrites = 0;
+let repositoryDeletes = 0;
 let repositoryRow: unknown[] = [];
+let repositoryMergeError: Error | null = null;
+let repositoryMergeGate: Promise<void> | null = null;
 const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
 let streamMergeGate: Promise<void> | null = null;
@@ -36,6 +39,15 @@ let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
 let lastBridgeAgent: unknown;
+let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
+  outcome: "accepted",
+};
+const apnsSentTokens: string[] = [];
+const apnsOutcomes = new Map<
+  string,
+  { outcome: string; reason?: string; status?: number } | Error
+>();
+const loggerWarn = mock(() => undefined);
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -82,6 +94,8 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
       repositoryHistories.push(history);
     },
     merge: async (_agentId: string, _channelId: string, history: unknown[]) => {
+      if (repositoryMergeError) throw repositoryMergeError;
+      if (repositoryMergeGate) await repositoryMergeGate;
       repositoryWrites++;
       const byId = new Map<string, unknown>();
       for (const message of [...repositoryRow, ...history]) {
@@ -92,6 +106,11 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
       repositoryHistories.push(merged);
       repositoryRow = merged;
       return merged;
+    },
+    deleteByAgent: async () => {
+      repositoryDeletes++;
+      repositoryRow = [];
+      return 1;
     },
   },
 }));
@@ -113,6 +132,10 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
       options: {
         funding?: unknown;
+        mobilePushDispatch?: (message: {
+          title: string;
+          body?: string;
+        }) => Promise<void>;
         historyStore: {
           load(
             agentId: string,
@@ -134,6 +157,12 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     ) => {
       bridgeFunding = options.funding;
       lastBridgeAgent = agent;
+      if (rpc.id === "push-event") {
+        await options.mobilePushDispatch?.({
+          title: "Reminder",
+          body: "Stand up",
+        });
+      }
       if (rpc.id === "rate-limited") {
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
@@ -213,29 +242,52 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     },
   },
 }));
+mock.module("@/lib/mobile-push/apns-provider", () => ({
+  resolveCloudApnsConfig: (env: { ELIZA_APNS_KEY?: string }) =>
+    env.ELIZA_APNS_KEY ? { configured: true } : null,
+  CloudApnsProvider: class {
+    async send(token: string) {
+      apnsSentTokens.push(token);
+      const outcome = apnsOutcomes.get(token) ?? apnsOutcome;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }
+  },
+}));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: mock(() => undefined) },
+  logger: { warn: loggerWarn },
 }));
 
 const { SharedRuntimeConversation } = await import(
   "./shared-runtime-conversation"
+);
+const { coordinateSharedPushDispatch } = await import(
+  "@/lib/services/shared-runtime/conversation-coordinator"
 );
 type SharedRuntimeConversationInstance = InstanceType<
   typeof SharedRuntimeConversation
 >;
 
 beforeEach(() => {
+  repositoryMergeError = null;
+  repositoryMergeGate = null;
+  repositoryDeletes = 0;
   streamMergeGate = null;
   resolveStreamMergeGate = () => {};
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
   lastBridgeAgent = undefined;
+  apnsOutcome = { outcome: "accepted" };
+  apnsSentTokens.length = 0;
+  apnsOutcomes.clear();
+  loggerWarn.mockClear();
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
   const state = {
     alarmDeleted: false,
+    alarmTime: null as number | null,
     storage: {
       get: async <T>(key: string) => data.get(key) as T | undefined,
       list: async <T>(options?: { prefix?: string }) =>
@@ -250,15 +302,37 @@ function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
       delete: async (key: string) => {
         data.delete(key);
       },
-      setAlarm: async () => {
+      setAlarm: async (time?: number) => {
         state.alarmDeleted = false;
+        state.alarmTime = typeof time === "number" ? time : null;
       },
       deleteAlarm: async () => {
         state.alarmDeleted = true;
+        state.alarmTime = null;
       },
       deleteAll: async () => {
         data.clear();
       },
+      transaction: async (
+        operation: (txn: {
+          list(): Promise<Map<string, unknown>>;
+          delete(keys: string[]): Promise<number>;
+          put(key: string, value: unknown): Promise<void>;
+        }) => Promise<void>,
+      ) =>
+        await operation({
+          list: async () => new Map(data),
+          delete: async (keys) => {
+            let deleted = 0;
+            for (const key of keys) {
+              if (data.delete(key)) deleted++;
+            }
+            return deleted;
+          },
+          put: async (key, value) => {
+            data.set(key, structuredClone(value));
+          },
+        }),
     },
     waitUntil: (promise: Promise<unknown>) => background.push(promise),
   };
@@ -305,6 +379,391 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
     return await response.json();
   };
 }
+
+async function pushOperation(
+  object: { fetch(request: Request): Promise<Response> },
+  body: Record<string, unknown>,
+) {
+  return await object.fetch(
+    new Request("https://shared-runtime.internal/mobile-push", {
+      method: "POST",
+      body: JSON.stringify({ agentId: AGENT_FIXTURE.id, ...body }),
+    }),
+  );
+}
+
+test("mobile push registration is durable, idempotent, iOS-only, and removable", async () => {
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  for (const platform of ["ios", "ios"] as const) {
+    const response = await pushOperation(object, {
+      operation: "push-register",
+      platform,
+      token: "ios-token",
+    });
+    expect(response.status).toBe(201);
+    await response.arrayBuffer();
+  }
+  const list = await pushOperation(object, { operation: "push-list" });
+  expect(await list.json()).toMatchObject({
+    tokens: [{ token: "ios-token", platform: "ios" }],
+  });
+  const android = await pushOperation(object, {
+    operation: "push-register",
+    platform: "android",
+    token: "android-token",
+  });
+  expect(android.status).toBe(400);
+  await android.arrayBuffer();
+  const removed = await pushOperation(object, {
+    operation: "push-unregister",
+    token: "ios-token",
+  });
+  expect((await removed.json()) as unknown).toEqual({ removed: true });
+  expect(data.has("mobile-push-tokens")).toBe(false);
+});
+
+test("mobile push register and unregister share exact 4096-character boundaries", async () => {
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const maximumToken = "x".repeat(4_096);
+  const oversizedToken = "x".repeat(4_097);
+
+  const maximumRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: maximumToken,
+  });
+  expect(maximumRegistration.status).toBe(201);
+  await maximumRegistration.arrayBuffer();
+
+  const oversizedRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: oversizedToken,
+  });
+  expect(oversizedRegistration.status).toBe(400);
+  await oversizedRegistration.arrayBuffer();
+
+  const maximumUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: maximumToken,
+  });
+  expect(maximumUnregister.status).toBe(200);
+  expect((await maximumUnregister.json()) as unknown).toEqual({
+    removed: true,
+  });
+
+  const oversizedUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: oversizedToken,
+  });
+  expect(oversizedUnregister.status).toBe(400);
+  await oversizedUnregister.arrayBuffer();
+});
+
+test("notification dispatch sends iOS tokens and removes APNs-dead records", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "dead-token",
+    })
+  ).arrayBuffer();
+  apnsOutcome = { outcome: "unregistered", reason: "BadDeviceToken" };
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder", body: "Time to leave" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
+  expect(apnsSentTokens).toEqual(["dead-token"]);
+  expect(data.has("mobile-push-tokens")).toBe(false);
+});
+
+test("real coordinator namespace dispatch reaches the durable APNs provider path", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "coordinated-token",
+    })
+  ).arrayBuffer();
+  const names: string[] = [];
+  const namespace = {
+    getByName(name: string) {
+      names.push(name);
+      return {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          object.fetch(new Request(input, init)),
+      };
+    },
+  };
+
+  await coordinateSharedPushDispatch(
+    AGENT_FIXTURE.id,
+    {
+      title: "Reminder",
+      collapseKey: "scheduled-occurrence",
+      data: { notificationId: "scheduled-occurrence" },
+    },
+    { namespace: namespace as never },
+  );
+  await Promise.all(background.splice(0));
+
+  expect(names).toEqual([`${AGENT_FIXTURE.id}:${AGENT_FIXTURE.id}`]);
+  expect(apnsSentTokens).toEqual(["coordinated-token"]);
+});
+
+test("notification dispatch settles every device when one APNs request fails", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["live-token", "dead-token", "network-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set("dead-token", {
+    outcome: "unregistered",
+    reason: "ExpiredToken",
+  });
+  apnsOutcomes.set("network-token", new Error("APNs timeout"));
+
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
+
+  expect(new Set(apnsSentTokens)).toEqual(
+    new Set(["live-token", "dead-token", "network-token"]),
+  );
+  expect(data.get("mobile-push-tokens")).toEqual([
+    expect.objectContaining({ token: "live-token" }),
+    expect.objectContaining({ token: "network-token" }),
+  ]);
+});
+
+test("accepted occurrence replay is suppressed by the bounded durable ledger", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "live-token",
+    })
+  ).arrayBuffer();
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-1",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  await dispatch();
+
+  expect(apnsSentTokens).toEqual(["live-token"]);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(1);
+  expect(Object.keys(ledger)[0]?.length).toBe(64);
+  expect(Object.values(ledger)[0]?.status).toBe("accepted");
+});
+
+test("concurrent occurrence ledgers merge without storing raw maximum-length tokens", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const token = "sensitive-token-".padEnd(4_096, "x");
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token,
+    })
+  ).arrayBuffer();
+  const enqueue = async (collapseKey: string) =>
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: { title: "Reminder", collapseKey },
+      })
+    ).arrayBuffer();
+
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+
+  expect(apnsSentTokens).toHaveLength(2);
+  const ledgerJson = JSON.stringify(data.get("mobile-push-delivery-ledger"));
+  expect(ledgerJson).not.toContain("sensitive-token-");
+  expect(new TextEncoder().encode(ledgerJson).length).toBeLessThan(1_024);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { acceptedTokens: string[] }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(2);
+  for (const entry of Object.values(ledger)) {
+    expect(entry.acceptedTokens).toHaveLength(1);
+    expect(entry.acceptedTokens[0]?.length).toBe(64);
+  }
+});
+
+test("retry sends only unsettled devices and never logs an APNs token URL", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["accepted-token", "private-device-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set(
+    "private-device-token",
+    new Error(
+      "fetch failed https://api.push.apple.com/3/device/private-device-token",
+    ),
+  );
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-2",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "private-device-token",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "api.push.apple.com",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).toContain("1 transport");
+
+  apnsOutcomes.delete("private-device-token");
+  await dispatch();
+  expect(apnsSentTokens).toEqual([
+    "accepted-token",
+    "private-device-token",
+    "private-device-token",
+  ]);
+});
+
+test("partial-failure ledger prunes hashes through repeated token rotation", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const mutateToken = async (
+    operation: "push-register" | "push-unregister",
+    token: string,
+  ) => {
+    await (
+      await pushOperation(object, {
+        operation,
+        ...(operation === "push-register" ? { platform: "ios" } : {}),
+        token,
+      })
+    ).arrayBuffer();
+  };
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "rotation-occurrence",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+  await mutateToken("push-register", "always-failing-token");
+  apnsOutcomes.set("always-failing-token", new Error("offline"));
+
+  let previousRotatedToken: string | undefined;
+  for (let index = 0; index < 40; index++) {
+    if (previousRotatedToken) {
+      await mutateToken("push-unregister", previousRotatedToken);
+    }
+    const rotatedToken = `rotated-token-${index}`;
+    await mutateToken("push-register", rotatedToken);
+    await dispatch();
+    previousRotatedToken = rotatedToken;
+  }
+
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string; acceptedTokens: string[] }
+  >;
+  const entry = Object.values(ledger)[0];
+  expect(entry?.status).toBe("retryable");
+  expect(entry?.acceptedTokens).toHaveLength(1);
+  expect(entry?.acceptedTokens[0]?.length).toBe(64);
+  expect(entry?.acceptedTokens.length).toBeLessThanOrEqual(32);
+});
 
 test("prewarm joins cold hydration without writing a conversation turn", async () => {
   repositoryReads = 0;
@@ -1470,7 +1929,9 @@ test("delete operation clears room storage and cancels the mirror-retry alarm", 
     result: { historyLength: 2 },
   });
   await Promise.all(background.splice(0));
-  expect(data.size).toBe(1);
+  // Snapshot plus the persisted alarm-deadline set (idle expiry is armed on
+  // every non-personal save).
+  expect(data.size).toBe(2);
 
   const response = await object.fetch(
     new Request("https://shared-runtime.internal/delete", {
@@ -1480,14 +1941,309 @@ test("delete operation clears room storage and cancels the mirror-retry alarm", 
   );
 
   await expect(response.json()).resolves.toEqual({ success: true });
-  expect(data.size).toBe(0);
+  // Everything is purged except the deletion tombstone that fences the room.
+  expect(data.size).toBe(1);
+  expect(data.has("deletion-tombstone")).toBe(true);
   expect(state.alarmDeleted).toBe(true);
 
-  // The next request must observe no resident history: it falls back to the
-  // cold-hydration path (warming 503) instead of serving purged content.
+  // The next request must observe the tombstone and fail closed instead of
+  // re-creating conversation state for a deleted agent.
   expect(await invoke("post-delete")).toMatchObject({
-    code: "conversation_cache_warming",
-    retryable: true,
+    code: "agent_deleted",
+    retryable: false,
   });
   await Promise.all(background.splice(0));
+  expect(data.size).toBe(1);
+});
+
+test("a deletion tombstone fences late mirrors and alarms from resurrecting content", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/delete", {
+      method: "POST",
+      body: JSON.stringify({ operation: "delete", agentId: AGENT_FIXTURE.id }),
+    }),
+  );
+  await expect(response.json()).resolves.toEqual({ success: true });
+
+  // A mirror queued before the deletion must become a no-op after it.
+  await (
+    object as unknown as {
+      mirrorConversation(snapshot: unknown): Promise<void>;
+    }
+  ).mirrorConversation({
+    agentId: AGENT_FIXTURE.id,
+    channelId: "room-1",
+    history: [{ id: "m-1", role: "user", content: "secret", createdAt: 1 }],
+    dirty: true,
+    version: 1,
+  });
+  expect(repositoryWrites).toBe(0);
+
+  // A queued alarm firing after the deletion must not rebuild any state.
+  await object.alarm();
+  expect(data.size).toBe(1);
+  expect(data.has("deletion-tombstone")).toBe(true);
+
+  // Deletion stays idempotent under retries from the best-effort purge.
+  const retried = await object.fetch(
+    new Request("https://shared-runtime.internal/delete", {
+      method: "POST",
+      body: JSON.stringify({ operation: "delete", agentId: AGENT_FIXTURE.id }),
+    }),
+  );
+  await expect(retried.json()).resolves.toEqual({ success: true });
+  expect(data.size).toBe(1);
+});
+
+test("delete removes a Postgres mirror that finishes after the caller-side purge", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryDeletes = 0;
+  repositoryRow = [];
+  let releaseMerge = () => {};
+  repositoryMergeGate = new Promise<void>((resolve) => {
+    releaseMerge = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+
+  const lateMirror = (
+    object as unknown as {
+      mirrorConversation(snapshot: unknown): Promise<void>;
+    }
+  ).mirrorConversation({
+    agentId: AGENT_FIXTURE.id,
+    channelId: "room-1",
+    history: [{ id: "m-1", role: "user", content: "secret", createdAt: 1 }],
+    dirty: true,
+    version: 1,
+  });
+  await Promise.resolve();
+
+  const deletion = object.fetch(
+    new Request("https://shared-runtime.internal/delete", {
+      method: "POST",
+      body: JSON.stringify({ operation: "delete", agentId: AGENT_FIXTURE.id }),
+    }),
+  );
+  await Promise.resolve();
+  releaseMerge();
+  await lateMirror;
+  const response = await deletion;
+  await expect(response.json()).resolves.toEqual({ success: true });
+
+  expect(repositoryWrites).toBe(1);
+  expect(repositoryDeletes).toBeGreaterThanOrEqual(1);
+  expect(repositoryRow).toEqual([]);
+  expect(data.has("deletion-tombstone")).toBe(true);
+});
+
+test("concurrent alarm updates preserve both persisted deadlines", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+  const updateAlarmDeadlines = (
+    object as unknown as {
+      updateAlarmDeadlines(
+        mutate: (current: Record<string, number>) => Record<string, number>,
+      ): Promise<void>;
+    }
+  ).updateAlarmDeadlines.bind(object);
+
+  await Promise.all([
+    updateAlarmDeadlines((current) => ({
+      ...current,
+      mirrorRetryAt: 200,
+    })),
+    updateAlarmDeadlines((current) => ({
+      ...current,
+      idleExpiryAt: 300,
+    })),
+  ]);
+
+  expect(data.get("alarm-deadlines")).toEqual({
+    mirrorRetryAt: 200,
+    idleExpiryAt: 300,
+  });
+  expect(state.alarmTime).toBe(200);
+});
+
+test("an idle mirror-confirmed room expires by alarm and re-hydrates losslessly", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+  const invoke = makeInvoke(object);
+
+  // Cold room: first turn hydrates from the (empty) mirror, second lands.
+  expect(await invoke("cold")).toMatchObject({
+    code: "conversation_cache_warming",
+  });
+  await Promise.all(background.splice(0));
+  expect(await invoke("turn-1")).toMatchObject({
+    result: { historyLength: 1 },
+  });
+  await Promise.all(background.splice(0));
+
+  // The save armed the idle-expiry deadline on the single DO alarm.
+  const deadlines = data.get("alarm-deadlines") as { idleExpiryAt?: number };
+  expect(typeof deadlines.idleExpiryAt).toBe("number");
+  expect(state.alarmTime).toBe(deadlines.idleExpiryAt ?? null);
+  const mirrored = repositoryRow;
+  expect((mirrored as unknown[]).length).toBe(1);
+
+  // Fire the alarm past the deadline: the clean snapshot is dropped and the
+  // Postgres mirror becomes the sole copy.
+  data.set("alarm-deadlines", { idleExpiryAt: Date.now() - 1 });
+  await object.alarm();
+  expect(data.has("conversation")).toBe(false);
+  expect(data.has("alarm-deadlines")).toBe(false);
+  expect(state.alarmDeleted).toBe(true);
+
+  // The next request re-hydrates the same history from the mirror.
+  expect(await invoke("post-expiry")).toMatchObject({
+    code: "conversation_cache_warming",
+  });
+  await Promise.all(background.splice(0));
+  const rehydrated = await invoke("turn-2");
+  expect(rehydrated).toMatchObject({ result: { historyLength: 2 } });
+  expect(
+    (rehydrated as { result: { historyIds: (string | null)[] } }).result
+      .historyIds,
+  ).toEqual(["message-turn-1"]);
+  await Promise.all(background.splice(0));
+});
+
+test("an unmirrored snapshot is hard-retained at expiry until the mirror lands", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  repositoryMergeError = new Error("mirror outage");
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [
+          { id: "m-1", role: "user", content: "only copy", createdAt: 1 },
+        ],
+        dirty: true,
+        version: 4,
+      },
+    ],
+    ["alarm-deadlines", { idleExpiryAt: Date.now() - 1 }],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+
+  await object.alarm();
+  await Promise.all(background.splice(0));
+
+  // The dirty snapshot survives, and both the failed-mirror retry and the
+  // re-armed expiry are persisted deadlines on the single alarm.
+  expect(data.has("conversation")).toBe(true);
+  const retained = data.get("alarm-deadlines") as {
+    mirrorRetryAt?: number;
+    idleExpiryAt?: number;
+  };
+  expect(typeof retained.mirrorRetryAt).toBe("number");
+  expect(typeof retained.idleExpiryAt).toBe("number");
+  expect(state.alarmDeleted).toBe(false);
+  expect(state.alarmTime).toBe(
+    Math.min(retained.mirrorRetryAt ?? 0, retained.idleExpiryAt ?? 0),
+  );
+
+  // Once the mirror recovers, the retried mirror confirms the snapshot and
+  // the same alarm's due expiry drops it.
+  repositoryMergeError = null;
+  data.set("alarm-deadlines", {
+    mirrorRetryAt: Date.now() - 1,
+    idleExpiryAt: Date.now() - 1,
+  });
+  await object.alarm();
+  await Promise.all(background.splice(0));
+  expect(repositoryRow.length).toBe(1);
+  expect(data.has("conversation")).toBe(false);
+});
+
+test("a stalled stream consumer is fenced and releases the room lock", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  (object as unknown as { streamStallTimeoutMs: number }).streamStallTimeoutMs =
+    20;
+
+  const streamed = await object.fetch(
+    new Request("https://shared-runtime.internal/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "stream",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "stalled",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  // Consume one chunk, then stop pulling entirely without cancelling.
+  const reader = streamed.body!.getReader();
+  await reader.read();
+
+  // The backstop must cancel the wedged upstream turn and release the room so
+  // the next turn can proceed; without it this second turn waits forever.
+  const second = await Promise.race([
+    makeInvoke(object)("after-stall"),
+    new Promise((resolve) => setTimeout(() => resolve("timed-out"), 2_000)),
+  ]);
+  expect(second).toMatchObject({ result: {} });
+  await Promise.all(background.splice(0));
+
+  // The upstream cancellation persisted the interrupted turn durably.
+  const stored = (
+    data.get("conversation") as {
+      history: Array<{ content: string; interrupted?: boolean }>;
+    }
+  ).history;
+  expect(stored.map((message) => message.content)).toEqual([
+    "stream-user-stalled",
+    "partial",
+    "turn-after-stall",
+  ]);
+  expect(stored[1]?.interrupted).toBe(true);
 });

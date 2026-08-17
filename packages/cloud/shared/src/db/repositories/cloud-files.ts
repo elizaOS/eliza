@@ -2,6 +2,7 @@
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type CloudFile, cloudFiles, type NewCloudFile } from "../schemas/cloud-files";
+import { escapeLikePattern } from "../utils/like-pattern";
 
 export type { CloudFile, NewCloudFile };
 
@@ -49,7 +50,7 @@ export class CloudFilesRepository {
     if (options.kind) conditions.push(eq(cloudFiles.kind, options.kind));
     if (options.mimeType) conditions.push(eq(cloudFiles.mime_type, options.mimeType));
     if (options.search) {
-      conditions.push(ilike(cloudFiles.filename, `%${options.search}%`));
+      conditions.push(ilike(cloudFiles.filename, `%${escapeLikePattern(options.search)}%`));
     }
 
     const rows = await dbRead.query.cloudFiles.findMany({

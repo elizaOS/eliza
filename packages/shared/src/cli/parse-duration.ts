@@ -11,7 +11,10 @@ export function parseDurationMs(
   raw: string,
   opts?: DurationMsParseOptions,
 ): number {
-  const trimmed = String(raw).trim().toLowerCase();
+  if (typeof raw !== "string") {
+    throw new Error("invalid duration (empty)");
+  }
+  const trimmed = raw.trim().toLowerCase();
   if (!trimmed) {
     throw new Error("invalid duration (empty)");
   }
@@ -42,5 +45,12 @@ export function parseDurationMs(
           : unit === "h"
             ? 3_600_000
             : 86_400_000;
-  return Math.round(value * multiplier);
+  const milliseconds = value * multiplier;
+  if (
+    !Number.isFinite(milliseconds) ||
+    !Number.isSafeInteger(Math.round(milliseconds))
+  ) {
+    throw new Error(`invalid duration: ${raw}`);
+  }
+  return Math.round(milliseconds);
 }

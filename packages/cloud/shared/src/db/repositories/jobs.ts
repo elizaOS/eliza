@@ -615,7 +615,7 @@ export class JobsRepository {
     const query = dbRead.select().from(jobs).$dynamic();
 
     const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
-      .limit(filters.limit || 1000)
+      .limit(filters.limit ?? 1000)
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
   }

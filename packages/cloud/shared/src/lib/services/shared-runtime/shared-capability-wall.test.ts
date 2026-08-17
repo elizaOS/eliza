@@ -27,6 +27,7 @@ describe("Shared capability wall", () => {
     ["text Alice that I'm late", "communications"],
     ["send Bob a message", "communications"],
     ["remind me tomorrow and message Bob now", "reminders"],
+    ["message Bob the update", "communications"],
     ["order dinner for me", "purchases"],
     ["save this as a note", "notes"],
     ["connect my Gmail", "cloud-apps"],
@@ -54,6 +55,8 @@ describe("Shared capability wall", () => {
     "List two ways to make a meeting shorter.",
     "List three ways to make a meeting shorter.",
     "Give me two ideas for making a meeting shorter.",
+    "Remember this code word for my next message: apricot-816.",
+    "Make this message shorter.",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });
@@ -71,7 +74,11 @@ describe("Shared capability wall", () => {
     "remind me to email Bob",
     "remind me to email Bob and then call Alice",
     "remind me to email Bob and email Alice tomorrow",
-  ])("keeps coordinated communication inside an enabled reminder payload: %s", (message) => {
+    "remind me in 1 minute: QA20315-DISCORD-DM-R3 verified",
+    "remind me in two minutes to text Alice",
+    "remind me tomorrow to email Bob the itinerary",
+    "remind me to email Bob and call Alice",
+  ])("keeps nested communication inside an enabled reminder payload: %s", (message) => {
     expect(resolveSharedCapabilityIntent(message, { reminders: true })).toEqual({
       kind: "enabled-primary",
       primary: expect.objectContaining({ capability: "reminders" }),
@@ -101,6 +108,62 @@ describe("Shared capability wall", () => {
     ).toBe("communications");
   });
 
+  test.each([
+    ["remind me tomorrow, then email Bob now", "communications"],
+    ["remind me tomorrow and email Bob now", "communications"],
+    ["remind me to email Bob, then email Alice now", "communications"],
+    ["remind me tomorrow; delete the file in my workspace", "filesystem"],
+    ["add milk to my todo list. Then buy groceries", "purchases"],
+    ["add milk to my todo list and email Bob now", "communications"],
+  ])(
+    "preserves enabled primary intent and reports a blocked later clause: %s",
+    (message, blocked) => {
+      expect(resolveSharedCapabilityIntent(message, { reminders: true, todos: true })).toEqual({
+        kind: "enabled-primary",
+        primary: expect.any(Object),
+        blockedSecondary: [expect.objectContaining({ capability: blocked })],
+      });
+    },
+  );
+
+  test.each([
+    ["remind me tomorrow to call Mom; then email Bob now", "reminders"],
+    ["add call Mom to my todo list. Then text Alice now", "todos"],
+  ])(
+    "does not let a nested match hide a later clause of the same capability: %s",
+    (message, primary) => {
+      expect(resolveSharedCapabilityIntent(message, { reminders: true, todos: true })).toEqual({
+        kind: "enabled-primary",
+        primary: expect.objectContaining({ capability: primary }),
+        blockedSecondary: [expect.objectContaining({ capability: "communications" })],
+      });
+    },
+  );
+
+  test("reports one actionable wall for repeated clauses of the same blocked capability", () => {
+    expect(
+      resolveSharedCapabilityIntent(
+        "add milk to my todo list. Then email Bob now, then email Alice now",
+        { todos: true },
+      ),
+    ).toEqual({
+      kind: "enabled-primary",
+      primary: expect.objectContaining({ capability: "todos" }),
+      blockedSecondary: [expect.objectContaining({ capability: "communications" })],
+    });
+  });
+
+  test("keeps first-command authority when an unsupported command precedes a reminder", () => {
+    expect(
+      resolveSharedCapabilityIntent("email Bob now and remind me tomorrow", {
+        reminders: true,
+      }),
+    ).toEqual({
+      kind: "blocked-primary",
+      blocked: expect.objectContaining({ capability: "communications" }),
+    });
+  });
+
   test("does not falsely claim voice and messaging require Dedicated", () => {
     const wall = resolveSharedCapabilityWall("call Mom");
     expect(wall?.reply).toContain("connected voice and messaging channels");
@@ -126,5 +189,13 @@ describe("Shared capability wall", () => {
       }),
     ).toBeNull();
     expect(resolveSharedCapabilityWall("add milk to my todo list")?.capability).toBe("todos");
+  });
+
+  test("keeps nested communication words inside an enabled Todo", () => {
+    expect(resolveSharedCapabilityIntent("add call Mom to my todo list", { todos: true })).toEqual({
+      kind: "enabled-primary",
+      primary: expect.objectContaining({ capability: "todos" }),
+      blockedSecondary: [],
+    });
   });
 });

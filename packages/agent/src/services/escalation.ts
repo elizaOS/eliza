@@ -20,6 +20,7 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
+  resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
 import type {
   EscalationConfig,
@@ -197,6 +198,44 @@ function resolveChannels(config: EscalationConfig): string[] {
     : DEFAULT_CHANNELS;
 }
 
+/**
+ * Channels the escalation can actually deliver on. An explicit operator order
+ * always wins. With no configured order the static default is `client_chat`
+ * alone — which ghosts a connector-primary owner: the dashboard send throws
+ * "no conversation available", every retry re-hits the same channel, and the
+ * owner never hears (observed live: a stalled-task escalation retried
+ * client_chat 3× while the owner sat in Discord). Extend the unconfigured
+ * default with every channel that resolves an owner contact or routing hint,
+ * most recent owner response first, so delivery can fall through to a
+ * connector that actually reaches the owner.
+ */
+export function resolveDeliverableChannels(
+  config: EscalationConfig,
+  ownerContacts: OwnerContactsConfig,
+  routingHints: Record<string, OwnerContactRoutingHint>,
+): string[] {
+  const configured = resolveChannels(config);
+  if (Array.isArray(config.channels) && config.channels.length > 0) {
+    return configured;
+  }
+  const known = new Set(configured);
+  const hinted = Object.entries(routingHints)
+    .filter(([channel, hint]) => !known.has(channel) && hint != null)
+    .sort(
+      (a, b) =>
+        (Date.parse(b[1]?.lastResponseAt ?? "") || 0) -
+        (Date.parse(a[1]?.lastResponseAt ?? "") || 0),
+    )
+    .map(([channel]) => channel);
+  for (const channel of hinted) {
+    known.add(channel);
+  }
+  const contactChannels = Object.keys(ownerContacts).filter(
+    (channel) => !known.has(channel),
+  );
+  return [...configured, ...hinted, ...contactChannels];
+}
+
 function resolveWaitMs(config: EscalationConfig): number {
   const mins =
     typeof config.waitMinutes === "number" && config.waitMinutes > 0
@@ -250,11 +289,20 @@ async function sendToChannel(
   }
 
   try {
-    const targetSource = resolvedContact?.source ?? channel;
-    if (
-      targetSource === MESSAGE_SOURCE_CLIENT_CHAT &&
-      !hasRuntimeSendHandler(runtime, targetSource)
-    ) {
+    // A contact's explicit `source` wins; otherwise a scoped contact key
+    // ("discord-nubs-test") resolves to the registered handler it scopes
+    // ("discord") instead of being used verbatim as a send source that no
+    // handler serves.
+    const targetSource =
+      contact.source?.trim() ||
+      resolveScopedSendSource(resolvedContact?.source ?? channel, (source) =>
+        hasRuntimeSendHandler(runtime, source),
+      );
+    // Boot-window guard for EVERY source (live: the boot's own
+    // service-failure escalation fired before the discord handler registered
+    // and the send threw). A missing handler is a skip — escalation's
+    // channel/wait retry machinery re-attempts once runtime wiring completes.
+    if (!hasRuntimeSendHandler(runtime, targetSource)) {
       logMissingSendHandlerOnce("escalation", targetSource);
       return false;
     }
@@ -386,11 +434,15 @@ export class EscalationService {
     }
 
     const config = loadEscalationConfig();
-    const channels = resolveChannels(config);
     const ownerContacts = loadOwnerContacts();
     const routingHints = await loadOwnerContactRoutingHints(
       runtime,
       ownerContacts,
+    );
+    const channels = resolveDeliverableChannels(
+      config,
+      ownerContacts,
+      routingHints,
     );
     const ownerEntityId = await resolveOwnerEntityId(runtime);
     const waitMs = resolveWaitMs(config);
@@ -413,18 +465,23 @@ export class EscalationService {
 
     activeEscalations.set(escalationId, state);
 
-    const firstChannel = channels[0];
-    if (firstChannel) {
+    // Initial delivery falls through failed channels immediately: a channel
+    // whose send throws (dashboard with no conversation, missing handler) is
+    // not a delivery, and waiting a full retry interval to try the next one
+    // just delays the owner hearing about an already-urgent condition.
+    for (const [index, channel] of channels.entries()) {
       const sent = await sendToChannel(
         runtime,
-        firstChannel,
+        channel,
         text,
         ownerContacts,
         routingHints,
         ownerEntityId,
       );
       if (sent) {
-        state.channelsSent.push(firstChannel);
+        state.channelsSent.push(channel);
+        state.currentStep = index;
+        break;
       }
     }
 
@@ -452,11 +509,15 @@ export class EscalationService {
     }
 
     const config = loadEscalationConfig();
-    const channels = resolveChannels(config);
     const ownerContacts = loadOwnerContacts();
     const routingHints = await loadOwnerContactRoutingHints(
       runtime,
       ownerContacts,
+    );
+    const channels = resolveDeliverableChannels(
+      config,
+      ownerContacts,
+      routingHints,
     );
     const ownerEntityId = await resolveOwnerEntityId(runtime);
     const maxRetries = resolveMaxRetries(config);

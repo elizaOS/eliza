@@ -404,6 +404,80 @@ describe("scheduled-tasks REST handler", () => {
     expect(payload.task.kind).toBe("checkin");
   });
 
+  it("rejects illegal percent-encoding in task ids with 400 before runner calls", async () => {
+    let listed = 0;
+    let applied = 0;
+    let fired = 0;
+    const runner = makeRunner();
+    const origList = runner.list.bind(runner);
+    const origApply = runner.apply.bind(runner);
+    const origFire = runner.fireWithResult.bind(runner);
+    runner.list = async (filter) => {
+      listed += 1;
+      return origList(filter);
+    };
+    runner.apply = async (id, verb, payload) => {
+      applied += 1;
+      return origApply(id, verb, payload);
+    };
+    runner.fireWithResult = async (id, opts) => {
+      fired += 1;
+      return origFire(id, opts);
+    };
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    for (const { method, pathname } of [
+      { method: "POST", pathname: "/api/lifeops/scheduled-tasks/%/complete" },
+      { method: "GET", pathname: "/api/lifeops/scheduled-tasks/%2/history" },
+      { method: "POST", pathname: "/api/lifeops/scheduled-tasks/%ZZ/fire" },
+      {
+        method: "GET",
+        pathname: "/api/lifeops/dev/scheduled-tasks/%/log",
+      },
+    ]) {
+      const { ctx, res } = buildCtx({ method, pathname });
+      const handled = await handler(ctx);
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("percent-encoding");
+    }
+    expect(listed).toBe(0);
+    expect(applied).toBe(0);
+    expect(fired).toBe(0);
+  });
+
+  it("still applies a canonically encoded task id", async () => {
+    const runner = makeRunner();
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "encoded-id",
+      trigger: { kind: "manual" },
+      priority: "low",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: "x",
+      ownerVisible: true,
+    });
+    const encoded = `%${task.taskId.charCodeAt(0).toString(16)}${task.taskId.slice(1)}`;
+    expect(decodeURIComponent(encoded)).toBe(task.taskId);
+    expect(encoded).not.toBe(task.taskId);
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: `/api/lifeops/scheduled-tasks/${encoded}/complete`,
+      body: { reason: "canonical-encoding" },
+    });
+    await handler(ctx);
+    expect(res.statusCode).toBe(200);
+    const all = await runner.list();
+    expect(all.find((t) => t.taskId === task.taskId)?.state.status).toBe(
+      "completed",
+    );
+  });
+
   it("GET /api/lifeops/dev/scheduling/registries returns spine registry health (loopback only)", async () => {
     const runner = makeRunner();
     const handler = makeScheduledTasksRouteHandler({

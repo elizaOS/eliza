@@ -43,6 +43,10 @@ import {
   writeInferenceApiKeyAuthRejection,
   writeInferenceAuthContext,
 } from "./inference-auth-cache";
+import {
+  assertInferenceCredentialActive,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 
@@ -241,7 +245,7 @@ export type InferenceAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" }
+  | { kind: "warming"; hydration?: Promise<unknown> }
   | { kind: "slow_path"; reason: "non_api_key" };
 
 /**
@@ -513,6 +517,21 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = cached.kind;
       trace.cacheBackend = cached.backend;
       if (cached.kind === "hit") {
+        try {
+          await assertInferenceCredentialActive(cached.ctx.orgId, {
+            kind: "api_key",
+            credentialId: cached.ctx.apiKeyId,
+            userId: cached.ctx.userId,
+          });
+        } catch (error) {
+          if (error instanceof InferenceCredentialRevokedError) {
+            trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+            return error.reason === "credential_revoked"
+              ? { kind: "rejected", status: 401 }
+              : { kind: "suspended", userId: cached.ctx.userId };
+          }
+          throw error;
+        }
         const usageUpdate = apiKeysService
           .incrementUsageDebounced(cached.ctx.apiKeyId)
           .catch((error) => {
@@ -552,6 +571,7 @@ export async function resolveInferenceAuthContext(
       if (cacheAvailable && options.executionCtx) {
         const hydration = getOrCreateApiKeyHydration(req, keyHash, options.traceId);
         options.executionCtx.waitUntil(hydration);
+        return { kind: "warming", hydration };
       }
       return { kind: "warming" };
     }
@@ -619,6 +639,21 @@ export async function resolveInferenceAuthContext(
       appScopeId,
       ...(admission ? { admission } : {}),
     };
+    try {
+      await assertInferenceCredentialActive(ctx.orgId, {
+        kind: "api_key",
+        credentialId: ctx.apiKeyId,
+        userId: ctx.userId,
+      });
+    } catch (error) {
+      if (error instanceof InferenceCredentialRevokedError) {
+        trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+        return error.reason === "credential_revoked"
+          ? { kind: "rejected", status: 401 }
+          : { kind: "suspended", userId: ctx.userId };
+      }
+      throw error;
+    }
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
     const cacheWriteStartedAt = performance.now();

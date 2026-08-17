@@ -13,6 +13,8 @@ describe('Smithers worker script', () => {
     expect(source).toContain("kind: 'agent-request'");
     expect(source).toContain('onProgress');
     expect(source).toContain('Invalid elizaOS model response');
+    expect(source).not.toContain('supportsNativeStructuredOutput');
+    expect(source).not.toContain('Boolean(args.outputSchema)');
     expect(source).not.toContain('catch {}');
     expect(source).not.toContain('@smithers-orchestrator');
     expect(source).not.toContain('Gateway');

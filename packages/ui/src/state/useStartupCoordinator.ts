@@ -18,6 +18,7 @@ import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
+import { getBootConfig } from "../config/boot-config-store";
 import { enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot } from "../first-run/device-ram-gate";
 import { reconcilePersistedMobileRuntimeModeAtBoot } from "../first-run/reconcile-mobile-runtime-mode";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
@@ -144,7 +145,11 @@ export interface StartupCoordinatorHandle {
 }
 
 function detectPlatformPolicy(): PlatformPolicy {
-  if (isElectrobunRuntime()) return createDesktopPolicy();
+  if (isElectrobunRuntime()) {
+    return createDesktopPolicy({
+      cloudOnly: getBootConfig().branding.cloudOnly === true,
+    });
+  }
   // ElizaOS check must come before the generic mobile branch — both are
   // native, but ElizaOS bundles the on-device agent and needs the longer
   // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).

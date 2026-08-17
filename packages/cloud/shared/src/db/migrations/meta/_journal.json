@@ -1464,6 +1464,188 @@
       "when": 1787774400000,
       "tag": "0209_identity_link_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1787860800000,
+      "tag": "0210_shared_agent_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1787860800001,
+      "tag": "0211_shared_turn_traces",
+      "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1787860800002,
+      "tag": "0212_twilio_personal_agent_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1787860800003,
+      "tag": "0213_auto_top_up_organization_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1787860800004,
+      "tag": "0214_backfill_auto_top_up_organization_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1787860800005,
+      "tag": "0215_auto_top_up_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1787860800006,
+      "tag": "0216_auto_top_up_cutover_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1787860800007,
+      "tag": "0217_guard_auto_top_up_cutover_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1787947200000,
+      "tag": "0218_agent_backup_catalog_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1788033600000,
+      "tag": "0219_agent_backup_catalog_legacy_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1788120000000,
+      "tag": "0220_agent_backup_catalog_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1788206400000,
+      "tag": "0221_agent_backup_catalog_ownership_fks",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1788292800000,
+      "tag": "0222_agent_backup_catalog_identity_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1788379200000,
+      "tag": "0223_agent_backup_catalog_runtime_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1788465600000,
+      "tag": "0224_agent_backup_catalog_manifest_v2_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1788552000000,
+      "tag": "0225_agent_backup_catalog_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1788638400000,
+      "tag": "0226_agent_backup_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1788724800000,
+      "tag": "0227_agent_backup_gc_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1788811200000,
+      "tag": "0228_agent_backup_catalog_tenant_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1788897600000,
+      "tag": "0229_agent_backup_catalog_chain_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1788984000000,
+      "tag": "0230_agent_backup_activation_authority_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1789070400000,
+      "tag": "0231_agent_backup_docker_source_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1789156800000,
+      "tag": "0232_agent_backup_catalog_source_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1789243200000,
+      "tag": "0233_agent_backup_catalog_manifest_v3_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1789329600000,
+      "tag": "0234_agent_backup_catalog_manifest_v3_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1789416000000,
+      "tag": "0235_agent_backup_rpo_scheduler",
+      "breakpoints": true
     }
   ]
 }

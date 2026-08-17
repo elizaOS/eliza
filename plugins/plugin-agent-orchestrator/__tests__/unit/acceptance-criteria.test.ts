@@ -1,16 +1,7 @@
 /**
- * Default acceptance-criteria generation (#8896).
- *
- * The auto goal-verifier only grills tasks that carry acceptance criteria, so a
- * criteria-free "fix this bug" task historically skipped verification entirely.
- * {@link generateDefaultAcceptanceCriteria} closes that gap by minting 3-5
- * measurable criteria from the goal. These tests pin:
- *
- *  - the static (model-free) path always returns ≥3 criteria,
- *  - coding / app-build / view-create / deploy produce DISTINCT sets,
- *  - {@link detectTaskType} classifies sample goals correctly,
- *  - the model path is defensive: a throwing / malformed / stingy model falls
- *    back to the static template, never throws.
+ * Exercises acceptance-criteria generation for durable orchestrator tasks.
+ * The suite covers task classification, static template distinctions, and
+ * defensive fallback when model refinement is unavailable or malformed.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -40,7 +31,7 @@ describe("detectTaskType", () => {
     );
     expect(detectTaskType("refactor the auth module")).toBe("coding");
     // A bare "app"/"application" is coding, NOT an app-build — it must not pull
-    // in the app-build-only "the live URL returns HTTP 200" criterion.
+    // in the app-build-only live-URL criterion.
     expect(detectTaskType("refactor the app's state store")).toBe("coding");
     expect(detectTaskType("fix the application startup crash")).toBe("coding");
   });
@@ -118,7 +109,7 @@ describe("staticAcceptanceCriteria", () => {
     expect(appBuild).not.toEqual(viewCreate);
 
     // app-build is the coding superset plus the live-URL check.
-    expect(appBuild).toEqual([...coding, "the live URL returns HTTP 200"]);
+    expect(appBuild).toEqual([...coding, "the live URL is reachable"]);
     // view-create is its own distinct set (no overlap with coding's checks).
     expect(viewCreate.some((c) => coding.includes(c))).toBe(false);
   });

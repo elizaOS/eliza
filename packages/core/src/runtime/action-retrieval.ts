@@ -296,6 +296,26 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TRIP_SAVINGS_PLAN: ["OWNER_GOALS"],
 	SEARCH_CHATS: ["MESSAGE"],
 	SEARCH_CHAT: ["MESSAGE"],
+	// OWNER_<VERB>_<NOUN> permutations: the registered owner umbrellas are
+	// noun-first (OWNER_TODOS, promoted OWNER_TODOS_DELETE), but Stage-1
+	// routinely inverts to verb-first ("actually delete it" one turn after a
+	// todo create emitted candidate OWNER_DELETE_TODO, live trajectory
+	// tj-85d166dc4710f0 — it resolved to nothing, the candidate narrow
+	// collapsed the surface to VIEWS, and the planner invented an undeclared
+	// "delete-todo" view capability). Same dual-owner hints as the noun-first
+	// entries above.
+	OWNER_ADD_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_CREATE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_COMPLETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_GOAL: ["OWNER_GOALS"],
+	OWNER_CREATE_GOAL: ["OWNER_GOALS"],
+	OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
+	OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
 	// Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
 	// merged PR on develop, search for it" emitted candidate SEARCH, live
 	// trajectory tj-df4f61ac001a27). It resolved to nothing, the candidate
@@ -307,6 +327,39 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SEARCH_ONLINE: ["WEB_SEARCH"],
 	INTERNET_SEARCH: ["WEB_SEARCH"],
 	GOOGLE_SEARCH: ["WEB_SEARCH"],
+	// Contact lookups: stage-1 invents CONTACTS_LOOKUP and similar names for
+	// "who is X in my rolodex", which resolves to nothing — the candidate narrow
+	// then collapsed the surface to PAGE_DELEGATE (saturated-tie rank-1) and the
+	// planner invented a non-existent "CONTACTS_LOOKUP" page capability, failing
+	// the read even though CONTACT (score 1.0) and ENTITY (0.99) were retrieved
+	// (observed live). Hint both the CONTACT CRUD umbrella and the ENTITY graph,
+	// but only for names that unambiguously identify a contact surface. Generic
+	// inventions such as WHO_IS must remain available to public-information
+	// actions, and existing CONTACT similes already cover CRUD names.
+	CONTACTS_LOOKUP: ["CONTACT", "ENTITY"],
+	CONTACT_LOOKUP: ["CONTACT", "ENTITY"],
+	LOOKUP_CONTACT: ["CONTACT", "ENTITY"],
+	FIND_CONTACT: ["CONTACT", "ENTITY"],
+	CONTACT_INFO: ["CONTACT", "ENTITY"],
+	SHOW_CONTACT: ["CONTACT", "ENTITY"],
+	CONTACTS: ["CONTACT", "ENTITY"],
+	ROLODEX: ["CONTACT", "ENTITY"],
+	// Document-read inventions resolve to the DOCUMENT umbrella. Stage-1 (and
+	// the evaluator) routinely invent DOCUMENT_SEARCH / LIST_DOCUMENTS for
+	// "what documents do i have"; without the alias the turn fell through to a
+	// raw DATABASE_QUERY guessing a `documents` table (which failed), observed
+	// live. The DOCUMENT similes are lowercase phrases that never match these
+	// UPPER_SNAKE inventions.
+	DOCUMENT_SEARCH: ["DOCUMENT"],
+	SEARCH_DOCUMENTS: ["DOCUMENT"],
+	SEARCH_DOCUMENT: ["DOCUMENT"],
+	LIST_DOCUMENTS: ["DOCUMENT"],
+	LIST_DOCUMENT: ["DOCUMENT"],
+	READ_DOCUMENT: ["DOCUMENT"],
+	READ_DOCUMENTS: ["DOCUMENT"],
+	DOCUMENTS: ["DOCUMENT"],
+	GET_DOCUMENTS: ["DOCUMENT"],
+	SHOW_DOCUMENTS: ["DOCUMENT"],
 	FIND_MESSAGES: ["MESSAGE"],
 	FIND_MESSAGE: ["MESSAGE"],
 	ARRANGE_VIEWS: ["VIEWS"],
@@ -958,13 +1011,14 @@ function buildCandidatePatterns(candidateActions: string[]): Array<{
 		}
 
 		if (candidateAction.includes("*")) {
-			patterns.push({
-				regex: new RegExp(
-					`^${escapeRegex(normalized).replace(/\\\*/g, ".*")}$`,
-				),
-				namespace: normalized.split("_")[0],
-				score: 0.8,
-			});
+			const wildcardRegex = wildcardCandidateRegex(candidateAction);
+			if (wildcardRegex) {
+				patterns.push({
+					regex: wildcardRegex,
+					namespace: normalized.split("_")[0],
+					score: 0.8,
+				});
+			}
 			continue;
 		}
 
@@ -1332,6 +1386,41 @@ function normalizeTextList(
 
 function escapeRegex(value: string): string {
 	return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
+
+/**
+ * Translates a wildcard candidate hint ("GMAIL_*", "GMAIL_SEND*", "*_DRAFT")
+ * into a matcher over catalog-normalized action names. normalizeActionName
+ * strips the "*" itself, so each literal segment between wildcards is
+ * normalized with the real normalizer and only the star-adjacent separators
+ * the hint actually wrote are re-attached afterward: "GMAIL_*" compiles to
+ * ^GMAIL_.*$ (the children, not bare GMAIL or a GMAILSYNC sibling), while the
+ * separator-less "GMAIL_SEND*" compiles to ^GMAIL_SEND.*$ and keeps matching
+ * the exact name the glob is anchored to (#20467).
+ */
+function wildcardCandidateRegex(candidateAction: string): RegExp | null {
+	const rawSegments = String(candidateAction)
+		.trim()
+		.replace(/\*+/g, "*")
+		.split("*");
+	const lastIndex = rawSegments.length - 1;
+	const parts = rawSegments.map((rawSegment, index) => {
+		const normalized = normalizeActionName(rawSegment);
+		if (!normalized) {
+			// A separator-only segment between wildcards ("A*_*B") still
+			// constrains the match. Overall whitespace was trimmed before splitting,
+			// so a whitespace-only middle segment is also an intentional separator.
+			return index > 0 && index < lastIndex && rawSegment.length > 0 ? "_" : "";
+		}
+		const lead = index > 0 && /^[^A-Za-z0-9]/.test(rawSegment) ? "_" : "";
+		const trail =
+			index < lastIndex && /[^A-Za-z0-9]$/.test(rawSegment) ? "_" : "";
+		return `${lead}${normalized}${trail}`;
+	});
+	if (parts.every((part) => part === "")) {
+		return null;
+	}
+	return new RegExp(`^${parts.map((part) => escapeRegex(part)).join(".*")}$`);
 }
 
 function clampScore(value: number): number {

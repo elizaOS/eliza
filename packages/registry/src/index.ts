@@ -16,6 +16,7 @@ export {
 } from "./loader.ts";
 export {
   assertRegistryEntry,
+  isValidRegistryPackageName,
   validateRegistryEntry,
 } from "./schema.ts";
 export type {

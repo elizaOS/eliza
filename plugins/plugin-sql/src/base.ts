@@ -3021,6 +3021,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
     }
 
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    if (value instanceof Date) {
+      return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+    }
+
     if (typeof value === "object") {
       if (seen.has(value as object)) {
         return null;
@@ -6488,10 +6500,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select()
         .from(roomTable)
         .where(and(...conditions));
-      if (offset) {
+      if (offset != null) {
         query = query.offset(offset) as typeof query;
       }
-      if (limit) {
+      if (limit != null) {
         query = query.limit(limit) as typeof query;
       }
       const result = await query;

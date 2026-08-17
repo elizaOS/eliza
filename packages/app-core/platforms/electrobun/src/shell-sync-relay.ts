@@ -10,7 +10,7 @@ import { logger } from "./logger";
 
 import type { SendToWebview } from "./types";
 
-export const SHELL_SYNC_PROTOCOL_VERSION = "2";
+export const SHELL_SYNC_PROTOCOL_VERSION = "3";
 export const SHELL_AUTHORITY_STATE_MESSAGE = "shellControllerAuthorityState";
 export const SHELL_AUTHORITY_COMMAND_MESSAGE =
   "shellControllerAuthorityCommand";
@@ -293,9 +293,11 @@ export function isShellControllerSnapshot(value: unknown): boolean {
   const model = value.modelStatus;
   return (
     (phase === "booting" ||
+      phase === "needs-auth" ||
       phase === "idle" ||
       phase === "summoned" ||
       phase === "listening" ||
+      phase === "processing" ||
       phase === "responding") &&
     typeof value.responding === "boolean" &&
     (value.turnStatus === null || isRecord(value.turnStatus)) &&

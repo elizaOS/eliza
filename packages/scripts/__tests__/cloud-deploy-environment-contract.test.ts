@@ -21,6 +21,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  if?: string;
   env?: Record<string, string>;
   environment?: string;
   needs?: string | string[];
@@ -39,6 +40,11 @@ interface WorkflowJob {
 }
 
 interface Workflow {
+  concurrency?: {
+    group?: string;
+    "cancel-in-progress"?: boolean;
+    queue?: string;
+  };
   jobs?: Record<string, WorkflowJob>;
 }
 
@@ -59,6 +65,7 @@ function step(workflow: Workflow, jobId: string, name: string): WorkflowStep {
 // `cloud-cf-release.yml` it calls, so the mutation contracts are read there.
 const cloudSource = read(".github/workflows/cloud-cf-release.yml");
 const cloud = parse(".github/workflows/cloud-cf-release.yml");
+const cloudDeploy = parse(".github/workflows/cloud-cf-deploy.yml");
 const cloudApiWranglerSource = read("packages/cloud/api/wrangler.toml");
 const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
@@ -96,6 +103,53 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("records the staging certificate with the upload action digest shape", () => {
+    expect(cloudDeploy.jobs?.["certify-staging-release"]?.if).toContain(
+      "needs.release.outputs.superseded != 'true'",
+    );
+    const record = step(
+      cloudDeploy,
+      "certify-staging-release",
+      "Record certification identity",
+    );
+
+    expect(record.env?.ARTIFACT_DIGEST).toContain(
+      "steps.upload.outputs.artifact-digest",
+    );
+    expect(record.run).toContain('[[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]');
+    const digestVariable = "$" + "{ARTIFACT_DIGEST}";
+    expect(record.run).toContain(`(sha256:${digestVariable})`);
+    expect(record.run).not.toContain(
+      '[[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]',
+    );
+  });
+
+  test("queues apps-worker deploys per environment without per-SHA races", () => {
+    expect(appsWorker.concurrency?.group).toContain("deploy-apps-worker-");
+    expect(appsWorker.concurrency?.group).not.toContain("github.sha");
+    expect(appsWorker.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(appsWorker.concurrency?.queue).toBe("max");
+    const source = step(appsWorker, "deploy", "Resolve exact deploy source");
+    const deploy = step(appsWorker, "deploy", "Deploy and restart apps worker");
+    const health = step(appsWorker, "deploy", "Health check");
+    expect(source.run).toContain("/git/ref/heads/$TARGET_BRANCH");
+    expect(source.run).toContain('echo "sha=$target_sha"');
+    expect(deploy.with?.envs).toContain("TARGET_SHA");
+    expect(deploy.with?.script).toContain("apps-worker-deployed-sha");
+    expect(deploy.with?.script).toContain("skipping redundant queued build");
+    expect(deploy.with?.script).toContain(
+      'deployed_head" = "$TARGET_SHA"',
+    );
+    expect(deploy.with?.script).toContain('origin "$TARGET_SHA"');
+    expect(health.with?.envs).toContain("TARGET_SHA");
+    expect(health.with?.script).toContain(
+      "sudo tee /var/lib/eliza/apps-worker-deployed-sha",
+    );
+    expect(health.with?.script).toContain(
+      'deployed_head" != "$TARGET_SHA"',
+    );
+  });
+
   test("runs genuine Shared Eliza in staging and production", () => {
     const staging = cloudApiWranglerSource.slice(
       cloudApiWranglerSource.indexOf("[env.staging.vars]"),
@@ -107,6 +161,24 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
     expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+  });
+
+  test("enables Shared semantic memory only in the staging prove-out", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    for (const flag of [
+      "SHARED_MEMORY_TABLES_ENABLED",
+      "SHARED_RECALL_ENABLED",
+    ]) {
+      expect(staging).toContain(`${flag} = "true"`);
+      expect(production).not.toContain(flag);
+    }
   });
 
   test("keeps Shared Discord reminder delivery bound across Worker deploys", () => {
@@ -263,6 +335,18 @@ describe("canonical cloud deployment environment contract", () => {
     expect(validate.run).toContain('expected_ref="refs/heads/main"');
     expect(validate.run).toContain('expected_ref="refs/heads/develop"');
     expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+  });
+
+  test("validates quoted Terraform state addresses through the executable parser", () => {
+    const validate = step(
+      infra,
+      "terraform",
+      "Validate credentials and state operation",
+    );
+    expect(validate.run).toContain(
+      'node packages/scripts/validate-terraform-state-address.mjs "$STATE_ADDRESS"',
+    );
+    expect(validate.run).not.toContain('$STATE_ADDRESS" =~');
   });
 
   test("selects the dedicated Pages credential without changing other Terraform roots", () => {
@@ -506,9 +590,11 @@ describe("canonical cloud deployment environment contract", () => {
     ]) {
       expect(outputCheck.run).toContain(`terraform output -json ${output}`);
     }
-    expect(outputCheck.run).toContain("requireProxiedRecords");
-    expect(outputCheck.run).toContain("requireDnsOnlyRecords");
-    expect(outputCheck.run).toContain("requireActivePacks");
+    expect(outputCheck.run).toContain(
+      "validate-terraform-pages-domain-state.mjs",
+    );
+    expect(outputCheck.run).toContain('"$TF_VAR_environment"');
+    expect(outputCheck.run).not.toContain("node -e '");
     expect(infraSource).not.toContain("staging_agent_edge");
     expect(infraSource).not.toContain(
       "CANONICAL_STAGING_AGENT_CERTIFICATE_HOSTS_JSON",
@@ -619,6 +705,25 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of [
+      "ELIZA_APNS_KEY",
+      "ELIZA_APNS_KEY_ID",
+      "ELIZA_APNS_TEAM_ID",
+      "ELIZA_APNS_TOPIC",
+      "ELIZA_APNS_PRODUCTION",
+    ]) {
+      expect(publish.env?.[name]).toBeDefined();
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.ELIZA_APNS_KEY).toContain("secrets.ELIZA_APNS_KEY");
+    expect(publish.env?.ELIZA_APNS_TOPIC).toContain("vars.ELIZA_APNS_TOPIC");
+    expect(publish.env?.ELIZA_APNS_PRODUCTION).toContain(
+      "vars.ELIZA_APNS_PRODUCTION",
+    );
+    expect(publish.run).toContain("verify_apns_binding_candidates");
+    expect(publish.run).toContain("partial existing or configured bindings");
+    expect(publish.run).toContain('ELIZA_APNS_TOPIC" != "ai.elizaos.app');
+    expect(publish.run).toContain('ELIZA_APNS_PRODUCTION" != "0"');
     for (const name of requiredAuthWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name} \\\n`);
@@ -661,6 +766,9 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(inventory?.run).toContain(
       "Missing required Worker secret binding name(s)",
+    );
+    expect(inventory?.run).toContain(
+      "Personal Shared APNs bindings are partial",
     );
     expect(inventory?.run).toContain("values were not read");
   });

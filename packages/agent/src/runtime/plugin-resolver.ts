@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { ElizaError, logger, type Plugin } from "@elizaos/core";
 import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
+  type AppManifestBlock,
   applyAppManifestDefaults,
   filterCandidatesByAppManifest,
   readAppManifest,
@@ -2080,11 +2081,10 @@ export async function resolvePlugins(
   //   - prepopulate config.plugins.entries with default { enabled } flags
   //     (user config still wins; defaults only fill keys the user hasn't set)
   const changes: string[] = [];
+  let appManifest: AppManifestBlock | null = null;
   if (!mobilePlatform) {
     try {
-      const appManifest = await readAppManifest(process.cwd()).catch(
-        () => null,
-      );
+      appManifest = await readAppManifest(process.cwd()).catch(() => null);
       const defaultedEntries = applyAppManifestDefaults(config, appManifest);
       if (defaultedEntries.length > 0) {
         logger.info(
@@ -2140,6 +2140,19 @@ export async function resolvePlugins(
   const pluginsToLoad = collectPluginNames(config, loadReasons);
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  for (const [pluginId, appDefault] of Object.entries(
+    appManifest?.defaults ?? {},
+  )) {
+    if (appDefault.requiredForReady === true) {
+      blockingPluginSet.add(
+        resolvePluginPackageAlias(
+          pluginId.includes("/")
+            ? pluginId
+            : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
+        ),
+      );
+    }
+  }
   const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
 
   // Build a mutable map of install records so we can merge drop-in discoveries

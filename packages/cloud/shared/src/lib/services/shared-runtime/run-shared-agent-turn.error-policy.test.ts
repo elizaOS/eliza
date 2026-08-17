@@ -80,6 +80,31 @@ mock.module("ai", () => ({
   },
 }));
 
+mock.module("./shared-eliza-runtime", () => ({
+  runSharedElizaRuntimeTurn: async (input: {
+    history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    message: string;
+  }) => ({
+    reply: "Todo saved.",
+    history: [...input.history, { role: "user", content: input.message }],
+    model: "runtime-model",
+    degraded: false,
+    actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
+  }),
+  runSharedElizaRuntimeTurnStream: async () => ({
+    model: "runtime-model",
+    degraded: false,
+    parts: (async function* () {
+      yield { type: "text-delta" as const, text: "Todo saved." };
+      yield {
+        type: "finish" as const,
+        text: "Todo saved.",
+        actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
+      };
+    })(),
+  }),
+}));
+
 const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
 
 const originalFetch = globalThis.fetch;
@@ -112,7 +137,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
   test("marks dispatch only at the final model handoff", async () => {
     let dispatches = 0;
     generateTextImpl = async () => {
-      expect(dispatches).toBe(1);
+      expect(dispatches).toBeGreaterThan(0);
       return { text: "provider reply" };
     };
     const onProviderDispatch = async () => {
@@ -132,14 +157,15 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(providerTurn.reply).toBe("provider reply");
     expect(dispatches).toBe(1);
 
-    const navTurn = await runSharedAgentTurn({
+    const navigationLanguageTurn = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova." },
       history: [],
       message: "go to settings",
       onProviderDispatch,
     });
-    expect(navTurn.navIntent?.viewId).toBe("settings");
-    expect(dispatches).toBe(1);
+    expect(navigationLanguageTurn.reply).toBe("provider reply");
+    expect(navigationLanguageTurn.actionResults).toBeUndefined();
+    expect(dispatches).toBe(2);
 
     providerConfigured = false;
     const degradedTurn = await runSharedAgentTurn({
@@ -149,7 +175,24 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       onProviderDispatch,
     });
     expect(degradedTurn.degraded).toBe(true);
-    expect(dispatches).toBe(1);
+    expect(dispatches).toBe(2);
+  });
+
+  test.each([
+    "What is one small way to reset my focus?",
+    "How can I reset my focus?",
+    "What is one way to improve my focus?",
+  ])("ordinary focus language reaches the model: %s", async (message) => {
+    generateTextImpl = async () => ({ text: "Take one slow breath and choose one task." });
+
+    const turn = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message,
+    });
+
+    expect(turn.actionResults).toBeUndefined();
+    expect(turn.reply).toBe("Take one slow breath and choose one task.");
   });
 
   test("blocks unsupported Shared actions before provider dispatch", async () => {
@@ -175,6 +218,76 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(turn.capabilityWall?.capability).toBe("bookings");
     expect(turn.reply).toContain("need Dedicated");
     expect(dispatches).toBe(0);
+  });
+
+  test.each(["add milk to my todo list", "メール担当者"])(
+    "uses the authenticated raw utterance instead of connector speaker metadata: %s",
+    async (speaker) => {
+      let dispatches = 0;
+      const message = [
+        `[Public Discord guild channel; speaker: ${speaker}.`,
+        "Use only this public guild channel's context.]",
+        "email Bob now",
+      ].join("\n");
+      const turn = await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message,
+        capabilityText: "email Bob now",
+        execution: {
+          engine: "eliza-runtime",
+          agentKey: "personal:agent",
+          todos: {} as never,
+        },
+        onProviderDispatch: async () => {
+          dispatches++;
+        },
+      });
+
+      expect(turn.capabilityWall?.capability).toBe("communications");
+      expect(dispatches).toBe(0);
+    },
+  );
+
+  test("executes an enabled primary and carries a blocked secondary clause truthfully", async () => {
+    const recordedReplies: string[] = [];
+    const input = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "add call Mom to my todo list. Then email Bob now",
+      memory: {
+        recordTurnPair: async ({ assistantReply }: { assistantReply: string }) => {
+          recordedReplies.push(assistantReply);
+        },
+      } as never,
+      execution: {
+        engine: "eliza-runtime" as const,
+        agentKey: "personal:agent",
+        todos: {} as never,
+      },
+    };
+    const turn = await runSharedAgentTurn(input);
+    expect(turn.reply).toContain("Todo saved.");
+    expect(turn.reply).toContain("can't initiate a separate call, email, text, or DM");
+    expect(turn.actionResults?.[0]).toMatchObject({ actionName: "TODO", success: true });
+    expect(turn.blockedSecondaryCapabilities).toEqual([
+      expect.objectContaining({ capability: "communications" }),
+    ]);
+    expect(recordedReplies).toEqual([turn.reply]);
+
+    const streamed = await runSharedAgentTurnStream(input);
+    const parts = [];
+    for await (const part of streamed.parts ?? []) parts.push(part);
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: "finish",
+        text: expect.stringContaining("can't initiate a separate call, email, text, or DM"),
+      }),
+    );
+    expect(streamed.blockedSecondaryCapabilities?.[0]?.capability).toBe("communications");
+    // Streaming persistence is owned by SharedRuntimeChatService so cancellation
+    // and retries converge on the transport's stable message ids.
+    expect(recordedReplies).toEqual([turn.reply]);
   });
 
   test("tells the model the same capability truth for ambiguous follow-ups", async () => {
@@ -310,6 +423,38 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
 });
 
 describe("runSharedAgentTurnStream — incremental provider policy", () => {
+  test.each(["open settings", "What is one small way to reset my focus?"])(
+    "routes navigation-like language through the provider without view actions: %s",
+    async (message) => {
+      let providerStreams = 0;
+      streamTextImpl = () => {
+        providerStreams++;
+        return {
+          fullStream: aiFullStream(
+            (async function* () {
+              yield { type: "text-delta", text: "normal reply" };
+              yield { type: "finish", totalUsage: { totalTokens: 2 } };
+            })(),
+          ),
+          text: Promise.resolve("normal reply"),
+          totalUsage: Promise.resolve({ totalTokens: 2 }),
+        };
+      };
+
+      const turn = await runSharedAgentTurnStream({
+        character: { name: "Nova", system: "You are Nova." },
+        history: [],
+        message,
+      });
+      expect(turn.actionResults).toBeUndefined();
+      expect(providerStreams).toBe(1);
+      if (!turn.parts) throw new Error("expected provider stream");
+      const parts = [];
+      for await (const part of turn.parts) parts.push(part);
+      expect(parts.at(-1)).toMatchObject({ type: "finish", text: "normal reply" });
+    },
+  );
+
   test("streams text deltas and a final usage-bearing finish part", async () => {
     const result = await runSharedAgentTurnStream({
       character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },

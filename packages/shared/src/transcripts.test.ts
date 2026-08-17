@@ -429,4 +429,21 @@ describe("validateAsrWordTimings", () => {
     const words: TranscriptWord[] = [{ text: "a", startMs: 0, endMs: 9_999 }];
     expect(validateAsrWordTimings(words).ok).toBe(true);
   });
+
+  it("rejects invalid duration and tolerance instead of disabling checks", () => {
+    const words: TranscriptWord[] = [{ text: "a", startMs: 0, endMs: 1200 }];
+
+    expect(() => validateAsrWordTimings(words, -1)).toThrow(
+      /audioDurationMs must be a non-negative finite number/,
+    );
+    expect(() => validateAsrWordTimings(words, Number.NaN)).toThrow(
+      /audioDurationMs must be a non-negative finite number/,
+    );
+    expect(() => validateAsrWordTimings(words, 1000, -1)).toThrow(
+      /toleranceMs must be a non-negative finite number/,
+    );
+    expect(() =>
+      validateAsrWordTimings(words, 1000, Number.POSITIVE_INFINITY),
+    ).toThrow(/toleranceMs must be a non-negative finite number/);
+  });
 });

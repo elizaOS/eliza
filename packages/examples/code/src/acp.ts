@@ -24,6 +24,13 @@
  * @module example-code/acp
  */
 
+// FIRST import: captures this process's executable-search authority before any
+// runtime/plugin module body can mutate process.env. Without it the sub-agent's
+// baseline stays empty, plugin-coding-tools resolves ZERO authority
+// directories, and every SHELL command (builtins included) dies with exit -1
+// "No boot-authorized shell was detected" — the exact live failure observed in
+// spawned eliza-code sessions on 2026-08-16 while FILE tools kept working.
+import "./host-baseline.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AgentRuntime } from "@elizaos/core";

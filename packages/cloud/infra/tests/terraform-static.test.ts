@@ -400,7 +400,6 @@ describe("Cloudflare Pages domain durability", () => {
       "www.elizacloud.ai",
       "docs.elizacloud.ai",
       "api.elizacloud.ai",
-      "blob.elizacloud.ai",
       "plugins.elizacloud.ai",
       "relay.elizacloud.ai",
       "x402.elizacloud.ai",
@@ -425,11 +424,26 @@ describe("Cloudflare Pages domain durability", () => {
     expect(outputs).toContain('output "redirect_dns"');
   });
 
+  test("relinquishes R2-owned legacy blob DNS without destroying live records", () => {
+    expect(main).not.toContain("legacy_blob = {");
+    expect(stagingExample).not.toContain('"pages/legacy_blob"');
+    expect(productionExample).not.toContain('"pages/legacy_blob"');
+    expect(readme).toContain("Cloudflare R2 owns");
+    expect(readme).toContain("`blob.elizacloud.ai`");
+    expect(readme).toContain("`blob-staging.elizacloud.ai`");
+    expect(readme).toContain("operators must leave both live records in R2");
+    expect(readme).toContain("`operation=state-rm`");
+    expect(readme).toContain('`cloudflare_dns_record.pages["legacy_blob"]`');
+    expect(workflow).toContain('terraform state rm "$STATE_ADDRESS"');
+  });
+
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("options: [plan, apply, state-rm]");
     expect(workflow).toContain("terraform apply -no-color -input=false");
-    expect(workflow).toContain('entry.status !== "active"');
+    expect(workflow).toContain(
+      'canonical.certificate_packs?.[key]?.status !== "active"',
+    );
     expect(workflow).toContain(
       "TF_VAR_railway_tunnel_dns_records: $" +
         "{{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}",
@@ -442,8 +456,18 @@ describe("Cloudflare Pages domain durability", () => {
     );
     expect(workflow).toContain("allowEmpty || Object.keys(value).length > 0");
     expect(workflow).toContain("terraform output -json railway_tunnel_dns");
-    expect(workflow).toContain("record.proxied !== false");
-    expect(workflow).toContain("record.roles?.includes(role)");
+    // The record-shape checks moved from inline workflow script into the
+    // dedicated validator the workflow invokes after apply.
+    expect(workflow).toContain("validate-terraform-pages-domain-state.mjs");
+    const validator = readFileSync(
+      join(
+        import.meta.dir,
+        "../../../../packages/scripts/validate-terraform-pages-domain-state.mjs",
+      ),
+      "utf-8",
+    );
+    expect(validator).toContain("record?.proxied !== false");
+    expect(validator).toContain("record?.roles?.includes(role)");
     expect(workflow).toContain("--require-beacon");
     expect(workflow).not.toContain("bun install");
     expect(workflow).not.toContain("push:");

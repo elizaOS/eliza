@@ -222,4 +222,21 @@ describe("GET /api/my-agents/characters — sort and pagination", () => {
       hasMore: false,
     });
   });
+
+  test("malformed pagination falls back without capping valid page numbers", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const malformed = await listCharacters("?page=abc&limit=5junk");
+    expect(malformed.data.pagination).toMatchObject({ page: 1, limit: 30 });
+
+    const highPage = await listCharacters("?page=10001&limit=2");
+    expect(highPage.data.characters).toEqual([]);
+    expect(highPage.data.pagination).toMatchObject({
+      page: 10_001,
+      limit: 2,
+      totalCount: 3,
+      totalPages: 2,
+      hasMore: false,
+    });
+  });
 });

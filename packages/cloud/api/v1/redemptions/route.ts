@@ -19,6 +19,7 @@ import {
   REDEMPTION_ORIGIN_VERIFICATION_ERROR,
   secureTokenRedemptionService,
 } from "@/lib/services/token-redemption-secure";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -239,7 +240,7 @@ app.get("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const limitParam = c.req.query("limit");
-    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 20;
+    const limit = parseClampedLimit(limitParam, 20);
 
     const redemptions = await secureTokenRedemptionService.listUserRedemptions(
       user.id,

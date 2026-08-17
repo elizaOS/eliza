@@ -18,6 +18,10 @@ import type {
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
+import { decodePathComponent } from "./server-helpers.ts";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -66,13 +70,32 @@ export function parseRelationshipsQueryInteger(
   return parsed;
 }
 
+const RELATIONSHIPS_SCOPE_ERROR = "scope must be one of: all, relevant";
+
+/**
+ * Parse the relationships-graph `scope` query. Omitted/empty keeps the
+ * historical unfiltered graph (same as `all`). Exact `relevant` / `all`
+ * select that slice. Any other token used to fall through to unfiltered,
+ * so `scope=RELEVANT` silently showed everyone.
+ */
+export function parseRelationshipsScope(
+  raw: string | null,
+):
+  | { ok: true; scope: "relevant" | "all" | undefined }
+  | { ok: false; message: string } {
+  if (raw === null || raw === "") return { ok: true, scope: undefined };
+  if (raw === "relevant" || raw === "all") {
+    return { ok: true, scope: raw };
+  }
+  return { ok: false, message: RELATIONSHIPS_SCOPE_ERROR };
+}
+
 export function parseRelationshipsQuery(
   reqUrl: string | undefined,
 ): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
-  const scopeParam = url.searchParams.get("scope");
-  const scope =
-    scopeParam === "relevant" || scopeParam === "all" ? scopeParam : undefined;
+  const parsedScope = parseRelationshipsScope(url.searchParams.get("scope"));
+  const scope = parsedScope.ok ? parsedScope.scope : undefined;
 
   return {
     search: url.searchParams.get("search"),
@@ -172,6 +195,19 @@ export async function handleRelationshipsRoutes(
     return false;
   }
 
+  if (
+    method === "GET" &&
+    (pathname === "/api/relationships/graph" ||
+      pathname === "/api/relationships/people")
+  ) {
+    const url = new URL(req.url ?? pathname, "http://localhost");
+    const parsedScope = parseRelationshipsScope(url.searchParams.get("scope"));
+    if (!parsedScope.ok) {
+      error(res, parsedScope.message, 400);
+      return true;
+    }
+  }
+
   const relationshipsGraph = await getRelationshipsGraphService(runtime);
   if (!relationshipsGraph) {
     error(
@@ -196,9 +232,14 @@ export async function handleRelationshipsRoutes(
       const action = pathname.endsWith("/accept") ? "accept" : "reject";
       const idStart = "/api/relationships/candidates/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
-      if (!candidateId) {
-        error(res, "Missing merge candidate id.", 400);
+      const candidateId = decodePathComponent(
+        pathname.slice(idStart, idEnd),
+        res,
+        "merge candidate id",
+      );
+      if (candidateId === null) return true;
+      if (!UUID_REGEX.test(candidateId)) {
+        error(res, "Invalid merge candidate id.", 400);
         return true;
       }
       if (action === "accept") {
@@ -213,9 +254,14 @@ export async function handleRelationshipsRoutes(
     if (isPersonLinkRoute) {
       const idStart = "/api/relationships/people/".length;
       const idEnd = pathname.lastIndexOf("/");
-      const sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
-      if (!sourceEntityId) {
-        error(res, "Missing source entity id.", 400);
+      const sourceEntityId = decodePathComponent(
+        pathname.slice(idStart, idEnd),
+        res,
+        "source entity id",
+      );
+      if (sourceEntityId === null) return true;
+      if (!UUID_REGEX.test(sourceEntityId)) {
+        error(res, "Invalid source entity id.", 400);
         return true;
       }
       const rawLink = await readJsonBody<Record<string, unknown>>(req, res);
@@ -415,11 +461,14 @@ export async function handleRelationshipsRoutes(
     return true;
   }
 
-  const primaryEntityId = decodeURIComponent(
+  const primaryEntityId = decodePathComponent(
     pathname.slice("/api/relationships/people/".length),
+    res,
+    "relationships person identifier",
   );
-  if (!primaryEntityId) {
-    error(res, "Missing relationships person identifier.", 400);
+  if (primaryEntityId === null) return true;
+  if (!UUID_REGEX.test(primaryEntityId)) {
+    error(res, "Invalid relationships person identifier.", 400);
     return true;
   }
 

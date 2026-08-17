@@ -16,7 +16,10 @@
  */
 
 import {
+  buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
+  generateStewardOAuthState,
   hasStewardAuthedCookie,
+  peekStewardOAuthState,
   readStoredStewardToken,
   StewardSessionError,
   writeStoredStewardToken,
@@ -28,7 +31,15 @@ import type {
 } from "@stwd/sdk";
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import { AlertCircle, Phone } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Navigate,
   useLocation,
@@ -60,8 +71,8 @@ import {
   startStewardEmailLogin,
   verifyStewardEmailSignInCode,
 } from "../../lib/steward-email-login";
+import { subscribeStewardEmailLoginComplete } from "../../lib/steward-email-login-complete";
 import {
-  buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
@@ -73,6 +84,7 @@ import {
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
+  recoverStewardEmailSessionViaCookie,
   recoverStewardSessionViaCookie,
   refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
@@ -110,6 +122,7 @@ type AuthStep =
   | "email-sent"
   | "sms-code"
   | "otp-entry"
+  | "external-success"
   | "success";
 type EmailCheckState =
   | "pending"
@@ -125,6 +138,34 @@ function persistStewardToken(token: string): void {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+}
+
+/**
+ * `?token=` / `?refreshToken=` query links are not honored (a plain GET link
+ * must never plant a session — only the `#hash` legacy path remains). Strip
+ * them, plus the consumed OAuth `state` echo, from the address bar
+ * immediately so no credential lingers in history, copy/paste, or the reach
+ * of third-party scripts booting with the page. Returns true when anything
+ * was stripped.
+ */
+function stripLegacyTokenParamsFromAddressBar(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  let stripped = false;
+  for (const key of ["token", "refreshToken", "state"] as const) {
+    if (params.has(key)) {
+      params.delete(key);
+      stripped = true;
+    }
+  }
+  if (!stripped) return false;
+  const query = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+  );
+  return true;
 }
 
 type Provider =
@@ -267,7 +308,6 @@ function getCallbackReasonMessage(
 
 const AUTH_CODE_RESEND_COOLDOWN_MS = 30_000;
 const EMAIL_STATUS_POLL_MS = 3_000;
-
 function sanitizeOneTimeCode(value: string): string {
   return value.replace(/[^0-9]/g, "").slice(0, 6);
 }
@@ -478,6 +518,21 @@ export default function StewardLoginSection() {
   const walletOptionsRegionRef = useRef<HTMLDivElement>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [externalSuccessDestination, setExternalSuccessDestination] = useState<
+    string | null
+  >(null);
+  // The one in-flight shared-session recovery, keyed by the challenged email
+  // and owning its own AbortController. Keying prevents an abandoned email-A
+  // challenge's recovery from being handed to a later email-B challenge; the
+  // owned controller lets challenge replacement/cancel abort the network work.
+  const sharedSessionRecoveryRef = useRef<
+    | {
+        email: string;
+        controller: AbortController;
+        promise: ReturnType<typeof recoverStewardEmailSessionViaCookie>;
+      }
+    | undefined
+  >(undefined);
   // Detected once, synchronously, BEFORE the callback-consuming effect below
   // strips `?code`/`#token` from the URL. While this is true the section shows a
   // terminal "completing sign-in" state instead of re-rendering the provider
@@ -512,6 +567,52 @@ export default function StewardLoginSection() {
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
+
+  const abortSharedEmailSessionRecovery = useCallback(() => {
+    const pending = sharedSessionRecoveryRef.current;
+    if (!pending) return;
+    sharedSessionRecoveryRef.current = undefined;
+    pending.controller.abort();
+  }, []);
+
+  const recoverSharedEmailSession = useCallback(() => {
+    const expected = email.trim().toLowerCase();
+    const pending = sharedSessionRecoveryRef.current;
+    if (pending?.email === expected && !pending.controller.signal.aborted) {
+      return pending.promise;
+    }
+    // A recovery still pending for a different (abandoned) challenge must
+    // never satisfy the current one — replace it with a freshly keyed run.
+    pending?.controller.abort();
+
+    const controller = new AbortController();
+    const promise = recoverStewardEmailSessionViaCookie(email, {
+      signal: controller.signal,
+    })
+      .then((session) => (controller.signal.aborted ? null : session))
+      .finally(() => {
+        if (sharedSessionRecoveryRef.current?.controller === controller) {
+          sharedSessionRecoveryRef.current = undefined;
+        }
+      });
+    sharedSessionRecoveryRef.current = { email: expected, controller, promise };
+    return promise;
+  }, [email]);
+
+  // Challenge lifecycle owns the recovery: leaving the email-sent step,
+  // switching emails, replacing the challenge (resend), or unmounting aborts
+  // the in-flight recovery instead of letting it linger for a later challenge.
+  const activeEmailChallengeKey =
+    step === "email-sent"
+      ? `${email.trim().toLowerCase()}|${emailChallenge?.challengeId ?? ""}`
+      : null;
+  useEffect(() => {
+    if (activeEmailChallengeKey === null) {
+      abortSharedEmailSessionRecovery();
+      return;
+    }
+    return () => abortSharedEmailSessionRecovery();
+  }, [abortSharedEmailSessionRecovery, activeEmailChallengeKey]);
 
   useEffect(() => {
     const recoverOAuthIntentAfterHistoryRestore = (
@@ -596,7 +697,37 @@ export default function StewardLoginSection() {
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
     if (code) {
-      const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
+      // The OAuth `state` echo must exactly match the value stashed at
+      // /authorize time, and the PKCE verifier must still be in storage. A
+      // callback missing either is a planted or stale link: refusing the
+      // exchange is what stops a harvested `?code=` from logging this browser
+      // into the attacker's account. The verifier is consumed ONLY when the
+      // state matches, so the user's own in-flight flow survives clicking a
+      // foreign link.
+      const returnedState = searchParams.get("state");
+      const expectedState = peekStewardOAuthState();
+      if (!returnedState || !expectedState || returnedState !== expectedState) {
+        stripLegacyTokenParamsFromAddressBar();
+        setCompletingCallback(false);
+        setCallbackError(
+          t("cloud.login.callbackStateMismatch", {
+            defaultValue:
+              "This sign-in link is invalid or has expired. Please start sign-in again.",
+          }),
+        );
+        return;
+      }
+      const codeVerifier = consumeStewardPkceVerifier();
+      if (!codeVerifier) {
+        setCompletingCallback(false);
+        setCallbackError(
+          t("cloud.login.callbackVerifierMissing", {
+            defaultValue:
+              "This sign-in was started in another tab or has expired. Please start sign-in again.",
+          }),
+        );
+        return;
+      }
       exchangeStewardCodeViaApi(code, {
         redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
         tenantId: STEWARD_TENANT_ID,
@@ -628,12 +759,18 @@ export default function StewardLoginSection() {
       return;
     }
 
+    // No OAuth code: drop any legacy query-token link from the address bar
+    // (never consumed), then honor only the `#hash` legacy path.
+    stripLegacyTokenParamsFromAddressBar();
     const fromHash = consumeStewardTokensFromHash();
-    const queryToken = searchParams.get("token");
-    const queryRefreshToken = searchParams.get("refreshToken");
-    const token = fromHash?.token ?? queryToken;
-    const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
-    if (!token) return;
+    const token = fromHash?.token;
+    const refreshToken = fromHash?.refreshToken ?? null;
+    if (!token) {
+      // A stripped `?token=` link (or no callback at all) must not hold the
+      // terminal "completing sign-in" state — render the sign-in options.
+      setCompletingCallback(false);
+      return;
+    }
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
@@ -653,7 +790,6 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("code")) return;
-    if (searchParams.get("token")) return;
     if (searchParams.get("error")) return;
 
     let cancelled = false;
@@ -746,6 +882,40 @@ export default function StewardLoginSection() {
         );
         if (cancelled) return;
         const mapped = mapChallengeStatus(status);
+        if (mapped === "approved") {
+          try {
+            const recovered = await recoverSharedEmailSession();
+            if (cancelled) return;
+            if (recovered) {
+              if (recovered.token) {
+                persistStewardToken(recovered.token);
+                window.dispatchEvent(new CustomEvent("steward-token-sync"));
+              }
+              setExternalSuccessDestination(resolveLoginReturnTo(searchParams));
+              setEmailCheckState("approved");
+              setError(null);
+              setStep("external-success");
+            } else {
+              setEmailCheckState("approved");
+              setError(
+                "The link was used, but this tab could not restore the shared session. Continue in the tab that opened the link or request a fresh email.",
+              );
+            }
+          } catch (sessionError) {
+            // error-policy:J4 a consumed challenge without a recoverable shared
+            // session remains visibly nonterminal and offers resend recovery.
+            if (!cancelled) {
+              setEmailCheckState("approved");
+              setError(
+                getErrorMessage(
+                  sessionError,
+                  "The link was used, but this tab could not restore the shared session.",
+                ),
+              );
+            }
+          }
+          return;
+        }
         setEmailCheckState(mapped);
         if (mapped !== "pending") return;
       } catch (pollError) {
@@ -768,7 +938,58 @@ export default function StewardLoginSection() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [emailChallenge, emailCheckState, step, stewardApiUrl]);
+  }, [
+    emailChallenge,
+    emailCheckState,
+    recoverSharedEmailSession,
+    searchParams,
+    step,
+    stewardApiUrl,
+  ]);
+
+  useEffect(() => {
+    if (step !== "email-sent" || !email.trim()) return;
+    let cancelled = false;
+    const unsubscribe = subscribeStewardEmailLoginComplete(email, (message) => {
+      void (async () => {
+        try {
+          const recovered = await recoverSharedEmailSession();
+          if (cancelled) return;
+          if (!recovered) {
+            setEmailCheckState("approved");
+            setError(
+              "Sign-in finished elsewhere, but this tab could not restore the shared session. Continue in the other tab or request a fresh email.",
+            );
+            return;
+          }
+          if (recovered.token) {
+            persistStewardToken(recovered.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          }
+          setExternalSuccessDestination(message.destination);
+          setEmailCheckState("approved");
+          setError(null);
+          setStep("external-success");
+        } catch (sessionError) {
+          // error-policy:J4 the advisory signal cannot create a signed-in UI;
+          // failed authoritative recovery stays visible with resend available.
+          if (!cancelled) {
+            setEmailCheckState("approved");
+            setError(
+              getErrorMessage(
+                sessionError,
+                "Sign-in finished elsewhere, but this tab could not restore the shared session.",
+              ),
+            );
+          }
+        }
+      })();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [email, recoverSharedEmailSession, step]);
 
   useEffect(() => {
     const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;
@@ -1078,9 +1299,14 @@ export default function StewardLoginSection() {
       ? "https://staging.eliza.app"
       : window.location.origin;
     let codeChallenge: string;
+    let state: string;
     try {
       const pkce = await createStewardPkcePair();
-      if (!storeStewardPkceVerifier(pkce.verifier)) {
+      state = generateStewardOAuthState();
+      // Verifier and state are stashed together: the callback requires the
+      // `?state=` echo to match AND the verifier to survive, so a harvested
+      // callback URL cannot be replayed in another browser.
+      if (!storeStewardPkceVerifier(pkce.verifier, state)) {
         setError(
           "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
         );
@@ -1094,11 +1320,16 @@ export default function StewardLoginSection() {
       return;
     }
     storePendingOAuthReturnTo(searchParams);
-    const authorizeUrl = buildStewardOAuthAuthorizeUrl(provider, oauthOrigin, {
-      stewardApiUrl,
-      stewardTenantId: STEWARD_TENANT_ID,
-      codeChallenge,
-    });
+    const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
+      provider,
+      buildStewardOAuthRedirectUri(oauthOrigin),
+      {
+        stewardApiUrl,
+        stewardTenantId: STEWARD_TENANT_ID,
+        codeChallenge,
+        state,
+      },
+    );
     window.location.href = authorizeUrl;
   }
 
@@ -1262,6 +1493,43 @@ export default function StewardLoginSection() {
     );
   }
 
+  if (step === "external-success") {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="status"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent">
+            <EmailIcon />
+          </div>
+          <p className="text-base font-semibold text-txt-strong">
+            {t("cloud.login.emailStatus.signedIn", {
+              defaultValue: "Signed in",
+            })}
+          </p>
+          <p className="text-sm text-muted">
+            {t("cloud.login.emailStatus.signedInElsewhere", {
+              defaultValue:
+                "Sign-in finished in another tab. You can continue here or close this tab.",
+            })}
+          </p>
+          <Button
+            type="button"
+            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover"
+            onClick={() =>
+              setRedirectTo(
+                externalSuccessDestination ??
+                  resolveLoginReturnTo(searchParams),
+              )
+            }
+          >
+            {t("cloud.emailCallback.continue", { defaultValue: "Continue" })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
+    );
+  }
   if (step === "email-sent") {
     const hasCompanionCode = Boolean(
       emailChallenge?.challengeId && emailChallenge.pollSecret,

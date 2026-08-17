@@ -26,9 +26,11 @@ documentation.
 `www.eliza.app` is attached to the same project so the Pages middleware can
 issue its canonical redirect. Legacy names are intentionally **not** Pages
 custom domains. Their proxied DNS exists only to enter the `elizacloud.ai`
-Worker routes, which return deterministic 308 redirects. The exact inventory
-includes the retired `docs.elizacloud.ai` host, legacy browser names, and the
-legacy API/blob/plugin/x402 names.
+Worker routes, which return deterministic 308 redirects. The exact Terraform
+inventory includes the retired `docs.elizacloud.ai` host, legacy browser names,
+and the legacy API/plugin/relay/x402 names. Cloudflare R2 owns
+`blob.elizacloud.ai` and `blob-staging.elizacloud.ai`; this root must not modify
+or delete those provider-generated custom-domain records.
 
 ## Wildcard TLS
 
@@ -118,6 +120,14 @@ Omit a key only when the corresponding DNS record genuinely does not exist.
 The examples under `tfvars/` enumerate the exact resource keys. An omitted live
 record will make Cloudflare reject the create; it must not be worked around by
 deleting DNS before state adoption.
+
+The legacy blob custom domains are the deliberate exception to the Pages DNS
+inventory. R2 generates those records and rejects DNS API edits. Before the
+first plan with this ownership boundary, dispatch the protected Infrastructure
+workflow once per environment with `operation=state-rm` and the exact address
+`cloudflare_dns_record.pages["legacy_blob"]`. That removes only Terraform state;
+operators must leave both live records in R2 and omit `pages/legacy_blob` from
+new import inventories.
 
 Canonical Pages bindings use deterministic configuration-driven imports of the
 form `<account-id>/eliza-app/<domain>`. The cutover therefore attaches the

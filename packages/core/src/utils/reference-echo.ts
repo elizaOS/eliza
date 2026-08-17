@@ -17,10 +17,12 @@ export function describeUserReference(
 	reference: string,
 	fallback: string,
 ): string {
-	const trimmed = reference.trim();
+	const safeRef = typeof reference === "string" ? reference : "";
+	const safeFallback = typeof fallback === "string" ? fallback : "target";
+	const trimmed = safeRef.trim();
 	const nameShaped =
 		trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
-	return nameShaped ? `"${trimmed}"` : fallback;
+	return nameShaped ? `"${trimmed}"` : safeFallback;
 }
 
 /**
@@ -29,6 +31,7 @@ export function describeUserReference(
  * one line, clamped to 120 chars with a trailing ellipsis.
  */
 export function userReferenceLogView(reference: string): string {
-	const collapsed = reference.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+	const safeRef = typeof reference === "string" ? reference : "";
+	const collapsed = safeRef.replace(/\s+/g, " ").trim();
+	return collapsed.length > 120 ? `${collapsed.slice(0, 119)}…` : collapsed;
 }

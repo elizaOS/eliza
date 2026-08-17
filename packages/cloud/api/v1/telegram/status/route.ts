@@ -19,12 +19,31 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    // Telegram debug-probe identity, not leftover Life Ops inbox bool
+    // tax. The prior `=== "true"` mapped TRUE / 1 / yes onto "omit
+    // webhook info", so operators asking for getWebhookInfo received
+    // status without the probe. Missing / empty / exact false still
+    // skip the probe. Garbage 400s before getConnectionStatus.
+    const requestedWebhook = c.req.query("webhook");
+    if (
+      requestedWebhook != null &&
+      requestedWebhook !== "" &&
+      requestedWebhook !== "true" &&
+      requestedWebhook !== "false"
+    ) {
+      return c.json(
+        {
+          error: "invalid_webhook",
+          message: 'webhook must be "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeWebhookInfo = requestedWebhook === "true";
+
     const status = await telegramAutomationService.getConnectionStatus(
       user.organization_id,
     );
-
-    // Optionally include webhook info for debugging
-    const includeWebhookInfo = c.req.query("webhook") === "true";
 
     let webhookInfo: {
       url?: string;

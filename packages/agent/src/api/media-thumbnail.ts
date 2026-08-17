@@ -17,6 +17,82 @@ import { logger } from "@elizaos/core";
 const THUMBNAIL_MAX_DIM = 512;
 const THUMBNAILABLE_MIME = /^image\/(png|jpe?g)$/i;
 
+/**
+ * Decode-time safety bounds. The pure-JS codecs allocate `width*height*4`
+ * bytes of RGBA with no guard of their own, and the upload validator caps only
+ * the *compressed* size — a tiny solid-color PNG can declare dimensions whose
+ * decode would allocate gigabytes and take the process down. Dimensions are
+ * read from the container header and rejected before any decode runs.
+ */
+const MAX_DECODE_EDGE_PX = 8192;
+const MAX_DECODE_PIXELS = 16_777_216; // 16 Mi px → ≤64 MiB RGBA
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+/** Dimensions from the PNG signature + IHDR header (BE u32 at bytes 16/20). */
+function readPngDimensions(source: Buffer): ImageDimensions | null {
+  if (source.length < 24) return null;
+  if (source.readUInt32BE(0) !== 0x89504e47) return null;
+  if (source.readUInt32BE(4) !== 0x0d0a1a0a) return null;
+  if (source.toString("ascii", 12, 16) !== "IHDR") return null;
+  return { width: source.readUInt32BE(16), height: source.readUInt32BE(20) };
+}
+
+/**
+ * Dimensions from the first JPEG SOFn segment. Walks the marker stream from
+ * the SOI: every segment is `FF <marker> <u16 length>` except the standalone
+ * markers (SOI/RSTn/TEM) that carry no length.
+ */
+function readJpegDimensions(source: Buffer): ImageDimensions | null {
+  if (source.length < 4 || source[0] !== 0xff || source[1] !== 0xd8) {
+    return null;
+  }
+  let offset = 2;
+  while (offset + 4 <= source.length) {
+    if (source[offset] !== 0xff) return null;
+    const marker = source[offset + 1];
+    if (
+      marker === 0xd8 ||
+      marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7)
+    ) {
+      offset += 2;
+      continue;
+    }
+    const segmentLength = source.readUInt16BE(offset + 2);
+    if (segmentLength < 2 || offset + 2 + segmentLength > source.length) {
+      return null;
+    }
+    // SOF0–SOF15 carry the frame dimensions; exclude DHT (C4), JPG (C8), DAC (CC).
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      marker !== 0xc4 &&
+      marker !== 0xc8 &&
+      marker !== 0xcc
+    ) {
+      if (segmentLength < 7) return null;
+      return {
+        height: source.readUInt16BE(offset + 5),
+        width: source.readUInt16BE(offset + 7),
+      };
+    }
+    offset += 2 + segmentLength;
+  }
+  return null;
+}
+
+/** True when the declared dimensions stay within the decode-time bounds. */
+function withinDecodeBounds(dimensions: ImageDimensions): boolean {
+  const { width, height } = dimensions;
+  if (width <= 0 || height <= 0) return false;
+  if (width > MAX_DECODE_EDGE_PX || height > MAX_DECODE_EDGE_PX) return false;
+  return width * height <= MAX_DECODE_PIXELS;
+}
+
 const PNGJS_MODULE_ID = "pngjs";
 const JPEGJS_MODULE_ID = "jpeg-js";
 
@@ -110,8 +186,9 @@ function downscaleRGBA(
 
 /**
  * Downscale a PNG/JPEG buffer to a ≤512px JPEG thumbnail. Returns null when the
- * input isn't a supported raster, is already within bounds, the codecs are
- * unavailable, or decoding fails.
+ * input isn't a supported raster, is already within bounds, declares dimensions
+ * beyond the decode-time safety bounds, the codecs are unavailable, or decoding
+ * fails.
  */
 export async function generateThumbnailBytes(
   source: Buffer,
@@ -122,6 +199,13 @@ export async function generateThumbnailBytes(
   if (!loaded) return null;
   try {
     const isPng = /png/i.test(srcMimeType);
+    // Bound the decode before the codecs allocate width*height*4 bytes: a
+    // compressed input under the upload size cap can still declare bomb
+    // dimensions. Unparseable headers fail closed — decode would fail anyway.
+    const dimensions = isPng
+      ? readPngDimensions(source)
+      : readJpegDimensions(source);
+    if (!dimensions || !withinDecodeBounds(dimensions)) return null;
     const decoded: RawImage = isPng
       ? loaded.png.sync.read(source)
       : loaded.jpeg.decode(source, { useTArray: true, formatAsRGBA: true });

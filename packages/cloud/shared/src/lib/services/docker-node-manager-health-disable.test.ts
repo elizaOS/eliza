@@ -26,12 +26,16 @@ const realNodeDisk = { ...realNodeDiskNs };
 const repoCalls = {
   updateStatus: [] as Array<{ nodeId: string; status: string }>,
   markOfflineAndDisable: [] as string[],
-  setHostKeyFingerprint: [] as Array<{ nodeId: string; fingerprint: string }>,
+  rotateNodeHostKeyFingerprint: [] as Array<Record<string, unknown>>,
+  attestNodeIncarnation: [] as Array<Record<string, unknown>>,
+  invalidateNodeIncarnation: [] as Array<Record<string, unknown>>,
 };
+let invalidateNodeIncarnationError: Error | null = null;
 
 const sshMock = {
   connect: mock(),
   exec: mock(),
+  getVerifiedHostKeyFingerprint: mock(),
 };
 
 mock.module("../../db/repositories/docker-nodes", () => ({
@@ -44,9 +48,20 @@ mock.module("../../db/repositories/docker-nodes", () => ({
       repoCalls.markOfflineAndDisable.push(nodeId);
       return Promise.resolve();
     },
-    setHostKeyFingerprint: (nodeId: string, fingerprint: string) => {
-      repoCalls.setHostKeyFingerprint.push({ nodeId, fingerprint });
-      return Promise.resolve();
+    rotateNodeHostKeyFingerprint: (input: Record<string, unknown>) => {
+      repoCalls.rotateNodeHostKeyFingerprint.push(input);
+      return Promise.resolve({ host_key_fingerprint: input.observedFingerprint });
+    },
+    setEmbeddingSidecarHealth: () => Promise.resolve(),
+    attestNodeIncarnation: (input: Record<string, unknown>) => {
+      repoCalls.attestNodeIncarnation.push(input);
+      return Promise.resolve({});
+    },
+    invalidateNodeIncarnation: (input: Record<string, unknown>) => {
+      repoCalls.invalidateNodeIncarnation.push(input);
+      return invalidateNodeIncarnationError
+        ? Promise.reject(invalidateNodeIncarnationError)
+        : Promise.resolve({});
     },
   },
 }));
@@ -90,6 +105,10 @@ function node(nodeId: string): DockerNode {
     // Canonical (operator-managed) node: no autoscaler metadata. This is exactly
     // the class the old code refused to ever mark offline.
     host_key_fingerprint: "SHA256:test",
+    fleet_kind: null,
+    infrastructure_provider: null,
+    provider_server_id: null,
+    node_incarnation: null,
     metadata: {},
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     updated_at: new Date("2026-01-01T00:00:00.000Z"),
@@ -117,9 +136,13 @@ beforeEach(() => {
   __resetNodeHealthFailureStateForTests();
   repoCalls.updateStatus = [];
   repoCalls.markOfflineAndDisable = [];
-  repoCalls.setHostKeyFingerprint = [];
+  repoCalls.rotateNodeHostKeyFingerprint = [];
+  repoCalls.attestNodeIncarnation = [];
+  repoCalls.invalidateNodeIncarnation = [];
+  invalidateNodeIncarnationError = null;
   sshMock.connect.mockReset();
   sshMock.exec.mockReset();
+  sshMock.getVerifiedHostKeyFingerprint.mockReset();
 });
 
 describe("healthCheckNode auto-disable on repeated failure", () => {
@@ -174,5 +197,162 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
     }
     await manager.healthCheckNode(target);
     expect(repoCalls.markOfflineAndDisable).toEqual(["flapping-node"]);
+  });
+
+  test("attests a typed node boot and invalidates malformed observations without hiding health", async () => {
+    const manager = DockerNodeManager.getInstance();
+    const target = {
+      ...node("typed-cloud-node"),
+      id: "00000000-0000-4000-8000-000000000201",
+      fleet_kind: "cloud" as const,
+      infrastructure_provider: "hetzner" as const,
+      provider_server_id: "4242",
+      node_incarnation: "00000000-0000-4000-8000-000000000211",
+    };
+    const observed = "00000000-0000-4000-8000-000000000212";
+    sshMock.connect.mockResolvedValue(undefined);
+    sshMock.exec.mockImplementation((command: string) => {
+      if (command === "cat /proc/sys/kernel/random/boot_id") return Promise.resolve(observed);
+      if (command.includes("embedding")) return Promise.resolve("running");
+      return Promise.resolve("DOCKER-ID-123");
+    });
+
+    await expect(manager.healthCheckNode(target)).resolves.toBe("healthy");
+    expect(repoCalls.attestNodeIncarnation).toEqual([
+      {
+        id: target.id,
+        nodeId: target.node_id,
+        expectedIncarnation: target.node_incarnation,
+        expectedHostKeyFingerprint: target.host_key_fingerprint,
+        observedIncarnation: observed,
+      },
+    ]);
+    expect(repoCalls.invalidateNodeIncarnation).toHaveLength(0);
+
+    repoCalls.attestNodeIncarnation = [];
+    sshMock.exec.mockImplementation((command: string) => {
+      if (command === "cat /proc/sys/kernel/random/boot_id") {
+        return Promise.resolve("not-a-boot-id");
+      }
+      if (command.includes("embedding")) return Promise.resolve("running");
+      return Promise.resolve("DOCKER-ID-123");
+    });
+    await expect(manager.healthCheckNode(target)).resolves.toBe("healthy");
+    expect(repoCalls.attestNodeIncarnation).toHaveLength(0);
+    expect(repoCalls.invalidateNodeIncarnation).toEqual([
+      {
+        id: target.id,
+        nodeId: target.node_id,
+        expectedIncarnation: target.node_incarnation,
+        expectedHostKeyFingerprint: target.host_key_fingerprint,
+      },
+    ]);
+  });
+
+  test("pins a first Cloud host key before publishing its initial boot authority", async () => {
+    const manager = DockerNodeManager.getInstance();
+    const target = {
+      ...node("new-cloud-node"),
+      id: "00000000-0000-4000-8000-000000000221",
+      host_key_fingerprint: null,
+      fleet_kind: "cloud" as const,
+      infrastructure_provider: "hetzner" as const,
+      provider_server_id: "4343",
+      node_incarnation: null,
+    };
+    const observed = "00000000-0000-4000-8000-000000000222";
+    sshMock.connect.mockResolvedValue(undefined);
+    sshMock.getVerifiedHostKeyFingerprint.mockReturnValue("first-cloud-pin");
+    sshMock.exec.mockImplementation((command: string) => {
+      if (command === "cat /proc/sys/kernel/random/boot_id") return Promise.resolve(observed);
+      if (command.includes("embedding")) return Promise.resolve("running");
+      return Promise.resolve("DOCKER-ID-123");
+    });
+
+    await expect(manager.healthCheckNode(target)).resolves.toBe("healthy");
+    expect(repoCalls.rotateNodeHostKeyFingerprint).toEqual([
+      {
+        id: target.id,
+        nodeId: target.node_id,
+        expectedFingerprint: null,
+        observedFingerprint: "first-cloud-pin",
+      },
+    ]);
+    expect(repoCalls.attestNodeIncarnation).toEqual([
+      {
+        id: target.id,
+        nodeId: target.node_id,
+        expectedIncarnation: null,
+        expectedHostKeyFingerprint: "first-cloud-pin",
+        observedIncarnation: observed,
+      },
+    ]);
+  });
+
+  test("never reports healthy when stale boot authority cannot be revoked", async () => {
+    const manager = DockerNodeManager.getInstance();
+    const target = {
+      ...node("revocation-failure-node"),
+      id: "00000000-0000-4000-8000-000000000231",
+      fleet_kind: "cloud" as const,
+      infrastructure_provider: "hetzner" as const,
+      provider_server_id: "4444",
+      node_incarnation: "00000000-0000-4000-8000-000000000232",
+    };
+    invalidateNodeIncarnationError = new Error("primary write unavailable");
+    sshMock.connect.mockResolvedValue(undefined);
+    sshMock.exec.mockImplementation((command: string) => {
+      if (command === "cat /proc/sys/kernel/random/boot_id") {
+        return Promise.resolve("malformed-boot-id");
+      }
+      return Promise.resolve("DOCKER-ID-123");
+    });
+
+    await expect(manager.healthCheckNode(target)).resolves.toBe("offline");
+    expect(repoCalls.invalidateNodeIncarnation).toHaveLength(3);
+    expect(repoCalls.updateStatus).toContainEqual({
+      nodeId: target.node_id,
+      status: "offline",
+    });
+    expect(repoCalls.updateStatus).not.toContainEqual({
+      nodeId: target.node_id,
+      status: "healthy",
+    });
+  });
+
+  test("revokes a typed boot when SSH fails before Docker or Docker returns no identity", async () => {
+    const manager = DockerNodeManager.getInstance();
+    const target = {
+      ...node("unverifiable-source-node"),
+      id: "00000000-0000-4000-8000-000000000241",
+      fleet_kind: "cloud" as const,
+      infrastructure_provider: "hetzner" as const,
+      provider_server_id: "4545",
+      node_incarnation: "00000000-0000-4000-8000-000000000242",
+    };
+    const expectedRevocation = {
+      id: target.id,
+      nodeId: target.node_id,
+      expectedIncarnation: target.node_incarnation,
+      expectedHostKeyFingerprint: target.host_key_fingerprint,
+    };
+
+    sshMock.connect.mockRejectedValue(new Error("host key mismatch"));
+    await expect(manager.healthCheckNode(target)).resolves.toBe("offline");
+    expect(repoCalls.invalidateNodeIncarnation).toEqual([
+      expectedRevocation,
+      expectedRevocation,
+      expectedRevocation,
+    ]);
+
+    repoCalls.invalidateNodeIncarnation = [];
+    sshMock.connect.mockResolvedValue(undefined);
+    sshMock.exec.mockResolvedValue("");
+    await expect(manager.healthCheckNode(target)).resolves.toBe("degraded");
+    expect(repoCalls.invalidateNodeIncarnation).toEqual([
+      expectedRevocation,
+      expectedRevocation,
+      expectedRevocation,
+    ]);
   });
 });

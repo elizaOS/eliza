@@ -546,6 +546,7 @@ async function connectSession(opts: {
   semanticEotMergeWindowMs?: number;
   semanticEotMaxHoldMs?: number;
   voiceProgressSpokenThresholdMs?: number;
+  sttPendingFrameLimit?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   openingPrompt?: string;
@@ -626,6 +627,9 @@ async function connectSession(opts: {
               voiceProgressSpokenThresholdMs:
                 opts.voiceProgressSpokenThresholdMs,
             }
+          : {}),
+        ...(opts.sttPendingFrameLimit !== undefined
+          ? { sttPendingFrameLimit: opts.sttPendingFrameLimit }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -3976,7 +3980,7 @@ describe("voice-session WS lifecycle", () => {
     expect(replacement!.sentChunks).toHaveLength(1);
   });
 
-  test("replacement Ink that never opens consumes the retry budget and fails closed", async () => {
+  test("replacement Ink that never opens keeps the call alive at capped backoff", async () => {
     const client = new FakeClientSocket();
     let first: FakeInkSocket | null = null;
     let stalled: FakeInkSocket | null = null;
@@ -4002,7 +4006,7 @@ describe("voice-session WS lifecycle", () => {
 
     expect(attempts).toBe(2);
     expect(stalled!.closed).toBe(true);
-    expect(client.closedWith).toEqual({ code: 1000, reason: "error" });
+    expect(client.closedWith).toBeNull();
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({
         t: "error",
@@ -4010,6 +4014,57 @@ describe("voice-session WS lifecycle", () => {
         retryable: true,
       }),
     );
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
+  });
+
+  test("Ink downtime rolls the bounded audio queue without ending the call", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let replacement: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      sttConnectTimeoutMs: 1_000,
+      sttPendingFrameLimit: 1,
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        replacement = new FakeInkSocket({ autoOpen: false });
+        return replacement;
+      },
+    });
+
+    first!.close(1006, "provider gone");
+    await flush();
+    const oldAudio = new Uint8Array(3_200).fill(1);
+    const newestAudio = new Uint8Array(3_200).fill(2);
+    client.clientSend(oldAudio);
+    await flush();
+    client.clientSend(newestAudio);
+    await flush();
+
+    expect(client.closedWith).toBeNull();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "provider_unavailable",
+        retryable: true,
+      }),
+    );
+    replacement!.emitOpen();
+    await flush();
+    expect(replacement!.sentChunks).toHaveLength(1);
+    expect(new Uint8Array(replacement!.sentChunks[0] as ArrayBuffer)[0]).toBe(
+      2,
+    );
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
   });
 
   test("a replacement that opens cancels its connection timeout", async () => {
@@ -4048,7 +4103,7 @@ describe("voice-session WS lifecycle", () => {
     );
   });
 
-  test("Ink reconnect exhaustion fails the call closed", async () => {
+  test("Ink reconnect exhaustion keeps the call alive at capped backoff", async () => {
     const client = new FakeClientSocket();
     let first: FakeInkSocket | null = null;
     let attempts = 0;
@@ -4069,10 +4124,16 @@ describe("voice-session WS lifecycle", () => {
     await flush();
 
     expect(attempts).toBe(2);
-    expect(client.closedWith).toEqual({ code: 1000, reason: "error" });
+    expect(client.closedWith).toBeNull();
     expect(client.controlFrames).toContainEqual(
-      expect.objectContaining({ t: "error", code: "error", retryable: true }),
+      expect.objectContaining({
+        t: "error",
+        code: "stt_reconnecting",
+        retryable: true,
+      }),
     );
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
   });
 
   test("hello-first is enforced: a binary frame before hello closes the socket", async () => {

@@ -1,3 +1,9 @@
+/**
+ * Bridges iOS device, permission, Screen Time, notification, and health state
+ * into the Capacitor MobileSignals contract. Protected HealthKit APIs remain
+ * unreachable unless the canonical native build marker explicitly enables
+ * the capability.
+ */
 import Foundation
 import Capacitor
 import HealthKit
@@ -39,6 +45,24 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     private var observers: [NSObjectProtocol] = []
     private let healthStore = HKHealthStore()
     private let healthQueue = DispatchQueue(label: "ai.eliza.mobile-signals.health", qos: .utility)
+    private lazy var healthEntitlementAccess = HealthEntitlementGate.resolve(
+        plistValue: Bundle.main.object(
+            forInfoDictionaryKey: HealthEntitlementGate.infoPlistKey
+        )
+    )
+
+    private var healthUnavailableReason: String? {
+        if let reason = healthEntitlementAccess.unavailableReason {
+            return reason
+        }
+        return HKHealthStore.isHealthDataAvailable()
+            ? nil
+            : "HealthKit is not available on this device."
+    }
+
+    private var healthKitAvailable: Bool {
+        healthUnavailableReason == nil
+    }
 
     public override func load() {
         UIDevice.current.isBatteryMonitoringEnabled = true
@@ -108,6 +132,17 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let shouldRequestScreenTime = target != "health"
+        if let unavailableReason = healthUnavailableReason {
+            resolvePermissionResult(
+                call,
+                status: "not-applicable",
+                canRequest: false,
+                reason: unavailableReason,
+                requestScreenTime: shouldRequestScreenTime
+            )
+            return
+        }
+
         let types = requestedHealthTypes()
         guard !types.isEmpty else {
             resolvePermissionResult(
@@ -154,16 +189,12 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     /// background delivery is not user-actionable; the foreground monitoring
     /// path already works. We log and move on.
     ///
-    /// Entitlement probe: iOS exposes no public API to read the running
-    /// binary's code-signing entitlements, so the first sample type doubles as
-    /// the capability probe. When the binary is not signed with
-    /// `com.apple.developer.healthkit` (simulator lanes built with code
-    /// signing disabled, sideload/dev builds signed without the capability)
-    /// EVERY call fails identically with "Missing
-    /// com.apple.developer.healthkit entitlement" — so the probe failing that
-    /// way means the remaining registrations are skipped behind a single info
-    /// line instead of one warning per type.
+    /// The canonical native build marker blocks this entire path for builds
+    /// that do not carry HealthKit. The first sample remains a defensive probe
+    /// for a signed-build mismatch, so one entitlement diagnostic replaces a
+    /// warning for every sample type.
     private func enableHealthBackgroundDelivery() {
+        guard healthEntitlementAccess.allowsHealthKitCalls else { return }
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let sampleTypes = backgroundDeliverySampleTypes()
         guard let probeType = sampleTypes.first else { return }
@@ -457,7 +488,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         notification: NotificationPermissionCapture
     ) -> [String: Any] {
         let screenTimeStatus = ScreenTimeSupport.buildStatus()
-        guard HKHealthStore.isHealthDataAvailable() else {
+        if let unavailableReason = healthUnavailableReason {
             return [
                 "status": overrideStatus ?? "not-applicable",
                 "canRequest": overrideCanRequest ?? false,
@@ -465,7 +496,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "settingsTarget": "app",
                 "engine": "healthkit-screen-time",
                 "capabilities": mobileSignalsCapabilities(),
-                "reason": overrideReason ?? "HealthKit is not available on this device.",
+                "reason": overrideReason ?? unavailableReason,
                 "permissions": [
                     "sleep": false,
                     "biometrics": false,
@@ -474,6 +505,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "setupActions": buildSetupActions(
                     healthStatus: overrideStatus ?? "not-applicable",
                     healthCanRequest: overrideCanRequest ?? false,
+                    healthUnavailableReason: unavailableReason,
                     screenTimeStatus: screenTimeStatus,
                     notification: notification
                 ),
@@ -520,6 +552,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "setupActions": buildSetupActions(
                 healthStatus: status,
                 healthCanRequest: overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
+                healthUnavailableReason: nil,
                 screenTimeStatus: screenTimeStatus,
                 notification: notification
             ),
@@ -532,7 +565,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func mobileSignalsCapabilities() -> [String: Any] {
         [
-            "health": HKHealthStore.isHealthDataAvailable(),
+            "health": healthKitAvailable,
             "screenTime": true,
             "notifications": true,
             "settings": true,
@@ -594,10 +627,15 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     private func buildSetupActions(
         healthStatus: String,
         healthCanRequest: Bool,
+        healthUnavailableReason: String?,
         screenTimeStatus: [String: Any],
         notification: NotificationPermissionCapture
     ) -> [[String: Any]] {
         let healthReady = healthStatus == "granted"
+        let healthAvailableInBuild = healthUnavailableReason == nil
+        let healthSettingsTarget: Any = healthAvailableInBuild
+            ? "health"
+            : NSNull()
         let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
         let screenTimeAuthStatus = authorization["status"] as? String ?? "unavailable"
         let screenTimeCanRequest = authorization["canRequest"] as? Bool ?? false
@@ -613,12 +651,12 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "status": healthReady
                     ? "ready"
                     : (healthStatus == "not-applicable" ? "unavailable" : "needs-action"),
-                "canRequest": healthCanRequest,
-                "canOpenSettings": true,
-                "settingsTarget": "health",
+                "canRequest": healthAvailableInBuild && healthCanRequest,
+                "canOpenSettings": healthAvailableInBuild,
+                "settingsTarget": healthSettingsTarget,
                 "reason": healthReady
                     ? NSNull()
-                    : "Grant Health read access for sleep, heart rate, HRV, respiratory rate, and oxygen saturation.",
+                    : (healthUnavailableReason ?? "Grant Health read access for sleep, heart rate, HRV, respiratory rate, and oxygen saturation."),
             ],
             [
                 "id": "screen_time_authorization",
@@ -734,7 +772,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         reason: String,
         completion: @escaping ([String: Any]) -> Void
     ) {
-        guard HKHealthStore.isHealthDataAvailable() else {
+        if let unavailableReason = healthUnavailableReason {
             completion(makeHealthSnapshot(
                 reason: reason,
                 capture: HealthCapture(
@@ -757,7 +795,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                         "respiratoryRate": NSNull(),
                         "bloodOxygenPercent": NSNull(),
                     ],
-                    warnings: ["HealthKit is not available on this device"]
+                    warnings: [unavailableReason]
                 )
             ))
             return

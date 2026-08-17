@@ -125,6 +125,19 @@ describe("formatTimestamp (verbose)", () => {
 const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
 describe("invalid and unrepresentable timestamps", () => {
+	it("fails closed to 'just now' for non-number inputs", () => {
+		expect(formatRelativeTime(null as unknown as number)).toBe("just now");
+		expect(formatRelativeTime(undefined as unknown as number)).toBe("just now");
+		expect(formatRelativeTime(false as unknown as number)).toBe("just now");
+		expect(formatRelativeTime(true as unknown as number)).toBe("just now");
+		expect(formatRelativeTime([] as unknown as number)).toBe("just now");
+		expect(formatRelativeTime({} as unknown as number)).toBe("just now");
+		expect(formatTimestamp(null as unknown as number)).toBe("just now");
+		expect(formatTimestamp(undefined as unknown as number)).toBe("just now");
+		expect(formatTimestamp(false as unknown as number)).toBe("just now");
+		expect(formatTimestamp(true as unknown as number)).toBe("just now");
+	});
+
 	it("fails closed to 'just now' for non-finite inputs", () => {
 		expect(formatRelativeTime(Number.NaN)).toBe("just now");
 		expect(formatRelativeTime(Number.POSITIVE_INFINITY)).toBe("just now");

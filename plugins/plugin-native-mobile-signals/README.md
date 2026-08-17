@@ -70,6 +70,15 @@ await MobileSignals.stopMonitoring();
 
 ### iOS
 
+HealthKit is disabled by default in local, unsigned, and Simulator builds. A
+signed build that includes the HealthKit capability must set the exact build
+flag `ELIZA_IOS_HEALTHKIT_ENABLED=1` and provide its profile through
+`MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE`; the canonical mobile build verifies
+the app binding and required entitlements before writing the matching
+`ELIZA_HEALTHKIT_ENABLED=1` marker into the final app `Info.plist`.
+Any missing, disabled, or malformed marker fails closed before the plugin calls
+HealthKit authorization, status, query, or background-delivery APIs.
+
 Add to `Info.plist`:
 
 ```xml
@@ -108,13 +117,13 @@ await MobileSignals.openSettings({ target: "usageAccess" });
 
 | Variable | Description |
 |---|---|
-| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | Path to a `.mobileprovision` to inspect for Screen Time entitlements during `validate:ios-screen-time`. |
+| `ELIZA_IOS_HEALTHKIT_ENABLED` | Exact `"1"` enables HealthKit only after the canonical build verifies the app's provisioning profile; missing, empty, or `"0"` keeps it unavailable. Any other value fails the build. |
+| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | Required when HealthKit is enabled; also inspected for Screen Time entitlements during `validate:ios-screen-time`. |
 | `MOBILE_SIGNALS_REQUIRE_IOS_PROVISIONING_PROFILE` | Set to `"1"` to fail validation when no provisioning profile is supplied. |
 
 ## Platform notes
 
 - **Node (desktop):** No native integration. The web fallback applies.
-- **iOS:** Full support. Requires Xcode target with correct entitlements for screen time features.
+- **iOS:** HealthKit is available only in an explicitly enabled, correctly signed build. Screen Time requires its separately approved entitlements and targets.
 - **Android:** Full support for device state and Health Connect. Usage stats require manual user grant via settings.
 - **Web:** Graceful fallback only. Health and screen-time capabilities are unavailable.
-

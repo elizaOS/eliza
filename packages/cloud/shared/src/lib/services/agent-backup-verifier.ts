@@ -49,7 +49,7 @@
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
   isEncryptedAgentBackupStateData,
@@ -140,6 +140,31 @@ function requireVerificationAgentId(row: StoredAgentSandboxBackup): string {
     });
   }
   return agentId;
+}
+
+/**
+ * The legacy verifier understands only inline/offloaded v1 state payloads.
+ * Catalogue-v2 rows store an intentionally empty legacy projection while
+ * their authoritative encrypted chunks are verified by the catalogue lane.
+ */
+function backupUsesLegacyVerificationContract(
+  row: Pick<StoredAgentSandboxBackup, "catalog_version" | "catalog_state">,
+): boolean {
+  return (
+    (row.catalog_version === null || row.catalog_version === 1) &&
+    (row.catalog_state === null || row.catalog_state === "legacy_unmigrated")
+  );
+}
+
+/** SQL equivalent of `backupUsesLegacyVerificationContract` for reads and stamp CASes. */
+function legacyBackupVerificationPredicate(): SQL {
+  return and(
+    or(isNull(agentSandboxBackups.catalog_version), eq(agentSandboxBackups.catalog_version, 1)),
+    or(
+      isNull(agentSandboxBackups.catalog_state),
+      eq(agentSandboxBackups.catalog_state, "legacy_unmigrated"),
+    ),
+  ) as SQL;
 }
 
 const DEFAULT_BATCH_SIZE = 10;
@@ -687,14 +712,20 @@ export async function verifyBackupRestorability(
   row: StoredAgentSandboxBackup,
   opts: { budget?: DecryptBudget } = {},
 ): Promise<BackupVerificationResult> {
-  const budget =
-    opts.budget ?? createDecryptBudget(readBackupVerifierConfig().maxDecryptBytesPerCycle);
   const checks = { decrypted: false, contentHashChecked: false, manifestChecked: false };
   const fail = (failure: BackupVerificationFailure): BackupVerificationResult => ({
     ok: false,
     failure,
     checks,
   });
+  if (!backupUsesLegacyVerificationContract(row)) {
+    return fail({
+      kind: "invalid-payload",
+      message: "catalogue-managed backup requires the catalogue verification lane",
+    });
+  }
+  const budget =
+    opts.budget ?? createDecryptBudget(readBackupVerifierConfig().maxDecryptBytesPerCycle);
 
   const resolved = await resolveStoredPayload(row);
   if ("failure" in resolved) return fail(resolved.failure);
@@ -873,9 +904,12 @@ export async function runBackupVerificationCycle(
     .selectDistinctOn([verificationAgentId])
     .from(agentSandboxBackups)
     .where(
-      or(
-        isNotNull(agentSandboxBackups.sandbox_record_id),
-        isNotNull(agentSandboxBackups.recovery_agent_id),
+      and(
+        or(
+          isNotNull(agentSandboxBackups.sandbox_record_id),
+          isNotNull(agentSandboxBackups.recovery_agent_id),
+        ),
+        legacyBackupVerificationPredicate(),
       ),
     )
     .orderBy(verificationAgentId, desc(agentSandboxBackups.created_at))
@@ -906,7 +940,7 @@ export async function runBackupVerificationCycle(
         verified_at: now,
         verification_error: formatInfraError(streak, message),
       })
-      .where(eq(agentSandboxBackups.id, row.id));
+      .where(and(eq(agentSandboxBackups.id, row.id), legacyBackupVerificationPredicate()));
     if (streak >= config.erroredAlertStreak) {
       await alert({
         title: `agent backup verification has errored ${streak} consecutive attempts`,
@@ -996,7 +1030,7 @@ export async function runBackupVerificationCycle(
           ? null
           : `${result.failure?.kind}: ${result.failure?.message}`,
       })
-      .where(eq(agentSandboxBackups.id, row.id));
+      .where(and(eq(agentSandboxBackups.id, row.id), legacyBackupVerificationPredicate()));
 
     if (result.ok) {
       summary.verified += 1;

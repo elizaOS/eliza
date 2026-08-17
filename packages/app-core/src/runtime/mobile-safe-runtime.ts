@@ -8,8 +8,11 @@
  * preference-ordered selection, a capability broker with a stable
  * request/response envelope, a mobile-safe virtual file system (in-memory impl
  * with quotas, snapshots, diff, and rollback, plus an adapter over the agent
- * VFS), and the safe-JS applet compile/load/run pipeline whose sandbox denies
- * imports, eval, shell, and other host escapes. Types-and-pure-functions only —
+ * VFS), and the safe-JS applet compile/load tooling. Applet EXECUTION never
+ * happens in-process: same-realm evaluation is not a security boundary, so the
+ * in-process provider refuses to run code and any real execution must go
+ * through a boundary-attached isolate (iOS JavaScriptCore/QuickJS, Android
+ * AVF/isolated-process). Types-and-pure-functions only —
  * no device APIs are called here.
  */
 import { formatError } from "@elizaos/shared";
@@ -537,9 +540,16 @@ export function createIosQuickJsProvider(
   };
 }
 
-export function createInProcessSafeJsAppletProvider(
-  options: { now?: () => number } = {},
-): MobileSafeRuntimeProvider {
+/**
+ * Compile/load-only applet tooling. Evaluation is refused outright: a
+ * same-realm `new Function` runner shares the host's globalThis no matter how
+ * the bundle source is pre-filtered (shadowed globals are recoverable, and
+ * source-text regexes cannot reliably reject dynamic import), so in-process
+ * execution must never run applet bundles — generated or untrusted code would
+ * gain full host privileges. Real execution belongs to a boundary-attached
+ * isolate provider (iOS JavaScriptCore/QuickJS, Android AVF/isolated-process).
+ */
+export function createInProcessSafeJsAppletProvider(): MobileSafeRuntimeProvider {
   return {
     kind: "safe-js-applet",
     displayName: "In-process safe JS applet",
@@ -607,52 +617,15 @@ export function createInProcessSafeJsAppletProvider(
           };
         }
 
-        const logs: string[] = [];
-        const bundle =
-          input.mode === "run-app" && input.files && input.applet?.manifestPath
-            ? (
-                await loadMobileSafeApplet({
-                  files: input.files,
-                  manifestPath: input.applet.manifestPath,
-                })
-              ).bundle
-            : input.code;
-        assertMobileSafeAppletSource(bundle, "bundle");
-        const api = await createSafeAppletApi({
-          files: input.files,
-          broker: input.broker,
-          env: input.env,
-          logs,
-          now: options.now,
-        });
-        const runner = new Function(
-          "input",
-          "api",
-          "globalThis",
-          "window",
-          "self",
-          "process",
-          "Bun",
-          "Deno",
-          "require",
-          "module",
-          "exports",
-          `"use strict";\n${bundle}\nreturn __mobileSafeApplet(input, api);`,
-        );
-        const value = await runner(
-          input.applet?.input,
-          api,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-        );
-        return { ok: true, value, logs };
+        return {
+          ok: false,
+          error: {
+            code: "MOBILE_SAFE_APPLET_EVAL_DISABLED",
+            message:
+              "In-process applet evaluation is disabled: same-realm JavaScript execution is not a security boundary. Attach an isolate provider (iOS JavaScriptCore/QuickJS, Android AVF/isolated-process) to run applets.",
+            provider: "safe-js-applet",
+          },
+        };
       } catch (error) {
         return {
           ...providerFailure("safe-js-applet", error),
@@ -1605,6 +1578,14 @@ function transformMobileSafeAppletModule(source: string): string {
   return output;
 }
 
+/**
+ * Accident-prevention lint for applet sources — NOT a security boundary.
+ * Source-text regexes are bypassable by construction (string concatenation,
+ * comments, prototype chains), so this only catches honest mistakes in
+ * first-party bundles during compile/load. Containment of untrusted code
+ * requires a real isolate boundary; see the hard failure in
+ * {@link createInProcessSafeJsAppletProvider}.
+ */
 function assertMobileSafeAppletSource(source: string, label: string): void {
   const deniedPatterns: Array<[RegExp, string]> = [
     [/\bimport\s*\(/, "dynamic import"],
@@ -1641,78 +1622,6 @@ function stripMobileSafeTypeScript(source: string): string {
       "",
     )
     .replace(/\s+as\s+const\b/g, "");
-}
-
-async function createSafeAppletApi(options: {
-  files?: MobileSafeVirtualFileSystem;
-  broker?: MobileSafeCapabilityBroker;
-  env?: Record<string, string>;
-  logs: string[];
-  now?: () => number;
-}): Promise<Record<string, unknown>> {
-  const textEncoder = new TextEncoder();
-  const textDecoder = new TextDecoder();
-  return deepFreeze({
-    env: Object.freeze({ ...(options.env ?? {}) }),
-    now: options.now?.() ?? Date.now(),
-    console: Object.freeze({
-      log: (...values: unknown[]) => {
-        options.logs.push(values.map(String).join(" "));
-      },
-      warn: (...values: unknown[]) => {
-        options.logs.push(values.map(String).join(" "));
-      },
-      error: (...values: unknown[]) => {
-        options.logs.push(values.map(String).join(" "));
-      },
-    }),
-    crypto: Object.freeze({
-      randomUUID: () => cryptoRequestId(),
-    }),
-    fs: Object.freeze({
-      readText: async (path: string) => {
-        if (!options.files) throw new Error("Applet VFS is unavailable");
-        return textDecoder.decode(await options.files.readFile(path));
-      },
-      writeText: async (path: string, content: string) => {
-        if (!options.files) throw new Error("Applet VFS is unavailable");
-        await options.files.writeFile(path, textEncoder.encode(content));
-      },
-      list: async (path: string) => {
-        if (!options.files) throw new Error("Applet VFS is unavailable");
-        return options.files.list(path);
-      },
-      stat: async (path: string) => {
-        if (!options.files) throw new Error("Applet VFS is unavailable");
-        return options.files.stat(path);
-      },
-    }),
-    broker: options.broker
-      ? Object.freeze({
-          call: async (request: MobileSafeRuntimeCapabilityRequest) => {
-            if (request.capability === "shell.exec") {
-              return unsupportedCapability(
-                request,
-                "Applet broker calls cannot request shell.exec",
-              );
-            }
-            return options.broker?.call(request);
-          },
-        })
-      : undefined,
-  });
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object") {
-    Object.freeze(value);
-    for (const child of Object.values(value)) {
-      if (child && typeof child === "object" && !Object.isFrozen(child)) {
-        deepFreeze(child);
-      }
-    }
-  }
-  return value;
 }
 
 function mobileSafeStableHash(input: string): string {

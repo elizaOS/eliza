@@ -55,6 +55,9 @@ export function buildFollowerController(
 
   return {
     phase: snapshot.phase,
+    authGate: snapshot.authGate,
+    requestSignIn: () => fire({ kind: "requestSignIn" }),
+    signingIn: snapshot.signingIn,
     bootProgressSignal: snapshot.bootProgressSignal,
     responding: snapshot.responding,
     turnStatus: snapshot.turnStatus,
@@ -81,6 +84,7 @@ export function buildFollowerController(
     startRecording: (intent) =>
       fire({ kind: "startRecording", ...(intent ? { intent } : {}) }),
     stopRecording: () => fire({ kind: "stopRecording" }),
+    cancelRecording: () => fire({ kind: "cancelRecording" }),
     handsFree: snapshot.handsFree,
     toggleHandsFree: () => fire({ kind: "toggleHandsFree" }),
     micPermission: snapshot.micPermission,

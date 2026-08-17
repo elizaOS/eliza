@@ -114,7 +114,10 @@ export class WechatChannel {
 
       // Login flow
       await this.ensureLoggedIn(account.id, client);
-      const webhookUrl = `http://localhost:${account.webhookPort}/webhook/wechat/${account.id}`;
+      // The callback server binds 127.0.0.1; register the literal IPv4
+      // loopback so a same-host proxy never resolves localhost to ::1 and
+      // misses the listener.
+      const webhookUrl = `http://127.0.0.1:${account.webhookPort}/webhook/wechat/${account.id}`;
 
       try {
         await client.registerWebhook(webhookUrl);

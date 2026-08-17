@@ -180,6 +180,8 @@ beforeAll(async () => {
         slug text NOT NULL DEFAULT 'test-org',
         credit_balance numeric(12,6) NOT NULL DEFAULT '0',
         balance_revision bigint NOT NULL DEFAULT 0,
+        balance_decrease_revision bigint NOT NULL DEFAULT 0,
+        auto_top_up_covered_balance_decrease_revision bigint,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,

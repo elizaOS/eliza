@@ -51,9 +51,12 @@ describe("truncateWellFormed", () => {
 		expect(truncateWellFormed(text, 100)).toBe(text);
 	});
 
-	it("returns empty string for non-positive budgets", () => {
+	it("returns empty string for non-positive or non-finite budgets", () => {
 		expect(truncateWellFormed("abc", 0)).toBe("");
 		expect(truncateWellFormed("abc", -1)).toBe("");
+		expect(truncateWellFormed("abc", Number.NaN)).toBe("");
+		expect(truncateWellFormed("abc", Number.POSITIVE_INFINITY)).toBe("");
+		expect(truncateWellFormed("abc", Number.NEGATIVE_INFINITY)).toBe("");
 	});
 
 	it("preserves a pre-existing lone surrogate (sanitizing is not its job)", () => {
@@ -79,9 +82,13 @@ describe("tailWellFormed", () => {
 		}
 	});
 
-	it("returns short input unchanged and empty for non-positive budgets", () => {
+	it("returns short input unchanged and empty for non-positive or non-finite budgets", () => {
 		expect(tailWellFormed("💀", 5)).toBe("💀");
 		expect(tailWellFormed("abc", 0)).toBe("");
+		expect(tailWellFormed("abc", -1)).toBe("");
+		expect(tailWellFormed("abc", Number.NaN)).toBe("");
+		expect(tailWellFormed("abc", Number.POSITIVE_INFINITY)).toBe("");
+		expect(tailWellFormed("abc", Number.NEGATIVE_INFINITY)).toBe("");
 	});
 });
 

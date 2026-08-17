@@ -219,6 +219,10 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
         enabled: true,
         status: "unknown",
         ssh_user: "root",
+        fleet_kind: "cloud",
+        infrastructure_provider: "hetzner",
+        provider_server_id: "4242",
+        node_incarnation: null,
         metadata: expect.objectContaining({
           provider: "hetzner-cloud",
           autoscaled: true,

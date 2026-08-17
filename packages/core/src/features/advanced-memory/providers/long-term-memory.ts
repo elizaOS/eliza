@@ -93,7 +93,7 @@ export const longTermMemoryProvider: Provider = {
 			const formattedMemories = formatLongTermMemories(memories);
 			const trimmedFormattedMemories =
 				formattedMemories.length > MAX_LONG_TERM_MEMORY_TEXT_LENGTH
-					? `${formattedMemories.slice(0, MAX_LONG_TERM_MEMORY_TEXT_LENGTH)}...`
+					? `${formattedMemories.slice(0, MAX_LONG_TERM_MEMORY_TEXT_LENGTH - 3)}...`
 					: formattedMemories;
 			const text = addHeader(
 				"# What I Know About You",

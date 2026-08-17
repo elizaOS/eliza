@@ -15,6 +15,7 @@ import type {
 } from "./types";
 
 import {
+	SKILL_BIN_NAME_PATTERN,
 	SKILL_COMPATIBILITY_MAX_LENGTH,
 	SKILL_DESCRIPTION_MAX_LENGTH,
 	SKILL_NAME_MAX_LENGTH,
@@ -309,6 +310,41 @@ function parseYamlValue(value: string): string | number | boolean | null {
 // ============================================================
 
 /**
+ * Collect invalid binary names declared in Otto metadata.
+ *
+ * `requires.bins` and `install[].bins` entries are passed to `which`/`where`
+ * probes at eligibility-check and dependency-install time, so they must be
+ * bare executable names matching SKILL_BIN_NAME_PATTERN. Anything else
+ * (shell metacharacters, whitespace, path separators, leading dashes,
+ * non-strings) is reported so callers can reject the skill. Shared by
+ * validateFrontmatter and the security scanner.
+ */
+export function findInvalidSkillBinNames(
+	frontmatter: SkillFrontmatter,
+): Array<{ field: string; bin: unknown }> {
+	const invalid: Array<{ field: string; bin: unknown }> = [];
+	const otto = frontmatter.metadata?.otto;
+
+	const check = (field: string, bins: unknown): void => {
+		if (!Array.isArray(bins)) return;
+		for (const bin of bins) {
+			if (typeof bin !== "string" || !SKILL_BIN_NAME_PATTERN.test(bin)) {
+				invalid.push({ field, bin });
+			}
+		}
+	};
+
+	check("metadata.otto.requires.bins", otto?.requires?.bins);
+	if (Array.isArray(otto?.install)) {
+		for (let i = 0; i < otto.install.length; i++) {
+			check(`metadata.otto.install[${i}].bins`, otto.install[i]?.bins);
+		}
+	}
+
+	return invalid;
+}
+
+/**
  * Validate a skill's frontmatter according to the Agent Skills specification.
  */
 export function validateFrontmatter(
@@ -406,6 +442,16 @@ export function validateFrontmatter(
 				code: "COMPATIBILITY_TOO_LONG",
 			});
 		}
+	}
+
+	// Optional: otto bin names reach `which`/`where` probes, so they must be
+	// bare executable names — registry-controlled frontmatter is untrusted.
+	for (const { field, bin } of findInvalidSkillBinNames(frontmatter)) {
+		errors.push({
+			field,
+			message: `invalid binary name ${JSON.stringify(bin)} in ${field}: must contain only letters, digits, and . _ + -, starting with a letter or digit`,
+			code: "INVALID_BIN_NAME",
+		});
 	}
 
 	return {

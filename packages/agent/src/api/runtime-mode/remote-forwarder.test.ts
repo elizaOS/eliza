@@ -2,7 +2,7 @@
  * Unit coverage for the remote-mode request forwarder that a local controller
  * uses to relay traffic to its private remote Eliza target.
  * `shouldForwardToRemoteTarget` decides which cloud-auth mutations get forwarded
- * (POST login/disconnect and billing/v1 writes — never GETs or unrelated paths),
+ * (cloud settings and push-token writes — never GETs or unrelated paths),
  * and `buildForwardHeaders` rewrites the outbound header set: preserving
  * multi-valued `set-cookie`, stripping hop-by-hop headers, rewriting Host to the
  * target, and injecting a Bearer token only when a remote access token is set.
@@ -10,8 +10,17 @@
 import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,
+  redactPushTokenRequestUrl,
   shouldForwardToRemoteTarget,
 } from "./remote-forwarder.ts";
+
+test("legacy push-token URLs are redacted before agent diagnostics", () => {
+  expect(
+    redactPushTokenRequestUrl(
+      "/api/notifications/push-tokens/token%2Fwith%2Bslash?trace=1",
+    ),
+  ).toBe("/api/notifications/push-tokens/[redacted]?trace=1");
+});
 
 describe("shouldForwardToRemoteTarget", () => {
   test("forwards POST /api/cloud/login", () => {
@@ -40,6 +49,24 @@ describe("shouldForwardToRemoteTarget", () => {
     expect(shouldForwardToRemoteTarget("/api/cloud/v1/agents", "DELETE")).toBe(
       true,
     );
+  });
+
+  test("forwards push-token registration and revocation mutations", () => {
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "POST"),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "DELETE"),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget(
+        "/api/notifications/push-tokens/token%2Fwith%2Bslash",
+        "DELETE",
+      ),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "GET"),
+    ).toBe(false);
   });
 
   test("does not forward GET requests", () => {

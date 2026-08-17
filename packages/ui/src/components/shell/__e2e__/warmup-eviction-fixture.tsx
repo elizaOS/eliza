@@ -188,6 +188,9 @@ function Harness(): React.JSX.Element {
 
   const controller: ShellController = {
     phase: "summoned",
+    authGate: { gated: false, phase: "clear" },
+    requestSignIn: () => {},
+    signingIn: false,
     responding: chatSending,
     turnStatus: chatSending ? { kind: "thinking" as const } : null,
     messages,
@@ -228,6 +231,7 @@ function Harness(): React.JSX.Element {
     setComposerHasDraft: () => {},
     startRecording: () => {},
     stopRecording: () => {},
+    cancelRecording: () => {},
     toggleAgentVoiceMute: () => {},
     unlockAudio: () => {},
     openSettings: () => {},

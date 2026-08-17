@@ -30,6 +30,10 @@ import {
   readInferenceSessionAuthDecision,
   writeInferenceSessionAuthDecision,
 } from "./inference-auth-cache";
+import {
+  assertInferenceCredentialActive,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 import { usersService } from "./users";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
@@ -50,7 +54,10 @@ export type InferenceSessionAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" };
+  | {
+      kind: "warming";
+      hydration?: Promise<InferenceSessionAuthDecision | undefined>;
+    };
 
 function looksLikeJwt(token: string): boolean {
   const parts = token.split(".");
@@ -134,6 +141,32 @@ function toResolution(
     return { kind: "suspended" };
   }
   return { kind: "rejected", status: decision.status };
+}
+
+async function enforceStrongSessionBoundary(
+  decision: InferenceSessionAuthDecision,
+  stewardUserId: string,
+  issuedAt: number,
+  source: "cache" | "origin",
+): Promise<InferenceSessionAuthResolution> {
+  const resolved = toResolution(decision, source);
+  if (resolved.kind !== "authorized") return resolved;
+  try {
+    await assertInferenceCredentialActive(resolved.ctx.orgId, {
+      kind: "steward_session",
+      userId: resolved.ctx.userId,
+      stewardUserId,
+      issuedAt,
+    });
+    return resolved;
+  } catch (error) {
+    if (error instanceof InferenceCredentialRevokedError) {
+      return error.reason === "session_revoked" || error.reason === "session_binding_revoked"
+        ? { kind: "rejected", status: 401 }
+        : { kind: "suspended", userId: resolved.ctx.userId };
+    }
+    throw error;
+  }
 }
 
 async function hydrateAndCache(
@@ -239,10 +272,8 @@ export async function resolveInferenceSessionAuthContext(
     if (await adminService.shouldBlockUser(user.id)) {
       return { kind: "suspended", userId: user.id };
     }
-    return {
-      kind: "authorized",
-      source: "origin",
-      ctx: {
+    return await enforceStrongSessionBoundary(
+      {
         v: INFERENCE_AUTH_CONTEXT_VERSION,
         cachedAt: Date.now(),
         userId: user.id,
@@ -251,7 +282,10 @@ export async function resolveInferenceSessionAuthContext(
         stewardUserId: claims.userId,
         admission: await loadInferenceAdmissionSnapshot(user.organization_id),
       },
-    };
+      claims.userId,
+      claims.issuedAt,
+      "origin",
+    );
   }
 
   if (options.useAuthCache && cache.isAvailable()) {
@@ -284,13 +318,13 @@ export async function resolveInferenceSessionAuthContext(
           });
         options.executionCtx.waitUntil(refresh);
       }
-      return toResolution(cached, "cache");
+      return await enforceStrongSessionBoundary(cached, claims.userId, claims.issuedAt, "cache");
     }
   }
 
   if (options.useAuthCache && options.cacheOnly) {
     if (cache.isAvailable() && options.executionCtx) {
-      const hydration = getOrCreateHydration(
+      const hydrationDecision = getOrCreateHydration(
         {
           stewardUserId: claims.userId,
           email: claims.email,
@@ -298,7 +332,8 @@ export async function resolveInferenceSessionAuthContext(
           walletChain: claims.walletChain,
         },
         true,
-      )
+      );
+      const observed = hydrationDecision
         .then(() => undefined)
         .catch((error) => {
           // error-policy:J7 authoritative hydration is observed by waitUntil;
@@ -307,7 +342,21 @@ export async function resolveInferenceSessionAuthContext(
             error: error instanceof Error ? error.message : String(error),
           });
         });
-      options.executionCtx.waitUntil(hydration);
+      options.executionCtx.waitUntil(observed);
+      return {
+        kind: "warming",
+        hydration: hydrationDecision.then(
+          (decision) => decision,
+          (error) => {
+            // error-policy:J7 a failed hydration stays a retryable warming
+            // outcome for cache-only callers instead of becoming an opaque 500.
+            logger.warn("[InferenceSessionAuth] Inline hydration await failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
+          },
+        ),
+      };
     }
     return { kind: "warming" };
   }
@@ -324,7 +373,12 @@ export async function resolveInferenceSessionAuthContext(
     },
     options.useAuthCache === true,
   );
-  const resolved = toResolution(decision, "origin");
+  const resolved = await enforceStrongSessionBoundary(
+    decision,
+    claims.userId,
+    claims.issuedAt,
+    "origin",
+  );
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
     throw ForbiddenError();

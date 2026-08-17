@@ -18,6 +18,8 @@ export function applyShellControllerCommand(
   switch (command.kind) {
     case "open":
       return Promise.resolve(controller.open());
+    case "requestSignIn":
+      return Promise.resolve(controller.requestSignIn());
     case "close":
       return Promise.resolve(controller.close());
     case "send":
@@ -36,6 +38,8 @@ export function applyShellControllerCommand(
       return Promise.resolve(controller.startRecording(command.intent));
     case "stopRecording":
       return Promise.resolve(controller.stopRecording());
+    case "cancelRecording":
+      return Promise.resolve(controller.cancelRecording());
     case "toggleHandsFree":
       return Promise.resolve(controller.toggleHandsFree());
     case "toggleTranscriptionMode":

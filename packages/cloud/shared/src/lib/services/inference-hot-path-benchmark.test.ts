@@ -1,14 +1,8 @@
 /**
- * Hot-path benchmark / cost assertion for the inference single-cache auth (#9899).
- *
- * The headline claim of the design (packages/cloud/api/docs/inference-hot-path.md)
- * is that a WARM, fully-authorized API-key request resolves auth + org +
- * moderation with EXACTLY ONE cache read and ZERO authoritative-chain work
- * (no auth DB read, no moderation Postgres read, no reserve write on resolve).
- *
- * This test instruments the real CacheClient (MOCK_REDIS in-memory) and the
- * mocked auth/moderation seams to assert those exact counts, so a regression
- * that reintroduces a DB read into the hot path fails loudly here.
+ * Measures the warm inference authentication path with the real in-memory
+ * CacheClient and deterministic boundary mocks. A fully authorized API-key
+ * request must use one cache read, one strong-revocation check, and no
+ * authoritative authentication or moderation reads.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -18,7 +12,9 @@ process.env.CACHE_ENABLED = "true";
 // lands a strongly consistent revocation boundary; enabling it here exercises
 // the gated single-cache-read contract without changing any shipped default.
 const originalAuthCacheFlag = process.env.INFERENCE_AUTH_CACHE_ENABLED;
+const originalStrongRevocationFlag = process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
+process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
@@ -27,11 +23,10 @@ let moderationCalls = 0;
 let usageCalls = 0;
 let admissionLoadCalls = 0;
 let appScopeCalls = 0;
+let revocationBoundaryCalls = 0;
 
-// IAC v2 (#17805) co-locates the admission snapshot + app-key scope with the
-// cached identity: both authoritative loads may run ONLY while warming a cold
-// miss, never on the warm path. Counted here so a regression that moves either
-// read back onto the hot path fails this benchmark.
+// Admission and app scope are part of the cached identity, so their
+// authoritative reads are allowed only while warming a cold miss.
 const ADMISSION = {
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -53,6 +48,19 @@ mock.module("./inference-app-key-scope", () => ({
     appScopeCalls++;
     return null;
   },
+}));
+mock.module("./inference-credential-revocation", () => ({
+  isInferenceStrongRevocationEnabled: () =>
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
+  InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {},
+  assertInferenceCredentialActive: async () => {
+    revocationBoundaryCalls++;
+  },
+  revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
+  revokeInferenceSessionsThrough: async () => undefined,
+  setInferenceOrganizationActive: async () => undefined,
+  setInferenceSubjectActive: async () => undefined,
 }));
 
 mock.module("./inference-api-key-auth", () => ({
@@ -107,6 +115,7 @@ beforeEach(async () => {
   usageCalls = 0;
   admissionLoadCalls = 0;
   appScopeCalls = 0;
+  revocationBoundaryCalls = 0;
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
 });
 
@@ -122,6 +131,11 @@ afterAll(() => {
   } else {
     process.env.INFERENCE_AUTH_CACHE_ENABLED = originalAuthCacheFlag;
   }
+  if (originalStrongRevocationFlag === undefined) {
+    delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
+  } else {
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = originalStrongRevocationFlag;
+  }
 });
 
 describe("inference hot-path benchmark", () => {
@@ -132,6 +146,7 @@ describe("inference hot-path benchmark", () => {
     expect(moderationCalls).toBe(1); // one moderation read
     expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
     expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
+    expect(revocationBoundaryCalls).toBe(1);
   });
 
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {
@@ -144,12 +159,13 @@ describe("inference hot-path benchmark", () => {
     moderationCalls = 0;
     admissionLoadCalls = 0;
     appScopeCalls = 0;
+    revocationBoundaryCalls = 0;
 
     const warm = await resolveInferenceAuthContext(req());
 
     expect(warm.kind).toBe("authorized");
     if (warm.kind === "authorized") expect(warm.source).toBe("cache");
-    // THE benchmark assertion: one cache read, nothing else touched.
+    // THE benchmark assertion: one cache read plus the strong denial fence.
     expect(getSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledTimes(0);
     expect(delSpy).toHaveBeenCalledTimes(0);
@@ -157,6 +173,7 @@ describe("inference hot-path benchmark", () => {
     expect(moderationCalls).toBe(0); // zero moderation DB work
     expect(admissionLoadCalls).toBe(0); // admission rides in the single cache read (IAC v2)
     expect(appScopeCalls).toBe(0); // app scope rides in the single cache read (IAC v2)
+    expect(revocationBoundaryCalls).toBe(1);
     expect(usageCalls).toBe(1); // usage tracking is fire-and-forget, not a hot read
 
     getSpy.mockRestore();
@@ -172,6 +189,7 @@ describe("inference hot-path benchmark", () => {
     moderationCalls = 0;
     admissionLoadCalls = 0;
     appScopeCalls = 0;
+    revocationBoundaryCalls = 0;
 
     const N = 25;
     for (let i = 0; i < N; i++) await resolveInferenceAuthContext(req());
@@ -181,6 +199,7 @@ describe("inference hot-path benchmark", () => {
     expect(moderationCalls).toBe(0);
     expect(admissionLoadCalls).toBe(0);
     expect(appScopeCalls).toBe(0);
+    expect(revocationBoundaryCalls).toBe(N);
 
     getSpy.mockRestore();
   });

@@ -124,11 +124,22 @@ export class WriteBackService {
   }
 
   private scheduleFlush(delayMs: number): void {
-    if (this.flushTimer) return;
+    if (this.flushTimer) {
+      if (delayMs === 0) {
+        clearTimeout(this.flushTimer);
+        this.flushTimer = null;
+      } else {
+        return;
+      }
+    }
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
-      this.drainQueue().catch(() => {
-        // Errors logged inside drainQueue / sendBatch.
+      // error-policy:J1 The timer callback is the boundary for this fire-and-forget drain.
+      this.drainQueue().catch((error) => {
+        logger.error(
+          { src: "plugin:sql", error },
+          "WriteBackService: unexpected queue drain failure"
+        );
       });
     }, delayMs);
   }

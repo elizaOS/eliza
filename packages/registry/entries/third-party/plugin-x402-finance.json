@@ -1,0 +1,17 @@
+{
+  "package": "plugin-x402-finance",
+  "repository": "github:lokixc84/x402-finance-api",
+  "kind": "plugin",
+  "description": "Base Mainnet token safety + market data via x402 micropayments (USDC). CHECK_TOKEN_SAFETY returns agent_action (block|warn|allow|skip). No API keys.",
+  "homepage": "https://x402-paid-api.x402-finance.workers.dev/llms.txt",
+  "version": "1.0.1",
+  "tags": [
+    "x402",
+    "base",
+    "defi",
+    "security",
+    "token-safety",
+    "micropayments",
+    "usdc"
+  ]
+}

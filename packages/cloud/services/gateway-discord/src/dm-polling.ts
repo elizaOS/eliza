@@ -20,6 +20,9 @@ export interface DiscordDmPollReport {
   removed: number;
 }
 
+const DEFAULT_CHANNEL_CONCURRENCY = 4;
+const MAX_CHANNEL_CONCURRENCY = 16;
+
 function compareSnowflakes(left: string, right: string): number {
   const a = BigInt(left);
   const b = BigInt(right);
@@ -41,6 +44,8 @@ export async function pollTrackedDiscordDms<
   removeTracked: (state: TrackedDiscordDm) => Promise<void>;
   isTerminalChannelError: (error: unknown) => boolean;
   onError?: (state: TrackedDiscordDm, error: unknown) => void;
+  /** Bounds parallel Discord REST reads while preserving order within a DM. */
+  channelConcurrency?: number;
 }): Promise<DiscordDmPollReport> {
   const report: DiscordDmPollReport = {
     channels: 0,
@@ -52,7 +57,17 @@ export async function pollTrackedDiscordDms<
 
   const tracked = await options.listTracked();
   report.channels = tracked.length;
-  for (const state of tracked) {
+  const requestedConcurrency =
+    options.channelConcurrency ?? DEFAULT_CHANNEL_CONCURRENCY;
+  const finiteConcurrency = Number.isFinite(requestedConcurrency)
+    ? Math.floor(requestedConcurrency)
+    : DEFAULT_CHANNEL_CONCURRENCY;
+  const concurrency = Math.max(
+    1,
+    Math.min(MAX_CHANNEL_CONCURRENCY, finiteConcurrency),
+  );
+  let nextIndex = 0;
+  const pollChannel = async (state: TrackedDiscordDm): Promise<void> => {
     let messages: T[];
     try {
       messages = await options.fetchAfter(state);
@@ -63,7 +78,7 @@ export async function pollTrackedDiscordDms<
       } else {
         options.onError?.(state, error);
       }
-      continue;
+      return;
     }
 
     messages.sort((left, right) => compareSnowflakes(left.id, right.id));
@@ -81,6 +96,17 @@ export async function pollTrackedDiscordDms<
       await options.updateCursor(state, message.id);
       state.lastMessageId = message.id;
     }
-  }
+  };
+  const worker = async (): Promise<void> => {
+    while (nextIndex < tracked.length) {
+      const state = tracked[nextIndex++];
+      if (state) await pollChannel(state);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, tracked.length) }, () =>
+      worker(),
+    ),
+  );
   return report;
 }

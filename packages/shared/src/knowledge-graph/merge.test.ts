@@ -11,6 +11,7 @@ import {
   decideIdentityOutcome,
   findIdentityMatches,
   foldIdentity,
+  mergeEntities,
 } from "./merge";
 
 const ident = (o: Partial<EntityIdentity>): EntityIdentity =>
@@ -37,6 +38,20 @@ const entity = (id: string, identities: EntityIdentity[]): Entity => ({
   createdAt: "2026-01-01",
   updatedAt: "2026-01-01",
 });
+
+function entityWithEmployer(
+  id: string,
+  value: string,
+  confidence: number,
+  evidence: string[],
+  updatedAt: string,
+): Entity {
+  const result = entity(id, []);
+  result.attributes = {
+    employer: { value, confidence, evidence, updatedAt },
+  };
+  return result;
+}
 
 describe("findIdentityMatches", () => {
   it("matches case-insensitively on platform + handle", () => {
@@ -172,5 +187,103 @@ describe("foldIdentity", () => {
       ident({ confidence: 0.8, verified: true }),
     );
     expect(out[0].verified).toBe(true);
+  });
+});
+
+describe("mergeEntities", () => {
+  it.each([
+    {
+      label: "source confidence is higher",
+      targetConfidence: 0.6,
+      sourceConfidence: 0.9,
+      expectedValue: "Globex",
+      expectedUpdatedAt: "2026-02-01",
+    },
+    {
+      label: "target confidence is higher",
+      targetConfidence: 0.9,
+      sourceConfidence: 0.6,
+      expectedValue: "Acme",
+      expectedUpdatedAt: "2026-01-01",
+    },
+    {
+      label: "confidence is tied",
+      targetConfidence: 0.9,
+      sourceConfidence: 0.9,
+      expectedValue: "Acme",
+      expectedUpdatedAt: "2026-01-01",
+    },
+  ])("preserves deduplicated evidence when $label", (testCase) => {
+    const target = entityWithEmployer(
+      "target",
+      "Acme",
+      testCase.targetConfidence,
+      ["shared-observation", "target-observation"],
+      "2026-01-01",
+    );
+    const source = entityWithEmployer(
+      "source",
+      "Globex",
+      testCase.sourceConfidence,
+      ["shared-observation", "source-observation"],
+      "2026-02-01",
+    );
+
+    const merged = mergeEntities({
+      target,
+      sources: [source],
+      now: "2026-03-01",
+    });
+
+    expect(merged.attributes?.employer).toEqual({
+      value: testCase.expectedValue,
+      confidence: 0.9,
+      evidence: [
+        "shared-observation",
+        "target-observation",
+        "source-observation",
+      ],
+      updatedAt: testCase.expectedUpdatedAt,
+    });
+  });
+
+  it("preserves evidence from later lower-confidence sources", () => {
+    const merged = mergeEntities({
+      target: entityWithEmployer(
+        "target",
+        "Acme",
+        0.5,
+        ["target-observation"],
+        "2026-01-01",
+      ),
+      sources: [
+        entityWithEmployer(
+          "winning-source",
+          "Globex",
+          0.9,
+          ["winning-source-observation"],
+          "2026-02-01",
+        ),
+        entityWithEmployer(
+          "later-source",
+          "Initech",
+          0.7,
+          ["later-source-observation"],
+          "2026-03-01",
+        ),
+      ],
+      now: "2026-04-01",
+    });
+
+    expect(merged.attributes?.employer).toEqual({
+      value: "Globex",
+      confidence: 0.9,
+      evidence: [
+        "target-observation",
+        "winning-source-observation",
+        "later-source-observation",
+      ],
+      updatedAt: "2026-02-01",
+    });
   });
 });

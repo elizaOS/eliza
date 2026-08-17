@@ -404,6 +404,9 @@ function Harness(): React.JSX.Element {
 
   const controller: ShellController = {
     phase,
+    authGate: { gated: false, phase: "clear" },
+    requestSignIn: () => {},
+    signingIn: false,
     // Raw in-flight predicate — mirrors the real controller's `chatSending ||
     // speaking`. In the fixture, "responding" phase stands in for chatSending and
     // `?speaking` for the spoken reply, so the trailing control + voice-gating
@@ -479,6 +482,7 @@ function Harness(): React.JSX.Element {
       console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
     startRecording,
     stopRecording,
+    cancelRecording: () => console.log("[fixture] cancelRecording"),
     speak: (text: string) =>
       console.log(`[fixture] speak length=${text.length}`),
     stopSpeaking: () => console.log("[fixture] stopSpeaking"),

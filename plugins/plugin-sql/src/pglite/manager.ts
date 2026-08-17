@@ -10,6 +10,7 @@
  * always stale.
  */
 import {
+  chmodSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -53,6 +54,22 @@ type PglitePidFileStatus =
   | "cleared-malformed"
   | "check-failed";
 
+/**
+ * Create the PGlite data directory (and parents) owner-only, then heal the
+ * mode on directories left behind by older installs. The memory DB tree holds
+ * full agent history and connector ciphertext, and PGlite creates its files
+ * 0644 — a 0700 root keeps the whole tree unreachable for other local users.
+ */
+export function ensurePrivateDir(dataDir: string): void {
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  try {
+    chmodSync(dataDir, 0o700);
+  } catch {
+    // error-policy:J6 best-effort heal for directories created by older
+    // installs; platforms without POSIX chmod semantics skip.
+  }
+}
+
 interface PgliteDataDirLockInfo {
   pid: number | null;
   createdAt: number | null;
@@ -71,6 +88,16 @@ export type PgliteSyncStatus = "syncing" | "synced" | "error" | "disabled";
 
 /** Per-table sync state. */
 export type PgliteSyncTableState = "pending" | "synced" | "error";
+
+export const PGLITE_DATA_DIR_EXPORT_BUSY_CODE = "PGLITE_DATA_DIR_EXPORT_BUSY";
+export const PGLITE_DATA_DIR_EXPORT_UNBOUNDED_CODE = "PGLITE_DATA_DIR_EXPORT_UNBOUNDED";
+
+export interface PgliteBoundedDataDirExport<T> {
+  dump: File | Blob;
+  preflight: T;
+  /** Release only after every consumer has finished with the materialized Blob. */
+  release: () => void;
+}
 
 /** Per-table status map exposed by getSyncStatus(). */
 export type PgliteSyncTableStatus = Record<string, { state: PgliteSyncTableState; error?: string }>;
@@ -134,6 +161,13 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private initializePromise: Promise<void> | null = null;
   private lifecycleTail: Promise<void> = Promise.resolve();
   private closePromise: Promise<void> | null = null;
+  private activeDataDirExport:
+    | {
+        token: symbol;
+        released: Promise<void>;
+        release: () => void;
+      }
+    | undefined;
   private lockFd: number | null = null;
   private lockPath: string | null = null;
   private syncUrl: string | null;
@@ -189,15 +223,82 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   }
 
   /**
-   * Capture the live PGlite data directory without racing client teardown.
-   * Once close has begun, new captures fail explicitly instead of touching a
-   * monotonically closing handle.
+   * The legacy exporter cannot prove a physical-size/RSS bound before PGlite
+   * materializes its archive, so it is intentionally fail-closed. Callers must
+   * use dumpDataDirAfterPreflight() and retain its lease through Blob use.
    */
   public async dumpDataDir(compression: "gzip" = "gzip"): Promise<File | Blob> {
+    void compression;
     if (this.shuttingDown) {
       throw new Error("PGlite is closing");
     }
-    return await this.withLifecycleLock(async () => await this.client.dumpDataDir(compression));
+    if (this.activeDataDirExport) {
+      throw this.createDataDirExportError(
+        PGLITE_DATA_DIR_EXPORT_BUSY_CODE,
+        "A PGlite data-directory export is already active"
+      );
+    }
+    throw this.createDataDirExportError(
+      PGLITE_DATA_DIR_EXPORT_UNBOUNDED_CODE,
+      "Unbounded PGlite data-directory export is disabled"
+    );
+  }
+
+  /**
+   * Run a bounded-export preflight and the materializing PGlite dump under one
+   * query fence, while the outer lifecycle fence prevents concurrent close.
+   */
+  public async dumpDataDirAfterPreflight<T>(
+    preflight: () => Promise<T>,
+    compression: "gzip" = "gzip"
+  ): Promise<PgliteBoundedDataDirExport<T>> {
+    if (this.shuttingDown) {
+      throw new Error("PGlite is closing");
+    }
+    const lease = this.acquireDataDirExportLease();
+    try {
+      const bounded = await this.withLifecycleLock(
+        async () =>
+          await this.client.runExclusive(async () => {
+            const preflightResult = await preflight();
+            const dump = await this.client.dumpDataDir(compression);
+            return { dump, preflight: preflightResult };
+          })
+      );
+      return { ...bounded, release: lease.release };
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
+  }
+
+  private acquireDataDirExportLease(): { release: () => void } {
+    if (this.activeDataDirExport) {
+      throw this.createDataDirExportError(
+        PGLITE_DATA_DIR_EXPORT_BUSY_CODE,
+        "A PGlite data-directory export is already active"
+      );
+    }
+    const token = Symbol("pglite-data-dir-export");
+    let resolveReleased!: () => void;
+    const released = new Promise<void>((resolve) => {
+      resolveReleased = resolve;
+    });
+    let releasedOnce = false;
+    const release = () => {
+      if (releasedOnce) return;
+      releasedOnce = true;
+      if (this.activeDataDirExport?.token === token) {
+        this.activeDataDirExport = undefined;
+      }
+      resolveReleased();
+    };
+    this.activeDataDirExport = { token, released, release };
+    return { release };
+  }
+
+  private createDataDirExportError(code: string, message: string): Error {
+    return Object.assign(new Error(message), { code });
   }
 
   private async withLifecycleLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -292,6 +393,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   }
 
   private async closeInternal(): Promise<void> {
+    // Keep the process/data-dir ownership fence until the materialized archive
+    // is no longer retained by its consumer. Releasing it earlier could let a
+    // replacement manager overlap another full PGlite archive in memory.
+    await this.activeDataDirExport?.released;
     // Flush pending write-backs before tearing down.
     if (this.writeBack.enabled) {
       try {
@@ -374,7 +479,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     });
   }
 
-  private getDataDir(): string | null {
+  /** Physical-storage configuration attested to bounded backup callers. */
+  public getDataDir(): string | null {
     const optionsWithDataDir = this.options as PGliteOptions & {
       dataDir?: unknown;
       dataPath?: unknown;
@@ -602,7 +708,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       return;
     }
 
-    mkdirSync(dataDir, { recursive: true });
+    ensurePrivateDir(dataDir);
     const lockPath = this.getDataDirLockPath(dataDir);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {

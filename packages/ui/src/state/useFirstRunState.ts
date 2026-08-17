@@ -249,7 +249,7 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
   // URL-scoped — dropping `?onboarding-replay=1` restores normal seeding on
   // the next load, and the durable flag itself is never written.
   const completionCommittedRef = useRef(
-    loadPersistedFirstRunComplete() && !isOnboardingReplayRequested(),
+    loadPersistedFirstRunComplete(cloudOnly) && !isOnboardingReplayRequested(),
   );
 
   return {

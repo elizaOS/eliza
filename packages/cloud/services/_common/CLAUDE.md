@@ -25,6 +25,8 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
   tests only.
 - `src/identity-link-code.ts` (`./identity-link-code`) — canonical connector
   LINK-code recognition and user-facing confirmation results.
+- `src/gateway-auth.ts` (`./gateway-auth`) — strict short-lived gateway token
+  response validation plus shared refresh and jittered retry timing.
 - `src/response-attempts.ts` (`./response-attempts`) — bounded observable HTTP
   retry behavior shared across transport runtimes.
 - `src/telegram-connector.ts` (`./telegram-connector`) — Web-standard Telegram

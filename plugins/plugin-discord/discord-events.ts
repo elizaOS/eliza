@@ -109,6 +109,21 @@ interface EventListenerConfig {
 	shouldRespondOnlyToMentions: boolean;
 }
 
+function parseSettingInt(
+	raw: string | number | undefined,
+	fallback: number,
+): number {
+	if (typeof raw === "number")
+		return Number.isSafeInteger(raw) && raw >= 0 ? raw : fallback;
+	if (typeof raw === "string") {
+		const t = raw.trim();
+		if (!/^\d+$/.test(t)) return fallback;
+		const n = Number(t);
+		return Number.isSafeInteger(n) ? n : fallback;
+	}
+	return fallback;
+}
+
 function parseEventListenerConfig(
 	service: DiscordServiceInternals,
 ): EventListenerConfig {
@@ -132,13 +147,7 @@ function parseEventListenerConfig(
 	const channelDebounceMsSetting = service.runtime.getSetting(
 		"DISCORD_CHANNEL_DEBOUNCE_MS",
 	) as string | number | undefined;
-	const channelDebounceMs =
-		typeof channelDebounceMsSetting === "number"
-			? channelDebounceMsSetting
-			: typeof channelDebounceMsSetting === "string" &&
-					channelDebounceMsSetting.trim()
-				? Number.parseInt(channelDebounceMsSetting, 10) || 3000
-				: 3000;
+	const channelDebounceMs = parseSettingInt(channelDebounceMsSetting, 3000);
 
 	// How long a recent unaddressed message stays eligible to be folded into a
 	// following pointer's "[Recent channel context]". Tunable like its siblings;
@@ -152,13 +161,7 @@ function parseEventListenerConfig(
 	const recentContextTtlMsSetting = service.runtime.getSetting(
 		"DISCORD_RECENT_CONTEXT_TTL_MS",
 	) as string | number | undefined;
-	const recentContextTtlMs =
-		typeof recentContextTtlMsSetting === "number"
-			? recentContextTtlMsSetting
-			: typeof recentContextTtlMsSetting === "string" &&
-					recentContextTtlMsSetting.trim()
-				? Number.parseInt(recentContextTtlMsSetting, 10) || 90000
-				: 90000;
+	const recentContextTtlMs = parseSettingInt(recentContextTtlMsSetting, 90000);
 
 	const shouldRespondOnlyToMentions =
 		service.discordSettings.shouldRespondOnlyToMentions !== false;

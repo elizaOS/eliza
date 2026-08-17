@@ -151,6 +151,15 @@ export class ApiKeysRepository {
     return apiKey;
   }
 
+  /** Atomically replaces one immutable credential row with a freshly identified row. */
+  async replace(id: string, replacement: NewApiKey): Promise<ApiKey> {
+    return await dbWrite.transaction(async (tx) => {
+      await tx.delete(apiKeys).where(eq(apiKeys.id, id));
+      const [created] = await tx.insert(apiKeys).values(replacement).returning();
+      return created;
+    });
+  }
+
   /**
    * Updates an existing API key.
    */

@@ -37,6 +37,7 @@ import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
+import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
@@ -244,6 +245,13 @@ export function createApp(): Hono<AppEnv> {
 
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
+    let canDeferRequestTask = false;
+    try {
+      canDeferRequestTask = typeof c.executionCtx?.waitUntil === "function";
+    } catch {
+      // error-policy:J4 Local/test Hono requests intentionally have no
+      // Worker context; shared services retain their inline-await fallback.
+    }
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () => {
@@ -261,6 +269,12 @@ export function createApp(): Hono<AppEnv> {
               c.req.header("idempotency-key") ||
               c.req.header("x-request-id") ||
               crypto.randomUUID(),
+            ...(canDeferRequestTask
+              ? {
+                  defer: (task: Promise<unknown>) =>
+                    c.executionCtx.waitUntil(task),
+                }
+              : {}),
           },
           async () => runWithDbCacheAsync(async () => next()),
         );
@@ -314,7 +328,12 @@ export function createApp(): Hono<AppEnv> {
     }
   });
 
-  app.use("*", honoLogger());
+  app.use(
+    "*",
+    honoLogger((message) => {
+      logger.info({ src: "cloud-http" }, redactSensitiveRequestPath(message));
+    }),
+  );
   app.use("*", async (c, next) => {
     c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
     c.set("user", undefined);
@@ -330,7 +349,7 @@ export function createApp(): Hono<AppEnv> {
         id: requestId,
         traceId,
         method: c.req.method,
-        path: new URL(c.req.url).pathname,
+        path: redactSensitiveRequestPath(new URL(c.req.url).pathname),
       },
       async () => {
         await next();

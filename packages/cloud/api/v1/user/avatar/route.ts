@@ -4,17 +4,19 @@
  * Uploads a user profile image to R2 and updates `users.avatar`.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbWrite } from "@/db/helpers";
+import { orgStorageQuotaRepository } from "@/db/repositories/org-storage-quota";
 import { users } from "@/db/schemas/users";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -74,21 +76,173 @@ app.post("/", async (c) => {
 
     const key = `avatars/users/${authed.organization_id}/${authed.id}/${crypto.randomUUID()}.${ext}`;
     const buf = await entry.arrayBuffer();
+    const sizeBytes = BigInt(buf.byteLength);
 
-    const { url } = await putPublicObject(c.env, {
-      key,
-      body: buf,
-      contentType: mime,
-      customMetadata: {
-        userId: authed.id,
-        organizationId: authed.organization_id,
-      },
-    });
+    const reserved = await orgStorageQuotaRepository.tryReserveBytes(
+      authed.organization_id,
+      sizeBytes,
+    );
+    if (reserved === null) {
+      return c.json(
+        {
+          success: false,
+          error: "Storage quota exceeded for this organization",
+        },
+        413,
+      );
+    }
 
-    await dbWrite
-      .update(users)
-      .set({ avatar: url })
-      .where(eq(users.id, authed.id));
+    let url: string;
+    try {
+      ({ url } = await putPublicObject(c.env, {
+        key,
+        body: buf,
+        contentType: mime,
+        customMetadata: {
+          userId: authed.id,
+          organizationId: authed.organization_id,
+        },
+      }));
+    } catch (error) {
+      // error-policy:J6 a rejected provider write is ambiguous, so confirm
+      // object teardown before releasing quota and rethrowing the original error.
+      try {
+        await c.env.BLOB.delete(key);
+      } catch {
+        // error-policy:J6 retain the reservation when deletion cannot confirm
+        // whether the rejected write committed, and preserve the put failure.
+        logger.warn("[User Avatar] Failed to delete ambiguous R2 upload", {
+          organizationId: logger.redact.orgId(authed.organization_id),
+          userId: logger.redact.userId(authed.id),
+          reservedBytes: sizeBytes.toString(),
+          stage: "r2_put_compensation",
+          reason: "object_delete_failed",
+        });
+        throw error;
+      }
+
+      try {
+        await orgStorageQuotaRepository.releaseBytes(
+          authed.organization_id,
+          sizeBytes,
+        );
+      } catch {
+        // error-policy:J6 object deletion is confirmed, but a failed quota
+        // release is logged without replacing the original put failure.
+        logger.warn(
+          "[User Avatar] Failed to release quota after R2 upload cleanup",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "r2_put_compensation",
+            reason: "quota_release_failed",
+          },
+        );
+      }
+      throw error;
+    }
+
+    const cleanupDefinitivePersistenceMiss = async (): Promise<void> => {
+      try {
+        await c.env.BLOB.delete(key);
+      } catch {
+        // error-policy:J6 retain the reservation when object deletion fails;
+        // the caller preserves the canonical not-found persistence result.
+        logger.warn(
+          "[User Avatar] Failed to delete R2 object after definitive persistence miss",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "avatar_persistence_compensation",
+            reason: "object_delete_failed",
+          },
+        );
+        return;
+      }
+
+      try {
+        await orgStorageQuotaRepository.releaseBytes(
+          authed.organization_id,
+          sizeBytes,
+        );
+      } catch {
+        // error-policy:J6 the object is gone, but a failed quota release is
+        // logged without replacing the canonical not-found persistence result.
+        logger.warn(
+          "[User Avatar] Failed to release quota after definitive persistence miss",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "avatar_persistence_compensation",
+            reason: "quota_release_failed",
+          },
+        );
+      }
+    };
+
+    let updateRowCount: number | undefined;
+    try {
+      const updated = await dbWrite
+        .update(users)
+        .set({ avatar: url })
+        .where(
+          and(
+            eq(users.id, authed.id),
+            eq(users.organization_id, authed.organization_id),
+          ),
+        )
+        .returning({ id: users.id });
+      updateRowCount = updated.length;
+    } catch (updateError) {
+      // error-policy:J1 an UPDATE rejection has an ambiguous acknowledgement;
+      // primary readback decides whether the HTTP boundary can report success.
+      let persistedUser: { avatar: string | null } | undefined;
+      try {
+        persistedUser = await dbWrite.query.users.findFirst({
+          columns: { avatar: true },
+          where: and(
+            eq(users.id, authed.id),
+            eq(users.organization_id, authed.organization_id),
+          ),
+        });
+      } catch {
+        // error-policy:J1 an unavailable primary readback cannot disprove a
+        // late commit, so retain storage accounting and rethrow the UPDATE error.
+        logger.warn(
+          "[User Avatar] Avatar update acknowledgement readback failed",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "avatar_persistence_ack_readback",
+            reason: "readback_failed",
+          },
+        );
+        throw updateError;
+      }
+
+      if (persistedUser?.avatar !== url) {
+        logger.warn(
+          "[User Avatar] Avatar update was not confirmed by readback",
+          {
+            organizationId: logger.redact.orgId(authed.organization_id),
+            userId: logger.redact.userId(authed.id),
+            reservedBytes: sizeBytes.toString(),
+            stage: "avatar_persistence_ack_readback",
+            reason: "avatar_not_confirmed",
+          },
+        );
+        throw updateError;
+      }
+    }
+
+    if (updateRowCount !== undefined && updateRowCount !== 1) {
+      await cleanupDefinitivePersistenceMiss();
+      throw NotFoundError("User not found");
+    }
 
     return c.json({
       success: true,
@@ -96,6 +250,8 @@ app.post("/", async (c) => {
       message: "Avatar uploaded successfully",
     });
   } catch (error) {
+    // error-policy:J1 the route boundary translates authentication, quota,
+    // object-storage, and persistence failures through the canonical response.
     return failureResponse(c, error);
   }
 });

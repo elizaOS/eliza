@@ -124,11 +124,13 @@ const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
  */
 const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 /** Replace a failed realtime recognizer without dropping the live phone call. */
-const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000] as const;
+const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000, 2_000, 5_000] as const;
+/** Consecutive revoke-store failures tolerated before the session fails closed. */
+const MAX_REVOCATION_POLL_FAILURES = 3;
 /**
- * Bound each outbound Ink upgrade so reconnect exhaustion can always advance.
- * Four connection windows (initial + three retries) and the retry delays total
- * 11.25s, below the 12.8s provider-audio buffer retained during replacement.
+ * Bound each outbound Ink upgrade so a dead socket advances to the next retry.
+ * After the initial schedule, retries continue at the capped delay until the
+ * call ends or Ink recovers.
  */
 const STT_CONNECT_TIMEOUT_MS = 2_500;
 /** Keep an unfinished provider final tentative long enough for resumed speech. */
@@ -398,6 +400,8 @@ export interface VoiceSessionConfig {
   semanticEotMaxHoldMs?: number;
   /** Deterministic test override; production waits 900ms before one preamble. */
   voiceProgressSpokenThresholdMs?: number;
+  /** Deterministic test override for the bounded pending-audio queue. */
+  sttPendingFrameLimit?: number;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -462,6 +466,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private sttReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sttConnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly providerPendingFrames: ArrayBuffer[] = [];
+  private sttBufferOverflowReported = false;
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
   private ttsStream: RealtimeTtsStream | null = null;
@@ -471,6 +476,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private state: SessionState = "ready";
   private started = false;
   private closed = false;
+  private startedAtMs: number | null = null;
 
   /** Monotonic turn counter; the current turn's trace id derives from it. */
   private turnCounter = 0;
@@ -506,6 +512,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private meterWindowsInFlight = 0;
   private readonly preAdmissionFrames: ArrayBuffer[] = [];
   private revocationPoll: ReturnType<typeof setInterval> | null = null;
+  private revocationPollFailures = 0;
+  private revocationPollInFlight = false;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private isRevoked: ((jti: string) => Promise<boolean>) | null = null;
 
@@ -558,6 +566,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   start(): void {
     if (this.started || this.closed) return;
     this.started = true;
+    this.startedAtMs = this.now();
 
     this.openSttSession();
 
@@ -569,13 +578,31 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.isRevoked) {
       this.revocationPoll = setInterval(() => {
         void (async () => {
-          if (this.closed || !this.isRevoked) return;
+          if (this.closed || !this.isRevoked || this.revocationPollInFlight) {
+            return;
+          }
+          this.revocationPollInFlight = true;
           try {
-            if (await this.isRevoked(this.jti)) this.teardown("revoked");
-          } catch {
-            // error-policy:J4 fail-closed degrade — a failing revocation check
-            // must not keep a possibly-revoked session alive: sever (SEC-6).
-            this.teardown("revoked");
+            if (await this.isRevoked(this.jti)) {
+              this.teardown("revoked");
+              return;
+            }
+            this.revocationPollFailures = 0;
+          } catch (error) {
+            this.revocationPollFailures += 1;
+            logger.warn("[voice-session] revocation poll failed", {
+              sessionId: this.sessionId,
+              consecutiveFailures: this.revocationPollFailures,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            // error-policy:J4 fail-closed degrade — tolerate a brief store
+            // blip, but sustained inability to verify revocation severs the
+            // session within a bounded number of poll windows (SEC-6).
+            if (this.revocationPollFailures >= MAX_REVOCATION_POLL_FAILURES) {
+              this.teardown("revoked");
+            }
+          } finally {
+            this.revocationPollInFlight = false;
           }
         })();
       }, REVOCATION_POLL_MS);
@@ -684,17 +711,28 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return false;
     if (!this.stt || !this.sttReady) {
       this.providerPendingFrames.push(frame);
-      if (this.providerPendingFrames.length <= MAX_PROVIDER_PENDING_FRAMES) {
+      const pendingLimit =
+        this.config.sttPendingFrameLimit ?? MAX_PROVIDER_PENDING_FRAMES;
+      if (this.providerPendingFrames.length <= pendingLimit) {
         return true;
       }
-      this.meteredExhausted = true;
-      this.send({
-        t: "error",
-        code: "provider_unavailable",
-        retryable: true,
-      });
-      this.teardown("error");
-      return false;
+      // Retain a bounded rolling window of the newest caller audio while Ink
+      // reconnects. Metering and byte-rate checks still run before this queue,
+      // so provider downtime cannot create unbounded memory or paid usage.
+      this.providerPendingFrames.shift();
+      if (!this.sttBufferOverflowReported) {
+        this.sttBufferOverflowReported = true;
+        logger.warn("[voice-session] Ink pending-audio buffer rolled over", {
+          sessionId: this.sessionId,
+          pendingFrameLimit: pendingLimit,
+        });
+        this.send({
+          t: "error",
+          code: "provider_unavailable",
+          retryable: true,
+        });
+      }
+      return true;
     }
     try {
       this.stt.sendAudioChunk(frame);
@@ -818,6 +856,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // has already emitted its own authenticated `ready` frame.
         this.sttReconnectAttempts = 0;
         this.sttReady = true;
+        this.sttBufferOverflowReported = false;
         this.clearSttConnectTimeout();
         const buffered = this.providerPendingFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
@@ -1021,17 +1060,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private scheduleSttReconnect(reason: string): void {
     if (this.closed || this.sttReconnectTimer !== null) return;
     const delays = this.config.sttReconnectDelaysMs ?? STT_RECONNECT_DELAYS_MS;
-    const delay = delays[this.sttReconnectAttempts];
-    if (delay === undefined) {
-      logger.warn("[voice-session] Ink reconnect attempts exhausted", {
-        sessionId: this.sessionId,
-        reason,
-        attempts: this.sttReconnectAttempts,
-      });
-      this.teardown("error");
-      return;
-    }
+    const scheduledDelay = delays[this.sttReconnectAttempts];
+    const delay = scheduledDelay ?? Math.max(delays.at(-1) ?? 5_000, 1_000);
+    const retryingAtCap = scheduledDelay === undefined;
     this.sttReconnectAttempts += 1;
+    if (retryingAtCap) {
+      logger.warn(
+        "[voice-session] Ink reconnect continuing at capped backoff",
+        {
+          sessionId: this.sessionId,
+          reason,
+          attempts: this.sttReconnectAttempts,
+          delayMs: delay,
+        },
+      );
+    }
     this.sttReconnectTimer = setTimeout(() => {
       this.sttReconnectTimer = null;
       if (this.closed) return;
@@ -2286,6 +2329,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.closed = true;
     this.state = "closed";
+    logger.info("[voice-session] session closed", {
+      sessionId: this.sessionId,
+      reason,
+      durationMs:
+        this.startedAtMs === null
+          ? 0
+          : Math.max(0, Math.round(this.now() - this.startedAtMs)),
+    });
 
     // Revoke the bootstrap token's jti on end so a leaked/replayed token cannot
     // open a SECOND paid session within its remaining TTL (the WS endpoint is

@@ -1,7 +1,11 @@
 /** Snapshot projection + coalescing equality. */
 import { describe, expect, it } from "vitest";
 import type { ShellMessage } from "../../shell-state";
-import { deriveShellControllerSnapshot, snapshotsEqual } from "../snapshot";
+import {
+  deriveShellControllerSnapshot,
+  parseShellControllerSnapshot,
+  snapshotsEqual,
+} from "../snapshot";
 import { baseSnapshot, makeFakeShellController } from "./fixtures";
 
 describe("deriveShellControllerSnapshot", () => {
@@ -9,9 +13,13 @@ describe("deriveShellControllerSnapshot", () => {
     const controller = makeFakeShellController();
     controller.recording = true;
     controller.transcript = "hi";
+    controller.authGate = { gated: true, phase: "needs-auth" };
+    controller.signingIn = true;
     const snap = deriveShellControllerSnapshot(controller);
     expect(snap.recording).toBe(true);
     expect(snap.transcript).toBe("hi");
+    expect(snap.authGate).toEqual({ gated: true, phase: "needs-auth" });
+    expect(snap.signingIn).toBe(true);
     expect("analyser" in snap).toBe(false);
     expect(snap.conversationNav).toEqual({
       hasPrev: false,
@@ -22,11 +30,26 @@ describe("deriveShellControllerSnapshot", () => {
   });
 });
 
+describe("parseShellControllerSnapshot", () => {
+  it("accepts the unavailable auth-recovery phase across desktop windows", () => {
+    const snapshot = baseSnapshot({
+      authGate: { gated: true, phase: "unavailable" },
+    });
+    expect(parseShellControllerSnapshot(snapshot)?.authGate).toEqual({
+      gated: true,
+      phase: "unavailable",
+    });
+  });
+});
+
 describe("snapshotsEqual", () => {
   it("is true for equal snapshots and false when a scalar changes", () => {
     expect(snapshotsEqual(baseSnapshot(), baseSnapshot())).toBe(true);
     expect(
       snapshotsEqual(baseSnapshot(), baseSnapshot({ recording: true })),
+    ).toBe(false);
+    expect(
+      snapshotsEqual(baseSnapshot(), baseSnapshot({ signingIn: true })),
     ).toBe(false);
   });
   it("compares messages by reference (identity-preserving projection)", () => {

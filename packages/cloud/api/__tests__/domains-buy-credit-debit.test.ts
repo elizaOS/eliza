@@ -134,6 +134,7 @@ mock.module("@/lib/services/cloudflare-dns", () => ({
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   getCloudAwareEnv: () => ({}),
+  getCloudBinding: () => undefined,
 }));
 
 mock.module("@/lib/utils/error-handling", () => ({
@@ -160,6 +161,8 @@ const { default: buyRoute } = await import("../v1/apps/[id]/domains/buy/route");
 const app = new Hono();
 app.route("/api/v1/apps/:id/domains/buy", buyRoute);
 
+const ENV = { NODE_ENV: "test", RATE_LIMIT_DISABLED: "true" };
+
 type DomainBuyResponseBody = {
   success?: unknown;
   code?: unknown;
@@ -167,11 +170,15 @@ type DomainBuyResponseBody = {
 };
 
 function buy(domain = "example.com", appId = "app-1") {
-  return app.request(`/api/v1/apps/${appId}/domains/buy`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ domain }),
-  });
+  return app.request(
+    `/api/v1/apps/${appId}/domains/buy`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ domain }),
+    },
+    ENV,
+  );
 }
 
 async function readDomainBuyResponseBody(

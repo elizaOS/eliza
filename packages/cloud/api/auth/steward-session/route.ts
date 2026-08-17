@@ -12,7 +12,10 @@ import {
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
+import {
+  checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
+} from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
@@ -61,6 +64,20 @@ function checkOrigin(
   return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
 
+/**
+ * Second CSRF layer after the Origin policy: a cross-origin "simple request"
+ * (the only kind that carries cookies without a preflight) cannot produce a
+ * custom header or a JSON content type. Hono parses `text/plain` bodies as
+ * JSON, so without this check an attacker page on a user-content subdomain
+ * could plant a session with a preflight-less POST. Requiring the marker
+ * forces the preflight that the first-party-only CORS layer fails for them.
+ */
+function checkNonSimpleMarker(c: {
+  req: { header: (name: string) => string | undefined };
+}): boolean {
+  return hasElizaNonSimpleRequestMarker(c.req);
+}
+
 let stewardAuthMetricCounter = 0;
 function logStewardAuth(outcome: string, ttl: number | null) {
   stewardAuthMetricCounter += 1;
@@ -106,6 +123,13 @@ app.post("/", async (c) => {
       });
       return c.json(
         { error: "Forbidden", code: "forbidden_origin" as const },
+        403,
+      );
+    }
+    if (!checkNonSimpleMarker(c)) {
+      logStewardAuth("csrf-marker-missing", null);
+      return c.json(
+        { error: "Forbidden", code: "csrf_marker_required" as const },
         403,
       );
     }
@@ -431,6 +455,10 @@ app.delete("/", (c) => {
   if (!originCheck.ok) {
     logStewardAuth("forbidden-origin-delete", null);
     return c.json({ error: "Forbidden" }, 403);
+  }
+  if (!checkNonSimpleMarker(c)) {
+    logStewardAuth("csrf-marker-missing-delete", null);
+    return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };

@@ -98,6 +98,9 @@ import {
   dispatchAppEvent,
   dispatchConnectRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  PUSH_TO_TALK_HOLD_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
+  type PushToTalkHoldDetail,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
@@ -2432,6 +2435,64 @@ async function initializeDesktopShell(): Promise<void> {
     }
   }
 
+  // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
+  // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
+  // press-again-to-send rather than a held quasimode — the pill's own
+  // press-and-hold remains the true hold gesture. Best-effort: a rejected
+  // accelerator (another app owns it) logs and moves on; voice stays reachable
+  // via the pill.
+  const pushToTalkRegistration = await invokeDesktopBridgeRequest<{
+    success: boolean;
+  }>({
+    rpcMethod: "desktopRegisterShortcut",
+    ipcChannel: "desktop:registerShortcut",
+    params: {
+      id: "push-to-talk",
+      accelerator: "CommandOrControl+Shift+Space",
+    },
+  });
+  if (pushToTalkRegistration?.success !== true) {
+    console.warn(
+      "[desktop-shell] Operating system rejected the push-to-talk shortcut; the pill hold gesture remains available",
+    );
+  }
+
+  // Fn-hold push-to-talk quasimode (#20483, Wispr parity): the native fn key
+  // monitor delivers true down/up, so holding fn anywhere drives the same
+  // capture as holding the pill. Best-effort: `permission-missing` (no
+  // Accessibility trust yet) and `unavailable` (non-mac, sandboxed store
+  // build) degrade silently to the toggle hotkey above.
+  subscribeDesktopBridgeEvent({
+    rpcMessage: "desktopFnHoldChanged",
+    ipcChannel: "desktop:fnHoldChanged",
+    listener: (payload: unknown) => {
+      const detail = payload as PushToTalkHoldDetail | null | undefined;
+      if (!detail || typeof detail.held !== "boolean") return;
+      dispatchAppEvent(PUSH_TO_TALK_HOLD_EVENT, {
+        held: detail.held,
+        cancelled: detail.cancelled === true,
+      } satisfies PushToTalkHoldDetail);
+    },
+  });
+  const fnHoldStart = await invokeDesktopBridgeRequest<{
+    status: "started" | "permission-missing" | "failed" | "unavailable";
+    fnSystemUsageType: number;
+  }>({
+    rpcMethod: "desktopStartFnHoldMonitor",
+    ipcChannel: "desktop:startFnHoldMonitor",
+  });
+  if (fnHoldStart?.status === "started") {
+    if (fnHoldStart.fnSystemUsageType !== 0) {
+      console.warn(
+        "[desktop-shell] fn-hold push-to-talk is active but the macOS 'Press 🌐 key to' action is also enabled — a quick fn tap will trigger the system action; set it to 'Do Nothing' in System Settings → Keyboard",
+      );
+    }
+  } else if (fnHoldStart?.status === "permission-missing") {
+    console.warn(
+      "[desktop-shell] fn-hold push-to-talk needs Accessibility permission (System Settings → Privacy & Security → Accessibility); falling back to the toggle hotkey",
+    );
+  }
+
   // Toggle semantics (#12184): a focused + visible overlay is dismissed
   // (focus returns to the previously active app via the macOS orderOut path);
   // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
@@ -2478,6 +2539,8 @@ async function initializeDesktopShell(): Promise<void> {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
       } else if (id === "chat-overlay") {
         void summonChatOverlay();
+      } else if (id === "push-to-talk") {
+        dispatchAppEvent(PUSH_TO_TALK_TOGGLE_EVENT);
       }
     },
   });

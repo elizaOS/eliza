@@ -23,6 +23,7 @@ export type ApiErrorCode =
   | "agent_quota_exceeded"
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"
+  | "billing_state_conflict"
   | "service_unavailable"
   | "internal_error";
 
@@ -186,6 +187,46 @@ function inferStatusFromLegacyError(error: Error): number {
   return 500;
 }
 
+type AutoTopUpLifecycleGuardConstraint =
+  | "auto_top_up_cutover_paused"
+  | "auto_top_up_unresolved_work"
+  | "organization_nonzero_credit_balance";
+
+const AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS = new Set<AutoTopUpLifecycleGuardConstraint>([
+  "auto_top_up_cutover_paused",
+  "auto_top_up_unresolved_work",
+  "organization_nonzero_credit_balance",
+]);
+
+/**
+ * Drizzle wraps postgres.js errors, so the stable Postgres constraint can live
+ * on a nested cause. Only named lifecycle constraints are classified: SQLSTATE
+ * alone is intentionally insufficient because unrelated foreign-key failures
+ * must remain sanitized infrastructure errors.
+ */
+function findAutoTopUpLifecycleGuardConstraint(
+  error: unknown,
+): AutoTopUpLifecycleGuardConstraint | null {
+  const visited = new Set<object>();
+  let current = error;
+
+  while ((typeof current === "object" && current !== null) || typeof current === "function") {
+    if (visited.has(current)) return null;
+    visited.add(current);
+
+    const constraint = (current as { constraint?: unknown }).constraint;
+    if (
+      typeof constraint === "string" &&
+      AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS.has(constraint as AutoTopUpLifecycleGuardConstraint)
+    ) {
+      return constraint as AutoTopUpLifecycleGuardConstraint;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+
+  return null;
+}
+
 export function jsonError(
   c: Context,
   status: number,
@@ -228,6 +269,28 @@ export function failureResponse(c: Context, error: unknown): Response {
         code: inferCodeFromStatus(error.status),
       },
       error.status as 400,
+    );
+  }
+  const lifecycleConstraint = findAutoTopUpLifecycleGuardConstraint(error);
+  if (lifecycleConstraint === "auto_top_up_cutover_paused") {
+    return c.json(
+      {
+        success: false,
+        error: "Service temporarily unavailable",
+        code: "service_unavailable" as const,
+      },
+      503,
+      { "Retry-After": "30" },
+    );
+  }
+  if (lifecycleConstraint) {
+    return c.json(
+      {
+        success: false,
+        error: "Organization cannot be removed while billing work or credit remains",
+        code: "billing_state_conflict" as const,
+      },
+      409,
     );
   }
   const status = error instanceof Error ? inferStatusFromLegacyError(error) : 500;

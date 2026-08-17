@@ -103,6 +103,7 @@ import {
 } from "./lib/mobile-lane-stamp.mjs";
 import {
   mobileRendererRequiresFreshBuild,
+  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./lib/mobile-renderer-feature-env.mjs";
 import {
@@ -140,8 +141,11 @@ import {
   validateAndroidAppActionsXmlResource,
 } from "./mobile/android-manifest.mjs";
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
+import { assertIosHealthKitBuildAuthority } from "./mobile/ios-healthkit-authority.mjs";
 import {
   mergeIosInfoPlist,
+  readIosApnsBuildFlag,
+  readIosHealthKitBuildFlag,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
 } from "./mobile/ios-plist.mjs";
@@ -1149,6 +1153,7 @@ async function buildWeb(platform) {
       // bundle left behind by an ios cloud build) must never be reused into
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1163,7 +1168,7 @@ async function buildWeb(platform) {
     requiresFreshRenderer
   ) {
     console.log(
-      `[mobile-build] Rebuilding renderer for '${platform}': debug feature flags require fresh output.`,
+      `[mobile-build] Rebuilding renderer for '${platform}': lane-specific feature flags require fresh output.`,
     );
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
@@ -1173,6 +1178,7 @@ async function buildWeb(platform) {
       expectedVariant: laneExpected.variant,
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -1186,8 +1192,13 @@ async function buildWeb(platform) {
     // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
     const allowStale =
       process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
-    if (status.problems.length > 0) {
-      const detail = formatMobileWebDistProblems(status.problems);
+    const reuseProblems = [...status.problems];
+    const unstampedFeatureProblem = mobileRendererUnstampedFeatureProblem({
+      platform,
+    });
+    if (unstampedFeatureProblem) reuseProblems.push(unstampedFeatureProblem);
+    if (reuseProblems.length > 0) {
+      const detail = formatMobileWebDistProblems(reuseProblems);
       if (!allowStale) {
         throw new Error(
           `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
@@ -1221,6 +1232,13 @@ async function buildWeb(platform) {
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
     ELIZA_RELEASE_AUTHORITY:
       process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
+    ...(capacitorTarget === "ios"
+      ? {
+          // Give Vite an explicit normalized value so its `.env*` loading
+          // cannot compile a different gate than the native plist overlay.
+          VITE_ELIZA_APNS_ENABLED: laneExpected.iosApnsEnabled ? "1" : "0",
+        }
+      : {}),
     ...(androidRuntimeMode
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
@@ -3681,6 +3699,15 @@ function overlayIos() {
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
     let dirty = false;
+    const healthKitEnabled = readIosHealthKitBuildFlag(
+      process.env.ELIZA_IOS_HEALTHKIT_ENABLED,
+    );
+    assertIosHealthKitBuildAuthority({
+      enabled: healthKitEnabled,
+      appId: APP.appId,
+      provisioningProfilePath:
+        process.env.MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE,
+    });
     // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
     // not force-set: the template Info.plist already declares the modes the
     // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
@@ -3691,6 +3718,8 @@ function overlayIos() {
     const nextPlist = mergeIosInfoPlist(plist, {
       appName: APP.appName,
       urlScheme: APP.urlScheme,
+      apnsEnabled: readIosApnsBuildFlag(process.env.VITE_ELIZA_APNS_ENABLED),
+      healthKitEnabled,
     });
     if (nextPlist.changed) {
       plist = nextPlist.content;

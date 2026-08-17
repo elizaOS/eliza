@@ -7,6 +7,7 @@
  * startup and the same Hono route graph, but not Wrangler's dev proxy/runtime.
  */
 
+import { renameSync, writeFileSync } from "node:fs";
 import { createApp } from "../../../api/src/bootstrap-app";
 
 type StoredObject = {
@@ -247,6 +248,17 @@ const server = Bun.serve({
 console.log(
   `[cloud-api-hono-dev] listening on http://${hostname}:${server.port}`,
 );
+
+// E2E orchestrators pass API_DEV_PORT=0 so the kernel assigns a free port at
+// bind time (concurrent CI jobs cannot collide, #18359) and read the bound
+// port from API_DEV_PORT_FILE. Written to a temp sibling and renamed so a
+// polling reader never observes a partial write.
+const portFile = process.env.API_DEV_PORT_FILE;
+if (portFile) {
+  const tmp = `${portFile}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${server.port}\n`, "utf8");
+  renameSync(tmp, portFile);
+}
 
 const shutdown = () => {
   server.stop(true);

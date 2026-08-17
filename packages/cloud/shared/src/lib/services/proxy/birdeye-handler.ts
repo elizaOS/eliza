@@ -85,15 +85,51 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
       upstreamUrl.searchParams.set(key, value);
     });
 
-    const upstreamResponse = await fetch(upstreamUrl.toString(), {
-      headers: {
-        Accept: "application/json",
-        "x-chain": c.req.header("x-chain") ?? "solana",
-        "X-API-KEY": birdeyeApiKey,
-      },
-    });
-
-    const body = await upstreamResponse.text();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    let upstreamResponse: Response;
+    let body: string;
+    try {
+      upstreamResponse = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: "application/json",
+          "x-chain": c.req.header("x-chain") ?? "solana",
+          "X-API-KEY": birdeyeApiKey,
+        },
+        signal: controller.signal,
+      });
+      body = await upstreamResponse.text();
+    } catch (error) {
+      // error-policy:J1 upstream boundary — transport and deadline failures
+      // become explicit 502/504 responses after the prepaid cost is refunded.
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      await creditsService
+        .refundCredits({
+          organizationId: organization_id,
+          amount: cost,
+          description: `API proxy refund: market-data — ${pricedMethod} (${isAbort ? "upstream timeout" : "upstream transport failure"})`,
+          metadata: {
+            type: "proxy_market-data_refund",
+            service: "market-data",
+            provider: "birdeye",
+            method: pricedMethod,
+          },
+        })
+        .catch((refundError) => {
+          // error-policy:J4 the upstream request is already a visible failure;
+          // preserve that response while recording the secondary refund fault.
+          logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
+            method: pricedMethod,
+            error: refundError instanceof Error ? refundError.message : String(refundError),
+          });
+        });
+      if (isAbort) {
+        return c.json({ error: "Upstream service timeout" }, 504);
+      }
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Mirror the engine's billing policy (resolveBillableCost refunds on >=500):
     // we already debited `cost` upfront, so refund it when the upstream FAILS
@@ -115,6 +151,8 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
           },
         })
         .catch((refundError) => {
+          // error-policy:J4 the upstream 5xx remains visible to the caller;
+          // preserve it while recording the secondary refund fault.
           logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
             method: pricedMethod,
             status: upstreamResponse.status,

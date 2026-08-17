@@ -16,6 +16,8 @@ interface BridgeHarness {
 
 const originalWindowFetch = window.fetch;
 const originalWindowCapacitor = Reflect.get(window, "Capacitor");
+const runtimeModeStorageKey = "eliza:mobile-runtime-mode";
+const originalRuntimeMode = window.localStorage.getItem(runtimeModeStorageKey);
 
 afterEach(() => {
   window.fetch = originalWindowFetch;
@@ -25,6 +27,11 @@ afterEach(() => {
     Reflect.set(window, "Capacitor", originalWindowCapacitor);
   }
   Reflect.deleteProperty(window, "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__");
+  if (originalRuntimeMode === null) {
+    window.localStorage.removeItem(runtimeModeStorageKey);
+  } else {
+    window.localStorage.setItem(runtimeModeStorageKey, originalRuntimeMode);
+  }
 });
 
 function installBridgeScript(): void {
@@ -34,12 +41,15 @@ function installBridgeScript(): void {
     candidate.textContent?.includes("__ELIZA_ANDROID_IPC_FETCH_BRIDGE__"),
   );
   if (!script?.textContent) throw new Error("missing fetch bridge script");
-  // biome-ignore lint/security/noGlobalEval: executes the committed index.html
-  // inline bridge script (trusted build artifact, not user input) to test it.
+  // Executes the committed inline bridge script, never user input.
+  // biome-ignore lint/security/noGlobalEval: the HTML shell is the system under test
   window.eval(script.textContent);
 }
 
-function createHarness(platform: string | (() => string)): BridgeHarness {
+function createHarness(
+  platform: string | (() => string),
+  runtimeMode?: string,
+): BridgeHarness {
   const agentRequest = vi.fn(async () => ({
     status: 201,
     body: "bridged",
@@ -49,6 +59,11 @@ function createHarness(platform: string | (() => string)): BridgeHarness {
     return new this.Response("original", { status: 202 });
   });
   window.fetch = originalFetch as unknown as typeof window.fetch;
+  if (runtimeMode === undefined) {
+    window.localStorage.removeItem(runtimeModeStorageKey);
+  } else {
+    window.localStorage.setItem(runtimeModeStorageKey, runtimeMode);
+  }
   Object.assign(window, {
     Capacitor: {
       getPlatform: typeof platform === "function" ? platform : () => platform,
@@ -94,6 +109,36 @@ describe("index.html local-agent fetch bridge", () => {
       body: null,
     });
   });
+
+  it.each(["remote-mac", "cloud"])(
+    "lets native %s mode reach loopback HTTP directly",
+    async (runtimeMode) => {
+      const { agentRequest, originalFetch } = createHarness("ios", runtimeMode);
+
+      const response = await window.fetch("http://127.0.0.1:31337/api/health");
+
+      expect(await response.text()).toBe("original");
+      expect(originalFetch).toHaveBeenCalledTimes(1);
+      expect(agentRequest).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["local", "cloud-hybrid", "tunnel-to-mobile"])(
+    "keeps native %s mode on Agent.request",
+    async (runtimeMode) => {
+      const { agentRequest, originalFetch } = createHarness("ios", runtimeMode);
+
+      await window.fetch("http://127.0.0.1:31337/api/health");
+
+      expect(originalFetch).not.toHaveBeenCalled();
+      expect(agentRequest).toHaveBeenCalledWith({
+        method: "GET",
+        path: "/api/health",
+        headers: {},
+        body: null,
+      });
+    },
+  );
 
   it("continues to bridge explicit IPC URLs on every platform", async () => {
     const { agentRequest, originalFetch } = createHarness("web");

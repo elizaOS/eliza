@@ -465,12 +465,37 @@ describe("URL extraction trims trailing sentence punctuation (the cascade trigge
   it("does not probe the trailing '!' as part of a live URL", async () => {
     // The sub-agent's prose ends the sentence with "!": the live app must be
     // verified at its real path, not declared dead at the punctuation path.
+    // The ephemeral port is passed as the supervisor-sanctioned loopback port
+    // (W1-048) — narration-claimed loopback URLs are otherwise left unprobed.
+    const { port } = host.address() as AddressInfo;
     const verified = await annotateUnverifiedUrls(
       `The app is deployed and live at ${baseUrl}!`,
       undefined,
       "Build the app and give me the live url",
+      undefined,
+      undefined,
+      undefined,
+      new Set([port]),
     );
     expect(verified.dead).toEqual([]);
     expect(verified.verifiedUrls).toContain(baseUrl);
+  });
+
+  it("leaves a loopback URL on a non-sanctioned port unprobed (W1-048)", async () => {
+    // Narration claiming a deliverable on a loopback port the supervisor never
+    // started must not be probed (loopback port-scan/content oracle) and must
+    // not count as a dead deliverable either (no verify-retry storm). Port 1
+    // stands in for "some other port" — never the test server's.
+    const verified = await annotateUnverifiedUrls(
+      `The app is deployed and live at ${baseUrl}!`,
+      undefined,
+      "Build the app and give me the live url",
+      undefined,
+      undefined,
+      undefined,
+      new Set([1]),
+    );
+    expect(verified.dead).toEqual([]);
+    expect(verified.verifiedUrls).toEqual([]);
   });
 });

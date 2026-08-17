@@ -59,14 +59,15 @@ export interface GlassRecipe {
 /**
  * Fill for the chat sheet — the single source of truth for the frosted panel
  * material `ChatOverlay` renders. A mostly-translucent theme-aware
- * card at 62%: the live view behind reads as a soft, bright frost rather than
- * the grayish near-opaque slab a high fill produced. Paired with
+ * background at 88%: enough of the live view remains to read as glass, while
+ * desktop windows and high-contrast text behind the app can no longer compete
+ * with the conversation. Paired with
  * {@link GLASS_SHEET_BACKDROP_FILTER}; the overlay imports both, so the chat
  * sheet is a genuine liquid-glass SYSTEM surface instead of a hand-rolled
  * recipe that drifts from the token.
  */
 export const GLASS_SHEET_FILL =
-  "color-mix(in srgb, var(--card) 62%, transparent)";
+  "color-mix(in srgb, var(--bg) 88%, transparent)";
 /**
  * Backdrop filter for the chat sheet: a heavy neutral blur with NO saturate.
  * The blur keeps text legible while letting the backdrop's color and light

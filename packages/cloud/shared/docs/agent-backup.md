@@ -85,12 +85,118 @@ The backup lands through the existing backup row and heavy-payload storage path:
   operator route enqueues `agent_downgrade` daemon jobs; it never runs
   automatically.
 
+## Manifest-v3 catalogue capture and publication
+
+The manifest-v3 catalogue lane is additive and fail-closed. Existing sandbox
+rows migrate with no activation authority, so they are ineligible for periodic
+capture until a later control-plane release publishes the complete immutable
+activation and vault authorities. This release does not infer those values from
+mutable container names, current node placement, or process environment.
+
+An eligible capture is bound to the exact organization, agent, activation
+generation, lifecycle revision, source node record and boot incarnation,
+immutable Docker container ID, and image digest. Robot sources additionally
+require an operator-pinned SSH host key; changing or losing that pin atomically
+revokes the node incarnation until the new boot is attested. Cloud sources bind
+the Hetzner server identity. Reservation locks the source while it records this
+authority, so lifecycle changes cannot race a stale capture. The full-only gate
+described below prevents this release from traversing or advertising an
+incremental chain.
+
+The Agent `/api/snapshot/v2` producer emits bounded authenticated frames. Cloud
+parses and encrypts those frames into a durable, bounded manifest-v3 spool.
+PGlite 0.4.x is a documented exception inside the producer: its official dump
+API materializes the file list, tar, gzip buffers, and Blob before framing can
+begin. This release therefore takes the physical-size preflight and dump under
+PGlite's exclusive query/transaction fence and the adapter lifecycle fence,
+accepts at most 40 MiB of logical database files, and estimates archive size as
+the 512-byte-rounded file sizes plus 4 KiB per entry and 1 MiB fixed overhead.
+Before materialization, the process must have at least eight archive-sized
+copies plus 32 MiB of emergency headroom available. The legacy JSON snapshot
+path uses the same consumer-lifetime export lease and performs a second gate of
+four compressed-Blob copies plus 32 MiB before array-buffer, base64, and JSON
+conversion. Availability comes from the process-aware runtime metric with an OS
+fallback; no low-baseline RSS assumption is made. A missing bounded exporter,
+an unprovable physical directory, or a database above that limit fails before
+the dump starts. There is no live-file fallback in capture v2. An uncancellable
+late dump keeps the physical-directory lane busy until it settles, so a
+disconnected client cannot start overlapping dumps.
+
+Capture revalidates the execution lease and source authority, derives manifest
+inventory, plugin-set, watermark, chain, operation key-bundle, and
+vault-reference projections at the database boundary, and stops at a confirmed
+`captured` state. A request deadline may change on replay; the operation,
+source, manifest, and spool authorities may not.
+
+This executable lane currently admits full snapshots only. Incremental
+reservation and direct pipeline invocation fail before allocating catalogue,
+KMS, network, or spool authority. The schema retains bounded parent/base chain
+fields for the required follow-up, but the gate may be removed only with a real
+delta producer, periodic full checkpoint, maximum chain depth, compaction, and
+restore-chain proof; relabeling full component bytes as a delta is forbidden.
+
+Publication then follows one replayable sequence for every encrypted chunk:
+
+1. reserve the canonical tenant-scoped object key in the primary database;
+2. durably mark provider-write intent;
+3. revalidate the catalogue lease immediately before every bounded provider
+   write attempt;
+4. create the immutable Cloudflare R2 object and persist its exact generation,
+   checksum, and receipt before marking it verified;
+5. read that exact persisted primary generation into a bounded fresh buffer,
+   verify it again, and create the independent Hetzner Object Storage copy;
+6. transition to `protected` only when the secondary inventory exactly equals
+   the authenticated primary manifest inventory.
+
+This slice uses one bounded immutable provider PUT per encrypted chunk. It does
+not yet implement provider-native multipart upload, upload-part replay, or
+multipart abort receipts; those remain required before Goal 3 can be declared
+complete.
+
+Provider reads, writes, retries, and backoff share an absolute transfer
+deadline and caller abort signal. Buffers holding ciphertext or key material are
+zeroized after use. Garbage collection uses only durable locators and receipts;
+ambiguous provider response loss is reconciled before deletion, and divergent
+objects are quarantined instead of guessed away. A spool is removable only
+after an exact current `protected`, `retained`, or `restore_verified` catalogue
+proof covers every primary and secondary object.
+
+### Periodic RPO admission remains dormant
+
+The database scheduler uses database time, preserves one operation ID across
+response loss, admits at most one due operation per organization and source
+node, and advances `next_backup_at` only after exact current manifest-v3 dual
+protection. Retry backoff has a separate timestamp, so a failure never moves the
+RPO deadline or hides an overdue agent.
+
+`AGENT_BACKUP_RPO_SCHEDULER_ENABLED` is off by default. This PR deliberately
+does not wire the catalogue runtime into the provisioning daemon and does not
+construct production capture, KMS, publication, or spool-cleanup executors from
+environment variables. It therefore makes no production 15-minute RPO claim.
+Activation/vault writers, a dedicated control-plane cadence of at most 60
+seconds, durable superseded-operation cancellation, coexistence fencing against
+legacy/manual producers, and fleet-capacity evidence must land before the gate
+may be enabled. Missing authority remains overdue and unroutable; it is never
+reported as protected.
+
 ## Operational proof
 
 The code path is tested for local manifest backup/restore, corrupt backup
 refusal, encrypted local file restore, cloud diff safety, encrypted backup row
 storage, metadata-only backup listing, pre-upgrade blocking, rollback restore,
 and daemon rollback job execution.
+
+The manifest-v3 slice additionally exercises an opt-in synthetic 1 GiB framed
+stream under a fixed RSS ceiling, a 128 MiB encrypted spool pipeline, a real
+PGlite lifecycle-fenced dump/restore proof together with capture-level
+preflight and memory-bound tests, primary and secondary response-loss replay,
+lease loss, source/node ABA fencing, exact locator garbage collection,
+divergent-object quarantine, migration replay, and database-clock scheduler
+concurrency. The synthetic 1 GiB proof validates framing and backpressure, not
+PGlite's materializing exporter. Supporting a real database above 40 MiB
+requires a genuinely streaming, consistency-fenced exporter and a fleet-side
+quota that prevents the database from crossing the supported limit. These are
+local integration proofs, not a production RPO attestation.
 
 Full PR evidence still requires a live staging run: backup -> wipe -> restore,
 plus upgrade -> rollback, with real agent logs, DB/media artifacts,

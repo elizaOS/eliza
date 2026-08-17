@@ -68,7 +68,7 @@ describe("blueBubblesDataRoutes", () => {
 		expect(client.getMessages).not.toHaveBeenCalled();
 	});
 
-	it("clamps hostile pagination values for chat listing", async () => {
+	it("clamps an oversize canonical chat limit and keeps offset 0", async () => {
 		const client = {
 			listChats: vi.fn(async () => [{ guid: "chat-1" }]),
 		};
@@ -78,7 +78,7 @@ describe("blueBubblesDataRoutes", () => {
 		const res = makeResponse();
 
 		await route("/api/bluebubbles/chats", "GET").handler(
-			{ url: "/api/bluebubbles/chats?limit=999999&offset=-20" } as RouteRequest,
+			{ url: "/api/bluebubbles/chats?limit=999999" } as RouteRequest,
 			res,
 			makeRuntime(service),
 		);
@@ -92,6 +92,107 @@ describe("blueBubblesDataRoutes", () => {
 			offset: 0,
 		});
 	});
+
+	it.each(["1e2", "12px", "007", "0", "0x10", "-1", "abc"])(
+		"rejects prefix-coerced chat limit %j before listChats",
+		async (limit) => {
+			const client = {
+				listChats: vi.fn(async () => [{ guid: "chat-1" }]),
+			};
+			const service = {
+				getClient: vi.fn(() => client),
+			};
+			const res = makeResponse();
+
+			await route("/api/bluebubbles/chats", "GET").handler(
+				{ url: `/api/bluebubbles/chats?limit=${limit}` } as RouteRequest,
+				res,
+				makeRuntime(service),
+			);
+
+			expect(res.status).toHaveBeenCalledWith(400);
+			expect(res.json).toHaveBeenCalledWith({
+				error: {
+					code: "bad_request",
+					message: "limit must be a positive integer",
+				},
+			});
+			expect(client.listChats).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["1e2", "12px", "007", "-20", "0x10", "abc"])(
+		"rejects prefix-coerced or negative chat offset %j before listChats",
+		async (offset) => {
+			const client = {
+				listChats: vi.fn(async () => [{ guid: "chat-1" }]),
+			};
+			const service = {
+				getClient: vi.fn(() => client),
+			};
+			const res = makeResponse();
+
+			await route("/api/bluebubbles/chats", "GET").handler(
+				{ url: `/api/bluebubbles/chats?offset=${offset}` } as RouteRequest,
+				res,
+				makeRuntime(service),
+			);
+
+			expect(res.status).toHaveBeenCalledWith(400);
+			expect(res.json).toHaveBeenCalledWith({
+				error: {
+					code: "bad_request",
+					message: "offset must be a non-negative integer",
+				},
+			});
+			expect(client.listChats).not.toHaveBeenCalled();
+		},
+	);
+
+	it("accepts a canonical messages page and default offset", async () => {
+		const client = {
+			getMessages: vi.fn(async () => [{ guid: "m-1" }]),
+		};
+		const service = {
+			getClient: vi.fn(() => client),
+		};
+		const res = makeResponse();
+
+		await route("/api/bluebubbles/messages", "GET").handler(
+			{
+				url: "/api/bluebubbles/messages?chatGuid=chat-1&limit=20",
+			} as RouteRequest,
+			res,
+			makeRuntime(service),
+		);
+
+		expect(client.getMessages).toHaveBeenCalledWith("chat-1", 20, 0);
+		expect(res.status).toHaveBeenCalledWith(200);
+	});
+
+	it.each(["1e2", "12px", "007", "0"])(
+		"rejects prefix-coerced message limit %j before getMessages",
+		async (limit) => {
+			const client = {
+				getMessages: vi.fn(async () => []),
+			};
+			const service = {
+				getClient: vi.fn(() => client),
+			};
+			const res = makeResponse();
+
+			await route("/api/bluebubbles/messages", "GET").handler(
+				{
+					url: `/api/bluebubbles/messages?chatGuid=chat-1&limit=${limit}`,
+				} as RouteRequest,
+				res,
+				makeRuntime(service),
+			);
+
+			expect(res.status).toHaveBeenCalledWith(400);
+			expect(client.getMessages).not.toHaveBeenCalled();
+		},
+	);
 
 	it("rejects webhooks without the configured shared secret", async () => {
 		const service = {

@@ -3,10 +3,20 @@
  * handling: over-limit messages hard-split at Telegram's size cap (preferring
  * newline boundaries), interaction-only replies still carry fallback text, and
  * unknown attachment types degrade to a document upload. Telegraf is mocked.
+ * Document bytes resolve through core's SSRF-guarded `resolveAttachmentBytes`
+ * (the repo media invariant) — the mock pins that boundary, not a raw fetch.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
+
+const { resolveAttachmentBytesMock } = vi.hoisted(() => ({
+  resolveAttachmentBytesMock: vi.fn(),
+}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return { ...actual, resolveAttachmentBytes: resolveAttachmentBytesMock };
+});
 
 function createManager() {
   let messageId = 0;
@@ -147,13 +157,12 @@ describe("MessageManager malformed payload handling", () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/report.txt"),
     );
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 503,
-      text: vi.fn(),
-    }));
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", fetchMock);
+    // The guarded byte resolver failing (HTTP error, SSRF block, oversize —
+    // any failure shape) must degrade to an explicit error attachment, never
+    // drop the document or the caption.
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      new Error("guarded fetch failed: 503"),
+    );
     const manager = new MessageManager(
       {
         telegram: { getFileLink },
@@ -161,37 +170,35 @@ describe("MessageManager malformed payload handling", () => {
       { agentId: "agent-1" } as never,
     );
 
-    try {
-      const result = await manager.processMessage({
-        message_id: 1,
-        date: 1,
-        chat: { id: 123, type: "private" },
-        caption: "please read this",
-        document: {
-          file_id: "doc-1",
-          file_unique_id: "unique-1",
-          file_name: "report.txt",
-          mime_type: "text/plain",
-          file_size: 42,
-        },
-      } as never);
+    const result = await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      caption: "please read this",
+      document: {
+        file_id: "doc-1",
+        file_unique_id: "unique-1",
+        file_name: "report.txt",
+        mime_type: "text/plain",
+        file_size: 42,
+      },
+    } as never);
 
-      expect(fetchMock).toHaveBeenCalledWith("https://files.test/report.txt");
-      expect(getFileLink).toHaveBeenCalledTimes(2);
-      expect(result.processedContent).toBe("please read this");
-      expect(result.attachments).toEqual([
-        expect.objectContaining({
-          id: "doc-1",
-          url: "https://files.test/report.txt",
-          title: "Text Document: report.txt",
-          source: "Document",
-          description: expect.stringContaining("Error: Unable to read content"),
-          text: "",
-        }),
-      ]);
-    } finally {
-      vi.stubGlobal("fetch", originalFetch);
-    }
+    expect(resolveAttachmentBytesMock).toHaveBeenCalledWith(
+      "https://files.test/report.txt",
+    );
+    expect(getFileLink).toHaveBeenCalledTimes(2);
+    expect(result.processedContent).toBe("please read this");
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        id: "doc-1",
+        url: "https://files.test/report.txt",
+        title: "Text Document: report.txt",
+        source: "Document",
+        description: expect.stringContaining("Error: Unable to read content"),
+        text: "",
+      }),
+    ]);
   });
 
   it("does not throw when image description or file lookup fails", async () => {

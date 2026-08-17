@@ -85,13 +85,15 @@ function stubWindowProtocol(protocol: string): void {
 
 // Stub the page origin (protocol + host) the same-origin WS derivation reads
 // when the client has no explicit base — the self-hosted "nginx in front of
-// the agent on a portless HTTPS domain" shape.
+// the agent on a portless HTTPS domain" shape. `origin` is derived so
+// #20342's injected-vs-page origin comparison sees the same value.
 function stubWindowOrigin(protocol: string, host: string): void {
   const jsdomWindow = window;
   const location = new Proxy(jsdomWindow.location, {
     get(target, property) {
       if (property === "protocol") return protocol;
       if (property === "host") return host;
+      if (property === "origin") return `${protocol}//${host}`;
       return Reflect.get(target, property, target);
     },
   });
@@ -565,5 +567,64 @@ describe("ElizaClient websocket connection policy", () => {
     expect(instances).toHaveLength(2);
     expect(instances[0].onmessage).toBeNull();
     expect(instances[1].url).toContain("token=new-token");
+  });
+
+  // --- #20342: injected __ELIZA_WS_BASE__ precedence ------------------
+  // The Vite dev server injects a WS base computed from the page origin so
+  // tunnels can proxy /ws. That injection is ambient: it must not pin
+  // realtime to the dev origin when the user explicitly selected a remote
+  // HTTP(S) agent after boot. A genuinely separate injected WS host stays
+  // authoritative.
+  function stubInjectedWsBase(value: string | undefined): void {
+    if (value === undefined) {
+      delete (window as { __ELIZA_WS_BASE__?: string }).__ELIZA_WS_BASE__;
+    } else {
+      (window as { __ELIZA_WS_BASE__?: string }).__ELIZA_WS_BASE__ = value;
+    }
+  }
+
+  it("derives realtime from an explicitly selected remote base when the injected WS base is just the dev origin", () => {
+    const createdUrls = stubWebSocket();
+    // Page served by Vite at 127.0.0.1:2653; injected WS base mirrors it.
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    stubInjectedWsBase("ws://127.0.0.1:2653");
+
+    const client = new ElizaClient("", "agent-token");
+    client.setBaseUrl("http://127.0.0.1:31337", { persist: false });
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
+    expect(createdUrls[0]).not.toContain("2653");
+    stubInjectedWsBase(undefined);
+  });
+
+  it("keeps a genuinely separate injected WS host authoritative over an explicit HTTP base", () => {
+    const createdUrls = stubWebSocket();
+    // Page at the dev origin, but the injected WS base points at a real
+    // separately-hosted realtime service on a different origin.
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    stubInjectedWsBase("wss://realtime.example.test:4443");
+
+    const client = new ElizaClient("", "agent-token");
+    client.setBaseUrl("http://127.0.0.1:31337", { persist: false });
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://realtime.example.test:4443/ws?");
+    stubInjectedWsBase(undefined);
+  });
+
+  it("keeps same-origin behavior unchanged when no explicit base is set", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    stubInjectedWsBase("ws://127.0.0.1:2653");
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:2653/ws?");
+    stubInjectedWsBase(undefined);
   });
 });

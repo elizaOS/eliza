@@ -14,10 +14,19 @@ const billingUser = vi.hoisted(() => ({
   value: {
     user: null as unknown,
     isLoading: false,
+    isFetching: false,
+    isPaused: false,
+    isFetchedAfterMount: true,
     isAuthenticated: true,
     isError: false,
     error: null as unknown,
   },
+}));
+const billingUserOptions = vi.hoisted(() => ({
+  current: null as { requireFreshOrganization?: boolean } | null,
+}));
+const accountLimitsOrganization = vi.hoisted(() => ({
+  current: null as string | null,
 }));
 
 vi.mock("@elizaos/ui/cloud-ui", () => ({
@@ -33,11 +42,21 @@ vi.mock("../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("./data/billing-data", () => ({
-  useBillingUser: () => billingUser.value,
+  useBillingUser: (options?: { requireFreshOrganization?: boolean }) => {
+    billingUserOptions.current = options ?? null;
+    return billingUser.value;
+  },
 }));
 
 vi.mock("./components/billing-tab", () => ({
   BillingTab: () => <div>billing tab</div>,
+}));
+
+vi.mock("./components/account-limits-card", () => ({
+  AccountLimitsCard: ({ organizationId }: { organizationId: string }) => {
+    accountLimitsOrganization.current = organizationId;
+    return <div>account limits card</div>;
+  },
 }));
 
 vi.mock("./wallet/ConditionalWalletProviders", () => ({
@@ -51,9 +70,14 @@ import { BillingSectionBody } from "./BillingSection";
 describe("BillingSectionBody", () => {
   afterEach(() => {
     cleanup();
+    accountLimitsOrganization.current = null;
+    billingUserOptions.current = null;
     billingUser.value = {
       user: null,
       isLoading: false,
+      isFetching: false,
+      isPaused: false,
+      isFetchedAfterMount: true,
       isAuthenticated: true,
       isError: false,
       error: null,
@@ -68,15 +92,87 @@ describe("BillingSectionBody", () => {
     expect(text).not.toMatch(/organization/i);
   });
 
-  it("renders the billing tab once the account resolves", () => {
+  it("renders the billing tab followed by account limits once the account resolves", () => {
     billingUser.value = {
       user: { organization_id: "org-1" },
       isLoading: false,
+      isFetching: false,
+      isPaused: false,
+      isFetchedAfterMount: true,
       isAuthenticated: true,
       isError: false,
       error: null,
     };
     const { container } = render(<BillingSectionBody />);
-    expect(container.textContent ?? "").toContain("billing tab");
+    const text = container.textContent ?? "";
+    expect(text).toContain("billing tab");
+    expect(text).toContain("account limits card");
+    expect(text.indexOf("billing tab")).toBeLessThan(
+      text.indexOf("account limits card"),
+    );
+    expect(accountLimitsOrganization.current).toBe("org-1");
+    expect(billingUserOptions.current).toEqual({
+      requireFreshOrganization: true,
+    });
+  });
+
+  it("does not paint cached billing or limits while organization membership refreshes", () => {
+    billingUser.value = {
+      user: { organization_id: "old-org" },
+      isLoading: false,
+      isFetching: true,
+      isPaused: false,
+      isFetchedAfterMount: false,
+      isAuthenticated: true,
+      isError: false,
+      error: null,
+    };
+
+    const { container } = render(<BillingSectionBody />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("Loading billing");
+    expect(text).not.toContain("billing tab");
+    expect(text).not.toContain("account limits card");
+    expect(accountLimitsOrganization.current).toBeNull();
+  });
+
+  it("does not paint a cached organization while its membership refresh is paused", () => {
+    billingUser.value = {
+      user: { organization_id: "old-org" },
+      isLoading: false,
+      isFetching: false,
+      isPaused: true,
+      isFetchedAfterMount: false,
+      isAuthenticated: true,
+      isError: false,
+      error: null,
+    };
+
+    const { container } = render(<BillingSectionBody />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("Loading billing");
+    expect(text).not.toContain("billing tab");
+    expect(text).not.toContain("account limits card");
+    expect(accountLimitsOrganization.current).toBeNull();
+  });
+
+  it("does not paint a cached organization before this mount confirms membership", () => {
+    billingUser.value = {
+      user: { organization_id: "old-org" },
+      isLoading: false,
+      isFetching: false,
+      isPaused: false,
+      isFetchedAfterMount: false,
+      isAuthenticated: true,
+      isError: false,
+      error: null,
+    };
+
+    const { container } = render(<BillingSectionBody />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("Loading billing");
+    expect(text).not.toContain("billing tab");
+    expect(text).not.toContain("account limits card");
+    expect(accountLimitsOrganization.current).toBeNull();
   });
 });

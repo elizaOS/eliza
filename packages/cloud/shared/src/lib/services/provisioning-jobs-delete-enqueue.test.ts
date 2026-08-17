@@ -44,11 +44,18 @@ let capturedCancellationWhere: SQL | undefined;
 let selectRows: unknown[] = [];
 let cancelledReturning: Array<{ id: string }> = [];
 
-// select(...).from(...).where(clause).limit(n) -> selectRows
+// The select double supports both ordered stale-row scans and directly awaited
+// fleet-report queries. Tests retain the first WHERE clause for shape checks.
 const selectLimit = mock(() => selectRows);
+const selectOrderBy = mock(() => ({ limit: selectLimit }));
 const selectWhere = mock((clause: SQL) => {
-  capturedSelectWhere = clause;
-  return { limit: selectLimit };
+  capturedSelectWhere ??= clause;
+  return {
+    limit: selectLimit,
+    orderBy: selectOrderBy,
+    // biome-ignore lint/suspicious/noThenProperty: Drizzle query builders are intentionally thenable.
+    then: (resolve: (rows: unknown[]) => unknown) => resolve(selectRows),
+  };
 });
 const selectFrom = mock(() => ({ where: selectWhere }));
 const select = mock(() => ({ from: selectFrom }));
@@ -275,7 +282,9 @@ describe("enqueueScheduledBackups — only reachable agents", () => {
     const { provisioningJobService } = await import("./provisioning-jobs");
 
     const res = await provisioningJobService.enqueueScheduledBackups();
-    expect(res).toEqual({ scanned: 0, enqueued: 0 });
+    // The result also carries the fleet staleness report; this test only pins
+    // the enqueue counters.
+    expect(res).toMatchObject({ scanned: 0, enqueued: 0 });
 
     expect(capturedSelectWhere).toBeDefined();
     const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
@@ -292,7 +301,7 @@ describe("enqueueScheduledBackups — only reachable agents", () => {
     } as never);
     try {
       const res = await provisioningJobService.enqueueScheduledBackups();
-      expect(res).toEqual({ scanned: 1, enqueued: 1 });
+      expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
       expect(enqueueSpy).toHaveBeenCalledTimes(1);
       expect(enqueueSpy.mock.calls[0]?.[0]).toMatchObject({
         agentId: "agent",

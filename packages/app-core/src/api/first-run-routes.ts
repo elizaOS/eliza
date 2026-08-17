@@ -12,6 +12,9 @@
  * completion state is on disk, the handler fires the single-flight runtime
  * boot; cloud/remote targets deliberately leave the process runtime-less.
  *
+ * Untrusted request JSON is parsed before any persist: syntax errors and
+ * non-object bodies return 400 and never report `{ ok: true }`.
+ *
  * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
  * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
  * workaround for an unreproduced upstream race, logged at warn on failure.
@@ -209,16 +212,26 @@ export async function handleFirstRunRoute(
     });
     return true;
   }
-  const rawBody = Buffer.concat(chunks);
+  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+  let parsed: unknown;
+  try {
+    parsed = rawBody === "" ? undefined : JSON.parse(rawBody);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed first-run JSON is
+    // an explicit 400, never a fabricated onboarding success.
+    sendJsonResponse(res, 400, { error: "Invalid JSON body" });
+    return true;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    sendJsonResponse(res, 400, { error: "Invalid JSON body" });
+    return true;
+  }
+  const body = parsed as Record<string, unknown>;
 
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
 
   try {
-    const body = JSON.parse(rawBody.toString("utf8")) as Record<
-      string,
-      unknown
-    >;
     if (hasDeprecatedFirstRunRequestFields(body)) {
       sendJsonResponse(res, 400, {
         error:
@@ -292,12 +305,24 @@ export async function handleFirstRunRoute(
       saveElizaConfig(config);
       await syncFirstRunConfigState(req, config as Record<string, unknown>);
     } catch (err) {
-      logger.warn(
+      // error-policy:J1 a failed config commit is a server failure, never a
+      // successful onboarding acknowledgement.
+      logger.error(
         `[api] Failed to persist first-run state: ${err instanceof Error ? err.message : String(err)}`,
       );
+      sendJsonResponse(res, 500, {
+        error: "Failed to persist first-run state",
+      });
+      return true;
     }
-  } catch {
-    // JSON parse failed — let upstream handle the error
+  } catch (err) {
+    // error-policy:J1 valid JSON does not imply a successful commit; translate
+    // helper failures at the HTTP boundary without exposing internal details.
+    logger.error(
+      `[api] First-run helper failed after valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    sendJsonResponse(res, 500, { error: "Failed to complete first-run setup" });
+    return true;
   }
 
   sendJsonResponse(res, 200, { ok: true });

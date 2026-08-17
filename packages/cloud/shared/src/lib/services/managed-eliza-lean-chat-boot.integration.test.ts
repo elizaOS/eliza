@@ -15,12 +15,15 @@
  *   2. PLUGIN SET = lean. `@elizaos/agent`'s `collectPluginNames`, driven by the
  *      env's `ELIZA_PLUGIN_SET=lean-chat` + `ELIZAOS_CLOUD_*`, must EXCLUDE
  *      local-inference / wallet / workflow but INCLUDE elizacloud (#8434).
- *   3. EMBEDDING COLUMN = dim1536. The env pins `EMBEDDING_DIMENSION=1536` so the
- *      cloud embedding model's 1536-d vectors land in the `dim_1536` column. We
- *      boot a REAL in-memory PGlite adapter, snap it to the env's dimension, and
- *      prove a 1536-d memory insert SUCCEEDS — while a 384-d insert hits the
- *      "dimension mismatch" guard (the negative control). A revert to the dim_384
- *      default reproduces the "Failed query: insert into embeddings" incident.
+ *   3. EMBEDDING COLUMN = dim384. A FRESH provision (no ELIZAOS_CLOUD_API_KEY in
+ *      existingEnv) defaults to local-primary gte-small embeddings, so the env
+ *      pins `EMBEDDING_DIMENSION=384` and the 384-d vectors land in the
+ *      `dim_384` column. Existing provisioned agents retain their explicitly
+ *      pinned width. We boot a REAL in-memory PGlite adapter, snap it to
+ *      the env's dimension, and prove a 384-d memory insert SUCCEEDS — while a
+ *      1536-d insert hits the "dimension mismatch" guard (the negative
+ *      control). Either drift — a revert to cloud-primary 1536 for fresh
+ *      provisions, or a column/hint disagreement — flips these assertions.
  *
  * Only `apiKeysService.createForAgent` is mocked (it needs the cloud DB to mint a
  * key, irrelevant to this chain) — exactly as the sibling pure-env test does.
@@ -69,8 +72,11 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     const env = await buildManagedEnv();
     expect(env.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(env.ELIZA_PLUGIN_SET).toBe("lean-chat");
-    expect(env.EMBEDDING_DIMENSION).toBe("1536");
-    expect(env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    // Fresh provision (no ELIZAOS_CLOUD_API_KEY in existingEnv) => local-primary
+    // gte-small embeddings, 384-d hints, cloud embeddings off.
+    expect(env.EMBEDDING_DIMENSION).toBe("384");
+    expect(env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
+    expect(env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(env.ELIZAOS_CLOUD_ENABLED).toBe("true");
     // The load-bearing absence: the producer must NOT carry DATABASE_URL.
     expect(env.DATABASE_URL).toBeUndefined();
@@ -120,10 +126,10 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     expect(has("plugin-workflow")).toBe(false);
   }, 30_000);
 
-  test("(3) a 1536-d memory insert lands in the dim1536 column (not 'dimension mismatch')", async () => {
+  test("(3) a 384-d memory insert lands in the dim384 column (not 'dimension mismatch')", async () => {
     const env = await buildManagedEnv();
     const dimension = Number(env.EMBEDDING_DIMENSION);
-    expect(dimension).toBe(1536);
+    expect(dimension).toBe(384);
 
     const { createDatabaseAdapter, DatabaseMigrationService, plugin } = await import(
       "@elizaos/plugin-sql"
@@ -140,7 +146,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
       migrations.discoverAndRegisterPluginSchemas([plugin]);
       await migrations.runAllPluginMigrations();
 
-      // Snap the active embedding column to the env's dimension (1536) — the
+      // Snap the active embedding column to the env's dimension (384) — the
       // same call core's ensureEmbeddingDimension makes from EMBEDDING_DIMENSION.
       await adapter.ensureEmbeddingDimension(dimension);
 
@@ -165,26 +171,26 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
         content: { text: `vec-${len}` },
         embedding: Array.from({ length: len }, () => 0.01),
         // unique:false skips the costly uniqueness similarity search (which would
-        // itself throw a vector-width error against the dim1536 column for a
-        // 384-d vector) so the test isolates the insert-path dimension guard.
+        // itself throw a vector-width error against the dim384 column for a
+        // 1536-d vector) so the test isolates the insert-path dimension guard.
         unique: false,
         createdAt: Date.now(),
         metadata: { type: "custom", source: "test" },
       });
 
-      // A 1536-d vector matches the dim1536 column → the embedding insert runs.
-      const okId = await adapter.createMemory(makeMemory(1536) as never, "messages");
+      // A 384-d vector matches the dim384 column → the embedding insert runs.
+      const okId = await adapter.createMemory(makeMemory(384) as never, "messages");
       expect(okId).toBeTruthy();
       // The embedding row actually landed (proves it wasn't silently skipped):
-      // getMemoryById joins on the active `dim_1536` column.
+      // getMemoryById joins on the active `dim_384` column.
       const withEmbedding = await adapter.getMemoryById(okId);
-      expect(withEmbedding?.embedding?.length).toBe(1536);
+      expect(withEmbedding?.embedding?.length).toBe(384);
 
-      // Negative control: a 384-d vector against the dim1536 column trips the
+      // Negative control: a 1536-d vector against the dim384 column trips the
       // insert-path "dimension mismatch" guard — the memory row persists, the
-      // embedding does NOT. Confirms the dim1536 column is the one in effect (a
-      // revert to the dim_384 default would flip both assertions).
-      const mismatchId = await adapter.createMemory(makeMemory(384) as never, "messages");
+      // embedding does NOT. Together these assertions prove the dim384 column
+      // is the active fresh-provision contract.
+      const mismatchId = await adapter.createMemory(makeMemory(1536) as never, "messages");
       const mismatch = await adapter.getMemoryById(mismatchId);
       expect(mismatch).toBeTruthy();
       expect(mismatch?.embedding ?? []).toHaveLength(0);

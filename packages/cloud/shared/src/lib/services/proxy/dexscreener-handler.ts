@@ -11,6 +11,7 @@ import { creditsService } from "../credits";
 import { getServiceMethodCost } from "./pricing";
 
 const UPSTREAM_ORIGIN = "https://api.dexscreener.com";
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
 /** DexScreener open endpoints are under `latest/` — keep allowlist tight. */
 function isAllowedDexPath(pathStr: string): boolean {
@@ -62,14 +63,48 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
       upstreamUrl.searchParams.set(key, value);
     });
 
-    const upstreamResponse = await fetch(upstreamUrl.toString(), {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": c.req.header("User-Agent") ?? "ElizaCloud-DexScreener-Proxy/1.0",
-      },
-    });
-
-    const body = await upstreamResponse.text();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    let upstreamResponse: Response;
+    let body: string;
+    try {
+      upstreamResponse = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": c.req.header("User-Agent") ?? "ElizaCloud-DexScreener-Proxy/1.0",
+        },
+        signal: controller.signal,
+      });
+      body = await upstreamResponse.text();
+    } catch (error) {
+      // error-policy:J1 upstream boundary — translate transport and deadline
+      // failures after refunding the prepaid request cost.
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      await creditsService
+        .refundCredits({
+          organizationId: organization_id,
+          amount: cost,
+          description: `API proxy refund: dexscreener — getRequest (upstream ${isAbort ? "timeout" : "transport failure"})`,
+          metadata: {
+            type: "proxy_dexscreener_refund",
+            service: "dexscreener",
+            method: "getRequest",
+            path: pathStr,
+            reason: isAbort ? "upstream timeout" : "upstream transport failure",
+          },
+        })
+        .catch((refundError) => {
+          // error-policy:J4 the upstream request is already a visible failure;
+          // preserve it while recording the secondary refund fault.
+          logger.warn("[DexscreenerProxy] refund after upstream failure failed", {
+            error: refundError instanceof Error ? refundError.message : String(refundError),
+          });
+        });
+      if (isAbort) return c.json({ error: "Upstream service timeout" }, 504);
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!upstreamResponse.ok) {
       logger.warn("[DexscreenerProxy] upstream non-OK", {

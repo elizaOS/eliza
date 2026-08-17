@@ -504,6 +504,12 @@ describe("ChatOverlay", () => {
     const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
     expect(backdropOrder).toBeGreaterThan(0);
     expect(backdropOrder).toBeLessThan(attachOrder);
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorScheme: "dark",
+        tintColor: "#16090DD9",
+      }),
+    );
     // Native material: fill + blur drop (the OS paints them); border, bevel,
     // and sheen stay — the branded edge survives on every tier.
     expect(surface.style.backgroundColor).toBe("transparent");
@@ -4351,14 +4357,19 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("steps INPUT → pill (CLOSED) on a grabber pull-down, then back to INPUT on tap", () => {
     const { controller } = makeSwipeController();
-    render(<ChatOverlay controller={controller} />);
+    const onPilledChange = vi.fn();
+    render(
+      <ChatOverlay controller={controller} onPilledChange={onPilledChange} />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    expect(onPilledChange).toHaveBeenLastCalledWith(false);
 
     // INPUT → pill: a downward pull folds the composer into the pill capsule.
     grabberDrag(600, 700, 800);
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
+    expect(onPilledChange).toHaveBeenLastCalledWith(true);
 
     // pill → back: a tap on the pill leaves the CLOSED/pill state (it re-forms
     // the bare input bar; thread reveal and keyboard are later gestures).
@@ -4367,6 +4378,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerUp(grabber, { clientY: 780, pointerId: 35 });
     expect(sheet.getAttribute("data-detent")).not.toBe("pill");
     expect(sheet.getAttribute("data-chat-state")).not.toBe("CLOSED");
+    expect(onPilledChange).toHaveBeenLastCalledWith(false);
   });
 
   it("an upward hold in the restore zone keeps it MAXIMIZED (only a downward pull exits)", () => {

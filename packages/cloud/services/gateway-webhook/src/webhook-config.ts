@@ -16,7 +16,8 @@ const CONFIG_MISS_CACHE_TTL_SECONDS = 15;
 
 type CachedWebhookConfig = WebhookConfig | { notFound: true };
 
-function buildSharedWebhookConfig(
+/** Resolves a project connector from the gateway's protected local configuration. */
+export function resolveSharedWebhookConfig(
   platform: Platform,
   project: string,
 ): WebhookConfig {
@@ -61,7 +62,7 @@ export async function resolveWebhookConfig(
   reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<WebhookConfig | null> {
   if (!agentId) {
-    return buildSharedWebhookConfig(platform, project);
+    return resolveSharedWebhookConfig(platform, project);
   }
 
   const cacheKey = `webhook-config:${platform}:agent:${agentId}`;

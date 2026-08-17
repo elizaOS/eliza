@@ -57,6 +57,12 @@ export interface Bindings {
    * Default off provides an immediate rollback to the monolithic router.
    */
   THIN_INFERENCE_ENTRY_ENABLED?: string;
+  /**
+   * Secondary kill switch for durable auto-top-up claims. Only the exact
+   * string "true" permits new claims; recovery and signed reconciliation run
+   * while it is absent or false, subject to the primary database control.
+   */
+  AUTO_TOP_UP_DURABLE_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -250,6 +256,16 @@ export interface Bindings {
   ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
+  /**
+   * Base URL of the self-hosted TEI embeddings sidecar
+   * (packages/cloud/services/embeddings). Setting it routes the local
+   * `bge-small-en-v1.5` embedding id there; `/v1` suffix optional.
+   */
+  LOCAL_EMBEDDINGS_BASE_URL?: string;
+  /** Bearer token for the sidecar, only when its TEI `API_KEY` gate is set. */
+  LOCAL_EMBEDDINGS_API_KEY?: string;
+  /** "true" routes EVERY embedding id to the sidecar (aliases onto the local model). */
+  ELIZA_EMBEDDINGS_FORCE_LOCAL?: string;
   ANTHROPIC_API_KEY?: string;
   /**
    * Cloud-side HuggingFace token attached by the `/api/v1/hf-proxy/*` route so
@@ -294,6 +310,10 @@ export interface Bindings {
   STEWARD_JWT_SECRET?: string;
   /** HS256 service-account bridge secret; must never equal the staging QA signer. */
   ELIZA_SERVICE_JWT_SECRET?: string;
+  /** Optional issuer pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_ISSUER?: string;
+  /** Optional audience pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_AUDIENCE?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
@@ -394,6 +414,16 @@ export interface Bindings {
   ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY?: string;
   /** VAPID contact subject sent to push services, e.g. `mailto:ops@example.com`. */
   ELIZA_WEB_PUSH_VAPID_SUBJECT?: string;
+  /** APNs provider key contents; secret and never returned to clients. */
+  ELIZA_APNS_KEY?: string;
+  /** APNs provider key id used as the ES256 JWT kid. */
+  ELIZA_APNS_KEY_ID?: string;
+  /** Apple Developer team id used as the ES256 JWT issuer. */
+  ELIZA_APNS_TEAM_ID?: string;
+  /** Must equal the signed iOS bundle id, ai.elizaos.app. */
+  ELIZA_APNS_TOPIC?: string;
+  /** Explicit APNs host selection: 0 sandbox, 1 production. */
+  ELIZA_APNS_PRODUCTION?: string;
   AGENT_ROUTER_ORIGIN_HOST?: string;
   /**
    * When `"true"`/`"1"`, the agent-router reaches a running sandbox through the
@@ -410,6 +440,10 @@ export interface Bindings {
   ELIZA_APP_WEBHOOK_PROJECT?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+  /** Collision-free secret used by the protected staging edge cutover. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
+  /** Collision-free secret used by the protected production edge cutover; inert outside production. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal
@@ -466,6 +500,8 @@ export interface Bindings {
   // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
   INFERENCE_HOT_PATH_CACHES?: string;
   INFERENCE_AUTH_CACHE_ENABLED?: string;
+  /** Strong Durable Object boundary required before positive auth caching can activate. */
+  INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

@@ -14,6 +14,7 @@ import {
 	ChannelType,
 	type Content,
 	type ContentType,
+	checkPairingAllowed,
 	createMessageMemory,
 	createUniqueUuid,
 	type Entity,
@@ -438,8 +439,11 @@ function blueBubblesMessageToMemory({
 		message.chats[0]?.participants.length > 1 || chatGuid.includes(";+;");
 	const attachments = message.attachments.map((attachment) => ({
 		id: attachment.guid,
+		// Bare capability URL only — the server password is appended at fetch
+		// time inside BlueBubblesClient so stored memories never persist the
+		// credential (see BlueBubblesClient.getAttachmentUrl).
 		url: config
-			? `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(attachment.guid)}?password=${encodeURIComponent(config.password)}`
+			? `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(attachment.guid)}`
 			: "",
 		title: attachment.transferName,
 		description: attachment.mimeType ?? undefined,
@@ -1180,17 +1184,30 @@ export class BlueBubblesService extends Service {
 				return;
 			}
 		} else {
-			if (
-				!isHandleAllowed(
+			const dmPolicy = config.dmPolicy ?? "pairing";
+			const staticallyAllowed = isHandleAllowed(
+				senderHandle,
+				config.allowFrom ?? [],
+				dmPolicy === "pairing" ? "allowlist" : dmPolicy,
+			);
+			if (!staticallyAllowed) {
+				if (dmPolicy !== "pairing") {
+					logger.debug(
+						`Ignoring message from ${senderHandle} - not in DM allowlist`,
+					);
+					return;
+				}
+				// "pairing" policy: this connector has no handshake of its own, so
+				// an unknown sender is held through the core PairingService code
+				// flow (same as WhatsApp/Discord) instead of allowed by default.
+				const pairingApproved = await this.checkDmPairing(
 					senderHandle,
-					config.allowFrom ?? [],
-					config.dmPolicy ?? "pairing",
-				)
-			) {
-				logger.debug(
-					`Ignoring message from ${senderHandle} - not in DM allowlist`,
+					chat.guid,
+					message,
 				);
-				return;
+				if (!pairingApproved) {
+					return;
+				}
 			}
 		}
 
@@ -1215,7 +1232,10 @@ export class BlueBubblesService extends Service {
 			: undefined;
 		const attachments = message.attachments.map((att) => ({
 			id: att.guid,
-			url: `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(att.guid)}?password=${encodeURIComponent(config.password)}`,
+			// Bare capability URL only — the server password is appended at fetch
+			// time inside BlueBubblesClient so stored memories never persist the
+			// credential (see BlueBubblesClient.getAttachmentUrl).
+			url: `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(att.guid)}`,
 			title: att.transferName,
 			description: att.mimeType ?? undefined,
 			contentType: (att.mimeType ?? "application/octet-stream") as ContentType,
@@ -1301,6 +1321,43 @@ export class BlueBubblesService extends Service {
 		}
 
 		await this.processMessage(memory, room, chat.guid);
+	}
+
+	/**
+	 * Gates an unpaired DM sender through the core PairingService. Returns true
+	 * when the sender is already approved; otherwise a pairing request is
+	 * created (or refreshed) and, when a new code was issued, the pairing reply
+	 * is sent so the sender can ask the owner for approval.
+	 */
+	private async checkDmPairing(
+		senderHandle: string,
+		chatGuid: string,
+		message: BlueBubblesMessage,
+	): Promise<boolean> {
+		const pairing = await checkPairingAllowed(this.runtime, {
+			channel: "imessage",
+			senderId: normalizeHandle(senderHandle),
+			metadata: { name: message.handle?.address ?? senderHandle },
+		});
+		if (pairing.allowed) {
+			return true;
+		}
+
+		logger.debug(
+			`Ignoring message from ${senderHandle} - pairing not approved`,
+		);
+		if (pairing.replyMessage) {
+			try {
+				await this.sendMessage(chatGuid, pairing.replyMessage);
+			} catch (error) {
+				// error-policy:J7 a failed pairing-code reply must not fail webhook
+				// ingestion; the pending request remains visible for owner approval.
+				logger.warn(
+					`Failed to send BlueBubbles pairing reply to ${senderHandle}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		return false;
 	}
 
 	/**

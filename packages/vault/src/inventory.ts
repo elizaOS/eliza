@@ -32,6 +32,7 @@ import type { Vault } from "./vault.js";
 export const META_PREFIX = "_meta.";
 export const ROUTING_KEY = "_routing.config";
 export const PROFILE_SEGMENT = "profile";
+const PROFILE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * High-level category of a vault entry — drives grouping in the UI.
@@ -256,14 +257,20 @@ export async function listVaultInventory(
   vault: Vault,
 ): Promise<readonly VaultEntryMeta[]> {
   const allKeys = await vault.list();
+  const allKeySet = new Set(allKeys);
   const profileChildren = new Set<string>();
 
-  // First pass: identify keys that are themselves children of a
-  // profile-bearing parent. Pattern: <PARENT>.profile.<id>.
-  // We strip these so the inventory only ever exposes the parent.
-  for (const k of allKeys) {
-    const split = k.indexOf(`.${PROFILE_SEGMENT}.`);
-    if (split > 0) profileChildren.add(k);
+  // Only metadata-declared profile rows are rolled up. A vault key may
+  // legitimately contain the `.profile.` segment without being a child row;
+  // hiding such a key would make it impossible to manage from inventory.
+  for (const metaKey of allKeys) {
+    if (!metaKey.startsWith(META_PREFIX)) continue;
+    const parentKey = metaKey.slice(META_PREFIX.length);
+    const meta = await readEntryMeta(vault, parentKey);
+    for (const profile of meta?.profiles ?? []) {
+      const childKey = profileStorageKey(parentKey, profile.id);
+      if (allKeySet.has(childKey)) profileChildren.add(childKey);
+    }
   }
 
   // The set of parents we want to expose:
@@ -331,7 +338,7 @@ export function profileStorageKey(key: string, profileId: string): string {
   if (typeof profileId !== "string" || profileId.length === 0) {
     throw new TypeError("profileStorageKey: profileId must be non-empty");
   }
-  if (!/^[a-zA-Z0-9_-]+$/.test(profileId)) {
+  if (!PROFILE_ID_PATTERN.test(profileId)) {
     throw new TypeError(
       `profileStorageKey: profileId must match [a-zA-Z0-9_-]+, got ${JSON.stringify(profileId)}`,
     );
@@ -386,7 +393,9 @@ function parseMetaRecord(
     for (const p of obj.profiles) {
       if (!p || typeof p !== "object") continue;
       const rec = p as Record<string, unknown>;
-      if (typeof rec.id !== "string" || rec.id.length === 0) continue;
+      if (typeof rec.id !== "string" || !PROFILE_ID_PATTERN.test(rec.id)) {
+        continue;
+      }
       const label =
         typeof rec.label === "string" && rec.label.length > 0
           ? rec.label

@@ -6,6 +6,7 @@
  *   if (report.status === "blocked") { ... }
  */
 
+import { findInvalidSkillBinNames, parseFrontmatter } from "../parser";
 import {
 	buildManifestEntriesFromDisk,
 	buildManifestEntriesFromMemory,
@@ -19,6 +20,7 @@ import type {
 	SkillScanReport,
 	SkillScanStatus,
 } from "./types";
+import { truncateEvidence } from "./types";
 
 export type { ManifestFileEntry } from "./manifest-scanner";
 export {
@@ -47,6 +49,34 @@ const BLOCKING_RULE_IDS = new Set([
 	"symlink-escape",
 	"missing-skill-md",
 ]);
+
+/**
+ * Scan SKILL.md frontmatter for invalid binary names in Otto metadata.
+ * `requires.bins` / `install[].bins` entries reach `which`/`where` probes, so
+ * names outside the allowlist are flagged critical — the same rule
+ * validateFrontmatter enforces at load time.
+ */
+function scanFrontmatterBins(
+	content: string,
+	filePath: string,
+): SkillScanFinding[] {
+	const { frontmatter } = parseFrontmatter(content);
+	if (!frontmatter) return [];
+
+	return findInvalidSkillBinNames(frontmatter).map(({ field, bin }) => ({
+		ruleId: "invalid-bin-name",
+		severity: "critical",
+		file: filePath,
+		line: 1,
+		message: `Invalid binary name in ${field}: must be a bare executable name (letters, digits, . _ + -)`,
+		evidence: truncateEvidence(`${field}: ${JSON.stringify(bin)}`),
+	}));
+}
+
+/** Match a SKILL.md at package root or any nested path (either separator). */
+function isSkillMd(relativePath: string): boolean {
+	return /(^|[/\\])SKILL\.md$/.test(relativePath);
+}
 
 function buildReport(
 	skillPath: string,
@@ -132,6 +162,8 @@ export async function scanSkillDirectory(
 			allFindings.push(
 				...scanMarkdownSource(content, entry.relativePath, safeDomains),
 			);
+		if (isSkillMd(entry.relativePath))
+			allFindings.push(...scanFrontmatterBins(content, entry.relativePath));
 	}
 
 	return buildReport(dirPath, scannedCount, allFindings, manifestFindings);
@@ -165,6 +197,8 @@ export function scanSkillPackage(
 			allFindings.push(
 				...scanMarkdownSource(content, relativePath, safeDomains),
 			);
+		if (isSkillMd(relativePath))
+			allFindings.push(...scanFrontmatterBins(content, relativePath));
 	}
 
 	return buildReport(skillPath, scannedCount, allFindings, manifestFindings);

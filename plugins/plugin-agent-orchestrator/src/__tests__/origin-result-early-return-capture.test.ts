@@ -157,23 +157,50 @@ describe("origin-result capture on task_complete early returns", () => {
         }),
       ],
     ]);
-    const { router, internals, acp, runtime } = await startRouter(sessions, {
-      ELIZA_URL_VERIFY_SETTLE_MS: "0",
-    });
+    // W1-048: the verifier only probes loopback URLs on supervisor-configured
+    // ports. Sanction the discard port via the operator custom static host
+    // (hermetic: no config file, env only) so the dead URL is still probed and
+    // refused rather than dropped unprobed.
+    const savedEnv: Record<string, string | undefined> = {};
+    for (const key of [
+      "ELIZA_CONFIG_PATH",
+      "ELIZA_APP_DEPLOY_TARGET",
+      "ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR",
+      "ELIZA_APP_DEPLOY_CUSTOM_BASE_URL",
+    ]) {
+      savedEnv[key] = process.env[key];
+    }
+    process.env.ELIZA_CONFIG_PATH = "/nonexistent/early-return-test.json";
+    process.env.ELIZA_APP_DEPLOY_TARGET = "custom";
+    process.env.ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR = "/srv/apps";
+    process.env.ELIZA_APP_DEPLOY_CUSTOM_BASE_URL = "http://127.0.0.1:9";
+    let router: SubAgentRouter | undefined;
+    try {
+      const started = await startRouter(sessions, {
+        ELIZA_URL_VERIFY_SETTLE_MS: "0",
+      });
+      router = started.router;
+      const { internals, acp, runtime } = started;
 
-    await internals.handleEvent("sess-verify", "task_complete", {
-      response: `The game is built and live at ${deadUrl}`,
-      stopReason: "end_turn",
-    });
+      await internals.handleEvent("sess-verify", "task_complete", {
+        response: `The game is built and live at ${deadUrl}`,
+        stopReason: "end_turn",
+      });
 
-    // Prove the verify-retry EARLY RETURN was the path taken: a retry was
-    // spawned and the suppressed completion never reached the delivery loop.
-    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
-    expect(runtime.emitEvent).not.toHaveBeenCalled();
+      // Prove the verify-retry EARLY RETURN was the path taken: a retry was
+      // spawned and the suppressed completion never reached the delivery loop.
+      expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+      expect(runtime.emitEvent).not.toHaveBeenCalled();
 
-    // …and the verify-FAILED completion was NOT captured for the origin.
-    expect(router.bestResultFor("disc-verify-1\0codex")).toBeUndefined();
-    await router.stop();
+      // …and the verify-FAILED completion was NOT captured for the origin.
+      expect(router.bestResultFor("disc-verify-1\0codex")).toBeUndefined();
+    } finally {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await router?.stop();
+    }
   });
 
   it("lineage dedupe still lets a longer late completion win (longest-wins capture)", async () => {

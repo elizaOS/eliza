@@ -8,7 +8,9 @@
  *     app that doesn't list a plugin won't load it even if that plugin's own
  *     auto-enable would match.
  *   - `defaults` prepopulates `config.plugins.entries` with `{ enabled }` flags
- *     before the manifest evaluator runs, so a user's saved config still wins.
+ *     before the manifest evaluator runs, so a user's saved config still wins;
+ *     a host may also mark a selected plugin `requiredForReady` without writing
+ *     that host-only policy into user configuration.
  *   - `capabilities` is informational — surfaced via the verdict so UIs can
  *     warn when a required capability isn't satisfied by any enabled plugin.
  *
@@ -25,6 +27,11 @@ import type { PluginManifestCandidate } from "./plugin-manifest.js";
 export interface PluginAppDefault {
   /** When false, the plugin is disabled by default unless the user enables it. */
   enabled?: boolean;
+  /**
+   * When true, an enabled plugin belongs to the host's readiness contract and
+   * must register before the runtime reports ready.
+   */
+  requiredForReady?: boolean;
 }
 
 /** Capability requirement level declared by the app. */
@@ -143,7 +150,7 @@ export function applyAppManifestDefaults(
   const applied: string[] = [];
   for (const [id, defaultsForPlugin] of Object.entries(manifest.defaults)) {
     if (entries[id] !== undefined) continue; // user wins
-    entries[id] = { ...defaultsForPlugin };
+    entries[id] = { enabled: defaultsForPlugin.enabled };
     applied.push(id);
   }
   return applied;

@@ -60,6 +60,7 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
+import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import {
 	executeChainWithFallback,
@@ -373,6 +374,10 @@ const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+// Page size for the getAllMemories partition sweep. The sweep must be complete
+// — the media GC builds its referenced-set from it — so it paginates until a
+// short page instead of issuing one bounded read that silently truncates.
+const GET_ALL_MEMORIES_PAGE_SIZE = 10_000;
 
 type ProviderExecutionOutcome = "success" | "error" | "aborted";
 
@@ -4347,7 +4352,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const messageId = message.id;
 		const roomId = message.roomId;
-		const worldId = message.worldId ?? roomId;
+		const worldId = await resolveActionEventWorldId(
+			this,
+			message,
+			"AgentRuntime.resolveActionEventWorldId",
+		);
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {
@@ -4904,8 +4913,10 @@ export class AgentRuntime implements IAgentRuntime {
 				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
-			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
-				audienceCacheKey
+			(cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
+				audienceCacheKey &&
+				(cachedCandidate.data as Record<string, unknown>).__roomId ===
+					message.roomId)
 				? cachedCandidate
 				: emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
@@ -5070,7 +5081,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const providerRuntime: IAgentRuntime = this;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -5532,6 +5543,7 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			data: {
 				...cachedState.data,
+				__roomId: message.roomId,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
@@ -5588,6 +5600,7 @@ export class AgentRuntime implements IAgentRuntime {
 				state: {
 					values: { ...publicValues, providers: publicText },
 					data: {
+						__roomId: message.roomId,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),
@@ -9294,7 +9307,7 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 500)}...` : content;
+								content.length > 500 ? `${content.slice(0, 497)}...` : content;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);
@@ -11314,12 +11327,19 @@ ${section_end}`;
 		const allMemories: Memory[] = [];
 
 		for (const tableName of tables) {
-			const memories = await this.adapter.getMemories({
-				agentId: this.agentId,
-				tableName,
-				limit: 10000, // Get a large number to fetch all
-			});
-			allMemories.push(...memories);
+			// Paginate until a short page: a single 10k-bounded read silently
+			// truncates a larger partition, and the media GC would then delete
+			// files referenced only by rows past the cap as "orphaned".
+			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
+				const memories = await this.adapter.getMemories({
+					agentId: this.agentId,
+					tableName,
+					limit: GET_ALL_MEMORIES_PAGE_SIZE,
+					offset,
+				});
+				allMemories.push(...memories);
+				if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break;
+			}
 		}
 
 		return allMemories;

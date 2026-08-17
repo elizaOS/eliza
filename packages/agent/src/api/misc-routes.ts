@@ -19,6 +19,8 @@ import {
   isLocalCodeExecutionAllowed,
   logger,
   ModelType,
+  parseBooleanValue,
+  validateUuid,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
@@ -38,6 +40,7 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
@@ -179,6 +182,15 @@ function resolveTerminalShellCommand(): {
   };
 }
 
+function parseOptionalBooleanQuery(
+  raw: string | null,
+): { ok: true; value?: boolean } | { ok: false } {
+  if (raw === null) return { ok: true };
+  const parsed = parseBooleanValue(raw);
+  if (parsed === undefined) return { ok: false };
+  return { ok: true, value: parsed };
+}
+
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,
 ): TerminalRunRequestBody {
@@ -298,7 +310,14 @@ export async function handleMiscRoutes(
 
   // ── GET /api/ingest/share ────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/ingest/share") {
-    const consume = url.searchParams.get("consume") === "1";
+    const consumeParsed = parseOptionalBooleanQuery(
+      url.searchParams.get("consume"),
+    );
+    if (!consumeParsed.ok) {
+      error(res, "consume must be a boolean", 400);
+      return true;
+    }
+    const consume = consumeParsed.value === true;
     if (consume) {
       const items = [...state.shareIngestQueue];
       state.shareIngestQueue.length = 0;
@@ -319,7 +338,17 @@ export async function handleMiscRoutes(
     if (rawEvent === null) return true;
     const agentEventMatch = pathname.match(/^\/api\/agents\/([^/]+)\/event$/);
     if (agentEventMatch) {
-      const routeAgentId = decodeURIComponent(agentEventMatch[1] ?? "").trim();
+      const decodedAgentId = decodePathComponent(
+        agentEventMatch[1] ?? "",
+        res,
+        "agent id",
+      );
+      if (decodedAgentId === null) return true;
+      const routeAgentId = validateUuid(decodedAgentId.trim());
+      if (!routeAgentId) {
+        json(res, { error: "Invalid agent id" }, 400);
+        return true;
+      }
       if (state.runtime?.agentId && state.runtime.agentId !== routeAgentId) {
         json(res, { error: "Agent not found" }, 404);
         return true;
@@ -705,7 +734,17 @@ export async function handleMiscRoutes(
   );
 
   if (method === "POST" && customActionTestMatch) {
-    const actionId = decodeURIComponent(customActionTestMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionTestMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
     const rawTest = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawTest === null) return true;
     const parsedTest = PostCustomActionTestRequestSchema.safeParse(rawTest);
@@ -763,7 +802,17 @@ export async function handleMiscRoutes(
   }
 
   if (method === "PUT" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
     const rawUpdate = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawUpdate === null) return true;
     const parsedUpdate = PutCustomActionRequestSchema.safeParse(rawUpdate);
@@ -827,7 +876,17 @@ export async function handleMiscRoutes(
   }
 
   if (method === "DELETE" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    const decodedActionId = decodePathComponent(
+      customActionMatch[1],
+      res,
+      "custom action id",
+    );
+    if (decodedActionId === null) return true;
+    const actionId = validateUuid(decodedActionId);
+    if (!actionId) {
+      error(res, "Invalid custom action id", 400);
+      return true;
+    }
 
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];

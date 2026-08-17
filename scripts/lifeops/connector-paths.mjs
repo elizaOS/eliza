@@ -70,6 +70,7 @@ export function resolveDeepLink(pathEntry, env = process.env) {
 const ONE_CLICK_TYPES = [
   "gh-token",
   "github-device",
+  "discord-oauth",
   "deep-link",
   "shell",
   "siwe",
@@ -399,9 +400,15 @@ export const CONNECTOR_PATHS = [
     kind: "user-oauth",
     label: "Discord user OAuth app",
     requiredAll: ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"],
+    optional: ["DISCORD_USER_OAUTH_TOKEN"],
     probeId: null,
     probeEndpoint:
       "POST https://discord.com/api/oauth2/token then GET /users/@me",
+    oneClick: {
+      type: "discord-oauth",
+      detail:
+        "Open Discord's authorization page over the dashboard's loopback redirect and save the identify-scoped user token without exposing it to the browser",
+    },
     availability: {
       type: "env-all",
       names: ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"],

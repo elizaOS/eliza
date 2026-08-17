@@ -70,6 +70,24 @@ describe("describeUserReference", () => {
 			"the requested target",
 		);
 	});
+
+	it("handles non-string arguments safely without throwing", () => {
+		expect(
+			describeUserReference(undefined as unknown as string, FALLBACK),
+		).toBe(FALLBACK);
+		expect(describeUserReference(null as unknown as string, FALLBACK)).toBe(
+			FALLBACK,
+		);
+		expect(describeUserReference(123 as unknown as string, FALLBACK)).toBe(
+			FALLBACK,
+		);
+		expect(
+			describeUserReference(
+				undefined as unknown as string,
+				undefined as unknown as string,
+			),
+		).toBe("target");
+	});
 });
 
 describe("userReferenceLogView", () => {
@@ -83,12 +101,18 @@ describe("userReferenceLogView", () => {
 		expect(userReferenceLogView("   ")).toBe("");
 	});
 
+	it("handles non-string arguments safely without throwing", () => {
+		expect(userReferenceLogView(undefined as unknown as string)).toBe("");
+		expect(userReferenceLogView(null as unknown as string)).toBe("");
+		expect(userReferenceLogView(42 as unknown as string)).toBe("");
+	});
+
 	it("holds the 120-character boundary exactly", () => {
 		const exactly120 = "a".repeat(120);
 		expect(userReferenceLogView(exactly120)).toBe(exactly120);
 
 		const over = "a".repeat(121);
-		expect(userReferenceLogView(over)).toBe(`${"a".repeat(120)}…`);
+		expect(userReferenceLogView(over)).toBe(`${"a".repeat(119)}…`);
 	});
 
 	it("measures the boundary after collapsing, not before", () => {
@@ -105,8 +129,8 @@ describe("userReferenceLogView", () => {
 
 	it("appends exactly one ellipsis character when clamping", () => {
 		const clamped = userReferenceLogView("b".repeat(500));
-		expect(clamped).toHaveLength(121);
+		expect(clamped).toHaveLength(120);
 		expect(clamped.endsWith("…")).toBe(true);
-		expect(clamped.slice(0, 120)).toBe("b".repeat(120));
+		expect(clamped.slice(0, 119)).toBe("b".repeat(119));
 	});
 });

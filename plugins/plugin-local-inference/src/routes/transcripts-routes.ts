@@ -250,6 +250,141 @@ function participantEntityIds(transcript: Transcript): UUID[] {
 	return [...ids];
 }
 
+type TranscriptWriteScope = {
+	worldId: UUID;
+	roomId: UUID;
+	entityId: UUID;
+};
+
+type TranscriptWriteScopeResult =
+	| { ok: true; value: TranscriptWriteScope }
+	| { ok: false; status: number; error: string };
+
+async function resolveTranscriptCreateScope(
+	ctx: RouteHandlerContext,
+	body: CreateTranscriptRequest,
+): Promise<TranscriptWriteScopeResult> {
+	const agentId = ctx.runtime.agentId as UUID;
+	const requestedWorldId = requestUuid(body.worldId);
+	const requestedRoomId = requestUuid(body.roomId);
+	const requestedEntityId = requestUuid(body.entityId);
+	if (body.worldId !== undefined && !requestedWorldId) {
+		return { ok: false, status: 400, error: "worldId must be a UUID" };
+	}
+	if (body.roomId !== undefined && !requestedRoomId) {
+		return { ok: false, status: 400, error: "roomId must be a UUID" };
+	}
+	if (body.entityId !== undefined && !requestedEntityId) {
+		return { ok: false, status: 400, error: "entityId must be a UUID" };
+	}
+
+	const access = ctx.accessContext;
+	const elevated = isAdminRank(access?.role) || access?.isOwner === true;
+	if (
+		access &&
+		requestedEntityId &&
+		requestedEntityId !== access.requesterEntityId &&
+		!elevated
+	) {
+		return {
+			ok: false,
+			status: 403,
+			error: "entityId must match the authenticated requester",
+		};
+	}
+	const entityId = requestedEntityId ?? access?.requesterEntityId ?? agentId;
+
+	if (!requestedRoomId) {
+		if (requestedWorldId) {
+			return {
+				ok: false,
+				status: 400,
+				error: "worldId requires a roomId so tenant scope can be verified",
+			};
+		}
+		return {
+			ok: true,
+			value: { worldId: agentId, roomId: agentId, entityId },
+		};
+	}
+
+	let room: Awaited<ReturnType<typeof ctx.runtime.getRoom>>;
+	try {
+		room = await ctx.runtime.getRoom(requestedRoomId);
+	} catch (cause) {
+		// error-policy:J1 The HTTP boundary reports canonical-room lookup failure as unavailable.
+		ctx.runtime.reportError("transcripts.create-scope", cause, {
+			roomId: requestedRoomId,
+		});
+		return {
+			ok: false,
+			status: 503,
+			error: "Transcript room lookup is unavailable",
+		};
+	}
+	if (!room) {
+		return { ok: false, status: 400, error: "roomId does not exist" };
+	}
+	if (!room.worldId) {
+		ctx.runtime.reportError(
+			"transcripts.create-scope",
+			new Error("Canonical transcript room has no worldId"),
+			{ roomId: requestedRoomId },
+		);
+		return {
+			ok: false,
+			status: 503,
+			error: "Transcript room tenant scope is unavailable",
+		};
+	}
+	const worldId = room.worldId as UUID;
+	if (requestedWorldId && requestedWorldId !== worldId) {
+		return {
+			ok: false,
+			status: 403,
+			error: "worldId does not match the canonical room tenant",
+		};
+	}
+	if (access && !elevated) {
+		if (access.worldId !== worldId) {
+			return {
+				ok: false,
+				status: 403,
+				error: "Requester is not authorized for the room tenant",
+			};
+		}
+		let participantRooms: UUID[];
+		try {
+			participantRooms = await ctx.runtime.getRoomsForParticipants([
+				access.requesterEntityId,
+			]);
+		} catch (cause) {
+			// error-policy:J1 The HTTP boundary reports membership lookup failure as unavailable.
+			ctx.runtime.reportError("transcripts.create-membership", cause, {
+				roomId: requestedRoomId,
+				requesterEntityId: access.requesterEntityId,
+			});
+			return {
+				ok: false,
+				status: 503,
+				error: "Transcript room membership is unavailable",
+			};
+		}
+		if (!participantRooms.includes(requestedRoomId)) {
+			return {
+				ok: false,
+				status: 403,
+				error: "Requester is not a participant in the transcript room",
+			};
+		}
+	}
+
+	return {
+		ok: true,
+		value: { worldId, roomId: requestedRoomId, entityId },
+	};
+}
+
 const updateRoute: Route = {
 	type: "PUT",
 	path: "/api/transcripts/:id",
@@ -280,11 +415,44 @@ const updateRoute: Route = {
 		if (!requesterCanManageRow(ctx, row)) {
 			return { status: 403, body: { error: "manage access required" } };
 		}
-		const agentId = ctx.runtime.agentId as UUID;
+		const editWorldId = requestUuid(body.worldId);
+		const editRoomId = requestUuid(body.roomId);
+		const editEntityId = requestUuid(body.entityId);
+		if (
+			(body.worldId !== undefined && !editWorldId) ||
+			(body.roomId !== undefined && !editRoomId) ||
+			(body.entityId !== undefined && !editEntityId)
+		) {
+			return {
+				status: 400,
+				body: { error: "Transcript scope identifiers must be UUIDs" },
+			};
+		}
+		if (
+			(editWorldId && editWorldId !== row.worldId) ||
+			(editRoomId && editRoomId !== row.roomId) ||
+			(editEntityId && editEntityId !== row.entityId)
+		) {
+			return {
+				status: 403,
+				body: { error: "Transcript scope cannot be changed by an edit" },
+			};
+		}
+		if (!row.worldId) {
+			ctx.runtime.reportError(
+				"transcripts.update-scope",
+				new Error("Persisted transcript row has no worldId"),
+				{ transcriptId: ctx.params.id },
+			);
+			return {
+				status: 503,
+				body: { error: "Persisted transcript tenant scope is unavailable" },
+			};
+		}
 		const updated = await service(ctx).update(ctx.params.id as UUID, {
-			worldId: (body.worldId ?? agentId) as UUID,
-			roomId: (body.roomId ?? agentId) as UUID,
-			entityId: (body.entityId ?? agentId) as UUID,
+			worldId: row.worldId,
+			roomId: row.roomId,
+			entityId: row.entityId,
 			patch: { title: body.title, segments: body.segments },
 		});
 		if (!updated) return { status: 404, body: { error: "not found" } };
@@ -315,7 +483,13 @@ const createRoute: Route = {
 		}
 		// The shell client doesn't carry world/room/entity ids — default them to
 		// the agent context (single-user local) when not supplied.
-		const agentId = ctx.runtime.agentId as UUID;
+		const writeScope = await resolveTranscriptCreateScope(ctx, body);
+		if (!writeScope.ok) {
+			return {
+				status: writeScope.status,
+				body: { error: writeScope.error },
+			};
+		}
 		// Persist the recorded session WAV into the served media store so the
 		// player has audio to scrub. The shell sends base64 (it can't write files).
 		if (body.audioBase64 && !body.audioUrl) {
@@ -330,9 +504,7 @@ const createRoute: Route = {
 			Date.now(),
 		);
 		const saved = await service(ctx).create({
-			worldId: (body.worldId ?? agentId) as UUID,
-			roomId: (body.roomId ?? agentId) as UUID,
-			entityId: (body.entityId ?? agentId) as UUID,
+			...writeScope.value,
 			transcript,
 		});
 		return { status: 201, body: { transcript: saved } };

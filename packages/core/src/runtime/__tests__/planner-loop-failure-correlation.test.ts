@@ -736,9 +736,80 @@ describe("planner-loop failed-operation correlation", () => {
 			});
 
 			expect(result.status).toBe("finished");
-			expect(result.finalMessage).toBe(shellFailure);
+			// The failure keeps the lead and the model's contradicting prose is
+			// excluded, but the tool-owned success from project B is reported —
+			// erasing it produced the inverse lie ("never produced a usable
+			// result" while the deliverable shipped, live 2026-08-16).
+			expect(result.finalMessage?.startsWith(shellFailure)).toBe(true);
 			expect(result.finalMessage).not.toContain("Both test runs passed");
+			expect(result.finalMessage).toContain("Project B tests passed.");
 			expect(evaluate).not.toHaveBeenCalled();
+		});
+	});
+
+	it("reports tool-owned recovery evidence after an unresolved coding failure", async () => {
+		await withCodingFullSurface(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-echo",
+								name: "SHELL",
+								arguments: { command: "echo $PATH", cwd: "/workspace" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "file-write",
+								name: "FILE",
+								arguments: {
+									action: "write",
+									file_path: "index.html",
+								},
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "Done! The page is live.",
+					}),
+			};
+			const shellFailure = "No boot-authorized shell was detected.";
+			const evaluate = vi.fn();
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						error: "command_failed",
+						text: shellFailure,
+						userFacingText: shellFailure,
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "Wrote index.html (74 lines).",
+						userFacingText: "Wrote index.html (74 lines).",
+					}),
+				evaluate,
+			});
+
+			expect(result.status).toBe("finished");
+			// The live 2026-08-16 inversion: the sub-agent built and deployed its
+			// page after auxiliary shell failures, and the final message claimed
+			// nothing usable was produced. The failure keeps the lead; the
+			// tool-owned write is reported as recovery evidence; untrusted model
+			// prose stays out.
+			expect(result.finalMessage?.startsWith(shellFailure)).toBe(true);
+			expect(result.finalMessage).toContain("Wrote index.html (74 lines).");
+			expect(result.finalMessage).not.toContain("Done! The page is live.");
+			expect(result.finalMessage).not.toBe(shellFailure);
 		});
 	});
 

@@ -24,6 +24,8 @@ export function baseSnapshot(
 ): ShellControllerSnapshot {
   return {
     phase: "idle",
+    authGate: { gated: false, phase: "clear" },
+    signingIn: false,
     responding: false,
     turnStatus: null,
     messages: EMPTY_MESSAGES,
@@ -53,6 +55,9 @@ export function baseSnapshot(
 export function makeFakeShellController(): ShellController {
   return {
     phase: "idle",
+    authGate: { gated: false, phase: "clear" },
+    requestSignIn: vi.fn(),
+    signingIn: false,
     responding: false,
     turnStatus: null,
     messages: [],
@@ -84,6 +89,7 @@ export function makeFakeShellController(): ShellController {
     toggleRecording: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
+    cancelRecording: vi.fn(),
     toggleHandsFree: vi.fn(),
     recheckMicPermission: vi.fn(async () => "granted" as const),
     toggleTranscriptionMode: vi.fn(),

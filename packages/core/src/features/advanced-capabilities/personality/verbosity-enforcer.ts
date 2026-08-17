@@ -33,24 +33,37 @@ export interface VerbosityEnforcementResult {
 }
 
 function truncateAtSentenceBoundary(text: string, maxWords: number): string {
-	const words = text.trim().split(/\s+/);
-	if (words.length <= maxWords) return text;
-	const truncated = words.slice(0, maxWords).join(" ");
-
-	// Find the last sentence-ending punctuation in the truncated block.
-	const sentenceEnd = truncated.search(/[.!?][^.!?]*$/);
-	if (sentenceEnd > 0) {
-		// Keep up to (and including) the punctuation.
-		const lastTerminator = truncated.lastIndexOf(".");
-		const lastBang = truncated.lastIndexOf("!");
-		const lastQ = truncated.lastIndexOf("?");
-		const cut = Math.max(lastTerminator, lastBang, lastQ);
-		if (cut > 0) {
-			return truncated.slice(0, cut + 1);
+	// Cut the ORIGINAL text at the character offset of the word cap instead of
+	// rebuilding from split words: `split(/\s+/).join(" ")` flattened newlines,
+	// so a four-bullet reply shipped as one run-on line (observed live on the
+	// Discord group surface with a terse personality slot).
+	const trimmed = text.trim();
+	let wordCount = 0;
+	let cutOffset = trimmed.length;
+	for (const match of trimmed.matchAll(/\S+/g)) {
+		wordCount += 1;
+		if (wordCount > maxWords) {
+			cutOffset = match.index;
+			break;
 		}
 	}
+	if (cutOffset >= trimmed.length) return text;
+	const block = trimmed.slice(0, cutOffset);
+
+	// A sentence terminator is [.!?] followed by whitespace or end-of-block. A
+	// bare lastIndexOf(".") treated the dot inside "app/layout.tsx" as a
+	// sentence end and cut the reply mid-filename (observed live: an 86-char
+	// delivery ending "app/layout."). Filenames, versions, and inline code
+	// never terminate at a dot glued to the next character.
+	let lastTerminator = -1;
+	for (const match of block.matchAll(/[.!?](?=\s|$)/g)) {
+		lastTerminator = match.index;
+	}
+	if (lastTerminator > 0) {
+		return block.slice(0, lastTerminator + 1);
+	}
 	// No clean boundary — hard cut with ellipsis.
-	return `${truncated.trimEnd()}…`;
+	return `${block.trimEnd()}…`;
 }
 
 /**

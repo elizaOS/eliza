@@ -152,6 +152,17 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
 }
 
 /**
+ * Env kill-switch for the host-selected LifeOps owner-chat capability (#17023).
+ * Config-level opt-out (`plugins.entries["personal-assistant"].enabled=false`)
+ * is honored separately by the explicit-disable sweep in collectPluginNames.
+ */
+function personalAssistantDisabledByEnv(): boolean {
+  const raw =
+    process.env.ELIZA_DISABLE_PERSONAL_ASSISTANT?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/**
  * The opt-in standalone Telegram polling bot (the standalone mode of
  * `@elizaos/plugin-telegram`) runs when `ELIZA_TELEGRAM_STANDALONE_BOT` is
  * truthy and the resolved plugin set is not in LifeOps passive mode. The same
@@ -624,6 +635,9 @@ export function collectPluginNames(
       "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
     );
   }
+  // The host app owns default feature selection through `elizaos.app.defaults`
+  // in its package manifest. A standalone @elizaos/agent installation must not
+  // implicitly select a package outside its published dependency closure.
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
   if (allowList && allowList.length > 0) {
@@ -854,6 +868,14 @@ export function collectPluginNames(
     if (isPluginExplicitlyDisabled(pluginName)) {
       pluginsToLoad.delete(pluginName);
     }
+  }
+  if (
+    personalAssistantDisabledByEnv() ||
+    leanChat ||
+    storeBuild ||
+    isCloudContainer
+  ) {
+    pluginsToLoad.delete("@elizaos/plugin-personal-assistant");
   }
 
   // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar

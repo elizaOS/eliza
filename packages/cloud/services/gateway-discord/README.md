@@ -397,18 +397,21 @@ Expected response:
 #### 2. Check Gateway Status
 
 ```bash
-curl http://localhost:3000/status
+curl -H "X-Internal-Secret: $GATEWAY_INTERNAL_SECRET" http://localhost:3000/status
 ```
 
-Shows detailed information about all active connections.
+Shows detailed information about all active connections. Requires the
+`X-Internal-Secret` header (`GATEWAY_INTERNAL_SECRET`); unauthenticated
+requests are rejected with 401.
 
 #### 3. Check Prometheus Metrics
 
 ```bash
-curl http://localhost:3000/metrics
+curl -H "X-Internal-Secret: $GATEWAY_INTERNAL_SECRET" http://localhost:3000/metrics
 ```
 
-Returns metrics in Prometheus format for monitoring.
+Returns metrics in Prometheus format for monitoring. Requires the same
+`X-Internal-Secret` header as `/status`.
 
 #### 4. Watch the Logs
 
@@ -1041,12 +1044,13 @@ When a pod receives `SIGTERM` or `SIGINT`, it performs a graceful shutdown:
 
 ### Health Endpoints
 
-| Endpoint | Purpose | Returns 503 When |
-|----------|---------|------------------|
-| `/health` | Liveness probe (K8s restarts pod if 503) | `status === "unhealthy"` (control plane lost OR all bots disconnected) |
-| `/ready` | Readiness probe (K8s stops traffic if 503) | `status !== "healthy"` OR control plane unhealthy |
-| `/metrics` | Prometheus metrics scraping | Never (always returns metrics text) |
-| `/status` | Detailed debug information | Never (always returns JSON status) |
+| Endpoint | Purpose | Auth | Returns 503 When |
+|----------|---------|------|------------------|
+| `/health` | Liveness probe (K8s restarts pod if 503) | None (probes cannot attach headers) | `status === "unhealthy"` (control plane lost OR all bots disconnected) |
+| `/ready` | Readiness probe (K8s stops traffic if 503) | None (probes cannot attach headers) | `status !== "healthy"` OR control plane unhealthy |
+| `/metrics` | Prometheus metrics scraping | `X-Internal-Secret` required (401 otherwise) | Never (always returns metrics text) |
+| `/status` | Detailed debug information | `X-Internal-Secret` required (401 otherwise) | Never (always returns JSON status) |
+| `/drain` | Graceful drain before shutdown | `X-Internal-Secret` required (401 otherwise) | Never |
 
 ### Communication Summary
 

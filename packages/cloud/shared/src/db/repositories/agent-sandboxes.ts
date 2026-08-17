@@ -23,6 +23,7 @@ import {
   lte,
   ne,
   notInArray,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -47,9 +48,13 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
-import { deleteObject, getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import {
+  deleteLegacyObject,
+  getObjectText,
+  offloadJsonField,
+} from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
-import type { DbTransaction } from "../client";
+import type { Database, DbTransaction } from "../client";
 import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
@@ -88,7 +93,31 @@ export type {
   NewAgentSandboxBackup,
 };
 
-export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
+/**
+ * Lightweight legacy-list projection. Catalogue-v2 fields are intentionally
+ * read through the dedicated catalogue repository so this path never grows
+ * into a second authority or accidentally selects inline backup payloads.
+ */
+export type AgentSandboxBackupMetadata = Pick<
+  StoredAgentSandboxBackup,
+  | "id"
+  | "sandbox_record_id"
+  | "snapshot_type"
+  | "state_data_storage"
+  | "state_data_key"
+  | "size_bytes"
+  | "backup_kind"
+  | "parent_backup_id"
+  | "content_hash"
+  | "verification_status"
+  | "verified_at"
+  | "verification_error"
+  | "recovery_organization_id"
+  | "recovery_agent_id"
+  | "recovery_deletion_attempt_id"
+  | "recovery_expires_at"
+  | "created_at"
+>;
 
 /**
  * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
@@ -136,6 +165,19 @@ const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
  * backup wire payload — it is what gets handed to restore (#17172).
  */
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+
+/**
+ * V2 catalogue operations are always invisible to legacy restore/list paths:
+ * their inline state is only a schema placeholder and the real payload lives
+ * in authenticated chunk objects. Only the dedicated v2 restore pipeline may
+ * consume them, even after provider verification.
+ */
+function backupVisibleToLegacyReaders(): SQL {
+  return or(
+    isNull(agentSandboxBackups.catalog_state),
+    eq(agentSandboxBackups.catalog_state, "legacy_unmigrated"),
+  ) as SQL;
+}
 
 /** Successful agent deletes retain one final recovery point for 30 days. */
 export const PRE_DELETE_BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -252,11 +294,12 @@ export interface ReconciliationBatchResult<T> {
 
 async function getStoredBackupById(
   backupId: string,
+  database: Database = dbWrite,
 ): Promise<StoredAgentSandboxBackup | undefined> {
-  const [row] = await dbRead
+  const [row] = await database
     .select()
     .from(agentSandboxBackups)
-    .where(eq(agentSandboxBackups.id, backupId))
+    .where(and(eq(agentSandboxBackups.id, backupId), backupVisibleToLegacyReaders()))
     .limit(1);
   return row;
 }
@@ -2038,6 +2081,7 @@ export class AgentSandboxesRepository {
           isNull(agentSandboxBackups.recovery_agent_id),
           isNull(agentSandboxBackups.recovery_deletion_attempt_id),
           isNull(agentSandboxBackups.recovery_expires_at),
+          backupVisibleToLegacyReaders(),
         ),
       )
       .limit(1);
@@ -2045,9 +2089,10 @@ export class AgentSandboxesRepository {
   }
 
   /**
-   * Detach the exact pre-delete snapshot owned by a successful deletion while
-   * the sandbox row is locked. Every other attached backup remains subject to
-   * the existing parent FK cascade.
+   * Mark the exact legacy pre-delete snapshot as the user-visible recovery
+   * point while the sandbox row is locked. Other legacy rows retain their
+   * historical cascade behavior; v2 catalogue rows block sandbox deletion
+   * until the lifecycle coordinator hands them to exact-object GC.
    */
   async retainPreDeleteBackupForDeletedAgent(
     tx: DbTransaction,
@@ -2081,6 +2126,7 @@ export class AgentSandboxesRepository {
           isNull(agentSandboxBackups.recovery_agent_id),
           isNull(agentSandboxBackups.recovery_deletion_attempt_id),
           isNull(agentSandboxBackups.recovery_expires_at),
+          backupVisibleToLegacyReaders(),
         ),
       )
       .returning({ id: agentSandboxBackups.id });
@@ -2103,6 +2149,7 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.recovery_organization_id, organizationId),
           eq(agentSandboxBackups.recovery_agent_id, deletedAgentId),
           gt(agentSandboxBackups.recovery_expires_at, now),
+          backupVisibleToLegacyReaders(),
         ),
       )
       .orderBy(desc(agentSandboxBackups.created_at))
@@ -2134,6 +2181,7 @@ export class AgentSandboxesRepository {
           isNotNull(agentSandboxBackups.recovery_agent_id),
           isNotNull(agentSandboxBackups.recovery_deletion_attempt_id),
           lte(agentSandboxBackups.recovery_expires_at, now),
+          backupVisibleToLegacyReaders(),
         ),
       )
       .orderBy(agentSandboxBackups.recovery_expires_at)
@@ -2156,7 +2204,7 @@ export class AgentSandboxesRepository {
           );
         } else {
           try {
-            await deleteObject(candidate.stateDataKey);
+            await deleteLegacyObject(candidate.stateDataKey);
             deletedObjects += 1;
           } catch (error) {
             // error-policy:J1 the bounded cleanup boundary retains this row for
@@ -2211,8 +2259,13 @@ export class AgentSandboxesRepository {
     const rows = await dbRead
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(desc(agentSandboxBackups.created_at))
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          backupVisibleToLegacyReaders(),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at), desc(agentSandboxBackups.id))
       .limit(limit);
     return await Promise.all(rows.map(hydrateAgentSandboxBackup));
   }
@@ -2242,17 +2295,27 @@ export class AgentSandboxesRepository {
         created_at: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(desc(agentSandboxBackups.created_at))
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          backupVisibleToLegacyReaders(),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at), desc(agentSandboxBackups.id))
       .limit(limit);
   }
 
   async getLatestBackup(sandboxRecordId: string): Promise<AgentSandboxBackup | undefined> {
-    const [r] = await dbRead
+    const [r] = await dbWrite
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(desc(agentSandboxBackups.created_at))
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          backupVisibleToLegacyReaders(),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at), desc(agentSandboxBackups.id))
       .limit(1);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
@@ -2266,13 +2329,14 @@ export class AgentSandboxesRepository {
     sandboxRecordId: string,
     snapshotType: AgentBackupSnapshotType,
   ): Promise<AgentSandboxBackup | undefined> {
-    const [r] = await dbRead
+    const [r] = await dbWrite
       .select()
       .from(agentSandboxBackups)
       .where(
         and(
           eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
           eq(agentSandboxBackups.snapshot_type, snapshotType),
+          backupVisibleToLegacyReaders(),
         ),
       )
       .orderBy(desc(agentSandboxBackups.created_at))
@@ -2299,11 +2363,18 @@ export class AgentSandboxesRepository {
   async getLatestStoredBackup(
     sandboxRecordId: string,
   ): Promise<StoredAgentSandboxBackup | undefined> {
-    const [row] = await dbRead
+    // The head is used to bind destructive fresh-boot consent. Reading it from
+    // a replica could bind consent to B1 while primary already contains B2.
+    const [row] = await dbWrite
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(desc(agentSandboxBackups.created_at))
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          backupVisibleToLegacyReaders(),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at), desc(agentSandboxBackups.id))
       .limit(1);
     return row;
   }
@@ -2326,7 +2397,7 @@ export class AgentSandboxesRepository {
         verified_at: outcome.verifiedAt,
         verification_error: outcome.error,
       })
-      .where(eq(agentSandboxBackups.id, backupId));
+      .where(and(eq(agentSandboxBackups.id, backupId), backupVisibleToLegacyReaders()));
   }
 
   /**
@@ -2344,7 +2415,13 @@ export class AgentSandboxesRepository {
         createdAt: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId));
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          backupVisibleToLegacyReaders(),
+          eq(agentSandboxBackups.state_data_storage, "inline"),
+        ),
+      );
     if (all.length <= keep) return 0;
     const nodes: BackupChainNode[] = all.map((b) => ({
       id: b.id,

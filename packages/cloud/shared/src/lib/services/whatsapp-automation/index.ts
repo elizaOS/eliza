@@ -10,6 +10,7 @@
  */
 
 import crypto from "crypto";
+import { timingSafeEqualSecret } from "../../auth/cron";
 import { cache } from "../../cache/client";
 import {
   WHATSAPP_ACCESS_TOKEN,
@@ -365,7 +366,9 @@ class WhatsAppAutomationService {
     }
 
     const storedToken = await this.getVerifyToken(organizationId);
-    if (!storedToken || verifyToken !== storedToken) {
+    // Constant-time comparison (never `!==` on a secret): the handshake runs
+    // on the internet-facing Meta webhook subscription endpoint.
+    if (!storedToken || !timingSafeEqualSecret(verifyToken, storedToken)) {
       return null;
     }
 

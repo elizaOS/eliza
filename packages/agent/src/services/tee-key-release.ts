@@ -339,6 +339,7 @@ function unwrapTeeReleaseKey(
       "aes-256-gcm",
       wrapKey,
       Buffer.from(wrapped.ivBase64, "base64"),
+      { authTagLength: 16 },
     );
     decipher.setAuthTag(Buffer.from(wrapped.authTagBase64, "base64"));
     // A key not actually wrapped to our epk (wrong shared secret) fails the

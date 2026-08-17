@@ -153,6 +153,29 @@ describe("webhook server malformed-path handling (#19060)", () => {
     closers.length = 0;
   });
 
+  it("binds loopback only so the plaintext-HTTP API key stays off the LAN", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: (_accountId, msg) => {
+        received.push(msg);
+      },
+    });
+    closers.push(handle.close);
+
+    expect(handle.host).toBe("127.0.0.1");
+    const res = await requestRaw(handle.port, "/webhook/wechat/main", {
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(basePayload()),
+    });
+    expect(res.status).toBe(200);
+    expect(received).toHaveLength(1);
+  });
+
   async function startServer(
     received: WechatMessageContext[],
     accounts = [

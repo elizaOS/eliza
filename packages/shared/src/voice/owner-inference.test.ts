@@ -2,7 +2,8 @@
  * Tests speaker owner-candidate inference (resolveOwnerCandidate) over a stream
  * of confidence-scored observations: dominance/share/margin thresholds, tie
  * ambiguity, the confidence floor and unrecognized-speaker filtering, and the
- * undecided path. Pure function.
+ * undecided path. Deterministic inputs also lock the public option and
+ * observation-validation boundary.
  */
 import { describe, expect, it } from "vitest";
 import { resolveOwnerCandidate } from "./owner-inference";
@@ -20,6 +21,76 @@ describe("resolveOwnerCandidate", () => {
     expect(r.reason).toMatch(/insufficient/);
   });
 
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    0,
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("rejects an invalid minimum observation count: %s", (minObservations) => {
+    expect(() => resolveOwnerCandidate([], { minObservations })).toThrow(
+      RangeError,
+    );
+  });
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -0.01,
+    1.01,
+  ])("rejects an invalid confidence floor: %s", (minConfidence) => {
+    expect(() => resolveOwnerCandidate([], { minConfidence })).toThrow(
+      RangeError,
+    );
+  });
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -0.01,
+  ])("rejects an invalid minimum margin: %s", (minMargin) => {
+    expect(() => resolveOwnerCandidate([], { minMargin })).toThrow(RangeError);
+  });
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -0.01,
+    1.01,
+  ])("rejects an invalid observation confidence: %s", (confidence) => {
+    expect(() => resolveOwnerCandidate([C("owner", confidence)])).toThrow(
+      RangeError,
+    );
+  });
+
+  it.each(["", "   "])(
+    "rejects an empty recognized entity id: %j",
+    (entityId) => {
+      expect(() => resolveOwnerCandidate([C(entityId)])).toThrow(TypeError);
+    },
+  );
+
+  it("accepts the documented confidence and margin boundaries", () => {
+    const zeroConfidence = resolveOwnerCandidate([C("owner", 0)], {
+      minObservations: 1,
+      minConfidence: 0,
+      minMargin: 0,
+    });
+    expect(zeroConfidence.ownerEntityId).toBeNull();
+
+    const fullConfidence = resolveOwnerCandidate([C("owner", 1)], {
+      minObservations: 1,
+      minConfidence: 1,
+      minMargin: 0,
+    });
+    expect(fullConfidence.ownerEntityId).toBe("owner");
+  });
+
   it("names a dominant speaker as the owner", () => {
     const r = resolveOwnerCandidate([
       C("owner"),
@@ -34,6 +105,14 @@ describe("resolveOwnerCandidate", () => {
 
   it("stays undecided on a tie (two-equals household)", () => {
     const r = resolveOwnerCandidate([C("a"), C("a"), C("b"), C("b")]);
+    expect(r.ownerEntityId).toBeNull();
+    expect(r.reason).toMatch(/ambiguous/);
+  });
+
+  it("stays undecided on a tie even when the configured margin is zero", () => {
+    const r = resolveOwnerCandidate([C("a"), C("a"), C("b"), C("b")], {
+      minMargin: 0,
+    });
     expect(r.ownerEntityId).toBeNull();
     expect(r.reason).toMatch(/ambiguous/);
   });

@@ -121,8 +121,10 @@ function findTerminatorEnd(text: string, start: number): number {
 
     // Newline acts as a soft terminator (e.g. message body broken into lines).
     if (ch === "\n") {
-      // Strip trailing whitespace from the run by returning index of \n.
-      return i;
+      // Neither the delimiter nor horizontal spacing before it is spoken.
+      let end = i - 1;
+      while (end >= start && /\s/u.test(text[end] ?? "")) end--;
+      return end;
     }
 
     // Open / close quotes for skipping terminators inside.

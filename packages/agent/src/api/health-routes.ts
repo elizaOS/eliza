@@ -31,6 +31,7 @@ import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
 type CloudApiKeyResolver = {
   resolveCloudApiKey: (
@@ -245,7 +246,7 @@ function serializeForRuntimeDebug(
       return {
         __type: "string",
         length: redacted.length,
-        preview: `${redacted.slice(0, options.maxStringLength)}...`,
+        preview: `${redacted.slice(0, options.maxStringLength - 3)}...`,
         truncated: true,
       };
     }
@@ -285,7 +286,7 @@ function serializeForRuntimeDebug(
       if (err.stack) {
         out.stack =
           err.stack.length > options.maxStringLength
-            ? `${err.stack.slice(0, options.maxStringLength)}...`
+            ? `${err.stack.slice(0, options.maxStringLength - 3)}...`
             : err.stack;
       }
       if (err.cause !== undefined) {
@@ -487,7 +488,7 @@ export function computeCanRespond(
 export async function handleHealthRoutes(
   ctx: HealthRouteContext,
 ): Promise<boolean> {
-  const { res, method, pathname, url, state, json, error } = ctx;
+  const { req, res, method, pathname, url, state, json, error } = ctx;
 
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
@@ -599,6 +600,17 @@ export async function handleHealthRoutes(
       state.agentState !== "starting" &&
       state.agentState !== "restarting" &&
       !databaseLiveness.terminal;
+
+    // The endpoint stays unauthenticated for readiness probes, so callers
+    // that fail the trusted-local check receive only the liveness bit: the
+    // detailed shape discloses deployment topology (connector names, plugin
+    // and service counts, database internals, boot phase) to anyone who can
+    // reach the port (W1-039). The status code keeps its terminal/ready
+    // semantics for orchestrators.
+    if (!isTrustedLocalRequest(req)) {
+      json(res, { ready }, databaseLiveness.terminal ? 503 : 200);
+      return true;
+    }
 
     // Service registration truth (#16309): a service whose start() threw is
     // recorded as "failed" by the runtime but previously never reached this

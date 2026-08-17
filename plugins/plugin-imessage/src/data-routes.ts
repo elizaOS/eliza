@@ -141,6 +141,23 @@ function parseContactId(pathname: string): string | null {
   return decodeURIComponent(rest);
 }
 
+const DEFAULT_MESSAGES_LIMIT = 50;
+const MAX_MESSAGES_LIMIT = 500;
+
+/**
+ * Canonical positive page size. `Number.parseInt("1e2", 10) === 1` used to
+ * silently return one iMessage instead of rejecting the token.
+ */
+function parseMessagesLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") {
+    return DEFAULT_MESSAGES_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return null;
+  }
+  return Math.min(Number.parseInt(raw, 10), MAX_MESSAGES_LIMIT);
+}
+
 // ── GET /api/imessage/messages?limit=N ──────────────────────────────
 async function handleMessages(
   req: RouteRequest,
@@ -153,8 +170,11 @@ async function handleMessages(
     return;
   }
   const url = new URL(req.url ?? "/api/imessage/messages", "http://localhost");
-  const limitParam = url.searchParams.get("limit");
-  const limit = Math.min(Math.max(1, Number.parseInt(limitParam ?? "50", 10) || 50), 500);
+  const limit = parseMessagesLimit(url.searchParams.get("limit"));
+  if (limit === null) {
+    res.status(400).json(buildSetupError("bad_request", "limit must be a positive integer"));
+    return;
+  }
   const chatId = url.searchParams.get("chatId")?.trim() || undefined;
   try {
     const messages =

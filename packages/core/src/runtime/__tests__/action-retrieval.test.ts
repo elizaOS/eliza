@@ -104,6 +104,117 @@ describe("action catalogue and retrieval", () => {
 		);
 	});
 
+	it("resolves wildcard candidate hints against child action names (#20467)", () => {
+		// normalizeActionName strips "*" before the wildcard branch ran, and the
+		// escape/replace pair searched for a "\*" that was never produced, so
+		// "GMAIL_*" compiled to ^GMAIL$ and matched nothing it was meant to.
+		const [parent, ...virtuals] = promoteSubactionsToActions({
+			name: "GMAIL",
+			description: "Send mail, and create or update drafts.",
+			parameters: [
+				{
+					name: "action",
+					description: "Gmail operation.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["send", "create_draft"],
+					},
+				},
+			],
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		});
+		const catalog = buildActionCatalog([
+			parent,
+			...virtuals,
+			{ name: "CALENDAR", description: "Manage calendar events." },
+		]);
+
+		for (const hint of ["GMAIL_*", "gmail-*", "GMAIL_*_DRAFT", "*_DRAFT"]) {
+			const response = retrieveActions({
+				catalog,
+				candidateActions: [hint],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "GMAIL",
+				matchedBy: expect.arrayContaining(["regex"]),
+			});
+			expect(
+				response.results.some(
+					(entry) =>
+						entry.name === "CALENDAR" && entry.matchedBy.includes("regex"),
+				),
+			).toBe(false);
+		}
+	});
+
+	it("keeps a separator-less trailing wildcard anchored to its own name (#20467 review)", () => {
+		// "GMAIL_SEND*" means "that action and anything under it": it must match
+		// the exact anchored name (zero wildcard characters) AND its extensions,
+		// and the separator-less "GMAIL*" spelling is the one that may reach a
+		// GMAILSYNC sibling — the user wrote no separator to forbid it.
+		const catalog = buildActionCatalog([
+			{ name: "GMAIL_SEND", description: "Send a mail message." },
+			{ name: "GMAIL_SEND_LATER", description: "Schedule a mail message." },
+			{ name: "GMAILSYNC", description: "Synchronize the mail archive." },
+			{ name: "CALENDAR", description: "Manage calendar events." },
+		]);
+		const creditedBy = (hint: string) =>
+			retrieveActions({ catalog, candidateActions: [hint] })
+				.results.filter((entry) => entry.matchedBy.includes("regex"))
+				.map((entry) => entry.name)
+				.sort();
+
+		expect(creditedBy("GMAIL_SEND*")).toEqual([
+			"GMAIL_SEND",
+			"GMAIL_SEND_LATER",
+		]);
+		expect(creditedBy("GMAIL*")).toEqual([
+			"GMAILSYNC",
+			"GMAIL_SEND",
+			"GMAIL_SEND_LATER",
+		]);
+		expect(creditedBy("*SYNC")).toEqual(["GMAILSYNC"]);
+	});
+
+	it("keeps a wildcard's adjacent underscore from swallowing sibling namespaces (#20467)", () => {
+		// A normalized separator ahead of the wildcard is load-bearing in the
+		// compiled pattern: neither "GMAIL_*" nor "GMAIL *" may translate to
+		// ^GMAIL.*$ and wrongly claim GMAILSYNC or its children.
+		const catalog = buildActionCatalog([
+			{ name: "GMAIL_SEND", description: "Send a mail message." },
+			{ name: "GMAILSYNC", description: "Synchronize the mail archive." },
+			{ name: "CALENDAR", description: "Manage calendar events." },
+		]);
+		const creditedBy = (hint: string) =>
+			retrieveActions({ catalog, candidateActions: [hint] })
+				.results.filter((entry) => entry.matchedBy.includes("regex"))
+				.map((entry) => entry.name);
+
+		expect(creditedBy("GMAIL_*")).toEqual(["GMAIL_SEND"]);
+		expect(creditedBy("  GMAIL *  ")).toEqual(["GMAIL_SEND"]);
+	});
+
+	it("preserves a separator-only literal between wildcards (#20467 review)", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "GMAIL_CREATE_DRAFT",
+				description: "Create a Gmail draft.",
+			},
+			{
+				name: "GMAILCREATEDRAFT",
+				description: "A sibling without normalized separators.",
+			},
+		]);
+		const creditedBy = (hint: string) =>
+			retrieveActions({ catalog, candidateActions: [hint] })
+				.results.filter((entry) => entry.matchedBy.includes("regex"))
+				.map((entry) => entry.name);
+
+		expect(creditedBy("GMAIL* *DRAFT")).toEqual(["GMAIL_CREATE_DRAFT"]);
+	});
+
 	it("groups promoted virtual subactions under their umbrella parent", () => {
 		const [parent, ...virtuals] = promoteSubactionsToActions({
 			name: "PAYMENT",
@@ -164,6 +275,33 @@ describe("action catalogue and retrieval", () => {
 			});
 			expect(response.results[0]).toMatchObject({
 				name: "SHELL",
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
+	});
+
+	it("routes invented document candidate names to the DOCUMENT parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "DOCUMENT",
+				description: "List, search, and read stored documents.",
+				similes: ["search documents", "read document", "list documents"],
+			},
+			...actions,
+		]);
+		for (const candidateAction of [
+			"DOCUMENT_SEARCH",
+			"SEARCH_DOCUMENT",
+			"READ_DOCUMENTS",
+			"GET_DOCUMENTS",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "what documents do i have",
+				candidateActions: [candidateAction],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "DOCUMENT",
 				matchedBy: expect.arrayContaining(["exact"]),
 			});
 		}
@@ -989,6 +1127,85 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 		]);
 	});
 });
+
+describe("contact lookup candidate aliases", () => {
+	it.each([
+		"CONTACTS_LOOKUP",
+		"CONTACT_LOOKUP",
+		"LOOKUP_CONTACT",
+		"FIND_CONTACT",
+		"CONTACT_INFO",
+		"SHOW_CONTACT",
+		"CONTACTS",
+		"ROLODEX",
+	])("binds the contact-specific %s invention to both readers", (candidate) => {
+		expect(parentAliasesForCandidateAction(candidate)).toEqual([
+			"CONTACT",
+			"ENTITY",
+		]);
+	});
+
+	it("does not claim a generic WHO_IS invention for private contacts", () => {
+		expect(parentAliasesForCandidateAction("WHO_IS")).toEqual([]);
+
+		const catalog = buildActionCatalog([
+			{
+				name: "CONTACT",
+				description: "Read and manage private Rolodex contacts.",
+			},
+			{
+				name: "ENTITY",
+				description: "Read the owner's private entity graph.",
+			},
+			{
+				name: "WEB_SEARCH",
+				description: "Search the public web for people and facts.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "who is Ada Lovelace",
+			candidateActions: ["WHO_IS"],
+		});
+
+		expect(response.query.parentActionHints).toEqual([]);
+		expect(
+			response.results.find((result) => result.name === "CONTACT")?.matchedBy,
+		).not.toContain("exact");
+		expect(
+			response.results.find((result) => result.name === "ENTITY")?.matchedBy,
+		).not.toContain("exact");
+	});
+
+	it.each(["ADD_CONTACT", "CREATE_CONTACT", "GET_CONTACT", "FIND_PERSON"])(
+		"leaves existing CONTACT simile %s authoritative instead of adding ENTITY",
+		(candidate) => {
+			const catalog = buildActionCatalog([
+				{
+					name: "CONTACT",
+					description: "Read and manage private Rolodex contacts.",
+					similes: [candidate],
+				},
+				{
+					name: "ENTITY",
+					description: "Read the owner's private entity graph.",
+				},
+			]);
+			const response = retrieveActions({
+				catalog,
+				messageText: "",
+				candidateActions: [candidate],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["CONTACT"]);
+			expect(response.results[0]).toMatchObject({ name: "CONTACT" });
+			expect(
+				response.results.find((result) => result.name === "ENTITY")?.matchedBy,
+			).not.toContain("exact");
+		},
+	);
+});
+
 describe("F21 aliases survive production retrieval topology filtering", () => {
 	it.each([
 		["EMAIL", "MESSAGE"],

@@ -209,6 +209,11 @@ export function mergeManagedPublicBaseUrl(
  * identity and width are deliberately forced rather than preserved: allowing a
  * stale per-agent 1536 override would mix incompatible vector spaces. Runtime
  * boot probes 384 and reclaims/re-embeds stale-width rows before recall.
+ *
+ * The dimension hints describe the registered handler's output; they do not
+ * directly size the plugin-sql storage column. Runtime probes the handler
+ * before bundled docs are seeded, then aligns storage with the canonical
+ * 384-dimensional vector contract.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,

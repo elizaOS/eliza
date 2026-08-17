@@ -18,10 +18,12 @@
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as apiKeyCrypto from "../../db/crypto/api-keys";
 import type { ApiKey } from "../../db/repositories";
 import { apiKeysRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys } from "../cache/keys";
+import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
 const KEY_HASH = "a".repeat(64);
@@ -95,6 +97,96 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
 
     await expect(apiKeysService.delete("key-1")).resolves.toBeUndefined();
     expect(repoDelete).toHaveBeenCalledWith("key-1");
+  });
+
+  test("delete(): strong revocation must commit before cache or database mutation", async () => {
+    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    const cacheDelete = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => Response.json({ error: "unavailable" }, { status: 503 }),
+      }),
+    };
+
+    await expect(
+      runWithCloudBindingsAsync(
+        {
+          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+          INFERENCE_ADMISSION_GATES: namespace,
+        },
+        () => apiKeysService.delete("key-1"),
+      ),
+    ).rejects.toThrow(/status 503/i);
+    expect(cacheDelete).not.toHaveBeenCalled();
+    expect(repoDelete).not.toHaveBeenCalled();
+  });
+
+  test("an inactive immutable key identity cannot be reactivated", async () => {
+    track(
+      spyOn(apiKeysRepository, "findById").mockResolvedValue({
+        ...fakeKey(),
+        is_active: false,
+      }),
+    );
+    const repoUpdate = track(spyOn(apiKeysRepository, "update").mockResolvedValue(undefined));
+
+    await expect(apiKeysService.update("key-1", { is_active: true })).rejects.toMatchObject({
+      code: "API_KEY_IDENTITY_REVOKED",
+    });
+    expect(repoUpdate).not.toHaveBeenCalled();
+  });
+
+  test("regenerate permanently revokes the old identity and atomically replaces its row", async () => {
+    const existing = {
+      ...fakeKey(),
+      name: "rotated key",
+      description: null,
+      rate_limit: 1000,
+      expires_at: null,
+    } as ApiKey;
+    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(existing));
+    track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
+    track(
+      spyOn(apiKeyCrypto, "encryptApiKey").mockResolvedValue({
+        ciphertext: "ciphertext",
+        nonce: "nonce",
+        auth_tag: "tag",
+        kms_key_id: "kms-key",
+        kms_key_version: 1,
+      }),
+    );
+    const replacement = { ...existing, id: "key-2", key_hash: "b".repeat(64) };
+    const replace = track(spyOn(apiKeysRepository, "replace").mockResolvedValue(replacement));
+    const revocations: Array<Record<string, unknown>> = [];
+    const namespace = {
+      getByName: () => ({
+        fetch: async (request: Request) => {
+          revocations.push(await request.json());
+          return Response.json({ committed: true });
+        },
+      }),
+    };
+
+    const result = await runWithCloudBindingsAsync(
+      {
+        INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+        INFERENCE_ADMISSION_GATES: namespace,
+      },
+      () => apiKeysService.regenerate(existing.id),
+    );
+
+    expect(revocations).toEqual([
+      {
+        organizationId: "org-1",
+        kind: "api_key",
+        credentialId: "key-1",
+      },
+    ]);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0]?.[0]).toBe("key-1");
+    expect(replace.mock.calls[0]?.[1].id).not.toBe("key-1");
+    expect(result.apiKey.id).toBe("key-2");
   });
 
   test("invalidateInferenceContextForUser: unconfirmed fan-out throws (ban fails closed)", async () => {

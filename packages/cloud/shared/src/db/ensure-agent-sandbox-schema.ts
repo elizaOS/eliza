@@ -251,6 +251,7 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "recovery_agent_id" uuid,
       ADD COLUMN IF NOT EXISTS "recovery_deletion_attempt_id" uuid,
       ADD COLUMN IF NOT EXISTS "recovery_expires_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "catalog_state" text,
       ALTER COLUMN "sandbox_record_id" DROP NOT NULL
   `);
 

@@ -1,12 +1,17 @@
 /** Exercises desktop bottom bar config behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import {
+  AUTH_GATE_BOTTOM_BAR_HEIGHT,
+  AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
   DEFAULT_BOTTOM_BAR_WIDTH,
   EXPANDED_BOTTOM_BAR_HEIGHT,
   EXPANDED_BOTTOM_BAR_WIDTH,
+  HOVER_BOTTOM_BAR_HEIGHT,
+  HOVER_BOTTOM_BAR_WIDTH,
+  resolveBottomBarFrameSize,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
   shouldStartBottomBar,
@@ -104,6 +109,41 @@ describe("desktop bottom-bar config", () => {
       expect(frame.height).toBe(48);
     });
 
+    it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {
+      expect(resolveBottomBarFrameSize({ expanded: false })).toEqual({
+        width: DEFAULT_BOTTOM_BAR_WIDTH,
+        height: DEFAULT_BOTTOM_BAR_HEIGHT,
+      });
+      expect(
+        resolveBottomBarFrameSize({ expanded: false, hovered: true }),
+      ).toEqual({
+        width: HOVER_BOTTOM_BAR_WIDTH,
+        height: HOVER_BOTTOM_BAR_HEIGHT,
+      });
+      expect(
+        resolveBottomBarFrameSize({ expanded: false, chip: true }),
+      ).toEqual({
+        width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+        height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+      });
+      expect(resolveBottomBarFrameSize({ expanded: true, chip: true })).toEqual(
+        {
+          width: EXPANDED_BOTTOM_BAR_WIDTH,
+          height: EXPANDED_BOTTOM_BAR_HEIGHT,
+        },
+      );
+      expect(
+        resolveBottomBarFrameSize({
+          expanded: false,
+          chip: true,
+          hovered: true,
+        }),
+      ).toEqual({
+        width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+        height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+      });
+    });
+
     it("constrains the expanded chat hit area instead of spanning the display", () => {
       expect(
         computeBottomBarFrame(
@@ -118,14 +158,20 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("reports the bottom-bar presentation by default (#10350)", () => {
+    it("keeps the bottom-bar host transparent on every desktop platform", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
-        transparent: false,
+        transparent: true,
         nativeShadow: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
+      });
+      expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,

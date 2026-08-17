@@ -9,7 +9,7 @@
  * normal conversation routes keep using runtime model handlers.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
 	createWriteStream,
 	existsSync,
@@ -56,6 +56,21 @@ const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600_000;
 const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
+
+/**
+ * Constant-time pairing-token comparison (W1-011). Callers fail closed when
+ * no token is configured, so an unset `ELIZA_DEVICE_PAIRING_TOKEN` can never
+ * silently authenticate.
+ */
+function pairingTokenMatches(
+	expected: string,
+	provided: string | null | undefined,
+): boolean {
+	if (!provided) return false;
+	const a = Buffer.from(expected, "utf8");
+	const b = Buffer.from(provided, "utf8");
+	return a.length === b.length && timingSafeEqual(a, b);
+}
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 let registeredRuntimeCount = 0;
 const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
@@ -504,7 +519,7 @@ class MobileDeviceBridge {
 		const queryToken = url.searchParams.get("token")?.trim();
 		if (
 			!this.expectedPairingToken ||
-			queryToken !== this.expectedPairingToken
+			!pairingTokenMatches(this.expectedPairingToken, queryToken)
 		) {
 			logger.warn(
 				"[mobile-device-bridge] Rejecting connection: bad query token",
@@ -539,7 +554,10 @@ class MobileDeviceBridge {
 				}
 				if (
 					!this.expectedPairingToken ||
-					msg.payload.pairingToken !== this.expectedPairingToken
+					!pairingTokenMatches(
+						this.expectedPairingToken,
+						msg.payload.pairingToken,
+					)
 				) {
 					logger.warn(
 						"[mobile-device-bridge] Rejecting register: bad pairing token",

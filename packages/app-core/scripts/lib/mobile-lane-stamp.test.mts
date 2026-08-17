@@ -72,6 +72,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "ios",
       runtimeMode: "local",
+      iosApnsEnabled: false,
     });
   });
 
@@ -82,7 +83,29 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "store",
       capacitorTarget: "ios",
       runtimeMode: "cloud-hybrid",
+      iosApnsEnabled: false,
     });
+  });
+
+  it("stamps the exact iOS APNs renderer gate", () => {
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: { VITE_ELIZA_APNS_ENABLED: "1" },
+      }).iosApnsEnabled,
+    ).toBe(true);
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: { VITE_ELIZA_APNS_ENABLED: "true" },
+      }).iosApnsEnabled,
+    ).toBe(false);
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.android,
+        env: { VITE_ELIZA_APNS_ENABLED: "1" },
+      }).iosApnsEnabled,
+    ).toBeNull();
   });
 
   it("a pre-set VITE_ELIZA_IOS_RUNTIME_MODE wins over the iOS policy default (mirrors buildWeb)", () => {
@@ -122,6 +145,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "android",
       runtimeMode: "cloud-hybrid",
+      iosApnsEnabled: null,
     });
   });
 
@@ -234,12 +258,18 @@ describe("rendererLaneStampMismatches", () => {
     variant: "direct",
     capacitorTarget: "ios",
     runtimeMode: "local",
+    iosApnsEnabled: false,
   };
 
   it("returns no mismatches for an exact match", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "ios", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          iosApnsEnabled: false,
+        },
         expected,
       ),
     ).toEqual([]);
@@ -257,6 +287,7 @@ describe("rendererLaneStampMismatches", () => {
         variant: "store",
         capacitorTarget: "ios",
         runtimeMode: "cloud-hybrid",
+        iosApnsEnabled: false,
       },
       expected,
     );
@@ -268,12 +299,40 @@ describe("rendererLaneStampMismatches", () => {
 
   it("flags a manifest with no runtime mode when the lane bakes one", () => {
     const mismatches = rendererLaneStampMismatches(
-      { variant: "direct", capacitorTarget: "ios" },
+      {
+        variant: "direct",
+        capacitorTarget: "ios",
+        iosApnsEnabled: false,
+      },
       expected,
     );
     expect(mismatches).toEqual([
       "dist runtime mode is (unset) but this lane bakes 'local'",
     ]);
+  });
+
+  it("rejects a renderer compiled with the opposite or unstamped APNs gate", () => {
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          iosApnsEnabled: true,
+        },
+        expected,
+      ),
+    ).toEqual(["dist iOS APNs gate is 'true' but this lane bakes 'false'"]);
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+        },
+        expected,
+      ),
+    ).toEqual(["dist iOS APNs gate is (unset) but this lane bakes 'false'"]);
   });
 
   it("treats null and missing as equal when the lane bakes no mode", () => {
@@ -288,7 +347,12 @@ describe("rendererLaneStampMismatches", () => {
   it("flags a wrong capacitor target", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "android", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "android",
+          runtimeMode: "local",
+          iosApnsEnabled: false,
+        },
         expected,
       ),
     ).toEqual(["dist capacitor target is 'android' but this lane bakes 'ios'"]);

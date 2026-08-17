@@ -19,7 +19,7 @@ import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import * as workerCore from "../../../src/stubs/elizaos-core";
+import * as workerCoreStub from "../../../src/stubs/elizaos-core";
 
 const realCloudWorkerErrorsExports = { ...realCloudWorkerErrors };
 const realJwtExports = { ...realJwt };
@@ -54,7 +54,7 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // `getCurrentUser`; stub `@elizaos/core` so that graph never has to resolve in
 // the DB-free unit lane (matches the sibling mint-consent route test).
 mock.module("@elizaos/core", () => ({
-  ...workerCore,
+  ...workerCoreStub,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));

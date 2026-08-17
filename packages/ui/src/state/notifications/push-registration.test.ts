@@ -2,7 +2,8 @@
  * Drives the real push-registration flow through a fake Capacitor
  * PushNotifications plugin (the OS boundary): permission gate → register() →
  * `registration` event → token POST, tapped-push → deep-link, and idempotency.
- * Only the four injected seams (plugin, platform, client, navigate) are faked;
+ * Only the five injected seams (plugin, platform, build gate, client, navigate)
+ * are faked;
  * the registration logic under test is the production module.
  */
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -17,7 +18,9 @@ import type { FrontendPlatform } from "../../platform/platform-guards";
 import {
   __resetPushRegistrationForTests,
   initPushRegistration,
+  isRemotePushTransportEnabled,
   type PushRegistrationDeps,
+  refreshPushRegistrationAuthority,
   unregisterPushToken,
 } from "./push-registration";
 
@@ -60,13 +63,16 @@ function makePlugin(
 function makeDeps(
   plugin: FakePlugin,
   platform: FrontendPlatform,
+  remotePushEnabled = true,
 ): PushRegistrationDeps {
   return {
     getPlatform: () => platform,
+    isRemotePushEnabled: () => remotePushEnabled,
     getPlugin: () => plugin,
     registerToken: vi.fn(async () => ({ ok: true })),
     unregisterToken: vi.fn(async () => ({ ok: true })),
     navigate: vi.fn(),
+    sleep: vi.fn(async () => {}),
   };
 }
 
@@ -114,6 +120,30 @@ describe("initPushRegistration", () => {
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledWith("android", "fcm-token");
+  });
+
+  it("does not touch the iOS plugin when the APNs build gate is disabled", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios", false);
+    plugin.checkPermissions = vi.fn(plugin.checkPermissions);
+
+    await initPushRegistration(deps);
+
+    expect(plugin.checkPermissions).not.toHaveBeenCalled();
+    expect(plugin.__registerCalls).toBe(0);
+    expect(plugin.__listeners.registration).toHaveLength(0);
+    expect(plugin.__listeners.registrationError).toHaveLength(0);
+    expect(plugin.__listeners.pushNotificationActionPerformed).toHaveLength(0);
+    expect(deps.registerToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps Android registration enabled independently of the iOS APNs flag", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "android", true);
+
+    await initPushRegistration(deps);
+
+    expect(plugin.__registerCalls).toBe(1);
   });
 
   it("does not re-POST an unchanged token when registration re-fires", async () => {
@@ -230,5 +260,181 @@ describe("initPushRegistration", () => {
 
     await unregisterPushToken(deps);
     expect(deps.unregisterToken).toHaveBeenCalledWith("tok-to-drop");
+  });
+
+  it("retries a failed token POST without requiring another OS event", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    const registerToken = vi.fn(async () => ({ ok: true }));
+    deps.registerToken = registerToken;
+    registerToken
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ ok: true });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "retry-post-token");
+    await flush();
+
+    expect(registerToken).toHaveBeenCalledTimes(3);
+    expect(deps.sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("revokes from the old authority before registering on a new authority", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let authorityKey = "agent-a";
+    const unregisterA = vi.fn(async () => ({ ok: true }));
+    const registerA = vi.fn(async () => ({ ok: true }));
+    const unregisterB = vi.fn(async () => ({ ok: true }));
+    const registerB = vi.fn(async () => ({ ok: true }));
+    deps.captureAuthority = () =>
+      authorityKey === "agent-a"
+        ? {
+            key: authorityKey,
+            registerToken: registerA,
+            unregisterToken: unregisterA,
+          }
+        : {
+            key: authorityKey,
+            registerToken: registerB,
+            unregisterToken: unregisterB,
+          };
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "authority-token");
+    await flush();
+    expect(registerA).toHaveBeenCalledWith("ios", "authority-token");
+
+    authorityKey = "agent-b";
+    await Promise.all([
+      refreshPushRegistrationAuthority(deps),
+      refreshPushRegistrationAuthority(deps),
+    ]);
+    expect(unregisterA).toHaveBeenCalledWith("authority-token");
+    expect(plugin.__registerCalls).toBe(2);
+    emitRegistration(plugin, "authority-token");
+    await flush();
+    expect(registerB).toHaveBeenCalledWith("ios", "authority-token");
+    expect(unregisterB).not.toHaveBeenCalled();
+  });
+
+  it("cleans an old-authority POST that completes after the authority changes", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let authorityKey = "agent-a";
+    let finishRegisterA: (() => void) | undefined;
+    const registerA = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          finishRegisterA = () => resolve({ ok: true });
+        }),
+    );
+    const unregisterA = vi.fn(async () => ({ ok: true }));
+    const registerB = vi.fn(async () => ({ ok: true }));
+    const unregisterB = vi.fn(async () => ({ ok: true }));
+    deps.captureAuthority = () =>
+      authorityKey === "agent-a"
+        ? {
+            key: authorityKey,
+            registerToken: registerA,
+            unregisterToken: unregisterA,
+          }
+        : {
+            key: authorityKey,
+            registerToken: registerB,
+            unregisterToken: unregisterB,
+          };
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "racing-token");
+    await flush();
+    expect(registerA).toHaveBeenCalledOnce();
+
+    authorityKey = "agent-b";
+    await refreshPushRegistrationAuthority(deps);
+    finishRegisterA?.();
+    await flush();
+
+    expect(unregisterA).toHaveBeenCalledWith("racing-token");
+    emitRegistration(plugin, "racing-token");
+    await flush();
+    expect(registerB).toHaveBeenCalledWith("ios", "racing-token");
+  });
+
+  it("revokes a rotated OS token after the replacement is registered", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+
+    expect(deps.registerToken).toHaveBeenNthCalledWith(2, "ios", "new-token");
+    expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
+  });
+
+  it("serializes overlapping token callbacks so an older completion cannot win", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let finishOld: (() => void) | undefined;
+    deps.registerToken = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ ok: true }>((resolve) => {
+            finishOld = () => resolve({ ok: true });
+          }),
+      )
+      .mockResolvedValue({ ok: true });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    emitRegistration(plugin, "new-token");
+    await flush();
+    expect(deps.registerToken).toHaveBeenCalledTimes(1);
+
+    finishOld?.();
+    await flush();
+    expect(deps.registerToken).toHaveBeenNthCalledWith(2, "ios", "new-token");
+    expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
+  });
+
+  it("does not mistake a failed old-token cleanup for a failed replacement POST", async () => {
+    const loggedError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    deps.unregisterToken = vi.fn(async () => {
+      throw new Error("cleanup unavailable");
+    });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+
+    expect(deps.registerToken).toHaveBeenCalledTimes(2);
+    expect(deps.unregisterToken).toHaveBeenCalledTimes(6);
+    expect(loggedError).toHaveBeenCalled();
+  });
+});
+
+describe("isRemotePushTransportEnabled", () => {
+  it("fails closed for iOS unless the build flag is exactly 1", () => {
+    expect(isRemotePushTransportEnabled("ios", undefined)).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "0")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "true")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", " 1 ")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", "1")).toBe(true);
+  });
+
+  it("keeps Android FCM enabled independently of the APNs flag", () => {
+    expect(isRemotePushTransportEnabled("android", undefined)).toBe(true);
+    expect(isRemotePushTransportEnabled("android", "0")).toBe(true);
   });
 });

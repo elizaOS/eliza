@@ -25,6 +25,27 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const STEWARD_ENRICHMENT_CONCURRENCY = 5;
+const DEFAULT_CONTAINER_LIST_LIMIT = 100;
+const MAX_CONTAINER_LIST_LIMIT = 500;
+
+/**
+ * Strict positive-decimal `limit` for the inventory query. Absent/empty keep
+ * the documented default. Prefix-coercible garbage (`1e9`, `10abc`, `-5`)
+ * must not reach Drizzle as NaN or a silently truncated page size.
+ */
+function parseContainerListLimit(raw: string | undefined): number {
+  if (raw === undefined || raw === "") {
+    return DEFAULT_CONTAINER_LIST_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw ValidationError("Invalid limit");
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw ValidationError("Invalid limit");
+  }
+  return Math.min(parsed, MAX_CONTAINER_LIST_LIMIT);
+}
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -54,7 +75,7 @@ app.get("/", async (c) => {
 
     const statusFilter = c.req.query("status");
     const nodeFilter = c.req.query("nodeId");
-    const limit = Math.min(parseInt(c.req.query("limit") || "100", 10), 500);
+    const limit = parseContainerListLimit(c.req.query("limit"));
 
     const conditions: SQL[] = [isNotNull(agentSandboxes.node_id)];
 

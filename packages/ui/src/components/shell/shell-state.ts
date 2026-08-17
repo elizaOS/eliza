@@ -14,17 +14,37 @@ import type {
  * ChatSurface). Drives the pill's visual treatment.
  *
  *   booting    — startup not ready and popup closed; pill dim, no halo.
+ *                Also the cloud-only auth-probe rest (`checking`) so a slow
+ *                `/api/auth/me` never flashes the sign-in chip.
+ *   needs-auth — cloud-only, proxy up, no Cloud session; labeled sign-in chip.
  *   idle       — ready, no overlay; pill solid.
  *   summoned   — overlay open, no active mic/response; faint halo.
- *   listening  — push-to-talk capture in flight; red pulse.
- *   responding — agent stream in flight; ambient glow.
+ *   listening  — push-to-talk capture in flight; dark chip + live bars.
+ *   processing — the mic is closed but the utterance is still being
+ *                transcribed (STT drain after a hold-to-talk release); dark
+ *                chip with pulsing dots — "I heard you, working on it"
+ *                (#20483). Distinct from responding: no agent turn exists yet.
+ *   responding — agent stream in flight; ambient glow (the pill further
+ *                differentiates speaking via its `speaking` prop).
  */
-export type ShellPhase =
-  | "booting"
-  | "idle"
-  | "summoned"
-  | "listening"
-  | "responding";
+export const SHELL_PHASES = [
+  "booting",
+  "needs-auth",
+  "idle",
+  "summoned",
+  "listening",
+  "processing",
+  "responding",
+] as const;
+
+export type ShellPhase = (typeof SHELL_PHASES)[number];
+
+export function isShellPhase(value: unknown): value is ShellPhase {
+  return (
+    typeof value === "string" &&
+    (SHELL_PHASES as readonly string[]).includes(value)
+  );
+}
 
 export interface ShellMessage {
   id: string;

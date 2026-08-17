@@ -9,8 +9,22 @@
  * access are injected through the route context so the handler stays
  * transport-agnostic and unit-testable.
  */
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import {
+  parseBooleanValue,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core";
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
+import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
+
+function parseOptionalBooleanQuery(
+  raw: string | null,
+): { ok: true; value?: boolean } | { ok: false } {
+  if (raw === null) return { ok: true };
+  const parsed = parseBooleanValue(raw);
+  if (parsed === undefined) return { ok: false };
+  return { ok: true, value: parsed };
+}
 
 export interface ModelsRouteContext
   extends RouteRequestMeta,
@@ -51,7 +65,21 @@ export async function handleModelsRoutes(
 
   if (method !== "GET" || pathname !== "/api/models") return false;
 
-  const force = url.searchParams.get("refresh") === "true";
+  const catalogOnlyParsed = parseOptionalBooleanQuery(
+    url.searchParams.get("catalogOnly"),
+  );
+  if (!catalogOnlyParsed.ok) {
+    json(res, { error: "catalogOnly must be a boolean" }, 400);
+    return true;
+  }
+  const refreshParsed = parseOptionalBooleanQuery(
+    url.searchParams.get("refresh"),
+  );
+  if (!refreshParsed.ok) {
+    json(res, { error: "refresh must be a boolean" }, 400);
+    return true;
+  }
+  const force = refreshParsed.value === true;
   const specificProvider = url.searchParams.get("provider");
   // Built per request: the codex slice re-reads the CLI's models_cache.json
   // at call time so a refreshed server catalog shows up without a restart.
@@ -62,12 +90,21 @@ export async function handleModelsRoutes(
   // The all-providers fan-out below hits every provider's live model-list API
   // and takes tens of seconds on a cold cache, which blows the UI client's
   // 10s fetch budget and renders as a failed options load.
-  if (url.searchParams.get("catalogOnly") === "1") {
+  // Accept both shipped identities: UI catalog path uses `1`, refresh uses `true`.
+  if (catalogOnlyParsed.value === true) {
     json(res, { providers: {}, catalog });
     return true;
   }
 
   if (specificProvider) {
+    // The provider id becomes a filesystem path segment in providerCachePath,
+    // so reject anything outside the canonical id grammar before the cache
+    // bust or fetch runs — `../` ids would otherwise traverse the unlink/read
+    // out of the models cache dir (W1-024).
+    if (!MODEL_PROVIDER_ID_PATTERN.test(specificProvider)) {
+      json(res, { error: "Invalid provider id" }, 400);
+      return true;
+    }
     if (force) {
       try {
         unlinkFile(providerCachePath(specificProvider));

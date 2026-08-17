@@ -8,13 +8,7 @@
  * @module eliza
  */
 import crypto from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -307,7 +301,11 @@ import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import {
+  ensurePrivateDir,
+  resolveStateDir,
+  resolveUserPath,
+} from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -2662,11 +2660,12 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     }
 
     // Ensure the PGlite data directory exists before init so PGlite does
-    // not silently fall back to in-memory mode on first run.
+    // not silently fall back to in-memory mode on first run. Owner-only:
+    // the tree holds full agent history (heals older 0755 installs too).
     const dataDir = process.env.PGLITE_DATA_DIR;
     if (dataDir) {
       const alreadyExisted = existsSync(dataDir);
-      mkdirSync(dataDir, { recursive: true });
+      ensurePrivateDir(dataDir);
       logger.debug(
         `[eliza] PGlite data dir: ${dataDir} (${alreadyExisted ? "existed" : "created"})`,
       );
@@ -4261,10 +4260,11 @@ export async function startEliza(
     }
     if (!salt) {
       salt = crypto.randomBytes(32).toString("hex");
-      mkdirSync(path.dirname(secretSaltPath), { recursive: true });
-      // 0o600: only the user account that wrote it can read it. The salt
-      // is a key-derivation input — anyone who reads it plus the
-      // ciphertext can decrypt persisted secrets.
+      // Owner-only state dir (also heals older 0755 installs): the salt is a
+      // key-derivation input — anyone who reads it plus the ciphertext can
+      // decrypt persisted secrets.
+      ensurePrivateDir(path.dirname(secretSaltPath));
+      // 0o600: only the user account that wrote it can read it.
       writeFileSync(secretSaltPath, salt, { encoding: "utf8", mode: 0o600 });
       logger.info(
         `[eliza] Generated SECRET_SALT and persisted to ${secretSaltPath}`,

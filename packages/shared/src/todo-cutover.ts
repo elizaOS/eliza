@@ -19,6 +19,8 @@ const MAX_IDEMPOTENCY_KEY_LENGTH = 1_024;
 const MAX_CONTENT_LENGTH = 16_384;
 const MAX_ACTIVE_FORM_LENGTH = 4_096;
 const MAX_METADATA_DEPTH = 32;
+const ISO_TIMESTAMP_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export const SHARED_TODO_STATUSES = [
   "pending",
@@ -137,10 +139,31 @@ function nullableUuid(value: unknown, field: string): string | null {
   return requiredUuid(value, field);
 }
 
+function hasValidIsoCalendarFields(raw: string): boolean {
+  const match = ISO_TIMESTAMP_PATTERN.exec(raw);
+  if (!match) return false;
+
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(hour, minute, second, 0);
+  return (
+    calendar.getUTCFullYear() === year &&
+    calendar.getUTCMonth() === month - 1 &&
+    calendar.getUTCDate() === day &&
+    calendar.getUTCHours() === hour &&
+    calendar.getUTCMinutes() === minute &&
+    calendar.getUTCSeconds() === second
+  );
+}
+
 function canonicalTimestamp(value: unknown, field: string): string {
   const raw = requiredString(value, field, 64);
   const timestamp = new Date(raw);
-  if (!Number.isFinite(timestamp.getTime())) {
+  if (
+    !hasValidIsoCalendarFields(raw) ||
+    !Number.isFinite(timestamp.getTime())
+  ) {
     return invalid(
       "TODO_CUTOVER_INVALID_TIMESTAMP",
       `${field} must be an ISO timestamp`,

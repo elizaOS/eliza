@@ -65,6 +65,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
+import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -1433,6 +1434,7 @@ function dedupeCalendarQueries(queries: Array<string | undefined>): string[] {
 
 function normalizeCalendarDetails(
   details: Record<string, unknown> | undefined,
+  paramsTitleCandidates: Array<string | undefined> = [],
 ): Record<string, unknown> | undefined {
   if (!details) {
     return undefined;
@@ -1474,6 +1476,30 @@ function normalizeCalendarDetails(
     }
     if (normalized[canonical] === undefined) {
       normalized[canonical] = value;
+    }
+  }
+
+  // Planner junk screen for external-id fields: the model routinely slugs the
+  // event TITLE into every id alias it can see (`eventId`/`googleEventId`/
+  // `externalEventId` all = "claim_probe_two" for title "claim probe two").
+  // A present eventId routes the operation to the external-connector lookup,
+  // which then failed the whole turn with "Google Calendar is not connected"
+  // for a locally-stored event (observed live). An id that normalizes to the
+  // same key as the title/query in the SAME args is the title, not an id —
+  // drop it so title resolution owns the lookup.
+  const eventIdValue = normalized.eventId;
+  if (typeof eventIdValue === "string" && eventIdValue.trim()) {
+    const idKey = normalizeLookupKey(eventIdValue);
+    const titleKeys = [
+      normalized.title,
+      normalized.query,
+      normalized.oldTitle,
+      ...paramsTitleCandidates,
+    ]
+      .filter((candidate): candidate is string => typeof candidate === "string")
+      .map((candidate) => normalizeLookupKey(candidate));
+    if (idKey && titleKeys.includes(idKey)) {
+      delete normalized.eventId;
     }
   }
 
@@ -3588,7 +3614,7 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
-function normalizeCalendarAttendees(
+export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
@@ -3597,10 +3623,9 @@ function normalizeCalendarAttendees(
   }
   const mapped: Array<CreateLifeOpsCalendarEventAttendee | null> =
     attendees.map((attendee) => {
-      if (typeof attendee === "string" && attendee.trim().length > 0) {
-        return {
-          email: attendee.trim(),
-        };
+      if (typeof attendee === "string") {
+        const email = attendee.trim();
+        return basicEmailValid(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -3611,7 +3636,7 @@ function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" && record.email.trim().length > 0
+        typeof record.email === "string" && basicEmailValid(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {
@@ -4072,7 +4097,10 @@ const calendarAction: CalendarHandlerAction = {
     const params = rawParams ?? ({} as CalendarActionParams);
     const intent = resolveCalendarIntentInput(params.intent, message);
 
-    const details = normalizeCalendarDetails(params.details);
+    const details = normalizeCalendarDetails(params.details, [
+      params.title,
+      params.query,
+    ]);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
       runtime,

@@ -45,6 +45,7 @@ const EXPORT_LIMITS = {
   MAX_ROWS_WARNING: 50_000,
 } as const;
 const SUPPORTED_FORMATS = new Set(["csv", "json", "excel", "xlsx"]);
+const SUPPORTED_TYPES = new Set(["timeseries", "users", "providers", "models"]);
 
 const app = new Hono<AppEnv>();
 
@@ -69,6 +70,12 @@ app.get("/", async (c) => {
       ? new Date(startDateRaw)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = endDateRaw ? new Date(endDateRaw) : new Date();
+    if (startDateRaw && !Number.isFinite(startDate.getTime())) {
+      return c.json({ error: "Invalid startDate" }, 400);
+    }
+    if (endDateRaw && !Number.isFinite(endDate.getTime())) {
+      return c.json({ error: "Invalid endDate" }, 400);
+    }
 
     const timeRangeDays =
       (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -96,7 +103,35 @@ app.get("/", async (c) => {
     }
     const granularity = granularityParam as TimeGranularity;
     const dataType = c.req.query("type") || "timeseries";
-    const includeMetadata = c.req.query("includeMetadata") === "true";
+    if (!SUPPORTED_TYPES.has(dataType)) {
+      return c.json(
+        {
+          error: `Invalid type: ${dataType}. Must be one of: timeseries, users, providers, models`,
+        },
+        400,
+      );
+    }
+    // Metadata changes the export schema, so reject ambiguous or non-canonical
+    // input before any analytics lookup or output generation can begin.
+    const requestedMetadataValues = c.req.queries("includeMetadata") ?? [];
+    const requestedMetadata = requestedMetadataValues[0];
+    if (
+      requestedMetadataValues.length > 1 ||
+      (requestedMetadata != null &&
+        requestedMetadata !== "" &&
+        requestedMetadata !== "true" &&
+        requestedMetadata !== "false")
+    ) {
+      return c.json(
+        {
+          error: "Invalid includeMetadata",
+          message:
+            'includeMetadata must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeMetadata = requestedMetadata === "true";
 
     const exportOptions: ExportOptions = {
       includeTimestamp: true,

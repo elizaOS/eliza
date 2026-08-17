@@ -560,3 +560,49 @@ export function summarizeChangeSet(
     : "";
   return `Changed ${count} ${noun}: ${shown}${more}${verifiedSuffix}`;
 }
+
+/**
+ * Remove spawn-time baseline paths from a captured change set. In a SHARED
+ * route workdir the git diff sees every pre-existing dirty file from other
+ * apps (months-old edits included), so the completion evidence attributed
+ * unrelated changes to the session (live: velvet-moth's changeset rendered a
+ * different app's diff and the judge called the evidence contradictory). The
+ * baselines are the orchestrator-stamped codingBaselineDirty/Untracked lists
+ * (#20969's residuals inputs) — subtracting them leaves the session's OWN
+ * work. Diff hunks and diffstat lines for baseline paths are dropped with the
+ * file list so the rendered body matches.
+ */
+export function subtractChangeSetBaseline(
+  changeSet: WorkspaceChangeSet,
+  baselinePaths: readonly string[],
+): WorkspaceChangeSet {
+  if (baselinePaths.length === 0) return changeSet;
+  const baseline = new Set(baselinePaths.map((p) => p.trim()).filter(Boolean));
+  if (baseline.size === 0) return changeSet;
+  const changedFiles = changeSet.changedFiles.filter(
+    (file) => !baseline.has(file),
+  );
+  if (changedFiles.length === changeSet.changedFiles.length) return changeSet;
+
+  const keptHunks = changeSet.diff
+    .split(/^(?=diff --git )/m)
+    .filter((hunk) => {
+      const match = /^diff --git a\/(\S+) b\//.exec(hunk);
+      if (!match) return true;
+      return !baseline.has(match[1] ?? "");
+    })
+    .join("");
+  const keptStat = changeSet.diffStat
+    .split("\n")
+    .filter((line) => {
+      const name = line.split("|")[0]?.trim();
+      return !name || !baseline.has(name);
+    })
+    .join("\n");
+  return {
+    ...changeSet,
+    changedFiles,
+    diff: keptHunks,
+    diffStat: keptStat,
+  };
+}

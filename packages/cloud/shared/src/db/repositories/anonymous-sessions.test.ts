@@ -6,17 +6,19 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 let dbWrite: typeof import("../helpers").dbWrite;
+let closeDatabaseConnectionsForTests: typeof import("../client").closeDatabaseConnectionsForTests;
 let anonymousSessionsRepository: typeof import("./anonymous-sessions").anonymousSessionsRepository;
 let pgliteReady = true;
 
 beforeAll(async () => {
   try {
     ({ dbWrite } = await import("../helpers"));
+    ({ closeDatabaseConnectionsForTests } = await import("../client"));
     ({ anonymousSessionsRepository } = await import("./anonymous-sessions"));
 
     await dbWrite.execute(sql`
       CREATE TABLE IF NOT EXISTS anonymous_sessions (
-        id uuid PRIMARY KEY,
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         session_token text NOT NULL UNIQUE,
         user_id uuid NOT NULL,
         message_count integer NOT NULL DEFAULT 0,
@@ -50,9 +52,22 @@ beforeEach(async () => {
 afterAll(async () => {
   expect(pgliteReady).toBe(true);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS anonymous_sessions`);
+  await closeDatabaseConnectionsForTests();
 });
 
 describe("AnonymousSessionsRepository free-message reservations", () => {
+  test("preserves a zero message limit and refuses a reservation", async () => {
+    const session = await anonymousSessionsRepository.create({
+      session_token: "anon-token-zero-limit",
+      user_id: "00000000-0000-4000-8000-000000000200",
+      messages_limit: 0,
+      expires_at: new Date("2099-01-01T00:00:00.000Z"),
+    });
+
+    expect(session.messages_limit).toBe(0);
+    await expect(anonymousSessionsRepository.reserveMessageSlot(session.id)).resolves.toBeNull();
+  });
+
   test("reserves a message slot atomically at the configured limit", async () => {
     expect(pgliteReady).toBe(true);
 

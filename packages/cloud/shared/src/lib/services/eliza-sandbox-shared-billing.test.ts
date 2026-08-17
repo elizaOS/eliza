@@ -107,7 +107,7 @@ class MockInsufficientCreditsError extends Error {
 
 const aiBillingRecord = mock(async () => ({ id: "ai-billing-1" }));
 
-const runSharedAgentTurn = mock(async () => ({
+const runSharedAgentTurn = mock(async (_input: { message: string }) => ({
   reply: "metered reply",
   history: [
     { role: "user" as const, content: "hello" },
@@ -268,6 +268,63 @@ async function readSharedStreamEvents(
 }
 
 describe("ElizaSandboxService shared runtime billing", () => {
+  test("routes navigation-like language through the normal Shared turn without a VIEWS handoff", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
+    runSharedAgentTurn.mockImplementationOnce(async (input) => ({
+      reply: "I cannot open app views here, but I can help with settings questions.",
+      history: [
+        { role: "user" as const, content: input.message },
+        {
+          role: "assistant" as const,
+          content: "I cannot open app views here, but I can help with settings questions.",
+        },
+      ],
+      model: "gpt-oss-120b",
+      degraded: false,
+      usage: { inputTokens: 11, outputTokens: 10, totalTokens: 21 },
+    }));
+
+    try {
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "shared-navigation-language",
+          method: "message.send",
+          params: { text: "open settings" },
+        }),
+      );
+
+      expect(response).toMatchObject({
+        jsonrpc: "2.0",
+        id: "shared-navigation-language",
+        result: {
+          text: "I cannot open app views here, but I can help with settings questions.",
+          runtime: "shared",
+          transport: "shared-runtime",
+        },
+      });
+      expect(JSON.stringify(response)).not.toContain("Opening Settings for you");
+      expect(JSON.stringify(response)).not.toContain('"actionName":"VIEWS"');
+      expect(runSharedAgentTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "open settings" }),
+      );
+      expect(reserveCredits).toHaveBeenCalledTimes(1);
+      expect(billUsage).toHaveBeenCalledTimes(1);
+      expect(historyMergeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyMergeSpy.mockRestore();
+    }
+  });
+
   test("a running demo-canary image still uses the Worker router and bypasses shared billing", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     enterWorkerRuntime();

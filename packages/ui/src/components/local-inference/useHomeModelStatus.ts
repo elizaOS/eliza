@@ -5,11 +5,13 @@
  */
 
 import { normalizeServiceRoutingConfig } from "@elizaos/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import {
@@ -40,6 +42,17 @@ const ROUTING_STATUS_ERROR: HomeModelStatus = {
 
 const CLOUD_ROUTE_RECHECK_MS = 1_000;
 
+function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
+  return () => {
+    document.removeEventListener(
+      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+      onStoreChange,
+    );
+  };
+}
+
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
@@ -63,6 +76,11 @@ export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const routingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileRuntimeMode = useSyncExternalStore(
+    subscribeToMobileRuntimeMode,
+    readPersistedMobileRuntimeMode,
+    () => null,
+  );
   const runtimeMode = useRuntimeMode();
   // Auth gate (#11084): the shell mounts this hook before the auth probe
   // resolves, so the download SSE stream + hub fetches must stay dormant until
@@ -76,6 +94,8 @@ export function useHomeModelStatus(): HomeModelStatus {
       runtimeMode.state.phase === "loading" ||
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
+      mobileRuntimeMode === "remote-mac" ||
+      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setStatus(NOT_REQUIRED);
@@ -203,6 +223,7 @@ export function useHomeModelStatus(): HomeModelStatus {
     };
   }, [
     authenticated,
+    mobileRuntimeMode,
     runtimeMode.isCloudMode,
     runtimeMode.isRemoteMode,
     runtimeMode.state.phase,
