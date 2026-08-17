@@ -3,16 +3,29 @@ export type DateRangeParams =
   | { success: true; startDate?: Date; endDate?: Date }
   | { success: false; error: string };
 
+const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseOptionalDate(raw: string | null): Date | undefined {
+  if (raw === null) return undefined;
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return undefined;
+  if (ISO_DATE_ONLY.test(raw) && date.toISOString().slice(0, 10) !== raw) {
+    return undefined;
+  }
+  return date;
+}
+
 export function parseDateRangeParams(searchParams: URLSearchParams): DateRangeParams {
   const rawStart = searchParams.get("start_date");
   const rawEnd = searchParams.get("end_date");
-  const startDate = rawStart === null ? undefined : new Date(rawStart);
-  const endDate = rawEnd === null ? undefined : new Date(rawEnd);
+  const startDate = parseOptionalDate(rawStart);
+  const endDate = parseOptionalDate(rawEnd);
 
-  if (startDate && Number.isNaN(startDate.getTime())) {
+  if (rawStart !== null && !startDate) {
     return { success: false, error: "Invalid start_date" };
   }
-  if (endDate && Number.isNaN(endDate.getTime())) {
+  if (rawEnd !== null && !endDate) {
     return { success: false, error: "Invalid end_date" };
   }
   if (startDate && endDate && startDate > endDate) {
