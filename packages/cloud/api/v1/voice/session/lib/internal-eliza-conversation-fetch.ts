@@ -259,7 +259,23 @@ async function dispatchInternalElizaConversationFetch(
 ): Promise<Response> {
   const request = new Request(input, init);
   const url = new URL(request.url);
-  assertCanonicalVoiceStreamPath(url, claims);
+  try {
+    assertCanonicalVoiceStreamPath(url, claims);
+  } catch (error) {
+    if (
+      error instanceof TypeError &&
+      error.message === "invalid internal Eliza stream path: malformed URL encoding"
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "invalid conversation path: malformed URL encoding",
+        },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
   if (request.method !== "POST") {
     return Response.json(
       { success: false, error: "Method not allowed" },
@@ -339,6 +355,14 @@ async function dispatchInternalElizaConversationFetch(
   });
 }
 
+function decodeStreamPathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 function assertCanonicalVoiceStreamPath(
   url: URL,
   claims: InternalElizaConversationFetchClaims,
@@ -351,8 +375,13 @@ function assertCanonicalVoiceStreamPath(
       `unsupported internal Eliza stream path: ${url.pathname}`,
     );
   }
-  const agentId = decodeURIComponent(match[1]);
-  const conversationId = decodeURIComponent(match[2]);
+  const agentId = decodeStreamPathSegment(match[1]);
+  const conversationId = decodeStreamPathSegment(match[2]);
+  if (agentId === null || conversationId === null) {
+    throw new TypeError(
+      "invalid internal Eliza stream path: malformed URL encoding",
+    );
+  }
   if (agentId !== claims.agentId || conversationId !== claims.conversationId) {
     throw new TypeError(
       "internal Eliza stream path does not match session scope",
