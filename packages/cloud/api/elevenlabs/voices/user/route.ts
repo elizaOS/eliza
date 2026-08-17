@@ -7,13 +7,49 @@ import { voiceCloningService } from "@/lib/services/voice-cloning";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const DEFAULT_USER_VOICES_LIMIT = 50;
+const MAX_USER_VOICES_LIMIT = 100;
+
+class UserVoicesLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "UserVoicesLimitError";
+  }
+}
+
+/**
+ * GET /api/elevenlabs/voices/user `limit` is voices-page size identity,
+ * leftover tax after files / gallery explore. Stock develop used
+ * z.coerce.number(), which treated `1e2` / `007` / `0x10` as a page
+ * size instead of a 400. includeInactive / cloneType / offset stay
+ * untouched. Missing / empty still means 50. Exact integers clamp at
+ * 100.
+ */
+function parseUserVoicesLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new UserVoicesLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_USER_VOICES_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new UserVoicesLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new UserVoicesLimitError();
+  }
+  return Math.min(parsed, MAX_USER_VOICES_LIMIT);
+}
+
 const userVoicesQuerySchema = z.object({
   includeInactive: z
     .enum(["true", "false"])
     .optional()
     .transform((value) => value === "true"),
   cloneType: z.enum(["instant", "professional"]).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
@@ -38,10 +74,18 @@ async function __hono_GET(request: Request) {
 
     // Parse query parameters with bounds validation
     const { searchParams } = new URL(request.url);
+    let limit: number;
+    try {
+      limit = parseUserVoicesLimitQuery(searchParams);
+    } catch (limitError) {
+      if (limitError instanceof UserVoicesLimitError) {
+        return Response.json({ error: limitError.message }, { status: 400 });
+      }
+      throw limitError;
+    }
     const parsedQuery = userVoicesQuerySchema.safeParse({
       includeInactive: searchParams.get("includeInactive") || undefined,
       cloneType: searchParams.get("cloneType") || undefined,
-      limit: searchParams.get("limit") || undefined,
       offset: searchParams.get("offset") || undefined,
     });
 
@@ -52,7 +96,7 @@ async function __hono_GET(request: Request) {
       );
     }
 
-    const { includeInactive, cloneType, limit, offset } = parsedQuery.data;
+    const { includeInactive, cloneType, offset } = parsedQuery.data;
 
     logger.info(`[User Voices API] Fetching voices for user ${user.id}`, {
       organizationId: user.organization_id!,
