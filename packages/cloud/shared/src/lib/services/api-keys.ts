@@ -4,6 +4,7 @@
  * Includes Redis caching for validation to reduce database load on high-traffic APIs.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
@@ -18,6 +19,7 @@ import {
   invalidateInferenceAuthContextByKeyHash,
   invalidateInferenceAuthContextsByKeyHashes,
 } from "./inference-auth-cache";
+import { revokeInferenceApiKey } from "./inference-credential-revocation";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -360,6 +362,15 @@ export class ApiKeysService {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
+      if (data.is_active === true && existing.is_active === false) {
+        throw new ElizaError("Revoked API keys cannot be reactivated; create a new key instead", {
+          code: "API_KEY_IDENTITY_REVOKED",
+          context: { apiKeyId: existing.id },
+        });
+      }
+      if (data.is_active === false) {
+        await revokeInferenceApiKey(existing.organization_id, existing.id);
+      }
       await this.invalidateCache(existing.key_hash);
     }
 
@@ -374,16 +385,57 @@ export class ApiKeysService {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
+      await revokeInferenceApiKey(existing.organization_id, existing.id);
       await this.invalidateCache(existing.key_hash);
     }
 
     await apiKeysRepository.delete(id);
   }
 
+  /**
+   * Rotate a key by replacing its immutable credential identity.
+   *
+   * Reusing the row ID would let an eventually stale positive auth-cache entry
+   * for the old secret pass the strong revocation gate as though it were the
+   * replacement. The old identity is therefore permanently fenced before an
+   * atomic database replacement creates the new row identity.
+   */
+  async regenerate(id: string): Promise<{ apiKey: ApiKey; plainKey: string }> {
+    const existing = await apiKeysRepository.findById(id);
+    if (!existing) {
+      throw new ElizaError("API key not found", {
+        code: "API_KEY_NOT_FOUND",
+        context: { apiKeyId: id },
+      });
+    }
+    if (!existing.is_active) {
+      throw new ElizaError("Inactive API keys cannot be regenerated", {
+        code: "API_KEY_IDENTITY_REVOKED",
+        context: { apiKeyId: id },
+      });
+    }
+
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    await this.invalidateCache(existing.key_hash);
+
+    const { apiKey: replacement, plainKey } = await this.buildApiKeyInsert({
+      name: existing.name,
+      description: existing.description,
+      organization_id: existing.organization_id,
+      user_id: existing.user_id,
+      rate_limit: existing.rate_limit,
+      is_active: true,
+      expires_at: existing.expires_at,
+    });
+    const apiKey = await apiKeysRepository.replace(existing.id, replacement);
+    return { apiKey, plainKey };
+  }
+
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
     const existingKeys = await apiKeysRepository.findByUserAndName(userId, name);
 
     for (const key of existingKeys) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       await this.invalidateCache(key.key_hash);
     }
 
@@ -397,6 +449,7 @@ export class ApiKeysService {
     );
 
     for (const key of keysInOrganization) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       await this.invalidateCache(key.key_hash);
     }
 
@@ -483,6 +536,7 @@ export class ApiKeysService {
     // the deactivation is already durable, so this pass is authoritative and
     // a confirmed row can be hard-deleted immediately.
     for (const key of revoked) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       try {
         await this.invalidateCache(key.key_hash);
         if (!tx) {

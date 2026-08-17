@@ -23,6 +23,7 @@ import {
   invalidateInferenceAuthContextsByKeyHashes,
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
+import { setInferenceSubjectActive } from "./inference-credential-revocation";
 
 /**
  * Clear the inference auth-context cache (#9899) for every API key a user owns.
@@ -489,6 +490,13 @@ class AdminService {
     const now = new Date();
 
     const existing = await this.getUserModerationStatus(userId);
+    const user = await dbRead.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { organization_id: true },
+    });
+    if (user?.organization_id) {
+      await setInferenceSubjectActive(user.organization_id, userId, false);
+    }
 
     if (existing) {
       await dbWrite
@@ -538,6 +546,14 @@ class AdminService {
         updatedAt: new Date(),
       })
       .where(eq(userModerationStatus.userId, userId));
+
+    const user = await dbRead.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { organization_id: true },
+    });
+    if (user?.organization_id) {
+      await setInferenceSubjectActive(user.organization_id, userId, true);
+    }
 
     logger.info("[Admin] User unbanned", { userId, adminUserId });
   }
