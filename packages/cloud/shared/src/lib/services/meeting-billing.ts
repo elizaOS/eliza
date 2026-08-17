@@ -8,6 +8,7 @@
  * plugin does not import server-only database services.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { MeetingBillingState, MeetingEndReason } from "@elizaos/shared";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 
@@ -50,9 +51,25 @@ function readPositiveNumber(value: unknown): number | null {
 }
 
 export function resolveMeetingUsdPerMinute(env: Record<string, string | undefined> = process.env) {
-  return (
-    readPositiveNumber(env.ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE) ?? DEFAULT_USD_PER_MINUTE
-  );
+  const raw = env.ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE;
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_USD_PER_MINUTE;
+  }
+  // A present-but-invalid override must throw, not silently bill at the
+  // default rate — a typo'd price would otherwise go unnoticed while every
+  // meeting is charged the wrong amount.
+  const parsed = readPositiveNumber(raw);
+  if (parsed === null) {
+    throw new ElizaError(
+      "ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE must be a positive, finite number",
+      {
+        code: "INVALID_MEETING_USD_PER_MINUTE",
+        context: { configured: raw },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
 }
 
 function dollarsForMs(ms: number, usdPerMinute: number): number {
@@ -92,6 +109,27 @@ export class MeetingCreditBillingSession {
   private reconcilePromise: Promise<MeetingBillingState> | null = null;
 
   constructor(options: MeetingCreditBillingSessionOptions) {
+    // Money inputs must be finite and positive up front. A NaN maxDurationMs
+    // disables the spend cap (`nextConsumedMs > NaN` is false) and a NaN or
+    // negative rate/window flows into reservation amounts, so a malformed
+    // option must fail here rather than at settlement time.
+    for (const [option, value, required] of [
+      ["maxDurationMs", options.maxDurationMs, true],
+      ["usdPerMinute", options.usdPerMinute, false],
+      ["initialWindowMs", options.initialWindowMs, false],
+      ["chunkWindowMs", options.chunkWindowMs, false],
+    ] as const) {
+      if (value === undefined ? required : !Number.isFinite(value) || value <= 0) {
+        throw new ElizaError(
+          `MeetingCreditBillingSession ${option} must be a positive, finite number`,
+          {
+            code: "INVALID_MEETING_BILLING_OPTION",
+            context: { option, value, sessionId: options.sessionId },
+            severity: "fatal",
+          },
+        );
+      }
+    }
     this.organizationId = options.organizationId;
     this.userId = options.userId;
     this.sessionId = options.sessionId;

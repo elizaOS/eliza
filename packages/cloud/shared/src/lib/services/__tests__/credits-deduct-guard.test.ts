@@ -488,6 +488,56 @@ describe("reconcile() — settle reserved vs actual", () => {
   );
 });
 
+describe("reserveAndDeductCredits non-finite amount guard", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    await seedOrg("10.000000");
+  });
+
+  // These calls exercise the authoritative mutation rather than the reserve
+  // wrapper and prove the database is untouched on rejection.
+  for (const [label, amount] of [
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ] as const) {
+    test(
+      `rejects a ${label} amount with no balance movement and no ledger row`,
+      async () => {
+        if (!pgliteReady) return;
+
+        await expect(
+          creditsService.reserveAndDeductCredits({
+            organizationId: ORG_ID,
+            amount,
+            description: `non-finite guard (${label})`,
+            metadata: { user_id: USER_ID },
+          }),
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
+
+        // The deductCredits delegate funnels through the same guard.
+        await expect(
+          creditsService.deductCredits({
+            organizationId: ORG_ID,
+            amount,
+            description: `non-finite guard via deductCredits (${label})`,
+            metadata: { user_id: USER_ID },
+          }),
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
+
+        expect(await readBalance()).toBeCloseTo(10, 6);
+        expect(await listDebits()).toHaveLength(0);
+      },
+      PGLITE_TIMEOUT,
+    );
+  }
+});
+
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
 // If pushSchema/PGlite ever fails to init, the DB-dependent tests above
 // early-return; this turns that silent no-op into a hard CI failure so a

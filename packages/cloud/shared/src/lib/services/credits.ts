@@ -102,6 +102,25 @@ export class ReservationNotFoundError extends ElizaError {
   }
 }
 
+/** Refuses malformed amounts before they can reach a credit-ledger mutation. */
+export class InvalidCreditAmountError extends ElizaError {
+  override readonly name = "InvalidCreditAmountError";
+
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+    const permitsZero = operation === "reserve";
+    super(
+      permitsZero
+        ? "Credit reservation amount must be a finite, non-negative number"
+        : "Credit deduction amount must be a positive, finite number",
+      {
+        code: "INVALID_CREDIT_AMOUNT",
+        context: { amount, operation, permitsZero },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 export class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -675,8 +694,13 @@ export class CreditsService {
       stripePaymentIntentId,
     } = params;
 
-    if (amount <= 0) {
-      throw new Error("Amount must be positive");
+    // Authoritative money-write guard: `<= 0` alone lets NaN through (the
+    // comparison is false), after which `String(amount)::numeric` would reach
+    // the balance/ledger CTE as 'NaN'. Every debit path funnels through here,
+    // so the finite check lives at this lowest shared boundary (the reserve()
+    // wrapper keeps its own guard as defense-in-depth).
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new InvalidCreditAmountError(amount, "reserve_and_deduct");
     }
 
     const committedKeyedDeduction = async (): Promise<{
@@ -2428,8 +2452,10 @@ export class CreditsService {
     if (!description) {
       throw new Error("reserve() requires description");
     }
-    if (params.amount !== undefined && params.amount < 0) {
-      throw new Error("reserve() amount must be non-negative");
+    // `< 0` alone lets NaN through (the comparison is false), and a NaN
+    // reservation amount would be written as a 'NaN'::numeric debit row.
+    if (params.amount !== undefined && (!Number.isFinite(params.amount) || params.amount < 0)) {
+      throw new InvalidCreditAmountError(params.amount, "reserve");
     }
     if (
       params.estimatedCostMultiplier !== undefined &&
