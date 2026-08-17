@@ -39,10 +39,19 @@ Representative examples:
   WebKit fixture gates when `packages/ui/src/**` changes.
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
   device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
-  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route.
+  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route,
+  and a weekly cadence hard-gates the explicit host-safe Android subset.
+  [![scheduled device e2e](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule)](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml?query=event%3Aschedule)
   Both jobs run the bundle-owning runners with `--output` and upload the full
   bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
   failure, without reading any repository secret.
+- `android-arm64-local-e2e.yml` is the separate weekly and dispatchable
+  self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
+  `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
+  contract: the job stays queued until such a runner is online, then fails
+  closed unless both the host and attached Android target pass ARM64 and pinned
+  toolchain preflight. It runs local chat plus local-runtime/route WebView
+  probes; on-device voice remains separately qualified.
 
 ## Manual operations
 

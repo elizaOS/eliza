@@ -1,10 +1,11 @@
 name: Device E2E
 
 # Exact-head Android emulator and iOS simulator device-bundle proof (#19640,
-# #14336). The retired android-device-e2e.yml / mobile-build-smoke.yml producers
-# were deleted by the CI consolidation (926dc8b58a1); this workflow restores a
-# minimal route without the retired sprawl. Each job hands the whole lane to
-# the single bundle-owning runner (android-e2e.mjs / ios-e2e.mjs --output) so
+# #14336, #13580). The retired android-device-e2e.yml / mobile-build-smoke.yml
+# producers were deleted by the CI consolidation (926dc8b58a1); this workflow
+# owns the current hosted-device route without reviving that sprawl. Each job
+# hands the whole lane to the single bundle-owning runner
+# (android-e2e.mjs / ios-e2e.mjs --output) so
 # build, install, boot, and drive failures all land inside one bundle root
 # (inline/, logs/, summary.json, junit.xml), and the artifact is uploaded on
 # success AND failure. No repository secrets are read anywhere, so fork PRs
@@ -13,17 +14,22 @@ name: Device E2E
 # Reachability: repository policy forbids direct pull-request triggers
 # (audit:workflow-triggers), so canonical ci.yml calls this workflow behind the
 # `ci:device` label gate — the emulator/simulator legs are heavy and a PR runs
-# them only when explicitly opted in. Labels are read from the run's event
+# them only when explicitly opted in. A weekly schedule protects the hosted
+# Android subset between PR opt-ins; its event-filtered status badge is linked
+# from .github/workflows/README.md so failures stay visible outside run history.
+# Labels are read from the run's event
 # payload, so apply `ci:device` before the head push (or re-open) that should
 # carry the proof. workflow_dispatch remains the on-demand route for arbitrary
 # refs.
 
 on:
+  schedule:
+    - cron: "17 9 * * 1"
   workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: device-e2e-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
+  group: device-e2e-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && format('{0}-{1}', github.event_name, github.run_id) || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -77,9 +83,10 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      # android-e2e.mjs owns the whole lane inside the emulator session — APK
-      # build (--build), install, WebView route coverage — so every preflight
-      # failure is a recorded bundle step instead of a bundle-less job failure.
+      # android-e2e.mjs owns the whole lane inside the emulator session. The
+      # explicit host probe set is limited to onboarding, route rendering, and
+      # the native-plugin bridge: local-agent, destructive lifecycle, launcher
+      # soak, and voice specs have separate hardware prerequisites.
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -88,7 +95,7 @@ jobs:
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
 
       - name: Upload Android device bundle
         if: always()
@@ -96,7 +103,7 @@ jobs:
         with:
           name: android-device-e2e-bundle
           path: device-e2e-artifacts/android/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   ios-simulator-bundle:
@@ -149,5 +156,5 @@ jobs:
         with:
           name: ios-simulator-e2e-bundle
           path: device-e2e-artifacts/ios/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
