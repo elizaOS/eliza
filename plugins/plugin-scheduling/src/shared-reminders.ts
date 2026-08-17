@@ -198,6 +198,16 @@ const UTC_MONTHS = [
   "Dec",
 ] as const;
 
+const CRON_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
 function reminderText(task: ScheduledTask): string {
   return task.output?.fallback?.body ?? task.promptInstructions;
 }
@@ -248,21 +258,57 @@ function minuteDurationMilliseconds(minutes: number): number | undefined {
     : undefined;
 }
 
+function formatClockTime(hour: number, minute: number): string {
+  const hour12 = hour % 12 || 12;
+  const meridiem = hour < 12 ? "AM" : "PM";
+  return `${hour12}:${String(minute).padStart(2, "0")} ${meridiem}`;
+}
+
+function cronScheduleDescription(expression: string, timezone: string): string {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length === 5) {
+    const [minuteField, hourField, dayOfMonth, month, dayOfWeek] = fields;
+    const minute = Number(minuteField);
+    const hour = Number(hourField);
+    const simpleTime =
+      /^\d{1,2}$/.test(minuteField ?? "") &&
+      /^\d{1,2}$/.test(hourField ?? "") &&
+      minute >= 0 &&
+      minute <= 59 &&
+      hour >= 0 &&
+      hour <= 23;
+    if (simpleTime && dayOfMonth === "*" && month === "*") {
+      if (dayOfWeek === "*") {
+        return `every day at ${formatClockTime(hour, minute)} in ${timezone}`;
+      }
+      if (/^[0-7]$/.test(dayOfWeek ?? "")) {
+        const weekday = CRON_WEEKDAYS[Number(dayOfWeek) % 7];
+        return `every ${weekday} at ${formatClockTime(hour, minute)} in ${timezone}`;
+      }
+    }
+  }
+  return `on its recurring schedule in ${timezone}`;
+}
+
 function scheduleDescription(trigger: ScheduledTaskTrigger): string {
-  if (trigger.kind === "once") return formatUtcInstant(trigger.atIso);
-  if (trigger.kind === "interval") {
-    return `every ${trigger.everyMinutes} ${trigger.everyMinutes === 1 ? "minute" : "minutes"}`;
+  switch (trigger.kind) {
+    case "once":
+      return formatUtcInstant(trigger.atIso);
+    case "interval":
+      return `every ${trigger.everyMinutes} ${trigger.everyMinutes === 1 ? "minute" : "minutes"}`;
+    case "cron":
+      return cronScheduleDescription(trigger.expression, trigger.tz);
+    case "event":
+      return "when its scheduled event occurs";
+    case "after_task":
+      return "after its linked task";
+    case "manual":
+      return "when you ask it to run";
+    case "relative_to_anchor":
+      return "relative to its scheduled anchor";
+    case "during_window":
+      return "during its scheduled window";
   }
-  if (trigger.kind === "cron") {
-    return `on its recurring schedule in ${trigger.tz}`;
-  }
-  if (trigger.kind === "event") return "when its scheduled event occurs";
-  if (trigger.kind === "after_task") return "after its linked task";
-  if (trigger.kind === "manual") return "when you ask it to run";
-  if (trigger.kind === "relative_to_anchor") {
-    return "relative to its scheduled anchor";
-  }
-  return "during its scheduled window";
 }
 
 function requestedScheduleDescription(
@@ -565,9 +611,6 @@ export function createSharedRemindersEdgeAction(
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, task },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          turnComplete: true,
         };
       }
 
@@ -585,9 +628,6 @@ export function createSharedRemindersEdgeAction(
           success: true,
           text,
           data: { actionName: "REMINDERS", operation, task },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          turnComplete: true,
         };
       }
 

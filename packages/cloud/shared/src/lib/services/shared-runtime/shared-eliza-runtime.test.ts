@@ -886,31 +886,6 @@ describe("Shared Eliza Workerd runtime", () => {
       parameters: { operation: "list" },
       expected: "Your reminders:\n• Stretch — on Aug 14, 2026 at 8:02 PM UTC",
     },
-    {
-      operation: "snooze",
-      parameters: {
-        operation: "snooze",
-        taskId: "shared-reminder-sensitive-1",
-        snoozeMinutes: 1,
-      },
-      expected: "Reminder snoozed for 1 minute: Stretch",
-    },
-    {
-      operation: "complete",
-      parameters: {
-        operation: "complete",
-        taskId: "shared-reminder-sensitive-1",
-      },
-      expected: "Reminder completed: Stretch",
-    },
-    {
-      operation: "dismiss",
-      parameters: {
-        operation: "dismiss",
-        taskId: "shared-reminder-sensitive-1",
-      },
-      expected: "Reminder dismissed: Stretch",
-    },
   ])(
     "keeps the verified $operation result authoritative over a hostile evaluator",
     async ({ operation, parameters, expected }) => {

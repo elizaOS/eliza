@@ -345,7 +345,7 @@ describe("Shared reminders edge plugin", () => {
       "Your reminders:\n" +
         "• Stretch — on Aug 14, 2026 at 8:02 PM UTC\n" +
         "• Drink water — every 1 minute\n" +
-        "• Weekly planning — on its recurring schedule in America/Los_Angeles",
+        "• Weekly planning — every Monday at 9:00 AM in America/Los_Angeles",
     );
     expect(result?.text).not.toMatch(
       /reminder-[1234]|scheduled|dismissed|2026-08-14T|0 9 \* \* 1/,
@@ -362,7 +362,7 @@ describe("Shared reminders edge plugin", () => {
         "Your reminders:\n" +
         "• Stretch — on Aug 14, 2026 at 8:02 PM UTC\n" +
         "• Drink water — every 1 minute\n" +
-        "• Weekly planning — on its recurring schedule in America/Los_Angeles",
+        "• Weekly planning — every Monday at 9:00 AM in America/Los_Angeles",
       turnComplete: true,
     });
     expect(result?.data).toMatchObject({
@@ -403,11 +403,6 @@ describe("Shared reminders edge plugin", () => {
     expect(snoozed?.text).toBe("Reminder snoozed for 1 minute: Stretch");
     expect(snoozed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(snoozed?.text).not.toContain("reminder-1");
-    expect(snoozed).toMatchObject({
-      verifiedUserFacing: true,
-      userFacingText: "Reminder snoozed for 1 minute: Stretch",
-      turnComplete: true,
-    });
 
     const completed = await action?.handler(
       {} as IAgentRuntime,
@@ -418,11 +413,6 @@ describe("Shared reminders edge plugin", () => {
     expect(completed?.text).toBe("Reminder completed: Stretch");
     expect(completed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(completed?.text).not.toContain("reminder-1");
-    expect(completed).toMatchObject({
-      verifiedUserFacing: true,
-      userFacingText: "Reminder completed: Stretch",
-      turnComplete: true,
-    });
 
     const dismissed = await action?.handler(
       {} as IAgentRuntime,
@@ -430,12 +420,7 @@ describe("Shared reminders edge plugin", () => {
       undefined,
       { parameters: { operation: "dismiss", taskId: "reminder-1" } },
     );
-    expect(dismissed).toMatchObject({
-      text: "Reminder dismissed: Stretch",
-      verifiedUserFacing: true,
-      userFacingText: "Reminder dismissed: Stretch",
-      turnComplete: true,
-    });
+    expect(dismissed?.text).toBe("Reminder dismissed: Stretch");
   });
 
   it("states exact millisecond delays and rejects sub-millisecond model durations", async () => {
