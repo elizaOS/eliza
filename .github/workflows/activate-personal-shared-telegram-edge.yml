@@ -31,7 +31,8 @@ permissions:
   issues: read
 
 concurrency:
-  group: deploy-gateway-webhook-${{ inputs.environment == 'production' && 'production' || 'staging' }}
+  # Secret mutation and the full Cloudflare release must never overlap.
+  group: cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}
   cancel-in-progress: false
 
 jobs:
@@ -310,9 +311,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          disable_edge() {
+          remove_edge_secret() {
             node "$GITHUB_WORKSPACE/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
               "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT" >/dev/null
+          }
+
+          prove_edge_disabled() {
+            local health code
+            health="$(mktemp)"
+            for attempt in 1 2 3 4 5 6; do
+              code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$HEALTH_URL" || echo '000')"
+              if [ "$code" = "200" ] && jq -e \
+                --arg environment "$TARGET_ENVIRONMENT" \
+                --arg sha "$EXPECTED_SOURCE_SHA" \
+                '.status == "ok" and
+                 .environment == $environment and
+                 .commit == $sha and
+                 .personalSharedTelegramEdge.enabled == false' \
+                "$health" >/dev/null; then
+                rm -f "$health"
+                return 0
+              fi
+              [ "$attempt" -lt 6 ] && sleep 10
+            done
+            rm -f "$health"
+            return 1
+          }
+
+          disable_edge() {
+            remove_edge_secret && prove_edge_disabled
           }
 
           # A secret mutation can reach Cloudflare even when the CLI response is
@@ -377,7 +404,7 @@ jobs:
               echo "::warning::Telegram edge activation CLI result was ambiguous; requiring served-state proof"
             fi
           else
-            disable_edge
+            remove_edge_secret
           fi
 
           for attempt in 1 2 3 4 5 6; do

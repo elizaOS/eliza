@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -14,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const source = readFileSync(
@@ -268,6 +270,68 @@ esac
   }
 }
 
+function exerciseFailedActivationRollback(): ReturnType<typeof Bun.spawnSync> {
+  const mockRoot = mkdtempSync(join(tmpdir(), "edge-rollback-"));
+  const rollbackMarker = join(mockRoot, "rollback-attempted");
+  const executable = (name: string, body: string): void => {
+    const path = join(mockRoot, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+  };
+  executable("bunx", "exit 0");
+  executable("sleep", "exit 0");
+  executable("node", 'touch "$MOCK_ROLLBACK_MARKER"');
+  executable(
+    "railway",
+    `printf '%s' '{"id":"22222222-2222-4222-8222-222222222222","name":"gateway-webhook-stg","deploymentId":"11111111-1111-4111-8111-111111111111","status":"SUCCESS","stopped":false}'`,
+  );
+  executable(
+    "curl",
+    `output=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    output="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+printf '%s' '{"status":"ok","environment":"staging","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","personalSharedTelegramEdge":{"enabled":false}}' > "$output"
+printf '200'`,
+  );
+
+  try {
+    const result = Bun.spawnSync(
+      ["bash", "-c", step("Apply and verify served edge state").run ?? ""],
+      {
+        cwd: fileURLToPath(new URL("packages/cloud/api/", repoRoot)),
+        env: {
+          ...process.env,
+          DESIRED_ENABLED: "true",
+          EDGE_SECRET_NAME: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
+          EXPECTED_GATEWAY_DEPLOYMENT_ID: "11111111-1111-4111-8111-111111111111",
+          EXPECTED_GATEWAY_SERVICE_NAME: "gateway-webhook-stg",
+          EXPECTED_SOURCE_SHA: "a".repeat(40),
+          GITHUB_WORKSPACE: fileURLToPath(repoRoot),
+          HEALTH_URL: "https://api-staging.eliza.app/api/health",
+          MOCK_ROLLBACK_MARKER: rollbackMarker,
+          PATH: `${mockRoot}:${process.env.PATH ?? ""}`,
+          RAILWAY_ENVIRONMENT_ID: "33333333-3333-4333-8333-333333333333",
+          RAILWAY_PROJECT_ID: "44444444-4444-4444-8444-444444444444",
+          RAILWAY_SERVICE_ID: "22222222-2222-4222-8222-222222222222",
+          TARGET_ENVIRONMENT: "staging",
+        },
+        stderr: "pipe",
+        stdout: "pipe",
+      },
+    );
+    expect(existsSync(rollbackMarker)).toBe(true);
+    return result;
+  } finally {
+    rmSync(mockRoot, { force: true, recursive: true });
+  }
+}
+
 describe("Personal Shared Telegram edge deploy", () => {
   test("selects one protected environment, serialization key, and canonical endpoint set", () => {
     const inputs = workflow.on?.workflow_dispatch?.inputs;
@@ -288,7 +352,7 @@ describe("Personal Shared Telegram edge deploy", () => {
       issues: "read",
     });
     expect(workflow.concurrency?.group).toBe(
-      "deploy-gateway-webhook-${{ inputs.environment == 'production' && 'production' || 'staging' }}",
+      "cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}",
     );
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
     expect(job?.env?.REQUESTED_ENVIRONMENT).toBe("${{ inputs.environment }}");
@@ -449,6 +513,8 @@ describe("Personal Shared Telegram edge deploy", () => {
       '"$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"',
     );
     expect(apply.run).toContain("ensure-worker-secret-absent.mjs");
+    expect(apply.run).toContain("prove_edge_disabled");
+    expect(apply.run).toContain(".personalSharedTelegramEdge.enabled == false");
     expect(apply.run).toContain("trap rollback_on_unproven_exit EXIT");
     expect(apply.run).toContain("railway service status");
     expect(apply.run).toContain(".deploymentId == $id");
@@ -468,6 +534,10 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(apply.run).not.toContain(
       "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED --env",
     );
+
+    const rollback = exerciseFailedActivationRollback();
+    expect(rollback.exitCode).not.toBe(0);
+    expect(rollback.stdout.toString()).toContain("staging was rolled back off");
   });
 
   test("keeps the legacy guard false and reserves both environment-pinned activation secret names", () => {
