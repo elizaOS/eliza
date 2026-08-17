@@ -73,6 +73,14 @@ const CACHE_TTL = {
  * Prevents hammering the API when it returns errors (e.g. 429 rate-limit).
  */
 const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
+const MAX_CATALOG_PAGES = 100;
+
+class CatalogPaginationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "CatalogPaginationError";
+	}
+}
 
 /** Maximum package size for downloads */
 const MAX_PACKAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1830,9 +1838,24 @@ export class AgentSkillsService extends Service {
 		try {
 			const entries: SkillCatalogEntry[] = [];
 			let cursor: string | undefined;
+			const requestedCursors = new Set<string>();
+			let pageCount = 0;
 
 			do {
-				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
+				if (pageCount >= MAX_CATALOG_PAGES) {
+					throw new CatalogPaginationError(
+						`Catalog pagination exceeded ${MAX_CATALOG_PAGES} pages`,
+					);
+				}
+				if (cursor) {
+					if (requestedCursors.has(cursor)) {
+						throw new CatalogPaginationError(
+							`Catalog pagination repeated cursor ${cursor}`,
+						);
+					}
+					requestedCursors.add(cursor);
+				}
+				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
 				const response = await fetch(url, {
 					headers: { Accept: "application/json" },
 				});
@@ -1866,8 +1889,17 @@ export class AgentSkillsService extends Service {
 					items: SkillCatalogEntry[];
 					nextCursor?: string;
 				};
+				if (!Array.isArray(data.items)) {
+					throw new CatalogPaginationError(
+						"Catalog page did not contain an items array",
+					);
+				}
 				entries.push(...data.items);
-				cursor = data.nextCursor;
+				cursor =
+					typeof data.nextCursor === "string" && data.nextCursor.trim()
+						? data.nextCursor
+						: undefined;
+				pageCount += 1;
 			} while (cursor);
 
 			this.catalogCache = { data: entries, cachedAt: Date.now() };
@@ -1885,14 +1917,13 @@ export class AgentSkillsService extends Service {
 			this.runtime.logger.warn(
 				`AgentSkills: Catalog fetch failed (will retry after cooldown): ${error}`,
 			);
-
-			// Ensure a cache entry exists so subsequent calls (especially from
-			// providers using notOlderThan: Infinity) hit the cache instead of
-			// repeatedly attempting failed network requests.
-			if (!this.catalogCache) {
-				this.catalogCache = { data: [], cachedAt: Date.now() };
+			if (error instanceof CatalogPaginationError) {
+				throw error;
 			}
-			return this.catalogCache.data;
+
+			// Never stamp a failed or partial fetch as fresh. The cooldown above
+			// suppresses retries while callers retain the last known-good catalog.
+			return this.catalogCache?.data ?? [];
 		}
 	}
 
