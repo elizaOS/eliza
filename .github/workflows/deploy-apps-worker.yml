@@ -43,20 +43,21 @@ on:
           - production
 
 concurrency:
-  # Per-commit group (mirrors cloud-cf-deploy #10802/#10973). A SHARED
-  # deploy-apps-worker-<env> group with cancel-in-progress:false makes GitHub
-  # keep only the latest PENDING run per group and silently cancel the older
-  # pending ones (no annotation) — so a hot develop push/dispatch stream
-  # produces a chain of cancelled runs and zero completed deploys
-  # (elizaOS/eliza#10839). Keying on github.sha too gives each commit its own
-  # group so no run is ever silently superseded. Jobs run on ubuntu-latest
-  # (no runner-level serialization), so a host-side flock in the SSH scripts
-  # serializes concurrent deploys against the shared apps-control host; each
-  # run deploys the branch tip at fetch time, so the last to execute lands the
-  # newest code. Env stays in the key so staging and production never block
-  # each other.
-  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ github.sha }}
+  # One shared group per environment so concurrent pushes QUEUE instead of
+  # racing the host-side flock: the per-SHA groups this replaces let every
+  # commit's run start simultaneously on ubuntu-latest, and the losers burned
+  # their 9m flock wait against the shared apps-control host and failed red
+  # ("another apps-worker deploy holds the host lock", run 32007455716).
+  # `queue: max` keeps every pending run instead of GitHub's default
+  # one-pending eviction that silently cancelled older pending runs under a
+  # hot push stream (elizaOS/eliza#10839). cancel-in-progress stays false so a
+  # deploy is never killed mid-mutation; each run deploys the branch tip at
+  # fetch time, so the last to execute lands the newest code. The host flock
+  # remains as defense in depth (reruns, manual SSH deploys). Env stays in the
+  # key so staging and production never block each other.
+  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -121,6 +122,21 @@ jobs:
           fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve exact deploy source
+        id: source
+        if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ needs.determine-env.outputs.branch }}
+        run: |
+          set -euo pipefail
+          target_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" --jq '.object.sha')"
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Resolved invalid apps-worker source SHA for $TARGET_BRANCH"
+            exit 1
+          fi
+          echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -151,23 +167,35 @@ jobs:
 
       - name: Deploy and restart apps worker
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          TARGET_SHA: ${{ steps.source.outputs.sha }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,TARGET_SHA
           script: |
             set -euo pipefail
-            # Serialize deploys on the host: per-SHA concurrency groups mean
-            # overlapping runs are expected; without this they would interleave
-            # git clean/bun install/systemctl restart on the same checkout.
+            # Serialize deploys on the host. The workflow-level concurrency
+            # group queues runs, so this flock is defense in depth against
+            # reruns and manual SSH deploys. flock is a kernel lock tied to
+            # the holder's open fd — it releases the instant the holder dies,
+            # so it can never go stale and needs no PID-based breaker.
             exec 9>/tmp/eliza-apps-worker-deploy.lock
             # 540s keeps the lock wait under this step's 10m command_timeout so
             # a starved waiter fails with THIS message, not an opaque SSH kill.
             flock -w 540 9 || { echo "::error::another apps-worker deploy holds the host lock after 9m"; exit 1; }
-            echo "=== Deploying eliza-apps-worker (branch: $DEPLOY_BRANCH) ==="
+            echo "=== Deploying eliza-apps-worker ($TARGET_SHA from $DEPLOY_BRANCH) ==="
+
+            DEPLOY_MARKER=/var/lib/eliza/apps-worker-deployed-sha
+            deployed_sha="$(sudo cat "$DEPLOY_MARKER" 2>/dev/null || true)"
+            deployed_head="$(git -C /opt/eliza rev-parse HEAD 2>/dev/null || true)"
+            if [ "$deployed_sha" = "$TARGET_SHA" ] && [ "$deployed_head" = "$TARGET_SHA" ] && sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
+              echo "Apps worker already runs exact source $TARGET_SHA; skipping redundant queued build."
+              exit 0
+            fi
 
             cd /opt/eliza
             export GIT_CONFIG_COUNT=1
@@ -191,9 +219,10 @@ jobs:
             rm -f bun.lock
 
             git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules \
-              origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+              origin "$TARGET_SHA"
             git -c submodule.recurse=false checkout --no-recurse-submodules \
-              -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+              -B "$DEPLOY_BRANCH" "$TARGET_SHA"
+            test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
             # The `rm -f bun.lock` above deletes a TRACKED file; when bun.lock
             # is identical between the previous HEAD and the new tip, checkout
@@ -203,7 +232,7 @@ jobs:
             # pin took the worker down at boot (`does not provide an export
             # named 'secureJsonParse'`). Always restore the tracked lockfile so
             # installs are lockfile-pinned and deterministic.
-            git checkout "origin/$DEPLOY_BRANCH" -- bun.lock
+            git checkout "$TARGET_SHA" -- bun.lock
 
             if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then
               curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
@@ -244,13 +273,15 @@ jobs:
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          TARGET_SHA: ${{ steps.source.outputs.sha }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT
+          envs: SYSTEMD_UNIT,TARGET_SHA
           script: |
             set -euo pipefail
             # Hold the same host lock as the deploy step so a concurrent run's
@@ -258,6 +289,11 @@ jobs:
             # stays under this step's 5m command_timeout.
             exec 9>/tmp/eliza-apps-worker-deploy.lock
             flock -w 240 9 || { echo "::error::another apps-worker deploy holds the host lock after 4m"; exit 1; }
+            deployed_head="$(git -C /opt/eliza rev-parse HEAD 2>/dev/null || true)"
+            if [ "$deployed_head" != "$TARGET_SHA" ]; then
+              echo "::error::Apps worker checkout changed before health proof (expected $TARGET_SHA, found ${deployed_head:-unresolved})."
+              exit 1
+            fi
             # The apps worker has no HTTP endpoint; health = active + stable +
             # no fatal/restart-loop in the journal since deploy.
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
@@ -275,6 +311,8 @@ jobs:
                 NOW_SEC=$(awk '{print int($1)}' /proc/uptime)
                 AGE=$(( NOW_SEC - UPTIME_SEC ))
                 if [ "$AGE" -ge "$STABLE_THRESHOLD_SEC" ]; then
+                  sudo install -d -m 0755 /var/lib/eliza
+                  printf '%s\n' "$TARGET_SHA" | sudo tee /var/lib/eliza/apps-worker-deployed-sha >/dev/null
                   echo "Apps worker active and stable (${AGE}s) on attempt $attempt."
                   exit 0
                 fi
@@ -300,7 +338,7 @@ jobs:
           nodetail: true
           description: |
             Branch: ${{ needs.determine-env.outputs.branch }}
-            Commit: ${{ github.sha }}
+            Commit: ${{ steps.source.outputs.sha }}
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
