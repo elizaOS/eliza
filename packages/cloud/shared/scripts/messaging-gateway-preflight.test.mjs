@@ -87,4 +87,21 @@ test("workflow keeps trusted configuration checks manual and source tests on dev
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ secrets\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
   );
   assert.match(workflow, /GATEWAY_INTERNAL_SECRET: \$\{\{ secrets\.GATEWAY_INTERNAL_SECRET \}\}/);
+  assert.match(
+    workflow,
+    /name: Generate source keyword modules\s+working-directory: \.\s+run: bun run --cwd packages\/shared build:i18n/,
+  );
+  assert.match(
+    workflow,
+    /working-directory: packages\/cloud\/services\/gateway-discord\s+[\s\S]*?run: bun --conditions=eliza-source test tests\/ --timeout 60000/,
+  );
+  assert.match(
+    workflow,
+    /run: bun --conditions=eliza-source test src\/lib\/services\/gateway-discord\/__tests__ --timeout 60000/,
+  );
+  assert.doesNotMatch(workflow, /run: bun test tests\/ --timeout 60000/);
+  assert.doesNotMatch(
+    workflow,
+    /run: bun test src\/lib\/services\/gateway-discord\/__tests__ --timeout 60000/,
+  );
 });
