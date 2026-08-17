@@ -336,7 +336,12 @@ function assertRemoteCanonicalTag(
   return true;
 }
 
-/** Prove an exact checked-out source SHA is the tip of its named repository ref. */
+/**
+ * Prove an exact checked-out source SHA is genuine history of its named
+ * repository ref: either the ref's current tip, or — because merge traffic
+ * routinely advances the ref while a release run is queued — an ancestor the
+ * tip fast-forwarded away from. A SHA the ref cannot reach fails closed.
+ */
 export function verifyReleaseSource({
   repoRoot,
   remote,
@@ -358,10 +363,12 @@ export function verifyReleaseSource({
     runGit(repoRoot, ["ls-remote", "--", remote, expectedRef]),
   );
   const actualRefCommit = refs.get(expectedRef) || null;
+  if (!actualRefCommit) {
+    throw new Error(`Release source ref ${expectedRef} is missing on remote`);
+  }
   if (actualRefCommit !== expectedCommit) {
-    throw new Error(
-      `Release source ref ${expectedRef} resolves to ${actualRefCommit}, expected ${expectedCommit}`,
-    );
+    runGit(repoRoot, ["fetch", "--no-tags", "--quiet", remote, expectedRef]);
+    assertFastForward(repoRoot, expectedCommit, actualRefCommit);
   }
   return {
     repository: expectedRepository,
