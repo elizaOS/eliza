@@ -31,7 +31,29 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: parsedId.error }, 400);
     }
     const { id } = parsedId;
-    const isPublic = c.req.query("public") === "1";
+    // Only the exact token `1` selects the unauthenticated, redacted ballot
+    // DTO. Missing or empty selects the authenticated creator view; any
+    // other token is leftover identity after payment-request public
+    // (#20954) and must fail before authentication or lookup.
+    const requestedPublicValues = c.req.queries("public") ?? [];
+    const requestedPublic = requestedPublicValues[0];
+    if (
+      requestedPublicValues.length > 1 ||
+      (requestedPublic !== undefined &&
+        requestedPublic !== "" &&
+        requestedPublic !== "1")
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_public",
+          message:
+            'public must be specified at most once as "1" for the redacted ballot view.',
+        },
+        400,
+      );
+    }
+    const isPublic = requestedPublic === "1";
     const service = createSecretBallotsService({
       repository: secretBallotsRepository,
     });
