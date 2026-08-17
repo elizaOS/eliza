@@ -3097,11 +3097,20 @@ async function runHistory(
     text,
     textValue(params.metric) ?? textValue(content.metric),
   );
-  const limitRaw = Number(
-    params.limit ?? content.limit ?? (metric === "detail" ? 1 : 10),
-  );
-  const limit =
-    Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+  const _rawLimit = params.limit ?? content.limit ?? (metric === "detail" ? 1 : 10);
+  const limit = (() => {
+    if (typeof _rawLimit === "number") {
+      if (!Number.isSafeInteger(_rawLimit) || _rawLimit <= 0) return 10;
+      return Math.min(_rawLimit, 100);
+    }
+    if (typeof _rawLimit === "string") {
+      if (!/^\d+$/.test(_rawLimit)) return 10;
+      const n = Number(_rawLimit);
+      if (!Number.isSafeInteger(n) || n <= 0) return 10;
+      return Math.min(n, 100);
+    }
+    return 10;
+  })();
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
