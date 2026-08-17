@@ -650,3 +650,26 @@ describe("spawnAgentForTask request-voice carry", () => {
     expect(session?.metadata?.requestVoicePart).toBeUndefined();
   });
 });
+
+describe("wantsPullRequest (auto-submit intent gate)", () => {
+  it("matches natural PR asks", () => {
+    for (const text of [
+      "add hello.md and open a pull request",
+      "commit, push, open a PR. only that repo",
+      "hey can u add a hello.md to my repo and pr it",
+      "make a merge request for this",
+    ]) {
+      expect(OrchestratorTaskService.wantsPullRequest(text)).toBe(true);
+    }
+  });
+
+  it("stays quiet for repo work without PR intent", () => {
+    for (const text of [
+      "fix the failing test in my sandbox repo",
+      "clone the repo and summarize the readme",
+      "improve the prompt wording",
+    ]) {
+      expect(OrchestratorTaskService.wantsPullRequest(text)).toBe(false);
+    }
+  });
+});

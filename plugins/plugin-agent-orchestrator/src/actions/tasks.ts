@@ -1242,6 +1242,7 @@ async function runCreateLegacy(
       // create must run in a CLONE, not the cwd fallback (live 2026-08-17:
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
+      let createProvisionedWorkspaceId: string | undefined;
       const createRequestedRepo =
         typeof (params as Record<string, unknown>).repo === "string"
           ? normalizeRepositoryInput(
@@ -1258,6 +1259,7 @@ async function runCreateLegacy(
             });
             sessionWorkdir = workspace.path;
             isolateWorkdir = false;
+            createProvisionedWorkspaceId = workspace.id;
             logger(runtime).info(
               `[TASKS:create] provisioned repo workspace: ${createRequestedRepo} -> ${workspace.path}`,
             );
@@ -1312,6 +1314,9 @@ async function runCreateLegacy(
         timeoutMs,
         metadata: {
           ...extraMetadata,
+          ...(createProvisionedWorkspaceId
+            ? { provisionedWorkspaceId: createProvisionedWorkspaceId }
+            : {}),
           ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
           // Persist the stable root id so SubAgentRouter re-stamps it onto the
           // next synthetic re-spawn inbound (same contract as the spawn_agent
@@ -2256,6 +2261,7 @@ async function runSpawnAgent(
     // created files). When no route/explicit workdir claimed the spawn and a
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
+    let provisionedWorkspaceId: string | undefined;
     const requestedRepo =
       typeof (params as Record<string, unknown>).repo === "string"
         ? normalizeRepositoryInput(
@@ -2273,6 +2279,7 @@ async function runSpawnAgent(
           effectiveWorkdir = workspace.path;
           isolateWorkdir = false;
           provisionedRepo = requestedRepo;
+          provisionedWorkspaceId = workspace.id;
           logger(runtime).info(
             `[TASKS:spawn_agent] provisioned repo workspace for spawn: ${requestedRepo} -> ${workspace.path}`,
           );
@@ -2421,6 +2428,7 @@ async function runSpawnAgent(
       metadata: {
         ...extraMetadata,
         ...(provisionedRepo ? { repo: provisionedRepo } : {}),
+        ...(provisionedWorkspaceId ? { provisionedWorkspaceId } : {}),
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
         // Persist the stable root id so SubAgentRouter re-stamps it onto the
         // next synthetic re-spawn inbound (keeping the per-origin spawn cap
