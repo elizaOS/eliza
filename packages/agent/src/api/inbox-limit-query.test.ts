@@ -61,6 +61,21 @@ async function requestInboxLimit(raw?: string) {
   return { handled, getRoom, getMemories, json, error };
 }
 
+async function requestInboxLimitNoRuntime(raw?: string) {
+  const { helpers, json, error } = makeHelpers();
+  const query = raw === undefined ? "" : `&limit=${encodeURIComponent(raw)}`;
+  const url = `/api/inbox/messages?roomId=${ROOM_ID}&sources=discord${query}`;
+  const handled = await handleInboxRoute(
+    { url } as http.IncomingMessage,
+    res,
+    "/api/inbox/messages",
+    "GET",
+    { runtime: null },
+    helpers,
+  );
+  return { handled, json, error };
+}
+
 describe("GET /api/inbox/messages limit query", () => {
   it.each([
     "1e3",
@@ -112,4 +127,30 @@ describe("GET /api/inbox/messages limit query", () => {
     });
     expect(result.json).toHaveBeenCalledWith(res, { messages: [], count: 0 });
   });
+
+  it.each(["1e3", "50abc", "0x10", "0", "01"])(
+    "rejects malformed limit %j with 400 when runtime is unavailable",
+    async (raw) => {
+      const result = await requestInboxLimitNoRuntime(raw);
+
+      expect(result.handled).toBe(true);
+      expect(result.error).toHaveBeenCalledWith(
+        res,
+        "limit must be a positive integer",
+        400,
+      );
+      expect(result.json).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, "", "25"] as const)(
+    "keeps the empty inbox response for limit %j when runtime is unavailable",
+    async (raw) => {
+      const result = await requestInboxLimitNoRuntime(raw);
+
+      expect(result.handled).toBe(true);
+      expect(result.error).not.toHaveBeenCalled();
+      expect(result.json).toHaveBeenCalledWith(res, { messages: [], count: 0 });
+    },
+  );
 });

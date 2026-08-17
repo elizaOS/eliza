@@ -2576,12 +2576,6 @@ export async function handleInboxRoute(
 
   // ── GET /api/inbox/messages ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/inbox/messages") {
-    const runtime = state.runtime;
-    if (!runtime) {
-      helpers.json(res, { messages: [], count: 0 });
-      return true;
-    }
-
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = parseLimit(url.searchParams.get("limit"));
     if (limit === null) {
@@ -2601,6 +2595,12 @@ export async function handleInboxRoute(
     const roomId = roomIdParam.length > 0 ? (roomIdParam as UUID) : null;
     const roomSourceParam = url.searchParams.get("roomSource")?.trim() ?? "";
     const roomSourceHint = roomSourceParam.length > 0 ? roomSourceParam : null;
+
+    const runtime = state.runtime;
+    if (!runtime) {
+      helpers.json(res, { messages: [], count: 0 });
+      return true;
+    }
 
     try {
       const messages = await loadInboxMessages(
