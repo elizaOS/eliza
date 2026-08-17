@@ -281,11 +281,22 @@ export function consumeManagedGithubCallbackUrl(rawUrl: string): {
     return { callback: null, cleanedUrl: null };
   }
 
+  let message: string | null = null;
+  if (error) {
+    try {
+      message = decodeURIComponent(error);
+    } catch {
+      // error-policy:J3 untrusted callback query — a malformed percent-escape
+      // is an error state without a decoded message, not a dashboard crash.
+      message = null;
+    }
+  }
+
   const callback: ManagedGithubCallbackState = {
     status: connected ? "connected" : "error",
     connectionId: readString(url.searchParams.get("connection_id")) ?? null,
     agentId,
-    message: error ? decodeURIComponent(error) : null,
+    message,
   };
 
   for (const key of MANAGED_GITHUB_CALLBACK_QUERY_KEYS) {
