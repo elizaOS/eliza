@@ -125,6 +125,7 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
+import { resolveDesktopRuntimeForBoot } from "./runtime-preflight";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { registerShellSyncEndpoint } from "./shell-sync-relay";
@@ -233,12 +234,19 @@ onAgentReadyChange(() => setupApplicationMenu());
  * base resolves to `external` so the embedded agent is skipped; topology 1
  * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
  */
+let preparedDesktopRuntime: ReturnType<
+  typeof resolveDesktopRuntimeModeWithDeployment
+> | null = null;
+
 function resolveDesktopRuntime(): ReturnType<
   typeof resolveDesktopRuntimeModeWithDeployment
 > {
-  return resolveDesktopRuntimeModeWithDeployment(
-    process.env as Record<string, string | undefined>,
-    getPersistedDeployment(),
+  return (
+    preparedDesktopRuntime ??
+    resolveDesktopRuntimeModeWithDeployment(
+      process.env as Record<string, string | undefined>,
+      getPersistedDeployment(),
+    )
   );
 }
 
@@ -2519,6 +2527,25 @@ async function main(): Promise<void> {
   if (cloudOnlyHydration.applied.length > 0) {
     console.log(
       `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,
+    );
+  }
+  const desktopEnv = process.env as Record<string, string | undefined>;
+  const persistedDeployment = getPersistedDeployment();
+  const unverifiedDesktopRuntime = resolveDesktopRuntimeModeWithDeployment(
+    desktopEnv,
+    persistedDeployment,
+  );
+  preparedDesktopRuntime = await resolveDesktopRuntimeForBoot({
+    env: desktopEnv,
+    deployment: persistedDeployment,
+  });
+  if (
+    unverifiedDesktopRuntime.mode === "external" &&
+    preparedDesktopRuntime.mode === "local" &&
+    persistedDeployment?.runtime !== "local"
+  ) {
+    logger.warn(
+      "[Main] Persisted external target is not a ready Eliza agent; using the embedded runtime for this launch without changing the saved deployment target.",
     );
   }
   // Start the static renderer server in parallel with the rest of pre-window
