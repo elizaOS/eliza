@@ -91,6 +91,89 @@ const SMOKE_MODEL = {
   ),
 };
 
+const VOICE_MODELS = (() => {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
+  const asrDir =
+    process.env.ELIZA_ANDROID_ASR_MODEL_DIR ??
+    path.join(home, ".cache/eliza/asr-model");
+  const ttsDir =
+    process.env.ELIZA_ANDROID_TTS_MODEL_DIR ??
+    path.join(home, ".local/state/eliza/local-inference/models/omnivoice");
+  const deviceRoot =
+    "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  return [
+    {
+      host: path.join(asrDir, "eliza-1-asr.gguf"),
+      device: `${deviceRoot}/asr/eliza-1-asr.gguf`,
+    },
+    {
+      host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"),
+      device: `${deviceRoot}/asr/eliza-1-asr-mmproj.gguf`,
+    },
+    {
+      host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),
+      device: `${deviceRoot}/tts/omnivoice-base-q4_k_m.gguf`,
+    },
+    {
+      host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"),
+      device: `${deviceRoot}/tts/omnivoice-tokenizer-q4_k_m.gguf`,
+    },
+  ];
+})();
+
+function stageVoiceModels(adb, serial) {
+  const missing = VOICE_MODELS.filter((model) => !fs.existsSync(model.host));
+  if (missing.length > 0) {
+    log(
+      `voice models absent from host cache (${missing.map((model) => path.basename(model.host)).join(", ")}); the voice test will report the device gap`,
+    );
+    return;
+  }
+  const toStage = VOICE_MODELS.filter((model) => {
+    const probe = spawnSync(
+      adb,
+      ["-s", serial, "shell", "stat", "-c", "%s", model.device],
+      { encoding: "utf8" },
+    );
+    return (probe.stdout ?? "").trim() !== String(fs.statSync(model.host).size);
+  });
+  if (toStage.length === 0) return;
+  const deviceRoot =
+    "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  execFileSync(
+    adb,
+    [
+      "-s",
+      serial,
+      "shell",
+      "mkdir",
+      "-p",
+      `${deviceRoot}/asr`,
+      `${deviceRoot}/tts`,
+    ],
+    { stdio: "ignore" },
+  );
+  for (const model of toStage) {
+    execFileSync(adb, ["-s", serial, "push", model.host, model.device], {
+      stdio: "inherit",
+    });
+  }
+  execFileSync(
+    adb,
+    [
+      "-s",
+      serial,
+      "shell",
+      "chmod",
+      "-R",
+      "755",
+      `${deviceRoot}/asr`,
+      `${deviceRoot}/tts`,
+    ],
+    { stdio: "ignore" },
+  );
+}
+
 function run(bundle, name, cmd, args, env = {}, options = {}) {
   return runBundledCommand(bundle, name, cmd, args, {
     cwd: appDir,
@@ -311,6 +394,56 @@ function ensureSmokeModelCached() {
   return dest;
 }
 
+async function captureAndroidPreflightEvidence(bundle, adb, serial) {
+  const step = startBundleStep(bundle, "capture Android preflight evidence");
+  let recording = null;
+  try {
+    execFileSync(
+      adb,
+      ["-s", serial, "shell", "monkey", "-p", "ai.elizaos.app", "1"],
+      { stdio: "ignore" },
+    );
+    recording = await startAndroidScreenRecord({
+      adb,
+      serial,
+      artifactDir: bundle.rawDir,
+      filename: "android-preflight.mp4",
+      remotePath: `/sdcard/eliza-android-preflight-${process.pid}.mp4`,
+      log,
+    });
+    await delay(3_000);
+    recordBundleArtifact(
+      bundle,
+      captureAndroidScreenshot({
+        adb,
+        serial,
+        artifactDir: bundle.rawDir,
+        filename: "android-preflight.png",
+        log,
+      }),
+      "screenshot",
+      step,
+    );
+    const videoPath = await recording.stop();
+    recording = null;
+    if (!videoPath) {
+      throw new Error("Android preflight recording did not finalize");
+    }
+    recordBundleArtifact(bundle, videoPath, "video", step);
+    finishBundleStep(bundle, step, "passed");
+  } catch (error) {
+    if (recording) {
+      try {
+        await recording.stop();
+      } catch {
+        // error-policy:J6 The original preflight failure remains authoritative.
+      }
+    }
+    failAndroidStep(bundle, step, error);
+    throw error;
+  }
+}
+
 async function main() {
   const bundle = createDeviceE2eBundle({
     appDir,
@@ -451,6 +584,8 @@ async function main() {
         throw error;
       }
     }
+
+    await captureAndroidPreflightEvidence(bundle, adb, serial);
 
     if (!has("--skip-local-chat")) {
       const modelPath = ensureSmokeModelCached();

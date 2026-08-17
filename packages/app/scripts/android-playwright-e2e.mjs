@@ -40,7 +40,6 @@ import { acquireDeviceLease } from "./lib/device-lease.mjs";
 const scriptPath = fileURLToPath(import.meta.url);
 const appDir = path.resolve(scriptPath, "..", "..");
 const log = (message) => console.log(`[android-playwright-e2e] ${message}`);
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readOption(argv, index, option) {
   const value = argv[index + 1];
@@ -149,6 +148,7 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
   let finalResult = "failed";
   let finalError = null;
   let finalizationError = null;
+  let flowRecording = null;
 
   try {
     const setupStep = startBundleStep(bundle, "resolve Android device");
@@ -178,6 +178,14 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
       throw error;
     }
 
+    flowRecording = await startAndroidScreenRecord({
+      adb,
+      serial,
+      artifactDir: bundle.rawDir,
+      filename: "android-tested-flow.mp4",
+      remotePath: `/sdcard/eliza-android-playwright-flow-${process.pid}.mp4`,
+      log,
+    });
     runBundledCommand(
       bundle,
       "Android Playwright device tests",
@@ -220,11 +228,30 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
           captureAndroidFailure(bundle, step, { adb, serial, error }),
       },
     );
+    const recording = flowRecording;
+    flowRecording = null;
+    const videoPath = await recording.stop();
+    if (!videoPath) {
+      throw new Error("Android tested-flow recording did not finalize");
+    }
+    recordBundleArtifact(bundle, videoPath, "video");
     finalResult = "passed";
   } catch (error) {
     finalError = error;
     recordBundleRunnerFailure(bundle, error);
   } finally {
+    if (flowRecording) {
+      const recording = flowRecording;
+      flowRecording = null;
+      try {
+        const videoPath = await recording.stop();
+        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      } catch (error) {
+        bundle.warnings.push(
+          `Android tested-flow recording finalization failed: ${error?.message ?? error}`,
+        );
+      }
+    }
     if (adb && serial) {
       try {
         const installedStamp = readInstalledRendererStamp(adb, serial, { log });
@@ -235,23 +262,6 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
       } catch (error) {
         bundle.warnings.push(
           `installed Android build stamp failed: ${error?.message ?? error}`,
-        );
-      }
-      try {
-        const finalRecording = await startAndroidScreenRecord({
-          adb,
-          serial,
-          artifactDir: bundle.rawDir,
-          filename: "android-final.mp4",
-          remotePath: `/sdcard/eliza-android-playwright-final-${process.pid}.mp4`,
-          log,
-        });
-        await delay(3_000);
-        const videoPath = await finalRecording.stop();
-        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
-      } catch (error) {
-        bundle.warnings.push(
-          `final Android video failed: ${error?.message ?? error}`,
         );
       }
       try {

@@ -126,7 +126,6 @@ matching build IDs or filename extensions alone are not sufficient.
 | `--cloud` | Also run the real Cloud runtime probe (shared by default; not dedicated/Hetzner ingress proof) |
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
-| `ELIZA_ANDROID_MANAGE_HOST_AGENT=1` | Have `android-e2e.mjs` start, health-check, log, and stop the pairing-disabled host agent on port 31337 |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
 ## CI device lanes
@@ -145,6 +144,12 @@ The scheduled and `ci:device`-label-gated Android job in
    not enter this set implicitly.
 5. Stop the host agent in `android-e2e.mjs` teardown and upload its log inside
    the device bundle. Missing bundles are upload failures, not warnings.
+
+Before the probe sweep, the runner launches the exact installed APK and retains
+a short preflight MP4/JPG pair. The full route recording starts before the
+Playwright probes, so passing bundles contain the tested flow while a later
+emulator disconnect still leaves renderable installed-build media alongside
+the failed summary, JUnit, and logs.
 
 Artifacts are written under
 `packages/app/test-results/android-onboarding-to-home/`:

@@ -1,19 +1,10 @@
 #!/usr/bin/env node
-// iOS end-to-end orchestrator (macOS only — uses `xcrun simctl`). Mirrors
-// android-e2e.mjs for the iOS Simulator. The iOS WebView (WKWebView) is not
-// CDP-drivable like Android, so there is no Playwright route-coverage sweep;
-// instead this proves the device-level real paths and fails LOUDLY:
-//   1. A simulator is booted (boots one if needed).
-//   2. The app is built when requested, then explicitly installed even when a
-//      prebuilt --app-path is supplied.
-//   3. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
-//   4. Local route: on-device agent + smallest model + real chat round-trip
-//      (mobile-local-chat-smoke ios full-bun path).
-//   5. (optional) Cloud route: real provisioning probe.
-//
-// Flags: --device <name|udid>  --app-path <App.app>  --skip-build
-//        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
-//        --artifact-source <file|dir> (repeatable; copied into the bundle)
+/**
+ * Orchestrates iOS Simulator build, install, auth, local-chat, and optional
+ * cloud verification into one exact-head evidence bundle. Recording begins
+ * before the selected app-verification legs so the walkthrough shows the
+ * behavior under test rather than a post-test relaunch.
+ */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -465,6 +456,7 @@ async function main() {
   let udid = null;
   let appId = null;
   let urlScheme = null;
+  let testedFlowRecording = null;
 
   try {
     const steps = planIosE2eSteps(flags);
@@ -491,7 +483,24 @@ async function main() {
 
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
+      if (step.verification && !testedFlowRecording) {
+        testedFlowRecording = startIosSimulatorVideo({
+          target: udid,
+          artifactDir: bundle.rawDir,
+          filename: "ios-tested-flow.mp4",
+          log,
+        });
+      }
       runStep(bundle, step, { udid, appId, urlScheme });
+    }
+    if (testedFlowRecording) {
+      const recording = testedFlowRecording;
+      testedFlowRecording = null;
+      const videoPath = await recording.stop();
+      if (!videoPath) {
+        throw new Error("iOS tested-flow recording did not finalize");
+      }
+      recordBundleArtifact(bundle, videoPath, "video");
     }
     finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");
@@ -499,6 +508,18 @@ async function main() {
     finalError = error;
     recordBundleRunnerFailure(bundle, error);
   } finally {
+    if (testedFlowRecording) {
+      const recording = testedFlowRecording;
+      testedFlowRecording = null;
+      try {
+        const videoPath = await recording.stop();
+        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      } catch (error) {
+        bundle.warnings.push(
+          `iOS tested-flow recording finalization failed: ${error?.message ?? error}`,
+        );
+      }
+    }
     if (udid && appId) {
       let loadedScreenPath = null;
       try {

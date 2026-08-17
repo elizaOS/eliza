@@ -1,9 +1,8 @@
-// Playwright fixtures + helpers for driving the real on-device Capacitor
-// WebView via Playwright's Android driver (`_android`). Unlike the browser
-// ui-smoke suite (which mocks every /api route in a desktop Chromium), this
-// runs against the ACTUAL app installed on the emulator/device, talking to the
-// real on-device agent. There is no webServer and no network mocking — the
-// assertions exercise real render + real backend.
+/**
+ * Provides Playwright fixtures for the installed Capacitor WebView on a real
+ * Android target. The harness drives the actual app and backend without a web
+ * server or network mocks, while preserving privileged shell navigation.
+ */
 import {
   type AndroidDevice,
   type AndroidWebView,

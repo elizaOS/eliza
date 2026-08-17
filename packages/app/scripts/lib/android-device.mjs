@@ -1,12 +1,8 @@
-// Shared Android device helpers for the mobile e2e harness.
-//
-// Resolves adb / emulator / avdmanager cross-platform (ANDROID_HOME,
-// ANDROID_SDK_ROOT, PATH, common macOS/Linux/Windows locations), boots an AVD
-// on demand, installs/launches the app, wires adb port forwards, and discovers
-// the debuggable WebView CDP target. All device-driving scripts (the local-chat
-// smoke, the adb installer, the Playwright Android config) build on this so the
-// SDK/adb resolution lives in exactly one place and runs on Linux CI, a mac, or
-// Windows without hardcoded "~/Library/Android/sdk" paths.
+/**
+ * Resolves and operates Android SDK tools, devices, APKs, and renderer stamps
+ * for the mobile E2E harness. All device-driving scripts share these helpers so
+ * exact-build decisions and cross-platform adb discovery stay consistent.
+ */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
