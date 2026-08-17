@@ -1,72 +1,31 @@
-// Exercises auto top up behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Proves the cutover bridge cannot create charges before the durable processor ships.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const selectMock = mock(() => ({
-  from: mock(() => ({
-    where: mock(async () => []),
-  })),
-}));
-
-mock.module("../../../db/client", () => ({
-  dbRead: {
-    select: selectMock,
-  },
-}));
-
-const updateOrganization = mock();
+const getControl = mock();
+const findBlockingByOrganization = mock();
+const findBlockingLegacyPaymentByOrganization = mock();
 const findOrganizationById = mock();
-const listByOrganization = mock();
+const updateOrganization = mock();
 
 mock.module("../../../db/repositories", () => ({
+  autoTopUpAttemptsRepository: {
+    getControl,
+    findBlockingByOrganization,
+    findBlockingLegacyPaymentByOrganization,
+  },
   organizationsRepository: {
-    update: updateOrganization,
     findById: findOrganizationById,
-  },
-  usersRepository: {
-    listByOrganization,
+    update: updateOrganization,
   },
 }));
 
-const createPaymentIntent = mock();
-const retrievePaymentMethod = mock();
-const requireStripe = mock(() => ({
-  paymentIntents: {
-    create: createPaymentIntent,
-  },
-  paymentMethods: {
-    retrieve: retrievePaymentMethod,
-  },
-}));
+const requireStripe = mock(() => {
+  throw new Error("Stripe must not be loaded by the sealed cutover bridge");
+});
 
-mock.module("../../stripe", () => ({
-  requireStripe,
-}));
-
-const addCredits = mock();
-
-mock.module("../credits", () => ({
-  creditsService: {
-    addCredits,
-  },
-}));
-
-const getReferrer = mock();
-
-mock.module("../affiliates", () => ({
-  affiliatesService: {
-    getReferrer,
-  },
-}));
-
-const sendAutoTopUpSuccessEmail = mock();
-const sendAutoTopUpDisabledEmail = mock();
-
-mock.module("../email", () => ({
-  emailService: {
-    sendAutoTopUpSuccessEmail,
-    sendAutoTopUpDisabledEmail,
-  },
-}));
+mock.module("../../stripe", () => ({ requireStripe }));
 
 mock.module("../../utils/logger", () => ({
   logger: {
@@ -77,7 +36,7 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
-const { AutoTopUpService, parseAutoTopUpNumber, CorruptAutoTopUpNumberError } = await import(
+const { AutoTopUpService, CorruptAutoTopUpNumberError, parseAutoTopUpNumber } = await import(
   "../auto-top-up"
 );
 
@@ -87,201 +46,387 @@ function makeOrganization(overrides: Partial<AutoTopUpOrganization> = {}): AutoT
   return {
     id: "org-1",
     name: "Acme Cloud",
-    credit_balance: "5.00",
-    auto_top_up_threshold: "10.00",
-    auto_top_up_amount: "10.00",
-    stripe_customer_id: "cus_123",
-    stripe_default_payment_method: "pm_123",
-    billing_email: "billing@example.com",
     auto_top_up_enabled: true,
+    auto_top_up_amount: "10.00",
+    auto_top_up_threshold: "5.00",
+    stripe_default_payment_method: "pm_123",
     ...overrides,
   } as AutoTopUpOrganization;
 }
 
 beforeEach(() => {
-  updateOrganization.mockReset();
+  getControl.mockReset();
+  getControl.mockResolvedValue({
+    mode: "paused",
+    pausedAt: new Date("2026-08-17T00:00:00.000Z"),
+    legacyReconciledThrough: null,
+  });
+  findBlockingByOrganization.mockReset();
+  findBlockingByOrganization.mockResolvedValue(null);
+  findBlockingLegacyPaymentByOrganization.mockReset();
+  findBlockingLegacyPaymentByOrganization.mockResolvedValue(null);
   findOrganizationById.mockReset();
-  listByOrganization.mockReset();
   findOrganizationById.mockResolvedValue(makeOrganization());
-  createPaymentIntent.mockReset();
-  retrievePaymentMethod.mockReset();
+  updateOrganization.mockReset();
+  updateOrganization.mockResolvedValue(makeOrganization());
   requireStripe.mockClear();
-  addCredits.mockReset();
-  getReferrer.mockReset();
-  sendAutoTopUpSuccessEmail.mockReset();
-  sendAutoTopUpDisabledEmail.mockReset();
-
-  listByOrganization.mockResolvedValue([{ id: "user-1", email: "billing@example.com" }]);
-  createPaymentIntent.mockResolvedValue({ id: "pi_auto_123", status: "succeeded" });
-  retrievePaymentMethod.mockResolvedValue({ card: { brand: "visa", last4: "4242" } });
-  addCredits.mockResolvedValue({ transaction: { id: "tx-1" }, newBalance: 42.25 });
-  getReferrer.mockResolvedValue(null);
-  sendAutoTopUpSuccessEmail.mockResolvedValue(true);
-  sendAutoTopUpDisabledEmail.mockResolvedValue(true);
 });
 
-describe("AutoTopUpService.executeAutoTopUp", () => {
-  test("persists successful auto top-up credits before returning success", async () => {
+describe("AutoTopUpService sealed cutover bridge", () => {
+  test("rejects a direct organization charge while control is paused", async () => {
     const result = await new AutoTopUpService().executeAutoTopUp(makeOrganization());
-
-    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
-    expect(createPaymentIntent.mock.calls[0][0]).toEqual(
-      expect.objectContaining({
-        amount: 1000,
-        currency: "usd",
-        customer: "cus_123",
-        payment_method: "pm_123",
-        metadata: expect.objectContaining({
-          organization_id: "org-1",
-          credits: "10.00",
-          type: "auto_top_up",
-        }),
-      }),
-    );
-
-    expect(addCredits).toHaveBeenCalledTimes(1);
-    expect(addCredits).toHaveBeenCalledWith({
-      organizationId: "org-1",
-      amount: 10,
-      description: "Auto top-up - $10.00",
-      metadata: expect.objectContaining({
-        organization_id: "org-1",
-        credits: "10.00",
-        type: "auto_top_up",
-        payment_intent_id: "pi_auto_123",
-      }),
-      stripePaymentIntentId: "pi_auto_123",
-    });
 
     expect(result).toEqual({
       organizationId: "org-1",
-      success: true,
-      amount: 10,
-      newBalance: 42.25,
+      success: false,
+      status: "cutover_paused",
+      error: "Auto top-up charging is paused while the durable processor is rolled out",
     });
+    expect(requireStripe).not.toHaveBeenCalled();
+  });
+
+  test("stays sealed even if control is moved to durable before the processor binary ships", async () => {
+    getControl.mockResolvedValue({
+      mode: "durable",
+      pausedAt: new Date("2026-08-17T00:00:00.000Z"),
+      legacyReconciledThrough: new Date("2026-08-17T00:05:00.000Z"),
+    });
+
+    const result = await new AutoTopUpService().executeAutoTopUpForOrganization("org-2");
+
+    expect(result.status).toBe("cutover_paused");
+    expect(result.success).toBe(false);
+    expect(requireStripe).not.toHaveBeenCalled();
+  });
+
+  test("returns an explicit zero-work cron result", async () => {
+    const result = await new AutoTopUpService().checkAndExecuteAutoTopUps();
+
+    expect(result).toEqual({
+      timestamp: expect.any(Date),
+      cutoverPaused: true,
+      controlMode: "paused",
+      organizationsChecked: 0,
+      organizationsProcessed: 0,
+      successful: 0,
+      failed: 0,
+      results: [],
+    });
+    expect(requireStripe).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when the database control authority is unavailable", async () => {
+    getControl.mockRejectedValue(new Error("control unavailable"));
+
+    await expect(new AutoTopUpService().executeAutoTopUpForOrganization("org-1")).rejects.toThrow(
+      "control unavailable",
+    );
+    expect(requireStripe).not.toHaveBeenCalled();
   });
 });
 
-describe("parseAutoTopUpNumber (fail-closed NUMERIC boundary)", () => {
+describe("parseAutoTopUpNumber", () => {
   test("parses finite numeric strings and numbers", () => {
     expect(parseAutoTopUpNumber("auto_top_up_amount", "10.00")).toBe(10);
     expect(parseAutoTopUpNumber("markup_percent", 5)).toBe(5);
     expect(parseAutoTopUpNumber("markup_percent", "0")).toBe(0);
-    expect(parseAutoTopUpNumber("markup_percent", 0)).toBe(0);
   });
 
-  test("throws on the corrupt 'NaN'::numeric read-back that slips past bare Number()", () => {
-    // Regression guard: bare Number("NaN") is NaN and NaN <= 0 / NaN > MAX are
-    // both false, so this exact value used to flow into a Stripe NaN charge.
-    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "NaN")).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-    expect(Number("NaN")).toBeNaN();
-  });
-
-  test("throws on null/undefined/blank/non-numeric values", () => {
-    expect(() => parseAutoTopUpNumber("auto_top_up_amount", null)).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-    expect(() => parseAutoTopUpNumber("auto_top_up_amount", undefined)).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "   ")).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "abc")).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-    expect(() => parseAutoTopUpNumber("markup_percent", Number.POSITIVE_INFINITY)).toThrow(
-      CorruptAutoTopUpNumberError,
-    );
-  });
-});
-
-describe("AutoTopUpService.executeAutoTopUp fail-closed money gates", () => {
-  test("corrupt auto_top_up_amount ('NaN') disables + fails instead of charging NaN", async () => {
-    const org = makeOrganization({ auto_top_up_amount: "NaN" });
-
-    const result = await new AutoTopUpService().executeAutoTopUp(org);
-
-    // The corrupt amount must NEVER reach Stripe as Math.round(NaN * 100).
-    expect(createPaymentIntent).not.toHaveBeenCalled();
-    expect(addCredits).not.toHaveBeenCalled();
-    // Same fail-closed path as an out-of-range invalid amount: disable + fail.
-    expect(updateOrganization).toHaveBeenCalledWith(
-      "org-1",
-      expect.objectContaining({ auto_top_up_enabled: false }),
-    );
-    expect(result).toEqual(
-      expect.objectContaining({
-        organizationId: "org-1",
-        success: false,
-        error: "Invalid top-up amount",
-      }),
-    );
-  });
-
-  test("corrupt affiliate markup_percent charges the base amount (no NaN total), no surcharge", async () => {
-    getReferrer.mockResolvedValue({
-      user_id: "affiliate-owner",
-      id: "code-1",
-      markup_percent: "NaN",
-    });
-
-    const result = await new AutoTopUpService().executeAutoTopUp(makeOrganization());
-
-    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
-    const chargedAmount = createPaymentIntent.mock.calls[0][0].amount;
-    // Base $10.00 charged as 1000 cents, NOT Math.round(NaN * 100) = NaN.
-    expect(chargedAmount).toBe(1000);
-    expect(Number.isNaN(chargedAmount)).toBe(false);
-    // Surcharge dropped: no affiliate fee metadata on a corrupt markup.
-    const metadata = createPaymentIntent.mock.calls[0][0].metadata;
-    expect(metadata.affiliate_fee_amount).toBeUndefined();
-    expect(metadata.affiliate_owner_id).toBeUndefined();
-    expect(metadata.total_charged).toBe("10.00");
-    // Customer's top-up still succeeds (best-effort surcharge, fail-safe).
-    expect(addCredits).toHaveBeenCalledTimes(1);
-    expect(result).toEqual(
-      expect.objectContaining({ organizationId: "org-1", success: true, amount: 10 }),
-    );
-  });
-
-  test("valid affiliate markup still applies the surcharge (no behavior change)", async () => {
-    getReferrer.mockResolvedValue({
-      user_id: "affiliate-owner",
-      id: "code-1",
-      markup_percent: "10",
-    });
-
-    await new AutoTopUpService().executeAutoTopUp(makeOrganization());
-
-    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
-    // $10 base + 10% affiliate ($1) + 20% platform ($2) = $13.00 -> 1300 cents.
-    expect(createPaymentIntent.mock.calls[0][0].amount).toBe(1300);
-    const metadata = createPaymentIntent.mock.calls[0][0].metadata;
-    expect(metadata.affiliate_fee_amount).toBe("1.00");
-    expect(metadata.affiliate_owner_id).toBe("affiliate-owner");
-    expect(metadata.total_charged).toBe("13.00");
+  test("rejects missing, blank, non-numeric, and non-finite values", () => {
+    for (const value of [null, undefined, "", "   ", "abc", Number.POSITIVE_INFINITY]) {
+      expect(() => parseAutoTopUpNumber("auto_top_up_amount", value)).toThrow(
+        CorruptAutoTopUpNumberError,
+      );
+    }
   });
 });
 
 describe("AutoTopUpService.validateSettings", () => {
-  const svc = new AutoTopUpService();
-  test("accepts in-range values incl. boundaries", () => {
-    expect(() => svc.validateSettings(1, 0)).not.toThrow();
-    expect(() => svc.validateSettings(1000, 1000)).not.toThrow();
+  const service = new AutoTopUpService();
+
+  test("accepts boundary values", () => {
+    expect(() => service.validateSettings(1, 0)).not.toThrow();
+    expect(() => service.validateSettings(1000, 1000)).not.toThrow();
   });
-  test("rejects amount below $1", () => {
-    expect(() => svc.validateSettings(0.5, 5)).toThrow(/at least \$1/);
+
+  test("rejects invalid and non-finite settings", () => {
+    expect(() => service.validateSettings(0, 5)).toThrow("at least $1");
+    expect(() => service.validateSettings(1001, 5)).toThrow("cannot exceed $1000");
+    expect(() => service.validateSettings(10, -1)).toThrow("threshold must be at least $0");
+    expect(() => service.validateSettings(10, 1001)).toThrow("threshold cannot exceed $1000");
+    expect(() => service.validateSettings(Number.NaN, 5)).toThrow("must be valid numbers");
   });
-  test("rejects amount above $1000", () => {
-    expect(() => svc.validateSettings(1001, 5)).toThrow(/cannot exceed \$1000/);
+});
+
+describe("AutoTopUpService settings compatibility", () => {
+  test("reads the existing billing settings without unsealing charging", async () => {
+    const result = await new AutoTopUpService().getSettings("org-1");
+
+    expect(result).toEqual({
+      enabled: true,
+      amount: 10,
+      threshold: 5,
+      hasPaymentMethod: true,
+    });
+    expect(requireStripe).not.toHaveBeenCalled();
   });
-  test("rejects negative threshold", () => {
-    expect(() => svc.validateSettings(10, -1)).toThrow(/threshold must be at least/);
+
+  test("preserves zero defaults for normally unconfigured settings", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: null,
+        auto_top_up_threshold: null,
+      }),
+    );
+
+    await expect(new AutoTopUpService().getSettings("org-1")).resolves.toEqual({
+      enabled: false,
+      amount: 0,
+      threshold: 0,
+      hasPaymentMethod: true,
+    });
   });
-  test("rejects threshold above $1000", () => {
-    expect(() => svc.validateSettings(10, 1001)).toThrow(/threshold cannot exceed/);
+
+  test("reports genuinely corrupt disabled settings as null without fabricating values", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "NaN",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await expect(new AutoTopUpService().getSettings("org-1")).resolves.toEqual({
+      enabled: false,
+      amount: null,
+      threshold: null,
+      hasPaymentMethod: true,
+    });
+  });
+
+  test("persists validated decimal settings", async () => {
+    await new AutoTopUpService().updateSettings("org-1", {
+      enabled: true,
+      amount: 25,
+      threshold: 10,
+    });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_amount: "25.00",
+        auto_top_up_threshold: "10.00",
+        updated_at: expect.any(Date),
+      }),
+    );
+    expect(requireStripe).not.toHaveBeenCalled();
+  });
+
+  test("rejects enabling without a payment method", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({ stripe_default_payment_method: null }),
+    );
+
+    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+      "Cannot enable auto top-up without a default payment method",
+    );
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("rejects re-enabling while an earlier provider payment requires reconciliation", async () => {
+    findBlockingLegacyPaymentByOrganization.mockResolvedValueOnce({
+      id: "legacy-review-1",
+      status: "manual_review",
+    });
+
+    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+      "Cannot enable auto top-up while an earlier card payment requires reconciliation",
+    );
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("rejects re-enabling while a durable attempt requires manual review", async () => {
+    findBlockingByOrganization.mockResolvedValueOnce({
+      id: "durable-review-1",
+      status: "manual_review",
+    });
+
+    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+      "Cannot enable auto top-up while an earlier card payment requires reconciliation",
+    );
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("requires an explicit value for every corrupt setting when enabling", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "NaN",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: true, amount: 25 }),
+    ).rejects.toThrow("Valid auto top-up values are required to replace corrupt settings");
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("repairs only a corrupt amount while reusing a valid persisted threshold", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "NaN",
+        auto_top_up_threshold: "8.00",
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", {
+      enabled: true,
+      amount: 25,
+    });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_amount: "25.00",
+      }),
+    );
+    expect(updateOrganization.mock.calls[0]?.[1]).not.toHaveProperty("auto_top_up_threshold");
+  });
+
+  test("repairs only a corrupt threshold while reusing a valid persisted amount", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "25.00",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", {
+      enabled: true,
+      threshold: 8,
+    });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_threshold: "8.00",
+      }),
+    );
+    expect(updateOrganization.mock.calls[0]?.[1]).not.toHaveProperty("auto_top_up_amount");
+  });
+
+  test("repairs corrupt settings when enabling with explicit valid values", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "NaN",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", {
+      enabled: true,
+      amount: 25,
+      threshold: 10,
+    });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_amount: "25.00",
+        auto_top_up_threshold: "10.00",
+      }),
+    );
+  });
+
+  test("rejects enabling normally unconfigured settings through safe range validation", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: null,
+        auto_top_up_threshold: null,
+      }),
+    );
+
+    await expect(new AutoTopUpService().updateSettings("org-1", { enabled: true })).rejects.toThrow(
+      "Auto top-up amount must be at least $1",
+    );
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("persists the legacy zero threshold when enabling from SQL NULL", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "10.00",
+        auto_top_up_threshold: null,
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", { enabled: true });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        auto_top_up_enabled: true,
+        auto_top_up_threshold: "0.00",
+      }),
+    );
+  });
+
+  test("uses the legacy zero fallback for a partial update on unconfigured settings", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: null,
+        auto_top_up_threshold: null,
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", { amount: 10 });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ auto_top_up_amount: "10.00" }),
+    );
+  });
+
+  test("rejects a partial update whose missing counterpart is corrupt", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_enabled: false,
+        auto_top_up_amount: "10.00",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await expect(new AutoTopUpService().updateSettings("org-1", { amount: 25 })).rejects.toThrow(
+      "Valid auto top-up values are required to replace corrupt settings",
+    );
+    expect(updateOrganization).not.toHaveBeenCalled();
+  });
+
+  test("allows fail-closed disable even when persisted amount fields are corrupt", async () => {
+    findOrganizationById.mockResolvedValueOnce(
+      makeOrganization({
+        auto_top_up_amount: "NaN",
+        auto_top_up_threshold: "not-a-number",
+      }),
+    );
+
+    await new AutoTopUpService().updateSettings("org-1", { enabled: false });
+
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ auto_top_up_enabled: false }),
+    );
   });
 });

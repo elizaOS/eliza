@@ -66,6 +66,7 @@ export * from "./app-earnings";
 // App Domain
 // ============================================
 export * from "./apps";
+export * from "./auto-top-up-attempts";
 // ============================================
 // Character Domain (User-created definitions)
 // ============================================

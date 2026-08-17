@@ -14,6 +14,8 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "slug" text NOT NULL,
   "credit_balance" numeric(12,6) NOT NULL DEFAULT 0.000000,
   "balance_revision" bigint NOT NULL DEFAULT 0,
+  "balance_decrease_revision" bigint NOT NULL DEFAULT 0,
+  "auto_top_up_covered_balance_decrease_revision" bigint,
   "settings" jsonb DEFAULT '{}'::jsonb,
   "stripe_customer_id" text,
   "billing_email" text,

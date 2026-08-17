@@ -1,11 +1,10 @@
 /**
- * POST /api/auto-top-up/trigger
- * Manually triggers an auto top-up check for the authenticated user's
- * organization. Useful for testing without waiting for cron.
+ * Translates an authenticated organization's manual auto-top-up request
+ * through the sealed cutover bridge. This boundary never reads or recomputes
+ * money values and rejects requests when the shared limiter is unavailable.
  */
 
 import { Hono } from "hono";
-import { organizationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -18,57 +17,39 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STRICT));
+app.use(
+  "*",
+  rateLimit({
+    ...RateLimitPresets.STRICT,
+    failClosed: true,
+  }),
+);
 
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const org = await organizationsRepository.findById(user.organization_id);
-    if (!org) return c.json({ error: "Organization not found" }, 404);
+    const result = await autoTopUpService.executeAutoTopUpForOrganization(
+      user.organization_id,
+    );
 
-    if (!org.auto_top_up_enabled) {
-      return c.json(
-        {
-          error: "Auto top-up is not enabled",
-          message: "Please enable auto top-up first",
-        },
-        400,
-      );
-    }
-
-    const currentBalance = Number(org.credit_balance || 0);
-    const threshold = Number(org.auto_top_up_threshold || 0);
-
-    if (currentBalance >= threshold) {
-      return c.json({
-        success: false,
-        message: `Balance ($${currentBalance.toFixed(2)}) is above threshold ($${threshold.toFixed(2)}). Auto top-up not needed.`,
-        currentBalance,
-        threshold,
-      });
-    }
-
-    const result = await autoTopUpService.executeAutoTopUp(org);
-
-    if (result.success) {
-      return c.json({
-        success: true,
-        message: `Auto top-up successful! Added $${result.amount?.toFixed(2)}`,
-        amount: result.amount,
-        previousBalance: currentBalance,
-        newBalance: result.newBalance,
-      });
-    }
     return c.json(
       {
         success: false,
-        error: result.error || "Auto top-up failed",
-        message: "Please check your payment method and try again",
+        status: result.status,
+        code: "service_unavailable" as const,
+        error: result.error,
+        message:
+          "Auto top-up charging is temporarily paused during the durable cutover.",
       },
-      400,
+      503,
+      { "Retry-After": "60" },
     );
   } catch (error) {
-    logger.error("Error triggering auto top-up:", error);
+    // error-policy:J1 boundary translation — auth and cutover-control failures
+    // remain explicit transport errors and can never fall through to charging.
+    logger.error("[AutoTopUp] Manual cutover request failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return failureResponse(c, error);
   }
 });
