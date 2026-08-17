@@ -299,7 +299,7 @@ const defaultBrandConfigPath = path.join(
 );
 const generatedBrandConfigPath = path.join(
   electrobunDir,
-  ".generated",
+  "tmp",
   "brand-config.json",
 );
 const libMacWindowEffectsDylib = path.join(
