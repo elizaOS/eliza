@@ -3061,7 +3061,15 @@ export class OrchestratorTaskService extends Service {
   ): Promise<CreateTaskInput> {
     const supplied = input.acceptanceCriteria;
     // Caller-supplied criteria are authoritative — never overwrite them.
-    if (supplied && supplied.length > 0) return input;
+    if (supplied && supplied.length > 0) {
+      return {
+        ...input,
+        metadata: {
+          ...input.metadata,
+          acceptanceCriteriaOrigin: "caller",
+        },
+      };
+    }
     if (!shouldRequireGoalContract()) return input;
     if (!isNonTrivialGoal(input.goal)) return input;
 
@@ -3076,7 +3084,14 @@ export class OrchestratorTaskService extends Service {
       "debug",
       `auto-generated ${generated.length} default acceptance criteria for criteria-free task (type=${hint ?? detectTaskType(input.goal)})`,
     );
-    return { ...input, acceptanceCriteria: generated };
+    return {
+      ...input,
+      acceptanceCriteria: generated,
+      metadata: {
+        ...input.metadata,
+        acceptanceCriteriaOrigin: "generated",
+      },
+    };
   }
 
   /** Map an explicit `kind` on the create input to a task type when it lines up
@@ -4031,12 +4046,24 @@ export class OrchestratorTaskService extends Service {
           return typeof value === "string" ? value : undefined;
         },
       );
-      {
-        // Reuse the bundle assembled on the task_complete path — recollecting
-        // would re-run the git change-set capture a third time per completion.
-        const bundle =
-          evidenceBundle ??
-          (await this.collectEvidenceBundle(taskId, sessionId, rawCompletion));
+      if (evidenceBundle) {
+        // Reuse the bundle assembled on the task_complete path. When assembly
+        // failed, skip this optional pre-pass and keep the established judge
+        // fallback; immediately repeating the same throwing IO under the task
+        // lock would strand the coding task in `validating`.
+        const bundle = evidenceBundle;
+        // Only structured tool-result events may become deterministic green
+        // checks. `bundle.toolOutput` deliberately also contains sub-agent
+        // prose for the model judge, but prose is a claim rather than
+        // model-free execution evidence.
+        const deterministicToolOutput = classifyToolOutput(
+          this.extractToolSignals(
+            doc.events.filter(
+              (event) =>
+                event.sessionId === sessionId || event.sessionId === undefined,
+            ),
+          ),
+        );
         const detVerdict = deterministicLedgerVerdict(acceptanceCriteria, {
           verifiedPublicUrls: bundle.verifiedUrls.filter(
             isPubliclyReachableUrl,
@@ -4044,12 +4071,18 @@ export class OrchestratorTaskService extends Service {
           ledgerVerifiedFiles: bundle.ledgerVerifiedFiles ?? [],
           hasChangeSet: Boolean(bundle.diffSummary?.trim()),
           greenChecks: {
-            test: isGreenCheckOutput(bundle.toolOutput?.test),
-            build: isGreenCheckOutput(bundle.toolOutput?.build),
-            lint: isGreenCheckOutput(bundle.toolOutput?.lint),
+            test: isGreenCheckOutput(deterministicToolOutput?.test),
+            build: isGreenCheckOutput(deterministicToolOutput?.build),
+            lint: isGreenCheckOutput(deterministicToolOutput?.lint),
           },
         });
-        if (detVerdict.allMet) {
+        // Generated defaults are intentionally generic fallbacks. Green
+        // typecheck/lint/tests/diff does not prove a goal such as "fix this
+        // bug", so only an explicit caller contract may bypass the verifier
+        // and judge. Generated criteria still contribute grounded evidence.
+        const explicitContract =
+          doc.task.metadata.acceptanceCriteriaOrigin === "caller";
+        if (detVerdict.allMet && explicitContract) {
           await this.validateTaskLocked(taskId, {
             passed: true,
             summary: `All ${acceptanceCriteria.length} criteria deterministically verified from the write ledger, probed URLs, and captured output.`,
