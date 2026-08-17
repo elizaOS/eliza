@@ -54,6 +54,28 @@ function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
 	return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
 }
 
+function parsePositiveLimit(
+	raw: string | null,
+	fallback: number,
+): number | null {
+	if (raw === null || raw === "") return fallback;
+	// Strict digits only. Number.parseInt("1e2", 10) === 1 would silently
+	// return one iMessage chat/page instead of 100 (or 400).
+	if (!/^[1-9]\d*$/.test(raw)) return null;
+	const parsed = Number(raw);
+	if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+	return Math.min(parsed, 500);
+}
+
+function parseOffset(raw: string | null): number | null {
+	if (raw === null || raw === "") return 0;
+	// "0" is a legal offset. "007" is prefix-zero junk and must 400.
+	if (raw !== "0" && !/^[1-9]\d*$/.test(raw)) return null;
+	const parsed = Number(raw);
+	if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
+	return parsed;
+}
+
 // ── GET /api/bluebubbles/chats ─────────────────────────────────────
 async function handleChats(
 	req: RouteRequest,
@@ -85,17 +107,27 @@ async function handleChats(
 		return;
 	}
 	const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
-	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
-		),
-		500,
-	);
-	const offset = Math.max(
-		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-	);
+	const limit = parsePositiveLimit(url.searchParams.get("limit"), 100);
+	const offset = parseOffset(url.searchParams.get("offset"));
+	if (limit === null) {
+		res
+			.status(400)
+			.json(
+				buildSetupError("bad_request", "limit must be a positive integer"),
+			);
+		return;
+	}
+	if (offset === null) {
+		res
+			.status(400)
+			.json(
+				buildSetupError(
+					"bad_request",
+					"offset must be a non-negative integer",
+				),
+			);
+		return;
+	}
 	try {
 		const chats = await client.listChats(limit, offset);
 		res.status(200).json({ chats, count: chats.length, limit, offset });
@@ -154,17 +186,27 @@ async function handleMessages(
 			);
 		return;
 	}
-	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-		),
-		500,
-	);
-	const offset = Math.max(
-		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-	);
+	const limit = parsePositiveLimit(url.searchParams.get("limit"), 50);
+	const offset = parseOffset(url.searchParams.get("offset"));
+	if (limit === null) {
+		res
+			.status(400)
+			.json(
+				buildSetupError("bad_request", "limit must be a positive integer"),
+			);
+		return;
+	}
+	if (offset === null) {
+		res
+			.status(400)
+			.json(
+				buildSetupError(
+					"bad_request",
+					"offset must be a non-negative integer",
+				),
+			);
+		return;
+	}
 	try {
 		const messages = await client.getMessages(chatGuid, limit, offset);
 		res.status(200).json({
