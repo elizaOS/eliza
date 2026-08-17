@@ -161,19 +161,21 @@ interface RuntimeServiceOrderItem {
   instances: RuntimeOrderItem[];
 }
 
-function parseDebugPositiveInt(
+export function parseDebugPositiveInt(
   raw: string | null,
   fallback: number,
   min: number,
   max: number,
-): number {
-  if (!raw) return fallback;
+): number | "invalid" {
+  if (raw === null || raw === "") return fallback;
+  // Canonical positive integers only. Number("1e2") === 100 used to become
+  // a real /api/runtime serialize tunable.
+  if (!/^[1-9]\d*$/.test(raw)) return "invalid";
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  const intValue = Math.floor(parsed);
-  if (intValue < min) return min;
-  if (intValue > max) return max;
-  return intValue;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return "invalid";
+  if (parsed < min) return min;
+  if (parsed > max) return max;
+  return parsed;
 }
 
 function classNameFor(value: object): string {
@@ -683,6 +685,19 @@ export async function handleHealthRoutes(
       64,
       100_000,
     );
+    if (
+      maxDepth === "invalid" ||
+      maxArrayLength === "invalid" ||
+      maxObjectEntries === "invalid" ||
+      maxStringLength === "invalid"
+    ) {
+      error(
+        res,
+        "depth, maxArrayLength, maxObjectEntries, and maxStringLength must be canonical positive integers",
+        400,
+      );
+      return true;
+    }
 
     const serializeOptions: RuntimeDebugSerializeOptions = {
       maxDepth,
