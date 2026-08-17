@@ -50,6 +50,38 @@ async function handleGET(
     }
     const { startDate, endDate } = dateRange;
 
+    // Request-analytics view identity, not leftover Life Ops views
+    // viewType or analytics-periods tax. The prior `|| "stats"` then
+    // switch-default mapped LOGS / STATS / foo onto the stats
+    // dashboard, so operators asking for logs or a timeline received
+    // aggregates. Missing / empty still means stats. Garbage 400s
+    // before getById and the view sinks. period= is untouched.
+    const ANALYTICS_VIEWS = [
+      "logs",
+      "stats",
+      "visitors",
+      "timeline",
+      "sessions",
+    ] as const;
+    const requestedView = searchParams.get("view");
+    if (
+      requestedView !== null &&
+      requestedView !== "" &&
+      !ANALYTICS_VIEWS.includes(
+        requestedView as (typeof ANALYTICS_VIEWS)[number],
+      )
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "invalid_view",
+          message:
+            'view must be "logs", "stats", "visitors", "timeline", or "sessions".',
+        },
+        { status: 400 },
+      );
+    }
+
     const existingApp = await appsService.getById(id);
 
     if (!existingApp) {
@@ -72,7 +104,7 @@ async function handleGET(
       );
     }
 
-    const view = searchParams.get("view") || "stats";
+    const view = requestedView || "stats";
     const requestType = searchParams.get("request_type") || undefined;
     const source = searchParams.get("source") || undefined;
 
