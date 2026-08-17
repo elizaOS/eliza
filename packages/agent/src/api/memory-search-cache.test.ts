@@ -231,6 +231,43 @@ describe("GET /api/memory/search corpus cache", () => {
     expect(results.some((r) => r.id === target)).toBe(true);
   });
 
+  test("does not return a cached snapshot invalidated while COUNT is pending", async () => {
+    const target = "aaaaaaaa-0000-4000-8000-000000000005";
+    const store: Store = { rows: [note(target, "original wording", 1)] };
+    const { runtime, getMemories, countMemories } = makeRuntime(store);
+    await search(runtime, "gyroscope");
+
+    let releaseCount = () => {};
+    const countGate = new Promise<void>((resolve) => {
+      releaseCount = resolve;
+    });
+    countMemories.mockImplementationOnce(async () => {
+      await countGate;
+      return store.rows.length;
+    });
+    const pendingSearch = search(runtime, "gyroscope");
+    await vi.waitFor(() => expect(countMemories).toHaveBeenCalledTimes(3));
+
+    const response: { value?: unknown } = {};
+    await handleMemoryRoutes(
+      contextFor({
+        runtime,
+        method: "PATCH",
+        path: `/api/memories/${target}`,
+        body: { text: "corrected wording about the gyroscope" },
+        response,
+      }),
+    );
+    releaseCount();
+
+    await expect(pendingSearch).resolves.toEqual([
+      expect.objectContaining({
+        text: "corrected wording about the gyroscope",
+      }),
+    ]);
+    expect(getMemories).toHaveBeenCalledTimes(2);
+  });
+
   test("out-of-band create (row count change) is picked up on the next search", async () => {
     const store: Store = {
       rows: [note("aaaaaaaa-0000-4000-8000-000000000001", "baseline note", 1)],
@@ -249,6 +286,44 @@ describe("GET /api/memory/search corpus cache", () => {
     const results = await search(runtime, "meteor");
     expect(getMemories).toHaveBeenCalledTimes(2); // count mismatch forced rebuild
     expect(results.some((r) => r.text.includes("meteor shower"))).toBe(true);
+  });
+
+  test("count mismatch supersedes an older in-flight background refresh", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T00:00:00Z"));
+    const store: Store = {
+      rows: [note("aaaaaaaa-0000-4000-8000-000000000001", "baseline note", 1)],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    await search(runtime, "meteor");
+
+    let releaseStaleScan = () => {};
+    const staleScanGate = new Promise<void>((resolve) => {
+      releaseStaleScan = resolve;
+    });
+    getMemories.mockImplementationOnce(async () => {
+      const staleSnapshot = [...store.rows];
+      await staleScanGate;
+      return staleSnapshot;
+    });
+
+    // Start a stale-while-revalidate build and leave its old snapshot in flight.
+    vi.advanceTimersByTime(11_000);
+    await search(runtime, "meteor");
+    await vi.waitFor(() => expect(getMemories).toHaveBeenCalledTimes(2));
+
+    // The next request observes the changed count. It must start a new scan,
+    // not join the older refresh that captured the one-row corpus.
+    store.rows.push(
+      note("aaaaaaaa-0000-4000-8000-000000000002", "meteor shower friday", 2),
+    );
+    const freshSearch = search(runtime, "meteor");
+    await vi.waitFor(() => expect(getMemories).toHaveBeenCalledTimes(3));
+    await expect(freshSearch).resolves.toEqual([
+      expect.objectContaining({ text: "meteor shower friday" }),
+    ]);
+
+    releaseStaleScan();
   });
 
   test("count-preserving edit refreshes after one bounded stale response", async () => {

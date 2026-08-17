@@ -239,6 +239,14 @@ let memorySearchCorpusCaches = new WeakMap<
   Map<string, MemorySearchCacheSlot>
 >();
 
+function invalidateMemorySearchCacheSlot(slot: MemorySearchCacheSlot): void {
+  slot.generation++;
+  slot.corpus = undefined;
+  // Detach an older build so a request arriving after invalidation cannot join
+  // a stale snapshot. Its generation check prevents that build from publishing.
+  slot.inFlight = undefined;
+}
+
 export function invalidateMemorySearchCache(
   runtime?: AgentRuntime,
   roomId?: UUID,
@@ -251,19 +259,12 @@ export function invalidateMemorySearchCache(
   }
   const cache = memorySearchCorpusCaches.get(runtime);
   if (!cache) return;
-  const invalidateSlot = (slot: MemorySearchCacheSlot) => {
-    slot.generation++;
-    slot.corpus = undefined;
-    // Detach an older build so a request arriving after this mutation cannot
-    // join a pre-mutation snapshot. Its generation check prevents publishing.
-    slot.inFlight = undefined;
-  };
   if (roomId) {
     const slot = cache.get(roomId);
-    if (slot) invalidateSlot(slot);
+    if (slot) invalidateMemorySearchCacheSlot(slot);
     return;
   }
-  for (const slot of cache.values()) invalidateSlot(slot);
+  for (const slot of cache.values()) invalidateMemorySearchCacheSlot(slot);
 }
 
 async function countRoomMessages(
@@ -420,6 +421,13 @@ async function getMemorySearchCorpus(
   const cached = slot.corpus;
   if (cached) {
     const rowCount = await countRoomMessages(runtime, roomId);
+
+    // A module-local mutation may have invalidated this slot while COUNT was
+    // pending. Never return the snapshot captured before that mutation.
+    if (slot.corpus !== cached) {
+      return await startMemorySearchCorpusBuild(runtime, roomId, cache, slot);
+    }
+
     if (rowCount !== null && rowCount === cached.rowCount) {
       const age = Date.now() - cached.builtAt;
       if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
@@ -430,6 +438,12 @@ async function getMemorySearchCorpus(
         startMemorySearchCorpusBuild(runtime, roomId, cache, slot);
         return cached;
       }
+    } else {
+      // A changed/unknown count makes both the cached corpus and any older
+      // background refresh ineligible. Detach that refresh before rebuilding;
+      // otherwise this request could join a snapshot that predates the count
+      // mismatch it just observed.
+      invalidateMemorySearchCacheSlot(slot);
     }
   }
   return await startMemorySearchCorpusBuild(runtime, roomId, cache, slot);
