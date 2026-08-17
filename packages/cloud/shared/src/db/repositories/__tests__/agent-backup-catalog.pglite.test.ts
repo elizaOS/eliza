@@ -46,6 +46,7 @@ import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 import {
+  type AgentBackupOperationExecution,
   agentBackupObjectInventoryDigest,
   buildAgentBackupObjectKey,
   claimDueAgentBackupOperations,
@@ -677,7 +678,7 @@ function exactRuntimeBucket(): {
   };
 }
 
-async function claimExecution(backupId: string) {
+async function claimExecution(backupId: string): Promise<AgentBackupOperationExecution> {
   const generation = randomUUID();
   const [claimed] = await dbWrite
     .update(agentSandboxBackups)
