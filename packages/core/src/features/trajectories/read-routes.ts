@@ -113,11 +113,32 @@ function sendJson(
  * `%ZZ` threw URIError (500) instead of a typed 400. List and stats stay
  * untouched.
  */
-function decodeTrajectoryId(raw: string): string | null {
+function decodeTrajectoryId(
+	raw: string,
+):
+	| { id: string }
+	| { error: "malformed URL encoding" | "invalid path segment" } {
 	try {
-		return decodeURIComponent(raw);
+		const id = decodeURIComponent(raw);
+		const hasControlCharacter = Array.from(id).some((character) => {
+			const codePoint = character.codePointAt(0) ?? 0;
+			return codePoint <= 0x1f || codePoint === 0x7f;
+		});
+		if (
+			!id ||
+			id === "." ||
+			id === ".." ||
+			id.includes("/") ||
+			id.includes("\\") ||
+			hasControlCharacter
+		) {
+			return { error: "invalid path segment" };
+		}
+		return { id };
 	} catch {
-		return null;
+		// error-policy:J3 malformed percent escapes are rejected at the route
+		// boundary and never reach the trajectory service.
+		return { error: "malformed URL encoding" };
 	}
 }
 
@@ -304,17 +325,21 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 	// Only the read routes the viewer needs belong to this boundary. Unsupported
 	// mutation and export paths fall through for the API host to reject.
 	const isList = pathname === "/api/trajectories";
-	const isStats = pathname === "/api/trajectories/stats";
+	let isStats = pathname === "/api/trajectories/stats";
 	const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);
 	let detailId: string | null = null;
-	if (idMatch && idMatch[1] !== "stats" && idMatch[1] !== "config") {
-		detailId = decodeTrajectoryId(idMatch[1] ?? "");
-		if (detailId === null) {
+	if (idMatch) {
+		const decoded = decodeTrajectoryId(idMatch[1] ?? "");
+		if ("error" in decoded) {
 			sendJson(res, 400, {
-				error: "invalid trajectory id: malformed URL encoding",
+				error: `invalid trajectory id: ${decoded.error}`,
 			});
 			return true;
 		}
+		// Classify reserved segments after decoding so percent encoding cannot
+		// turn a host-owned route into a trajectory lookup.
+		if (decoded.id === "stats") isStats = true;
+		else if (decoded.id !== "config") detailId = decoded.id;
 	}
 	if (!isList && !isStats && !detailId) {
 		return false;

@@ -128,4 +128,101 @@ describe("GET /api/trajectories/:id encoding", () => {
 			error: "invalid trajectory id: malformed URL encoding",
 		});
 	});
+
+	it.each([
+		"/api/trajectories/%2F",
+		"/api/trajectories/%5C",
+		"/api/trajectories/%00",
+		"/api/trajectories/%2E",
+		"/api/trajectories/%2E%2E",
+	])(
+		"rejects decoded non-segment id %s before detail lookup",
+		async (pathname) => {
+			let detailCalls = 0;
+			const service = {
+				getTrajectoryDetail: async () => {
+					detailCalls += 1;
+					return null;
+				},
+			};
+			const { res, get } = mockRes();
+			const handled = await tryHandleTrajectoryReadRoutes({
+				pathname,
+				method: "GET",
+				url: url(pathname),
+				runtime: runtimeWith(service),
+				res,
+			});
+			expect(handled).toBe(true);
+			expect(detailCalls).toBe(0);
+			expect(get()).toEqual({
+				status: 400,
+				body: { error: "invalid trajectory id: invalid path segment" },
+			});
+		},
+	);
+
+	it("classifies an encoded stats segment before detail lookup", async () => {
+		let detailCalls = 0;
+		const service = {
+			getStats: async () => ({ count: 3 }),
+			getTrajectoryDetail: async () => {
+				detailCalls += 1;
+				return null;
+			},
+		};
+		const { res, get } = mockRes();
+		const pathname = "/api/trajectories/%73tats";
+		const handled = await tryHandleTrajectoryReadRoutes({
+			pathname,
+			method: "GET",
+			url: url(pathname),
+			runtime: runtimeWith(service),
+			res,
+		});
+		expect(handled).toBe(true);
+		expect(detailCalls).toBe(0);
+		expect(get()).toEqual({ status: 200, body: { count: 3 } });
+	});
+
+	it("leaves an encoded config segment for the host route", async () => {
+		let detailCalls = 0;
+		const service = {
+			getTrajectoryDetail: async () => {
+				detailCalls += 1;
+				return null;
+			},
+		};
+		const { res, get } = mockRes();
+		const pathname = "/api/trajectories/%63onfig";
+		const handled = await tryHandleTrajectoryReadRoutes({
+			pathname,
+			method: "GET",
+			url: url(pathname),
+			runtime: runtimeWith(service),
+			res,
+		});
+		expect(handled).toBe(false);
+		expect(detailCalls).toBe(0);
+		expect(get()).toEqual({ status: 0, body: undefined });
+	});
+
+	it("decodes exactly once", async () => {
+		const seen: string[] = [];
+		const service = {
+			getTrajectoryDetail: async (id: string) => {
+				seen.push(id);
+				return null;
+			},
+		};
+		const { res } = mockRes();
+		await tryHandleTrajectoryReadRoutes({
+			pathname: "/api/trajectories/%252F",
+			method: "GET",
+			url: url("/api/trajectories/%252F"),
+			runtime: runtimeWith(service),
+			res,
+		});
+		expect(seen).toEqual(["%2F"]);
+	});
 });
