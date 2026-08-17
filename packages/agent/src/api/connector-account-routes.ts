@@ -27,6 +27,7 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import { resolveDirectRequestOrigin } from "./request-origin.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
@@ -235,19 +236,33 @@ function hasPrivacyConfirmation(
   return phrase === "SHARE";
 }
 
-function parseConnectorScopedPath(pathname: string): {
+interface ConnectorScopedPath {
   provider: string;
   namespace: "accounts" | "oauth" | "audit";
   rest: string[];
-} | null {
+}
+
+const INVALID_CONNECTOR_SCOPED_PATH = Symbol("invalid-connector-scoped-path");
+
+function parseConnectorScopedPath(
+  pathname: string,
+  res: http.ServerResponse,
+): ConnectorScopedPath | typeof INVALID_CONNECTOR_SCOPED_PATH | null {
   if (!pathname.startsWith(CONNECTORS_PREFIX)) {
     return null;
   }
-  const segments = pathname
+  const encodedSegments = pathname
     .slice(CONNECTORS_PREFIX.length)
     .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment));
+    .filter(Boolean);
+  const segments: string[] = [];
+  for (const segment of encodedSegments) {
+    const decoded = decodePathComponent(segment, res, "connector route");
+    if (decoded === null) {
+      return INVALID_CONNECTOR_SCOPED_PATH;
+    }
+    segments.push(decoded);
+  }
   if (segments.length < 2) return null;
   const provider = segments[0]?.trim().toLowerCase() ?? "";
   const namespace = segments[1];
@@ -265,7 +280,7 @@ function parseConnectorScopedPath(pathname: string): {
 }
 
 function isUnauthenticatedOAuthCallback(
-  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  parsedPath: ConnectorScopedPath,
   method: string,
 ): boolean {
   return (
@@ -276,7 +291,7 @@ function isUnauthenticatedOAuthCallback(
 }
 
 function authorizationRequestForPath(
-  parsedPath: NonNullable<ReturnType<typeof parseConnectorScopedPath>>,
+  parsedPath: ConnectorScopedPath,
   method: string,
   pathname: string,
 ): ConnectorAccountRouteAuthorizationRequest {
@@ -661,7 +676,10 @@ export async function handleConnectorAccountRoutes(
   ctx: ConnectorAccountRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, json, error, readJsonBody } = ctx;
-  const parsedPath = parseConnectorScopedPath(pathname);
+  const parsedPath = parseConnectorScopedPath(pathname, res);
+  if (parsedPath === INVALID_CONNECTOR_SCOPED_PATH) {
+    return true;
+  }
   if (!parsedPath) {
     return false;
   }

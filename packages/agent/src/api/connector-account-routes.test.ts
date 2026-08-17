@@ -375,7 +375,10 @@ function createConnectorAccountHarness(options: {
     statusCode: 200,
     setHeader: vi.fn(),
     write: vi.fn(),
-    end: vi.fn(),
+    end: vi.fn((body?: string) => {
+      captured.status = res.statusCode;
+      captured.body = body ? JSON.parse(body) : null;
+    }),
   } as unknown as ServerResponse;
   const pathname = options.pathname.split("?")[0];
   const ctx: ConnectorAccountRouteContext = {
@@ -410,6 +413,73 @@ function createConnectorAccountHarness(options: {
 describe("connector account routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each([
+    ["provider", "/api/connectors/%/accounts"],
+    ["namespace", "/api/connectors/slack/%ZZ"],
+    ["account id", "/api/connectors/slack/accounts/%E0%A4"],
+    ["action", "/api/connectors/slack/accounts/acct_1/%2"],
+    ["OAuth tail", "/api/connectors/slack/oauth/%"],
+    ["audit tail", "/api/connectors/slack/audit/%ZZ"],
+  ])(
+    "rejects malformed %s encoding before authorization or storage",
+    async (_segment, pathname) => {
+      const authorize = vi.fn(async () => true);
+      const { ctx, captured, runtime } = createConnectorAccountHarness({
+        method: "GET",
+        pathname,
+        authorize,
+      });
+
+      await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(400);
+      expect(captured.body).toEqual({
+        error: "Invalid connector route: malformed URL encoding",
+      });
+      expect(authorize).not.toHaveBeenCalled();
+      expect(runtime.getService).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves valid encoded provider, account, and action segments", async () => {
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/%73lack/accounts/acct%5Fencoded/t%65st",
+    });
+    await storage.upsertAccount({
+      id: "acct_encoded",
+      provider: "slack",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      ok: true,
+      provider: "slack",
+      account: { id: "acct_encoded" },
+    });
+  });
+
+  it("still falls through for paths outside the connector namespace", async () => {
+    const authorize = vi.fn(async () => true);
+    const { ctx, runtime } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/other/%",
+      authorize,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(false);
+    expect(authorize).not.toHaveBeenCalled();
+    expect(runtime.getService).not.toHaveBeenCalled();
   });
 
   it("handles connector account namespace separately from connector config routes", async () => {
