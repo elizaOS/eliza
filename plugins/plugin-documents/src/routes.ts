@@ -244,10 +244,27 @@ export function resolveRouteActor(
   };
 }
 
+class DocumentsSearchModeError extends Error {
+  constructor(message = "Invalid searchMode") {
+    super(message);
+    this.name = "DocumentsSearchModeError";
+  }
+}
+
+/**
+ * GET /api/documents/search `searchMode` is retrieval-mode identity,
+ * leftover tax after notifications unreadOnly (#21220). Stock develop
+ * mapped every non-catalog token to undefined, so `searchMode=HYBRID` /
+ * `1` silently used the default search instead of a 400.
+ */
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
-  return value === "hybrid" || value === "vector" || value === "keyword"
-    ? value
-    : undefined;
+  if (value == null || value === "") {
+    return undefined;
+  }
+  if (value === "hybrid" || value === "vector" || value === "keyword") {
+    return value;
+  }
+  throw new DocumentsSearchModeError();
 }
 
 function parseTimestampParam(value: unknown): number | undefined {
@@ -965,7 +982,21 @@ export async function handleDocumentsRoutes(
     });
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 20);
     const filters = filtersFromSearchParams(url);
-    const searchMode = parseSearchMode(url.searchParams.get("searchMode"));
+    const requestedSearchMode = url.searchParams.getAll("searchMode");
+    if (requestedSearchMode.length > 1) {
+      error(res, "Invalid searchMode", 400);
+      return true;
+    }
+    let searchMode: DocumentSearchMode | undefined;
+    try {
+      searchMode = parseSearchMode(requestedSearchMode[0] ?? null);
+    } catch (searchModeError) {
+      if (searchModeError instanceof DocumentsSearchModeError) {
+        error(res, searchModeError.message, 400);
+        return true;
+      }
+      throw searchModeError;
+    }
     const searchMessage = buildRouteMessage({
       agentId,
       text: query.trim(),
