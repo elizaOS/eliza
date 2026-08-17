@@ -27,6 +27,7 @@ import {
 } from "../../src/services/orchestrator-artifact-ownership.js";
 import {
   OrchestratorTaskService,
+  requestedCompletionGitPolicy,
   residualsOrchestratorOwnedArtifacts,
   residualsSpawnBaseline,
 } from "../../src/services/orchestrator-task-service.js";
@@ -428,7 +429,7 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     await service.start();
     const task = await service.createTask(
       createInput({
-        goal: "Implement src/stats.mjs and test/stats.test.mjs; do not commit.",
+        goal: "Implement src/stats.mjs and test/stats.test.mjs; do not commit or push.",
       }),
     );
 
@@ -455,6 +456,30 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     expect(metadata.env).toBeUndefined();
     expect(metadata.gitWrapperDir).toBeUndefined();
     expect(metadata.providerCredential).toBeUndefined();
+  });
+
+  it.each([
+    "Do not commit or push.",
+    "do not commit and do not push",
+    "do not commit/push",
+    "Never commit",
+    "no commit, push, or PR",
+    "Do not commit, reset, clean, stash, or delete.",
+    "Keep all changes uncommitted.",
+    "Deliver without committing anything.",
+  ])("recognizes a whole-delivery no-commit directive: %s", (instruction) => {
+    expect(requestedCompletionGitPolicy(instruction)).toBe("leave_uncommitted");
+  });
+
+  it.each([
+    "Do not commit secrets; commit the finished work.",
+    "Do not commit generated vendor files.",
+    "Do not commit until tests pass; then commit.",
+    "Do not commit, unless tests pass.",
+    "Never commit without approval.",
+    "No commit is necessary yet.",
+  ])("rejects a scoped or conditional commit warning: %s", (instruction) => {
+    expect(requestedCompletionGitPolicy(instruction)).toBeUndefined();
   });
 
   it("does not turn a scoped or conditional commit warning into a no-commit delivery policy", async () => {

@@ -47,5 +47,8 @@ describe("setup-routes — task detail + control path templates are registered",
     expect(has("POST", "/api/orchestrator/tasks/:taskId/validate")).toBe(true);
     expect(has("GET", "/api/orchestrator/tasks/:taskId/events")).toBe(true);
     expect(has("GET", "/api/orchestrator/tasks/:taskId/usage")).toBe(true);
+    expect(has("GET", "/api/orchestrator/tasks/:taskId/trace-usage")).toBe(
+      true,
+    );
   });
 });
