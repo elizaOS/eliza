@@ -50,6 +50,26 @@ function parseAdminRedemptionStatusFilter(
   return null;
 }
 
+const ADMIN_REDEMPTION_NETWORKS = [
+  "ethereum",
+  "base",
+  "bnb",
+  "solana",
+] as const;
+type AdminRedemptionNetwork = (typeof ADMIN_REDEMPTION_NETWORKS)[number];
+
+function parseAdminRedemptionNetworkFilter(
+  raw: string | undefined,
+): AdminRedemptionNetwork | "all" | null {
+  const networkFilter = raw || "all";
+  if (networkFilter === "all") return "all";
+  if (networkFilter === "bsc") return "bnb";
+  if ((ADMIN_REDEMPTION_NETWORKS as readonly string[]).includes(networkFilter)) {
+    return networkFilter as AdminRedemptionNetwork;
+  }
+  return null;
+}
+
 const app = new Hono<AppEnv>();
 
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
@@ -67,7 +87,17 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
         400,
       );
     }
-    const networkFilter = c.req.query("network") || "all";
+    const networkRaw = c.req.query("network") || "all";
+    const networkFilter = parseAdminRedemptionNetworkFilter(c.req.query("network"));
+    if (networkFilter === null) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid network: ${networkRaw}. Must be one of: ethereum, base, bnb, solana, bsc, all`,
+        },
+        400,
+      );
+    }
     const searchQuery = c.req.query("search")?.trim().toLowerCase() || "";
     const limitParam = c.req.query("limit");
     const limit = parseClampedLimit(limitParam, 50);
