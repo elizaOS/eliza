@@ -111,7 +111,25 @@ app.get("/", async (c) => {
         400,
       );
     }
-    const includeMetadata = c.req.query("includeMetadata") === "true";
+    // Analytics-export metadata identity, not leftover tax on export
+    // `type` (#20933). includeMetadata=TRUE used to silently omit
+    // metadata instead of 400.
+    const requestedMetadata = c.req.query("includeMetadata");
+    if (
+      requestedMetadata != null &&
+      requestedMetadata !== "" &&
+      requestedMetadata !== "true" &&
+      requestedMetadata !== "false"
+    ) {
+      return c.json(
+        {
+          error: "Invalid includeMetadata",
+          message: 'includeMetadata must be "true" or "false".',
+        },
+        400,
+      );
+    }
+    const includeMetadata = requestedMetadata === "true";
 
     const exportOptions: ExportOptions = {
       includeTimestamp: true,
