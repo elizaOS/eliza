@@ -10,7 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -360,6 +360,69 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
         ).toThrow();
       } finally {
         rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itWithBubblewrap(
+    "runs the boot-authorized npm toolchain without exposing unrelated home files or credentials",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      const workspace = mkdtempSync(join(tmpdir(), "eliza-bwrap-npm-"));
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      process.env.ELIZA_TEST_API_KEY = "must-not-reach-npm-test";
+      process.env.LC_SECRET = "must-not-reach-npm-test";
+      const homePrivatePath = join(homedir(), ".ssh");
+      const homeNvmScript = join(homedir(), ".nvm", "nvm.sh");
+      writeFileSync(
+        join(workspace, "package.json"),
+        JSON.stringify({
+          name: "sandboxed-npm-proof",
+          private: true,
+          type: "module",
+          scripts: { test: "node --test sandbox.test.mjs" },
+        }),
+        "utf8",
+      );
+      writeFileSync(
+        join(workspace, "sandbox.test.mjs"),
+        [
+          'import assert from "node:assert/strict";',
+          'import { existsSync } from "node:fs";',
+          'import test from "node:test";',
+          "",
+          'test("local-safe npm contract", () => {',
+          '  assert.equal(process.env.HOME, "/tmp/home");',
+          "  assert.equal(process.env.ELIZA_TEST_API_KEY, undefined);",
+          "  assert.equal(process.env.LC_SECRET, undefined);",
+          `  assert.equal(existsSync(${JSON.stringify(homePrivatePath)}), false);`,
+          `  assert.equal(existsSync(${JSON.stringify(homeNvmScript)}), false);`,
+          "});",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        const result = await runShell(runtime, {
+          command: "npm test",
+          cwd: workspace,
+          timeoutMs: 30_000,
+        });
+
+        expect(result, JSON.stringify(result)).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+        expect(result.stdout).toContain("local-safe npm contract");
+        expect(result.stdout).toMatch(/tests 1|1 pass/i);
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
       }
     },
   );

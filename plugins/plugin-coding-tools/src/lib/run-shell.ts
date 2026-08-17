@@ -15,6 +15,7 @@ import {
   existsSync,
   constants as fsConstants,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -198,6 +199,12 @@ const BUBBLEWRAP_TOOLCHAIN_COMMANDS = [
   "python3",
   "rg",
 ] as const;
+
+interface NpmToolchainMount {
+  entrypoint: string;
+  launcher: string;
+  packageRoot: string;
+}
 
 const UNSAFE_MUTABLE_WORKSPACE_ROOTS = [
   "/",
@@ -414,6 +421,75 @@ function appendReadOnlyFileIfOutsideSystemMounts(
   args.push("--ro-bind", resolved, resolved);
 }
 
+function npmBinEntrypoint(manifest: unknown): string | undefined {
+  if (!manifest || typeof manifest !== "object") return undefined;
+  const record = manifest as Record<string, unknown>;
+  if (record.name !== "npm") return undefined;
+  const bin = record.bin;
+  if (!bin || typeof bin !== "object") return undefined;
+  const npm = (bin as Record<string, unknown>).npm;
+  return typeof npm === "string" && npm.length > 0 ? npm : undefined;
+}
+
+function resolveNpmToolchainMount(): NpmToolchainMount | undefined {
+  const launcher = resolveHostExecutable("npm");
+  if (!launcher) return undefined;
+
+  try {
+    const entrypoint = realpathSync(launcher);
+    let candidate = importPath.dirname(entrypoint);
+    while (candidate !== importPath.dirname(candidate)) {
+      const manifestPath = importPath.join(candidate, "package.json");
+      if (existsSync(manifestPath)) {
+        const manifest = JSON.parse(
+          readFileSync(manifestPath, "utf8"),
+        ) as unknown;
+        const declaredEntrypoint = npmBinEntrypoint(manifest);
+        if (declaredEntrypoint) {
+          const expectedEntrypoint = realpathSync(
+            importPath.resolve(candidate, declaredEntrypoint),
+          );
+          if (expectedEntrypoint !== entrypoint) return undefined;
+          return { entrypoint, launcher, packageRoot: candidate };
+        }
+      }
+      candidate = importPath.dirname(candidate);
+    }
+  } catch {
+    // error-policy:J4 npm is an optional local toolchain. An absent, malformed,
+    // or mismatched package is not exposed to model-authored commands.
+  }
+  return undefined;
+}
+
+function appendNpmToolchainMount(
+  args: string[],
+  createdDirectories: Set<string>,
+): void {
+  const mount = resolveNpmToolchainMount();
+  if (!mount) return;
+  if (
+    BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS.some(
+      (root) =>
+        isPathInside(mount.launcher, root) &&
+        isPathInside(mount.entrypoint, root),
+    )
+  ) {
+    return;
+  }
+
+  appendDestinationParents(args, mount.packageRoot, createdDirectories);
+  args.push("--ro-bind", mount.packageRoot, mount.packageRoot);
+  if (mount.launcher !== mount.entrypoint) {
+    appendDestinationParents(args, mount.launcher, createdDirectories);
+    const target = importPath.relative(
+      importPath.dirname(mount.launcher),
+      mount.entrypoint,
+    );
+    args.push("--symlink", target, mount.launcher);
+  }
+}
+
 function appendTrustedReadOnlyPath(
   args: string[],
   source: string,
@@ -490,6 +566,7 @@ async function runInBubblewrap(
       );
     }
   }
+  appendNpmToolchainMount(args, createdDirectories);
   for (const root of workspace.roots) {
     appendDestinationParents(args, root, createdDirectories);
     args.push("--bind", root, root);
