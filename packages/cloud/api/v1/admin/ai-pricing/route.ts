@@ -20,37 +20,38 @@ import {
   normalizePricingDimensions,
   refreshPricingCatalog,
 } from "@/lib/services/ai-pricing";
+import {
+  PRICING_BILLING_SOURCES,
+  PRICING_PRODUCT_FAMILIES,
+} from "@/lib/services/ai-pricing-definitions";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const BILLING_SOURCES = [
-  "gateway",
-  "bitrouter",
-  "cerebras",
-  "openai",
-  "groq",
-  "vast",
-  "fal",
-  "elevenlabs",
-  "suno",
-] as const;
-const PRODUCT_FAMILIES = [
-  "language",
-  "embedding",
-  "image",
-  "video",
-  "music",
-  "tts",
-  "stt",
-  "voice_clone",
-] as const;
-
 const OverrideSchema = z.object({
-  billingSource: z.enum(BILLING_SOURCES),
+  billingSource: z.enum([
+    "gateway",
+    "bitrouter",
+    "cerebras",
+    "openai",
+    "groq",
+    "vast",
+    "fal",
+    "elevenlabs",
+    "suno",
+  ]),
   provider: z.string().min(1),
   model: z.string().min(1),
-  productFamily: z.enum(PRODUCT_FAMILIES),
+  productFamily: z.enum([
+    "language",
+    "embedding",
+    "image",
+    "video",
+    "music",
+    "tts",
+    "stt",
+    "voice_clone",
+  ]),
   chargeType: z.string().min(1),
   unit: z.enum([
     "token",
@@ -102,15 +103,14 @@ app.get("/", async (c) => {
     if (
       requestedSource != null &&
       requestedSource !== "" &&
-      !BILLING_SOURCES.includes(
-        requestedSource as (typeof BILLING_SOURCES)[number],
+      !PRICING_BILLING_SOURCES.includes(
+        requestedSource as (typeof PRICING_BILLING_SOURCES)[number],
       )
     ) {
       return c.json(
         {
           error: "invalid_billing_source",
-          message:
-            'billingSource must be "gateway", "bitrouter", "cerebras", "openai", "groq", "vast", "fal", "elevenlabs", or "suno".',
+          message: `billingSource must be one of: ${PRICING_BILLING_SOURCES.join(", ")}.`,
         },
         400,
       );
@@ -119,15 +119,14 @@ app.get("/", async (c) => {
     if (
       requestedFamily != null &&
       requestedFamily !== "" &&
-      !PRODUCT_FAMILIES.includes(
-        requestedFamily as (typeof PRODUCT_FAMILIES)[number],
+      !PRICING_PRODUCT_FAMILIES.includes(
+        requestedFamily as (typeof PRICING_PRODUCT_FAMILIES)[number],
       )
     ) {
       return c.json(
         {
           error: "invalid_product_family",
-          message:
-            'productFamily must be "language", "embedding", "image", "video", "music", "tts", "stt", or "voice_clone".',
+          message: `productFamily must be one of: ${PRICING_PRODUCT_FAMILIES.join(", ")}.`,
         },
         400,
       );

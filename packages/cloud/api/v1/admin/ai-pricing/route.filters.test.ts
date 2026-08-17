@@ -7,6 +7,10 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import {
+  PRICING_BILLING_SOURCES,
+  PRICING_PRODUCT_FAMILIES,
+} from "@/lib/services/ai-pricing-definitions";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -97,6 +101,28 @@ describe("GET /api/v1/admin/ai-pricing catalog-filter identity", () => {
       chargeType: undefined,
     });
   });
+
+  test.each([...PRICING_BILLING_SOURCES])(
+    "accepts canonical billingSource=%s",
+    async (billingSource) => {
+      const response = await request(`?billingSource=${billingSource}`);
+      expect(response.status).toBe(200);
+      expect(listPersistedPricingEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ billingSource }),
+      );
+    },
+  );
+
+  test.each([...PRICING_PRODUCT_FAMILIES])(
+    "accepts canonical productFamily=%s",
+    async (productFamily) => {
+      const response = await request(`?productFamily=${productFamily}`);
+      expect(response.status).toBe(200);
+      expect(listPersistedPricingEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ productFamily }),
+      );
+    },
+  );
 
   test.each(["GATEWAY", "foo", "1e2"])(
     "rejects billingSource=%s before the pricing catalog",
