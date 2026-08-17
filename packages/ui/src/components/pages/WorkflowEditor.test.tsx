@@ -157,9 +157,13 @@ describe("WorkflowEditor", () => {
       await waitFor(() => expect(api.getWorkflowExecutions).toHaveBeenCalled());
       await waitFor(() => expect(api.getTriggers).toHaveBeenCalled());
       await waitFor(() => expect(api.getWorkflowRevisions).toHaveBeenCalled());
-      fireEvent.click(
-        screen.getByRole("button", { name: "Add step with Eliza" }),
+      const addStep = screen.getByRole("button", {
+        name: "Add step with Eliza",
+      });
+      expect(addStep.className).toContain(
+        "[@media(orientation:landscape)_and_(max-height:520px)]:!hidden",
       );
+      fireEvent.click(addStep);
       expect(prefills.at(-1)?.text).toBe("Add a step to workflow workflow-1: ");
 
       fireEvent.click(screen.getByLabelText("Build digest, task"));
