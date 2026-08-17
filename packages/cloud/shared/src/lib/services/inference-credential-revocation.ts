@@ -73,6 +73,7 @@ async function gateRequest(
   organizationId: string,
   path: string,
   body: Record<string, unknown>,
+  allowExplicitDenial = false,
 ): Promise<RevocationResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPERATION_TIMEOUT_MS);
@@ -96,9 +97,9 @@ async function gateRequest(
     clearTimeout(timeout);
   }
 
-  let result: RevocationResponse;
+  let parsed: unknown;
   try {
-    result = (await response.json()) as RevocationResponse;
+    parsed = await response.json();
   } catch (error) {
     // error-policy:J3 malformed boundary output is never authorization.
     throw new InferenceCredentialRevocationUnavailableError(
@@ -106,7 +107,18 @@ async function gateRequest(
       { cause: error },
     );
   }
-  if (!response.ok && response.status !== 403) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new InferenceCredentialRevocationUnavailableError(
+      "Inference revocation boundary returned an invalid response",
+    );
+  }
+  const result = parsed as RevocationResponse;
+  const explicitDenial =
+    allowExplicitDenial &&
+    response.status === 403 &&
+    result.allowed === false &&
+    typeof result.reason === "string";
+  if (!response.ok && !explicitDenial) {
     throw new InferenceCredentialRevocationUnavailableError(
       `Inference revocation boundary failed with status ${response.status}`,
     );
@@ -120,7 +132,7 @@ export async function assertInferenceCredentialActive(
   credential: CredentialCheck,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
-  const result = await gateRequest(organizationId, "/credential/check", credential);
+  const result = await gateRequest(organizationId, "/credential/check", credential, true);
   if (result.allowed !== true) {
     throw new InferenceCredentialRevokedError(result.reason ?? "revoked");
   }

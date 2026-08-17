@@ -345,6 +345,15 @@ export class UsersService {
       return;
     }
 
+    const user = await usersRepository.findById(userId);
+    if (user?.organization_id) {
+      await revokeInferenceSessionsThrough(
+        user.organization_id,
+        userId,
+        Math.floor(Date.now() / 1000),
+      );
+    }
+
     await usersRepository.upsertStewardIdentity(userId, stewardUserId);
 
     const cacheDeletes = [
@@ -366,6 +375,13 @@ export class UsersService {
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
     const existing = await usersRepository.findById(userId);
+    if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {
+      await revokeInferenceSessionsThrough(
+        existing.organization_id,
+        userId,
+        Math.floor(Date.now() / 1000),
+      );
+    }
     const updated = await usersRepository.linkStewardId(userId, stewardUserId);
 
     if (existing) {

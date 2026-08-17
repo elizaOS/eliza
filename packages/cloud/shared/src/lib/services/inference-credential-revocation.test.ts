@@ -54,4 +54,30 @@ describe("inference credential revocation client", () => {
       ),
     ).rejects.toBeInstanceOf(InferenceCredentialRevocationUnavailableError);
   });
+
+  test("never accepts a forbidden response as a committed mutation", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => Response.json({ committed: true }, { status: 403 }),
+      }),
+    };
+    await expect(
+      runWithCloudBindingsAsync({ ...ENABLED, INFERENCE_ADMISSION_GATES: namespace }, () =>
+        revokeInferenceApiKey("org-1", "key-1"),
+      ),
+    ).rejects.toBeInstanceOf(InferenceCredentialRevocationUnavailableError);
+  });
+
+  test("maps structurally invalid JSON to the typed unavailable failure", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => Response.json(null),
+      }),
+    };
+    await expect(
+      runWithCloudBindingsAsync({ ...ENABLED, INFERENCE_ADMISSION_GATES: namespace }, () =>
+        revokeInferenceApiKey("org-1", "key-1"),
+      ),
+    ).rejects.toBeInstanceOf(InferenceCredentialRevocationUnavailableError);
+  });
 });

@@ -212,7 +212,9 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
       apiKey?: { id?: string };
       plainKey?: string;
     };
-    expect(regen.apiKey?.id).toBe(created.apiKey?.id ?? "");
+    expect(regen.apiKey?.id).toBeTruthy();
+    expect(regen.apiKey?.id).not.toBe(created.apiKey?.id ?? "");
+    if (regen.apiKey?.id) createdApiKeyIds.push(regen.apiKey.id);
     expect(regen.plainKey).toMatch(/^eliza_/);
     expect(regen.plainKey).not.toBe(created.plainKey);
   });

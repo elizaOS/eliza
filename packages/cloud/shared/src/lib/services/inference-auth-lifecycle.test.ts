@@ -60,6 +60,16 @@ mock.module("../../db/repositories", () => ({
   },
   usersRepository: {
     findById: async (_id: string) => userRecord,
+    findIdentityByUserIdForWrite: async () =>
+      userRecord?.steward_user_id ? { steward_user_id: userRecord.steward_user_id } : undefined,
+    upsertStewardIdentity: async (id: string, stewardUserId: string) => {
+      lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
+      return { user_id: id, steward_user_id: stewardUserId };
+    },
+    linkStewardId: async (id: string, stewardUserId: string) => {
+      lifecycleEvents.push(`identity-link:${id}:${stewardUserId}`);
+      return { ...userRecord, id, steward_user_id: stewardUserId };
+    },
     update: async (id: string, data: Record<string, unknown>) => {
       lifecycleEvents.push(`user-update:${id}`);
       return { ...userRecord, ...data, id };
@@ -163,6 +173,34 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       "user-update:u1",
       "subject:o2:u1:true",
     ]);
+  });
+
+  test("Steward identity upsert fences the prior session generation before relinking", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-upsert:u1:steward-new"]);
+  });
+
+  test("Steward identity link fences the prior session generation before relinking", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.linkStewardId("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-link:u1:steward-new"]);
   });
 
   test("delete resolves the key hashes BEFORE deleting the row", async () => {
