@@ -8,7 +8,6 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Content,
   createMessageMemory,
   type GenerateTextParams,
   type IAgentRuntime,
@@ -60,14 +59,6 @@ type NativeTextModelResult = string & {
 
 let edgeStreamingContextReady: Promise<void> | undefined;
 let sharedRuntimeKernelReady: Promise<AgentRuntime> | undefined;
-
-function receiptBackedCallbackReply(delivered: readonly Content[]): string | undefined {
-  const receiptBackedReplies = delivered.flatMap((content) => {
-    const text = content.text?.trim();
-    return content.agentVoiced === true && content.effectReceiptIds?.length && text ? [text] : [];
-  });
-  return receiptBackedReplies.length === 1 ? receiptBackedReplies[0] : undefined;
-}
 
 async function ensureEdgeStreamingContext(): Promise<void> {
   edgeStreamingContextReady ??= import("node:async_hooks").then(({ AsyncLocalStorage }) => {
@@ -471,7 +462,7 @@ async function executeSharedElizaRuntimeTurn(
       );
     }
 
-    const delivered: Content[] = [];
+    const delivered: string[] = [];
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
@@ -498,7 +489,7 @@ async function executeSharedElizaRuntimeTurn(
         },
       }),
       async (content) => {
-        delivered.push(content);
+        if (content.text?.trim()) delivered.push(content.text.trim());
         return [];
       },
       input.abortSignal || onStreamChunk
@@ -508,14 +499,10 @@ async function executeSharedElizaRuntimeTurn(
           }
         : undefined,
     );
-    // A core-bound effect receipt makes the action's canonical callback the
-    // authoritative terminal reply. Other callbacks remain ordinary captured
-    // output and cannot displace model prose returned by MessageService.
-    const reply =
-      receiptBackedCallbackReply(delivered) ??
-      result?.responseContent?.text?.trim() ??
-      delivered.at(-1)?.text?.trim() ??
-      "";
+    const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
+    // A verified action may own the response and deliver it through the
+    // callback with `agentVoiced`; core then correctly reports no second model
+    // response. The callback receipt is still an actual user-visible delivery.
     if ((!result?.didRespond && delivered.length === 0) || !reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }

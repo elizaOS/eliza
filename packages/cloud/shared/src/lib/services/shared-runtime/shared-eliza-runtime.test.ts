@@ -857,7 +857,7 @@ describe("Shared Eliza Workerd runtime", () => {
         },
       },
     });
-    expect(modelRequests).toHaveLength(3);
+    expect(modelRequests).toHaveLength(2);
     expect(result.actionResults?.[0]).toMatchObject({
       verifiedUserFacing: true,
       effectReceipts: [

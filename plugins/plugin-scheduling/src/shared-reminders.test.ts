@@ -141,6 +141,7 @@ describe("Shared reminders edge plugin", () => {
     });
     expect(result).toMatchObject({
       verifiedUserFacing: true,
+      turnComplete: true,
       userFacingEffectReceiptIds: ["shared-reminder:create:scheduled-log-1"],
       effectReceipts: [
         {
@@ -233,6 +234,7 @@ describe("Shared reminders edge plugin", () => {
     expect(result).toMatchObject({
       success: true,
       verifiedUserFacing: true,
+      turnComplete: true,
       effectReceipts: [
         {
           receiptId: "shared-reminder:create:scheduled-log-1",
