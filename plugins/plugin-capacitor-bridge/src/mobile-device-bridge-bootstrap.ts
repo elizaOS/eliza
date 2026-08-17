@@ -1314,7 +1314,10 @@ async function downloadRecommendedModelFor(
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
 		);
-		const response = await fetch(url, { redirect: "follow" });
+		const response = await fetch(url, {
+			redirect: "follow",
+			signal: AbortSignal.timeout(30_000),
+		});
 		if (!response.ok || !response.body) {
 			throw new Error(
 				`[mobile-device-bridge] Recommended-model download failed (${slot}): HTTP ${response.status} ${response.statusText} from ${url}`,
@@ -2184,7 +2187,7 @@ async function imageUrlToBase64(url: string): Promise<string> {
 		const comma = url.indexOf(",");
 		return comma >= 0 ? url.slice(comma + 1) : url;
 	}
-	const resp = await fetch(url);
+	const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 	if (!resp.ok) {
 		throw new Error(
 			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${resp.status}`,
