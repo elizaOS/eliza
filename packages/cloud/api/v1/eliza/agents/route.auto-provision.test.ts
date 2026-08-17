@@ -1,9 +1,6 @@
 /**
- * POST /api/v1/eliza/agents `autoProvision` is agent-create provision
- * identity, not leftover tax on app-delete GitHub-repo flag or telegram
- * webhook. Stock develop treated any non-exact `false` token as
- * provision, so `autoProvision=FALSE` still ran the credit gate and
- * eager container provision.
+ * Exercises the real Hono agent-create handler's `autoProvision` boundary
+ * while replacing its authentication, billing, and persistence collaborators.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -161,8 +158,25 @@ describe("POST /api/v1/eliza/agents autoProvision identity", () => {
         `?autoProvision=${encodeURIComponent(token)}`,
       );
       expect(response.status).toBe(400);
-      const body = (await response.json()) as { error: string };
-      expect(body.error).toBe("Invalid autoProvision");
+      const responseBody = (await response.json()) as unknown;
+      expect(responseBody).toEqual({
+        success: false,
+        error: "Invalid autoProvision",
+        message: 'autoProvision must be "true" or "false".',
+      });
+      expect(checkAgentCreditGate).not.toHaveBeenCalled();
+      expect(createAgent).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    "?autoProvision=false&autoProvision=true",
+    "?autoProvision=false&autoProvision=false",
+  ])(
+    "rejects duplicate autoProvision values before side effects",
+    async (query) => {
+      const response = await post(query);
+      expect(response.status).toBe(400);
       expect(checkAgentCreditGate).not.toHaveBeenCalled();
       expect(createAgent).not.toHaveBeenCalled();
     },
