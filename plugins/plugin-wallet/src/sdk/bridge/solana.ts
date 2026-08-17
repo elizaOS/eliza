@@ -37,6 +37,7 @@ import {
   MessageTransmitterV2Abi,
   TokenMessengerV2Abi,
 } from "./abis.js";
+import { fetchCircleAttestation } from "./attestation-fetch.js";
 import {
   ATTESTATION_POLL_INTERVAL_MS,
   CCTP_DOMAIN_IDS,
@@ -539,8 +540,7 @@ async function pollForAttestation(
   for (let attempt = 0; attempt < MAX_ATTESTATION_POLLS; attempt++) {
     let response: { status: string; attestation?: Hex | null; error?: string };
     try {
-      // @duplicate-component-audit-allow Circle attestation polling is not an LLM generation call.
-      const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+      const res = await fetchCircleAttestation(url);
       if (!res.ok) {
         if (res.status === 404) {
           await sleep(ATTESTATION_POLL_INTERVAL_MS);
