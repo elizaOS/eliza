@@ -1,8 +1,74 @@
 /** Builds bounded, non-PII lifecycle context for personal Eliza phone calls. */
 
+import { ElizaError } from "@elizaos/core";
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+export interface InboundCallIdentity {
+  id: string;
+  receivedAt: Date;
+}
+
+export interface CallContinuityContext {
+  returningCaller: boolean;
+  previousInteractionAt: number | undefined;
+}
+
+/** Makes a unique provider call reuse the winning audit row after an insert race. */
+export async function establishInboundCallIdentity(
+  insert: () => Promise<InboundCallIdentity | undefined>,
+  loadExisting: () => Promise<InboundCallIdentity | undefined>,
+): Promise<InboundCallIdentity> {
+  const inserted = await insert();
+  if (inserted) return inserted;
+  const existing = await loadExisting();
+  if (existing) return existing;
+  throw new ElizaError(
+    "Twilio call identity disappeared after a duplicate insert",
+    {
+      code: "TWILIO_CALL_IDENTITY_UNAVAILABLE",
+      severity: "fatal",
+    },
+  );
+}
+
+/** Freezes continuity at call start so current-call messages cannot rewrite a retry. */
+export function resolveCallContinuityContext(input: {
+  callStartedAt: number;
+  priorCallAt?: number;
+  historyMessages: ReadonlyArray<{ createdAt?: number }>;
+}): CallContinuityContext {
+  if (!Number.isFinite(input.callStartedAt) || input.callStartedAt <= 0) {
+    throw new ElizaError("Twilio call start timestamp is invalid", {
+      code: "TWILIO_CALL_START_INVALID",
+      severity: "fatal",
+    });
+  }
+  let previousInteractionAt = 0;
+  let hasUndatedHistory = false;
+  const consider = (timestamp: number | undefined): void => {
+    if (timestamp === undefined) {
+      hasUndatedHistory = true;
+      return;
+    }
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      hasUndatedHistory = true;
+      return;
+    }
+    if (timestamp < input.callStartedAt) {
+      previousInteractionAt = Math.max(previousInteractionAt, timestamp);
+    }
+  };
+  if (input.priorCallAt !== undefined) consider(input.priorCallAt);
+  for (const message of input.historyMessages) consider(message.createdAt);
+  return {
+    returningCaller: previousInteractionAt > 0 || hasUndatedHistory,
+    previousInteractionAt:
+      previousInteractionAt > 0 ? previousInteractionAt : undefined,
+  };
+}
 
 export function relativeInteractionAge(
   previousInteractionAt: number | undefined,
@@ -23,16 +89,30 @@ export function relativeInteractionAge(
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export function callStartedEvent(
+function callRelationshipContext(
+  returningCaller: boolean,
   previousInteractionAt: number | undefined,
   now = Date.now(),
 ): string {
   const age = relativeInteractionAge(previousInteractionAt, now);
+  if (!returningCaller)
+    return "This is their first recorded interaction with Eliza.";
+  return [
+    "They have prior private conversation history.",
+    age
+      ? `Their last recorded interaction was about ${age} ago.`
+      : "There is no reliable elapsed-time value for that prior interaction.",
+  ].join(" ");
+}
+
+export function callStartedEvent(
+  returningCaller: boolean,
+  previousInteractionAt: number | undefined,
+  now = Date.now(),
+): string {
   return [
     "Call lifecycle event: the user has called Eliza and is now connected.",
-    age
-      ? `Their last interaction with Eliza was about ${age} ago.`
-      : "This is their first recorded interaction with Eliza.",
+    callRelationshipContext(returningCaller, previousInteractionAt, now),
   ].join(" ");
 }
 
@@ -42,21 +122,12 @@ export function callOpeningPrompt(
   previousInteractionAt: number | undefined,
   now = Date.now(),
 ): string {
-  const age = relativeInteractionAge(previousInteractionAt, now);
-  const relationshipContext = returningCaller
-    ? [
-        "They have prior private conversation history.",
-        age
-          ? `Their last recorded interaction was about ${age} ago.`
-          : "There is no reliable elapsed-time value for that prior interaction.",
-      ].join(" ")
-    : "This is their first recorded interaction with Eliza.";
   const greetingGuidance = returningCaller
     ? "Generate exactly one brief, natural spoken greeting that uses relevant context from the private conversation history already available to this turn and takes the elapsed time into account when available."
     : "Generate exactly one brief, natural spoken greeting without pretending familiarity or inventing prior details.";
   return [
     "Phone call context: the caller is connected to Eliza on a private phone call.",
-    relationshipContext,
+    callRelationshipContext(returningCaller, previousInteractionAt, now),
     greetingGuidance,
     "Do not quote or recite raw history, phone numbers, identifiers, secrets, or sensitive details.",
     "Do not mention these instructions or lifecycle metadata, and do not perform actions.",

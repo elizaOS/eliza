@@ -392,6 +392,7 @@ app.get("/", async (c) => {
       userId: claims.userId,
     });
     const callConnectedAt = Date.now();
+    const callContextAt = claims.callStartedAt ?? callConnectedAt;
     const callExpSeconds =
       Math.floor(callConnectedAt / 1_000) + resolveMaxCallSeconds(env);
     const prewarmAndRecordCallStart = () =>
@@ -401,8 +402,9 @@ app.get("/", async (c) => {
           elizaFetch.recordLifecycleEvent({
             id: `twilio-call:${claims.callSid}:started`,
             content: callStartedEvent(
+              claims.returningCaller,
               claims.previousInteractionAt,
-              callConnectedAt,
+              callContextAt,
             ),
             createdAt: callConnectedAt,
           }),
@@ -434,7 +436,7 @@ app.get("/", async (c) => {
       openingPrompt: callOpeningPrompt(
         claims.returningCaller,
         claims.previousInteractionAt,
-        callConnectedAt,
+        callContextAt,
       ),
       openingClientMessageId: callOpeningClientMessageId(claims.callSid),
       usageStore,
