@@ -75,7 +75,8 @@ export function computeRendererFingerprint(distDir) {
  * @param {string} distDir
  * @param {{ builtAt?: string, commit?: string|null, variant?: string|null,
  *           capacitorTarget?: string|null, runtimeMode?: string|null,
- *           playwrightTestAuth?: boolean|null }} [meta]
+ *           playwrightTestAuth?: boolean|null,
+ *           iosApnsEnabled?: boolean|null }} [meta]
  */
 export function buildRendererManifest(distDir, meta = {}) {
   const fingerprint = computeRendererFingerprint(distDir);
@@ -90,6 +91,7 @@ export function buildRendererManifest(distDir, meta = {}) {
     capacitorTarget: meta.capacitorTarget ?? null,
     runtimeMode: meta.runtimeMode ?? null,
     playwrightTestAuth: meta.playwrightTestAuth ?? null,
+    iosApnsEnabled: meta.iosApnsEnabled ?? null,
   };
 }
 
@@ -158,7 +160,10 @@ export function rendererBuildManifestMatchesDist(distDir, manifest) {
     !isNullableString(manifest.capacitorTarget) ||
     !isNullableString(manifest.runtimeMode) ||
     (manifest.playwrightTestAuth !== null &&
-      typeof manifest.playwrightTestAuth !== "boolean")
+      typeof manifest.playwrightTestAuth !== "boolean") ||
+    (manifest.iosApnsEnabled !== undefined &&
+      manifest.iosApnsEnabled !== null &&
+      typeof manifest.iosApnsEnabled !== "boolean")
   ) {
     return false;
   }

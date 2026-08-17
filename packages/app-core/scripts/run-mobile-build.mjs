@@ -103,6 +103,7 @@ import {
 } from "./lib/mobile-lane-stamp.mjs";
 import {
   mobileRendererRequiresFreshBuild,
+  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./lib/mobile-renderer-feature-env.mjs";
 import {
@@ -142,6 +143,7 @@ import {
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
   mergeIosInfoPlist,
+  readIosApnsBuildFlag,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
 } from "./mobile/ios-plist.mjs";
@@ -1149,6 +1151,7 @@ async function buildWeb(platform) {
       // bundle left behind by an ios cloud build) must never be reused into
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1173,6 +1176,7 @@ async function buildWeb(platform) {
       expectedVariant: laneExpected.variant,
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -1186,8 +1190,13 @@ async function buildWeb(platform) {
     // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
     const allowStale =
       process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
-    if (status.problems.length > 0) {
-      const detail = formatMobileWebDistProblems(status.problems);
+    const reuseProblems = [...status.problems];
+    const unstampedFeatureProblem = mobileRendererUnstampedFeatureProblem({
+      platform,
+    });
+    if (unstampedFeatureProblem) reuseProblems.push(unstampedFeatureProblem);
+    if (reuseProblems.length > 0) {
+      const detail = formatMobileWebDistProblems(reuseProblems);
       if (!allowStale) {
         throw new Error(
           `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
@@ -1221,6 +1230,13 @@ async function buildWeb(platform) {
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
     ELIZA_RELEASE_AUTHORITY:
       process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
+    ...(capacitorTarget === "ios"
+      ? {
+          // Give Vite an explicit normalized value so its `.env*` loading
+          // cannot compile a different gate than the native plist overlay.
+          VITE_ELIZA_APNS_ENABLED: laneExpected.iosApnsEnabled ? "1" : "0",
+        }
+      : {}),
     ...(androidRuntimeMode
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
@@ -3691,6 +3707,7 @@ function overlayIos() {
     const nextPlist = mergeIosInfoPlist(plist, {
       appName: APP.appName,
       urlScheme: APP.urlScheme,
+      apnsEnabled: readIosApnsBuildFlag(process.env.VITE_ELIZA_APNS_ENABLED),
     });
     if (nextPlist.changed) {
       plist = nextPlist.content;

@@ -18,6 +18,7 @@ export interface RendererBuildManifest {
   capacitorTarget: string | null;
   runtimeMode: string | null;
   playwrightTestAuth: boolean | null;
+  iosApnsEnabled: boolean | null;
 }
 
 export interface RendererBuildManifestMeta {
@@ -27,6 +28,7 @@ export interface RendererBuildManifestMeta {
   capacitorTarget?: string | null;
   runtimeMode?: string | null;
   playwrightTestAuth?: boolean | null;
+  iosApnsEnabled?: boolean | null;
 }
 
 export function computeRendererFingerprint(distDir: string): {

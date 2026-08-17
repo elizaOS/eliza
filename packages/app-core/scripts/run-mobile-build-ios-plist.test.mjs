@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   ensurePlistArrayStrings,
+  IOS_APNS_ENABLED_KEY,
   mergeIosInfoPlist,
+  readIosApnsBuildFlag,
   replaceOrInsertPlistString,
   resolveIosPermissionKeys,
 } from "./mobile/ios-plist.mjs";
@@ -43,6 +45,39 @@ describe("iOS Info.plist overlay helpers", () => {
     expect(merged.content).toContain("<string>ai.eliza.tasks.refresh</string>");
     expect(merged.content).toContain("<key>CFBundleURLTypes</key>");
     expect(merged.content).toContain("<string>eliza</string>");
+    expect(merged.content).toMatch(
+      new RegExp(`<key>${IOS_APNS_ENABLED_KEY}</key>\\s*<string>0</string>`),
+    );
+  });
+
+  it("writes the native APNs gate from the canonical build option", () => {
+    const enabled = mergeIosInfoPlist(minimalPlist, {
+      appName: "Eliza",
+      urlScheme: "eliza",
+      apnsEnabled: true,
+    });
+
+    expect(enabled.content).toMatch(
+      new RegExp(`<key>${IOS_APNS_ENABLED_KEY}</key>\\s*<string>1</string>`),
+    );
+    expect(
+      mergeIosInfoPlist(enabled.content, {
+        appName: "Eliza",
+        urlScheme: "eliza",
+        apnsEnabled: false,
+      }).content,
+    ).toMatch(
+      new RegExp(`<key>${IOS_APNS_ENABLED_KEY}</key>\\s*<string>0</string>`),
+    );
+  });
+
+  it("accepts only the exact renderer-compatible APNs build flag", () => {
+    expect(readIosApnsBuildFlag(undefined)).toBe(false);
+    expect(readIosApnsBuildFlag("")).toBe(false);
+    expect(readIosApnsBuildFlag("0")).toBe(false);
+    expect(readIosApnsBuildFlag("1")).toBe(true);
+    expect(() => readIosApnsBuildFlag(" 1 ")).toThrow(/must be "0" or "1"/);
+    expect(() => readIosApnsBuildFlag("true")).toThrow(/must be "0" or "1"/);
   });
 
   it("is idempotent after the first merge", () => {

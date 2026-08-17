@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Patches the Capacitor-generated iOS Info.plist for continuous-chat
-// support (R10 §6.1).
+// support (R10 §6.1) and the explicit iOS remote-push build gate.
 //
 // Capacitor regenerates ios/App/App/Info.plist on `cap sync`; this script
 // runs after `cap sync ios` and idempotently inserts the keys the voice
@@ -25,6 +25,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
 import { readAppIdentity } from "../../app-core/scripts/lib/read-app-identity.mjs";
+import {
+  IOS_APNS_ENABLED_KEY,
+  readIosApnsBuildFlag,
+} from "../../app-core/scripts/mobile/ios-plist.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, "..");
@@ -32,6 +36,7 @@ const APP_DIR = resolve(__dirname, "..");
 const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
 const SPEECH_PURPOSE =
   "Eliza transcribes your speech so you can talk to the agent.";
+const APNS_ENABLED_KEY = IOS_APNS_ENABLED_KEY;
 
 const KEYS =
   /** @type {Array<{ key: string; value: string | string[] | boolean }>} */ ([
@@ -110,10 +115,37 @@ function ensureArrayStringValue(xml, key, value) {
   };
 }
 
-function patchPlist(xml, urlScheme) {
+function ensureStringValue(xml, key, value) {
+  const keyPattern = `<key>${escapeKey(key)}</key>`;
+  const valuePattern = new RegExp(
+    `(${keyPattern}\\s*<string>)([\\s\\S]*?)(</string>)`,
+  );
+  const match = xml.match(valuePattern);
+  if (!match) {
+    if (hasKey(xml, key)) {
+      throw new Error(`Info.plist: ${key} must be a string`);
+    }
+    return { next: xml, changed: false };
+  }
+  if (match[2] === value) return { next: xml, changed: false };
+  return {
+    next: xml.replace(valuePattern, `$1${escapeXml(value)}$3`),
+    changed: true,
+  };
+}
+
+function readApnsBuildFlag(raw = process.env.VITE_ELIZA_APNS_ENABLED) {
+  return readIosApnsBuildFlag(raw);
+}
+
+function patchPlist(xml, urlScheme, { apnsEnabled = false } = {}) {
   let changed = false;
   let next = xml;
-  for (const entry of KEYS) {
+  const entries = [
+    ...KEYS,
+    { key: APNS_ENABLED_KEY, value: apnsEnabled ? "1" : "0" },
+  ];
+  for (const entry of entries) {
     if (hasKey(next, entry.key)) {
       if (Array.isArray(entry.value)) {
         for (const value of entry.value) {
@@ -121,6 +153,10 @@ function patchPlist(xml, urlScheme) {
           next = result.next;
           changed = changed || result.changed;
         }
+      } else if (entry.key === APNS_ENABLED_KEY) {
+        const result = ensureStringValue(next, entry.key, entry.value);
+        next = result.next;
+        changed = changed || result.changed;
       }
       continue;
     }
@@ -149,14 +185,16 @@ function main() {
   }
   const original = readFileSync(TARGET_PATH, "utf8");
   const { urlScheme } = readAppIdentity(APP_DIR);
-  const { next, changed } = patchPlist(original, urlScheme);
+  const { next, changed } = patchPlist(original, urlScheme, {
+    apnsEnabled: readApnsBuildFlag(),
+  });
   if (!changed) {
     console.log("[patch-ios-plist] all keys already present — no changes.");
     return;
   }
   writeFileSync(TARGET_PATH, next);
   console.log(
-    "[patch-ios-plist] patched UIBackgroundModes, microphone/speech usage descriptions, and URL scheme.",
+    "[patch-ios-plist] patched iOS background, permission, APNs, and URL-scheme configuration.",
   );
 }
 
@@ -169,13 +207,18 @@ if (checkOnly) {
   }
   const xml = readFileSync(TARGET_PATH, "utf8");
   const { urlScheme } = readAppIdentity(APP_DIR);
-  const patched = patchPlist(xml, urlScheme);
+  const apnsEnabled = readApnsBuildFlag();
+  const patched = patchPlist(xml, urlScheme, { apnsEnabled });
   const missingUrlScheme = ensurePlistUrlScheme(xml, urlScheme) !== xml;
   if (!patched.changed && !missingUrlScheme) {
     console.log("[patch-ios-plist] OK — all required keys present.");
     process.exit(0);
   }
   const missing = KEYS.filter((k) => !hasKey(xml, k.key));
+  const expectedApnsValue = apnsEnabled ? "1" : "0";
+  const apnsMismatch =
+    !hasKey(xml, APNS_ENABLED_KEY) ||
+    ensureStringValue(xml, APNS_ENABLED_KEY, expectedApnsValue).changed;
   const incompleteArrays = KEYS.flatMap((entry) => {
     if (!Array.isArray(entry.value) || !hasKey(xml, entry.key)) return [];
     return entry.value
@@ -186,6 +229,7 @@ if (checkOnly) {
     `[patch-ios-plist] missing keys: ${[
       ...missing.map((k) => k.key),
       ...incompleteArrays,
+      ...(apnsMismatch ? [`${APNS_ENABLED_KEY}:${expectedApnsValue}`] : []),
       ...(missingUrlScheme ? [`CFBundleURLTypes:${urlScheme}`] : []),
     ].join(", ")}`,
   );
@@ -195,4 +239,11 @@ if (checkOnly) {
 main();
 
 // Exports for tests.
-export { findInsertionPoint, hasKey, KEYS, patchPlist };
+export {
+  APNS_ENABLED_KEY,
+  findInsertionPoint,
+  hasKey,
+  KEYS,
+  patchPlist,
+  readApnsBuildFlag,
+};
