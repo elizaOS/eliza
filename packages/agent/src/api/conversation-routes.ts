@@ -136,6 +136,7 @@ import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
   buildUserMessages,
+  decodePathComponent,
   getErrorMessage,
   resolveAppUserName,
   resolveConversationGreetingText,
@@ -2871,7 +2872,12 @@ export async function handleConversationRoutes(
     method === "GET" &&
     /^\/api\/conversations\/[^/]+\/messages$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3202,7 +3208,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/import$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawImport === null) return true;
     const rawMessages = rawImport.messages;
@@ -3599,7 +3610,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages\/truncate$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3695,8 +3711,14 @@ export async function handleConversationRoutes(
     /^\/api\/conversations\/[^/]+\/messages\/[^/]+$/.test(pathname)
   ) {
     const segments = pathname.split("/");
-    const convId = decodeURIComponent(segments[3]);
-    const messageId = decodeURIComponent(segments[5]);
+    const convId = decodePathComponent(segments[3], res, "conversation id");
+    if (convId === null) return true;
+    const messageId = decodePathComponent(
+      segments[5],
+      res,
+      "conversation message id",
+    );
+    if (messageId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3776,7 +3798,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages\/stream$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -4671,7 +4698,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5163,7 +5195,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/greeting$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5255,7 +5292,12 @@ export async function handleConversationRoutes(
     /^\/api\/conversations\/[^/]+$/.test(pathname) &&
     !pathname.endsWith("/messages")
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5445,7 +5487,12 @@ export async function handleConversationRoutes(
     !pathname.endsWith("/messages")
   ) {
     if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     const runtime = state.runtime;
     if (conv?.roomId && runtime) {
