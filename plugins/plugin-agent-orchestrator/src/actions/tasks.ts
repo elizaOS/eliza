@@ -2093,10 +2093,19 @@ async function runSpawnAgent(
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;
       if (
-        spawnDurableService &&
-        typeof spawnDurableService.createTask === "function" &&
-        typeof spawnDurableService.attachSession === "function"
+        !spawnDurableService ||
+        typeof spawnDurableService.createTask !== "function" ||
+        typeof spawnDurableService.attachSession !== "function"
       ) {
+        // Same degrade class as the catch below, and it must be JUST as loud:
+        // a not-yet-registered task service at spawn time silently produced a
+        // session with no durable owner — no restart protection, no
+        // verification, invisible to the task list (live 2026-08-17,
+        // ivy-lattice ~90s after boot).
+        logger(runtime).error(
+          `[TASKS:spawn_agent] durable task service unavailable for ${session.sessionId}; session runs WITHOUT restart protection or verification`,
+        );
+      } else {
         try {
           const detail = await spawnDurableService.createTask({
             title: label,
