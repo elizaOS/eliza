@@ -57,6 +57,9 @@ app.post("/", async (c) => {
 
     return c.json(result, result.success ? 200 : 400);
   } catch (err) {
+    // error-policy:J1 route boundary — settlement failures return a constant
+    // reason to unauthenticated callers; upstream RPC/provider detail stays in
+    // server logs only.
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[x402-settle] Settlement error: ${msg}`);
     return c.json(
@@ -64,7 +67,7 @@ app.post("/", async (c) => {
         success: false,
         transaction: "",
         network: "",
-        errorReason: `internal_error: ${msg}`,
+        errorReason: "internal_error",
       },
       500,
     );
