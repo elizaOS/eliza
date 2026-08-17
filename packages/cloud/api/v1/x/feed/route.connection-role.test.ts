@@ -74,4 +74,18 @@ describe("GET /api/v1/x/feed connectionRole identity", () => {
       expect(getXFeed).not.toHaveBeenCalled();
     },
   );
+
+  test.each([
+    "?connectionRole=agent&connectionRole=agent",
+    "?connectionRole=agent&connectionRole=owner",
+    "?connectionRole=&connectionRole=agent",
+    "?connectionRole=foo&connectionRole=owner",
+  ])(
+    "rejects duplicate role values in %s before feed lookup",
+    async (query) => {
+      const response = await getFeed(query);
+      expect(response.status).toBe(400);
+      expect(getXFeed).not.toHaveBeenCalled();
+    },
+  );
 });

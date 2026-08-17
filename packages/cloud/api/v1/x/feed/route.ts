@@ -32,17 +32,20 @@ app.get("/", async (c) => {
     // 1e2 — onto the personal owner X feed. Missing/empty still defaults
     // to owner (this route's documented default). Garbage 400s before
     // getXFeed. maxResults parser stays untouched.
-    const requestedRole = c.req.query("connectionRole");
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
     if (
-      requestedRole !== undefined &&
-      requestedRole !== "" &&
-      requestedRole !== "agent" &&
-      requestedRole !== "owner"
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
     ) {
       return c.json(
         {
           error: "invalid_connection_role",
-          message: 'connectionRole must be "agent" or "owner".',
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
         },
         400,
       );
