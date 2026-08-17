@@ -508,6 +508,23 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
     window.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
         ...(existing?.request ?? {}),
+        // Injecting __ELIZA_ELECTROBUN_RPC__ makes isElectrobunRuntime() →
+        // isDesktopPlatform() true, so the /desktop deep link and desktop
+        // viewport probes mount the full desktop workspace and run
+        // initializeDesktopShell() (main.tsx). That startup path validates the
+        // native contract before rendering: it throws
+        // "[desktop-shell] Native Electrobun bridge is unavailable" unless
+        // desktopGetVersion resolves a real runtime (not "N/A"/"unknown"), and
+        // it throws again unless desktopRegisterShortcut returns
+        // { success: true } (the command palette; the push-to-talk shortcut is
+        // best-effort and would console.warn — failing the strict page gating —
+        // without this same success stub). desktopSetTrayMenu is best-effort but
+        // stubbed for parity. This is the minimum desktop startup contract the
+        // other booting ui-smoke fixtures rely on (see injectFullCapabilityHost
+        // in onboarding-to-home.shared.ts); without it every probe aborts.
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
         permissionsGetAll: async () => permissions,
         permissionsIsShellEnabled: async () => false,
         permissionsGetPlatform: async () => "linux",
