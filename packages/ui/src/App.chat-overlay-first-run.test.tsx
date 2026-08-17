@@ -52,7 +52,6 @@ const overlayHarness = vi.hoisted(() => ({
   sizeClass: undefined as
     | ((sizeClass: "resting" | "input" | "sheet") => void)
     | undefined,
-  openChange: undefined as ((open: boolean) => void) | undefined,
 }));
 
 const shellControllerMock = vi.hoisted(() => ({
@@ -113,11 +112,9 @@ vi.mock("./components/shell/ChatOverlay", () => ({
     onWindowSizeClassChange?: (
       sizeClass: "resting" | "input" | "sheet",
     ) => void;
-    onRequestedOpenChange?: (open: boolean) => void;
   }) => {
     overlayHarness.materialSize = props.onWindowMaterialSizeChange;
     overlayHarness.sizeClass = props.onWindowSizeClassChange;
-    overlayHarness.openChange = props.onRequestedOpenChange;
     return <div data-testid="chat-overlay" />;
   },
 }));
@@ -350,7 +347,6 @@ describe("App chat-overlay first-run composition", () => {
     desktopBridgeMock.request.mockClear();
     overlayHarness.materialSize = undefined;
     overlayHarness.sizeClass = undefined;
-    overlayHarness.openChange = undefined;
     shellControllerMock.isOpen = false;
     shellControllerMock.open.mockImplementation(() => {
       shellControllerMock.isOpen = true;
@@ -522,13 +518,13 @@ describe("App chat-overlay first-run composition", () => {
       shell.container.querySelector<HTMLElement>("[data-chat-overlay-hidden]");
     expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("false");
 
-    act(() => overlayHarness.openChange?.(true));
+    act(() => overlayHarness.sizeClass?.("sheet"));
     shell.rerender(<App />);
     expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("true");
     expect(home()?.hasAttribute("inert")).toBe(true);
     expect(home()?.className).toContain("invisible");
 
-    act(() => overlayHarness.openChange?.(false));
+    act(() => overlayHarness.sizeClass?.("input"));
     shell.rerender(<App />);
     expect(home()?.getAttribute("data-chat-overlay-hidden")).toBe("false");
     expect(home()?.hasAttribute("inert")).toBe(false);

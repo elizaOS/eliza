@@ -2468,9 +2468,9 @@ function AppContent() {
   const handleFirstRunReleaseHandled = useCallback(() => {
     firstRunReleasePendingRef.current = false;
   }, []);
-  const handlePersistentOverlayOpenChange = useCallback(
-    (open: boolean): void => {
-      if (open) persistentShellController?.open();
+  const handlePersistentOverlaySizeClassChange = useCallback(
+    (sizeClass: ChatOverlayWindowSizeClass): void => {
+      if (sizeClass === "sheet") persistentShellController?.open();
       else persistentShellController?.close();
     },
     [persistentShellController],
@@ -3458,7 +3458,7 @@ function AppContent() {
         <ChatOverlayMount
           releaseFirstRunToHalf={firstRunReleasePendingRef.current}
           onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
-          onRequestedOpenChange={handlePersistentOverlayOpenChange}
+          onWindowSizeClassChange={handlePersistentOverlaySizeClassChange}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
