@@ -260,24 +260,6 @@ describe("buildTurnSummary compaction", () => {
     expect(JSON.stringify(summary)).not.toContain("Dedicated");
   });
 
-  test("classifies nav-intent turns by view id only", () => {
-    const summary = buildTurnSummary({
-      result: turnResult({
-        model: "nav-intent",
-        navIntent: {
-          viewId: "settings",
-          subview: "voice",
-          label: "Settings",
-          reply: "Opening Settings → Voice for you now.",
-        },
-      }),
-      ...identity,
-    });
-    expect(summary.finishReason).toBe("nav-intent");
-    expect(summary.stages).toEqual([{ name: "nav-intent", tool: "settings" }]);
-    expect(JSON.stringify(summary)).not.toContain("Opening Settings");
-  });
-
   test("classifies the designed no-model unavailable state as degraded", () => {
     const summary = buildTurnSummary({
       result: turnResult({ model: "none", degraded: true, usage: undefined }),

@@ -35,7 +35,6 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
-import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
@@ -68,7 +67,7 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
-  /** Authenticated raw utterance used for intent checks when `message` includes server context. */
+  /** Authenticated raw utterance used for capability checks when `message` includes server context. */
   capabilityText?: string;
   /** Trusted lifecycle callers may add a system event instead of impersonating the user. */
   messageRole?: "system" | "user";
@@ -127,12 +126,6 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
-  /**
-   * Set when the turn was an in-app navigation command handled deterministically
-   * (no LLM call). The caller attaches a VIEWS navigation handoff to the turn's
-   * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
-   */
-  navIntent?: SharedNavIntent;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
   /** Unsupported clauses that follow an enabled primary reminder or Todo. */
@@ -159,13 +152,6 @@ export interface RunSharedAgentTurnStreamResult {
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
   /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
   cancel?: (reason?: unknown) => Promise<void>;
-  /**
-   * Set when the turn was an in-app navigation command handled deterministically
-   * (no LLM call, so `parts` streams the canned confirmation text). The caller
-   * attaches a VIEWS navigation handoff to the `done` SSE frame from this so the
-   * PWA opens the view. See shared-nav-intent.ts.
-   */
-  navIntent?: SharedNavIntent;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
   /** Unsupported clauses that follow an enabled primary reminder or Todo. */
@@ -301,8 +287,8 @@ export function appendSharedTurn(
  * Durable commit of the landed user/assistant pair into the tenant-scoped
  * memory table. Runs only when the caller attached a flag-gated
  * `execution.memory` store, and only for turns a model/runtime actually
- * produced — the deterministic capability-wall/nav-intent/degraded fast paths
- * are transport UX, not model conversation, and stay out of the memory rows.
+ * produced — the capability-wall and degraded paths are transport UX, not
+ * model conversation, and stay out of the memory rows.
  *
  * WHY a plain await and not waitUntil: this module is deliberately
  * executionCtx-independent (it also runs outside Cloudflare Workers), so no
@@ -408,7 +394,6 @@ export async function runSharedAgentTurn(
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
-  const requestedCapability = resolveSharedCapabilityIntent(input.capabilityText ?? message);
   const resolution = capabilityResolution(input, capabilities);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
@@ -426,35 +411,6 @@ export async function runSharedAgentTurn(
       model: "capability-wall",
       degraded: false,
       capabilityWall,
-    };
-  }
-
-  // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
-  // shared agent has no VIEWS action, so "go to settings" would otherwise be a
-  // hallucinated prose refusal; resolve it here and hand the client a VIEWS
-  // navigation so the view actually opens (#F5-ACTIONS).
-  // "Add this to my todo list" overlaps the To-dos view matcher. Once the
-  // durable action is registered, persistence must win over an app-navigation
-  // handoff or the turn would claim success without writing anything.
-  const navIntent =
-    todosEnabled &&
-    requestedCapability?.kind === "blocked-primary" &&
-    requestedCapability.blocked.capability === "todos"
-      ? null
-      : resolveSharedNavIntent(input.capabilityText ?? message);
-  if (navIntent) {
-    return {
-      reply: navIntent.reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        navIntent.reply,
-        input.messageIds,
-        input.messageRole,
-      ),
-      model: "nav-intent",
-      degraded: false,
-      navIntent,
     };
   }
 
@@ -566,7 +522,6 @@ export async function runSharedAgentTurnStream(
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
-  const requestedCapability = resolveSharedCapabilityIntent(input.capabilityText ?? message);
   const resolution = capabilityResolution(input, capabilities);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
@@ -584,32 +539,6 @@ export async function runSharedAgentTurnStream(
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       capabilityWall,
-    };
-  }
-
-  // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
-  // one-shot stream that yields the confirmation text so the SSE shape is
-  // identical to a normal turn; the caller reads `navIntent` to attach a VIEWS
-  // navigation handoff to the `done` frame (#F5-ACTIONS).
-  const navIntent =
-    todosEnabled &&
-    requestedCapability?.kind === "blocked-primary" &&
-    requestedCapability.blocked.capability === "todos"
-      ? null
-      : resolveSharedNavIntent(input.capabilityText ?? message);
-  if (navIntent) {
-    const reply = navIntent.reply;
-    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-      yield { type: "text-delta", text: reply };
-      yield { type: "finish", text: reply };
-    })();
-    return {
-      model: "nav-intent",
-      degraded: false,
-      reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
-      parts,
-      navIntent,
     };
   }
 

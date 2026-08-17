@@ -58,7 +58,6 @@ import {
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { createSharedMemoryStore } from "./shared-memory-store";
-import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
@@ -106,22 +105,19 @@ export interface SharedRuntimeHistoryStore {
 function turnActionResults(
   turn: Pick<
     RunSharedAgentTurnResult,
-    "actionResults" | "navIntent" | "capabilityWall" | "blockedSecondaryCapabilities"
+    "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) results.push(capabilityWallActionResult(turn.capabilityWall));
-  if (turn.navIntent) results.push(navIntentActionResult(turn.navIntent));
   for (const wall of turn.blockedSecondaryCapabilities ?? []) {
     results.push(capabilityWallActionResult(wall));
   }
   return results.length ? results : undefined;
 }
 
-function isDeterministicFreeTurn(
-  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
-): boolean {
-  return Boolean(turn.navIntent || turn.capabilityWall);
+function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall">): boolean {
+  return Boolean(turn.capabilityWall);
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
@@ -896,7 +892,7 @@ export class SharedRuntimeChatService {
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
-      turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
+      turnIsProvablyFree = turn.degraded || isProviderFreeTurn(turn);
       const actionResults = turnActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
@@ -928,7 +924,7 @@ export class SharedRuntimeChatService {
         if (claimKey && options.turnClaims) {
           await options.turnClaims.complete(claimKey, result);
         }
-        if (isDeterministicFreeTurn(turn)) {
+        if (isProviderFreeTurn(turn)) {
           await billing?.settle(0);
         } else if (billing) {
           await settleOffResponsePath(options.executionCtx, () =>
@@ -1142,7 +1138,7 @@ export class SharedRuntimeChatService {
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
-      if (isDeterministicFreeTurn(turn)) {
+      if (isProviderFreeTurn(turn)) {
         await billing?.settle(0);
         return;
       }
@@ -1162,7 +1158,7 @@ export class SharedRuntimeChatService {
           makeTurnMessages(reply, interrupted),
           options.historyStore,
         );
-        if (streamMemoryStore && !isDeterministicFreeTurn(turn)) {
+        if (streamMemoryStore && !isProviderFreeTurn(turn)) {
           await streamMemoryStore.recordTurnPair({
             userMessage: text.trim(),
             assistantReply: reply,
@@ -1245,7 +1241,7 @@ export class SharedRuntimeChatService {
                   ...(actionResults ? { actionResults } : {}),
                 });
               }
-              if (isDeterministicFreeTurn(turn)) {
+              if (isProviderFreeTurn(turn)) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);
               } else if (billing) {

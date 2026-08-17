@@ -11,8 +11,7 @@
  *   (a) the `done` frame flushes while billUsage is still in flight,
  *   (b) the deferred task still settles the hold at billing.totalCost,
  *   (c) a billUsage throw still refunds the hold (reconcile(0)) — deferred,
- *   (d) without an executionCtx the tail runs inline (pre-deferral behavior),
- *   (e) a nav-intent turn refunds synchronously and never uses waitUntil.
+ *   (d) without an executionCtx the tail runs inline (pre-deferral behavior).
  */
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -244,27 +243,5 @@ describe("bridgeSharedMessageStream — billing tail deferred via executionCtx.w
     // billed cost exactly once, never refund via the stream catch.
     expect(reservation.reconcile).toHaveBeenCalledTimes(1);
     expect(reconcileCalls).toEqual([0.0042]);
-  });
-
-  test("nav-intent turn refunds synchronously and never touches waitUntil", async () => {
-    reset();
-    streamTurnImpl = () => ({
-      model: "nav-intent",
-      degraded: false,
-      parts: makeParts("Opening settings."),
-      navIntent: {
-        viewId: "settings",
-        label: "Settings",
-        reply: "Opening settings.",
-      },
-    });
-    const ctx = makeExecutionCtx();
-    const svc = makeService();
-
-    const response = await svc.bridgeSharedMessageStream(REC, RPC, ctx);
-    await drainSse(response);
-    expect(ctx.captured).toHaveLength(0);
-    expect(reservation.reconcile).toHaveBeenCalledTimes(1);
-    expect(reconcileCalls).toEqual([0]);
   });
 });
