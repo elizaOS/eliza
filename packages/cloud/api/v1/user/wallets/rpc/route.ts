@@ -41,7 +41,19 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      // Wallet-signature verify and server-wallet RPC must not run on garbage.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
     const validated = rpcPayloadSchema.parse(body);
 
     const url = new URL(c.req.url);
