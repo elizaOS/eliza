@@ -4,16 +4,59 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearStoredStewardToken,
+  exchangeStewardCode,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_CSRF_HEADER,
+  STEWARD_CSRF_HEADER_VALUE,
   STEWARD_REFRESH_TOKEN_KEY,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
   sanitizeTelegramAccountClaimContinuation,
   stewardAuthedCookieName,
+  syncStewardSession,
   writeStoredStewardToken,
 } from "./index";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+describe("Steward session client CSRF marker header", () => {
+  it("syncStewardSession sends the marker header with its JSON POST", async () => {
+    let seen: RequestInit | undefined;
+    const fetchImpl = (async (_input: unknown, init?: RequestInit) => {
+      seen = init;
+      return jsonResponse({ ok: true, userId: "u", stewardUserId: "s" });
+    }) as typeof fetch;
+
+    await syncStewardSession("token", null, { fetchImpl });
+
+    const headers = new Headers(seen?.headers);
+    expect(headers.get(STEWARD_CSRF_HEADER)).toBe(STEWARD_CSRF_HEADER_VALUE);
+    expect(headers.get("content-type")).toBe("application/json");
+  });
+
+  it("exchangeStewardCode sends the marker header with its JSON POST", async () => {
+    let seen: RequestInit | undefined;
+    const fetchImpl = (async (_input: unknown, init?: RequestInit) => {
+      seen = init;
+      return jsonResponse({ ok: true, userId: "u", stewardUserId: "s" });
+    }) as typeof fetch;
+
+    await exchangeStewardCode("one-time-code", {
+      fetchImpl,
+      codeVerifier: "verifier",
+    });
+
+    const headers = new Headers(seen?.headers);
+    expect(headers.get(STEWARD_CSRF_HEADER)).toBe(STEWARD_CSRF_HEADER_VALUE);
+  });
+});
 
 describe("Telegram account-claim credential", () => {
   it("accepts opaque tokens and rejects guessable platform ids", () => {

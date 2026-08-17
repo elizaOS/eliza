@@ -28,6 +28,23 @@ export interface RequestHeaderReader {
 
 export type BrowserOriginCheck = { ok: true } | { ok: false; reason: string };
 
+/**
+ * Custom header whose presence marks a non-simple request. A cross-origin
+ * "simple request" — the only browser request kind that carries cookies
+ * without a CORS preflight — cannot set custom headers or a JSON content
+ * type, so requiring one of those markers on a cookie-authenticated mutation
+ * forces a preflight that the first-party-only CORS layer fails for
+ * user-content origins. Same convention as the app-core session CSRF header.
+ */
+export const ELIZA_CSRF_HEADER = "x-eliza-csrf";
+
+export function hasElizaNonSimpleRequestMarker(req: RequestHeaderReader): boolean {
+  const csrf = req.header(ELIZA_CSRF_HEADER);
+  if (typeof csrf === "string" && csrf.trim().length > 0) return true;
+  const contentType = req.header("content-type") ?? "";
+  return contentType.toLowerCase().startsWith("application/json");
+}
+
 export function browserOriginHost(rawOrigin: string | undefined): string | null {
   if (!rawOrigin) return null;
   try {

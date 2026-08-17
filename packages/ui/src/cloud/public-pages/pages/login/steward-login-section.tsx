@@ -16,7 +16,10 @@
  */
 
 import {
+  buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
+  generateStewardOAuthState,
   hasStewardAuthedCookie,
+  peekStewardOAuthState,
   readStoredStewardToken,
   StewardSessionError,
   writeStoredStewardToken,
@@ -70,7 +73,6 @@ import {
 } from "../../lib/steward-email-login";
 import { subscribeStewardEmailLoginComplete } from "../../lib/steward-email-login-complete";
 import {
-  buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
@@ -136,6 +138,34 @@ function persistStewardToken(token: string): void {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+}
+
+/**
+ * `?token=` / `?refreshToken=` query links are not honored (a plain GET link
+ * must never plant a session — only the `#hash` legacy path remains). Strip
+ * them, plus the consumed OAuth `state` echo, from the address bar
+ * immediately so no credential lingers in history, copy/paste, or the reach
+ * of third-party scripts booting with the page. Returns true when anything
+ * was stripped.
+ */
+function stripLegacyTokenParamsFromAddressBar(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  let stripped = false;
+  for (const key of ["token", "refreshToken", "state"] as const) {
+    if (params.has(key)) {
+      params.delete(key);
+      stripped = true;
+    }
+  }
+  if (!stripped) return false;
+  const query = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+  );
+  return true;
 }
 
 type Provider =
@@ -667,7 +697,37 @@ export default function StewardLoginSection() {
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
     if (code) {
-      const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
+      // The OAuth `state` echo must exactly match the value stashed at
+      // /authorize time, and the PKCE verifier must still be in storage. A
+      // callback missing either is a planted or stale link: refusing the
+      // exchange is what stops a harvested `?code=` from logging this browser
+      // into the attacker's account. The verifier is consumed ONLY when the
+      // state matches, so the user's own in-flight flow survives clicking a
+      // foreign link.
+      const returnedState = searchParams.get("state");
+      const expectedState = peekStewardOAuthState();
+      if (!returnedState || !expectedState || returnedState !== expectedState) {
+        stripLegacyTokenParamsFromAddressBar();
+        setCompletingCallback(false);
+        setCallbackError(
+          t("cloud.login.callbackStateMismatch", {
+            defaultValue:
+              "This sign-in link is invalid or has expired. Please start sign-in again.",
+          }),
+        );
+        return;
+      }
+      const codeVerifier = consumeStewardPkceVerifier();
+      if (!codeVerifier) {
+        setCompletingCallback(false);
+        setCallbackError(
+          t("cloud.login.callbackVerifierMissing", {
+            defaultValue:
+              "This sign-in was started in another tab or has expired. Please start sign-in again.",
+          }),
+        );
+        return;
+      }
       exchangeStewardCodeViaApi(code, {
         redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
         tenantId: STEWARD_TENANT_ID,
@@ -699,12 +759,18 @@ export default function StewardLoginSection() {
       return;
     }
 
+    // No OAuth code: drop any legacy query-token link from the address bar
+    // (never consumed), then honor only the `#hash` legacy path.
+    stripLegacyTokenParamsFromAddressBar();
     const fromHash = consumeStewardTokensFromHash();
-    const queryToken = searchParams.get("token");
-    const queryRefreshToken = searchParams.get("refreshToken");
-    const token = fromHash?.token ?? queryToken;
-    const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
-    if (!token) return;
+    const token = fromHash?.token;
+    const refreshToken = fromHash?.refreshToken ?? null;
+    if (!token) {
+      // A stripped `?token=` link (or no callback at all) must not hold the
+      // terminal "completing sign-in" state — render the sign-in options.
+      setCompletingCallback(false);
+      return;
+    }
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
@@ -724,7 +790,6 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("code")) return;
-    if (searchParams.get("token")) return;
     if (searchParams.get("error")) return;
 
     let cancelled = false;
@@ -1234,9 +1299,14 @@ export default function StewardLoginSection() {
       ? "https://staging.eliza.app"
       : window.location.origin;
     let codeChallenge: string;
+    let state: string;
     try {
       const pkce = await createStewardPkcePair();
-      if (!storeStewardPkceVerifier(pkce.verifier)) {
+      state = generateStewardOAuthState();
+      // Verifier and state are stashed together: the callback requires the
+      // `?state=` echo to match AND the verifier to survive, so a harvested
+      // callback URL cannot be replayed in another browser.
+      if (!storeStewardPkceVerifier(pkce.verifier, state)) {
         setError(
           "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
         );
@@ -1250,11 +1320,16 @@ export default function StewardLoginSection() {
       return;
     }
     storePendingOAuthReturnTo(searchParams);
-    const authorizeUrl = buildStewardOAuthAuthorizeUrl(provider, oauthOrigin, {
-      stewardApiUrl,
-      stewardTenantId: STEWARD_TENANT_ID,
-      codeChallenge,
-    });
+    const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
+      provider,
+      buildStewardOAuthRedirectUri(oauthOrigin),
+      {
+        stewardApiUrl,
+        stewardTenantId: STEWARD_TENANT_ID,
+        codeChallenge,
+        state,
+      },
+    );
     window.location.href = authorizeUrl;
   }
 

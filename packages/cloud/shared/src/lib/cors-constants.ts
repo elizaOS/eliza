@@ -31,6 +31,11 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-PAYMENT-RESPONSE",
   "X-PAYMENT-STATUS",
   "X-Steward-Tenant",
+  // Custom CSRF marker required on cookie-authenticated mutating auth routes
+  // (steward-session, steward-nonce-exchange, cli-session/complete,
+  // migrate-anonymous). Must be allow-listed or the first-party SPA's
+  // credentialed preflight fails. See lib/auth/browser-origin-policy.ts.
+  "X-Eliza-CSRF",
   // Read by /api/v1/chat/completions for safe retries (idempotency-key) and
   // affiliate attribution (X-Affiliate-Code); must be in the allow-list or the
   // browser CORS preflight rejects requests that send them.
