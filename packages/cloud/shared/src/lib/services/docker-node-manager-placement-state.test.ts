@@ -37,7 +37,7 @@ mock.module("../../db/repositories/docker-nodes", () => ({
       return Promise.resolve(allNodes.filter((n) => n.enabled && n.placement_state === "open"));
     },
     updateStatus: () => Promise.resolve(),
-    setHostKeyFingerprint: () => Promise.resolve(),
+    rotateNodeHostKeyFingerprint: () => Promise.resolve(),
     markOfflineAndDisable: () => Promise.resolve(),
   },
 }));

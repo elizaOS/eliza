@@ -50,7 +50,7 @@ mock.module("../../db/repositories/docker-nodes", () => ({
       return Promise.resolve();
     },
     markOfflineAndDisable: () => Promise.resolve(),
-    setHostKeyFingerprint: () => Promise.resolve(),
+    rotateNodeHostKeyFingerprint: () => Promise.resolve(),
     findAll: () => Promise.resolve(findAllNodes),
   },
 }));

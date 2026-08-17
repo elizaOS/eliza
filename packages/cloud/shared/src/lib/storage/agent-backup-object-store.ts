@@ -18,7 +18,9 @@ import {
   type ObjectDeleteReceipt,
   type ObjectDeleteTarget,
   type ObjectHeadReceipt,
+  type ObjectRequestControl,
   ObjectStorageLifecycleError,
+  type PutImmutableObjectInput,
   putImmutableObjectAtBackend,
 } from "./object-store";
 import type { RuntimeR2Bucket } from "./r2-runtime-binding";
@@ -67,14 +69,10 @@ export interface AgentBackupStorageAuthority {
 
 export interface AgentBackupObjectStore {
   readonly authority: AgentBackupStorageAuthority;
-  head(key: string): Promise<ObjectHeadReceipt>;
+  head(key: string, control?: ObjectRequestControl): Promise<ObjectHeadReceipt>;
   /** Stream one exact catalogued generation; await `completion` before commit. */
   getExactObject(input: GetExactObjectInput): Promise<ExactObjectRead>;
-  putImmutable(params: {
-    key: string;
-    body: ArrayBuffer | Uint8Array;
-    contentType?: string;
-  }): Promise<ImmutableObjectUploadReceipt>;
+  putImmutable(params: PutImmutableObjectInput): Promise<ImmutableObjectUploadReceipt>;
   delete(target: ObjectDeleteTarget): Promise<ObjectDeleteReceipt>;
 }
 
@@ -107,8 +105,13 @@ function normalizeEndpoint(endpoint: string): string {
       "Agent backup S3 storage requires a canonical endpoint URL",
     );
   }
+  const loopbackHttp =
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "localhost" ||
+      /^127(?:\.[0-9]{1,3}){3}$/.test(parsed.hostname) ||
+      parsed.hostname === "[::1]");
   if (
-    (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+    (parsed.protocol !== "https:" && !loopbackHttp) ||
     parsed.username ||
     parsed.password ||
     parsed.search ||
@@ -221,7 +224,8 @@ export async function createAgentBackupObjectStore(
 
   return Object.freeze({
     authority,
-    head: (key: string) => headObjectAtBackend(backend, key),
+    head: (key: string, control?: ObjectRequestControl) =>
+      headObjectAtBackend(backend, key, control),
     getExactObject: (input: GetExactObjectInput) => getExactObjectAtBackend({ backend, input }),
     putImmutable: (params: Parameters<AgentBackupObjectStore["putImmutable"]>[0]) =>
       putImmutableObjectAtBackend({ backend, ...params }),

@@ -1604,6 +1604,48 @@
       "when": 1788897600000,
       "tag": "0229_agent_backup_catalog_chain_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1788984000000,
+      "tag": "0230_agent_backup_activation_authority_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1789070400000,
+      "tag": "0231_agent_backup_docker_source_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1789156800000,
+      "tag": "0232_agent_backup_catalog_source_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1789243200000,
+      "tag": "0233_agent_backup_catalog_manifest_v3_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1789329600000,
+      "tag": "0234_agent_backup_catalog_manifest_v3_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1789416000000,
+      "tag": "0235_agent_backup_rpo_scheduler",
+      "breakpoints": true
     }
   ]
 }

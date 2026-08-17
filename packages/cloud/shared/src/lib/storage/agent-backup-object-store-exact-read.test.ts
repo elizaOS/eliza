@@ -86,6 +86,7 @@ function makeRuntimeBucket(): {
   providerPullCount(): number;
   providerCancelCount(): number;
   setReadMode(mode: RuntimeReadMode): void;
+  setCancelHangs(value: boolean): void;
   setDeclaredSize(key: string, size: number): void;
   changeGeneration(key: string): void;
 } {
@@ -95,6 +96,7 @@ function makeRuntimeBucket(): {
   let mode: RuntimeReadMode = "normal";
   let pulls = 0;
   let cancels = 0;
+  let cancelHangs = false;
 
   const streamFor = (stored: RuntimeStoredObject): ReadableStream<Uint8Array> => {
     let bytes = stored.bodyBytes.slice();
@@ -128,6 +130,7 @@ function makeRuntimeBucket(): {
       },
       async cancel() {
         cancelled = true;
+        if (cancelHangs) return new Promise<never>(() => undefined);
         await new Promise((resolve) => setTimeout(resolve, 2));
         cancels += 1;
       },
@@ -141,6 +144,9 @@ function makeRuntimeBucket(): {
     providerCancelCount: () => cancels,
     setReadMode(nextMode) {
       mode = nextMode;
+    },
+    setCancelHangs(value) {
+      cancelHangs = value;
     },
     setDeclaredSize(key, size) {
       const stored = objects.get(key);
@@ -193,7 +199,7 @@ function makeRuntimeBucket(): {
           size: body.byteLength,
           etag: `etag-${key.length}`,
           version: `version-${key.length}`,
-          checksums: { sha256: checksum },
+          checksums: { sha256: checksum.slice(0) },
           customMetadata: options?.customMetadata,
         };
         objects.set(key, stored);
@@ -505,6 +511,19 @@ describe("agent backup exact streamed reads", () => {
     expect(runtime.providerCancelCount()).toBe(cancelCountBeforeInvalidMetadata + 1);
     expect(runtime.getCalls).toHaveLength(getCount + 4);
     expect(runtime.providerCancelCount()).toBeGreaterThanOrEqual(3);
+
+    runtime.setCancelHangs(true);
+    const hungCancelStartedAt = Date.now();
+    await expect(
+      store.getExactObject({
+        locator: exactLocator,
+        expectedSize: bytes.byteLength,
+        expectedCipherSha256: digest.hex,
+        deadline: new Date(Date.now() + 10),
+      }),
+    ).rejects.toMatchObject({ code: "OBJECT_STORAGE_METADATA_INVALID" });
+    expect(Date.now() - hungCancelStartedAt).toBeLessThan(250);
+    runtime.setCancelHangs(false);
 
     const emptyKey = "agent-sandbox-backups/org-read/backup-headers/chunk-empty";
     const empty = new Uint8Array();

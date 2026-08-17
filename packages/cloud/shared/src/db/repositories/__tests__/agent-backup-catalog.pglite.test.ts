@@ -4,10 +4,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import {
+  AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  AGENT_VAULT_KEY_AUTHORITY_FORMAT,
+  AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
   type AgentBackupManifestV2Draft,
+  type AgentBackupManifestV3Draft,
   canonicalizeAgentBackupManifestV2,
+  canonicalizeAgentBackupManifestV3,
+  canonicalizeAgentBackupOperationKeyBundleContext,
   computeAgentBackupChunkAadDigest,
   computeAgentBackupManifestV2Digest,
+  createAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { eq, sql } from "drizzle-orm";
 
@@ -30,17 +41,21 @@ import {
   agentBackupObjects,
 } from "../../schemas/agent-backup-catalog";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 import {
   agentBackupObjectInventoryDigest,
   buildAgentBackupObjectKey,
+  claimDueAgentBackupOperations,
   failAgentBackupOperation,
   markAgentBackupObjectUploading,
   markAgentBackupObjectVerified,
   recordAgentBackupObjectPresent,
+  recordCapturedAgentBackupManifest,
   reserveAgentBackupObject,
+  reserveAgentBackupOperation,
   transitionAgentBackupOperation,
 } from "../agent-backup-catalog";
 import {
@@ -60,6 +75,7 @@ const AGENT_ID = "00000000-0000-4000-8000-00000000c003";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000c004";
 const LIFECYCLE_GENERATION = "00000000-0000-4000-8000-00000000c005";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000c006";
+const NODE_INCARNATION = "00000000-0000-4000-8000-00000000c00d";
 const INCREMENTAL_OPERATION_ID = "00000000-0000-4000-8000-00000000c007";
 const INCREMENTAL_GENERATION = "00000000-0000-4000-8000-00000000c008";
 const NONCATALOG_BACKUP_ID = "00000000-0000-4000-8000-00000000c00b";
@@ -68,6 +84,11 @@ const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
 const SHA_C = "c".repeat(64);
 const SHA_D = "d".repeat(64);
+const SOURCE_CONTAINER_ID = "f".repeat(64);
+const SOURCE_IMAGE_DIGEST = `sha256:${"9".repeat(64)}`;
+const KEY_BUNDLE_GENERATION_ID = "00000000-0000-4000-8000-00000000c014";
+const VAULT_KEY_GENERATION_ID = "00000000-0000-4000-8000-00000000c015";
+const WRAPPED_KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x43);
 const PRIMARY_ENDPOINT_FINGERPRINT = `sha256:${"1".repeat(64)}`;
 const SECONDARY_ENDPOINT_FINGERPRINT = `sha256:${"2".repeat(64)}`;
 
@@ -84,6 +105,13 @@ interface TestBackupReservation {
   backupKind: "full" | "incremental";
   parentBackupId?: string;
   baseBackupId?: string;
+  sourceProvider: "operator-onboarded" | "hetzner-cloud";
+  sourceNodeRecordId: string;
+  sourceNodeId: string;
+  sourceNodeIncarnation: string;
+  sourceProviderServerId: string | null;
+  sourceProviderHandle: string;
+  sourceContainerId: string;
   retentionReason:
     | "schedule"
     | "manual"
@@ -107,8 +135,40 @@ function reservation(overrides: Partial<TestBackupReservation> = {}): TestBackup
     lifecycleRevision: "0",
     snapshotType: "auto" as const,
     backupKind: "full" as const,
+    sourceProvider: "operator-onboarded" as const,
+    sourceNodeRecordId: NODE_RECORD_ID,
+    sourceNodeId: "robot-node-1",
+    sourceNodeIncarnation: NODE_INCARNATION,
+    sourceProviderServerId: null,
+    sourceProviderHandle: "container-generation-1",
+    sourceContainerId: SOURCE_CONTAINER_ID,
     retentionReason: "schedule" as const,
     retentionUntil: new Date("2020-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function exactReservation(
+  overrides: Partial<Parameters<typeof reserveAgentBackupOperation>[0]> = {},
+): Parameters<typeof reserveAgentBackupOperation>[0] {
+  return {
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    sandboxRecordId: AGENT_ID,
+    operationId: OPERATION_ID,
+    activationGeneration: LIFECYCLE_GENERATION,
+    lifecycleRevision: "0",
+    snapshotType: "auto",
+    backupKind: "full",
+    sourceProvider: "operator-onboarded",
+    sourceNodeRecordId: NODE_RECORD_ID,
+    sourceNodeId: "robot-node-1",
+    sourceNodeIncarnation: NODE_INCARNATION,
+    sourceProviderServerId: null,
+    sourceProviderHandle: "container-generation-1",
+    sourceContainerId: SOURCE_CONTAINER_ID,
+    retentionReason: "schedule",
+    retentionUntil: new Date("2026-09-17T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -145,6 +205,13 @@ async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {})
       catalog_agent_id: input.agentId,
       lifecycle_generation: input.lifecycleGeneration,
       lifecycle_revision: BigInt(input.lifecycleRevision),
+      source_provider: input.sourceProvider,
+      source_node_record_id: input.sourceNodeRecordId,
+      source_node_id: input.sourceNodeId,
+      source_node_incarnation: input.sourceNodeIncarnation,
+      source_provider_server_id: input.sourceProviderServerId,
+      source_provider_handle: input.sourceProviderHandle,
+      source_container_id: input.sourceContainerId,
       retention_reason: input.retentionReason,
       retention_until: input.retentionUntil,
       catalog_next_attempt_at: new Date("2020-01-01T00:00:00.000Z"),
@@ -165,7 +232,15 @@ function objectDescriptor(index = 0) {
   };
 }
 
-async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]) {
+async function capturedManifest(
+  inventory: ReturnType<typeof objectDescriptor>[],
+  options: Readonly<{
+    operationId?: string;
+    createdAt?: string;
+    chain?: AgentBackupManifestV2Draft["chain"];
+  }> = {},
+) {
+  const operationId = options.operationId ?? OPERATION_ID;
   const identity = {
     organizationId: ORG_ID,
     agentId: AGENT_ID,
@@ -190,7 +265,7 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
         ...descriptor,
         aadSha256: await computeAgentBackupChunkAadDigest({
           identity,
-          operationId: OPERATION_ID,
+          operationId,
           component: { name: "database", format: "raw-v1", compression: "none" },
           chunk: {
             index: descriptor.index,
@@ -203,7 +278,11 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
       };
     }),
   );
-  const components = ["character", "database", "media", "state-files", "vault"].map((name) => {
+  const componentNames =
+    options.chain?.kind === "incremental"
+      ? (["database"] as const)
+      : (["character", "database", "media", "state-files", "vault"] as const);
+  const components = componentNames.map((name) => {
     const chunks = name === "database" ? databaseChunks : [];
     const totals = chunks.reduce(
       (sum, chunk) => ({
@@ -219,7 +298,16 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
       format: "raw-v1",
       compression: "none" as const,
       payloadContentHmacSha256: SHA_A,
-      state: { kind: "full" as const, resultContentHmacSha256: SHA_A },
+      state:
+        options.chain?.kind === "incremental"
+          ? {
+              kind: "delta" as const,
+              baseContentHmacSha256: SHA_B,
+              resultContentHmacSha256: SHA_A,
+              tombstoneCount: 0,
+              overlayOrder: "delete-then-upsert" as const,
+            }
+          : { kind: "full" as const, resultContentHmacSha256: SHA_A },
       totals,
       chunks,
     };
@@ -238,24 +326,24 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
   const draft: AgentBackupManifestV2Draft = {
     format: "elizaos.agent-backup",
     schemaVersion: 2,
-    operationId: OPERATION_ID,
-    createdAt: "2026-08-17T00:00:00.000Z",
+    operationId,
+    createdAt: options.createdAt ?? "2026-08-17T00:00:00.000Z",
     identity,
     source: {
       kind: "robot",
       provider: "hetzner",
       nodeRecordId: NODE_RECORD_ID,
-      nodeIncarnation: LIFECYCLE_GENERATION,
+      nodeIncarnation: NODE_INCARNATION,
       nodeId: "robot-node-1",
-      containerId: "container-generation-1",
+      containerId: SOURCE_CONTAINER_ID,
     },
     runtime: {
-      imageDigest: `sha256:${"9".repeat(64)}`,
+      imageDigest: SOURCE_IMAGE_DIGEST,
       agentSchemaVersion: "2",
       databaseSchemaVersion: "1",
       plugins: [],
     },
-    chain: {
+    chain: options.chain ?? {
       kind: "full",
       baseOperationId: null,
       parentOperationId: null,
@@ -266,7 +354,7 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
     totals,
     encryption: {
       algorithm: "AES-256-GCM",
-      dekGenerationId: OPERATION_ID,
+      dekGenerationId: operationId,
       envelopeVersion: 1,
       chunkEnvelope: "aes-256-gcm-v1",
       nonceBytes: 12,
@@ -277,7 +365,7 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
       kms: { provider: "steward", keyId: kmsKeyId, keyVersion: 1 },
       wrappedDek: {
         format: "kms-aead-envelope-v1",
-        ref: `backup-dek:${OPERATION_ID}`,
+        ref: `backup-dek:${operationId}`,
         bytes: wrappedDek.byteLength,
         sha256: await digestHex(wrappedDek),
         contextDerivation: "elizaos.agent-backup.dek-context.v1",
@@ -304,8 +392,8 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
     objectInventoryDigest: await agentBackupObjectInventoryDigest(inventory),
     imageDigest: draft.runtime.imageDigest,
     databaseSchemaVersion: draft.runtime.databaseSchemaVersion,
-    pluginSetDigest: SHA_B,
-    watermarkDigest: SHA_C,
+    pluginSetDigest: await digestCanonical({ version: 1, plugins: draft.runtime.plugins }),
+    watermarkDigest: await digestCanonical({ version: 1, watermarks: draft.watermarks }),
     rawSizeBytes: totals.plainBytes,
     compressedSizeBytes: totals.compressedBytes,
     encryptedSizeBytes: totals.encryptedBytes,
@@ -313,6 +401,138 @@ async function capturedManifest(inventory: ReturnType<typeof objectDescriptor>[]
     kmsKeyVersion: 1,
     wrappedDekCiphertextBase64: Buffer.from(wrappedDek).toString("base64"),
     wrappedDekReceiptDigest: SHA_B,
+  };
+}
+
+function operationKeyBundleContext(operationId: string): string {
+  return canonicalizeAgentBackupOperationKeyBundleContext({
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    activationGeneration: LIFECYCLE_GENERATION,
+    lifecycleRevision: "0",
+    operationId,
+    keyBundleGenerationId: KEY_BUNDLE_GENERATION_ID,
+    sourceKind: "robot",
+    sourceProvider: "hetzner",
+    kmsProvider: "steward",
+    keyId: `org:${ORG_ID}/dek/v1`,
+    keyVersion: 1,
+  });
+}
+
+async function operationKeyBundleLocalReceiptDigest(input: {
+  keyId: string;
+  keyVersion: number;
+  canonicalContext: string;
+  wrappedKeyBundle: Uint8Array;
+}): Promise<string> {
+  return digestHex(
+    new TextEncoder().encode(
+      JSON.stringify({
+        derivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+        format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        keyId: input.keyId,
+        keyVersion: input.keyVersion,
+        contextSha256: await digestHex(new TextEncoder().encode(input.canonicalContext)),
+        wrappedKeyBundleSha256: await digestHex(input.wrappedKeyBundle),
+      }),
+    ),
+  );
+}
+
+async function capturedManifestV3(
+  inventory: ReturnType<typeof objectDescriptor>[],
+  options: Readonly<{ operationId?: string; createdAt?: string }> = {},
+) {
+  const operationId = options.operationId ?? OPERATION_ID;
+  const v2 = await capturedManifest(inventory, {
+    operationId,
+    createdAt: options.createdAt,
+  });
+  const v2Draft = JSON.parse(v2.canonicalManifestDraft) as AgentBackupManifestV2Draft;
+  const {
+    schemaVersion: _schemaVersion,
+    encryption: v2Encryption,
+    integrity: v2Integrity,
+    ...common
+  } = v2Draft;
+  const canonicalContext = operationKeyBundleContext(operationId);
+  const wrappedKeyBundleSha256 = await digestHex(WRAPPED_KEY_BUNDLE);
+  const wrappedKeyBundleLocalReceiptDigest = await operationKeyBundleLocalReceiptDigest({
+    keyId: v2Encryption.kms.keyId,
+    keyVersion: v2Encryption.kms.keyVersion,
+    canonicalContext,
+    wrappedKeyBundle: WRAPPED_KEY_BUNDLE,
+  });
+  const draft: AgentBackupManifestV3Draft = {
+    ...common,
+    schemaVersion: 3,
+    vaultKeyAuthority: {
+      format: AGENT_VAULT_KEY_AUTHORITY_FORMAT,
+      generationId: VAULT_KEY_GENERATION_ID,
+      receiptDerivation: AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
+      receiptDigest: SHA_D,
+    },
+    encryption: {
+      algorithm: v2Encryption.algorithm,
+      chunkEnvelope: v2Encryption.chunkEnvelope,
+      nonceBytes: v2Encryption.nonceBytes,
+      tagBytes: v2Encryption.tagBytes,
+      noncePlacement: v2Encryption.noncePlacement,
+      tagPlacement: v2Encryption.tagPlacement,
+      aad: v2Encryption.aad,
+      kms: { ...v2Encryption.kms, provider: "steward" },
+      operationKeyBundle: {
+        format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        generationId: KEY_BUNDLE_GENERATION_ID,
+        plaintextBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.plaintextBytes,
+        dek: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.dek,
+        contentHmac: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac,
+        wrapped: {
+          ref: `backup-key-bundle:${operationId}`,
+          bytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes,
+          sha256: wrappedKeyBundleSha256,
+          localReceiptDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+          localReceiptDigest: wrappedKeyBundleLocalReceiptDigest,
+          contextDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+        },
+      },
+    },
+    integrity: {
+      framedContentHmacSha256: v2Integrity.framedContentHmacSha256,
+      contentAddressing: {
+        algorithm: "HMAC-SHA-256",
+        scope: "operation",
+        derivation: AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+        keyBundleFormat: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        keyOffsetBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.offsetBytes,
+        keyBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.bytes,
+      },
+    },
+  };
+  const manifest = await createAgentBackupManifestV3(draft);
+  return {
+    canonicalManifestDraft: canonicalizeAgentBackupManifestV3(draft),
+    format: manifest.format,
+    version: manifest.schemaVersion,
+    digest: manifest.integrity.manifestSha256,
+    objectCount: inventory.length,
+    objectInventoryDigest: await agentBackupObjectInventoryDigest(inventory),
+    imageDigest: manifest.runtime.imageDigest,
+    databaseSchemaVersion: manifest.runtime.databaseSchemaVersion,
+    pluginSetDigest: await digestCanonical({ version: 1, plugins: manifest.runtime.plugins }),
+    watermarkDigest: await digestCanonical({ version: 1, watermarks: manifest.watermarks }),
+    rawSizeBytes: manifest.totals.plainBytes,
+    compressedSizeBytes: manifest.totals.compressedBytes,
+    encryptedSizeBytes: manifest.totals.encryptedBytes,
+    kmsKeyId: manifest.encryption.kms.keyId,
+    kmsKeyVersion: manifest.encryption.kms.keyVersion,
+    wrappedKeyBundleCiphertextBase64: WRAPPED_KEY_BUNDLE.toString("base64"),
+    wrappedKeyBundleSha256,
+    wrappedKeyBundleLocalReceiptDigest,
+    wrappedKeyBundleGenerationId: KEY_BUNDLE_GENERATION_ID,
+    vaultKeyGenerationId: VAULT_KEY_GENERATION_ID,
+    vaultKeyAuthorityReceiptDigest: SHA_D,
   };
 }
 
@@ -377,11 +597,30 @@ async function captureBackup(
 }
 
 function digestHex(bytes: Uint8Array): Promise<string> {
+  const owned = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+  owned.set(bytes);
   return crypto.subtle
-    .digest("SHA-256", bytes)
+    .digest("SHA-256", owned)
     .then((digest) =>
       Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
     );
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
+}
+
+function digestCanonical(value: unknown): Promise<string> {
+  return digestHex(new TextEncoder().encode(canonicalJson(value)));
 }
 
 function exactRuntimeBucket(): {
@@ -417,8 +656,8 @@ function exactRuntimeBucket(): {
           size,
           etag: `etag-${key.length}`,
           version: `version-${key.length}`,
-          checksums: { sha256 },
-          customMetadata: options.customMetadata,
+          checksums: { sha256: sha256.slice(0) },
+          customMetadata: options?.customMetadata,
         };
         objects.set(key, object);
         return object;
@@ -587,6 +826,7 @@ beforeAll(async () => {
         organizations,
         users,
         userCharacters,
+        dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
@@ -608,6 +848,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
+  await dbWrite.delete(dockerNodes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
@@ -628,6 +869,18 @@ beforeEach(async () => {
     steward_user_id: "backup-catalogue-user",
     organization_id: ORG_ID,
   });
+  const sourceNode = {
+    id: NODE_RECORD_ID,
+    node_id: "robot-node-1",
+    hostname: "robot-node-1.example.test",
+    host_key_fingerprint: "sha256:robot-host-key",
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    node_incarnation: NODE_INCARNATION,
+    status: "healthy",
+    enabled: true,
+  } satisfies typeof dockerNodes.$inferInsert;
+  await dbWrite.insert(dockerNodes).values(sourceNode);
   await dbWrite.insert(agentSandboxes).values({
     id: AGENT_ID,
     organization_id: ORG_ID,
@@ -637,6 +890,19 @@ beforeEach(async () => {
     sandbox_id: "container-generation-1",
     node_id: "robot-node-1",
     container_name: "backup-catalogue-agent",
+    image_digest: SOURCE_IMAGE_DIGEST,
+    lifecycle_revision: 0,
+    activation_generation: LIFECYCLE_GENERATION,
+    activation_lifecycle_revision: 0n,
+    activation_phase: "active",
+    activation_receipt_hash: SHA_D,
+    activation_container_id: SOURCE_CONTAINER_ID,
+    activation_node_id: "robot-node-1",
+    activation_image_digest: SOURCE_IMAGE_DIGEST,
+    activation_boot_id: NODE_INCARNATION,
+    activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
+    activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
+    activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
   });
 });
 
@@ -645,6 +911,202 @@ afterAll(async () => {
 });
 
 describe("agent backup catalogue on primary PGlite", () => {
+  test("reserves and claims only one exact active source authority", async () => {
+    const first = await reserveAgentBackupOperation(exactReservation());
+    const replay = await reserveAgentBackupOperation(exactReservation());
+    expect(replay.id).toBe(first.id);
+    expect(first).toMatchObject({
+      source_node_record_id: NODE_RECORD_ID,
+      source_node_incarnation: NODE_INCARNATION,
+      source_provider_handle: "container-generation-1",
+      source_container_id: SOURCE_CONTAINER_ID,
+    });
+
+    await expect(
+      reserveAgentBackupOperation(
+        exactReservation({ sourceNodeIncarnation: LIFECYCLE_GENERATION }),
+      ),
+    ).rejects.toThrow(/source|stale|authority/i);
+    const claims = await claimDueAgentBackupOperations({
+      ownerId: "capture-worker-1",
+      limit: 2,
+      leaseMs: 60_000,
+    });
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.backup.id).toBe(first.id);
+  });
+
+  test("derives manifest projections and revalidates the active image before capture commit", async () => {
+    const reserved = await reserveAgentBackupOperation(exactReservation());
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "capture-worker-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim) throw new Error("Expected one capture claim");
+    const execution = { ownerId: claim.ownerId, generation: claim.generation };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution,
+    });
+    const manifest = await capturedManifest([objectDescriptor()], {
+      createdAt: reserved.created_at.toISOString(),
+    });
+    await expect(
+      recordCapturedAgentBackupManifest({
+        organizationId: ORG_ID,
+        backupId: reserved.id,
+        operationId: OPERATION_ID,
+        expectedActivationGeneration: LIFECYCLE_GENERATION,
+        expectedLifecycleRevision: "0",
+        execution,
+        manifest: { ...manifest, pluginSetDigest: SHA_A },
+      }),
+    ).rejects.toThrow(/projection digests/);
+
+    const capture = {
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      expectedActivationGeneration: LIFECYCLE_GENERATION,
+      expectedLifecycleRevision: "0",
+      execution,
+      manifest,
+    } as const;
+    await recordCapturedAgentBackupManifest(capture);
+    await recordCapturedAgentBackupManifest(capture);
+    const [captured] = await dbWrite
+      .select()
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, reserved.id));
+    expect(captured).toMatchObject({
+      catalog_state: "captured",
+      plugin_set_digest: manifest.pluginSetDigest,
+      watermark_digest: manifest.watermarkDigest,
+      image_digest: SOURCE_IMAGE_DIGEST,
+    });
+  });
+
+  test("persists and exactly replays one manifest-v3 operation key bundle", async () => {
+    const reserved = await reserveAgentBackupOperation(exactReservation());
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "capture-worker-v3",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim) throw new Error("Expected one manifest-v3 capture claim");
+    const execution = { ownerId: claim.ownerId, generation: claim.generation };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution,
+    });
+    const manifest = await capturedManifestV3([objectDescriptor()], {
+      createdAt: reserved.created_at.toISOString(),
+    });
+    const common = {
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      expectedActivationGeneration: LIFECYCLE_GENERATION,
+      expectedLifecycleRevision: "0",
+      execution,
+    } as const;
+    await expect(
+      recordCapturedAgentBackupManifest({
+        ...common,
+        manifest: { ...manifest, wrappedKeyBundleLocalReceiptDigest: SHA_A },
+      }),
+    ).rejects.toThrow(/canonical manifest-v3 authority/);
+
+    await recordCapturedAgentBackupManifest({ ...common, manifest });
+    await recordCapturedAgentBackupManifest({ ...common, manifest });
+    const [captured] = await dbWrite
+      .select()
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, reserved.id));
+    expect(captured).toMatchObject({
+      manifest_version: 3,
+      wrapped_dek_ref: null,
+      operation_key_bundle_generation_id: KEY_BUNDLE_GENERATION_ID,
+      operation_key_bundle_format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+      operation_key_bundle_ref: `backup-key-bundle:${OPERATION_ID}`,
+      operation_key_bundle_ciphertext_base64: manifest.wrappedKeyBundleCiphertextBase64,
+      operation_key_bundle_sha256: manifest.wrappedKeyBundleSha256,
+      operation_key_bundle_local_receipt_digest: manifest.wrappedKeyBundleLocalReceiptDigest,
+      vault_key_generation_id: VAULT_KEY_GENERATION_ID,
+      vault_key_authority_receipt_digest: SHA_D,
+    });
+  });
+
+  test("rejects capture when the active runtime image changes after reservation", async () => {
+    const reserved = await reserveAgentBackupOperation(exactReservation());
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "capture-worker-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim) throw new Error("Expected one capture claim");
+    const execution = { ownerId: claim.ownerId, generation: claim.generation };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution,
+    });
+    const manifest = await capturedManifest([objectDescriptor()], {
+      createdAt: reserved.created_at.toISOString(),
+    });
+    const changedImage = `sha256:${"8".repeat(64)}`;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ image_digest: changedImage, activation_image_digest: changedImage })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(
+      recordCapturedAgentBackupManifest({
+        organizationId: ORG_ID,
+        backupId: reserved.id,
+        operationId: OPERATION_ID,
+        expectedActivationGeneration: LIFECYCLE_GENERATION,
+        expectedLifecycleRevision: "0",
+        execution,
+        manifest,
+      }),
+    ).rejects.toThrow(/source activation changed/);
+  });
+
+  test("rejects incremental capture before allocating a catalogue operation", async () => {
+    const base = await protectBackup();
+    await expect(
+      reserveAgentBackupOperation(
+        exactReservation({
+          operationId: INCREMENTAL_OPERATION_ID,
+          backupKind: "incremental",
+          parentBackupId: base.backupId,
+          baseBackupId: base.backupId,
+        }),
+      ),
+    ).rejects.toThrow(/full-only/);
+    expect(
+      await dbWrite
+        .select({ id: agentSandboxBackups.id })
+        .from(agentSandboxBackups)
+        .where(eq(agentSandboxBackups.backup_operation_id, INCREMENTAL_OPERATION_ID)),
+    ).toEqual([]);
+  });
+
   test("hides v2 placeholders and enforces operation uniqueness", async () => {
     const first = await reserveTestBackup();
     expect(await agentSandboxesRepository.getLatestStoredBackup(AGENT_ID)).toBeUndefined();
@@ -708,7 +1170,12 @@ describe("agent backup catalogue on primary PGlite", () => {
       .from(agentSandboxBackups)
       .where(sql`${agentSandboxBackups.id} IN (${NONCATALOG_BACKUP_ID}, ${LEGACY_BACKUP_ID})`)
       .orderBy(agentSandboxBackups.id);
-    expect(compatible).toEqual([
+    expect(
+      compatible.map((row) => ({
+        ...row,
+        retentionReason: row.retentionReason as string | null,
+      })),
+    ).toEqual([
       {
         id: NONCATALOG_BACKUP_ID,
         catalogVersion: null,

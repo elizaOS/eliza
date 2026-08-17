@@ -37,7 +37,9 @@ const ORIGINAL_STORAGE_ENV = new Map(
 
 interface StoredS3Object {
   size: number;
-  sha256: string;
+  providerSha256: string;
+  declaredSha256: string;
+  exposeProviderChecksum?: boolean;
   etag: string;
   version: string;
 }
@@ -45,6 +47,7 @@ interface StoredS3Object {
 interface S3PutBehavior {
   status: number;
   persist: boolean;
+  delayMs?: number;
 }
 
 interface S3Call {
@@ -105,12 +108,18 @@ function s3Error(status: number): Response {
   });
 }
 
-function storeS3Object(key: string, size: number, sha256: string): void {
+function storeS3Object(
+  key: string,
+  size: number,
+  providerSha256: string,
+  declaredSha256: string,
+): void {
   s3Objects.set(key, {
     size,
-    sha256,
-    etag: `etag-${sha256.slice(0, 12)}`,
-    version: `version-${sha256.slice(0, 12)}`,
+    providerSha256,
+    declaredSha256,
+    etag: `etag-${providerSha256.slice(0, 12)}`,
+    version: `version-${providerSha256.slice(0, 12)}`,
   });
 }
 
@@ -159,16 +168,19 @@ beforeAll(() => {
             headers: { "x-amz-request-id": "head-missing" },
           });
         }
+        const headers: Record<string, string> = {
+          "content-length": String(object.size),
+          etag: `"${object.etag}"`,
+          "x-amz-meta-eliza-content-sha256": object.declaredSha256,
+          "x-amz-request-id": "head-present",
+          "x-amz-version-id": object.version,
+        };
+        if (object.exposeProviderChecksum !== false) {
+          headers["x-amz-checksum-sha256"] = object.providerSha256;
+        }
         return new Response(null, {
           status: 200,
-          headers: {
-            "content-length": String(object.size),
-            etag: `"${object.etag}"`,
-            "x-amz-checksum-sha256": object.sha256,
-            "x-amz-meta-eliza-content-sha256": object.sha256,
-            "x-amz-request-id": "head-present",
-            "x-amz-version-id": object.version,
-          },
+          headers,
         });
       }
 
@@ -182,7 +194,15 @@ beforeAll(() => {
         if (s3Objects.has(key)) return s3Error(412);
 
         const behavior = s3PutBehaviors.get(key)?.shift();
-        if (behavior?.persist || !behavior) storeS3Object(key, body.byteLength, sha256);
+        if (behavior?.delayMs) {
+          await new Promise((resolve) => setTimeout(resolve, behavior.delayMs));
+        }
+        const providerSha256 = Buffer.from(await crypto.subtle.digest("SHA-256", body)).toString(
+          "base64",
+        );
+        if (behavior?.persist || !behavior) {
+          storeS3Object(key, body.byteLength, providerSha256, sha256);
+        }
         if (behavior && behavior.status !== 200) return s3Error(behavior.status);
         const stored = s3Objects.get(key);
         return new Response(null, {
@@ -234,11 +254,51 @@ describe("Worker R2 immutable exact-key upload", () => {
     expect(String(error)).not.toContain(key);
   });
 
+  test("uploads the maximum transferred body with only one provider-attempt copy", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-max-transfer/chunk-0001";
+    const transferred = new Uint8Array(MAX_IMMUTABLE_SINGLE_PUT_BYTES);
+    transferred[0] = 0x51;
+    transferred[transferred.length - 1] = 0x52;
+    let providerBody: Uint8Array | undefined;
+    let stored: RuntimeR2ObjectMetadata | null = null;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        return stored;
+      },
+      async get() {
+        return null;
+      },
+      async put(_exactKey, value, options) {
+        if (!(value instanceof Uint8Array)) throw new Error("expected transferred byte body");
+        providerBody = value;
+        const checksum = options?.sha256;
+        if (!(checksum instanceof ArrayBuffer)) throw new Error("expected SHA-256 bytes");
+        stored = {
+          size: value.byteLength,
+          etag: "maximum-transfer-etag",
+          version: "maximum-transfer-version",
+          checksums: { sha256: checksum.slice(0) },
+        };
+        return stored;
+      },
+      async delete() {},
+    });
+
+    await expect(
+      putImmutableObject({ key, body: transferred, transferBodyOwnership: true }),
+    ).resolves.toMatchObject({ metadata: { sizeBytes: MAX_IMMUTABLE_SINGLE_PUT_BYTES } });
+    expect(providerBody?.buffer).not.toBe(transferred.buffer);
+    expect(transferred.every((byte) => byte === 0)).toBe(true);
+    expect(providerBody?.every((byte) => byte === 0)).toBe(true);
+  });
+
   test("replays the same HEAD receipt after response loss and refuses different bytes", async () => {
     const key = "agent-sandbox-backups/private-org/operation-a/chunk-0001";
     let stored: RuntimeR2ObjectMetadata | null = null;
     let putCalls = 0;
     let loseFirstResponse = true;
+    const providerDigestInputs: ArrayBuffer[] = [];
     process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
     const bucket: RuntimeR2Bucket = {
       async head() {
@@ -257,11 +317,12 @@ describe("Worker R2 immutable exact-key upload", () => {
         const size = value instanceof Uint8Array ? value.byteLength : 0;
         const sha256 = options?.sha256;
         if (!(sha256 instanceof ArrayBuffer)) throw new Error("expected SHA-256 bytes");
+        providerDigestInputs.push(sha256);
         stored = {
           size,
           etag: "runtime-etag-a",
           version: "runtime-version-a",
-          checksums: { sha256 },
+          checksums: { sha256: sha256.slice(0) },
           customMetadata: options.customMetadata,
         };
         if (loseFirstResponse) {
@@ -289,12 +350,16 @@ describe("Worker R2 immutable exact-key upload", () => {
     );
     expect(String(mismatch)).not.toContain(key);
     expect(putCalls).toBe(3);
+    expect(
+      providerDigestInputs.every((digest) => new Uint8Array(digest).every((byte) => byte === 0)),
+    ).toBe(true);
   });
 
   test("retries 429/5xx within the explicit budget and stops at the cap", async () => {
     const key = "agent-sandbox-backups/private-org/operation-b/chunk-0001";
     let stored: RuntimeR2ObjectMetadata | null = null;
     let putCalls = 0;
+    let leaseChecks = 0;
     const failures = [429, 503];
     process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
     setRuntimeR2Bucket({
@@ -314,18 +379,27 @@ describe("Worker R2 immutable exact-key upload", () => {
           size: value instanceof Uint8Array ? value.byteLength : 0,
           etag: "runtime-etag-b",
           version: "runtime-version-b",
-          checksums: { sha256 },
+          checksums: { sha256: sha256.slice(0) },
         };
         return stored;
       },
       async delete() {},
     });
 
-    await expect(putImmutableObject({ key, body: bytes(5, 6, 7) })).resolves.toMatchObject({
+    await expect(
+      putImmutableObject({
+        key,
+        body: bytes(5, 6, 7),
+        beforeWriteAttempt: async () => {
+          leaseChecks += 1;
+        },
+      }),
+    ).resolves.toMatchObject({
       verifiedPresent: true,
       metadata: { sizeBytes: 3 },
     });
     expect(putCalls).toBe(MAX_IMMUTABLE_PUT_ATTEMPTS);
+    expect(leaseChecks).toBe(MAX_IMMUTABLE_PUT_ATTEMPTS);
 
     stored = null;
     putCalls = 0;
@@ -335,6 +409,225 @@ describe("Worker R2 immutable exact-key upload", () => {
       "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED",
     );
     expect(putCalls).toBe(MAX_IMMUTABLE_PUT_ATTEMPTS);
+  });
+
+  test("never starts a later retry after its lease fence is rejected", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-retry-fenced/chunk-0001";
+    let putCalls = 0;
+    let leaseChecks = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        return null;
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        putCalls += 1;
+        throw providerFailure(503);
+      },
+      async delete() {},
+    });
+
+    await expect(
+      putImmutableObject({
+        key,
+        body: bytes(59),
+        beforeWriteAttempt: async () => {
+          leaseChecks += 1;
+          if (leaseChecks === 2) throw new Error("lease generation expired");
+        },
+      }),
+    ).rejects.toThrow("lease generation expired");
+    expect(leaseChecks).toBe(2);
+    expect(putCalls).toBe(1);
+  });
+
+  test("bounds a hung provider PUT with the absolute deadline and never starts HEAD", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-hung/chunk-0001";
+    let putCalls = 0;
+    let headCalls = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        headCalls += 1;
+        return null;
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        putCalls += 1;
+        return new Promise<never>(() => undefined);
+      },
+      async delete() {},
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({
+        key,
+        body: bytes(61, 62),
+        deadline: new Date(Date.now() + 15),
+      }),
+      "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    );
+    expect(putCalls).toBe(1);
+    expect(headCalls).toBe(0);
+  });
+
+  test("cancels a hung provider PUT from the caller signal without retrying", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-aborted/chunk-0001";
+    const controller = new AbortController();
+    let putCalls = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        throw new Error("aborted upload must not reach HEAD");
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        putCalls += 1;
+        controller.abort();
+        return new Promise<never>(() => undefined);
+      },
+      async delete() {},
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({ key, body: bytes(64), signal: controller.signal }),
+      "OBJECT_STORAGE_UPLOAD_ABORTED",
+    );
+    expect(putCalls).toBe(1);
+  });
+
+  test("bounds the post-write verification HEAD with the same deadline", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-hung-head/chunk-0001";
+    let headCalls = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        headCalls += 1;
+        return new Promise<never>(() => undefined);
+      },
+      async get() {
+        return null;
+      },
+      async put(_exactKey, value, options) {
+        const checksum = options?.sha256;
+        if (!(checksum instanceof ArrayBuffer)) throw new Error("expected SHA-256 bytes");
+        return {
+          size: value instanceof Uint8Array ? value.byteLength : 0,
+          etag: "hung-head-etag",
+          version: "hung-head-version",
+          checksums: { sha256: checksum.slice(0) },
+        };
+      },
+      async delete() {},
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({
+        key,
+        body: bytes(65),
+        deadline: new Date(Date.now() + 15),
+      }),
+      "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    );
+    expect(headCalls).toBe(1);
+  });
+
+  test("does not start a retry after the shared deadline expires in backoff", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-backoff-deadline/chunk-0001";
+    let putCalls = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        return null;
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        putCalls += 1;
+        throw providerFailure(503);
+      },
+      async delete() {},
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({
+        key,
+        body: bytes(66),
+        deadline: new Date(Date.now() + 10),
+      }),
+      "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    );
+    expect(putCalls).toBe(1);
+  });
+
+  test("does not adopt a pre-existing object when the pre-write fence rejects", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-fenced/chunk-0001";
+    let putCalls = 0;
+    let headCalls = 0;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        headCalls += 1;
+        throw new Error("pre-existing object must not be inspected");
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        putCalls += 1;
+        throw new Error("provider write must not start");
+      },
+      async delete() {},
+    });
+
+    await expect(
+      putImmutableObject({
+        key,
+        body: bytes(63),
+        beforeWriteAttempt: async () => {
+          throw new Error("lease fence rejected");
+        },
+      }),
+    ).rejects.toThrow("lease fence rejected");
+    expect(putCalls).toBe(0);
+    expect(headCalls).toBe(0);
+  });
+
+  test("does not treat forged uploader metadata as a provider-validated R2 checksum", async () => {
+    const key = "agent-sandbox-backups/private-org/operation-forged-r2/chunk-0001";
+    let stored: RuntimeR2ObjectMetadata | null = null;
+    process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
+    setRuntimeR2Bucket({
+      async head() {
+        return stored;
+      },
+      async get() {
+        return null;
+      },
+      async put(_exactKey, value, options) {
+        stored = {
+          size: value instanceof Uint8Array ? value.byteLength : 0,
+          etag: "forged-metadata-etag",
+          version: "forged-metadata-version",
+          customMetadata: options?.customMetadata,
+        };
+        return stored;
+      },
+      async delete() {},
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({ key, body: bytes(67, 68) }),
+      "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+    );
   });
 });
 
@@ -405,5 +698,72 @@ describe("S3-compatible immutable exact-key upload", () => {
     expect(String(error)).not.toContain(key);
     expect(s3Calls.filter(({ method }) => method === "PUT")).toHaveLength(1);
     expect(s3Objects.has(key)).toBe(false);
+  });
+
+  test("never adopts matching bytes persisted by unsupported or fatal PUT responses", async () => {
+    configureS3();
+    const unsupportedKey =
+      "agent-sandbox-backups/private-org/operation-unsupported-persisted/chunk-0001";
+    s3PutBehaviors.set(unsupportedKey, [{ status: 501, persist: true }]);
+    await expectLifecycleError(
+      putImmutableObject({ key: unsupportedKey, body: bytes(42) }),
+      "OBJECT_STORAGE_IMMUTABLE_PUT_UNSUPPORTED",
+    );
+    expect(s3Objects.has(unsupportedKey)).toBe(true);
+    expect(
+      s3Calls.filter(({ method, key }) => method === "HEAD" && key === unsupportedKey),
+    ).toHaveLength(0);
+
+    const fatalKey = "agent-sandbox-backups/private-org/operation-fatal-persisted/chunk-0001";
+    s3PutBehaviors.set(fatalKey, [{ status: 400, persist: true }]);
+    await expectLifecycleError(
+      putImmutableObject({ key: fatalKey, body: bytes(43) }),
+      "OBJECT_STORAGE_UPLOAD_FAILED",
+    );
+    expect(s3Objects.has(fatalKey)).toBe(true);
+    expect(s3Calls.filter(({ method, key }) => method === "HEAD" && key === fatalKey)).toHaveLength(
+      0,
+    );
+  });
+
+  test("does not adopt a same-size S3 object with forged checksum metadata", async () => {
+    configureS3();
+    const key = "agent-sandbox-backups/private-org/operation-forged-s3/chunk-0001";
+    const expectedBody = bytes(44, 45);
+    const expectedSha256 = Buffer.from(
+      await crypto.subtle.digest("SHA-256", expectedBody),
+    ).toString("base64");
+    const corruptSha256 = Buffer.from(
+      await crypto.subtle.digest("SHA-256", bytes(45, 44)),
+    ).toString("base64");
+    s3Objects.set(key, {
+      size: expectedBody.byteLength,
+      providerSha256: corruptSha256,
+      declaredSha256: expectedSha256,
+      exposeProviderChecksum: false,
+      etag: "forged-s3-etag",
+      version: "forged-s3-version",
+    });
+
+    await expectLifecycleError(
+      putImmutableObject({ key, body: expectedBody }),
+      "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+    );
+  });
+
+  test("aborts a hung secondary-compatible PUT at the shared absolute deadline", async () => {
+    configureS3();
+    const key = "agent-sandbox-backups/private-org/operation-s3-hung/chunk-0001";
+    s3PutBehaviors.set(key, [{ status: 200, persist: true, delayMs: 150 }]);
+
+    await expectLifecycleError(
+      putImmutableObject({
+        key,
+        body: bytes(71, 72),
+        deadline: new Date(Date.now() + 20),
+      }),
+      "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    );
+    expect(s3Calls.filter(({ method }) => method === "HEAD")).toHaveLength(0);
   });
 });
