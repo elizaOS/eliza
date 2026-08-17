@@ -422,6 +422,8 @@ export interface Bindings {
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
+  /** Collision-free secret used by the protected production edge cutover; inert outside production. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal

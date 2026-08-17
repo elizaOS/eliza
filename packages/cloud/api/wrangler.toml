@@ -189,9 +189,11 @@ NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
-# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED is deliberately absent from
-# every [vars] block. The protected staging workflow owns it as a secret, while
-# the legacy explicit-false binding stays as the default/production guard.
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED are deliberately
+# absent from every [vars] block. The protected activation workflows own them
+# as environment-pinned secrets, while the legacy explicit-false binding stays
+# as the default guard.
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -748,6 +750,11 @@ NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# The protected production cutover owns
+# PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED as a secret binding.
+# The name is fresh (never bound in production, so no plaintext collision) and
+# environment-pinned: the helper honors it only when ENVIRONMENT is production,
+# and it must be exactly true to opt in.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
