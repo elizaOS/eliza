@@ -7,10 +7,22 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type {
+  ProxyRequestBody,
+  ServiceConfig,
+  ServiceHandler,
+} from "@/lib/services/proxy/types";
 
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 
-const executeWithBody = mock(async () => Response.json({ success: true }));
+const executeWithBody = mock(
+  async (
+    _config: ServiceConfig,
+    _work: ServiceHandler,
+    _request: Request,
+    _body: ProxyRequestBody,
+  ) => Response.json({ success: true }),
+);
 
 mock.module("@/lib/services/proxy/engine", () => ({
   executeWithBody,
