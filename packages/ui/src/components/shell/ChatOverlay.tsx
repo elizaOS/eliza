@@ -1176,6 +1176,7 @@ export function ChatOverlay({
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
+  onStateChange,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
@@ -1209,6 +1210,8 @@ export function ChatOverlay({
   onPilledChange?: (pilled: boolean) => void;
   /** Reports the settled visible footprint to transparent desktop hosts. */
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
+  /** Native hosts use this to grow the transparent pill window with the sheet. */
+  onStateChange?: (state: ChatState) => void;
 }): React.JSX.Element {
   const {
     messages,
@@ -3036,6 +3039,9 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
+  React.useEffect(() => {
+    onStateChange?.(chatState);
+  }, [chatState, onStateChange]);
   // The status header is gated on the LIVE rendered height, NOT the settled enum
   // — otherwise dragging the panel below half keeps the top strip mounted on a
   // too-short panel. It shows only when the panel actually renders at/over half

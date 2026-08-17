@@ -778,6 +778,9 @@ export function buildBunRpcHandlers({
     desktopSetBottomBarExpanded: async (
       params: Parameters<typeof desktop.setBottomBarExpanded>[0],
     ) => desktop.setBottomBarExpanded(params),
+    desktopSetBottomBarSurfaceState: async (
+      params: Parameters<typeof desktop.setBottomBarSurfaceState>[0],
+    ) => desktop.setBottomBarSurfaceState(params),
     desktopMinimizeWindow: async () => desktop.minimizeWindow(),
     desktopUnminimizeWindow: async () => desktop.unminimizeWindow(),
     desktopMaximizeWindow: async () => desktop.maximizeWindow(),

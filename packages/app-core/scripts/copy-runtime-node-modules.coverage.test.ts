@@ -51,6 +51,10 @@ import {
   visitFiles,
   workspacePackageNeedsRuntimeBuild,
 } from "./copy-runtime-node-modules";
+import {
+  isRuntimePluginPackage,
+  shouldBundleDiscoveredPackage,
+} from "./runtime-package-manifest";
 
 let tmpDir: string;
 
@@ -252,6 +256,33 @@ describe("shouldKeepPackageRelativePath", () => {
     ).toBe(false);
   });
 
+  it("drops foreign hermes compiler payloads", () => {
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/linux64-bin/hermesc",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/osx-bin/hermesc",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(false);
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/win64-bin/icudt64.dll",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(false);
+  });
+
   it("drops dist-mobile output for @elizaos/agent", () => {
     expect(
       shouldKeepPackageRelativePath(
@@ -285,12 +316,15 @@ describe("shouldKeepPackageRelativePath", () => {
 describe("shouldCopyPackageEntry", () => {
   it("drops nested node_modules and pruned dir names", () => {
     const root = mkdtempSync(path.join(tmpDir, "copy-entry-"));
+    const imageSnapshots = path.join(root, "src", "__image_snapshots__");
+    mkdirSync(imageSnapshots, { recursive: true });
     expect(
       shouldCopyPackageEntry(path.join(root, "node_modules"), "pkg", root),
     ).toBe(false);
     expect(shouldCopyPackageEntry(path.join(root, ".git"), "pkg", root)).toBe(
       false,
     );
+    expect(shouldCopyPackageEntry(imageSnapshots, "pkg", root)).toBe(false);
   });
 
   it("drops pruned file extensions and TypeScript declaration files", () => {
@@ -480,6 +514,24 @@ describe("getRuntimeDependencyEntries", () => {
       dependencies: { zeta: "1.0.0", alpha: "2.0.0" },
     });
     expect(getRuntimeDependencies(manifestPath)).toEqual(["alpha", "zeta"]);
+  });
+});
+
+describe("runtime plugin package classification", () => {
+  it("does not filter third-party scoped packages whose basename starts with plugin-", () => {
+    const alwaysBundled = new Set<string>();
+
+    expect(isRuntimePluginPackage("@octokit/plugin-request-log")).toBe(false);
+    expect(
+      shouldBundleDiscoveredPackage(
+        "@octokit/plugin-request-log",
+        alwaysBundled,
+      ),
+    ).toBe(true);
+    expect(isRuntimePluginPackage("@elizaos/plugin-browser")).toBe(true);
+    expect(
+      shouldBundleDiscoveredPackage("@elizaos/plugin-browser", alwaysBundled),
+    ).toBe(false);
   });
 });
 

@@ -45,7 +45,10 @@ import Electrobun, {
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
+  type BottomBarSurfaceState,
   computeBottomBarFrame,
+  computeBottomBarSurfaceFrame,
+  isBottomBarSurfaceState,
   resolveBottomBarFrameSize,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
@@ -375,6 +378,7 @@ export class DesktopManager {
   // pill we re-derive + setFrame on every showWindow() and on a cheap 5s poll.
   private bottomBarReanchorEnabled = false;
   private bottomBarWorkArea: ScreenWorkArea | null = null;
+  private bottomBarSurfaceState: BottomBarSurfaceState | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
   private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
   private bottomBarFrameDirty = false;
@@ -1546,6 +1550,7 @@ X-GNOME-Autostart-enabled=true
   }): Promise<void> {
     // Record desired presentation before consulting transient native state. A
     // missing window/display must not lose a rest↔hover↔auth↔panel transition.
+    this.bottomBarSurfaceState = null;
     this.bottomBarSize = resolveBottomBarFrameSize(options);
     this.bottomBarFrameDirty = true;
     if (!this.bottomBarReanchorEnabled) return;
@@ -1553,6 +1558,25 @@ X-GNOME-Autostart-enabled=true
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
     const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.bottomBarWorkArea = workArea;
+    this.bottomBarFrameDirty = false;
+  }
+
+  /** Mirror the canonical mobile pull-sheet state in the native host frame. */
+  async setBottomBarSurfaceState(options: {
+    state: BottomBarSurfaceState;
+  }): Promise<void> {
+    if (!isBottomBarSurfaceState(options?.state)) {
+      throw new TypeError("invalid bottom-bar surface state");
+    }
+    this.bottomBarSurfaceState = options.state;
+    this.bottomBarFrameDirty = true;
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    const workArea = this.readPrimaryWorkArea();
+    if (!win || !workArea) return;
+    const frame = computeBottomBarSurfaceFrame(workArea, options.state);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
@@ -1588,7 +1612,9 @@ X-GNOME-Autostart-enabled=true
     ) {
       return;
     }
-    const frame = computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
+    const frame = this.bottomBarSurfaceState
+      ? computeBottomBarSurfaceFrame(nextWorkArea, this.bottomBarSurfaceState)
+      : computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
     try {
       win.setFrame(frame.x, frame.y, frame.width, frame.height);
       this.bottomBarWorkArea = nextWorkArea;

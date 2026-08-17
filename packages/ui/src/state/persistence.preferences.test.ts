@@ -60,6 +60,14 @@ import {
 describe("shell preference persistence", () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("defaults a fresh elizaOS appliance session to always-on voice", () => {
+    window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    expect(loadContinuousChatMode()).toBe("always-on");
+    saveContinuousChatMode("off");
+    expect(loadContinuousChatMode()).toBe("off");
   });
 
   it("exposes the designed defaults for a fresh device", () => {

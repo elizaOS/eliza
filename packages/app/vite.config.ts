@@ -39,7 +39,7 @@ import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
 } from "../shared/src/utils/env.ts";
-import appConfig from "./app.config";
+import appConfig from "./app.config.ts";
 import {
   removeEmittedBuildStamp,
   removePublicBuildStamp,

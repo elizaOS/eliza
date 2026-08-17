@@ -70,8 +70,10 @@ import {
 } from "./app-route-loaders";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
+  type DesktopBottomBarSurfaceState,
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,
+  setDesktopBottomBarSurfaceState,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
@@ -1800,6 +1802,23 @@ function ShellFoundationMount({
   const [shellHostDetent, setShellHostDetent] = useState<
     "pill" | "input" | "half" | "full"
   >(shellIsOpen ? "input" : "pill");
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (shellIsOpen) controller?.close();
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, setActionNotice, shellIsOpen]);
+  const syncNativeSurfaceState = useCallback(
+    (state: DesktopBottomBarSurfaceState): void => {
+      void setDesktopBottomBarSurfaceState(state).catch(
+        handleWindowBoundsFailure,
+      );
+    },
+    [handleWindowBoundsFailure],
+  );
   const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
@@ -1888,6 +1907,10 @@ function ShellFoundationMount({
 
   useEffect(() => {
     if (!hasController) return undefined;
+    // While the shared mobile sheet is open, its five-state callback owns the
+    // exact native frame (including full work-area maximization). The legacy
+    // expanded/hover RPC remains the compatibility path for the resting pill.
+    if (useWebChatPanel && shellIsOpen) return undefined;
     let cancelled = false;
     setShellPreviewHostReady(false);
 
@@ -1959,6 +1982,7 @@ function ShellFoundationMount({
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
         onDetentChange={setShellHostDetent}
+        onStateChange={syncNativeSurfaceState}
       />
     );
   }
@@ -2043,11 +2067,13 @@ function ChatOverlayMount({
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
+  onStateChange,
 }: {
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
+  onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2081,6 +2107,7 @@ function ChatOverlayMount({
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
       onDetentChange={onDetentChange}
+      onStateChange={onStateChange}
     />
   );
 }
