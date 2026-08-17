@@ -137,6 +137,29 @@ export interface IMessageRouteState {
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 const MAX_BODY_BYTES = 256 * 1024; // Contacts payloads are tiny; cap aggressively.
+const DEFAULT_MESSAGES_LIMIT = 50;
+const MAX_MESSAGES_LIMIT = 500;
+
+/**
+ * Canonical iMessage messages page size. `Number.parseInt("1e2", 10) === 1`
+ * used to silently return one row instead of a 400. Leftover tax after
+ * data-routes messages limit (#20855) and bluebubbles list limit.
+ * chats / contacts / status parsers stay untouched. Missing / empty
+ * still means 50. Exact integers above 500 still cap at 500.
+ */
+function parseIMessageMessagesLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") {
+    return DEFAULT_MESSAGES_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    return null;
+  }
+  return Math.min(parsed, MAX_MESSAGES_LIMIT);
+}
 
 function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
@@ -202,8 +225,11 @@ export async function handleIMessageRoute(
       return true;
     }
     const url = new URL(req.url ?? pathname, "http://localhost");
-    const limitParam = url.searchParams.get("limit");
-    const limit = Math.min(Math.max(1, Number.parseInt(limitParam ?? "50", 10) || 50), 500);
+    const limit = parseIMessageMessagesLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
     try {
       const messages = await service.getRecentMessages(limit);
       helpers.json(res, { messages, count: messages.length });
