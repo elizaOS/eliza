@@ -239,9 +239,10 @@ jobs:
           # `early EOF` / `fetch-pack: invalid index-pack output` (observed run
           # 28544777730, both attempts). HTTP/1.1 avoids the h2 stream-reset
           # path entirely at negligible cost for a single-stream shallow fetch.
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${CHECKOUT_TOKEN}" | base64 | tr -d '\n')"
           fetched=
           for attempt in 1 2 3; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: bearer ${CHECKOUT_TOKEN}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="$auth_header" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -1578,13 +1579,14 @@ jobs:
           # loaded box die under HTTP/2 (`curl 92 ... CANCEL` / `early EOF` /
           # `invalid index-pack output`, observed run 28544777730); HTTP/1.1
           # avoids the h2 stream-reset path at negligible single-stream cost.
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${CHECKOUT_TOKEN}" | base64 | tr -d '\n')"
           fetched=
           for attempt in 1 2 3; do
             # Pages builds materialize packages/app + linked UI/core workspaces.
             # Blobless fetch pushes that cost into checkout as lazy hydration and
             # has repeatedly timed out on the deploy fleet, so use a normal
             # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: bearer ${CHECKOUT_TOKEN}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="$auth_header" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
