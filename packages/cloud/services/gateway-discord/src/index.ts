@@ -117,11 +117,7 @@ app.get("/health", (c) => {
 // Draining pods are explicitly not ready to prevent new bot assignments
 app.get("/ready", (c) => {
   const health = gatewayManager.getHealth();
-  const ready =
-    !health.draining &&
-    health.status === "healthy" &&
-    health.controlPlane.healthy &&
-    (health.totalBots === 0 || health.connectedBots > 0);
+  const ready = gatewayManager.isReady(health);
   return c.json({ ready, ...health }, ready ? 200 : 503);
 });
 
