@@ -47,6 +47,16 @@ import {
 
 const PREFIX = "/api/orchestrator";
 
+function decodeOrchestratorPathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed percent-escape
+    // is client garbage; null tells the caller to 400, not the 500 boundary.
+    return null;
+  }
+}
+
 const PRIORITIES: ReadonlySet<string> = new Set([
   "low",
   "normal",
@@ -205,8 +215,12 @@ async function dispatchOrchestratorRoutes(
     builtAppsRest.length > 0
   ) {
     const segments = builtAppsRest.split("/").filter((s) => s.length > 0);
-    const target = decodeURIComponent(segments[0] ?? "");
-    const slug = decodeURIComponent(segments[1] ?? "");
+    const target = decodeOrchestratorPathSegment(segments[0] ?? "");
+    const slug = decodeOrchestratorPathSegment(segments[1] ?? "");
+    if (target === null || slug === null) {
+      sendError(res, "Invalid built-app path: malformed URL encoding", 400);
+      return true;
+    }
     if (segments.length !== 2 || !slug) {
       sendError(res, "target and slug are required", 400);
       return true;
@@ -435,9 +449,13 @@ async function dispatchOrchestratorRoutes(
   const rest = pathname.slice(`${PREFIX}/tasks/`.length);
   if (pathname.startsWith(`${PREFIX}/tasks/`) && rest.length > 0) {
     const segments = rest.split("/").filter((s) => s.length > 0);
-    const taskId = decodeURIComponent(segments[0] ?? "");
+    const taskId = decodeOrchestratorPathSegment(segments[0] ?? "");
     const sub = segments[1];
 
+    if (taskId === null) {
+      sendError(res, "Invalid task id: malformed URL encoding", 400);
+      return true;
+    }
     if (!taskId) {
       sendError(res, "taskId is required", 400);
       return true;
@@ -1116,7 +1134,11 @@ async function dispatchOrchestratorRoutes(
         segments.length === 4 &&
         segments[3] === "stop"
       ) {
-        const sessionId = decodeURIComponent(segments[2] ?? "");
+        const sessionId = decodeOrchestratorPathSegment(segments[2] ?? "");
+        if (sessionId === null) {
+          sendError(res, "Invalid session id: malformed URL encoding", 400);
+          return true;
+        }
         let stopped: boolean;
         try {
           stopped = await service.stopTaskAgent(taskId, sessionId);
