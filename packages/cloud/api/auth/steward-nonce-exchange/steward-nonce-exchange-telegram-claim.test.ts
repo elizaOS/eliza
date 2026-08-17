@@ -100,6 +100,7 @@ describe("POST /api/auth/steward-nonce-exchange Telegram convergence", () => {
     const response = await post({
       code: "one-time-code",
       redirectUri: "https://cloud.eliza.app/login",
+      codeVerifier: "pkce-verifier",
       telegramContinuation: "opaque-telegram-claim-token",
     });
 
@@ -124,6 +125,7 @@ describe("POST /api/auth/steward-nonce-exchange Telegram convergence", () => {
     const response = await post({
       code: "one-time-code",
       redirectUri: "https://cloud.eliza.app/login",
+      codeVerifier: "pkce-verifier",
       telegramContinuation: "opaque-telegram-claim-token",
     });
 
@@ -138,6 +140,7 @@ describe("POST /api/auth/steward-nonce-exchange Telegram convergence", () => {
     const response = await post({
       code: "one-time-code",
       redirectUri: "https://cloud.eliza.app/login",
+      codeVerifier: "pkce-verifier",
       telegramContinuation: "platform:telegram:123456789",
     });
 

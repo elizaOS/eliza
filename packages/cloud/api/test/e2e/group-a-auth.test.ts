@@ -178,8 +178,13 @@ describeE2E("Group A: auth + sessions", () => {
     // 403s (forbidden_origin) BEFORE body/token validation against staging.
     // Send a host that is UNCONDITIONALLY in PERMITTED_ORIGIN_HOSTS (works in
     // local dev AND deployed staging/prod) so the CSRF gate passes and the
-    // handler's real validation is what the test observes.
-    const stewardSessionHeaders = { Origin: "https://staging.elizacloud.ai" };
+    // handler's real validation is what the test observes. The X-Eliza-CSRF
+    // custom header is the route's non-simple-request marker; JSON bodies
+    // satisfy it implicitly, but a bodyless DELETE must send it explicitly.
+    const stewardSessionHeaders = {
+      Origin: "https://staging.elizacloud.ai",
+      "X-Eliza-CSRF": "1",
+    };
 
     test("POST validation: missing token returns 400", async () => {
       const res = await api.post(
@@ -241,7 +246,10 @@ describeE2E("Group A: auth + sessions", () => {
   describe("POST /api/auth/steward-nonce-exchange", () => {
     // Same CSRF-origin reasoning as stewardSessionHeaders above: a permitted
     // host unconditionally (localhost is dev-only, staging runs production).
-    const nonceHeaders = { Origin: "https://staging.elizacloud.ai" };
+    const nonceHeaders = {
+      Origin: "https://staging.elizacloud.ai",
+      "X-Eliza-CSRF": "1",
+    };
 
     test("validation: missing code returns 400 missing_code", async () => {
       const res = await api.post(
@@ -265,6 +273,17 @@ describeE2E("Group A: auth + sessions", () => {
       expect(body.code).toBe("missing_code");
     });
 
+    test("validation: missing codeVerifier returns 400 missing_code_verifier", async () => {
+      const res = await api.post(
+        "/api/auth/steward-nonce-exchange",
+        { code: "abc", redirectUri: "https://elizaos.ai/checkout" },
+        { headers: nonceHeaders },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("missing_code_verifier");
+    });
+
     test("CSRF: POST without Origin returns 403 forbidden_origin", async () => {
       const res = await api.post("/api/auth/steward-nonce-exchange", {
         code: "abc",
@@ -282,6 +301,7 @@ describeE2E("Group A: auth + sessions", () => {
           code: "not-a-real-steward-code",
           redirectUri: "https://elizaos.ai/checkout",
           tenantId: "elizacloud",
+          codeVerifier: "e2e-pkce-verifier",
         },
         { headers: nonceHeaders },
       );

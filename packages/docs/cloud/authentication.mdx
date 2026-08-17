@@ -157,8 +157,8 @@ Send on every request instead of storing an API key:
 - **X-Wallet-Address**: Ethereum address (any case).
 - **X-Timestamp**: Unix ms (must be within ±5 min of server time). **Why?** Binds the signature to a time window and limits replay.
 - **X-Wallet-Signature**: Signature of the message  
-  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}`  
-  so the signature is bound to this request. **Why method + path?** Prevents reusing the same signature on another endpoint.
+  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}\nPayload-SHA256: ${payloadHash}`  
+  where `payloadHash` is the lowercase hex SHA-256 of `${canonicalQuery}\n${rawBody}` — `canonicalQuery` is the decoded `key=value` pairs of the query string sorted by key then value and joined with `&` (empty when there is no query), and `rawBody` is the exact request body (empty when there is none). **Why the payload hash?** A captured header triple cannot be replayed within its time window with a rewritten body or query. **Why method + path?** Prevents reusing the same signature on another endpoint. The legacy message without `Payload-SHA256` is accepted only for requests with no query string and no body.
 
 If the wallet is unknown, the first valid signed request **creates** the account (same as SIWE signup). After that, any endpoint that uses `requireAuthOrApiKey` accepts wallet-header auth.
 

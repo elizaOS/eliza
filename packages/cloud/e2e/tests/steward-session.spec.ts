@@ -117,7 +117,9 @@ test.describe("steward session", () => {
   }) => {
     const res = await fetch(`${stack.urls.api}${STEWARD_SESSION}`, {
       method: "DELETE",
-      headers: { Origin: stack.urls.api },
+      // The route's non-simple-request CSRF marker: a bodyless DELETE carries
+      // no JSON content type, so the custom header must be sent explicitly.
+      headers: { Origin: stack.urls.api, "X-Eliza-CSRF": "1" },
     });
     expect(res.status).toBe(200);
     expect((await res.json()) as { ok?: boolean }).toMatchObject({ ok: true });

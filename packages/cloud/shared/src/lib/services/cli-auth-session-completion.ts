@@ -13,6 +13,14 @@ interface CompletionState {
   apiKey: ApiKey | undefined;
 }
 
+/**
+ * CLI-minted API keys expire. A CLI key is minted through a browser-driven
+ * flow, so a permanent key turns any completion-endpoint mistake into a
+ * lifetime org credential; 90 days bounds the blast radius while keeping
+ * re-login infrequent.
+ */
+const CLI_API_KEY_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
 type ClaimResult =
   | {
       claimed: true;
@@ -123,7 +131,7 @@ export class CliAuthSessionCompletionService {
         user_id: userId,
         rate_limit: 1000,
         is_active: true,
-        expires_at: null,
+        expires_at: new Date(Date.now() + CLI_API_KEY_TTL_MS),
         key_hash: hash,
         key_prefix: prefix,
         key_ciphertext: encrypted.ciphertext,
