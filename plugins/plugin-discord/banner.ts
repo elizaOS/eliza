@@ -7,7 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
 import { listEnabledDiscordAccounts } from "./accounts";
-import { getDiscordSettings } from "./environment";
+import { getDiscordSettings, logResolvedDiscordPolicy } from "./environment";
 import {
 	type DiscordPermissionValues,
 	getPermissionValues,
@@ -483,6 +483,13 @@ export function printBanner(options: BannerOptions): void {
 	lines.push("");
 
 	runtime.logger.info(lines.join("\n"));
+
+	// One INFO line naming the RESOLVED respond policy and which config layer
+	// supplied each value — the banner above prints raw per-key settings, but
+	// with the same flag living in env, flat character settings, AND the typed
+	// settings.discord object, only the resolver output tells the operator
+	// what the bot will actually do.
+	logResolvedDiscordPolicy(runtime);
 
 	// Diagnostics: if the effective config will suppress all auto-replies, warn
 	// the operator with the exact reason(s) instead of failing silently.

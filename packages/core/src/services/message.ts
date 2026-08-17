@@ -6406,6 +6406,17 @@ function shouldUseStage1PlannerFallback(
 	if (mentionContext?.isMention === true || mentionContext?.isReply === true) {
 		return true;
 	}
+	// A connector that already ran its own delivery policy (allowlisted
+	// channel + mentions-only disabled, DM gate passed, etc.) stamps
+	// `respondEligible: true` on the inbound content. That message was
+	// DELIVERED to the agent as one it is CONFIGURED to answer, so a Stage 1
+	// parse failure must degrade to the planner fallback exactly like an
+	// explicit mention. Before this flag, a plain (no-mention) group message
+	// in an allowlisted channel hit the invalid-MessageHandlerResult throw
+	// and the user saw nothing (silent drop).
+	if (content.respondEligible === true) {
+		return true;
+	}
 	const source = String(content.source ?? "").toLowerCase();
 	if (source.includes(MESSAGE_SOURCE_CLIENT_CHAT)) {
 		return true;
@@ -8084,6 +8095,25 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 
 		if (!messageHandler) {
+			// All recovery chains (native parse, truncation recovery, planner
+			// fallback) failed. This throw is the last line of defense before a
+			// message becomes user-visible silence, so log ONE loud, greppable
+			// error line naming the channel and the exact reason before throwing.
+			const stage1DropReason = isEmptyStage1Result(rawMessageHandler)
+				? `empty Stage 1 result after ${stage1RetryLimit + 1} attempts`
+				: "invalid MessageHandlerResult";
+			args.runtime.logger?.error?.(
+				{
+					src: "service:message",
+					agentId: args.runtime.agentId,
+					roomId: args.message.roomId,
+					channelType: String(args.message.content?.channelType ?? ""),
+					source: String(args.message.content?.source ?? ""),
+					respondEligible: args.message.content?.respondEligible === true,
+					reason: stage1DropReason,
+				},
+				"[message] Stage 1 exhausted every recovery path; the inbound message will surface as a failure, not a silent drop",
+			);
 			if (isEmptyStage1Result(rawMessageHandler)) {
 				throw new Error(
 					`v5 messageHandler returned empty Stage 1 result after ${stage1RetryLimit + 1} attempts`,
@@ -14050,6 +14080,12 @@ export class DefaultMessageService implements IMessageService {
 				gate.shouldRespond ||
 				args.mentionContext?.isMention === true ||
 				args.mentionContext?.isReply === true ||
+				// The delivering connector already ran its own respond policy and
+				// decided this message is one the agent is configured to answer
+				// (allowlisted channel + mentions-only disabled). A runtime failure
+				// on such a turn must surface to the user, not vanish as the IGNORE
+				// it would never have gotten.
+				args.message.content?.respondEligible === true ||
 				args.isAutonomous ||
 				args.hasDeliveredEarlyReply,
 			reason: gate.reason,

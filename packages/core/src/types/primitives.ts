@@ -162,6 +162,18 @@ export interface Content {
 	mentionContext?: MentionContext;
 
 	/**
+	 * Set by the delivering connector when its own respond policy already
+	 * decided the agent is CONFIGURED to answer this message (for example a
+	 * Discord guild message in an allowlisted channel with mentions-only
+	 * disabled, after the bot/DM/strict-mode gates all passed). The message
+	 * runtime uses this as an addressing signal: a Stage 1 parse failure on a
+	 * respond-eligible message degrades to the planner fallback (and, if that
+	 * also fails, a user-visible failure reply) instead of a silent drop that
+	 * only explicit mentions were protected from.
+	 */
+	respondEligible?: boolean;
+
+	/**
 	 * Internal message ID used for streaming coordination.
 	 * Set during response generation to ensure streaming chunks and
 	 * final broadcast use the same message ID.

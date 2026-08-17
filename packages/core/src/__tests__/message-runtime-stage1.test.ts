@@ -3051,6 +3051,90 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
+	it("falls back to the planner for a connector-eligible group message when Stage 1 is unparseable (no mention required)", async () => {
+		// The silent-drop case: a PLAIN guild message (no mention, no reply, no
+		// agent name in text) that the Discord connector already decided the
+		// agent should answer (allowlisted channel + mentions-only disabled).
+		// The connector stamps `respondEligible: true`; a malformed Stage 1
+		// completion must degrade to the planner fallback instead of throwing
+		// "v5 messageHandler returned invalid MessageHandlerResult".
+		const runtime = makeRuntime([
+			"{not valid HANDLE_RESPONSE",
+			JSON.stringify({
+				thought: "Fallback planner can answer.",
+				toolCalls: [],
+				messageToUser: "Recovered for the eligible group message.",
+			}),
+		]);
+		const message = makeMessage({
+			text: "what do you all think about the release?",
+			channelType: ChannelType.GROUP,
+			source: "discord",
+			respondEligible: true,
+			mentionContext: {
+				isMention: false,
+				isReply: false,
+				isThread: false,
+				mentionType: "none",
+			},
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Recovered for the eligible group message.",
+			);
+		}
+	});
+
+	it("still throws for a plain group message WITHOUT connector eligibility, with one loud channel-scoped error line", async () => {
+		// Bidirectional guard: absent the respondEligible stamp (ambient group
+		// chatter the connector never vouched for), the invalid Stage 1 result
+		// keeps the original throw — but never silently: exactly one
+		// logger.error line names the room and reason before the throw.
+		const runtime = makeRuntime(["{not valid HANDLE_RESPONSE"]);
+		const message = makeMessage({
+			text: "random ambient chatter",
+			channelType: ChannelType.GROUP,
+			source: "discord",
+			mentionContext: {
+				isMention: false,
+				isReply: false,
+				isThread: false,
+				mentionType: "none",
+			},
+		});
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow(/invalid MessageHandlerResult/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		const errorCalls = (
+			runtime.logger.error as { mock: { calls: unknown[][] } }
+		).mock.calls;
+		expect(errorCalls).toHaveLength(1);
+		expect(errorCalls[0][0]).toMatchObject({
+			src: "service:message",
+			roomId: message.roomId,
+			reason: "invalid MessageHandlerResult",
+			respondEligible: false,
+		});
+		expect(String(errorCalls[0][1])).toContain("not a silent drop");
+	});
+
 	it("falls back to the planner when an explicitly addressed Stage 1 turn is unparseable", async () => {
 		const runtime = makeRuntime([
 			"{not valid HANDLE_RESPONSE",

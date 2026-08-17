@@ -84,6 +84,209 @@ export const discordEnvSchema = z.object({
 
 export type DiscordConfig = z.infer<typeof discordEnvSchema>;
 
+/**
+ * Which configuration layer supplied a resolved respond-policy value.
+ * Precedence (highest wins):
+ *   1. `character.settings.discord.*` — the typed per-character object
+ *   2. flat `character.settings["DISCORD_*"]` keys (string "true"/"false")
+ *   3. env / runtime settings (`runtime.getSetting`, which also covers
+ *      DB-seeded values re-imported from ELIZA_AGENT_CHARACTER_JSON at boot)
+ *   4. `DISCORD_DEFAULTS`
+ */
+export type DiscordPolicySource =
+	| "character.settings.discord"
+	| "character.settings"
+	| "env"
+	| "default";
+
+export interface ResolvedDiscordPolicyValue<T> {
+	value: T;
+	source: DiscordPolicySource;
+}
+
+/**
+ * The respond/allowlist flags that historically existed in three layers with
+ * different casing and undocumented precedence (env
+ * `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS`, flat character settings string,
+ * typed `character.settings.discord.shouldRespondOnlyToMentions`, plus
+ * `CHANNEL_IDS` vs `settings.discord.allowedChannelIds`). This is THE single
+ * resolution result: both the strict-mode gate (via `getDiscordSettings`) and
+ * the boot policy banner consume it, so they can never disagree again.
+ */
+export interface ResolvedDiscordRespondPolicy {
+	mentionsOnly: ResolvedDiscordPolicyValue<boolean>;
+	ignoreBots: ResolvedDiscordPolicyValue<boolean>;
+	ignoreDMs: ResolvedDiscordPolicyValue<boolean>;
+	allowedChannelIds: ResolvedDiscordPolicyValue<string[] | undefined>;
+}
+
+function readFlatCharacterSetting(
+	runtime: IAgentRuntime,
+	key: string,
+): unknown {
+	const settings = runtime.character?.settings;
+	if (!settings || typeof settings !== "object") return undefined;
+	return (settings as Record<string, unknown>)[key];
+}
+
+function parseChannelIdList(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const entries = value
+			.map((entry) => String(entry).trim())
+			.filter((entry) => entry.length > 0);
+		return entries;
+	}
+	if (typeof value === "string" && value.trim().length > 0) {
+		return value
+			.split(",")
+			.map((entry) => entry.trim())
+			.filter((entry) => entry.length > 0);
+	}
+	return undefined;
+}
+
+function resolveBooleanPolicy(
+	runtime: IAgentRuntime,
+	typedValue: unknown,
+	envKey: string,
+	defaultValue: boolean,
+): ResolvedDiscordPolicyValue<boolean> {
+	// The typed object is deserialized from character JSON, so a value that
+	// SHOULD be boolean can arrive as the string "true"/"false". Both count as
+	// the typed layer.
+	if (typeof typedValue === "boolean") {
+		return { value: typedValue, source: "character.settings.discord" };
+	}
+	if (typeof typedValue === "string" && typedValue.trim().length > 0) {
+		return {
+			value: parseBooleanFromText(typedValue),
+			source: "character.settings.discord",
+		};
+	}
+	const flat = readFlatCharacterSetting(runtime, envKey);
+	if (typeof flat === "boolean") {
+		return { value: flat, source: "character.settings" };
+	}
+	if (typeof flat === "string" && flat.trim().length > 0) {
+		return { value: parseBooleanFromText(flat), source: "character.settings" };
+	}
+	const runtimeValue = runtime.getSetting(envKey);
+	if (
+		runtimeValue !== undefined &&
+		runtimeValue !== null &&
+		runtimeValue !== ""
+	) {
+		return {
+			value:
+				typeof runtimeValue === "boolean"
+					? runtimeValue
+					: parseBooleanFromText(String(runtimeValue)),
+			source: "env",
+		};
+	}
+	return { value: defaultValue, source: "default" };
+}
+
+/**
+ * Resolve the effective Discord respond/allowlist policy from every
+ * configuration layer with a single documented precedence:
+ * `character.settings.discord` object > flat character settings > env /
+ * runtime settings > defaults. Returns the resolved value AND the layer that
+ * supplied it, so the boot banner can print an honest provenance line.
+ */
+export function resolveDiscordRespondPolicy(
+	runtime: IAgentRuntime,
+): ResolvedDiscordRespondPolicy {
+	const characterSettings =
+		(runtime.character?.settings &&
+			(runtime.character.settings.discord as DiscordSettings)) ||
+		{};
+
+	const mentionsOnly = resolveBooleanPolicy(
+		runtime,
+		characterSettings.shouldRespondOnlyToMentions,
+		"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
+		DISCORD_DEFAULTS.SHOULD_RESPOND_ONLY_TO_MENTIONS,
+	);
+	const ignoreBots = resolveBooleanPolicy(
+		runtime,
+		characterSettings.shouldIgnoreBotMessages,
+		"DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
+		DISCORD_DEFAULTS.SHOULD_IGNORE_BOT_MESSAGES,
+	);
+	const ignoreDMs = resolveBooleanPolicy(
+		runtime,
+		characterSettings.shouldIgnoreDirectMessages,
+		"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
+		DISCORD_DEFAULTS.SHOULD_IGNORE_DIRECT_MESSAGES,
+	);
+
+	let allowedChannelIds: ResolvedDiscordPolicyValue<string[] | undefined>;
+	const typedChannels = parseChannelIdList(characterSettings.allowedChannelIds);
+	const flatChannels = parseChannelIdList(
+		readFlatCharacterSetting(runtime, "CHANNEL_IDS"),
+	);
+	const envChannels = parseChannelIdList(runtime.getSetting("CHANNEL_IDS"));
+	if (typedChannels !== undefined) {
+		allowedChannelIds = {
+			value: typedChannels.length > 0 ? typedChannels : undefined,
+			source: "character.settings.discord",
+		};
+	} else if (flatChannels !== undefined) {
+		allowedChannelIds = {
+			value: flatChannels.length > 0 ? flatChannels : undefined,
+			source: "character.settings",
+		};
+	} else if (envChannels !== undefined) {
+		allowedChannelIds = {
+			value: envChannels.length > 0 ? envChannels : undefined,
+			source: "env",
+		};
+	} else {
+		allowedChannelIds = {
+			value:
+				DISCORD_DEFAULTS.ALLOWED_CHANNEL_IDS.length > 0
+					? [...DISCORD_DEFAULTS.ALLOWED_CHANNEL_IDS]
+					: undefined,
+			source: "default",
+		};
+	}
+
+	return { mentionsOnly, ignoreBots, ignoreDMs, allowedChannelIds };
+}
+
+/**
+ * One INFO line at boot naming the RESOLVED effective respond policy and
+ * which configuration layer supplied each value. Before this line existed the
+ * same flag lived in >=3 layers with different casing, boot re-seeded agent
+ * DB settings from ELIZA_AGENT_CHARACTER_JSON (so DB edits silently
+ * reverted), and nothing ever printed the winner: operators diagnosed silent
+ * no-reply incidents by bisecting env files.
+ */
+export function logResolvedDiscordPolicy(runtime: IAgentRuntime): void {
+	const policy = resolveDiscordRespondPolicy(runtime);
+	const channels = policy.allowedChannelIds.value;
+	const channelList = channels ? `[${channels.join(",")}]` : "(all)";
+	runtime.logger?.info?.(
+		{
+			src: "plugin:discord",
+			agentId: runtime.agentId,
+			mentionsOnly: policy.mentionsOnly.value,
+			ignoreBots: policy.ignoreBots.value,
+			ignoreDMs: policy.ignoreDMs.value,
+			allowedChannelIds: channels,
+		},
+		`[discord] resolved policy: mentionsOnly=${policy.mentionsOnly.value} ` +
+			`ignoreBots=${policy.ignoreBots.value} ` +
+			`ignoreDMs=${policy.ignoreDMs.value} ` +
+			`allowedChannels=${channelList} ` +
+			`(sources: mentionsOnly=${policy.mentionsOnly.source}, ` +
+			`ignoreBots=${policy.ignoreBots.source}, ` +
+			`ignoreDMs=${policy.ignoreDMs.source}, ` +
+			`allowedChannels=${policy.allowedChannelIds.source})`,
+	);
+}
+
 export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
 	const characterSettings =
 		(runtime.character.settings &&
@@ -105,44 +308,20 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
 		return characterValue ?? defaultValue;
 	};
 
-	const resolvedAllowedChannelIds = resolveSetting<string[]>(
-		"CHANNEL_IDS",
-		characterSettings.allowedChannelIds,
-		DISCORD_DEFAULTS.ALLOWED_CHANNEL_IDS,
-		(value: string) =>
-			value
-				.split(",")
-				.map((s) => s.trim())
-				.filter((s) => s.length > 0),
-	);
+	// The four respond/allowlist flags flow through the single resolver so the
+	// strict-mode gate, the inbound allowlist, and the boot policy banner all
+	// agree on the same effective values and precedence.
+	const respondPolicy = resolveDiscordRespondPolicy(runtime);
 
 	return {
 		...characterSettings,
-		shouldIgnoreBotMessages: resolveSetting(
-			"DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
-			characterSettings.shouldIgnoreBotMessages,
-			DISCORD_DEFAULTS.SHOULD_IGNORE_BOT_MESSAGES,
-			parseBooleanFromText,
-		),
+		shouldIgnoreBotMessages: respondPolicy.ignoreBots.value,
 
-		shouldIgnoreDirectMessages: resolveSetting(
-			"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
-			characterSettings.shouldIgnoreDirectMessages,
-			DISCORD_DEFAULTS.SHOULD_IGNORE_DIRECT_MESSAGES,
-			parseBooleanFromText,
-		),
+		shouldIgnoreDirectMessages: respondPolicy.ignoreDMs.value,
 
-		shouldRespondOnlyToMentions: resolveSetting(
-			"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
-			characterSettings.shouldRespondOnlyToMentions,
-			DISCORD_DEFAULTS.SHOULD_RESPOND_ONLY_TO_MENTIONS,
-			parseBooleanFromText,
-		),
+		shouldRespondOnlyToMentions: respondPolicy.mentionsOnly.value,
 
-		allowedChannelIds:
-			resolvedAllowedChannelIds.length > 0
-				? resolvedAllowedChannelIds
-				: undefined,
+		allowedChannelIds: respondPolicy.allowedChannelIds.value,
 
 		dmPolicy: resolveSetting(
 			"DISCORD_DM_POLICY",

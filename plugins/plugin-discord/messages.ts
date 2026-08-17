@@ -1541,6 +1541,25 @@ export class MessageManager {
 				!isBotDirectlyAddressed &&
 				(mentionedOtherUsers || isReplyToOtherUser);
 
+			// This plugin has already run its full delivery policy by the time the
+			// reply path dispatches: the channel allowlist gate lives in
+			// setupEventListeners (a disallowed guild channel never reaches this
+			// manager), bot/self messages returned above, and the strict-mode /
+			// other-target / autoReply gates below close the turn as ingest-only
+			// before any model dispatch. So a guild message that reaches
+			// messageService.handleMessage with this flag true is one the agent is
+			// CONFIGURED to answer — the core runtime uses it to extend the Stage 1
+			// planner fallback (and the visible-failure gate) to plain, no-mention
+			// group messages, which previously died in a silent drop when the
+			// RESPONSE_HANDLER model returned malformed output (#20755 evidence:
+			// "v5 messageHandler returned invalid MessageHandlerResult" at
+			// message.ts runV5MessageRuntimeStage1 via plugin-discord messages.ts).
+			const respondEligible =
+				!isDM &&
+				this.discordSettings.autoReply !== false &&
+				!ignoresOtherTarget &&
+				(!strictModeEnabled || strictModeShouldProcess);
+
 			// Use the service's buildMemoryFromMessage method with pre-processed content
 			const newMessage = await this.discordService.buildMemoryFromMessage(
 				message,
@@ -1549,6 +1568,7 @@ export class MessageManager {
 					processedAttachments: attachments,
 					extraContent: {
 						currentMessageText,
+						respondEligible,
 						mentionContext: {
 							isMention: isBotPlatformMentioned,
 							isReply: isReplyToBot,
