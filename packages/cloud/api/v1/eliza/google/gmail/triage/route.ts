@@ -5,6 +5,7 @@
  * the managed Google connector.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -26,11 +27,9 @@ app.get("/", async (c) => {
     if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
       return c.json({ error: "side must be owner or agent." }, 400);
     }
-    const maxResults =
-      rawMaxResults && rawMaxResults.trim().length > 0
-        ? Number.parseInt(rawMaxResults, 10)
-        : 12;
-    if (!Number.isFinite(maxResults) || maxResults <= 0) {
+    const hasMaxResults = Boolean(rawMaxResults?.trim());
+    const maxResults = hasMaxResults ? parsePositiveInteger(rawMaxResults) : 12;
+    if (maxResults === undefined) {
       return c.json({ error: "maxResults must be a positive integer." }, 400);
     }
 

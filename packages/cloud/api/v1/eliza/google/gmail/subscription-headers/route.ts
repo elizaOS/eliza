@@ -5,6 +5,7 @@
  * matching the query — used by the subscription-cleanup tooling.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -31,11 +32,11 @@ app.get("/", async (c) => {
     if (query.length === 0) {
       return c.json({ error: "query is required." }, 400);
     }
-    const maxResults =
-      rawMaxResults && rawMaxResults.trim().length > 0
-        ? Number.parseInt(rawMaxResults, 10)
-        : 200;
-    if (!Number.isFinite(maxResults) || maxResults <= 0) {
+    const hasMaxResults = Boolean(rawMaxResults?.trim());
+    const maxResults = hasMaxResults
+      ? parsePositiveInteger(rawMaxResults)
+      : 200;
+    if (maxResults === undefined) {
       return c.json({ error: "maxResults must be a positive integer." }, 400);
     }
 
