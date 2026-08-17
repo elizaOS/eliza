@@ -273,6 +273,35 @@ export class SharedAgentMemoriesReader {
   }
 
   /**
+   * Oldest-first keyset page over the whole tenant scope, for full-history
+   * export (Shared→Dedicated transfer). Ascending (created_at, id) ordering
+   * makes pagination stable while new turns keep appending, and a resumed
+   * transfer re-walks from its cursor without skipping or duplicating rows.
+   */
+  async listOldestByScope(
+    scope: SharedAgentMemoryScope,
+    limit: number,
+    after?: { createdAt: Date; id: string },
+  ): Promise<SharedAgentMemoryRow[]> {
+    requiredScope(scope);
+    assertLimit(limit);
+    const pins = and(
+      ...tenantPins(scope),
+      ...(after
+        ? [
+            sql`(${sharedAgentMemories.created_at}, ${sharedAgentMemories.id}) > (${after.createdAt}, ${after.id}::uuid)`,
+          ]
+        : []),
+    );
+    return await dbRead
+      .select()
+      .from(sharedAgentMemories)
+      .where(pins)
+      .orderBy(asc(sharedAgentMemories.created_at), asc(sharedAgentMemories.id))
+      .limit(limit);
+  }
+
+  /**
    * Exact cosine-distance search over the tenant's most recent embedded rows
    * (bounded window; see module header). Only rows whose stored vector has the
    * query's dimensionality participate, so mixed-model histories cannot fail
