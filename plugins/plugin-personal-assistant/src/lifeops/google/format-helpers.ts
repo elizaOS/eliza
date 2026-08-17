@@ -30,7 +30,7 @@ function truncateForPreview(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 // Build a "Display Name <email@host>" string when both are available, or
