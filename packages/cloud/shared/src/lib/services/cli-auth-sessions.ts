@@ -14,6 +14,18 @@ import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
  */
 const SESSION_EXPIRY_MINUTES = 10; // Sessions expire after 10 minutes
 
+/**
+ * Session ids are server-generated UUIDs (POST /api/auth/cli-session mints
+ * them; client-chosen ids allowed squatting and unbounded row inserts).
+ * Routes validate the format before touching the store.
+ */
+const CLI_AUTH_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function looksLikeCliAuthSessionId(sessionId: string): boolean {
+  return CLI_AUTH_SESSION_ID_PATTERN.test(sessionId);
+}
+
 export type CliAuthApiKeyRevealResult =
   | {
       status: "revealed";
