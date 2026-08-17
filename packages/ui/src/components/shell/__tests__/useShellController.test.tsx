@@ -252,15 +252,20 @@ vi.mock("../../../voice/voice-capture-factory", () => ({
 // no `navigator.permissions.microphone`), so the common engage path stays
 // synchronous and proceeds exactly as before. Keeps the rest of the module
 // real (WAV/silence helpers used elsewhere).
-const micPermissionMock = vi.hoisted(() => ({
-  state: "unknown" as "granted" | "denied" | "prompt" | "unknown",
-}));
+const micPermissionMock = vi.hoisted(() => {
+  const holder = {
+    state: "unknown" as "granted" | "denied" | "prompt" | "unknown",
+    query: vi.fn<() => Promise<"granted" | "denied" | "prompt" | "unknown">>(),
+  };
+  holder.query.mockImplementation(async () => holder.state);
+  return holder;
+});
 vi.mock("../../../voice/local-asr-capture", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../voice/local-asr-capture")>();
   return {
     ...actual,
-    queryMicrophonePermission: vi.fn(async () => micPermissionMock.state),
+    queryMicrophonePermission: micPermissionMock.query,
   };
 });
 
@@ -296,10 +301,12 @@ vi.mock("../useShellVoiceOutput", () => ({
 // real native subscription never runs in jsdom.
 const wakeListenMock = vi.hoisted(() => ({
   lastEnabled: undefined as boolean | undefined,
+  onOpen: undefined as (() => void) | undefined,
 }));
 vi.mock("../../../voice/useWakeListenWindow", () => ({
-  useWakeListenWindow: (opts: { enabled: boolean }) => {
+  useWakeListenWindow: (opts: { enabled: boolean; onOpen: () => void }) => {
     wakeListenMock.lastEnabled = opts.enabled;
+    wakeListenMock.onOpen = opts.onOpen;
     return { phase: "idle" as const };
   },
 }));
@@ -342,6 +349,11 @@ afterEach(() => {
   voiceOutputMock.lastTurnVoiceSeen = undefined;
   voiceOutputMock.cloudConnectedSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
+  wakeListenMock.onOpen = undefined;
+  micPermissionMock.query.mockReset();
+  micPermissionMock.query.mockImplementation(
+    async () => micPermissionMock.state,
+  );
   realtimeVoiceMock.enabled = false;
   realtimeVoiceMock.options = null;
   realtimeVoiceMock.startOutcome = { kind: "live" };
@@ -2480,6 +2492,14 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
 });
 
 describe("useShellController cloud-only auth gate", () => {
+  beforeEach(() => {
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    micPermissionMock.state = "unknown";
+  });
+
   it("stays booting while the auth probe is checking, even when the proxy is ready", () => {
     authGateMock.value = { gated: true, phase: "checking" };
     const { result } = renderHook(() => useShellController());
@@ -2537,6 +2557,7 @@ describe("useShellController cloud-only auth gate", () => {
       act(() => rerender());
       expect(result.current.handsFree).toBe(false);
       expect(result.current.recording).toBe(false);
+      expect(result.current.isOpen).toBe(false);
       expect(
         window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
       ).not.toBe("always-on");
@@ -2612,5 +2633,83 @@ describe("useShellController cloud-only auth gate", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("sign-out invalidates a transcription handoff waiting on recorder drain", async () => {
+    let resolveStop: (() => void) | undefined;
+    const { result, rerender } = renderHook(() => useShellController());
+    act(() => result.current.toggleHandsFree());
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    captureHandles[0]?.stop.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStop = resolve;
+        }),
+    );
+
+    let transition: Promise<void> | undefined;
+    act(() => {
+      transition = Promise.resolve(result.current.toggleTranscriptionMode());
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    act(() => rerender());
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.isOpen).toBe(false);
+
+    await act(async () => {
+      resolveStop?.();
+      await transition;
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.recording).toBe(false);
+  });
+
+  it("keeps queued wake and server voice-control events inert while gated", () => {
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    const { result } = renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(false);
+
+    act(() => {
+      wakeListenMock.onOpen?.();
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(result.current.isOpen).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+  });
+
+  it("does not restore persisted always-on after auth gates during permission probe", async () => {
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "always-on",
+    );
+    let resolvePermission: ((state: "granted") => void) | undefined;
+    micPermissionMock.query.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePermission = resolve;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useShellController());
+
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    act(() => rerender());
+    await act(async () => {
+      resolvePermission?.("granted");
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.isOpen).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 });

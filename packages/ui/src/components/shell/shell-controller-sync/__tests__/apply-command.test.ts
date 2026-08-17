@@ -9,6 +9,8 @@ describe("applyShellControllerCommand", () => {
     const c = makeFakeShellController();
     applyShellControllerCommand(c, { kind: "open" });
     expect(c.open).toHaveBeenCalledTimes(1);
+    applyShellControllerCommand(c, { kind: "requestSignIn" });
+    expect(c.requestSignIn).toHaveBeenCalledTimes(1);
 
     applyShellControllerCommand(c, {
       kind: "send",

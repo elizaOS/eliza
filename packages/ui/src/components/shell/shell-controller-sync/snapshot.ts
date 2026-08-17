@@ -14,6 +14,7 @@
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
 import type { HomeModelStatus } from "../../../services/local-inference/home-model-status";
 import type { MicrophonePermissionState } from "../../../voice/local-asr-capture";
+import type { ShellAuthGate } from "../shell-auth-gate";
 import {
   isShellPhase,
   type ShellMessage,
@@ -32,6 +33,8 @@ export interface ShellConversationNavSnapshot {
 
 export interface ShellControllerSnapshot {
   phase: ShellPhase;
+  authGate: ShellAuthGate;
+  signingIn: boolean;
   responding: boolean;
   turnStatus: ChatTurnStatus | null;
   messages: readonly ShellMessage[];
@@ -70,8 +73,18 @@ export function parseShellControllerSnapshot(
   const nav = value.conversationNav;
   const model = value.modelStatus;
   const messages = value.messages;
+  const authGate = value.authGate;
   if (
     !isShellPhase(phase) ||
+    !isRecord(authGate) ||
+    typeof authGate.gated !== "boolean" ||
+    !(
+      authGate.phase === "checking" ||
+      authGate.phase === "needs-auth" ||
+      authGate.phase === "clear"
+    ) ||
+    authGate.gated !== (authGate.phase !== "clear") ||
+    typeof value.signingIn !== "boolean" ||
     typeof value.responding !== "boolean" ||
     (value.turnStatus !== null && !isRecord(value.turnStatus)) ||
     !Array.isArray(messages) ||
@@ -127,6 +140,8 @@ export function deriveShellControllerSnapshot(
 ): ShellControllerSnapshot {
   return {
     phase: controller.phase,
+    authGate: controller.authGate,
+    signingIn: controller.signingIn,
     responding: controller.responding,
     turnStatus: controller.turnStatus,
     messages: controller.messages,
@@ -197,6 +212,9 @@ export function snapshotsEqual(
 ): boolean {
   return (
     a.phase === b.phase &&
+    a.authGate.gated === b.authGate.gated &&
+    a.authGate.phase === b.authGate.phase &&
+    a.signingIn === b.signingIn &&
     a.responding === b.responding &&
     a.turnStatus === b.turnStatus &&
     a.messages === b.messages &&

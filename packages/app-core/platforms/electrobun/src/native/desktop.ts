@@ -377,6 +377,7 @@ export class DesktopManager {
   private bottomBarWorkArea: ScreenWorkArea | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
   private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
+  private bottomBarFrameDirty = false;
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -1542,14 +1543,18 @@ X-GNOME-Autostart-enabled=true
     expanded: boolean;
     chip?: boolean;
   }): Promise<void> {
+    // Record desired presentation before consulting transient native state. A
+    // missing window/display must not lose a 96↔240↔600 transition.
+    this.bottomBarSize = resolveBottomBarFrameSize(options);
+    this.bottomBarFrameDirty = true;
     if (!this.bottomBarReanchorEnabled) return;
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    this.bottomBarSize = resolveBottomBarFrameSize(options);
     const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;
+    this.bottomBarFrameDirty = false;
   }
 
   private readPrimaryWorkArea(): ScreenWorkArea | null {
@@ -1576,14 +1581,24 @@ X-GNOME-Autostart-enabled=true
     const nextWorkArea = this.readPrimaryWorkArea();
     if (!nextWorkArea) return;
     if (
+      !this.bottomBarFrameDirty &&
       this.bottomBarWorkArea &&
       !shouldReanchorBottomBar(this.bottomBarWorkArea, nextWorkArea)
     ) {
       return;
     }
     const frame = computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
-    this.bottomBarWorkArea = nextWorkArea;
+    try {
+      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.bottomBarWorkArea = nextWorkArea;
+      this.bottomBarFrameDirty = false;
+    } catch (err) {
+      // error-policy:J1 The periodic native callback keeps the desired frame
+      // dirty for its next bounded retry instead of crashing the timer loop.
+      logger.warn(
+        `[Desktop] bottom-bar frame retry failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private _startFocusPoller(): void {
