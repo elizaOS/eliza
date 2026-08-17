@@ -36,7 +36,7 @@ const RESTORE_RESPONSE_MAX_CHARS = 4_000;
 function truncateRestoreResponse(text: string): string {
   return text.length <= RESTORE_RESPONSE_MAX_CHARS
     ? text
-    : `${text.slice(0, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
+    : `${text.slice(0, RESTORE_RESPONSE_MAX_CHARS - 35)}\n\n[truncated restored form summary]`;
 }
 
 async function handleRestore(
