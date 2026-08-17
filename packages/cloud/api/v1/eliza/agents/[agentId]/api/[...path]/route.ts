@@ -15,6 +15,7 @@
  * this adapter.
  */
 import { type Context, Hono } from "hono";
+import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@/lib/mobile-push/types";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   coordinateSharedPushList,
@@ -49,7 +50,6 @@ import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
-const MAX_PUSH_TOKEN_CHARACTERS = 4_096;
 
 const app = new Hono<AppEnv>();
 
@@ -329,7 +329,7 @@ app.post("/", async (c) => {
     if (
       platform !== "ios" ||
       !token ||
-      token.length > MAX_PUSH_TOKEN_CHARACTERS
+      token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS
     ) {
       return json(
         c,
@@ -427,7 +427,7 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
     }
     if (token !== null) {
       if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
-      if (!token || token.length > MAX_PUSH_TOKEN_CHARACTERS)
+      if (!token || token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS)
         return json(
           c,
           { success: false, error: "Invalid mobile push token" },

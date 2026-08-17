@@ -10,10 +10,11 @@ import {
   CloudApnsProvider,
   resolveCloudApnsConfig,
 } from "@/lib/mobile-push/apns-provider";
-import type {
-  MobilePushMessage,
-  MobilePushPlatform,
-  MobilePushTokenRecord,
+import {
+  MAX_MOBILE_PUSH_TOKEN_CHARACTERS,
+  type MobilePushMessage,
+  type MobilePushPlatform,
+  type MobilePushTokenRecord,
 } from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
@@ -1057,7 +1058,11 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "push-register") {
       const token = payload.token?.trim();
-      if (payload.platform !== "ios" || !token || token.length > 4096) {
+      if (
+        payload.platform !== "ios" ||
+        !token ||
+        token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS
+      ) {
         return Response.json(
           { success: false, error: "Invalid mobile push registration" },
           { status: 400 },
@@ -1068,7 +1073,7 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "push-unregister") {
       const token = payload.token?.trim();
-      if (!token) {
+      if (!token || token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS) {
         return Response.json(
           { success: false, error: "Invalid mobile push token" },
           { status: 400 },

@@ -426,6 +426,48 @@ test("mobile push registration is durable, idempotent, iOS-only, and removable",
   expect(data.has("mobile-push-tokens")).toBe(false);
 });
 
+test("mobile push register and unregister share exact 4096-character boundaries", async () => {
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const maximumToken = "x".repeat(4_096);
+  const oversizedToken = "x".repeat(4_097);
+
+  const maximumRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: maximumToken,
+  });
+  expect(maximumRegistration.status).toBe(201);
+  await maximumRegistration.arrayBuffer();
+
+  const oversizedRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: oversizedToken,
+  });
+  expect(oversizedRegistration.status).toBe(400);
+  await oversizedRegistration.arrayBuffer();
+
+  const maximumUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: maximumToken,
+  });
+  expect(maximumUnregister.status).toBe(200);
+  expect((await maximumUnregister.json()) as unknown).toEqual({
+    removed: true,
+  });
+
+  const oversizedUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: oversizedToken,
+  });
+  expect(oversizedUnregister.status).toBe(400);
+  await oversizedUnregister.arrayBuffer();
+});
+
 test("notification dispatch sends iOS tokens and removes APNs-dead records", async () => {
   const data = new Map<string, unknown>();
   const background: Promise<unknown>[] = [];

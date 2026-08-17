@@ -194,6 +194,32 @@ test("rejects a token above the durable registration limit", async () => {
   expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
 });
 
+test("accepts exact-limit registration and body revocation", async () => {
+  const token = "x".repeat(4_096);
+  const registration = await request("notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform: "ios", token }),
+  });
+  expect(registration.status).toBe(201);
+  expect(coordinateSharedPushRegister).toHaveBeenCalledWith(
+    agentId,
+    { platform: "ios", token },
+    expect.anything(),
+  );
+
+  coordinateSharedPushUnregister.mockResolvedValueOnce(true);
+  const revocation = await request("notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token }),
+  });
+  expect(revocation.status).toBe(200);
+  expect(coordinateSharedPushUnregister).toHaveBeenCalledWith(
+    agentId,
+    token,
+    expect.anything(),
+  );
+});
+
 test("rejects body revocation above the durable token limit", async () => {
   const response = await request("notifications/push-tokens", {
     method: "DELETE",

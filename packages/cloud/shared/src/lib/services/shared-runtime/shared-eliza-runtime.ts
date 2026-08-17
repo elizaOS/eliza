@@ -485,9 +485,13 @@ async function executeSharedElizaRuntimeTurn(
   try {
     await runtime.initialize({ skipMigrations: true });
     const pushDispatches: Promise<void>[] = [];
-    const eventBus = runtime.getService(ServiceType.AGENT_EVENT);
-    const notificationService = runtime.getService(ServiceType.NOTIFICATION);
     const mobilePushDispatch = input.execution?.mobilePush?.dispatch;
+    const [eventBus, notificationService] = mobilePushDispatch
+      ? await Promise.all([
+          runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT),
+          runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+        ])
+      : [runtime.getService(ServiceType.AGENT_EVENT), runtime.getService(ServiceType.NOTIFICATION)];
     if (mobilePushDispatch && (!isSharedNotificationEventBus(eventBus) || !notificationService)) {
       throw new Error(
         "Eliza Shared runtime initialized mobile push without canonical notification services",

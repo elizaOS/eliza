@@ -2,6 +2,9 @@
 
 export type MobilePushPlatform = "ios" | "android";
 
+/** Maximum normalized token length accepted by every Cloud push authority boundary. */
+export const MAX_MOBILE_PUSH_TOKEN_CHARACTERS = 4_096;
+
 export interface MobilePushTokenRecord {
   token: string;
   platform: MobilePushPlatform;
