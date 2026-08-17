@@ -68,15 +68,12 @@ describe("GET /api/admin/redemptions status identity", () => {
     expect(listForAdmin).toHaveBeenCalledWith(["pending"], 50);
   });
 
-  test.each([...ALL_STATUSES])(
-    "status=%s lists that queue",
-    async (status) => {
-      const response = await listRedemptions(`?status=${status}`);
+  test.each([...ALL_STATUSES])("status=%s lists that queue", async (status) => {
+    const response = await listRedemptions(`?status=${status}`);
 
-      expect(response.status).toBe(200);
-      expect(listForAdmin).toHaveBeenCalledWith([status], 50);
-    },
-  );
+    expect(response.status).toBe(200);
+    expect(listForAdmin).toHaveBeenCalledWith([status], 50);
+  });
 
   test("status=all lists every known queue", async () => {
     const response = await listRedemptions("?status=all");

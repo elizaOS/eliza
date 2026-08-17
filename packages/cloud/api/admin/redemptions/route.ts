@@ -44,9 +44,7 @@ function parseAdminRedemptionStatusFilter(
   const statusFilter = raw || "pending";
   if (statusFilter === "all") return ADMIN_REDEMPTION_STATUSES;
   if (statusFilter === "review") return ["pending"];
-  if (
-    (ADMIN_REDEMPTION_STATUSES as readonly string[]).includes(statusFilter)
-  ) {
+  if ((ADMIN_REDEMPTION_STATUSES as readonly string[]).includes(statusFilter)) {
     return [statusFilter as TokenRedemptionStatus];
   }
   return null;
