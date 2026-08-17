@@ -46,8 +46,7 @@ import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
   computeBottomBarFrame,
-  EXPANDED_BOTTOM_BAR_HEIGHT,
-  EXPANDED_BOTTOM_BAR_WIDTH,
+  resolveBottomBarFrameSize,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -377,6 +376,7 @@ export class DesktopManager {
   private bottomBarReanchorEnabled = false;
   private bottomBarWorkArea: ScreenWorkArea | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
+  private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -1538,15 +1538,16 @@ X-GNOME-Autostart-enabled=true
   }
 
   /** Expand/collapse the managed chat window without losing its bottom anchor. */
-  async setBottomBarExpanded(options: { expanded: boolean }): Promise<void> {
+  async setBottomBarExpanded(options: {
+    expanded: boolean;
+    chip?: boolean;
+  }): Promise<void> {
     if (!this.bottomBarReanchorEnabled) return;
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    const frame = computeBottomBarFrame(workArea, {
-      width: options.expanded ? EXPANDED_BOTTOM_BAR_WIDTH : undefined,
-      height: options.expanded ? EXPANDED_BOTTOM_BAR_HEIGHT : undefined,
-    });
+    this.bottomBarSize = resolveBottomBarFrameSize(options);
+    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;
   }
@@ -1580,7 +1581,7 @@ X-GNOME-Autostart-enabled=true
     ) {
       return;
     }
-    const frame = computeBottomBarFrame(nextWorkArea);
+    const frame = computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = nextWorkArea;
   }

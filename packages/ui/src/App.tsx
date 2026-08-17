@@ -1802,6 +1802,7 @@ function ShellFoundationMount() {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
+  const shellNeedsAuth = controller?.phase === "needs-auth";
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1830,6 +1831,10 @@ function ShellFoundationMount() {
     const onToggle = () => {
       const shell = controllerRef.current;
       if (!shell) return;
+      if (shell.authGate.gated) {
+        shell.requestSignIn();
+        return;
+      }
       if (shell.recording) {
         playCaptureSendCue();
         shell.stopRecording();
@@ -1859,6 +1864,10 @@ function ShellFoundationMount() {
       if (!detail || typeof detail.held !== "boolean") return;
       if (detail.held) {
         if (fnHoldActiveRef.current || shell.recording) return;
+        if (shell.authGate.gated) {
+          shell.requestSignIn();
+          return;
+        }
         fnHoldActiveRef.current = true;
         playCaptureStartCue();
         shell.startRecording("ptt");
@@ -1886,7 +1895,7 @@ function ShellFoundationMount() {
       await invokeDesktopBridgeRequestWithTimeout<undefined>({
         rpcMethod: "desktopSetBottomBarExpanded",
         ipcChannel: "desktop:setBottomBarExpanded",
-        params: { expanded: shellIsOpen },
+        params: { expanded: shellIsOpen, chip: shellNeedsAuth },
         timeoutMs: 1_000,
       });
     })();
@@ -1894,7 +1903,7 @@ function ShellFoundationMount() {
     return () => {
       cancelled = true;
     };
-  }, [hasController, shellIsOpen]);
+  }, [hasController, shellIsOpen, shellNeedsAuth]);
   if (!controller) return null;
 
   return (
@@ -1902,15 +1911,21 @@ function ShellFoundationMount() {
       <HomePill
         phase={controller.phase}
         speaking={controller.speaking}
+        signingIn={controller.signingIn}
         onOpen={controller.open}
         onClose={controller.close}
         onHoldStart={() => {
+          if (controller.authGate.gated) {
+            controller.requestSignIn();
+            return;
+          }
           // Audible mic-open ping BEFORE capture spins up: the cue is the
           // "start talking" signal, so it must not wait on getUserMedia.
           playCaptureStartCue();
           controller.startRecording("ptt");
         }}
         onHoldEnd={() => {
+          if (controller.authGate.gated) return;
           playCaptureSendCue();
           controller.stopRecording();
         }}

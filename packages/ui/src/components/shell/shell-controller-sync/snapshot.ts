@@ -14,7 +14,11 @@
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
 import type { HomeModelStatus } from "../../../services/local-inference/home-model-status";
 import type { MicrophonePermissionState } from "../../../voice/local-asr-capture";
-import type { ShellMessage, ShellPhase } from "../shell-state";
+import {
+  isShellPhase,
+  type ShellMessage,
+  type ShellPhase,
+} from "../shell-state";
 import type { ShellController } from "../useShellController";
 
 /** The subset of {@link import("../conversation-nav").ConversationNav} that is
@@ -67,14 +71,7 @@ export function parseShellControllerSnapshot(
   const model = value.modelStatus;
   const messages = value.messages;
   if (
-    !(
-      phase === "booting" ||
-      phase === "idle" ||
-      phase === "summoned" ||
-      phase === "listening" ||
-      phase === "processing" ||
-      phase === "responding"
-    ) ||
+    !isShellPhase(phase) ||
     typeof value.responding !== "boolean" ||
     (value.turnStatus !== null && !isRecord(value.turnStatus)) ||
     !Array.isArray(messages) ||

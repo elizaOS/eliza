@@ -112,6 +112,7 @@ const appMock = vi.hoisted(() => ({
     uiLanguage: "en",
     elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
+    handleInteractiveCloudLogin: vi.fn(async () => {}),
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
@@ -303,8 +304,24 @@ vi.mock("../../../voice/useWakeListenWindow", () => ({
   },
 }));
 
+const authGateMock = vi.hoisted(() => ({
+  value: {
+    gated: false,
+    phase: "clear" as "checking" | "needs-auth" | "clear",
+  },
+}));
+
+vi.mock("../useShellAuthGate", () => ({
+  useShellAuthGate: () => authGateMock.value,
+}));
+
+vi.mock("../../../state/cloud-login-launch", () => ({
+  claimCloudLoginWindow: vi.fn(() => null),
+}));
+
 afterEach(() => {
   cleanup();
+  authGateMock.value = { gated: false, phase: "clear" };
   appMock.value.startupCoordinator.phase = "ready";
   appMock.value.activeConversationId = null;
   appMock.value.conversationMessages = [];
@@ -2458,6 +2475,142 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       });
     } finally {
       window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    }
+  });
+});
+
+describe("useShellController cloud-only auth gate", () => {
+  it("stays booting while the auth probe is checking, even when the proxy is ready", () => {
+    authGateMock.value = { gated: true, phase: "checking" };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.phase).toBe("booting");
+    expect(result.current.authGate.gated).toBe(true);
+  });
+
+  it("surfaces needs-auth and routes open + startRecording to sign-in", () => {
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.phase).toBe("needs-auth");
+
+    act(() => {
+      result.current.open();
+      result.current.startRecording("ptt");
+    });
+
+    expect(result.current.isOpen).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(login).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not launch sign-in from a checking probe", () => {
+    authGateMock.value = { gated: true, phase: "checking" };
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => {
+      result.current.requestSignIn();
+    });
+
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it("sign-out is terminal for hands-free: no auto re-listen after re-login", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      const { result, rerender } = renderHook(() => useShellController());
+
+      // Engage the batch hands-free loop while signed in.
+      await act(async () => {
+        result.current.toggleHandsFree();
+      });
+      expect(result.current.handsFree).toBe(true);
+      expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+      // Session expires mid-conversation: the gate must tear down hands-free
+      // (state + persisted mode), not just the in-flight capture.
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+      act(() => rerender());
+      expect(result.current.handsFree).toBe(false);
+      expect(result.current.recording).toBe(false);
+      expect(
+        window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+      ).not.toBe("always-on");
+
+      // Re-login clears the gate. The re-listen loop and the boot auto-engage
+      // must both stay quiet — reopening the mic requires a fresh gesture.
+      createVoiceCaptureMock.mockClear();
+      authGateMock.value = { gated: false, phase: "clear" };
+      act(() => rerender());
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+      expect(result.current.handsFree).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("always-on boot restore aborts when the gate closes during the permission probe", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      // A persisted always-on session from a previous signed-in run.
+      window.localStorage.setItem(
+        "eliza:voice:continuous-chat-mode",
+        "always-on",
+      );
+
+      // Mount signed-in: the boot restore arms and awaits the async
+      // permission probe.
+      const { result, rerender } = renderHook(() => useShellController());
+
+      // The probe races a sign-out: the gate closes before it resolves.
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+      act(() => rerender());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // The continuation must not light hands-free, summon the overlay, or
+      // open a capture against the closed gate.
+      expect(result.current.handsFree).toBe(false);
+      expect(result.current.isOpen).toBe(false);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("always-on boot restore never arms while signed out", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      window.localStorage.setItem(
+        "eliza:voice:continuous-chat-mode",
+        "always-on",
+      );
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+
+      const { result } = renderHook(() => useShellController());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.handsFree).toBe(false);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

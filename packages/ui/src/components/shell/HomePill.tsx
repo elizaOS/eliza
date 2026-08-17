@@ -10,6 +10,9 @@
  * nothing for the user to remember or un-stick. Cancel affordances: Escape
  * mid-hold, or sliding the pointer more than {@link SLIDE_CANCEL_PX} off the
  * pill before releasing.
+ *
+ * On a cloud-only build the `needs-auth` phase replaces both gestures with a
+ * labeled chip that launches Cloud sign-in. Hold is not armed there.
  */
 import * as React from "react";
 
@@ -34,6 +37,9 @@ export interface HomePillProps {
   /** True while the assistant reply is being spoken aloud. Sharpens the
    *  responding glow so "speaking" and "thinking" read differently. */
   speaking?: boolean;
+  /** True while Cloud sign-in is in flight from this pill. Pulses the
+   *  `needs-auth` chip so the wait is visible. */
+  signingIn?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -80,6 +86,7 @@ const PROCESS_DOTS = [
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
  *   booting     — dim pulsing handle ("waking up").
+ *   needs-auth  — dark labeled chip ("Sign in to {appName}").
  *   idle        — solid white handle ("here, ready").
  *   listening   — dark chip, live waveform bars ("mic is hot").
  *   processing  — dark chip, pulsing dots — mic closed,
@@ -97,8 +104,10 @@ export function HomePill({
   onHoldEnd,
   onHoldCancel,
   speaking = false,
+  signingIn = false,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
+  const needsAuth = phase === "needs-auth";
   // The pill reads as "open" (its click will close) only for the overlay
   // surfaces. `listening` is deliberately NOT included: hold-to-talk runs with
   // the overlay closed, and treating it as open would flash the label/pressed
@@ -125,6 +134,7 @@ export function HomePill({
 
   const handlePointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (needsAuth) return;
       if (!onHoldStartRef.current) return;
       // Primary button/touch only; a right-click must not open the mic.
       if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -148,7 +158,7 @@ export function HomePill({
         onHoldStartRef.current?.();
       }, HOLD_THRESHOLD_MS);
     },
-    [clearHoldTimer],
+    [clearHoldTimer, needsAuth],
   );
 
   const handlePointerUp = React.useCallback(
@@ -205,9 +215,12 @@ export function HomePill({
     else onOpen();
   }, [isOpen, onOpen, onClose]);
 
-  const chipExpanded = phase === "listening" || phase === "processing";
-  const label =
-    phase === "listening"
+  const signInLabel = `Sign in to ${appName}`;
+  const chipExpanded =
+    phase === "listening" || phase === "processing" || needsAuth;
+  const label = needsAuth
+    ? signInLabel
+    : phase === "listening"
       ? `${appName} is listening — release to send`
       : phase === "processing"
         ? `${appName} is transcribing your words`
@@ -231,7 +244,8 @@ export function HomePill({
       onPointerCancel={handlePointerCancel}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative mb-2 flex h-8 w-16 items-center justify-center rounded-full bg-transparent p-0",
+        "group pointer-events-auto relative mb-2 flex h-8 items-center justify-center rounded-full bg-transparent p-0",
+        needsAuth ? "w-[13rem]" : "w-16",
         "transition-transform duration-200 hover:bg-transparent active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
@@ -242,15 +256,14 @@ export function HomePill({
         className={cn(
           "flex items-center justify-center rounded-full",
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
-          // Listening/processing mirror the studied Wispr Flow bar: the capsule
-          // GROWS into a dark rounded chip — legible from across the room.
-          // Listening carries live bars; processing keeps the dark chip
-          // (continuity: "still your utterance") but swaps the bars for
-          // pulsing dots — the mic is CLOSED. Other phases stay the slim
-          // white handle.
-          chipExpanded
-            ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
-            : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
+          // Listening/processing/needs-auth grow the capsule into a dark chip.
+          // Listening carries live bars; processing swaps them for dots;
+          // needs-auth fills the chip with the sign-in label.
+          needsAuth
+            ? "h-7 min-w-[11.5rem] px-3 bg-neutral-900/95"
+            : chipExpanded
+              ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
+              : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
           chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
             (phase === "responding"
@@ -260,13 +273,21 @@ export function HomePill({
                   "shadow-[0_0_14px_rgba(255,138,42,0.85),0_0_0_1px_rgba(255,138,42,0.5)]"
                 : "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
               : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"),
-          phase === "booting" &&
+          (phase === "booting" || (needsAuth && signingIn)) &&
             "animate-pulse opacity-65 motion-reduce:animate-none",
           phase === "responding" &&
             !speaking &&
             "animate-pulse opacity-90 motion-reduce:animate-none",
         )}
       >
+        {needsAuth && (
+          <span
+            data-testid="shell-home-pill-sign-in"
+            className="whitespace-nowrap text-[11px] font-medium tracking-tight text-white/95"
+          >
+            {signInLabel}
+          </span>
+        )}
         {phase === "listening" &&
           WAVE_BARS.map((bar) => (
             <span
