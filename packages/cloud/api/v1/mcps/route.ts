@@ -64,6 +64,43 @@ const createMcpSchema = z.object({
   color: z.string().max(10).optional(),
 });
 
+const DEFAULT_MCPS_LIST_LIMIT = 50;
+const MAX_MCPS_LIST_LIMIT = 100;
+
+class McpsListLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "McpsListLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/mcps `limit` is user-MCP catalog page size identity,
+ * leftover tax after plugin-mcp marketplace / cloud MCP search.
+ * Stock develop used z.coerce.number(), which treated `1e2` / `007` /
+ * `0x10` as a page size instead of a 400. offset / category / search /
+ * status / scope stay untouched. Missing / empty still means 50.
+ * Exact integers clamp at 100.
+ */
+function parseMcpsListLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new McpsListLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_MCPS_LIST_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new McpsListLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new McpsListLimitError();
+  }
+  return Math.min(parsed, MAX_MCPS_LIST_LIMIT);
+}
+
 const listMcpsSchema = z.object({
   category: z.string().max(30).optional(),
   search: z.string().max(100).optional(),
@@ -71,7 +108,6 @@ const listMcpsSchema = z.object({
     .enum(["draft", "pending_review", "live", "suspended", "deprecated"])
     .optional(),
   scope: z.enum(["own", "public", "all"]).optional().default("own"),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
 
@@ -168,7 +204,18 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const params = Object.fromEntries(new URL(c.req.url).searchParams);
+    const searchParams = new URL(c.req.url).searchParams;
+    let limit: number;
+    try {
+      limit = parseMcpsListLimitQuery(searchParams);
+    } catch (limitError) {
+      if (limitError instanceof McpsListLimitError) {
+        return c.json({ error: limitError.message }, 400);
+      }
+      throw limitError;
+    }
+    const params = Object.fromEntries(searchParams);
+    delete params.limit;
     const validation = listMcpsSchema.safeParse(params);
 
     if (!validation.success) {
@@ -184,7 +231,7 @@ app.get("/", async (c) => {
       );
     }
 
-    const { category, search, status, scope, limit, offset } = validation.data;
+    const { category, search, status, scope, offset } = validation.data;
 
     // Public (foreign) MCPs are redacted — no raw external_endpoint (metered-proxy
     // bypass) and no created_by_user_id (cross-org user identity). The caller's
