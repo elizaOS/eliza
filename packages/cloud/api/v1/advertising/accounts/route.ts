@@ -20,7 +20,41 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const platform = c.req.query("platform") as AdPlatform | null;
+    // Ad-account catalog identity, not leftover tax on advertising
+    // campaign list filters (campaigns.platform/status) or
+    // promote-assets platform (Twitter card sizes). The prior
+    // `as AdPlatform` cast passed META / facebook / foo into
+    // eq(adAccounts.platform), so operators asking for Meta received
+    // an empty account catalog. Missing / empty still means
+    // unfiltered. Garbage 400s before listAccounts.
+    const AD_PLATFORMS = [
+      "meta",
+      "google",
+      "tiktok",
+      "snap",
+      "x-twitter",
+      "reddit",
+      "linkedin",
+      "programmatic-dsp",
+    ] as const;
+    const requestedPlatform = c.req.query("platform");
+    if (
+      requestedPlatform != null &&
+      requestedPlatform !== "" &&
+      !AD_PLATFORMS.includes(
+        requestedPlatform as (typeof AD_PLATFORMS)[number],
+      )
+    ) {
+      return c.json(
+        {
+          error: "invalid_platform",
+          message:
+            'platform must be "meta", "google", "tiktok", "snap", "x-twitter", "reddit", "linkedin", or "programmatic-dsp".',
+        },
+        400,
+      );
+    }
+    const platform = (requestedPlatform || undefined) as AdPlatform | undefined;
 
     const accounts = await advertisingService.listAccounts(
       user.organization_id,
