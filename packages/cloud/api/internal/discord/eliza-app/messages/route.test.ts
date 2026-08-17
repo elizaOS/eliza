@@ -2,6 +2,36 @@
 
 import { expect, mock, test } from "bun:test";
 
+mock.module("@/lib/api/cloud-worker-errors", () => ({
+  failureResponse: () => Response.json({ success: false }, { status: 500 }),
+}));
+mock.module("@/lib/services/agent-gateway-router", () => ({
+  agentGatewayRouterService: {
+    routeDiscordMessage: mock(async () => ({
+      handled: false,
+      reason: "not_linked",
+    })),
+  },
+}));
+mock.module("@/lib/services/managed-discord-guild-voice", () => ({
+  authorizeManagedDiscordGuildVoice: mock(async () => ({ allowed: false })),
+  runManagedDiscordGuildTextTurn: mock(async () => ({ replyText: "" })),
+}));
+mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
+  resolveSharedRuntimeWorkerRequestContext: mock(() => ({
+    error: "unused",
+    code: "service_unavailable",
+    retryable: true,
+    status: 503,
+  })),
+}));
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: mock(() => undefined) },
+}));
+mock.module("../../../_auth", () => ({
+  requireInternalAuth: mock(async () => ({ service: "discord-gateway" })),
+}));
+
 const personalSharedRequest = mock(
   async () =>
     new Response(

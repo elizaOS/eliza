@@ -91,6 +91,12 @@ project/environment/service ids and public URL, materializes the tracked
 service manifest byte-for-byte at the root config path Railway expects, and
 waits for that exact deployment id before proving its applied manifest and
 active identity around live health and canonical fallback checks.
+The successful run publishes a source/environment/deployment-id receipt for
+the protected Telegram edge cutover, which verifies the receipt against the
+currently active Railway service before and after mutation under the same
+per-environment concurrency key. Protected-environment authorization completes
+before either workflow enters that shared Cloudflare/gateway mutation lock, so
+a waiting approval cannot block releases.
 It then proves the dedicated headerless `/ready/forwarder-auth/eliza-app`
 contract returns the exact enforced-gate 401 and reasserts the exact active
 deployment. The route returns distinct non-401 states when the secret is
