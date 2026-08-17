@@ -21,6 +21,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, lstat, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   ElizaError,
   getTrajectoryContext,
@@ -53,6 +54,8 @@ import { assignAgentName } from "./agent-name-assignment.js";
 import {
   CHILD_TRAJECTORY_USAGE_METADATA_KEY,
   ChildTrajectoryReadError,
+  type ChildTrajectoryUsageExpectation,
+  type ChildTrajectoryUsageSummary,
   childTrajectoryUsageAsRecordedTrajectory,
   isControlledChildTrajectoryPath,
   parseChildTrajectoryUsageSummary,
@@ -327,6 +330,58 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
 /** Cap on child trajectories ingested per task_complete (#13775) so a runaway
  *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
 const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
+
+/** A task_complete event and the recorder's atomic final flush are separate
+ * async paths. Retry a file that is still `running` or changed during a safe
+ * read, in parallel across the capped file set, so the first artifact attach
+ * does not permanently win the path-dedupe race without measured usage. */
+const CHILD_TRAJECTORY_READ_RETRY_DELAYS_MS = [0, 25, 75, 150, 300, 600];
+
+function trajectoryStillRunning(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).status === "running"
+  );
+}
+
+async function readChildTrajectoryUsageWithRetry(
+  root: string,
+  path: string,
+  expected: ChildTrajectoryUsageExpectation,
+): Promise<{
+  summary: ChildTrajectoryUsageSummary | null;
+  error?: unknown;
+}> {
+  let lastError: unknown;
+  for (const waitMs of CHILD_TRAJECTORY_READ_RETRY_DELAYS_MS) {
+    if (waitMs > 0) await delay(waitMs);
+    try {
+      const raw = await readControlledChildTrajectoryJson(root, path);
+      const summary = summarizeChildTrajectoryUsage(raw, expected);
+      if (summary) return { summary };
+      if (!trajectoryStillRunning(raw)) {
+        return {
+          summary: null,
+          error: new Error(
+            "Trajectory artifact failed correlation or usage validation.",
+          ),
+        };
+      }
+      lastError = new Error("Trajectory artifact is still running.");
+    } catch (error) {
+      lastError = error;
+      if (
+        error instanceof ChildTrajectoryReadError &&
+        error.reason === "untrusted_path"
+      ) {
+        break;
+      }
+    }
+  }
+  return { summary: null, ...(lastError ? { error: lastError } : {}) };
+}
 
 /** Default retention window for per-task child-trajectory dirs under the state
  *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
@@ -2596,22 +2651,79 @@ export class OrchestratorTaskService extends Service {
           usage.sessionId === sessionId &&
           !usage.sourceEventId?.startsWith("trajectory:"),
       );
-    const ingested: string[] = [];
-    for (const { path } of capped) {
-      // The recorder names files `<trajectoryId>.json`.
-      const trajectoryId = basename(path, ".json");
-      let usageSummary: ReturnType<typeof summarizeChildTrajectoryUsage> = null;
-      try {
-        const raw = await readControlledChildTrajectoryJson(dir, path);
-        usageSummary = summarizeChildTrajectoryUsage(raw, {
+    const prepared = await Promise.all(
+      capped.map(async ({ path }) => {
+        const trajectoryId = basename(path, ".json");
+        const result = await readChildTrajectoryUsageWithRetry(dir, path, {
           trajectoryId,
           taskId,
           sessionId,
           fallbackProvider:
             session?.providerSource ?? session?.framework ?? "unknown",
           ...(session?.model ? { fallbackModel: session.model } : {}),
+          ...(session?.workdir ? { workdir: session.workdir } : {}),
         });
+        return { path, trajectoryId, ...result };
+      }),
+    );
+    const trajectoryChangedFiles = [
+      ...new Set(
+        prepared.flatMap(({ summary }) => summary?.changedFiles ?? []),
+      ),
+    ];
+    if (session && trajectoryChangedFiles.length > 0) {
+      try {
+        const baseline = str(session.metadata?.codingBaselineSha);
+        const baselineDirty = Array.isArray(
+          session.metadata?.codingBaselineDirty,
+        )
+          ? session.metadata.codingBaselineDirty.filter(
+              (path): path is string => typeof path === "string",
+            )
+          : [];
+        const changeSet = await captureChangeSet(
+          session.workdir,
+          baseline,
+          [
+            ...(this.acp()?.getChangedPaths(sessionId) ?? []),
+            ...trajectoryChangedFiles,
+          ],
+          baselineDirty,
+        );
+        if (changeSet) {
+          const latest = (await this.store.findSession(sessionId, taskId))
+            ?.session;
+          if (latest) {
+            await this.store.updateSession(
+              sessionId,
+              {
+                metadata: {
+                  ...(latest.metadata ?? {}),
+                  lastChangeSet: changeSet,
+                },
+              },
+              taskId,
+            );
+          }
+        }
       } catch (error) {
+        // error-policy:J7 the deterministic residual gate remains fail-closed
+        // when executor-path mirroring fails; usage/artifact ingest continues.
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.mirrorChildTrajectoryChangeSet",
+          error,
+          { taskId, sessionId },
+        );
+      }
+    }
+    const ingested: string[] = [];
+    for (const {
+      path,
+      trajectoryId,
+      summary: usageSummary,
+      error,
+    } of prepared) {
+      if (error) {
         // error-policy:J7 trajectory usage is observability. Attach the
         // artifact without a summary so trace usage reports it as partial, but
         // never let a malformed file block task completion.

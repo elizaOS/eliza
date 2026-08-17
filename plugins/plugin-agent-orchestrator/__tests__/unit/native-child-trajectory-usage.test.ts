@@ -107,6 +107,54 @@ function finishedNativeTrajectory(taskId: string, sessionId: string): object {
           costUsd: 0.05771275,
         },
       },
+      {
+        stageId: "file-write-1",
+        kind: "tool",
+        startedAt: 1,
+        endedAt: 1,
+        latencyMs: 0,
+        tool: {
+          name: "FILE",
+          args: {
+            action: "write",
+            target: "workspace",
+            file_path: "/tmp/native-usage/src/stats.mjs",
+          },
+          success: true,
+        },
+      },
+      {
+        stageId: "file-write-failed",
+        kind: "tool",
+        startedAt: 1,
+        endedAt: 1,
+        latencyMs: 0,
+        tool: {
+          name: "FILE",
+          args: {
+            action: "write",
+            target: "workspace",
+            file_path: "/tmp/native-usage/failed.tmp",
+          },
+          success: false,
+        },
+      },
+      {
+        stageId: "file-write-2",
+        kind: "tool",
+        startedAt: 1,
+        endedAt: 1,
+        latencyMs: 0,
+        tool: {
+          name: "FILE",
+          args: {
+            action: "write",
+            target: "workspace",
+            file_path: "/tmp/native-usage/test/stats.test.mjs",
+          },
+          success: true,
+        },
+      },
     ],
     metrics: {
       totalLatencyMs: 1,
@@ -117,8 +165,8 @@ function finishedNativeTrajectory(taskId: string, sessionId: string): object {
       totalReasoningTokens: 7,
       totalCostUsd: 0.05771275,
       plannerIterations: 1,
-      toolCallsExecuted: 0,
-      toolCallFailures: 0,
+      toolCallsExecuted: 3,
+      toolCallFailures: 1,
       toolSearchCount: 0,
       evaluatorFailures: 0,
       finalDecision: "FINISH",
@@ -207,10 +255,20 @@ describe("native child trajectory usage", () => {
       cacheTokens: 133_632,
       totalTokens: 160_624,
       costUsd: 0.05771275,
+      metadata: {
+        lastChangeSet: {
+          changedFiles: ["src/stats.mjs", "test/stats.test.mjs"],
+        },
+      },
     });
 
     const persisted = await store.getTask(taskId);
     const artifactMetadata = persisted?.artifacts[0]?.metadata;
+    expect(artifactMetadata).toMatchObject({
+      childTrajectoryUsageV1: {
+        changedFiles: ["src/stats.mjs", "test/stats.test.mjs"],
+      },
+    });
     expect(JSON.stringify(artifactMetadata)).not.toContain(
       "implement the task",
     );
@@ -238,6 +296,49 @@ describe("native child trajectory usage", () => {
     );
     expect(await ingest(service, taskId, sessionId)).toEqual([]);
     expect((await service.getUsage(taskId))?.totalTokens).toBe(160_624);
+  });
+
+  it("waits for the recorder's final flush instead of deduping a running snapshot forever", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedNativeSession(store);
+    const service = new OrchestratorTaskService(makeRuntime(), { store });
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, "tj-native.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...finishedNativeTrajectory(taskId, sessionId),
+        status: "running",
+      }),
+    );
+    const finalFlush = setTimeout(() => {
+      writeFileSync(
+        path,
+        JSON.stringify(finishedNativeTrajectory(taskId, sessionId)),
+      );
+    }, 40);
+
+    try {
+      expect(await ingest(service, taskId, sessionId)).toEqual(["tj-native"]);
+    } finally {
+      clearTimeout(finalFlush);
+    }
+    expect(await service.getUsage(taskId)).toMatchObject({
+      state: "measured",
+      inputTokens: 156_875,
+      outputTokens: 3_742,
+      costUsd: 0.05771275,
+    });
+    expect(
+      (await store.getTask(taskId))?.artifacts[0]?.metadata,
+    ).toHaveProperty("childTrajectoryUsageV1");
   });
 
   it("keeps ACP-origin usage authoritative when the adapter reports it", async () => {

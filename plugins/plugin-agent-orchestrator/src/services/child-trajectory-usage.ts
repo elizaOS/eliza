@@ -45,6 +45,9 @@ export interface ChildTrajectoryUsageSummary {
   plannerIterations: number;
   toolCallsExecuted: number;
   toolCallFailures: number;
+  /** Successful FILE write/edit paths, normalized relative to the session
+   * workdir. This is executor evidence only; prompts/tool content are omitted. */
+  changedFiles: string[];
   providerUsage: ChildTrajectoryProviderUsage[];
 }
 
@@ -54,6 +57,7 @@ export interface ChildTrajectoryUsageExpectation {
   sessionId: string;
   fallbackProvider: string;
   fallbackModel?: string;
+  workdir?: string;
 }
 
 export type ChildTrajectoryReadFailureReason = "untrusted_path" | "read_failed";
@@ -72,6 +76,8 @@ const MAX_CHILD_TRAJECTORY_BYTES = 32 * 1024 * 1024;
 const MAX_CHILD_TRAJECTORY_STAGES = 4_096;
 const MAX_CHILD_TRAJECTORY_PROVIDER_BUCKETS = 64;
 const MAX_USAGE_LABEL_CHARS = 256;
+const MAX_CHANGED_FILE_PATHS = 500;
+const MAX_CHANGED_FILE_PATH_CHARS = 4_096;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -109,6 +115,64 @@ function optionalCost(value: unknown): number | undefined {
 function costsMatch(left: number, right: number): boolean {
   const tolerance = Math.max(1e-12, Math.abs(left) * 1e-9);
   return Math.abs(left - right) <= tolerance;
+}
+
+function sanitizeRelativeChangedPath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed.length > MAX_CHANGED_FILE_PATH_CHARS ||
+    trimmed.includes("\0") ||
+    isAbsolute(trimmed)
+  ) {
+    return undefined;
+  }
+  const segments = trimmed.split(/[\\/]+/);
+  if (
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return undefined;
+  }
+  return segments.join("/");
+}
+
+function successfulFileMutations(
+  stages: readonly unknown[],
+  workdir: string | undefined,
+): string[] {
+  if (!workdir) return [];
+  const root = resolve(workdir);
+  const changed = new Set<string>();
+  for (const stage of stages) {
+    if (changed.size >= MAX_CHANGED_FILE_PATHS) break;
+    if (!isRecord(stage)) continue;
+    const tool = isRecord(stage.tool) ? stage.tool : undefined;
+    if (tool?.name !== "FILE" || tool.success !== true) continue;
+    const args = isRecord(tool.args) ? tool.args : undefined;
+    if (!args || (args.action !== "write" && args.action !== "edit")) continue;
+    if (args.target !== undefined && args.target !== "workspace") continue;
+    if (typeof args.file_path !== "string" || args.file_path.includes("\0")) {
+      continue;
+    }
+    const absolute = isAbsolute(args.file_path)
+      ? resolve(args.file_path)
+      : resolve(root, args.file_path);
+    const rel = relative(root, absolute);
+    const normalized = sanitizeRelativeChangedPath(rel);
+    if (normalized) changed.add(normalized);
+  }
+  return [...changed];
+}
+
+function persistedChangedFiles(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const changed = new Set<string>();
+  for (const path of value.slice(0, MAX_CHANGED_FILE_PATHS)) {
+    const normalized = sanitizeRelativeChangedPath(path);
+    if (normalized) changed.add(normalized);
+  }
+  return [...changed];
 }
 
 /**
@@ -273,6 +337,7 @@ export function summarizeChildTrajectoryUsage(
     plannerIterations,
     toolCallsExecuted,
     toolCallFailures,
+    changedFiles: successfulFileMutations(stages, expected.workdir),
     providerUsage,
   };
 }
@@ -323,7 +388,7 @@ export function parseChildTrajectoryUsageSummary(
   });
   if (stages.some((stage) => stage === null)) return null;
 
-  return summarizeChildTrajectoryUsage(
+  const summary = summarizeChildTrajectoryUsage(
     {
       trajectoryId,
       taskId,
@@ -347,6 +412,12 @@ export function parseChildTrajectoryUsageSummary(
     },
     { trajectoryId, taskId, sessionId, fallbackProvider },
   );
+  return summary
+    ? {
+        ...summary,
+        changedFiles: persistedChangedFiles(value.changedFiles),
+      }
+    : null;
 }
 
 /** Convert the sanitized projection into the metrics-only shape the core
@@ -460,7 +531,7 @@ export async function readControlledChildTrajectoryJson(
       const opened = await handle.stat();
       if (!sameFile(initial, opened)) {
         throw new ChildTrajectoryReadError(
-          "untrusted_path",
+          "read_failed",
           "Trajectory artifact changed before it could be opened safely.",
         );
       }
