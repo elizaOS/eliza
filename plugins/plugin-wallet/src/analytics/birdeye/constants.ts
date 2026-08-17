@@ -18,6 +18,8 @@ export const API_BASE_URL = "https://public-api.birdeye.so";
 
 export const RETRY_DELAY_MS = 2_000;
 
+export const DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS = 10_000;
+
 export const BIRDEYE_ENDPOINTS = {
   defi: {
     networks: "/defi/networks", // https://docs.birdeye.so/reference/get_defi-networks
