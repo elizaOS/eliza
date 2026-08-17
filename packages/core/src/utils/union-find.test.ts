@@ -22,6 +22,7 @@ describe("UnionFind", () => {
 	it("merges disjoint sets and reports connectivity accurately", () => {
 		const uf = new UnionFind<string>();
 		expect(uf.connected("a", "b")).toBe(false);
+		expect(uf.size).toBe(0);
 
 		uf.union("a", "b");
 		expect(uf.connected("a", "b")).toBe(true);
@@ -64,5 +65,6 @@ describe("UnionFind", () => {
 		uf.clear();
 		expect(uf.size).toBe(0);
 		expect(uf.has("x")).toBe(false);
+		expect(uf.groups()).toEqual(new Map());
 	});
 });

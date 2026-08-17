@@ -57,6 +57,9 @@ export class UnionFind<T> {
 
 	/** True if `left` and `right` belong to the same connected component. */
 	connected(left: T, right: T): boolean {
+		if (!this.has(left) || !this.has(right)) {
+			return false;
+		}
 		return this.find(left) === this.find(right);
 	}
 
