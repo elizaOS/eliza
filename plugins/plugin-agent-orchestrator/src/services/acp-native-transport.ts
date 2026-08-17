@@ -109,7 +109,7 @@ type TerminalRecord = {
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
   exitPromise: Promise<void>;
-  killTimer?: ReturnType<typeof setTimeout>;
+  terminationPromise?: Promise<void>;
 };
 
 const ACP_PROTOCOL_VERSION = 1;
@@ -130,7 +130,6 @@ const DEFAULT_TIMEOUT_MS = 300_000;
 const TERMINAL_OUTPUT_LIMIT = 512 * 1024;
 const AGENT_CLOSE_TERM_GRACE_MS = 1_500;
 const TERMINAL_KILL_GRACE_MS = 1_500;
-const TERMINAL_CLOSE_TIMEOUT_MS = 3_500;
 const JSONRPC_METHOD_NOT_FOUND = -32601;
 const JSONRPC_INVALID_PARAMS = -32602;
 const JSONRPC_INTERNAL_ERROR = -32603;
@@ -144,7 +143,10 @@ export class NativeAcpClient {
   private pending = new Map<JsonRpcId, PendingRequest>();
   private activePrompts = new Map<string, Promise<NativeAcpPromptResult>>();
   private terminals = new Map<string, TerminalRecord>();
+  private readonly closeController = new AbortController();
   private closed = false;
+  private closePromise?: Promise<void>;
+  private closingProc?: ChildProcessWithoutNullStreams;
 
   constructor(private readonly opts: NativeAcpClientOptions) {}
 
@@ -163,6 +165,12 @@ export class NativeAcpClient {
       cwd: this.opts.cwd,
       env: this.opts.env,
       stdio: ["pipe", "pipe", "pipe"],
+      // Give the adapter and every ordinary descendant one supervision unit.
+      // Cancellation can then terminate the whole process group instead of
+      // merely killing the JSON-RPC shim while its tools keep mutating files.
+      // Windows has no POSIX process groups; the direct-child fallback remains
+      // there until the transport gains a Job Object based supervisor.
+      detached: process.platform !== "win32",
     });
     this.proc = proc;
 
@@ -283,25 +291,100 @@ export class NativeAcpClient {
   }
 
   async close(): Promise<void> {
+    return this.beginClose(false);
+  }
+
+  /**
+   * Stop accepting ACP input and terminate the agent immediately. Cancellation
+   * escalation uses this path after the peer fails to settle its active prompt;
+   * unlike a normal close it does not spend a grace period waiting for stdin
+   * EOF before sending SIGTERM.
+   */
+  async forceClose(): Promise<void> {
+    return this.beginClose(true);
+  }
+
+  private beginClose(force: boolean): Promise<void> {
+    if (this.closePromise) {
+      if (force) this.signalCurrentAgent("SIGTERM");
+      return this.closePromise;
+    }
+    const closeAttempt = this.closeInternal(force);
+    this.closePromise = closeAttempt;
+    void closeAttempt.catch(() => {
+      // error-policy:J5 unhandled-rejection suppression — the caller observes
+      // the same close rejection. Reset only the failed attempt so a later
+      // close can retry the retained process-group handle.
+      if (this.closePromise === closeAttempt) this.closePromise = undefined;
+    });
+    return closeAttempt;
+  }
+
+  private async closeInternal(force: boolean): Promise<void> {
     this.closed = true;
-    const terminals = Array.from(this.terminals.values());
-    for (const terminal of terminals) this.terminateTerminal(terminal);
-    await Promise.allSettled(
-      terminals.map((terminal) =>
-        withTimeout(terminal.exitPromise, TERMINAL_CLOSE_TIMEOUT_MS),
-      ),
+    this.closeController.abort();
+    this.rejectAll(
+      new Error(force ? "ACP client was force-closed" : "ACP client is closed"),
     );
-    this.terminals.clear();
-    const proc = this.proc;
+    const terminals = Array.from(this.terminals.values());
+    const terminalsClosed = Promise.all(
+      terminals.map((terminal) => this.terminateTerminal(terminal)),
+    ).then(() => {
+      this.terminals.clear();
+    });
+    const proc = this.proc ?? this.closingProc;
     this.proc = undefined;
-    if (!proc) return;
-    if (!proc.stdin.destroyed) proc.stdin.end();
-    const exited = await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
-    if (exited) return;
-    if (!proc.killed) proc.kill("SIGTERM");
-    const terminated = await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
-    if (!terminated) proc.kill("SIGKILL");
-    await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
+    this.closingProc = proc;
+    if (!proc) {
+      await terminalsClosed;
+      return;
+    }
+    let processTreeContained = false;
+    try {
+      if (!proc.stdin.destroyed) proc.stdin.end();
+      if (force) {
+        signalProcessTree(proc, "SIGTERM");
+      } else {
+        const exited = await waitForProcessTreeExit(
+          proc,
+          AGENT_CLOSE_TERM_GRACE_MS,
+        );
+        if (exited) {
+          processTreeContained = true;
+          await terminalsClosed;
+          return;
+        }
+        signalProcessTree(proc, "SIGTERM");
+      }
+      // The adapter leader can exit while a TERM-ignoring descendant remains
+      // in its process group. Do not treat the direct child's exit as proof of
+      // containment; only a vanished group is terminal.
+      const terminated = await waitForProcessTreeExit(
+        proc,
+        AGENT_CLOSE_TERM_GRACE_MS,
+      );
+      if (!terminated) signalProcessTree(proc, "SIGKILL");
+      const killed =
+        terminated ||
+        (await waitForProcessTreeExit(proc, AGENT_CLOSE_TERM_GRACE_MS));
+      processTreeContained = killed;
+      await terminalsClosed;
+      if (!killed) {
+        throw new Error("ACP agent did not exit after SIGKILL");
+      }
+    } finally {
+      // Retain the original process/PGID handle after a failed proof so a later
+      // close attempt can retry escalation. Clearing it on direct-leader exit
+      // would turn a still-running descendant into unowned background work.
+      if (processTreeContained && this.closingProc === proc) {
+        this.closingProc = undefined;
+      }
+    }
+  }
+
+  private signalCurrentAgent(signal: NodeJS.Signals): void {
+    const proc = this.proc ?? this.closingProc;
+    if (proc) signalProcessTree(proc, signal);
   }
 
   private request(
@@ -359,6 +442,7 @@ export class NativeAcpClient {
   }
 
   private handleStdout(chunk: Buffer): void {
+    if (this.closed) return;
     this.readBuffer += chunk.toString("utf8");
     let newline = this.readBuffer.indexOf("\n");
     while (newline >= 0) {
@@ -370,6 +454,7 @@ export class NativeAcpClient {
   }
 
   private async handleLine(line: string): Promise<void> {
+    if (this.closed) return;
     let message: AcpJsonRpcMessage;
     try {
       message = JSON.parse(line) as AcpJsonRpcMessage;
@@ -402,8 +487,10 @@ export class NativeAcpClient {
         method,
         (message as { params?: unknown }).params,
       );
+      if (this.closed) return;
       this.respond(id, result ?? {});
     } catch (err) {
+      if (this.closed) return;
       // error-policy:J1 boundary translation — a client-request handler fault
       // is returned to the ACP peer as a structured JSON-RPC error response.
       this.respondError(id, err, jsonRpcCodeForError(err, method));
@@ -483,9 +570,14 @@ export class NativeAcpClient {
       );
     }
     const filePath = await this.resolveWritablePath(stringValue(params?.path));
+    this.assertOpenForEffect();
     const content = stringValue(params?.content) ?? "";
     await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf8");
+    this.assertOpenForEffect();
+    await writeFile(filePath, content, {
+      encoding: "utf8",
+      signal: this.closeController.signal,
+    });
     return {};
   }
 
@@ -504,6 +596,7 @@ export class NativeAcpClient {
     const cwd = await this.resolveDirectoryPath(
       stringValue(params?.cwd) ?? this.opts.cwd,
     );
+    this.assertOpenForEffect();
     const spawnCommand = terminalSpawnCommand(command, args);
     const env = {
       ...this.opts.env,
@@ -528,7 +621,6 @@ export class NativeAcpClient {
       proc.on("close", (code, signal) => {
         record.exitCode = code;
         record.signal = signal;
-        if (record.killTimer) clearTimeout(record.killTimer);
         resolve();
       });
     });
@@ -581,9 +673,9 @@ export class NativeAcpClient {
     };
   }
 
-  private killTerminal(params: Record<string, unknown> | undefined) {
+  private async killTerminal(params: Record<string, unknown> | undefined) {
     const terminal = this.requireTerminal(stringValue(params?.terminalId));
-    this.terminateTerminal(terminal);
+    await this.terminateTerminal(terminal);
     return {};
   }
 
@@ -591,8 +683,7 @@ export class NativeAcpClient {
     const terminalId = stringValue(params?.terminalId);
     const terminal = terminalId ? this.terminals.get(terminalId) : undefined;
     if (!terminal) return {};
-    this.terminateTerminal(terminal);
-    await withTimeout(terminal.exitPromise, TERMINAL_CLOSE_TIMEOUT_MS);
+    await this.terminateTerminal(terminal);
     if (terminalId) this.terminals.delete(terminalId);
     return {};
   }
@@ -714,18 +805,28 @@ export class NativeAcpClient {
     return resolved;
   }
 
-  private terminateTerminal(terminal: TerminalRecord): void {
-    if (terminal.exitCode !== undefined || terminal.signal !== undefined)
-      return;
-    signalTerminal(terminal.proc, "SIGTERM");
-    if (!terminal.killTimer) {
-      terminal.killTimer = setTimeout(() => {
-        if (terminal.exitCode === undefined && terminal.signal === undefined) {
-          signalTerminal(terminal.proc, "SIGKILL");
-        }
-      }, TERMINAL_KILL_GRACE_MS);
-      terminal.killTimer.unref();
-    }
+  private terminateTerminal(terminal: TerminalRecord): Promise<void> {
+    if (terminal.terminationPromise) return terminal.terminationPromise;
+    const terminationAttempt = terminateProcessTree(
+      terminal.proc,
+      TERMINAL_KILL_GRACE_MS,
+      TERMINAL_KILL_GRACE_MS,
+      "ACP terminal",
+    );
+    terminal.terminationPromise = terminationAttempt;
+    void terminationAttempt.catch(() => {
+      // error-policy:J5 unhandled-rejection suppression — the caller observes
+      // the same termination rejection. Reset only the failed attempt so an
+      // authoritative close/release retry can signal the retained PGID again.
+      if (terminal.terminationPromise === terminationAttempt) {
+        terminal.terminationPromise = undefined;
+      }
+    });
+    return terminationAttempt;
+  }
+
+  private assertOpenForEffect(): void {
+    if (this.closed) throw new Error("ACP client is closed");
   }
 }
 
@@ -996,39 +1097,76 @@ function waitForSpawn(proc: ChildProcessWithoutNullStreams): Promise<void> {
   });
 }
 
-function signalTerminal(
+function signalProcessTree(
   proc: ChildProcessWithoutNullStreams,
   signal: NodeJS.Signals,
 ): void {
-  const pid = proc.pid;
+  // Probe first so an already-proven-dead group is never signalled again. A
+  // PID/PGID can still theoretically be recycled in the unavoidable race
+  // between this probe and kill(2); retaining the original handle only until
+  // ESRCH bounds that risk without weakening descendant containment.
+  if (!isProcessTreeAlive(proc)) return;
   try {
-    if (pid && process.platform !== "win32") {
-      process.kill(-pid, signal);
+    if (proc.pid && process.platform !== "win32") {
+      process.kill(-proc.pid, signal);
       return;
     }
-  } catch {
-    // error-policy:J6 best-effort teardown — process-group kill can ESRCH on an
-    // already-dead child; fall back to signaling the direct child below.
+  } catch (_err) {
+    // error-policy:J6 process-group teardown can race an already-dead group or
+    // a platform that cannot signal it. Fall through to the direct child so a
+    // failed group lookup never weakens the pre-existing termination path.
+    if (proc.exitCode !== null || proc.signalCode !== null) return;
   }
-  if (!proc.killed) proc.kill(signal);
+  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  try {
+    proc.kill(signal);
+  } catch (err) {
+    // error-policy:J6 best-effort teardown — direct signaling can also race a
+    // child that exited after the status check.
+    if (proc.exitCode === null && proc.signalCode === null) throw err;
+  }
 }
 
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), timeoutMs);
-        timer.unref();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
+function isProcessTreeAlive(proc: ChildProcessWithoutNullStreams): boolean {
+  if (!proc.pid || process.platform === "win32") {
+    return proc.exitCode === null && proc.signalCode === null;
   }
+  try {
+    process.kill(-proc.pid, 0);
+    return true;
+  } catch (error) {
+    return !(
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ESRCH"
+    );
+  }
+}
+
+async function waitForProcessTreeExit(
+  proc: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessTreeAlive(proc)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return !isProcessTreeAlive(proc);
+}
+
+async function terminateProcessTree(
+  proc: ChildProcessWithoutNullStreams,
+  termGraceMs: number,
+  killGraceMs: number,
+  subject: string,
+): Promise<void> {
+  if (!isProcessTreeAlive(proc)) return;
+  signalProcessTree(proc, "SIGTERM");
+  if (await waitForProcessTreeExit(proc, termGraceMs)) return;
+  signalProcessTree(proc, "SIGKILL");
+  if (await waitForProcessTreeExit(proc, killGraceMs)) return;
+  throw new Error(`${subject} process group did not exit after SIGKILL`);
 }
 
 function jsonRpcCodeForError(err: unknown, method: string): number {
@@ -1046,21 +1184,3 @@ function jsonRpcCodeForError(err: unknown, method: string): number {
 class MethodNotFoundError extends Error {}
 
 class PermissionDeniedError extends Error {}
-
-async function waitForExit(
-  proc: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (proc.exitCode !== null || proc.signalCode !== null) return true;
-  return await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      proc.off("close", onClose);
-      resolve(false);
-    }, timeoutMs);
-    const onClose = () => {
-      clearTimeout(timer);
-      resolve(true);
-    };
-    proc.once("close", onClose);
-  });
-}

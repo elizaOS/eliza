@@ -49,6 +49,7 @@ type MockNativeClient = {
   cancel: ReturnType<typeof vi.fn>;
   closeSession: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  forceClose: ReturnType<typeof vi.fn>;
   approvesPermissionRequest: ReturnType<typeof vi.fn>;
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
@@ -96,6 +97,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
     cancel = vi.fn(async () => undefined);
     closeSession = vi.fn(async () => undefined);
     close = vi.fn(async () => undefined);
+    forceClose = vi.fn(async () => undefined);
     // Mirrors the real transport's auto-approve decision. Defaults to true to
     // match the default `autonomous` preset (every op approved); individual
     // tests override it to exercise the restrictive / cancel paths.
@@ -2290,9 +2292,52 @@ describe("AcpService", () => {
     const result = await sent;
 
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
+    expect(client.forceClose).not.toHaveBeenCalled();
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
+  it("prevents cancellation from missing a prompt awaiting durable admission", async () => {
+    const store = new InMemorySessionStore();
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-admission-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    const originalGet = store.get.bind(store);
+    let releaseGet = (): void => {};
+    let markGetEntered = (): void => {};
+    const getEntered = new Promise<void>((resolve) => {
+      markGetEntered = resolve;
+    });
+    const getGate = new Promise<void>((resolve) => {
+      releaseGet = resolve;
+    });
+    vi.spyOn(store, "get")
+      .mockImplementationOnce(async (id) => {
+        markGetEntered();
+        await getGate;
+        return originalGet(id);
+      })
+      .mockImplementation(originalGet);
+
+    const prompt = service.sendPrompt(sessionId, "must never start");
+    await getEntered;
+    const cancellation = service.cancelSession(sessionId);
+    releaseGet();
+
+    await expect(prompt).rejects.toMatchObject({
+      code: "ACP_PROMPT_CANCELLED_BEFORE_START",
+    });
+    await expect(cancellation).resolves.toBeUndefined();
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
   it("does not overwrite a prompt completion that races native cancellation", async () => {
@@ -2321,8 +2366,261 @@ describe("AcpService", () => {
     });
     const result = await sent;
 
+    expect(client.forceClose).toHaveBeenCalledTimes(1);
     expect(result.stopReason).toBe("end_turn");
     expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("does not return a native prompt timeout before hard close is proven", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-timeout-containment",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockRejectedValueOnce(
+      new Error("ACP request timed out: session/prompt"),
+    );
+    let releaseForceClose = (): void => {};
+    client.forceClose.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseForceClose = resolve;
+        }),
+    );
+
+    let promptSettled = false;
+    const prompt = service.sendPrompt(sessionId, "time out").then((result) => {
+      promptSettled = true;
+      return result;
+    });
+    await vi.waitFor(() => expect(client.forceClose).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(promptSettled).toBe(false);
+
+    releaseForceClose();
+    await expect(prompt).resolves.toMatchObject({
+      stopReason: "error",
+      error: "ACP request timed out: session/prompt",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+    expect(
+      (Reflect.get(service, "nativeClients") as Map<string, unknown>).has(
+        sessionId,
+      ),
+    ).toBe(false);
+  });
+
+  it("gates future prompts when timeout containment cannot be proven", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-timeout-containment-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockRejectedValueOnce(
+      new Error("ACP request timed out: session/prompt"),
+    );
+    client.forceClose.mockRejectedValueOnce(
+      new Error("process group survived timeout teardown"),
+    );
+
+    await expect(
+      service.sendPrompt(sessionId, "time out badly"),
+    ).resolves.toMatchObject({
+      stopReason: "error",
+      error: "ACP prompt timed out and process teardown could not be proven",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("busy");
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/stopping|being stopped/);
+
+    await service.closeSession(sessionId);
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("hard-closes an uncooperative native prompt after a bounded cancel grace", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-uncooperative",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let rejectPrompt: (error: Error) => void = () => undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    client.cancel.mockImplementationOnce(() => new Promise(() => undefined));
+    client.forceClose.mockImplementationOnce(async () => {
+      rejectPrompt(new Error("ACP client force-closed"));
+    });
+
+    const sent = service.sendPrompt(sessionId, "ignore cancellation forever");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers();
+    const firstCancel = service.cancelSession(sessionId);
+    const duplicateCancel = service.cancelSession(sessionId);
+    await expect(
+      service.sendPrompt(sessionId, "race a reconnect during cancellation"),
+    ).rejects.toThrow(/being cancelled/i);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(client.forceClose).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.all([firstCancel, duplicateCancel]);
+    const result = await sent;
+
+    expect(client.cancel).toHaveBeenCalledTimes(1);
+    expect(client.cancel).toHaveBeenCalledWith("protocol-session");
+    expect(client.forceClose).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ stopReason: "cancelled" });
+    expect(result.error).toBeUndefined();
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+    expect(
+      (Reflect.get(service, "nativeClients") as Map<string, unknown>).has(
+        sessionId,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not claim cancellation when hard process teardown cannot be proven", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-force-close-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let rejectPrompt: (error: Error) => void = () => undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    client.cancel.mockImplementationOnce(() => new Promise(() => undefined));
+    client.forceClose.mockImplementationOnce(async () => {
+      rejectPrompt(new Error("ACP client force-closed"));
+      throw new Error("process survived SIGKILL deadline");
+    });
+
+    const sent = service.sendPrompt(sessionId, "ignore cancellation forever");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers();
+    const cancellation = service
+      .cancelSession(sessionId)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const cancellationError = await cancellation;
+    expect(cancellationError).toMatchObject({
+      code: "ACP_CANCEL_FORCE_CLOSE_FAILED",
+    });
+    await expect(sent).resolves.toMatchObject({
+      stopReason: "error",
+      error: "ACP agent did not terminate after cancellation escalation",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("busy");
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/being stopped/);
+
+    await expect(service.closeSession(sessionId)).resolves.toBeUndefined();
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("force-closes and detaches when the cancel transport fails", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-transport-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let rejectPrompt: (error: Error) => void = () => undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    client.cancel.mockRejectedValueOnce(new Error("cancel pipe closed"));
+    client.forceClose.mockImplementationOnce(async () => {
+      rejectPrompt(new Error("ACP client force-closed"));
+    });
+
+    const sent = service.sendPrompt(sessionId, "keep running");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await service.cancelSession(sessionId);
+    const result = await sent;
+
+    expect(client.forceClose).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ stopReason: "cancelled" });
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+    expect(
+      (Reflect.get(service, "nativeClients") as Map<string, unknown>).has(
+        sessionId,
+      ),
+    ).toBe(false);
+  });
+
+  it("service stop awaits an in-flight native cancellation escalation", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-stop-await",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let rejectPrompt: (error: Error) => void = () => undefined;
+    let releaseForceClose: () => void = () => undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    client.cancel.mockImplementationOnce(() => new Promise(() => undefined));
+    client.forceClose.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          rejectPrompt(new Error("ACP client force-closed"));
+          releaseForceClose = resolve;
+        }),
+    );
+
+    const sent = service.sendPrompt(sessionId, "keep running");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers();
+    const cancellation = service.cancelSession(sessionId);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(client.forceClose).toHaveBeenCalledTimes(1));
+
+    let stopSettled = false;
+    const stopping = service.stop().then(() => {
+      stopSettled = true;
+    });
+    await Promise.resolve();
+    expect(stopSettled).toBe(false);
+    releaseForceClose();
+
+    await Promise.all([cancellation, stopping, sent]);
+    expect(stopSettled).toBe(true);
   });
 
   it("native permission requests emit blocked and login_required events", async () => {
@@ -2892,6 +3190,150 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     };
   }
 
+  it("closes a cancelled initial-task native client before returning", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "cancelled-initial-task",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    const store = Reflect.get(service, "store") as {
+      updateStatus: (id: string, status: string) => Promise<void>;
+    };
+    await store.updateStatus(sessionId, "cancelled");
+
+    await (
+      service as unknown as {
+        closeInitialTaskSession: (id: string) => Promise<void>;
+      }
+    ).closeInitialTaskSession(sessionId);
+
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+    await service.stop();
+  });
+
+  it("retains an errored native session when health-check teardown is unproven", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "errored-native-health-check",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.close.mockRejectedValueOnce(new Error("process group survived"));
+    const store = Reflect.get(service, "store") as {
+      update: (id: string, patch: unknown) => Promise<void>;
+    };
+    const old = new Date(Date.now() - 48 * 60 * 60_000);
+    await store.update(sessionId, {
+      status: "errored",
+      lastActivityAt: old,
+    });
+
+    await (
+      service as unknown as { runHealthCheck: () => Promise<void> }
+    ).runHealthCheck();
+
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+    const nativeClients = Reflect.get(service, "nativeClients") as Map<
+      string,
+      unknown
+    >;
+    expect(nativeClients.has(sessionId)).toBe(true);
+
+    await service.stop();
+    expect(client.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("protects a terminal row while native prompt attachment is in flight", async () => {
+    const store = new InMemorySessionStore();
+    const sessionId = "native-attach-health-sweep-race";
+    await store.create(
+      staleSession({
+        id: sessionId,
+        agentType: "codex",
+        status: "ready",
+        acpxSessionId: "old-native-protocol",
+        metadata: { transportMode: "native" },
+      }),
+    );
+    let markAttachEntered = (): void => {};
+    let releaseAttach = (): void => {};
+    const attachEntered = new Promise<void>((resolve) => {
+      markAttachEntered = resolve;
+    });
+    const attachGate = new Promise<void>((resolve) => {
+      releaseAttach = resolve;
+    });
+    nativeClientMock.createSessionImplementation = async () => {
+      markAttachEntered();
+      await attachGate;
+      return {
+        sessionId: "new-native-protocol",
+        agentSessionId: "new-native-agent-session",
+      };
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    const prompt = service.sendPrompt(sessionId, "must not outlive teardown");
+    await attachEntered;
+    await store.update(sessionId, {
+      status: "errored",
+      lastActivityAt: new Date(Date.now() - 48 * 60 * 60_000),
+    });
+
+    await (
+      service as unknown as { runHealthCheck: () => Promise<void> }
+    ).runHealthCheck();
+    const afterHealth = await service.getSession(sessionId);
+    const closing = service.closeSession(sessionId).catch((error) => error);
+    releaseAttach();
+    const closeOutcome = await closing;
+    const promptOutcome = await prompt.catch((error) => error);
+    await service.stop().catch(() => undefined);
+
+    expect(afterHealth).toBeDefined();
+    expect(closeOutcome).toBeUndefined();
+    expect(promptOutcome).toMatchObject({ stopReason: "stopped" });
+    const client = firstNativeClient();
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a new prompt on a logically terminal native session", async () => {
+    const store = new InMemorySessionStore();
+    const sessionId = "terminal-native-prompt-admission";
+    await store.create(
+      staleSession({
+        id: sessionId,
+        agentType: "codex",
+        status: "cancelled",
+        acpxSessionId: "cancelled-native-protocol",
+        metadata: { transportMode: "native" },
+      }),
+    );
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    await expect(
+      service.sendPrompt(sessionId, "must never reconnect"),
+    ).rejects.toThrow(/terminal/);
+    expect(
+      (Reflect.get(service, "nativeClients") as Map<string, unknown>).size,
+    ).toBe(0);
+    await service.stop();
+  });
+
   it("does NOT mark an idle 'ready' session state_lost (a finished session is not a crash)", async () => {
     const service = new AcpService(runtime());
     await service.start();
@@ -3173,6 +3615,9 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     await expect(
       service.sendPrompt(spawned.sessionId, "second"),
     ).rejects.toThrow(/busy/i);
+    await vi.waitFor(() =>
+      expect(firstNativeClient().prompt).toHaveBeenCalledTimes(1),
+    );
     release?.();
     await p1;
   });
@@ -3302,5 +3747,405 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     expect((await service.getSession(sessionId))?.metadata?.taskId).toBe(
       "task-b",
     );
+  });
+
+  it("keeps native teardown authoritative while the hard close is pending", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "pending-native-stop",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let releaseClose: (() => void) | undefined;
+    client.close.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseClose = resolve;
+        }),
+    );
+
+    const stopping = service.closeSession(sessionId);
+    await vi.waitFor(() => expect(client.close).toHaveBeenCalledTimes(1));
+
+    await expect(
+      service.sendPrompt(sessionId, "must not reattach"),
+    ).rejects.toThrow(/being stopped/);
+    expect(client.prompt).not.toHaveBeenCalled();
+
+    releaseClose?.();
+    await stopping;
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("waits for native attachment and closes it before a racing prompt can start", async () => {
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    const sessionId = "native-attach-close-race";
+    await store.create({
+      id: sessionId,
+      name: sessionId,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId: "old-protocol",
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode: "native" },
+    });
+    let markAttachEntered = (): void => {};
+    let releaseAttach = (): void => {};
+    const attachEntered = new Promise<void>((resolve) => {
+      markAttachEntered = resolve;
+    });
+    const attachGate = new Promise<void>((resolve) => {
+      releaseAttach = resolve;
+    });
+    nativeClientMock.createSessionImplementation = async () => {
+      markAttachEntered();
+      await attachGate;
+      return {
+        sessionId: "new-protocol",
+        agentSessionId: "new-agent-session",
+      };
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    const prompt = service.sendPrompt(sessionId, "must never reach the agent");
+    await attachEntered;
+    let closeSettled = false;
+    const closing = service.closeSession(sessionId).then(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    expect(closeSettled).toBe(false);
+
+    releaseAttach();
+    await closing;
+    await expect(prompt).resolves.toMatchObject({ stopReason: "stopped" });
+    const client = firstNativeClient();
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("waits for native attachment and cancels before a racing prompt can start", async () => {
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    const sessionId = "native-attach-cancel-race";
+    await store.create({
+      id: sessionId,
+      name: sessionId,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId: "old-protocol",
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode: "native" },
+    });
+    let markAttachEntered = (): void => {};
+    let releaseAttach = (): void => {};
+    const attachEntered = new Promise<void>((resolve) => {
+      markAttachEntered = resolve;
+    });
+    const attachGate = new Promise<void>((resolve) => {
+      releaseAttach = resolve;
+    });
+    nativeClientMock.createSessionImplementation = async () => {
+      markAttachEntered();
+      await attachGate;
+      return {
+        sessionId: "new-protocol",
+        agentSessionId: "new-agent-session",
+      };
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    const prompt = service.sendPrompt(sessionId, "must never reach the agent");
+    await attachEntered;
+    let cancelSettled = false;
+    const cancellation = service.cancelSession(sessionId).then(() => {
+      cancelSettled = true;
+    });
+    await Promise.resolve();
+    expect(cancelSettled).toBe(false);
+
+    releaseAttach();
+    await cancellation;
+    await expect(prompt).resolves.toMatchObject({ stopReason: "cancelled" });
+    const client = firstNativeClient();
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.cancel).not.toHaveBeenCalled();
+    expect(client.forceClose).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
+  it("keeps failed native teardown gated until a later close proves termination", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "failed-native-stop",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.close.mockRejectedValueOnce(new Error("process group survived"));
+
+    await expect(service.closeSession(sessionId)).rejects.toThrow(
+      /process group survived/,
+    );
+    expect((await service.getSession(sessionId))?.status).not.toBe("stopped");
+
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/being stopped/);
+    await expect(service.reattachSession(sessionId)).rejects.toThrow(
+      /being stopped/,
+    );
+    await expect(
+      service.prepareSessionForDurableRecovery(sessionId),
+    ).rejects.toThrow(/being stopped/);
+    expect(client.prompt).not.toHaveBeenCalled();
+
+    await expect(service.closeSession(sessionId)).resolves.toBeUndefined();
+    expect(client.close).toHaveBeenCalledTimes(2);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("does not persist stopped when an active prompt outlives failed teardown", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "active-failed-native-stop",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let rejectPrompt: (error: Error) => void = () => undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+    client.close.mockImplementationOnce(async () => {
+      rejectPrompt(new Error("transport closed"));
+      throw new Error("process group still alive");
+    });
+
+    const prompt = service.sendPrompt(sessionId, "keep mutating");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    const closing = service.closeSession(sessionId);
+
+    await expect(closing).rejects.toThrow(/process group still alive/);
+    await expect(prompt).resolves.toMatchObject({
+      stopReason: "error",
+      error: "process group still alive",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("busy");
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/being stopped/);
+
+    await service.closeSession(sessionId);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("does not delete durable session authority after an unproven native close", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "failed-native-delete",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.close.mockRejectedValueOnce(new Error("process still alive"));
+
+    await expect(service.deleteSession(sessionId)).rejects.toThrow(
+      /process still alive/,
+    );
+    expect(await service.getSession(sessionId)).toBeDefined();
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/being stopped/);
+
+    await service.deleteSession(sessionId);
+    expect(await service.getSession(sessionId)).toBeUndefined();
+  });
+
+  it("surfaces native containment failure from service stop and permits retry", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "failed-service-stop",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.close.mockRejectedValueOnce(new Error("container tree survived"));
+
+    await expect(service.stop()).rejects.toThrow(
+      /could not prove subprocess teardown/,
+    );
+    expect(await service.getSession(sessionId)).toBeDefined();
+    await expect(
+      service.sendPrompt(sessionId, "must remain denied"),
+    ).rejects.toThrow(/stopping|being stopped/);
+
+    await expect(service.stop()).resolves.toBeUndefined();
+    expect(client.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for an admitted native spawn and contains it before service stop resolves", async () => {
+    let markAttachEntered = (): void => {};
+    let releaseAttach = (): void => {};
+    const attachEntered = new Promise<void>((resolve) => {
+      markAttachEntered = resolve;
+    });
+    const attachGate = new Promise<void>((resolve) => {
+      releaseAttach = resolve;
+    });
+    nativeClientMock.createSessionImplementation = async () => {
+      markAttachEntered();
+      await attachGate;
+      return {
+        sessionId: "spawn-stop-protocol",
+        agentSessionId: "spawn-stop-agent",
+      };
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+
+    const spawning = service.spawnSession({
+      name: "spawn-stop-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await attachEntered;
+    let stopSettled = false;
+    const stopping = service.stop().then(() => {
+      stopSettled = true;
+    });
+    await Promise.resolve();
+    expect(stopSettled).toBe(false);
+    await expect(
+      service.spawnSession({
+        name: "must-not-start",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toThrow(/service is stopping/);
+
+    releaseAttach();
+    const spawned = await spawning;
+    await stopping;
+    const client = firstNativeClient();
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(spawned.sessionId))?.status).toBe(
+      "stopped",
+    );
+  });
+
+  it("waits for a reconnecting prompt attachment before service stop resolves", async () => {
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    const sessionId = "native-reconnect-service-stop-race";
+    await store.create({
+      id: sessionId,
+      name: sessionId,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId: "old-protocol",
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode: "native" },
+    });
+    let markAttachEntered = (): void => {};
+    let releaseAttach = (): void => {};
+    const attachEntered = new Promise<void>((resolve) => {
+      markAttachEntered = resolve;
+    });
+    const attachGate = new Promise<void>((resolve) => {
+      releaseAttach = resolve;
+    });
+    nativeClientMock.createSessionImplementation = async () => {
+      markAttachEntered();
+      await attachGate;
+      return {
+        sessionId: "reconnected-protocol",
+        agentSessionId: "reconnected-agent-session",
+      };
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    const prompt = service.sendPrompt(sessionId, "must not outlive stop");
+    await attachEntered;
+    let stopSettled = false;
+    const stopping = service.stop().then(() => {
+      stopSettled = true;
+    });
+    await Promise.resolve();
+    const settledBeforeRelease = stopSettled;
+
+    releaseAttach();
+    await stopping;
+    const promptResult = await prompt;
+    const client = firstNativeClient();
+
+    expect(settledBeforeRelease).toBe(false);
+    expect(promptResult).toMatchObject({ stopReason: "stopped" });
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
+  it("retains and retries process authority when failed native attach cannot close", async () => {
+    const store = new InMemorySessionStore();
+    nativeClientMock.startImplementation = async (client) => {
+      client.close.mockRejectedValueOnce(
+        new Error("attach process group survived"),
+      );
+    };
+    nativeClientMock.createSessionImplementation = async () => {
+      throw new Error("session initialize failed");
+    };
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    await service.start();
+
+    await expect(
+      service.spawnSession({
+        name: "failed-attach-containment",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toMatchObject({ code: "ACP_NATIVE_ATTACH_CONTAINMENT_FAILED" });
+    const [session] = await store.list();
+    if (!session) throw new Error("expected retained failed spawn session");
+    expect(session.status).toBe("running");
+    await expect(
+      service.sendPrompt(session.id, "must remain denied"),
+    ).rejects.toThrow(/being stopped/);
+
+    await service.stop();
+    expect(firstNativeClient().close).toHaveBeenCalledTimes(2);
+    expect((await service.getSession(session.id))?.status).toBe("stopped");
   });
 });

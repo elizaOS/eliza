@@ -281,7 +281,12 @@ export interface SessionStore {
     error?: string,
   ): Promise<void>;
   delete(id: string): Promise<void>;
-  sweepStale(maxAgeMs: number): Promise<string[]>;
+  /** Delete stale terminal records except sessions whose process authority is
+   * still retained by the caller. */
+  sweepStale(
+    maxAgeMs: number,
+    protectedIds?: ReadonlySet<string>,
+  ): Promise<string[]>;
 }
 
 export interface SessionStoreRuntime {
