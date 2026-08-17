@@ -980,8 +980,43 @@ function nounAlt(items: readonly string[]): string {
 const VERB_ALT = alt(NAV_VERBS);
 const VW_ALT = alt(VIEW_WORDS);
 const POSS_ALT = alt(POSSESSIVES);
+const NAVIGATION_NEGATIONS = [
+  // en
+  "do not",
+  "don't",
+  "don’t",
+  "dont",
+  "never",
+  "not",
+  "no",
+  // es / pt
+  "nunca",
+  "não",
+  "nao",
+  // fr
+  "ne",
+  "pas",
+  "jamais",
+  // de
+  "nicht",
+  "nie",
+  "niemals",
+  // zh
+  "不要",
+  "不用",
+  "别",
+  "別",
+  "勿",
+  // vi / tl
+  "đừng",
+  "không",
+  "khong",
+  "huwag",
+] as const;
+const NEGATION_ALT = alt(NAVIGATION_NEGATIONS);
+const SAME_CLAUSE_GAP = "[^.!?;\\n]";
 const NEGATED_NAVIGATION_RE = new RegExp(
-  `(?:${alt(["do not", "don't", "dont", "never"])})[\\s\\p{P}]+(?:${VERB_ALT})`,
+  `(?:${NEGATION_ALT}|(?<![\\p{L}\\p{N}])n['’])${SAME_CLAUSE_GAP}{0,48}?(?:${VERB_ALT})|(?:${VERB_ALT})${SAME_CLAUSE_GAP}{0,24}?(?:${NEGATION_ALT})`,
   "iu",
 );
 const CLOUD_APPS_VIEW_ID = "cloud-apps";
