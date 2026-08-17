@@ -106,6 +106,29 @@ describe("ElizaAgentLogsViewer", () => {
     expect(screen.getByRole("button", { name: "Refresh logs" })).toBeTruthy();
   });
 
+  it("renders an unavailable agent result as an error, never healthy empty logs", async () => {
+    loadAgentLogs.mockRejectedValue(
+      new Error(
+        "This agent is no longer available. Refresh the agent list and try again.",
+      ),
+    );
+
+    render(
+      <ElizaAgentLogsViewer
+        agentId="agent-gone"
+        agentName="Deleted agent"
+        status="running"
+      />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This agent is no longer available. Refresh the agent list and try again.",
+    );
+    expect(screen.getByTestId("lines").textContent).toBe("");
+    expect(screen.queryByText("No logs available yet")).toBeNull();
+    expect(screen.getByRole("button", { name: "Refresh logs" })).toBeTruthy();
+  });
+
   it("aborts a superseded request and ignores its stale completion", async () => {
     const first = deferred<{ logs: string; notice: null }>();
     const second = deferred<{ logs: string; notice: null }>();
