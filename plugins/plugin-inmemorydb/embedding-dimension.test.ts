@@ -1,8 +1,8 @@
 /**
- * Exercises the in-memory adapter's embedding-width switch path against the
- * real MemoryStorage and EphemeralHNSW index. The cleanup must remove
- * old-width vectors before any active-width search or insert touches the HNSW
- * graph, otherwise cosine comparisons throw on mixed dimensions.
+ * Exercises the in-memory adapter's embedding-index lifecycle against the real
+ * MemoryStorage and EphemeralHNSW index. Cleanup paths must keep stored memory
+ * rows and indexed vectors synchronized so searches neither compare mixed
+ * dimensions nor lose live results behind deleted candidates.
  */
 import { randomUUID } from "node:crypto";
 import type { Memory, UUID } from "@elizaos/core";
@@ -60,5 +60,48 @@ describe("clearEmbeddingsOutsideActiveDimension", () => {
     });
     expect(results.map((result) => result.id)).toEqual([freshId]);
     expect(await adapter.clearEmbeddingsOutsideActiveDimension()).toEqual([]);
+  });
+});
+
+describe("room deletion embedding cleanup", () => {
+  it("removes deleted-room vectors so they cannot crowd live memories out of search", async () => {
+    const agentId = randomUUID() as UUID;
+    const entityId = randomUUID() as UUID;
+    const deletedRoomId = randomUUID() as UUID;
+    const liveRoomId = randomUUID() as UUID;
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), agentId);
+    await adapter.initialize();
+    await adapter.ensureEmbeddingDimension(2);
+
+    const deletedMemories = [
+      memoryForRoom(deletedRoomId, [1, 0], "deleted nearest"),
+      memoryForRoom(deletedRoomId, [0.999, 0.001], "deleted second nearest"),
+    ];
+    const liveMemory = memoryForRoom(liveRoomId, [0.8, 0.6], "live farther result");
+
+    await adapter.createMemories(
+      [...deletedMemories, liveMemory].map((memory) => ({ memory, tableName: "memories" }))
+    );
+    await adapter.deleteRooms([deletedRoomId]);
+
+    const results = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: [1, 0],
+      match_threshold: 0,
+      count: 1,
+    });
+
+    expect(results.map((result) => result.id)).toEqual([liveMemory.id]);
+
+    function memoryForRoom(roomId: UUID, embedding: number[], text: string): Memory {
+      return {
+        id: randomUUID() as UUID,
+        agentId,
+        entityId,
+        roomId,
+        content: { text },
+        embedding,
+      };
+    }
   });
 });
