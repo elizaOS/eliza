@@ -60,7 +60,7 @@ const SELF_CLOSING_ARTIFACTS_RE =
 // every shape SELF_CLOSING_ARTIFACTS_RE strips (delta 1: the Discord original
 // omitted `eot_id` here, so a lone sentinel slipped through to the wire).
 const QUICK_TAG_RE = new RegExp(
-	`<\\/?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final|STOP|END|end_turn|eot_id)\\b|<\\|(?:end|stop|im_end|eot_id)`,
+	`<\\s*\\/?\\s*(?:${MACHINE_SYNTAX_TAG_ALTERNATION})(?=[\\s/>])|<\\/?(?:final|STOP|END|end_turn|eot_id)\\b|<\\|(?:end|stop|im_end|eot_id)`,
 	"i",
 );
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
@@ -184,10 +184,12 @@ export function sanitizeOutboundText(text: string): string {
 	processed = degradePseudoLinks(processed);
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
-		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
+		const openTag = `<\\s*${tag}(?=[\\s/>])[^>]*>`;
+		const closeTag = `<\\s*\\/\\s*${tag}\\s*>`;
+		const paired = new RegExp(`${openTag}([\\s\\S]*?)${closeTag}`, "gi");
 		processed = processed.replace(paired, "");
 
-		const unclosed = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, "gi");
+		const unclosed = new RegExp(`${openTag}[\\s\\S]*$`, "gi");
 		processed = processed.replace(unclosed, "");
 	}
 

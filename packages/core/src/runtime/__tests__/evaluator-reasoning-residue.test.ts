@@ -1,4 +1,9 @@
+/**
+ * Deterministic contract tests for evaluator parsing and final-egress denial
+ * of canonical private-reasoning markup, including malformed residue.
+ */
 import { describe, expect, it } from "vitest";
+import { stripReasoningBlocks } from "../../services/message/fallback-reply";
 import {
 	hasReasoningResidue,
 	REASONING_TAG_NAMES,
@@ -44,8 +49,15 @@ describe("evaluator reasoning-residue stripping", () => {
 	});
 
 	it("fails closed for an unterminated open-only prefix", () => {
+		const output = parseEvaluatorOutput(`<reasoning>${ENVELOPE}`);
+		expect(output.protocolFailure).toBe(true);
+		expect(output.parseError).toBeDefined();
+		expect(output.messageToUser).toBeUndefined();
+	});
+
+	it("fails closed when an unterminated block follows a completed block", () => {
 		const output = parseEvaluatorOutput(
-			`<reasoning>garbage with no close${ENVELOPE}`,
+			`<think>private</think><reasoning>${ENVELOPE}`,
 		);
 		expect(output.protocolFailure).toBe(true);
 		expect(output.parseError).toBeDefined();
@@ -54,12 +66,21 @@ describe("evaluator reasoning-residue stripping", () => {
 });
 
 describe("shared reasoning-tag grammar", () => {
-	it("strips through the last closing tag and removes stray tokens", () => {
+	it("strips through the last completed closing tag", () => {
 		expect(
 			stripReasoningPrefixes(
-				"first</thought>second</ REASONING >Visible <Think>answer",
+				"first</thought>second</ REASONING >Visible answer",
 			),
 		).toBe("Visible answer");
+	});
+
+	it("preserves unmatched open residue so downstream boundaries fail closed", () => {
+		expect(stripReasoningPrefixes("<reasoning>private payload")).toBe(
+			"<reasoning>private payload",
+		);
+		expect(
+			stripReasoningPrefixes("<think>first</think><reasoning>private payload"),
+		).toBe("<reasoning>private payload");
 	});
 
 	it("detects open and close markup for every canonical spelling", () => {
@@ -68,6 +89,23 @@ describe("shared reasoning-tag grammar", () => {
 			expect(hasReasoningResidue(`</${tag.toUpperCase()}>`)).toBe(true);
 			expect(hasReasoningResidue(`</ ${tag} >`)).toBe(true);
 		}
+	});
+
+	it("does not classify longer custom tag names as reasoning markup", () => {
+		for (const text of [
+			"<thought-provoking>Visible</thought-provoking>",
+			"<reasoning-disabled>Visible</reasoning-disabled>",
+		]) {
+			expect(stripReasoningPrefixes(text)).toBe(text);
+			expect(hasReasoningResidue(text)).toBe(false);
+			expect(stripReasoningBlocks(text)).toBe(text);
+		}
+	});
+
+	it("uses the same whitespace-tolerant grammar in fallback replies", () => {
+		expect(
+			stripReasoningBlocks("< thinking >private</ thinking >Visible"),
+		).toBe("Visible");
 	});
 });
 
@@ -101,5 +139,13 @@ describe("reasoning residue at final egress", () => {
 				"The tool completed successfully.</thought>Here is the result.",
 			),
 		).toBe(true);
+	});
+
+	it("rejects an open-only block after prefix stripping", () => {
+		const candidate = stripReasoningPrefixes(
+			"<think>finished</think><reasoning>private payload",
+		);
+		expect(candidate).toBe("<reasoning>private payload");
+		expect(isUnsafeUserVisibleText(candidate)).toBe(true);
 	});
 });

@@ -150,12 +150,24 @@ describe("sanitizeOutboundText — nested, malformed, and adversarial shapes", (
 	});
 
 	it("does not strip a tag-name prefix of a longer identifier", () => {
-		// \b after the tag name: <tool_callback> is a different tag, and with no
-		// matching listed tag the quick filter still fires on `<tool_call` — the
-		// text must survive both passes unchanged.
+		// The exact tag-name boundary keeps longer custom elements distinct.
 		expect(sanitizeOutboundText("See <thoughtful>notes</thoughtful>.")).toBe(
 			"See <thoughtful>notes</thoughtful>.",
 		);
+		expect(
+			sanitizeOutboundText("See <thought-provoking>notes</thought-provoking>."),
+		).toBe("See <thought-provoking>notes</thought-provoking>.");
+		expect(
+			sanitizeOutboundText(
+				"See <reasoning-disabled>notes</reasoning-disabled>.",
+			),
+		).toBe("See <reasoning-disabled>notes</reasoning-disabled>.");
+	});
+
+	it("strips canonical tags with whitespace around their names", () => {
+		expect(
+			sanitizeOutboundText("Before.< thinking >private</ thinking >After."),
+		).toBe("Before.After.");
 	});
 
 	it("strips an unterminated open tag as unclosed-to-end", () => {

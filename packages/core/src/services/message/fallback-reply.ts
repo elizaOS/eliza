@@ -425,24 +425,20 @@ export function buildFailureReplyPrompt(
 }
 
 const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
+const REASONING_OPEN_TAG_SOURCE = `<\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])[^>]*>`;
+const REASONING_CLOSE_TAG_SOURCE = `<\\s*\\/\\s*(?:${REASONING_TAG_ALTERNATION})\\s*>`;
 
 export function stripReasoningBlocks(raw: string): string {
 	return raw
 		.replace(
 			new RegExp(
-				`<(?:${REASONING_TAG_ALTERNATION})\\b[^>]*>[\\s\\S]*?<\\/(?:${REASONING_TAG_ALTERNATION})>`,
+				`${REASONING_OPEN_TAG_SOURCE}[\\s\\S]*?${REASONING_CLOSE_TAG_SOURCE}`,
 				"gi",
 			),
 			"",
 		)
-		.replace(
-			new RegExp(`^[\\s\\S]*?<\\/(?:${REASONING_TAG_ALTERNATION})>`, "i"),
-			"",
-		)
-		.replace(
-			new RegExp(`<(?:${REASONING_TAG_ALTERNATION})\\b[^>]*>[\\s\\S]*$`, "gi"),
-			"",
-		)
+		.replace(new RegExp(`^[\\s\\S]*?${REASONING_CLOSE_TAG_SOURCE}`, "i"), "")
+		.replace(new RegExp(`${REASONING_OPEN_TAG_SOURCE}[\\s\\S]*$`, "gi"), "")
 		.replace(/\/?\bno_think\b/gi, "")
 		.trim();
 }

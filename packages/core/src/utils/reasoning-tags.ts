@@ -9,30 +9,28 @@ export const REASONING_TAG_NAMES = [
 ] as const;
 
 const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
-const REASONING_TAG_SOURCE = `<\\s*\\/?\\s*(?:${REASONING_TAG_ALTERNATION})\\b[^>]*>`;
+const REASONING_TAG_SOURCE = `<\\s*\\/?\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])[^>]*>`;
 const REASONING_CLOSE_TAG_RE = new RegExp(
 	`<\\s*\\/\\s*(?:${REASONING_TAG_ALTERNATION})\\s*>`,
 	"gi",
 );
-const REASONING_TAG_RE = new RegExp(REASONING_TAG_SOURCE, "gi");
 // Deliberately non-global: `RegExp.prototype.test` on a global regex advances
 // and retains `lastIndex`, so identical input alternates true/false across
 // calls. Residue detection must be stateless — do not add the `g` flag here.
 const REASONING_TAG_TEST_RE = new RegExp(REASONING_TAG_SOURCE, "i");
 
 /**
- * Remove private-reasoning prefixes and any remaining reasoning tag tokens.
- * Content through the last completed closing tag is private model output; a
- * stray open tag is removed without guessing where its unterminated content
- * ends, allowing the caller to reject malformed surrounding output safely.
+ * Remove private-reasoning prefixes through the last completed closing tag.
+ * An unmatched opening tag is deliberately preserved: deleting only its tag
+ * would turn the private payload into apparently safe output, while retaining
+ * the residue lets evaluator parsing and final-egress checks fail closed.
  */
 export function stripReasoningPrefixes(text: string): string {
 	let lastCloseEnd = -1;
 	for (const match of text.matchAll(REASONING_CLOSE_TAG_RE)) {
 		lastCloseEnd = (match.index ?? 0) + match[0].length;
 	}
-	const visible = lastCloseEnd >= 0 ? text.slice(lastCloseEnd) : text;
-	return visible.replace(REASONING_TAG_RE, "");
+	return lastCloseEnd >= 0 ? text.slice(lastCloseEnd) : text;
 }
 
 /**
