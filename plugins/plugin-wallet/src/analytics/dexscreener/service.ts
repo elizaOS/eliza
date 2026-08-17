@@ -12,7 +12,7 @@ import {
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { parseClampedInteger } from "@elizaos/shared";
+import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
   DexScreenerBoostedToken,
