@@ -365,7 +365,9 @@ async function handleFile(
   }
 
   if (method === "GET") {
-    const encoding = parseWorkbenchFileEncoding(url.searchParams.get("encoding"));
+    const encoding = parseWorkbenchFileEncoding(
+      url.searchParams.get("encoding"),
+    );
     if (encoding === null) {
       error(res, "encoding must be utf-8 or base64", 400);
       return;
