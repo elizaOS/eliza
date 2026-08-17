@@ -7,6 +7,7 @@
  */
 
 import { createHash, randomFillSync, timingSafeEqual } from "node:crypto";
+import { ElizaError } from "../../errors.js";
 import { parseKeyId } from "./key-namespace.js";
 import type { EncryptResult, KmsClient } from "./types.js";
 
@@ -59,16 +60,11 @@ export interface UnwrapKmsAeadOperationKeyBundleInput {
 	canonicalContext: Uint8Array;
 }
 
-export class KmsAeadOperationKeyBundleError extends Error {
+export class KmsAeadOperationKeyBundleError extends ElizaError {
 	override readonly name = "KmsAeadOperationKeyBundleError";
 
-	constructor(
-		readonly code: string,
-		message: string,
-		options?: { cause?: unknown },
-	) {
-		super(message, { cause: options?.cause });
-		Object.setPrototypeOf(this, new.target.prototype);
+	constructor(code: string, message: string, options?: { cause?: unknown }) {
+		super(message, { code, cause: options?.cause, severity: "fatal" });
 	}
 }
 

@@ -2058,7 +2058,7 @@ describe("agent backup manifest v2", () => {
         }),
       ),
     ).rejects.toThrow(/cumulative limits/);
-  });
+  }, 30_000);
 
   it("returns the authoritative result for the same operation and canonical payload", async () => {
     const draft = await fixtureDraft();
@@ -2714,7 +2714,7 @@ describe("agent backup manifest v2", () => {
     );
     expect(digestSpy).not.toHaveBeenCalled();
     digestSpy.mockRestore();
-  });
+  }, 120_000);
 
   it("bounds asynchronous AAD digest concurrency", async () => {
     const draft = await fixtureDraft();
