@@ -44,6 +44,11 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import { measureInjectedNonTransientShift } from "../../../testing/layout-shift-teeth.ts";
+import {
+  evaluateFrameBudgetWindows,
+  RELAYOUT_FRAME_GATE,
+  RELAYOUT_FRAME_GATE_WINDOW_COUNT,
+} from "../../../testing/perf-gate-policy.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-perf-gate-e2e");
@@ -66,20 +71,6 @@ const FRAME_GATE = {
   droppedFrameRatio: 0.2,
   reportOnLongTask: false,
 };
-// The pull-to-maximize ↔ restore gesture is a 1:1 finger-tracking integrator (the
-// clamped-1:1-integrator drag rework) that re-renders + re-lays out the WHOLE
-// panel every frame of the drag. On CI that intrinsically doubles ~10–25% of
-// frames during the active transition — yet its WORST frame stays one dropped
-// frame (~33.4ms, never a stall), so it is smooth, not janky. Green CI runs
-// measure 24–30% dropped with noisy-runner spikes to 37% (run 31291669398), so
-// the drop budget sits above that operating band; the p95 factor stays the real
-// jank detector — a genuine regression stalls past two dropped frames (~50ms
-// p95) and still trips regardless of the drop ratio.
-const FRAME_GATE_RELAYOUT = {
-  p95BudgetFactor: 2.5,
-  droppedFrameRatio: 0.45,
-  reportOnLongTask: false,
-};
 // The re-layout window is load-sensitive right at its budget, so it is judged over
 // the MEDIAN of several independent windows (mirrors run-home-screen-e2e): a lone
 // spiked window can't red the lane, but a real regression janks every window.
@@ -87,7 +78,6 @@ const FRAME_GATE_RELAYOUT = {
 // load spike spans multiple back-to-back windows (run 31291669398 flagged 2/3
 // at 37% dropped vs the 35% budget with p95 well inside budget), while a real
 // regression janks a majority regardless of window count.
-const GATE_WINDOWS_RELAYOUT = 5;
 const MIN_SAMPLES = 30; // a real gesture animates ≥30 frames; fewer = regression
 const MAX_CLS = 0.1; // Web-Vitals "good"; baseline session CLS is 0.0000
 
@@ -269,12 +259,16 @@ await runBrowserFixtureE2E(
       const budgetMs = windows[0].s.budgetMs;
       const medianP95 = medianNumber(windows.map((x) => x.s.p95FrameMs));
       const medianDropped = medianNumber(windows.map((x) => x.droppedRatio));
-      const flaggedCount = windows.filter((x) => x.flagged).length;
+      const evaluation = evaluateFrameBudgetWindows(
+        windows.map((window) => window.s),
+        frameGate,
+      );
+      const { flaggedCount } = evaluation;
       // The shared detector must clear the MEDIAN window (≤ half the windows
       // flagged): a real regression janks every window → fails; a lone load spike
       // does not. With windowCount=1 this is the original single-window assertion.
       assert(
-        flaggedCount <= Math.floor(windowCount / 2),
+        !evaluation.failed,
         `[${label}] within frame budget (median p95 ${medianP95.toFixed(1)}ms ≤ ` +
           `${(budgetMs * frameGate.p95BudgetFactor).toFixed(1)}ms, median dropped ` +
           `${(100 * medianDropped).toFixed(0)}% < ${(frameGate.droppedFrameRatio * 100).toFixed(0)}%, ` +
@@ -352,8 +346,8 @@ await runBrowserFixtureE2E(
           if (await pullToRestore(page)) restoreCommits += 1;
         }
       },
-      FRAME_GATE_RELAYOUT,
-      GATE_WINDOWS_RELAYOUT,
+      RELAYOUT_FRAME_GATE,
+      RELAYOUT_FRAME_GATE_WINDOW_COUNT,
     );
     await snap(page, "after-maximize-restore");
     assert(
