@@ -64,6 +64,9 @@ const MAX_CHUNK_SIZE = 1024 * 1024;
  * @throws StreamError if chunk exceeds maximum size
  */
 function validateChunkSize(chunk: string): void {
+	if (typeof chunk !== "string") {
+		return;
+	}
 	if (chunk.length > MAX_CHUNK_SIZE) {
 		throw new StreamError(
 			"CHUNK_TOO_LARGE",
@@ -92,6 +95,10 @@ export class PassthroughExtractor implements IStreamExtractor {
 	push(chunk: string): string {
 		validateChunkSize(chunk);
 		return chunk; // Pass through everything
+	}
+
+	flush(): string {
+		return "";
 	}
 
 	reset(): void {
