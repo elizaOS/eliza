@@ -5,7 +5,7 @@
 import type { SetOptions } from "./vault-types.js";
 
 export function assertKey(key: string): void {
-  if (typeof key !== "string" || key.length === 0) {
+  if (typeof key !== "string" || key.trim().length === 0) {
     throw new TypeError("vault: key must be a non-empty string");
   }
   if (key.length > 256) {
