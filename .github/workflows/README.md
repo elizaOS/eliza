@@ -96,7 +96,12 @@ Representative examples:
   of the tracked service `railway.toml`; follows the returned deployment id to
   success; proves that exact id remains active around the public probes; and
   verifies the applied Dockerfile/health manifest, live health, and canonical
-  cloud/agent fallback routing pair. It also sends a headerless `GET` to the
+  cloud/agent fallback routing pair. A successful release publishes a
+  source/environment/deployment-id receipt; the protected edge-activation
+  workflow downloads that exact run receipt, revalidates the active Railway
+  deployment before and after its probes and edge mutation, and shares this
+  workflow's per-environment concurrency key so canonical releases cannot race
+  a cutover. It also sends a headerless `GET` to the
   dedicated `/ready/forwarder-auth/eliza-app` contract and requires the exact
   enforced-gate 401 response before reasserting the active deployment. A
   disabled secret or mismatched forwarded project produces a distinct non-401

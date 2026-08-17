@@ -482,6 +482,34 @@ jobs:
           assert_active_deployment after
           echo "Exact manifest, active deployment identity, live health, canonical fallback, and forwarder-auth readiness passed."
 
+      - name: Write exact deployment receipt
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          receipt_dir="$RUNNER_TEMP/gateway-webhook-deployment-receipt"
+          mkdir -p "$receipt_dir"
+          jq -n \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg environment "$TARGET_ENVIRONMENT" \
+            --arg deploymentId "$DEPLOYMENT_ID" \
+            --arg service "$EXPECTED_SERVICE_NAME" \
+            '{
+              sourceSha: $sourceSha,
+              environment: $environment,
+              deploymentId: $deploymentId,
+              service: $service
+            }' > "$receipt_dir/gateway-webhook-deployment.json"
+
+      - name: Publish exact deployment receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gateway-webhook-deployment-${{ inputs.environment }}-${{ github.sha }}
+          path: ${{ runner.temp }}/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Write deployment summary
         shell: bash
         env:
@@ -520,7 +548,8 @@ jobs:
             "$RUNNER_TEMP/gateway-webhook-active-deployment.json" \
             "$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json" \
             "$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json" \
-            "$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json"; do
+            "$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json" \
+            "$RUNNER_TEMP/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json"; do
             if [ -f "$path" ]; then
               shred -u "$path"
             fi

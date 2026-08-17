@@ -495,6 +495,29 @@ describe("protected gateway-webhook deployment workflow", () => {
       ),
     ).toThrow("forwarder readiness probe entered a forbidden path");
 
+    const receipt = step("Write exact deployment receipt");
+    expect(receipt.env?.DEPLOYMENT_ID).toContain(
+      "steps.railway_deploy.outputs.deployment_id",
+    );
+    expect(receipt.run).toContain('--arg sourceSha "$GITHUB_SHA"');
+    expect(receipt.run).toContain('--arg environment "$TARGET_ENVIRONMENT"');
+    expect(receipt.run).toContain('--arg deploymentId "$DEPLOYMENT_ID"');
+    expect(receipt.run).toContain('--arg service "$EXPECTED_SERVICE_NAME"');
+    expect(receipt.run).toContain("gateway-webhook-deployment.json");
+
+    const publish = steps.find(
+      (candidate) => candidate.name === "Publish exact deployment receipt",
+    );
+    expect(publish?.uses).toBe(
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    );
+    expect(publish?.with).toEqual({
+      name: "gateway-webhook-deployment-${{ inputs.environment }}-${{ github.sha }}",
+      path: "${{ runner.temp }}/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json",
+      "if-no-files-found": "error",
+      "retention-days": 30,
+    });
+
     const summary = step("Write deployment summary");
     expect(summary.run).toContain("$GITHUB_SHA");
     expect(summary.run).toContain("$DEPLOYMENT_ID");
@@ -510,6 +533,9 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(cleanup.run).toContain("gateway-webhook-railway-variables-raw.json");
     expect(cleanup.run).toContain(
       "gateway-webhook-postdeploy-variables-raw.json",
+    );
+    expect(cleanup.run).toContain(
+      "gateway-webhook-deployment-receipt/gateway-webhook-deployment.json",
     );
   });
 });
