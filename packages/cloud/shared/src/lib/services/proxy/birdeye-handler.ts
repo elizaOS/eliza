@@ -88,6 +88,7 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
     let upstreamResponse: Response;
+    let body: string;
     try {
       upstreamResponse = await fetch(upstreamUrl.toString(), {
         headers: {
@@ -97,34 +98,34 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
         },
         signal: controller.signal,
       });
+      body = await upstreamResponse.text();
     } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === "AbortError") {
-        await creditsService
-          .refundCredits({
-            organizationId: organization_id,
-            amount: cost,
-            description: `API proxy refund: market-data — ${pricedMethod} (upstream timeout)`,
-            metadata: {
-              type: "proxy_market-data_refund",
-              service: "market-data",
-              provider: "birdeye",
-              method: pricedMethod,
-            },
-          })
-          .catch((refundError) => {
-            logger.warn("[BirdeyeProxy] refund after upstream timeout failed", {
-              method: pricedMethod,
-              error: refundError instanceof Error ? refundError.message : String(refundError),
-            });
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      await creditsService
+        .refundCredits({
+          organizationId: organization_id,
+          amount: cost,
+          description: `API proxy refund: market-data — ${pricedMethod} (${isAbort ? "upstream timeout" : "upstream transport failure"})`,
+          metadata: {
+            type: "proxy_market-data_refund",
+            service: "market-data",
+            provider: "birdeye",
+            method: pricedMethod,
+          },
+        })
+        .catch((refundError) => {
+          logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
+            method: pricedMethod,
+            error: refundError instanceof Error ? refundError.message : String(refundError),
           });
+        });
+      if (isAbort) {
         return c.json({ error: "Upstream service timeout" }, 504);
       }
-      throw error;
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    } finally {
+      clearTimeout(timeoutId);
     }
-    clearTimeout(timeoutId);
-
-    const body = await upstreamResponse.text();
 
     // Mirror the engine's billing policy (resolveBillableCost refunds on >=500):
     // we already debited `cost` upfront, so refund it when the upstream FAILS
