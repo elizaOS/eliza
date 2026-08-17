@@ -37,15 +37,30 @@ vi.mock("../../api/client", () => ({
 }));
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+
+/** Typed authenticated owner fixture for the auth-gated hydration probes. */
+const AUTHENTICATED_OWNER: AuthStatusState = {
+  phase: "authenticated",
+  identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+  session: { id: "s-1", kind: "browser", expiresAt: null },
+  access: {
+    mode: "session",
+    passwordConfigured: true,
+    ownerConfigured: true,
+    role: "OWNER",
+  },
+};
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
 
 import type { AgentNotification } from "@elizaos/core";
+import { client } from "../../api/client";
 import {
   __resetAuthStatusForTests,
   __setAuthStatusForTests,
+  type AuthStatusState,
 } from "../../hooks/useAuthStatus";
 import {
   __getStateForTests,
@@ -674,18 +689,8 @@ describe("NotificationsHomeCenter", () => {
   it("renders terminal hydration failure with a working retry", async () => {
     // The retry re-runs hydration through notificationProbesEnabled, which
     // requires an authenticated session before probing the protected inbox
-    // API — mirror the store test's authenticated fixture.
-    __setAuthStatusForTests({
-      phase: "authenticated",
-      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
-      session: { id: "s-1", kind: "browser", expiresAt: null },
-      access: {
-        mode: "session",
-        passwordConfigured: true,
-        ownerConfigured: true,
-        role: "OWNER",
-      },
-    } as never);
+    // API — provide the typed authenticated fixture.
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
     __setHydrationFailureForTests("private transport detail");
     renderRestedNotifications();
 
@@ -704,6 +709,8 @@ describe("NotificationsHomeCenter", () => {
     );
     expect(retryClass).not.toMatch(/(?:^|\s)!?ring-/);
 
+    vi.mocked(client.getBaseUrl).mockClear();
+    vi.mocked(client.listNotifications).mockClear();
     await act(async () => {
       fireEvent.click(retry);
       await Promise.resolve();
@@ -718,6 +725,34 @@ describe("NotificationsHomeCenter", () => {
 
     expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
     expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
+    // The retry actually probed: the base-URL gate ran and exactly one inbox
+    // hydrate request went out (payload-to-effect, not just rendered state).
+    expect(client.getBaseUrl).toHaveBeenCalled();
+    expect(client.listNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not probe the inbox API on retry against the agentless Cloud base", async () => {
+    // The no-probe branch of notificationProbesEnabled: a bare Cloud
+    // control-plane authority has no standalone-agent inbox API, so retry must
+    // not issue a hydrate request even while authenticated.
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    vi.mocked(client.getBaseUrl).mockReturnValue("https://cloud.eliza.app");
+    __setHydrationFailureForTests("private transport detail");
+    renderRestedNotifications();
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    vi.mocked(client.listNotifications).mockClear();
+    await act(async () => {
+      fireEvent.click(retry);
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    // The base-URL gate ran and refused: no hydrate request left the client,
+    // and the hydrated-empty surface never mounts.
+    expect(client.getBaseUrl).toHaveBeenCalled();
+    expect(client.listNotifications).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    vi.mocked(client.getBaseUrl).mockReturnValue("");
   });
 
   it("applies directional fades only where notification content is hidden", () => {

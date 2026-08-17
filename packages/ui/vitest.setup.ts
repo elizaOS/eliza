@@ -56,15 +56,6 @@ function recordUnexpectedConsoleMessage(
   const message = normalizeConsoleMessage(
     arguments_.map(stringifyConsoleArgument).join(" "),
   );
-  // Node runtime deprecation warnings (e.g. [DEP0040] punycode via transitive
-  // deps) are process-level noise: they fire once per worker process, so WHICH
-  // test observes one depends on file-to-worker scheduling — an unpinnable,
-  // order-dependent failure. They are not browser-console output, which is
-  // this guard's stated scope.
-  if (/^\(node:\d+\) \[DEP\d+\] DeprecationWarning:/.test(message)) {
-    (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
-    return;
-  }
   unexpectedConsoleMessages.push(`${level}: ${message}`);
   (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
 }
