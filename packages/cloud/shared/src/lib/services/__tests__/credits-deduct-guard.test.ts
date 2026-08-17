@@ -488,16 +488,14 @@ describe("reconcile() — settle reserved vs actual", () => {
   );
 });
 
-describe("reserveAndDeductCredits — non-finite amount guard (#13415)", () => {
+describe("reserveAndDeductCredits non-finite amount guard", () => {
   beforeEach(async () => {
     if (!pgliteReady) return;
     await seedOrg("10.000000");
   });
 
-  // `amount <= 0` alone is false for NaN, so before the finite guard a NaN
-  // amount reached `String(amount)::numeric` in the balance/ledger CTE. These
-  // run the REAL authoritative mutation (not the reserve() wrapper) and prove
-  // the DB is untouched on rejection.
+  // These calls exercise the authoritative mutation rather than the reserve
+  // wrapper and prove the database is untouched on rejection.
   for (const [label, amount] of [
     ["NaN", Number.NaN],
     ["Infinity", Number.POSITIVE_INFINITY],
@@ -514,7 +512,10 @@ describe("reserveAndDeductCredits — non-finite amount guard (#13415)", () => {
             description: `non-finite guard (${label})`,
             metadata: { user_id: USER_ID },
           }),
-        ).rejects.toThrow("positive, finite");
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
 
         // The deductCredits delegate funnels through the same guard.
         await expect(
@@ -524,7 +525,10 @@ describe("reserveAndDeductCredits — non-finite amount guard (#13415)", () => {
             description: `non-finite guard via deductCredits (${label})`,
             metadata: { user_id: USER_ID },
           }),
-        ).rejects.toThrow("positive, finite");
+        ).rejects.toMatchObject({
+          code: "INVALID_CREDIT_AMOUNT",
+          context: { amount, operation: "reserve_and_deduct", permitsZero: false },
+        });
 
         expect(await readBalance()).toBeCloseTo(10, 6);
         expect(await listDebits()).toHaveLength(0);

@@ -119,10 +119,7 @@ export class MeetingCreditBillingSession {
       ["initialWindowMs", options.initialWindowMs, false],
       ["chunkWindowMs", options.chunkWindowMs, false],
     ] as const) {
-      if (
-        (required || value !== undefined) &&
-        (!Number.isFinite(value) || (value as number) <= 0)
-      ) {
+      if (value === undefined ? required : !Number.isFinite(value) || value <= 0) {
         throw new ElizaError(
           `MeetingCreditBillingSession ${option} must be a positive, finite number`,
           {

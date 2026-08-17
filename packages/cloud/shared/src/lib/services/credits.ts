@@ -102,6 +102,25 @@ export class ReservationNotFoundError extends ElizaError {
   }
 }
 
+/** Refuses malformed amounts before they can reach a credit-ledger mutation. */
+export class InvalidCreditAmountError extends ElizaError {
+  override readonly name = "InvalidCreditAmountError";
+
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+    const permitsZero = operation === "reserve";
+    super(
+      permitsZero
+        ? "Credit reservation amount must be a finite, non-negative number"
+        : "Credit deduction amount must be a positive, finite number",
+      {
+        code: "INVALID_CREDIT_AMOUNT",
+        context: { amount, operation, permitsZero },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 export class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -681,7 +700,7 @@ export class CreditsService {
     // so the finite check lives at this lowest shared boundary (the reserve()
     // wrapper keeps its own guard as defense-in-depth).
     if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error("Amount must be a positive, finite number");
+      throw new InvalidCreditAmountError(amount, "reserve_and_deduct");
     }
 
     const committedKeyedDeduction = async (): Promise<{
@@ -2436,7 +2455,7 @@ export class CreditsService {
     // `< 0` alone lets NaN through (the comparison is false), and a NaN
     // reservation amount would be written as a 'NaN'::numeric debit row.
     if (params.amount !== undefined && (!Number.isFinite(params.amount) || params.amount < 0)) {
-      throw new Error("reserve() amount must be a finite, non-negative number");
+      throw new InvalidCreditAmountError(params.amount, "reserve");
     }
     if (
       params.estimatedCostMultiplier !== undefined &&

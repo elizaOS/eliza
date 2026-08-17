@@ -1,8 +1,7 @@
 /**
- * Meeting billing fail-closed input contract (#13415 slice).
+ * Exercises fail-closed input validation for cloud meeting billing.
  *
- * Deterministic unit coverage (no DB needed — every case fails before any
- * ledger write) for three former fail-open paths:
+ * Deterministic unit coverage verifies three security-sensitive boundaries:
  *
  *  1. `MeetingCreditBillingSession` accepted a NaN `maxDurationMs`, which
  *     disables the spend cap (`nextConsumedMs > NaN` is false), and NaN or
@@ -12,10 +11,8 @@
  *     ELIZA_MEETINGS_TRANSCRIPTION_USD_PER_MINUTE was present but invalid, so
  *     a typo'd price billed every meeting at the wrong rate. Present-but-
  *     invalid must now throw; unset/blank still uses the default.
- *  3. `creditsService.reserve()` guarded amounts with `< 0` only, which NaN
- *     passes — a NaN amount would be written as a 'NaN'::numeric debit row.
- *     Non-finite amounts must now be refused. (Validation throws before any
- *     DB access, so this asserts the guard directly.)
+ *  3. `creditsService.reserve()` refuses non-finite amounts before database
+ *     access. The authoritative mutation has separate real-PGlite coverage.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -133,7 +130,10 @@ describe("creditsService.reserve amount validation", () => {
           amount,
           description: "meeting billing guard test",
         }),
-      ).rejects.toThrow("finite, non-negative");
+      ).rejects.toMatchObject({
+        code: "INVALID_CREDIT_AMOUNT",
+        context: { amount, operation: "reserve", permitsZero: true },
+      });
     }
   });
 
@@ -144,6 +144,9 @@ describe("creditsService.reserve amount validation", () => {
         amount: -1,
         description: "meeting billing guard test",
       }),
-    ).rejects.toThrow("finite, non-negative");
+    ).rejects.toMatchObject({
+      code: "INVALID_CREDIT_AMOUNT",
+      context: { amount: -1, operation: "reserve", permitsZero: true },
+    });
   });
 });
