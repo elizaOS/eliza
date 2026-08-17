@@ -99,6 +99,24 @@ describe("firstSentenceSnip — happy path", () => {
     expect(r?.raw).toBe("Hi.");
     expect(r?.normalized).toBe("hi");
   });
+  it("excludes a newline-only boundary from raw text and its end offset", () => {
+    const r = firstSentenceSnip("Hello there\nSecond line.");
+    expect(r?.raw).toBe("Hello there");
+    expect(r?.normalized).toBe("hello there");
+    expect(r?.endOffset).toBe("Hello there".length);
+  });
+  it("excludes horizontal whitespace immediately before a newline boundary", () => {
+    const r = firstSentenceSnip("Hello there \t \nSecond line.");
+    expect(r?.raw).toBe("Hello there");
+    expect(r?.normalized).toBe("hello there");
+    expect(r?.endOffset).toBe("Hello there".length);
+  });
+  it("matches the trimmed whole-input boundary when the input ends in whitespace and newline", () => {
+    const text = "Hello there \t\n";
+    const r = firstSentenceSnip(text);
+    expect(r?.raw).toBe("Hello there");
+    expect(r?.endOffset).toBe(text.trimEnd().length);
+  });
   it("treats CJK terminators as boundaries", () => {
     const r = firstSentenceSnip("我知道了。");
     expect(r?.normalized).toBe("我知道了");
