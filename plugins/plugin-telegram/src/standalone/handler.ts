@@ -161,7 +161,7 @@ export async function handleTelegramStandaloneMessage(
     }
 
     logger.info(
-      `[telegram-standalone] Telegram message from @${username}: ${text.substring(0, 80)}`,
+      `[telegram-standalone] Telegram message from @${username} chat=${chatId} length=${text.length}`,
     );
 
     if (!runtime.messageService) {
