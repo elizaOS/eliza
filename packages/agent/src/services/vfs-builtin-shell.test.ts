@@ -117,4 +117,18 @@ describe("runVfsBuiltinShell", () => {
     expect(files.stdout).toContain("src/a.ts");
     expect(files.stdout).toContain("src/nested/b.ts");
   });
+
+  it("keeps command separators inside quoted arguments", async () => {
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://quoted/",
+      command: "sh",
+      args: ["-c", `echo "alpha;beta" && echo 'gamma&&delta'`],
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "alpha;beta\ngamma&&delta\n",
+      stderr: "",
+    });
+  });
 });
