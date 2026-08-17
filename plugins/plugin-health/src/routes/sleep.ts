@@ -84,21 +84,28 @@ function parseWindowDaysQuery(value: string | null): number | undefined {
   return parsed;
 }
 
-function parseIncludeNapsQuery(value: string | null): boolean | undefined {
-  if (value === null) {
+/**
+ * GET Life Ops sleep `includeNaps` is nap-row identity, leftover tax after
+ * notifications unreadOnly (#21220). Stock develop treated `1` / `TRUE` as
+ * include-naps, so a non-exact token changed the episode set instead of a
+ * 400. windowDays stays untouched.
+ */
+function parseIncludeNapsQuery(query: URLSearchParams): boolean | undefined {
+  const requested = query.getAll("includeNaps");
+  const raw = requested[0];
+  if (requested.length > 1) {
+    throw new HealthSleepRouteError(400, "Invalid includeNaps");
+  }
+  if (raw == null || raw === "") {
     return undefined;
   }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "") {
-    return undefined;
-  }
-  if (normalized === "true" || normalized === "1") {
+  if (raw === "true") {
     return true;
   }
-  if (normalized === "false" || normalized === "0") {
+  if (raw === "false") {
     return false;
   }
-  throw new HealthSleepRouteError(400, "includeNaps must be a boolean");
+  throw new HealthSleepRouteError(400, "Invalid includeNaps");
 }
 
 function routeErrorStatus(error: unknown): number | null {
@@ -174,9 +181,7 @@ export function createHealthSleepRouteHandler<
         const windowDays = parseWindowDaysQuery(
           url.searchParams.get("windowDays"),
         );
-        const includeNaps = parseIncludeNapsQuery(
-          url.searchParams.get("includeNaps"),
-        );
+        const includeNaps = parseIncludeNapsQuery(url.searchParams);
         const response = await service.getSleepHistory({
           windowDays,
           includeNaps,
@@ -190,9 +195,7 @@ export function createHealthSleepRouteHandler<
         const windowDays = parseWindowDaysQuery(
           url.searchParams.get("windowDays"),
         );
-        const includeNaps = parseIncludeNapsQuery(
-          url.searchParams.get("includeNaps"),
-        );
+        const includeNaps = parseIncludeNapsQuery(url.searchParams);
         const response = await service.getSleepRegularity({
           windowDays,
           includeNaps,
