@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
 const saveElizaConfig = vi.fn();
+const extractAndPersistFirstRunApiKey = vi.fn();
 
 vi.mock("@elizaos/core", () => ({
   logger: {
@@ -58,7 +59,7 @@ vi.mock("./server-first-run-helpers", () => ({
   deriveFirstRunReplayBody: (body: Record<string, unknown>) => ({
     replayBody: body,
   }),
-  extractAndPersistFirstRunApiKey: vi.fn(),
+  extractAndPersistFirstRunApiKey,
   hasDeprecatedFirstRunRequestFields: () => false,
   persistFirstRunDefaults: vi.fn(),
 }));
@@ -73,6 +74,7 @@ function requestWithRawBody(
   return Object.assign(stream, {
     headers: { "content-type": "application/json" },
     method: "POST",
+    socket: { localPort: undefined },
     url: pathname,
   }) as unknown as http.IncomingMessage;
 }
@@ -92,7 +94,7 @@ function responseSink(): http.ServerResponse & {
     },
     jsonBody: () => (body ? JSON.parse(body) : undefined),
   };
-  return sink as http.ServerResponse & { jsonBody: () => unknown };
+  return sink as unknown as http.ServerResponse & { jsonBody: () => unknown };
 }
 
 function emptyState(): CompatRuntimeState {
@@ -117,6 +119,7 @@ async function postFirstRun(raw: string) {
 describe("POST /api/first-run JSON body", () => {
   beforeEach(() => {
     saveElizaConfig.mockReset();
+    extractAndPersistFirstRunApiKey.mockReset();
   });
 
   it.each(["", "   ", "{", "not-json", "[]", "null", '"foo"', "42", "true"])(
@@ -138,6 +141,35 @@ describe("POST /api/first-run JSON body", () => {
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody()).toEqual({ ok: true });
     expect(saveElizaConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 500 when the config commit fails", async () => {
+    saveElizaConfig.mockImplementationOnce(() => {
+      throw new Error("disk unavailable");
+    });
+
+    const { handled, res } = await postFirstRun('{"name":"Eliza"}');
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(500);
+    expect(res.jsonBody()).toEqual({
+      error: "Failed to persist first-run state",
+    });
+  });
+
+  it("returns 500 when a pre-commit helper fails", async () => {
+    extractAndPersistFirstRunApiKey.mockRejectedValueOnce(
+      new Error("sealed secret unavailable"),
+    );
+
+    const { handled, res } = await postFirstRun('{"name":"Eliza"}');
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(500);
+    expect(res.jsonBody()).toEqual({
+      error: "Failed to complete first-run setup",
+    });
+    expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 
   it("ignores non-first-run paths", async () => {

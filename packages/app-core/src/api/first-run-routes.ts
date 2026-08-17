@@ -305,17 +305,24 @@ export async function handleFirstRunRoute(
       saveElizaConfig(config);
       await syncFirstRunConfigState(req, config as Record<string, unknown>);
     } catch (err) {
-      logger.warn(
+      // error-policy:J1 a failed config commit is a server failure, never a
+      // successful onboarding acknowledgement.
+      logger.error(
         `[api] Failed to persist first-run state: ${err instanceof Error ? err.message : String(err)}`,
       );
+      sendJsonResponse(res, 500, {
+        error: "Failed to persist first-run state",
+      });
+      return true;
     }
   } catch (err) {
-    // error-policy:J4 onboarding helpers failed after a valid JSON object;
-    // config-save errors are already warned above. Keep the historical 200
-    // ack for a parseable body so the client can poll /api/first-run/status.
-    logger.warn(
+    // error-policy:J1 valid JSON does not imply a successful commit; translate
+    // helper failures at the HTTP boundary without exposing internal details.
+    logger.error(
       `[api] First-run helper failed after valid JSON: ${err instanceof Error ? err.message : String(err)}`,
     );
+    sendJsonResponse(res, 500, { error: "Failed to complete first-run setup" });
+    return true;
   }
 
   sendJsonResponse(res, 200, { ok: true });
