@@ -78,4 +78,13 @@ describe("useShellAuthGate", () => {
     act(() => clearStoredStewardToken());
     expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
   });
+
+  it("distinguishes an unavailable backend from an in-flight auth check", () => {
+    writeStoredStewardToken("opaque-cloud-session");
+    __setAuthStatusForTests({ phase: "server_unavailable" });
+    const { result } = renderHook(() => useShellAuthGate(), {
+      wrapper: wrapperFor(true),
+    });
+    expect(result.current).toEqual({ gated: true, phase: "unavailable" });
+  });
 });

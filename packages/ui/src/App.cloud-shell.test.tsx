@@ -95,6 +95,7 @@ describe("App standalone chat-overlay wiring", () => {
     );
     expect(branch).toContain("<ChatOverlayShell />");
     expect(branch).toContain("<FirstRunConductorMount />");
+    expect(branch).toContain("<ShellOverlays actionNotice={actionNotice} />");
   });
 
   it("renders a header-less app shell", () => {
