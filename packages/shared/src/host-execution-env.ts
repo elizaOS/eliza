@@ -54,15 +54,36 @@ export function createHostExecutionBaseline(
   });
 }
 
+/**
+ * Process-global mirror of the captured PATH authority. Module state alone is
+ * NOT process-global under bundling: an entrypoint that bundles this module
+ * captures into ITS copy, while an externalized package (plugin-coding-tools
+ * in the eliza-code ACP child) resolves a second instance from node_modules
+ * whose `capturedBaseline` stays empty — live 2026-08-17, every sub-agent
+ * SHELL died "No boot-authorized shell" with a fully valid child PATH. The
+ * env mirror bridges instances; it is validated on every read and grants no
+ * new authority (whoever sets a child's env already controls its PATH).
+ */
+const BASELINE_ENV_MIRROR = "ELIZA_HOST_EXECUTION_BASELINE_PATH";
+
 /** Capture once. Later calls cannot replace the boot authority. */
 export function captureHostExecutionBaseline(): HostExecutionBaseline {
   if (capturedBaseline) return capturedBaseline;
   capturedBaseline = createHostExecutionBaseline(process.env);
+  if (capturedBaseline.path) {
+    process.env[BASELINE_ENV_MIRROR] = capturedBaseline.path;
+  }
   return capturedBaseline;
 }
 
 export function getHostExecutionBaseline(): HostExecutionBaseline {
-  return capturedBaseline ?? Object.freeze({});
+  if (capturedBaseline) return capturedBaseline;
+  const mirrored = validateHostExecutionPath(process.env[BASELINE_ENV_MIRROR]);
+  if (mirrored) {
+    capturedBaseline = Object.freeze({ path: mirrored });
+    return capturedBaseline;
+  }
+  return Object.freeze({});
 }
 
 /**
