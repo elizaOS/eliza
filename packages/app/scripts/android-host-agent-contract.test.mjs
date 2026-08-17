@@ -17,6 +17,12 @@ const workflow = fs.readFileSync(
   path.join(repoRoot, ".github", "workflows", "device-e2e.yml"),
   "utf8",
 );
+const appPackage = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "packages", "app", "package.json"),
+    "utf8",
+  ),
+);
 
 describe("Android device-e2e host-agent contract", () => {
   it("makes the exact-head workflow opt into runner-owned host lifecycle", () => {
@@ -45,5 +51,10 @@ describe("Android device-e2e host-agent contract", () => {
     expect(runner.indexOf("await hostAgent.stop()")).toBeGreaterThan(
       runner.indexOf("} finally {"),
     );
+  });
+
+  it("owns the image decoder imported by the Android route suite", () => {
+    expect(appPackage.devDependencies.pngjs).toBe("^7.0.0");
+    expect(appPackage.devDependencies["@types/pngjs"]).toBe("^6.0.5");
   });
 });
