@@ -12,18 +12,11 @@ export function isPlainObject(
 		return false;
 	}
 
-	// Check constructor - plain objects have Object or null prototype
+	// Plain records have exactly the intrinsic Object prototype or no prototype.
+	// Reading an arbitrary prototype's `constructor` can execute a getter and is
+	// spoofable with `{ constructor: Object }`.
 	const proto = Object.getPrototypeOf(value);
-	if (proto === null) {
-		return true; // Object.create(null)
-	}
-
-	if (proto === Object.prototype || proto.constructor === Object) {
-		return true;
-	}
-
-	// Anything else (built-ins, custom class instances, Buffer, …) is not a plain object.
-	return false;
+	return proto === null || proto === Object.prototype;
 }
 
 export function isObjectRecord(

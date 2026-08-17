@@ -33,6 +33,19 @@ describe("isPlainObject", () => {
 		expect(isPlainObject(new CustomClass())).toBe(false);
 	});
 
+	it("rejects spoofed prototypes without invoking their constructor getter", () => {
+		const spoofedPrototype = { constructor: Object };
+		expect(isPlainObject(Object.create(spoofedPrototype))).toBe(false);
+
+		const hostilePrototype = Object.create(null);
+		Object.defineProperty(hostilePrototype, "constructor", {
+			get: () => {
+				throw new Error("constructor getter must not run");
+			},
+		});
+		expect(isPlainObject(Object.create(hostilePrototype))).toBe(false);
+	});
+
 	it("rejects arrays, functions, and primitives", () => {
 		expect(isPlainObject([])).toBe(false);
 		expect(isPlainObject([1, 2, 3])).toBe(false);
