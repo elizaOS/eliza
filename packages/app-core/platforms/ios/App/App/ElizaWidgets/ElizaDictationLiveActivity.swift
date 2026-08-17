@@ -9,40 +9,28 @@ import WidgetKit
 
 // Lock Screen + Dynamic Island rendering for a voice/dictation session. The
 // `ElizaLiveActivityBridge` in the app target drives the `ContentState`; this
-// file only presents it. Interactive Stop/Save buttons are iOS 18+ (they use
+// file only presents it. The interactive Stop button is iOS 18+ (it uses
 // `OpenURLIntent`, same gate as the widget controls); on 16.1–17 the whole
 // activity taps through to the app via `widgetURL`. Every entry routes the
 // `elizaos://` spine tagged `source=ios-live-activity`.
 
 // MARK: - Interactive buttons (iOS 18+)
 
-// Thin open-the-app shims: `openAppWhenRun` foregrounds the app (stopping the
-// mic / saving the note happens in the app, which owns the audio session and
+// Thin open-the-app shim: `openAppWhenRun` foregrounds the app (stopping the
+// mic happens in the app, which owns the audio session and
 // the ActivityKit handle) and the returned URL routes the deep-link spine.
 // `OpenURLIntent` is iOS 18+ (same gate as the ElizaWidgets controls); on
 // 16.1–17 the whole activity taps through via `widgetURL`.
 
 @available(iOS 18.0, *)
-struct StopElizaDictationIntent: AppIntent {
-    static var title: LocalizedStringResource = "Stop Dictation"
+struct StopElizaVoiceIntent: AppIntent {
+    static var title: LocalizedStringResource = "Stop"
     static var description = IntentDescription("Stop the current Eliza voice session.")
     static var openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult & OpensIntent {
-        .result(opensIntent: OpenURLIntent(ElizaWidgetDeepLink.dictation(action: "stop")))
-    }
-}
-
-@available(iOS 18.0, *)
-struct SaveElizaDictationIntent: AppIntent {
-    static var title: LocalizedStringResource = "Save Dictation"
-    static var description = IntentDescription("Save the current Eliza voice transcript.")
-    static var openAppWhenRun = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult & OpensIntent {
-        .result(opensIntent: OpenURLIntent(ElizaWidgetDeepLink.dictation(action: "save")))
+        .result(opensIntent: OpenURLIntent(ElizaWidgetDeepLink.dictation(action: "stop-voice")))
     }
 }
 
@@ -53,19 +41,31 @@ extension ElizaDictationAttributes.ContentState.Phase {
     var label: LocalizedStringResource {
         switch self {
         case .recording: return "Recording"
+        case .ready: return "Ready"
+        case .listening: return "Listening"
         case .transcribing: return "Transcribing"
         case .thinking: return "Thinking"
         case .speaking: return "Speaking"
+        case .error: return "Error"
+        case .ended: return "Ended"
         }
     }
 
     var systemImage: String {
         switch self {
         case .recording: return "mic.fill"
+        case .ready: return "waveform"
+        case .listening: return "mic.fill"
         case .transcribing: return "waveform"
         case .thinking: return "ellipsis"
         case .speaking: return "speaker.wave.2.fill"
+        case .error: return "exclamationmark.triangle.fill"
+        case .ended: return "checkmark.circle.fill"
         }
+    }
+
+    var isTerminal: Bool {
+        self == .error || self == .ended
     }
 }
 
@@ -94,26 +94,13 @@ struct ElizaDictationLockScreenView: View {
                 .font(.caption)
                 .foregroundStyle(elizaWidgetAccent)
 
-            if !context.state.transcriptSnippet.isEmpty {
-                Text(context.state.transcriptSnippet)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-            }
-
-            if #available(iOS 18.0, *) {
-                HStack(spacing: 10) {
-                    Button(intent: StopElizaDictationIntent()) {
+            if #available(iOS 18.0, *), !context.state.phase.isTerminal {
+                HStack {
+                    Button(intent: StopElizaVoiceIntent()) {
                         Label("Stop", systemImage: "stop.fill")
                             .font(.caption.bold())
                     }
                     .tint(elizaWidgetAccent)
-
-                    Button(intent: SaveElizaDictationIntent()) {
-                        Label("Save", systemImage: "square.and.arrow.down")
-                            .font(.caption.bold())
-                    }
-                    .tint(.secondary)
                 }
                 .buttonStyle(.bordered)
             }
@@ -154,21 +141,12 @@ struct ElizaDictationLiveActivity: Widget {
                         Text(context.state.phase.label)
                             .font(.caption)
                             .foregroundStyle(elizaWidgetAccent)
-                        if !context.state.transcriptSnippet.isEmpty {
-                            Text(context.state.transcriptSnippet)
-                                .font(.callout)
-                                .lineLimit(2)
-                        }
-                        if #available(iOS 18.0, *) {
-                            HStack(spacing: 10) {
-                                Button(intent: StopElizaDictationIntent()) {
+                        if #available(iOS 18.0, *), !context.state.phase.isTerminal {
+                            HStack {
+                                Button(intent: StopElizaVoiceIntent()) {
                                     Label("Stop", systemImage: "stop.fill")
                                 }
                                 .tint(elizaWidgetAccent)
-                                Button(intent: SaveElizaDictationIntent()) {
-                                    Label("Save", systemImage: "square.and.arrow.down")
-                                }
-                                .tint(.secondary)
                             }
                             .buttonStyle(.bordered)
                             .font(.caption.bold())
