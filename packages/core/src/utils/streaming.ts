@@ -65,7 +65,7 @@ const MAX_CHUNK_SIZE = 1024 * 1024;
  */
 function validateChunkSize(chunk: string): void {
 	if (typeof chunk !== "string") {
-		return;
+		throw new TypeError("Stream chunk must be a string");
 	}
 	if (chunk.length > MAX_CHUNK_SIZE) {
 		throw new StreamError(

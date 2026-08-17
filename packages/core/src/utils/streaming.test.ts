@@ -5,11 +5,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+	createStreamingContext,
+	createStreamingRetryState,
 	MarkableExtractor,
 	PassthroughExtractor,
 	StreamError,
-	createStreamingContext,
-	createStreamingRetryState,
 } from "./streaming";
 
 describe("StreamError", () => {
@@ -45,6 +45,12 @@ describe("PassthroughExtractor", () => {
 		const oversized = "x".repeat(1024 * 1024 + 1);
 
 		expect(() => extractor.push(oversized)).toThrow(StreamError);
+	});
+
+	it("rejects non-string chunks at the runtime boundary", () => {
+		const extractor = new PassthroughExtractor();
+
+		expect(() => extractor.push(42 as never)).toThrow(TypeError);
 	});
 });
 
