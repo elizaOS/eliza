@@ -720,9 +720,8 @@ describe("canonical cloud deployment environment contract", () => {
     expect(publish.env?.ELIZA_APNS_PRODUCTION).toContain(
       "vars.ELIZA_APNS_PRODUCTION",
     );
-    expect(publish.run).toContain(
-      "Personal Shared APNs bindings must be configured all-or-none",
-    );
+    expect(publish.run).toContain("verify_apns_binding_candidates");
+    expect(publish.run).toContain("partial existing or configured bindings");
     expect(publish.run).toContain('ELIZA_APNS_TOPIC" != "ai.elizaos.app');
     expect(publish.run).toContain('ELIZA_APNS_PRODUCTION" != "0"');
     for (const name of requiredAuthWorkerSecretNames) {

@@ -47,10 +47,7 @@ describe("shouldForwardToRemoteTarget", () => {
       shouldForwardToRemoteTarget("/api/notifications/push-tokens", "POST"),
     ).toBe(true);
     expect(
-      shouldForwardToRemoteTarget(
-        "/api/notifications/push-tokens/token%2Fwith%2Bslash",
-        "DELETE",
-      ),
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "DELETE"),
     ).toBe(true);
     expect(
       shouldForwardToRemoteTarget("/api/notifications/push-tokens", "GET"),

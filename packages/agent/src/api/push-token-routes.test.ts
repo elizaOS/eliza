@@ -126,6 +126,22 @@ describe("handlePushTokenRoute", () => {
     expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 400);
   });
 
+  it("DELETE accepts a body token without exposing it in the request URL", async () => {
+    await registry.register("ios", "private/device-token");
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({ token: "private/device-token" });
+    await handlePushTokenRoute(
+      req(PREFIX),
+      res,
+      PREFIX,
+      "DELETE",
+      { runtime },
+      helpers,
+    );
+    expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
+    expect(await registry.count()).toBe(0);
+  });
+
   it("GET returns count + per-platform breakdown", async () => {
     await registry.register("ios", "i1");
     await registry.register("ios", "i2");

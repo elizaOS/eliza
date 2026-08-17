@@ -376,6 +376,32 @@ describe("initPushRegistration", () => {
     expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
   });
 
+  it("serializes overlapping token callbacks so an older completion cannot win", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let finishOld: (() => void) | undefined;
+    deps.registerToken = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ ok: true }>((resolve) => {
+            finishOld = () => resolve({ ok: true });
+          }),
+      )
+      .mockResolvedValue({ ok: true });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    emitRegistration(plugin, "new-token");
+    await flush();
+    expect(deps.registerToken).toHaveBeenCalledTimes(1);
+
+    finishOld?.();
+    await flush();
+    expect(deps.registerToken).toHaveBeenNthCalledWith(2, "ios", "new-token");
+    expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
+  });
+
   it("does not mistake a failed old-token cleanup for a failed replacement POST", async () => {
     const loggedError = vi.spyOn(console, "error").mockImplementation(() => {});
     const plugin = makePlugin("granted");
@@ -393,7 +419,7 @@ describe("initPushRegistration", () => {
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledTimes(2);
-    expect(deps.unregisterToken).toHaveBeenCalledTimes(3);
+    expect(deps.unregisterToken).toHaveBeenCalledTimes(6);
     expect(loggedError).toHaveBeenCalled();
   });
 });

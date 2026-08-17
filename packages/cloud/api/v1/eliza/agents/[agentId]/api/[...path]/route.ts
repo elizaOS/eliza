@@ -89,17 +89,6 @@ function greetingConversationId(path: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function pushTokenDeleteTarget(path: string): string | null {
-  const prefix = "notifications/push-tokens/";
-  if (!path.startsWith(prefix)) return null;
-  const encoded = path.slice(prefix.length);
-  try {
-    return decodeURIComponent(encoded);
-  } catch {
-    return null;
-  }
-}
-
 function isPersonalSharedAgent(
   value: Awaited<ReturnType<typeof resolveSharedAgent>>,
 ): boolean {
@@ -391,7 +380,7 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
     if (path === "notifications/push-tokens" && !isPersonalSharedAgent(r)) {
       return personalPushUnavailable(c);
     }
-    let token = pushTokenDeleteTarget(path);
+    let token: string | null = null;
     if (path === "notifications/push-tokens") {
       let body: { token?: unknown } | null = null;
       try {

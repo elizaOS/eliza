@@ -29,7 +29,6 @@ const REMOTE_FORWARDED_MUTATION_PREFIXES = [
   "/api/cloud/billing/",
   "/api/cloud/v1/",
   "/api/notifications/push-tokens",
-  "/api/notifications/push-tokens/",
 ] as const;
 
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
