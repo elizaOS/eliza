@@ -34,13 +34,25 @@ export const DEFAULT_PTY_DISCONNECT_GRACE_MS = 30_000;
  * Parses `ELIZA_PTY_WS_DISCONNECT_GRACE_MS`-style overrides. Empty/absent or
  * unparseable/negative values fall back to the default; `0` is honored as
  * "no grace" (legacy stop-on-close behavior).
+ *
+ * Only a canonical non-negative decimal integer is accepted. Prefix-coercing
+ * spellings (`1e4`, `12px`, `007`) must not become a 1–12ms reap window —
+ * `Number.parseInt("1e4", 10) === 1` would kill the dashboard terminal on the
+ * first phone-lock blip the grace was added to survive.
  */
 export function resolvePtyDisconnectGraceMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  const trimmed = raw.trim();
+  if (trimmed === "0") {
+    return 0;
+  }
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    return DEFAULT_PTY_DISCONNECT_GRACE_MS;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
   return parsed;

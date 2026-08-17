@@ -242,4 +242,13 @@ describe("resolvePtyDisconnectGraceMs", () => {
     expect(resolvePtyDisconnectGraceMs("0")).toBe(0);
     expect(resolvePtyDisconnectGraceMs("15000")).toBe(15_000);
   });
+
+  it.each(["1e4", "12px", "007", "0x10", "1.5", "15000abc"] as const)(
+    "keeps the documented default for prefix-coerced %j (does not apply parseInt)",
+    (raw) => {
+      expect(resolvePtyDisconnectGraceMs(raw)).toBe(
+        DEFAULT_PTY_DISCONNECT_GRACE_MS,
+      );
+    },
+  );
 });
