@@ -15,9 +15,11 @@ import {
 } from "../src/actions";
 import { commandRegistryProvider } from "../src/index";
 import {
+	getCommandsForRuntime,
 	getEnabledCommandsForRuntime,
 	initForRuntime,
 	registerCommand,
+	registerCommandForRuntime,
 	useRuntime,
 } from "../src/registry";
 
@@ -106,6 +108,38 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 
 		expect(r.handled).toBe(true);
 		expect(r.reply).toContain(`Commands enabled: ${agentACommandCount}`);
+	});
+
+	it("detects commands against the dispatch runtime instead of the last active registry", async () => {
+		initForRuntime("agent-a");
+		const modelCommand = getCommandsForRuntime("agent-a").find(
+			(command) => command.key === "model",
+		);
+		if (!modelCommand) throw new Error("Model command is required");
+
+		initForRuntime("agent-b");
+		registerCommandForRuntime("agent-b", {
+			...modelCommand,
+			enabled: false,
+		});
+
+		const runtimeA = makeRuntime("agent-a");
+		const message = msg("/model");
+		const result = await resolveCommand(runtimeA, message, {
+			isAuthorized: true,
+			isElevated: true,
+		});
+
+		expect(result).toMatchObject({
+			handled: true,
+			command: { key: "model" },
+			reply: "Model is default.",
+		});
+		const modelAction = commandActions.find(
+			(action) => action.name === "MODEL_COMMAND",
+		);
+		if (!modelAction) throw new Error("Model command action is required");
+		await expect(modelAction.validate(runtimeA, message)).resolves.toBe(true);
 	});
 
 	it("/whoami reflects the sender context", async () => {
