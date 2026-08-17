@@ -92,17 +92,32 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
     };
   });
 
+const { keyboardListeners, keyboardMock } = vi.hoisted(() => {
+  const keyboardListeners = new Map<string, CapacitorEventHandler[]>();
+  return {
+    keyboardListeners,
+    keyboardMock: {
+      setResizeMode: vi.fn(async () => undefined),
+      setScroll: vi.fn(async () => undefined),
+      setAccessoryBarVisible: vi.fn(async () => undefined),
+      addListener: vi.fn(
+        (eventName: string, handler: CapacitorEventHandler) => {
+          const handlers = keyboardListeners.get(eventName) ?? [];
+          handlers.push(handler);
+          keyboardListeners.set(eventName, handlers);
+          return Promise.resolve({ remove: async () => undefined });
+        },
+      ),
+    },
+  };
+});
+
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
 vi.mock("@capacitor/keyboard", () => ({
-  Keyboard: {
-    setResizeMode: vi.fn(async () => undefined),
-    setScroll: vi.fn(async () => undefined),
-    setAccessoryBarVisible: vi.fn(async () => undefined),
-    addListener: vi.fn(async () => ({ remove: async () => undefined })),
-  },
+  Keyboard: keyboardMock,
   KeyboardResize: { None: "none" },
 }));
 
@@ -181,6 +196,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   appListeners.clear();
   networkListeners.clear();
+  keyboardListeners.clear();
   capacitorAppMock.__setLaunchUrl(null);
   historyBackSpy = vi
     .spyOn(window.history, "back")
@@ -203,6 +219,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
     // The live entrypoint must route through the extracted helper — this suite
     // certifies the shipped behavior only while main.tsx actually calls it.
     expect(mainSrc).toContain("getMobileLifecycle().initializeAppLifecycle()");
+    expect(mainSrc).toContain("getMobileLifecycle().initializeKeyboard()");
     expect(mainSrc).toContain("getMobileLifecycle().initializeDeepLinks()");
     expect(mainSrc).toContain(
       "getMobileLifecycle().initializeNetworkListener()",
@@ -213,6 +230,47 @@ describe("createMobileLifecycle — app lifecycle", () => {
     expect(mainSrc).not.toContain('addEventListener("visibilitychange"');
     expect(mainSrc).not.toContain('addListener("backButton"');
     expect(mainSrc).not.toContain('addListener("appStateChange"');
+    expect(mainSrc).not.toContain("async function initializeKeyboard()");
+  });
+
+  it("keeps the iPhone software keyboard but disables its redundant accessory strip", async () => {
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isIOS: true, isAndroid: false }),
+    );
+
+    await lifecycle.initializeKeyboard();
+
+    expect(keyboardMock.setResizeMode).toHaveBeenCalledWith({ mode: "none" });
+    expect(keyboardMock.setScroll).toHaveBeenCalledWith({ isDisabled: true });
+    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledWith({
+      isVisible: false,
+    });
+
+    for (const handler of keyboardListeners.get("keyboardWillShow") ?? []) {
+      handler({ keyboardHeight: 321 });
+    }
+    expect(document.body.style.getPropertyValue("--keyboard-height")).toBe(
+      "321px",
+    );
+    expect(document.body.classList).toContain("keyboard-open");
+
+    for (const handler of keyboardListeners.get("keyboardWillHide") ?? []) {
+      handler({});
+    }
+    expect(document.body.style.getPropertyValue("--keyboard-height")).toBe(
+      "0px",
+    );
+    expect(document.body.classList).not.toContain("keyboard-open");
+  });
+
+  it("does not change Android keyboard accessory policy", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+
+    await lifecycle.initializeKeyboard();
+
+    expect(keyboardMock.setResizeMode).not.toHaveBeenCalled();
+    expect(keyboardMock.setScroll).not.toHaveBeenCalled();
+    expect(keyboardMock.setAccessoryBarVisible).not.toHaveBeenCalled();
   });
 
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
