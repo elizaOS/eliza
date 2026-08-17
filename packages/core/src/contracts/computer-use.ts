@@ -2907,11 +2907,32 @@ export async function authorizeInteractionDispatch(
 		);
 	}
 	const authorizedAt = validClock(clock());
-	assertInteractionSessionExecutable(session, {
+	const currentSession = assertInteractionSessionExecutable(options.session, {
 		capabilities,
 		now: authorizedAt,
 		profileGrantVerifier: options.profileGrantVerifier,
 	});
+	if (
+		currentSession.sessionId !== session.sessionId ||
+		currentSession.ownerId !== session.ownerId ||
+		currentSession.adapterId !== session.adapterId ||
+		currentSession.generation !== session.generation
+	) {
+		throw new ElizaError(
+			"Interaction session changed while dispatch authorization was pending.",
+			{
+				code: "STALE_INTERACTION_REFERENCE",
+				context: {
+					actionId: action.actionId,
+					sessionId: session.sessionId,
+					initialGeneration: session.generation,
+					currentGeneration: currentSession.generation,
+				},
+				severity: "ephemeral",
+			},
+		);
+	}
+	assertInteractionSurfaceCurrent(currentSession, action.surface);
 	if (action.confirmationGrant) {
 		assertInteractionConfirmationCurrent(
 			action.confirmationGrant,
@@ -2922,7 +2943,7 @@ export async function authorizeInteractionDispatch(
 	if (action.leaseIds.length > 0 || leaseRequirements.length > 0) {
 		options.leaseCoordinator?.assertActionLeases(
 			action,
-			session,
+			currentSession,
 			leaseRequirements,
 		);
 	}

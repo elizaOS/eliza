@@ -591,6 +591,38 @@ describe("computer-use interaction contracts", () => {
 			expect.objectContaining({ code: "INTERACTION_LEASE_CONFLICT" }),
 		);
 
+		const stoppedSession = { ...session };
+		const stateCoordinator = new InteractionConfirmationCoordinator();
+		const statePreview = stateCoordinator.register(
+			confirmationResult.confirmation,
+			confirmationAction,
+			Date.parse(later),
+		);
+		const stateGrant = stateCoordinator.issue(
+			statePreview.confirmationId,
+			confirmationAction,
+			later,
+			Date.parse(later),
+		);
+		const stoppedAuthorization = authorizeInteractionDispatch(
+			{ ...confirmationAction, confirmationGrant: stateGrant },
+			{
+				session: stoppedSession,
+				capabilities,
+				clock: () => Date.parse(later),
+				confirmationGrantConsumer: {
+					consume: async (grant, candidate, consumedAt) => {
+						stoppedSession.state = "stopped";
+						await stateCoordinator.consume(grant, candidate, consumedAt);
+					},
+				},
+				leaseRequirements: [],
+			},
+		);
+		await expect(stoppedAuthorization).rejects.toEqual(
+			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
+		);
+
 		const failedAction = await authorize(action("case-failed_no_effect"));
 		expect(() =>
 			normalizeInteractionActionResult(
