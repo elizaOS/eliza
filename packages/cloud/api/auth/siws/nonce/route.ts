@@ -15,12 +15,47 @@ import { logger } from "@/lib/utils/logger";
 import { issueSiwsNonce } from "@/lib/utils/siws-helpers";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+/**
+ * SIWS `chainId` uses the Wallet Standard Solana aliases exposed by the
+ * application's wallet adapters, not an EIP-4361 integer. Missing or empty
+ * defaults to `solana:mainnet`; every supplied value must be one of the four
+ * networks the adapters can report. Garbage must not be Redis-bound because
+ * verification later requires the signed chainId to match the issued binding.
+ */
+export const SIWS_DEFAULT_CHAIN_ID = "solana:mainnet";
+const SIWS_CHAIN_IDS = new Set([
+  SIWS_DEFAULT_CHAIN_ID,
+  "solana:devnet",
+  "solana:testnet",
+  "solana:localnet",
+]);
+
+export function parseSiwsChainId(
+  raw: string | undefined,
+): { ok: true; chainId: string } | { ok: false } {
+  if (raw === undefined || raw === "") {
+    return { ok: true, chainId: SIWS_DEFAULT_CHAIN_ID };
+  }
+  if (!SIWS_CHAIN_IDS.has(raw)) {
+    return { ok: false };
+  }
+  return { ok: true, chainId: raw };
+}
+
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.get("/", async (c) => {
-  const chainId = c.req.query("chainId") ?? "solana:mainnet";
+  const parsedChainId = parseSiwsChainId(c.req.query("chainId"));
+  if (!parsedChainId.ok) {
+    return c.json(
+      { error: "Invalid SIWS chainId", code: "invalid_chain_id" },
+      400,
+      { "Cache-Control": "no-store" },
+    );
+  }
+  const chainId = parsedChainId.chainId;
 
   const redis = buildRedisClient(c.env);
   if (!redis) {
