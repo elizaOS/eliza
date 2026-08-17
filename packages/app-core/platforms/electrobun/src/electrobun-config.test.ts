@@ -1,6 +1,9 @@
 /** Exercises electrobun config behavior with deterministic app-core test fixtures. */
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  createElectrobunConfig,
   resolveElectrobunCopyMap,
   shouldEmbedRuntimeBundle,
 } from "../electrobun.config";
@@ -75,5 +78,34 @@ describe("Electrobun Store packaging", () => {
       Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
     ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
+  });
+
+  it("keeps generated brand overrides outside tracked source", () => {
+    const originalNamespace = process.env.ELIZA_NAMESPACE;
+    const outputPath = path.resolve(
+      import.meta.dirname,
+      "..",
+      "tmp",
+      "brand-config.json",
+    );
+
+    try {
+      process.env.ELIZA_NAMESPACE = "eliza-test";
+      createElectrobunConfig();
+
+      expect(JSON.parse(fs.readFileSync(outputPath, "utf8"))).toMatchObject({
+        appName: "Eliza",
+        appId: "ai.elizaos.app",
+        namespace: "eliza-test",
+        urlScheme: "elizaos",
+      });
+    } finally {
+      if (originalNamespace === undefined) {
+        delete process.env.ELIZA_NAMESPACE;
+      } else {
+        process.env.ELIZA_NAMESPACE = originalNamespace;
+      }
+      fs.rmSync(outputPath, { force: true });
+    }
   });
 });
