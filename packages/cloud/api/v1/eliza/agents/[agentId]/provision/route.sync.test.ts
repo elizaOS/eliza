@@ -34,6 +34,11 @@ const provision = mock(async () => ({
   success: true,
   bridgeUrl: "https://bridge.example.test",
   healthUrl: "https://health.example.test",
+  sandboxRecord: {
+    id: AGENT_ID,
+    agent_name: "provisioned-agent",
+    status: "running",
+  },
 }));
 const checkAgentCreditGate = mock(async () => ({
   allowed: true,
@@ -131,11 +136,22 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
     },
   );
 
-  test("accepts sync=true as the blocking-fallback token (already-running)", async () => {
+  test("accepts sync=true and runs the blocking provision path", async () => {
+    getAgentForWrite.mockImplementationOnce(async () => ({
+      id: AGENT_ID,
+      organization_id: ORG_A,
+      agent_name: "needs-provisioning",
+      execution_tier: "dedicated-always",
+      status: "stopped",
+      bridge_url: null,
+      health_url: null,
+    }));
     const response = await post("?sync=true");
     expect(response.status).toBe(200);
     expect(getAgentForWrite).toHaveBeenCalledTimes(1);
-    expect(provision).not.toHaveBeenCalled();
+    expect(checkAgentCreditGate).toHaveBeenCalledTimes(1);
+    expect(provision).toHaveBeenCalledTimes(1);
+    expect(provision).toHaveBeenCalledWith(AGENT_ID, ORG_A);
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 
