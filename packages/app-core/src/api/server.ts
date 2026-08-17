@@ -152,6 +152,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
+import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
@@ -659,6 +660,12 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // before any other auth handler so it owns the root `/pair` URL.
     id: "cloud-pair",
     handler: ({ req, res }) => handleCloudPairRoute(req, res),
+  },
+  {
+    // One-shot local desktop session proof must precede generic auth routes.
+    id: "desktop-auth-bootstrap",
+    handler: ({ req, res, state }) =>
+      handleDesktopAuthBootstrapRoute(req, res, state),
   },
   {
     // Must precede the auth-pairing handler so the rate-limited route owns
