@@ -73,7 +73,25 @@ Representative examples:
   and gates every signing, release-upload, and OTA-publish job behind the
   reviewer-approved `production-release` environment; a tag protection
   ruleset restricting `v*` creation completes that boundary.
-  `snap-publish.yml` owns Snap Store publication.
+  After finalization, the canonical workflow also calls the reusable,
+  callable-only `snap-publish.yml` and `store-mobile-publish.yml` legs with the
+  exact finalized source SHA, version, channel, and tag. Those legs re-resolve
+  the tag to the supplied commit before using credentials and run behind the
+  `production-release` environment. Snap uploads the registered `eliza` name;
+  Android builds and audits the cloud-only AAB before Google Play upload; iOS
+  embeds the store runtime and uses an App Store Connect API key for signing
+  and delivery. Missing credentials fail the affected store job with the exact
+  secret names instead of silently skipping publication.
+
+  Store credentials are environment-owned. Snap needs
+  `SNAPCRAFT_STORE_CREDENTIALS`. Google Play needs the four
+  `ANDROID_KEYSTORE_*` secrets plus `PLAY_STORE_SERVICE_ACCOUNT_JSON` (raw
+  service-account JSON or its base64 encoding). Apple
+  needs `APPLE_ID`, `APPLE_TEAM_ID`, `ITC_TEAM_ID`, `APP_STORE_APP_ID`, the
+  three `MATCH_*` values, and `APP_STORE_API_KEY_ID`,
+  `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
+  upload still depends on the corresponding organization account, application
+  record, agreements, and roles already existing in each publisher portal.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

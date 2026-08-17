@@ -2,6 +2,30 @@ default_platform(:android)
 
 platform :android do
 
+  desc "Upload the already-built, audited AAB to the release plan track"
+  lane :publish_aab do
+    track = ENV.fetch("PLAY_STORE_TRACK")
+    aab_path = ENV.fetch("PLAY_STORE_AAB_PATH")
+    json_key = ENV.fetch("PLAY_STORE_JSON_KEY")
+
+    unless ["internal", "beta", "production"].include?(track)
+      UI.user_error!("PLAY_STORE_TRACK must be internal, beta, or production")
+    end
+    UI.user_error!("AAB not found at #{aab_path}") unless File.file?(aab_path)
+    UI.user_error!("Play service-account key not found at #{json_key}") unless File.file?(json_key)
+
+    upload_to_play_store(
+      package_name: ENV.fetch("PLAY_STORE_PACKAGE_NAME", "ai.elizaos.app"),
+      track: track,
+      aab: aab_path,
+      json_key: json_key,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    )
+  end
+
   desc "Build a signed AAB for Play Store"
   lane :build do
     gradle(
