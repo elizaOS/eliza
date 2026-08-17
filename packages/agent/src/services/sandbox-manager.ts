@@ -2,6 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
+import { isElizaError } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 import {
   createEngine,
@@ -76,6 +77,8 @@ export interface SandboxExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   stdin?: string;
+  /** Cancels execution and discards the active container to contain effects. */
+  abortSignal?: AbortSignal;
 }
 
 export interface SandboxExecResult {
@@ -93,6 +96,8 @@ export interface SandboxRunOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   stdin?: string;
+  /** Cancels execution and discards the active container to contain effects. */
+  abortSignal?: AbortSignal;
   /**
    * Override sandbox image. Currently informational; the manager runs commands
    * in the long-lived container provisioned at start(), not a per-call image.
@@ -433,6 +438,7 @@ export class SandboxManager {
 
   async exec(options: SandboxExecOptions): Promise<SandboxExecResult> {
     const start = Date.now();
+    options.abortSignal?.throwIfAborted();
 
     if (this.config.mode === "off" || this.config.mode === "light") {
       // In off/light mode, refuse sandbox exec — caller must use local
@@ -477,9 +483,15 @@ export class SandboxManager {
         env: options.env,
         timeoutMs: options.timeoutMs,
         stdin: options.stdin,
+        abortSignal: options.abortSignal,
       });
+      const { containerDiscarded, ...execResult } = result;
+      if (containerDiscarded) {
+        this.containerId = null;
+        if (this.state === "ready") this.setState("degraded");
+      }
       return {
-        ...result,
+        ...execResult,
         executedInSandbox: true,
       };
     } catch (err) {
@@ -491,6 +503,20 @@ export class SandboxManager {
           command: options.command.substring(0, 200),
         },
       });
+      if (options.abortSignal?.aborted) {
+        if (Object.is(err, options.abortSignal.reason)) {
+          this.containerId = null;
+        }
+        if (this.state === "ready") this.setState("degraded");
+        throw err;
+      }
+      if (
+        isElizaError(err) &&
+        err.code === "SANDBOX_EXEC_TIMEOUT_CONTAINMENT_FAILED"
+      ) {
+        if (this.state === "ready") this.setState("degraded");
+        throw err;
+      }
       return {
         exitCode: 1,
         stdout: "",
@@ -516,6 +542,7 @@ export class SandboxManager {
       env: options.env,
       timeoutMs: options.timeoutMs,
       stdin: options.stdin,
+      abortSignal: options.abortSignal,
     });
   }
 

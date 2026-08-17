@@ -114,6 +114,29 @@ function appliedEffectReceipt(): EffectReceipt {
 }
 
 describe("executePlannedToolCall", () => {
+	it("propagates the message streaming abort signal into action handlers", async () => {
+		const controller = new AbortController();
+		let observedSignal: AbortSignal | undefined;
+		const action = makeAction({
+			name: "CANCELLABLE_ACTION",
+			handler: async (_runtime, _message, _state, options) => {
+				observedSignal = options?.abortSignal;
+				return { success: true };
+			},
+		});
+		const runtime = makeRuntime([action]);
+
+		await runWithStreamingContext({ abortSignal: controller.signal }, () =>
+			executePlannedToolCall(
+				runtime,
+				{ message: makeMessage() },
+				{ name: action.name, params: {} },
+			),
+		);
+
+		expect(observedSignal).toBe(controller.signal);
+	});
+
 	it("matches action names exactly only", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const runtime = makeRuntime([makeAction({ name: "DOCUMENT", handler })]);
