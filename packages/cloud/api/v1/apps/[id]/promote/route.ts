@@ -131,7 +131,24 @@ async function __hono_GET(
   }
 
   const url = new URL(request.url);
-  const isHistory = url.searchParams.get("history") === "true";
+  // App-promote history identity, not leftover tax on promote-assets
+  // platform. history=TRUE used to silently return suggestions.
+  const requestedHistory = url.searchParams.get("history");
+  if (
+    requestedHistory != null &&
+    requestedHistory !== "" &&
+    requestedHistory !== "true" &&
+    requestedHistory !== "false"
+  ) {
+    return Response.json(
+      {
+        error: "Invalid history",
+        message: 'history must be "true" or "false".',
+      },
+      { status: 400 },
+    );
+  }
+  const isHistory = requestedHistory === "true";
 
   if (isHistory) {
     const history = await appPromotionService.getPromotionHistory(
