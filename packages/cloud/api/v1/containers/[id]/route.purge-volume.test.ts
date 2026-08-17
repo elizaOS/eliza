@@ -88,12 +88,27 @@ describe("DELETE /api/v1/containers/:id purgeVolume identity", () => {
     });
   });
 
+  test.each([
+    ["false", false],
+    ["true", true],
+  ] as const)(
+    "applies purgeVolume=%s consistently when mode=stop",
+    async (raw, expected) => {
+      const response = await del(`?mode=stop&purgeVolume=${raw}`);
+
+      expect(response.status).toBe(200);
+      expect(stopContainer).toHaveBeenCalledTimes(1);
+      expect(stopContainer.mock.calls[0][2]).toMatchObject({
+        purgeVolume: expected,
+      });
+      expect(deleteContainer).not.toHaveBeenCalled();
+    },
+  );
+
   test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo"])(
     "rejects purgeVolume=%s before deleteContainer",
     async (token) => {
-      const response = await del(
-        `?purgeVolume=${encodeURIComponent(token)}`,
-      );
+      const response = await del(`?purgeVolume=${encodeURIComponent(token)}`);
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("Invalid purgeVolume");
