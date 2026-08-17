@@ -189,4 +189,50 @@ describe("GET /api/auth/siws/nonce — Redis failure boundary", () => {
       chainId: "solana:mainnet",
     });
   });
+
+  test("empty chainId still defaults to solana:mainnet", async () => {
+    const res = await getNonce("?chainId=");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chainId: string };
+    expect(body.chainId).toBe("solana:mainnet");
+    expect(JSON.parse([...stored.values()][0] ?? "")).toMatchObject({
+      chainId: "solana:mainnet",
+    });
+  });
+
+  test.each(["devnet", "testnet", "localnet"])(
+    "canonical solana:%s binds that chain",
+    async (network) => {
+      const chainId = `solana:${network}`;
+      const res = await getNonce(`?chainId=${chainId}`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { chainId: string };
+      expect(body.chainId).toBe(chainId);
+      expect(JSON.parse([...stored.values()][0] ?? "")).toMatchObject({
+        chainId,
+      });
+    },
+  );
+
+  test.each([
+    "ethereum:1",
+    "1e4",
+    "javascript:alert(1)",
+    "solana:",
+    "SOLANA:mainnet",
+    "solana:mainnet/foo",
+    "solana:mainnet ",
+    "solana:garbage",
+    "solana:main_net",
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  ])("rejects %s before any nonce write", async (token) => {
+    const res = await getNonce(`?chainId=${encodeURIComponent(token)}`);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    await expect(res.json()).resolves.toEqual({
+      error: "Invalid SIWS chainId",
+      code: "invalid_chain_id",
+    });
+    expect(stored.size).toBe(0);
+  });
 });

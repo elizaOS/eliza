@@ -422,6 +422,8 @@ export interface Bindings {
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
+  /** Collision-free secret used by the protected production edge cutover; inert outside production. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal
@@ -478,6 +480,8 @@ export interface Bindings {
   // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
   INFERENCE_HOT_PATH_CACHES?: string;
   INFERENCE_AUTH_CACHE_ENABLED?: string;
+  /** Strong Durable Object boundary required before positive auth caching can activate. */
+  INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

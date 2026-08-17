@@ -1,5 +1,9 @@
 // Provides cloud utility credit reservation helpers shared by backend services.
-import type { CreditReconciliationResult, CreditReservation } from "../services/credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  ReservationNotFoundError,
+} from "../services/credits";
 
 /**
  * Wrap a credit reservation's `reconcile` in a first-actual-cost-wins settler.
@@ -12,10 +16,12 @@ import type { CreditReconciliationResult, CreditReservation } from "../services/
  * #11512/#11608: the app-credits reconcile path commits the org refund before
  * throw-prone post-refund writes. Reservations with a server-generated
  * `reservationTransactionId` have idempotent reconcile ledger legs, so a
- * rejected settle may retry and heal those post-refund writes. Reservations
- * without that key keep the rejection cached forever because retrying them
- * could move money again. In either case, a later fallback `settle(0)` never
- * changes the billable actual cost chosen by the first call.
+ * transient rejected settle may retry and heal those post-refund writes. A
+ * missing server-keyed reservation is decisive and remains cached because a
+ * retry cannot make the absent row appear. Reservations without a key also
+ * keep the rejection cached because retrying them could move money again. In
+ * every case, a later fallback `settle(0)` never changes the billable actual
+ * cost chosen by the first call.
  */
 export function createCreditReservationSettler(
   reservation: CreditReservation | undefined,
@@ -30,7 +36,9 @@ export function createCreditReservationSettler(
 
     if (!settlePromise) {
       settlePromise = reservation.reconcile(firstActualCost).catch((error) => {
-        if (reservation.reservationTransactionId) {
+        // error-policy:J2 retain decisive failures while preserving retry for
+        // keyed, idempotent settlement failures that may heal on re-entry.
+        if (reservation.reservationTransactionId && !(error instanceof ReservationNotFoundError)) {
           settlePromise = null;
         }
         throw error;

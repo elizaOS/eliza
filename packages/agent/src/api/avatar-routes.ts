@@ -52,7 +52,15 @@ export async function handleAvatarRoutes(
     pathname.startsWith("/api/avatar/discord/")
   ) {
     const encodedFileName = pathname.slice("/api/avatar/discord/".length);
-    const fileName = decodeURIComponent(encodedFileName);
+    let fileName: string;
+    try {
+      fileName = decodeURIComponent(encodedFileName);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — invalid percent escapes
+      // are a malformed path, not a server failure.
+      error(res, "Invalid Discord avatar path", 400);
+      return true;
+    }
     if (
       !fileName ||
       fileName !== path.basename(fileName) ||

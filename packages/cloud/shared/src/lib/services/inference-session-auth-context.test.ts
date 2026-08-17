@@ -6,6 +6,7 @@
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
+process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -25,6 +26,7 @@ let getUser:
   | undefined;
 let userReads = 0;
 let moderationReads = 0;
+let assertSessionActive: () => Promise<void>;
 const ADMISSION = {
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -64,6 +66,21 @@ mock.module("../steward-sync", () => ({
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
 }));
+mock.module("./inference-credential-revocation", () => ({
+  isInferenceStrongRevocationEnabled: () =>
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
+  InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {
+    constructor(readonly reason: string) {
+      super("Inference credential is revoked");
+      this.name = "InferenceCredentialRevokedError";
+    }
+  },
+  assertInferenceCredentialActive: () => assertSessionActive(),
+  revokeInferenceApiKey: async () => undefined,
+  revokeInferenceSessionsThrough: async () => undefined,
+  setInferenceOrganizationActive: async () => undefined,
+  setInferenceSubjectActive: async () => undefined,
+}));
 
 const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContext } = await import(
   "./inference-session-auth-context"
@@ -88,6 +105,7 @@ beforeEach(async () => {
   };
   userReads = 0;
   moderationReads = 0;
+  assertSessionActive = async () => undefined;
   getUser = async () => ({
     id: "user-1",
     is_active: true,
@@ -154,6 +172,31 @@ describe("resolveInferenceSessionAuthContext", () => {
         stewardUserId: "steward-1",
       },
     });
+    expect(userReads).toBe(0);
+    expect(moderationReads).toBe(0);
+  });
+
+  test("warm verified session is denied when its issued-at cutoff is revoked", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    userReads = 0;
+    moderationReads = 0;
+    assertSessionActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("session_revoked");
+    };
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+    });
+
+    expect(result).toEqual({ kind: "rejected", status: 401 });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
   });

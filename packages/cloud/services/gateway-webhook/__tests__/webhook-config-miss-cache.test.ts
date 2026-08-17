@@ -91,13 +91,17 @@ describe("per-agent webhook config cache", () => {
 
   test("caches a resolved config for the full TTL and returns it", async () => {
     const redis = new MemoryRedis();
-    globalThis.fetch = mock(
-      async () =>
-        new Response(JSON.stringify({ verifyToken: "vt", appSecret: "as" }), {
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      expect(request.headers.get("authorization")).toBe("Bearer gateway-jwt");
+      return new Response(
+        JSON.stringify({ verifyToken: "vt", appSecret: "as" }),
+        {
           status: 200,
           headers: { "content-type": "application/json" },
-        }),
-    ) as typeof fetch;
+        },
+      );
+    }) as typeof fetch;
 
     expect(await resolve(redis)).toEqual({
       verifyToken: "vt",

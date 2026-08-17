@@ -167,6 +167,9 @@ export function getErrorStatusCode(error: unknown): number {
     if (error.name === "RateLimitError") {
       return 429;
     }
+    if (error.name === "InferenceCredentialRevocationUnavailableError") {
+      return 503;
+    }
 
     // DB / internal failures that mention "authentication" must stay 500 (compat routes)
     if (

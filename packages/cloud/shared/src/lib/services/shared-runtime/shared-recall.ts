@@ -6,12 +6,11 @@
  * Embeddings come from a sidecar exposing the OpenAI `/v1/embeddings` shape
  * with `bge-small-en-v1.5` (384 dimensions).
  *
- * Not wired into the live turn yet — the turn integration lands with the P2
- * tenant-store merge. `buildSharedRecallContext` is pure orchestration over
- * injected `embed`/`storeSearch` collaborators and owns no degrade policy:
- * failures propagate typed so the turn boundary decides whether recall loss is
- * survivable. `embedTextViaSidecar` is fail-fast with a single bounded attempt
- * (5s abort, no retries); the caller owns retry/backoff policy.
+ * `buildSharedRecallContext` is pure orchestration over injected
+ * `embed`/`storeSearch` collaborators and owns no degrade policy: failures
+ * propagate typed so the live turn boundary decides whether recall loss is
+ * survivable. Sidecar calls are fail-fast with a single bounded attempt (5s
+ * abort, no retries); the caller owns retry/backoff policy.
  */
 
 import { ElizaError } from "@elizaos/core/edge";
@@ -92,6 +91,88 @@ function readSidecarEmbedding(payload: unknown): number[] | undefined {
  * `POST <baseUrl>/v1/embeddings` endpoint. Single attempt, 5s abort, typed
  * failures; never returns a partial or fabricated vector.
  */
+/**
+ * Batch variant of {@link embedTextViaSidecar}: one sidecar call for several
+ * texts, vectors returned in input order. Used by the write path so a turn
+ * pair costs a single embedding round-trip. Same 5s abort and typed failures;
+ * a count mismatch is an invalid response, never a partial result.
+ */
+export async function embedTextsViaSidecar(
+  baseUrl: string,
+  apiKey: string | undefined,
+  texts: string[],
+): Promise<number[][]> {
+  const cleaned = texts.map((text) => text.trim());
+  if (cleaned.length === 0 || cleaned.some((text) => !text)) {
+    throw new ElizaError("Embedding sidecar rejected blank input text", {
+      code: "SHARED_RECALL_EMBEDDING_EMPTY_TEXT",
+      severity: "fatal",
+    });
+  }
+  const url = `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({ input: cleaned, model: SHARED_RECALL_EMBEDDING_MODEL }),
+      signal: AbortSignal.timeout(SHARED_RECALL_EMBED_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new ElizaError("Embedding sidecar was unreachable", {
+      code: "SHARED_RECALL_EMBEDDING_UNREACHABLE",
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+  if (!response.ok) {
+    throw new ElizaError(`Embedding sidecar returned HTTP ${response.status}`, {
+      code: "SHARED_RECALL_EMBEDDING_HTTP_ERROR",
+      context: { status: response.status },
+    });
+  }
+  let payload: { data?: Array<{ embedding?: unknown }> };
+  try {
+    payload = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+  } catch (cause) {
+    // error-policy:J3 a non-JSON 2xx body becomes an explicit invalid-response
+    // failure so the memory store can degrade to vector-less rows.
+    throw new ElizaError("Embedding sidecar returned a non-JSON batch body", {
+      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+      cause,
+      context: { reason: "non-json-body" },
+      severity: "ephemeral",
+    });
+  }
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  const vectors = data.map((entry) => readSidecarEmbedding({ data: [entry] }));
+  const wrongDimensionIndex = vectors.findIndex(
+    (vector) => vector !== undefined && vector.length !== SHARED_RECALL_EMBEDDING_DIMENSIONS,
+  );
+  if (
+    vectors.length !== cleaned.length ||
+    vectors.some((vector) => vector === undefined) ||
+    wrongDimensionIndex !== -1
+  ) {
+    throw new ElizaError("Embedding sidecar returned an invalid batch response", {
+      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+      context:
+        wrongDimensionIndex === -1
+          ? { reason: "invalid-vector-count", expected: cleaned.length, received: vectors.length }
+          : {
+              reason: "wrong-dimensions",
+              index: wrongDimensionIndex,
+              expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
+              actual: vectors[wrongDimensionIndex]?.length,
+            },
+      severity: "ephemeral",
+    });
+  }
+  return vectors as number[][];
+}
+
 export async function embedTextViaSidecar(
   baseUrl: string,
   apiKey: string | undefined,

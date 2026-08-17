@@ -10,7 +10,8 @@
  *   3. OrganizationsService.update → is_active flips false (org deactivate)
  *   4. OrganizationsService.delete → resolve key hashes BEFORE the delete cascade
  *
- * Plus: invalidation is best-effort and must never throw into the lifecycle write.
+ * KV invalidation remains best-effort; the strong revocation fence is a
+ * separate fail-closed prerequisite when its rollout flag is enabled.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -20,6 +21,7 @@ const invalidatedHashBatches: string[][] = [];
 const invalidatedSessionBatches: string[][] = [];
 const userDeleteCalls: string[] = [];
 const orgDeleteCalls: string[] = [];
+const lifecycleEvents: string[] = [];
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -36,6 +38,18 @@ mock.module("./inference-auth-cache", () => ({
   },
 }));
 
+mock.module("./inference-credential-revocation", () => ({
+  revokeInferenceSessionsThrough: async (orgId: string, userId: string) => {
+    lifecycleEvents.push(`session:${orgId}:${userId}`);
+  },
+  setInferenceOrganizationActive: async (orgId: string, active: boolean) => {
+    lifecycleEvents.push(`organization:${orgId}:${active}`);
+  },
+  setInferenceSubjectActive: async (orgId: string, userId: string, active: boolean) => {
+    lifecycleEvents.push(`subject:${orgId}:${userId}:${active}`);
+  },
+}));
+
 mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
     listByUser: async (_userId: string) => {
@@ -46,7 +60,20 @@ mock.module("../../db/repositories", () => ({
   },
   usersRepository: {
     findById: async (_id: string) => userRecord,
-    update: async (id: string, data: Record<string, unknown>) => ({ ...userRecord, ...data, id }),
+    findIdentityByUserIdForWrite: async () =>
+      userRecord?.steward_user_id ? { steward_user_id: userRecord.steward_user_id } : undefined,
+    upsertStewardIdentity: async (id: string, stewardUserId: string) => {
+      lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
+      return { user_id: id, steward_user_id: stewardUserId };
+    },
+    linkStewardId: async (id: string, stewardUserId: string) => {
+      lifecycleEvents.push(`identity-link:${id}:${stewardUserId}`);
+      return { ...userRecord, id, steward_user_id: stewardUserId };
+    },
+    update: async (id: string, data: Record<string, unknown>) => {
+      lifecycleEvents.push(`user-update:${id}`);
+      return { ...userRecord, ...data, id };
+    },
     delete: async (id: string) => {
       userDeleteCalls.push(id);
       // Simulate the row (and its keys) being gone after delete so a test can
@@ -89,6 +116,7 @@ beforeEach(() => {
   userRecord = undefined;
   listByOrganizationUsers = [];
   listByUserError = null;
+  lifecycleEvents.length = 0;
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
@@ -122,6 +150,57 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     await usersService.update("u1", { is_active: true });
 
     expect(invalidatedHashBatches).toEqual([]);
+  });
+
+  test("organization move fences both orgs and the old session generation before the row moves", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      role: "member",
+      steward_user_id: "steward-u1",
+      is_active: true,
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { organization_id: "o2" });
+
+    expect(lifecycleEvents).toEqual([
+      "subject:o1:u1:false",
+      "subject:o2:u1:false",
+      "session:o2:u1",
+      "session:o1:u1",
+      "user-update:u1",
+      "subject:o2:u1:true",
+    ]);
+  });
+
+  test("Steward identity upsert fences the prior session generation before relinking", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-upsert:u1:steward-new"]);
+  });
+
+  test("Steward identity link fences the prior session generation before relinking", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.linkStewardId("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-link:u1:steward-new"]);
   });
 
   test("delete resolves the key hashes BEFORE deleting the row", async () => {

@@ -33,6 +33,54 @@ describe("Personal Shared Telegram edge gate", () => {
     ],
     [{ PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "1" }, false],
     [{ PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: " true " }, false],
+    [
+      {
+        ENVIRONMENT: "production",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "true",
+      },
+      true,
+    ],
+    [
+      {
+        ENVIRONMENT: "production",
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "true",
+      },
+      true,
+    ],
+    [
+      {
+        ENVIRONMENT: "staging",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "true",
+      },
+      false,
+    ],
+    [
+      { PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "true" },
+      false,
+    ],
+    [
+      {
+        ENVIRONMENT: "production",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "1",
+      },
+      false,
+    ],
+    [
+      {
+        ENVIRONMENT: "production",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: " true ",
+      },
+      false,
+    ],
+    [
+      {
+        ENVIRONMENT: "production",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "true",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED: "false",
+      },
+      false,
+    ],
   ])("resolves %o as %s", (env, expected) => {
     expect(isPersonalSharedTelegramEdgeEnabled(env)).toBe(expected);
   });

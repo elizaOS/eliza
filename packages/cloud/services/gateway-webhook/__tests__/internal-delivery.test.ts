@@ -85,11 +85,7 @@ function request(overrides: Record<string, unknown> = {}) {
 }
 
 function dependencies(redis: GatewayRedis) {
-  return {
-    redis,
-    cloudBaseUrl: "https://api-staging.eliza.app",
-    getAuthHeader: () => ({ Authorization: "Bearer internal" }),
-  };
+  return { redis };
 }
 
 describe("internal proactive delivery", () => {
@@ -135,7 +131,7 @@ describe("internal proactive delivery", () => {
     });
   });
 
-  test("delivers once and replays the completed idempotency key", async () => {
+  test("delivers without Cloud API auth and replays the completed idempotency key", async () => {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
     const redis = new MemoryRedis();
     const telegramBodies: Array<Record<string, unknown>> = [];

@@ -7,7 +7,7 @@ export interface GatewayTokenResponse {
 }
 
 export const GATEWAY_TOKEN_MAX_LIFETIME_SECONDS = 60;
-export const GATEWAY_TOKEN_REQUEST_TIMEOUT_MS = 5_000;
+export const GATEWAY_TOKEN_REQUEST_TIMEOUT_MS = 15_000;
 
 const TOKEN_REFRESH_FRACTION = 0.5;
 const TOKEN_REFRESH_RETRY_MIN_MS = 1_000;

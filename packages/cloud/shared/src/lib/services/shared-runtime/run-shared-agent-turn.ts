@@ -90,6 +90,13 @@ export interface RunSharedAgentTurnInput {
    */
   memory?: SharedMemoryStore;
   /**
+   * Pre-rendered semantic-recall block (P3, `buildSharedRecallContext`) the
+   * caller computed from the tenant memory store when the recall flag is on
+   * and the recent window missed. Appended verbatim to the system prompt on
+   * every engine path; absent means recall contributed nothing this turn.
+   */
+  recallContext?: string;
+  /**
    * Transition-only selector for the genuine Workerd AgentRuntime path. The
    * direct model path remains the control until the runtime path has passed
    * live model and connector proof.
@@ -239,6 +246,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
 function buildSystemPrompt(
   character: SharedAgentCharacter,
   capabilities: { reminders: boolean; todos: boolean },
+  recallContext?: string,
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -265,6 +273,7 @@ function buildSystemPrompt(
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
+  if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
@@ -432,10 +441,14 @@ export async function runSharedAgentTurn(
       ...input,
       character: {
         ...input.character,
-        system: buildSystemPrompt(input.character, {
-          reminders: remindersEnabled,
-          todos: todosEnabled,
-        }),
+        system: buildSystemPrompt(
+          input.character,
+          {
+            reminders: remindersEnabled,
+            todos: todosEnabled,
+          },
+          input.recallContext,
+        ),
       },
       agentKey: input.execution.agentKey,
       model: modelId,
@@ -448,10 +461,14 @@ export async function runSharedAgentTurn(
   let turn: RunSharedAgentTurnResult;
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character, {
-      reminders: remindersEnabled,
-      todos: todosEnabled,
-    });
+    const system = buildSystemPrompt(
+      input.character,
+      {
+        reminders: remindersEnabled,
+        todos: todosEnabled,
+      },
+      input.recallContext,
+    );
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },
@@ -561,10 +578,14 @@ export async function runSharedAgentTurnStream(
         ...input,
         character: {
           ...input.character,
-          system: buildSystemPrompt(input.character, {
-            reminders: remindersEnabled,
-            todos: todosEnabled,
-          }),
+          system: buildSystemPrompt(
+            input.character,
+            {
+              reminders: remindersEnabled,
+              todos: todosEnabled,
+            },
+            input.recallContext,
+          ),
         },
         agentKey: input.execution.agentKey,
         model: modelId,
@@ -575,10 +596,14 @@ export async function runSharedAgentTurnStream(
 
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character, {
-      reminders: remindersEnabled,
-      todos: todosEnabled,
-    });
+    const system = buildSystemPrompt(
+      input.character,
+      {
+        reminders: remindersEnabled,
+        todos: todosEnabled,
+      },
+      input.recallContext,
+    );
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },

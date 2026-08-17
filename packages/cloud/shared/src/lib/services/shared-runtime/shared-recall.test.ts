@@ -11,6 +11,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { isElizaError } from "@elizaos/core/edge";
 import {
   buildSharedRecallContext,
+  embedTextsViaSidecar,
   embedTextViaSidecar,
   SHARED_RECALL_DEFAULT_MAX_CHARS,
   SHARED_RECALL_DEFAULT_TOP_K,
@@ -172,6 +173,43 @@ describe("embedTextViaSidecar — typed failure surface", () => {
     expect(error.context?.reason).toBe("wrong-dimensions");
     expect(error.context?.expected).toBe(SHARED_RECALL_EMBEDDING_DIMENSIONS);
     expect(error.context?.actual).toBe(3);
+  });
+});
+
+describe("embedTextsViaSidecar — batch validation", () => {
+  test("rejects a wrong-dimensional vector before it can reach vector(384) storage", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            { embedding: vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS) },
+            { embedding: vectorOf(3) },
+          ],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+
+    const error = await expectElizaError(
+      embedTextsViaSidecar("https://sidecar.internal", undefined, ["user", "assistant"]),
+      "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+    );
+    expect(error.context).toMatchObject({
+      reason: "wrong-dimensions",
+      index: 1,
+      expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
+      actual: 3,
+    });
+  });
+
+  test("classifies a non-JSON success body as an invalid batch response", async () => {
+    globalThis.fetch = (async () =>
+      new Response("upstream proxy", { status: 200 })) as unknown as typeof fetch;
+
+    const error = await expectElizaError(
+      embedTextsViaSidecar("https://sidecar.internal", undefined, ["user", "assistant"]),
+      "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+    );
+    expect(error.context?.reason).toBe("non-json-body");
   });
 });
 

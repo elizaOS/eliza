@@ -42,7 +42,7 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"TASK_ORPHAN_QUARANTINE_FAILED",
 ]);
 /** Cap serialized context length so a large payload can't blow up the prompt. */
-const MAX_CONTEXT_CHARS = 400;
+export const MAX_CONTEXT_CHARS = 400;
 
 const EMPTY_RESULT: ProviderResult = {
 	data: { recentErrors: [] },
@@ -50,7 +50,7 @@ const EMPTY_RESULT: ProviderResult = {
 	text: "",
 };
 
-function serializeContext(
+export function serializeContext(
 	context: Record<string, unknown> | undefined,
 ): string | undefined {
 	if (!context || Object.keys(context).length === 0) return undefined;
@@ -63,7 +63,7 @@ function serializeContext(
 		return undefined;
 	}
 	return text.length > MAX_CONTEXT_CHARS
-		? `${text.slice(0, MAX_CONTEXT_CHARS)}…`
+		? `${text.slice(0, MAX_CONTEXT_CHARS - 1)}…`
 		: text;
 }
 

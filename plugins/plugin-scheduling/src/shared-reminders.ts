@@ -417,6 +417,7 @@ export function createSharedRemindersEdgeAction(
           userFacingText: text,
           effectReceipts: [receipt],
           userFacingEffectReceiptIds: [receipt.receiptId],
+          turnComplete: true,
         };
       }
 

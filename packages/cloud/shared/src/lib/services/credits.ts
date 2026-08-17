@@ -2,6 +2,7 @@
  * Credits service for managing organization credit balances and transactions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
@@ -76,6 +77,49 @@ export const RESERVATION_SWEEP_GRACE_MS =
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Thrown when a reconcile call names a reservation transaction that does not
+ * exist (or does not belong to the organization). Settling such a call through
+ * the legacy caller-trusted lane would mint a refund for a hold that was never
+ * verified, so the settlement is refused instead.
+ */
+export class ReservationNotFoundError extends ElizaError {
+  override readonly name = "ReservationNotFoundError";
+
+  constructor(
+    public readonly reservationTransactionId: string,
+    public readonly organizationId: string,
+  ) {
+    super(
+      `Reservation transaction ${reservationTransactionId} not found for organization ${organizationId}`,
+      {
+        code: "CREDIT_RESERVATION_NOT_FOUND",
+        context: { organizationId, reservationTransactionId },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
+/** Refuses malformed amounts before they can reach a credit-ledger mutation. */
+export class InvalidCreditAmountError extends ElizaError {
+  override readonly name = "InvalidCreditAmountError";
+
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+    const permitsZero = operation === "reserve";
+    super(
+      permitsZero
+        ? "Credit reservation amount must be a finite, non-negative number"
+        : "Credit deduction amount must be a positive, finite number",
+      {
+        code: "INVALID_CREDIT_AMOUNT",
+        context: { amount, operation, permitsZero },
+        severity: "fatal",
+      },
+    );
+  }
+}
 
 export class InsufficientCreditsError extends Error {
   constructor(
@@ -650,8 +694,13 @@ export class CreditsService {
       stripePaymentIntentId,
     } = params;
 
-    if (amount <= 0) {
-      throw new Error("Amount must be positive");
+    // Authoritative money-write guard: `<= 0` alone lets NaN through (the
+    // comparison is false), after which `String(amount)::numeric` would reach
+    // the balance/ledger CTE as 'NaN'. Every debit path funnels through here,
+    // so the finite check lives at this lowest shared boundary (the reserve()
+    // wrapper keeps its own guard as defense-in-depth).
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new InvalidCreditAmountError(amount, "reserve_and_deduct");
     }
 
     const committedKeyedDeduction = async (): Promise<{
@@ -1192,11 +1241,21 @@ export class CreditsService {
       const org = await organizationsRepository.findById(params.organizationId);
       if (existing && org) {
         const metadata = parseMetadata(existing.metadata);
+        // Fail-closed replay parse. A bare `Number(... ?? 0)` reported a
+        // corrupt row (`'NaN'::numeric` amount or shortfall) as "fully
+        // recovered, shortfall $0", so the caller never followed up the
+        // unrecovered amount. Absent shortfall metadata still settles as 0 to
+        // match the SQL path's `COALESCE(..., 0)`; only a present-but-corrupt
+        // value throws.
+        const rawShortfall = metadata.unrecovered_clawback_usd;
         return {
           transaction: existing,
-          newBalance: Number.parseFloat(String(org.credit_balance)),
-          appliedAmount: Math.abs(Number(existing.amount)),
-          shortfallAmount: Number(metadata.unrecovered_clawback_usd ?? 0),
+          newBalance: parseNumeric(org.credit_balance, "credit_balance"),
+          appliedAmount: Math.abs(parseNumeric(existing.amount, "clawback_amount")),
+          shortfallAmount:
+            rawShortfall === undefined || rawShortfall === null || rawShortfall === ""
+              ? 0
+              : parseNumeric(rawShortfall as string | number, "unrecovered_clawback_usd"),
           alreadyProcessed: true,
         };
       }
@@ -1917,10 +1976,18 @@ export class CreditsService {
           if (reservationResult.kind === "handled") {
             return reservationResult.result;
           }
-          break;
+          // A named reservation that matches no row means the hold was never
+          // verified. Falling through to the legacy lane would refund
+          // `reservedAmount - actualCost` keyed only on caller-supplied numbers
+          // — minting credit with no corresponding debit. Refuse instead.
+          throw new ReservationNotFoundError(reservationTxId, organizationId);
         } catch (error) {
           // error-policy:J2 retry the same transaction-scoped settlement, then
           // surface its failure so a durable reservation remains recoverable.
+          if (error instanceof ReservationNotFoundError) {
+            // Not transient: the row is absent, not busy. Retrying cannot help.
+            throw error;
+          }
           if (attempt === MAX_RETRIES) {
             logger.error("[Credits] Reservation reconciliation failed after retries", {
               organizationId,
@@ -2049,17 +2116,11 @@ export class CreditsService {
             difference,
             error: error instanceof Error ? error.message : "Unknown error",
           });
-          // Don't throw - operation completed, just log for manual review
-          return {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId:
-              typeof metadata?.reservation_transaction_id === "string"
-                ? metadata.reservation_transaction_id
-                : null,
-            settlementTransactionIds: [],
-            adjustmentType: difference < 0 ? "uncollected_overage" : "none",
-          };
+          // error-policy:J2 surface the exhausted settlement failure. The old
+          // behavior returned a success-shaped result (`adjustmentType:
+          // "none"`) here, which made a lost refund (org keeps overpaying) or
+          // an uncharged overage indistinguishable from a clean settle.
+          throw error;
         }
         logger.warn("[Credits] Reconciliation retry", {
           attempt,
@@ -2070,16 +2131,10 @@ export class CreditsService {
       }
     }
 
-    return {
-      reservedAmount,
-      actualCost,
-      reservationTransactionId:
-        typeof metadata?.reservation_transaction_id === "string"
-          ? metadata.reservation_transaction_id
-          : null,
-      settlementTransactionIds: [],
-      adjustmentType: "none",
-    };
+    // Unreachable: every retry-loop iteration either returns or throws, and
+    // the final attempt rethrows. Kept as a guard so a future refactor cannot
+    // silently reintroduce a success-shaped default.
+    throw new Error("[CreditsService] reconcile exited retry loop without settling");
   }
 
   async sweepStaleReservations(opts?: {
@@ -2397,8 +2452,10 @@ export class CreditsService {
     if (!description) {
       throw new Error("reserve() requires description");
     }
-    if (params.amount !== undefined && params.amount < 0) {
-      throw new Error("reserve() amount must be non-negative");
+    // `< 0` alone lets NaN through (the comparison is false), and a NaN
+    // reservation amount would be written as a 'NaN'::numeric debit row.
+    if (params.amount !== undefined && (!Number.isFinite(params.amount) || params.amount < 0)) {
+      throw new InvalidCreditAmountError(params.amount, "reserve");
     }
     if (
       params.estimatedCostMultiplier !== undefined &&

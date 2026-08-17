@@ -45,6 +45,31 @@ const tableIntrospectionCache = new Map<string, TableIntrospection>();
 const TABLE_INTROSPECTION_TTL_MS = 30_000;
 const TABLE_INTROSPECTION_CACHE_LIMIT = 256;
 
+/**
+ * Parse the untrusted `limit` query. Defaults to 50 and caps canonical
+ * positive decimal integers at 500. Prefix-numeric junk must not become a
+ * different OWNER page size (`1e2` → 1 via parseInt).
+ */
+function parseDatabaseRowsLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") return 50;
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return null;
+  return Math.min(parsed, 500);
+}
+
+/**
+ * Parse the untrusted `offset` query. Defaults to 0. Reject leading zeros,
+ * signs, hex, scientific notation, and other parseInt prefix forms.
+ */
+function parseDatabaseRowsOffset(raw: string | null): number | null {
+  if (raw === null || raw === "") return 0;
+  if (!/^(0|[1-9]\d*)$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return null;
+  return parsed;
+}
+
 function rememberTableIntrospection(
   key: string,
   resolvedSchema: string,
@@ -96,6 +121,17 @@ export async function handleDatabaseRowsCompatRoute(
 
   if (!tableName) {
     sendJsonErrorResponse(res, 400, "Invalid table name");
+    return true;
+  }
+
+  const limit = parseDatabaseRowsLimit(requestUrl.searchParams.get("limit"));
+  const offset = parseDatabaseRowsOffset(requestUrl.searchParams.get("offset"));
+  if (limit === null) {
+    sendJsonErrorResponse(res, 400, "limit must be a positive integer");
+    return true;
+  }
+  if (offset === null) {
+    sendJsonErrorResponse(res, 400, "offset must be a non-negative integer");
     return true;
   }
 
@@ -180,19 +216,6 @@ export async function handleDatabaseRowsCompatRoute(
     );
   }
 
-  const parsedLimit = Number.parseInt(
-    requestUrl.searchParams.get("limit") ?? "",
-    10,
-  );
-  const parsedOffset = Number.parseInt(
-    requestUrl.searchParams.get("offset") ?? "",
-    10,
-  );
-  const limit = Math.max(
-    1,
-    Math.min(500, Number.isNaN(parsedLimit) ? 50 : parsedLimit),
-  );
-  const offset = Math.max(0, Number.isNaN(parsedOffset) ? 0 : parsedOffset);
   const sortColumn = sanitizeIdentifier(requestUrl.searchParams.get("sort"));
   const order =
     requestUrl.searchParams.get("order") === "desc" ? "DESC" : "ASC";

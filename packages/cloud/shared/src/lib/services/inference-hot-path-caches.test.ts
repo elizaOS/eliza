@@ -17,6 +17,12 @@ test("authorization caching is fail-closed and independent of other hot-path cac
     isInferenceAuthCacheEnabled({
       INFERENCE_AUTH_CACHE_ENABLED: "true",
     }),
+  ).toBe(false);
+  expect(
+    isInferenceAuthCacheEnabled({
+      INFERENCE_AUTH_CACHE_ENABLED: "true",
+      INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+    }),
   ).toBe(true);
   expect(
     isInferenceAuthCacheEnabled({

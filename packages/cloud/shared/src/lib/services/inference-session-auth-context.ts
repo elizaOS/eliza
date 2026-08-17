@@ -30,6 +30,10 @@ import {
   readInferenceSessionAuthDecision,
   writeInferenceSessionAuthDecision,
 } from "./inference-auth-cache";
+import {
+  assertInferenceCredentialActive,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 import { usersService } from "./users";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
@@ -136,6 +140,30 @@ function toResolution(
   return { kind: "rejected", status: decision.status };
 }
 
+async function enforceStrongSessionBoundary(
+  decision: InferenceSessionAuthDecision,
+  issuedAt: number,
+  source: "cache" | "origin",
+): Promise<InferenceSessionAuthResolution> {
+  const resolved = toResolution(decision, source);
+  if (resolved.kind !== "authorized") return resolved;
+  try {
+    await assertInferenceCredentialActive(resolved.ctx.orgId, {
+      kind: "steward_session",
+      userId: resolved.ctx.userId,
+      issuedAt,
+    });
+    return resolved;
+  } catch (error) {
+    if (error instanceof InferenceCredentialRevokedError) {
+      return error.reason === "session_revoked"
+        ? { kind: "rejected", status: 401 }
+        : { kind: "suspended", userId: resolved.ctx.userId };
+    }
+    throw error;
+  }
+}
+
 async function hydrateAndCache(
   params: {
     stewardUserId: string;
@@ -239,10 +267,8 @@ export async function resolveInferenceSessionAuthContext(
     if (await adminService.shouldBlockUser(user.id)) {
       return { kind: "suspended", userId: user.id };
     }
-    return {
-      kind: "authorized",
-      source: "origin",
-      ctx: {
+    return await enforceStrongSessionBoundary(
+      {
         v: INFERENCE_AUTH_CONTEXT_VERSION,
         cachedAt: Date.now(),
         userId: user.id,
@@ -251,7 +277,9 @@ export async function resolveInferenceSessionAuthContext(
         stewardUserId: claims.userId,
         admission: await loadInferenceAdmissionSnapshot(user.organization_id),
       },
-    };
+      claims.issuedAt,
+      "origin",
+    );
   }
 
   if (options.useAuthCache && cache.isAvailable()) {
@@ -284,7 +312,7 @@ export async function resolveInferenceSessionAuthContext(
           });
         options.executionCtx.waitUntil(refresh);
       }
-      return toResolution(cached, "cache");
+      return await enforceStrongSessionBoundary(cached, claims.issuedAt, "cache");
     }
   }
 
@@ -324,7 +352,7 @@ export async function resolveInferenceSessionAuthContext(
     },
     options.useAuthCache === true,
   );
-  const resolved = toResolution(decision, "origin");
+  const resolved = await enforceStrongSessionBoundary(decision, claims.issuedAt, "origin");
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
     throw ForbiddenError();

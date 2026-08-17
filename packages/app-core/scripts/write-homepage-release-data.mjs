@@ -5,9 +5,9 @@
  * image manifest entries, and install-script URLs for the download surface.
  */
 
-import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRawGitHubAssetBase } from "./lib/asset-cdn.mjs";
@@ -817,21 +817,12 @@ async function fetchReleases(url = RELEASES_URL) {
 
 async function writePayload(payload) {
   await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
-  await writeFile(OUTPUT_PATH, toModule(payload));
-  // Best-effort biome format; biome.json may exclude `src/generated/`, in which
-  // case biome exits non-zero. The generated file is JSON.stringify output and
-  // doesn't need formatting to be correct, so failures here are not fatal.
-  const relOutput = path.relative(REPO_ROOT, OUTPUT_PATH);
-  const biomeArgs = ["@biomejs/biome", "format", "--write", relOutput];
-  const bunx = process.platform === "win32" ? "bunx.cmd" : "bunx";
+  const temporaryPath = `${OUTPUT_PATH}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    execFileSync(bunx, biomeArgs, {
-      stdio: "ignore",
-      cwd: REPO_ROOT,
-      shell: false,
-    });
-  } catch {
-    // Ignore — the file is still valid TypeScript without biome's pass.
+    await writeFile(temporaryPath, toModule(payload));
+    await rename(temporaryPath, OUTPUT_PATH);
+  } finally {
+    await rm(temporaryPath, { force: true });
   }
 }
 
