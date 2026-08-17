@@ -225,9 +225,12 @@ function boundedIntParam(
   min: number,
   max: number,
 ): number {
-  const raw = Number(params.get(name) ?? fallback);
-  if (!Number.isFinite(raw)) return fallback;
-  return Math.min(Math.max(Math.trunc(raw), min), max);
+  const rawStr = params.get(name);
+  if (rawStr === null || rawStr === "") return fallback;
+  if (!/^\d+$/.test(rawStr)) return fallback;
+  const raw = Number(rawStr);
+  if (!Number.isSafeInteger(raw)) return fallback;
+  return Math.min(Math.max(raw, min), max);
 }
 
 function isPolicyType(value: unknown): value is PolicyType {
