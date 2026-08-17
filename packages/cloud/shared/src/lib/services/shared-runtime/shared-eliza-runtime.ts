@@ -58,7 +58,7 @@ type NativeTextModelResult = string & {
 };
 
 let edgeStreamingContextReady: Promise<void> | undefined;
-let sharedRuntimeKernelReady: Promise<AgentRuntime> | undefined;
+let sharedRuntimeKernelReady: Promise<void> | undefined;
 
 async function ensureEdgeStreamingContext(): Promise<void> {
   edgeStreamingContextReady ??= import("node:async_hooks").then(({ AsyncLocalStorage }) => {
@@ -150,37 +150,46 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
       },
       modelPlugin: sharedModelPlugin(async () => prewarmModelHandler()),
     });
+    let initializationError: unknown;
     try {
       await runtime.initialize({ skipMigrations: true });
+      await Promise.allSettled(
+        runtime
+          .getRegisteredServiceTypes()
+          .map((serviceType) => runtime.getServiceLoadPromise(serviceType)),
+      );
       if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
         throw new Error("Eliza Shared runtime prewarm omitted its WEB_SEARCH action");
       }
-      // Retain this state-free runtime for the isolate lifetime. Several core
-      // services finish their asynchronous start just after initialize();
-      // stopping immediately races those starts, while waiting on optional
-      // service names adds their full load timeout to every cold phone call.
-      return runtime;
     } catch (error) {
-      try {
-        await runtime.stop();
-      } catch (teardownError) {
-        // error-policy:J6 failed prewarm owns this disposable runtime, so its
-        // teardown cannot replace the initialization failure reported upstream.
-        logger.warn("[shared-eliza-runtime] failed prewarm stop failed", {
-          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
-        });
-      }
-      try {
-        await runtime.close();
-      } catch (teardownError) {
-        // error-policy:J6 failed prewarm owns this disposable runtime, so its
-        // teardown cannot replace the initialization failure reported upstream.
-        logger.warn("[shared-eliza-runtime] failed prewarm close failed", {
-          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
-        });
-      }
-      throw error;
+      initializationError = error;
     }
+
+    const cleanupErrors: unknown[] = [];
+    try {
+      await runtime.stop();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      await runtime.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (initializationError !== undefined) {
+      for (const teardownError of cleanupErrors) {
+        // error-policy:J6 failed prewarm owns this disposable runtime, so its
+        // teardown cannot replace the initialization failure reported upstream.
+        logger.warn("[shared-eliza-runtime] failed prewarm cleanup failed", {
+          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
+        });
+      }
+      throw initializationError;
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "Shared runtime prewarm cleanup failed");
+    }
+    logger.info("[shared-eliza-runtime] prewarm runtime released");
   })().catch((error) => {
     sharedRuntimeKernelReady = undefined;
     throw error;

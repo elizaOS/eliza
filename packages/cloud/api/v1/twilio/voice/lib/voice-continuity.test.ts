@@ -5,6 +5,7 @@ import {
   callEndedEvent,
   callOpeningGreeting,
   callStartedEvent,
+  prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
 } from "./voice-continuity";
 
@@ -33,5 +34,36 @@ describe("voice continuity", () => {
     expect(callEndedEvent("client disconnect! token=secret")).toBe(
       "Call lifecycle event: the phone call ended (client_disconnect__token_secret).",
     );
+  });
+
+  test("starts prewarm before lifecycle persistence and joins both", async () => {
+    const started: string[] = [];
+    let finishPrewarm: () => void = () => undefined;
+    let finishLifecycle: () => void = () => undefined;
+    const task = prewarmAndRecordVoiceCallStart(
+      () =>
+        new Promise<void>((resolve) => {
+          started.push("prewarm");
+          finishPrewarm = resolve;
+        }),
+      () =>
+        new Promise<void>((resolve) => {
+          started.push("lifecycle");
+          finishLifecycle = resolve;
+        }),
+    );
+
+    expect(started).toEqual(["prewarm", "lifecycle"]);
+    finishLifecycle();
+    await Promise.resolve();
+    let completed = false;
+    void task.then(() => {
+      completed = true;
+    });
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    finishPrewarm();
+    await task;
+    expect(completed).toBe(true);
   });
 });
