@@ -1,4 +1,4 @@
-// Exercises cloud API tests stripe event waifu.test behavior with deterministic Worker route fixtures.
+/** Exercises the Stripe queue callback for agent credit top-ups. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
@@ -78,6 +78,14 @@ mock.module("@/lib/services/app-credits", () => ({
       platformOffset: 0,
       creatorEarnings: 0,
       newBalance: 5,
+    })),
+  },
+}));
+mock.module("@/lib/services/auto-top-up", () => ({
+  autoTopUpService: {
+    reconcileSucceededPaymentIntent: mock(async () => ({
+      disposition: "settled",
+      result: { status: "succeeded" },
     })),
   },
 }));

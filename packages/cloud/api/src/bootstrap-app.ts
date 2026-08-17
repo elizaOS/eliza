@@ -244,6 +244,13 @@ export function createApp(): Hono<AppEnv> {
 
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
+    let canDeferRequestTask = false;
+    try {
+      canDeferRequestTask = typeof c.executionCtx?.waitUntil === "function";
+    } catch {
+      // error-policy:J4 Local/test Hono requests intentionally have no
+      // Worker context; shared services retain their inline-await fallback.
+    }
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () => {
@@ -261,6 +268,12 @@ export function createApp(): Hono<AppEnv> {
               c.req.header("idempotency-key") ||
               c.req.header("x-request-id") ||
               crypto.randomUUID(),
+            ...(canDeferRequestTask
+              ? {
+                  defer: (task: Promise<unknown>) =>
+                    c.executionCtx.waitUntil(task),
+                }
+              : {}),
           },
           async () => runWithDbCacheAsync(async () => next()),
         );

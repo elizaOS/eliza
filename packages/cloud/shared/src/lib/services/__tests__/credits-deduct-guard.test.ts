@@ -13,7 +13,7 @@
  * same honest pattern as `container-billing-idempotency.test.ts`. It seeds a real
  * `organizations` row + `credit_transactions` table and asserts the observable
  * effects on the DB, so each test FAILS if the real logic regresses. The only
- * things stubbed are the fire-and-forget, non-billing side-effects on the success
+ * things stubbed are the deferred, non-billing side effects on the success
  * path (email/webhook/auto-top-up) — never the deduct/guard arithmetic itself.
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
@@ -29,7 +29,7 @@ process.env.NODE_ENV ||= "test";
 // Redis (deterministic + offline).
 process.env.MOCK_REDIS ||= "1";
 
-// Stub the non-billing fire-and-forget side-effects the success path kicks off.
+// Stub the non-billing deferred side effects the success path kicks off.
 // These are NOT the code under test — they are downstream notifications. Leaving
 // them real would make the test depend on email/webhook/auto-top-up infra. The
 // deduct + guard SQL in credits.ts runs entirely real against PGlite below.
@@ -45,7 +45,7 @@ mock.module("../waifu-webhook", () => ({
 }));
 mock.module("../auto-top-up", () => ({
   autoTopUpService: {
-    executeAutoTopUp: mock(async () => undefined),
+    executeAutoTopUpForOrganization: mock(async () => undefined),
   },
 }));
 

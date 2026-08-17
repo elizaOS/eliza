@@ -413,6 +413,39 @@ describe("AutoTopUpAttemptsRepository", () => {
     expect(await repository.listEligibleOrganizationIds({ limit: 100 })).toEqual([]);
   });
 
+  test("reads an exact legacy quarantine snapshot without changing its lifecycle", async () => {
+    await insertOrganization({ id: ORG_A });
+    await repository.transitionControl({
+      expectedMode: "durable",
+      targetMode: "paused",
+      now: at(100),
+    });
+    const quarantined = await repository.quarantineLegacyPaymentIntent({
+      organizationId: ORG_A,
+      paymentIntentId: "pi_exact_quarantine_read",
+      providerStatus: "processing",
+      creditAmountCents: 1000,
+      metadata: { inventorySha256: "reviewed-plan" },
+      now: at(101),
+    });
+
+    expect(
+      await repository.findLegacyPaymentByStripePaymentIntentId("pi_exact_quarantine_read"),
+    ).toEqual(quarantined);
+    expect(await repository.findLegacyPaymentByStripePaymentIntentId("pi_missing")).toBeNull();
+    await expect(repository.findLegacyPaymentByStripePaymentIntentId("")).rejects.toThrow(
+      "missing or non-canonical",
+    );
+    expect(
+      await repository.findLegacyPaymentByStripePaymentIntentId("pi_exact_quarantine_read"),
+    ).toMatchObject({
+      status: "unresolved",
+      providerStatus: "processing",
+      metadata: { inventorySha256: "reviewed-plan" },
+      resolvedAt: null,
+    });
+  });
+
   test("quarantines only known legacy PIs and verifies credited/canceled/manual-review resolution", async () => {
     await insertOrganization({ id: ORG_A });
     await repository.transitionControl({

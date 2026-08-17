@@ -21,6 +21,7 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
+import { getRequestTaskDefer } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
@@ -162,6 +163,67 @@ export interface OrganizationBalanceSnapshot {
   revision: string;
 }
 
+/**
+ * Request-local operations triggered after a successful balance decrease.
+ * Kept as a typed seam so Worker lifetime behavior can be tested without
+ * reaching through private service methods.
+ */
+export interface PostDebitNotificationOperations {
+  checkAutoTopUp: () => Promise<unknown>;
+  queueLowCreditsEmail: () => Promise<unknown>;
+  notifyWaifuCredits: () => Promise<unknown>;
+}
+
+/**
+ * Run post-debit notifications under the current request lifetime contract.
+ * Worker callers register the exact observed aggregate with `waitUntil`;
+ * callers without a request runtime await that same aggregate inline.
+ */
+export async function runObservedPostDebitNotifications(
+  operations: PostDebitNotificationOperations,
+): Promise<void> {
+  const observe = (label: string, operation: () => Promise<unknown>): Promise<void> =>
+    Promise.resolve()
+      .then(operation)
+      .then(
+        () => undefined,
+        (error) => {
+          // error-policy:J5 Post-debit notifications are best effort, but every
+          // rejection is observed before the aggregate reaches waitUntil.
+          logger.error(`[CreditsService] ${label}:`, error);
+        },
+      );
+
+  const task = Promise.all([
+    observe("Failed to check auto top-up", operations.checkAutoTopUp),
+    observe("Failed to queue low credits email", operations.queueLowCreditsEmail),
+    observe("Failed to notify waifu credit webhook", operations.notifyWaifuCredits),
+  ]).then(() => undefined);
+
+  const defer = getRequestTaskDefer();
+  if (defer) {
+    // Register this exact observed Promise; wrapping it after registration
+    // would leave the actual notification work outside the Worker lifetime.
+    defer(task);
+    return;
+  }
+  await task;
+}
+
+/**
+ * Nudge the durable auto-top-up state machine after a balance decrease. The
+ * service rechecks eligibility under the organization write lock, avoiding a
+ * charge decision based on a stale post-debit snapshot.
+ */
+export async function triggerDurableAutoTopUpForBalanceDecrease(
+  organizationId: string,
+): Promise<void> {
+  const { autoTopUpService } = await import("./auto-top-up");
+  await autoTopUpService.executeAutoTopUpForOrganization(organizationId, {
+    source: "credit_deduction",
+  });
+}
+
 export interface ReserveCreditsParams {
   organizationId: string;
   userId?: string;
@@ -295,40 +357,6 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
   if (!Number.isFinite(parsed)) {
     throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
-  }
-  return parsed;
-}
-
-/**
- * Parse the org's `auto_top_up_threshold` for the auto-top-up trigger gate.
- *
- * `auto_top_up_threshold` is a Drizzle `numeric` column, so it arrives at the
- * row boundary as a `string` (or `null` when the org never configured one). The
- * trigger previously coerced it with a bare `Number(org.auto_top_up_threshold ||
- * 0)`. That silently fails OPEN on a corrupt row: a `numeric` can legitimately
- * hold `'NaN'::numeric`, which reads back as the string `"NaN"`, and
- * `Number("NaN")` is `NaN`. Because `newBalance >= NaN` is `false`, the gate's
- * early-return never fires, so `executeAutoTopUp` (a REAL card charge) is
- * dispatched unconditionally regardless of the org's actual balance.
- *
- * Fail-closed semantics for this money-OUT trigger:
- *  - `null` / `undefined` (never configured) is a legitimate domain default of
- *    `0`, preserving the original `|| 0` behaviour (only trigger below $0).
- *  - a present-but-non-finite or partially numeric value (`"NaN"`, `""`,
- *    `"abc"`, `"10abc"`, `Infinity`) is a corrupt threshold we cannot reason
- *    about, so we throw and let the caller SKIP the charge rather than fire an
- *    unvalidatable auto-top-up.
- */
-function parseAutoTopUpThreshold(value: string | number | null | undefined): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  if (typeof value === "string" && value.trim() === "") {
-    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
-  }
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
   }
   return parsed;
 }
@@ -884,7 +912,7 @@ export class CreditsService {
             });
         }
 
-        this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
+        await this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
       }
       return result;
     });
@@ -893,26 +921,25 @@ export class CreditsService {
   /**
    * Fire the post-debit notifications a balance decrease triggers: auto-top-up
    * check, low-credits email, and the waifu webhook that lets a hosted agent
-   * downgrade/pause itself when it runs low. Fire-and-forget — a notification
-   * failure must never block the billing path. Exposed (not inlined) so EVERY
-   * debit path stays at parity: the synchronous reserve calls it here, and the
-   * optimistic inference ledger (`inference-billing-ledger.ts`), which mutates the
-   * balance with its own transactional SQL rather than through `deductCredits`,
-   * calls it after a successful debit so its orgs still get low-balance warnings.
+   * downgrade/pause itself when it runs low. Worker requests register the
+   * observed aggregate with request-scoped `waitUntil`; non-Worker callers
+   * await the same aggregate. The periodic durable sweep remains the auto-top-up
+   * recovery backstop if a Worker reaches its post-response time limit. Exposed
+   * (not inlined) so EVERY debit path stays at parity: the synchronous reserve
+   * calls it here, and the optimistic inference ledger
+   * (`inference-billing-ledger.ts`), which mutates the balance with its own
+   * transactional SQL rather than through `deductCredits`, calls it after a
+   * successful debit so its orgs still get low-balance warnings.
    */
-  notifyBalanceDecrease(
+  async notifyBalanceDecrease(
     organizationId: string,
     newBalance: number,
     metadata?: Record<string, unknown>,
-  ): void {
-    this.checkAndTriggerAutoTopUp(organizationId, newBalance).catch((error) => {
-      logger.error("[CreditsService] Failed to check auto top-up:", error);
-    });
-    this.queueLowCreditsEmail(organizationId, newBalance).catch((error) => {
-      logger.error("[CreditsService] Failed to queue low credits email:", error);
-    });
-    this.notifyWaifuCredits(organizationId, newBalance, metadata).catch((error) => {
-      logger.error("[CreditsService] Failed to notify waifu credit webhook:", error);
+  ): Promise<void> {
+    await runObservedPostDebitNotifications({
+      checkAutoTopUp: () => triggerDurableAutoTopUpForBalanceDecrease(organizationId),
+      queueLowCreditsEmail: () => this.queueLowCreditsEmail(organizationId, newBalance),
+      notifyWaifuCredits: () => this.notifyWaifuCredits(organizationId, newBalance, metadata),
     });
   }
 
@@ -952,67 +979,6 @@ export class CreditsService {
       threshold,
       ...(cloudAgentId ? { cloudAgentId } : {}),
     });
-  }
-
-  /**
-   * Check if auto top-up should be triggered after credit deduction
-   * This is called automatically after every successful credit deduction
-   */
-  private async checkAndTriggerAutoTopUp(
-    organizationId: string,
-    newBalance: number,
-  ): Promise<void> {
-    try {
-      // Get organization details
-      const org = await organizationsRepository.findById(organizationId);
-      if (!org) {
-        return;
-      }
-
-      // Check if auto top-up is enabled
-      if (!org.auto_top_up_enabled) {
-        return;
-      }
-
-      // A corrupt `auto_top_up_threshold` NUMERIC (e.g. `'NaN'::numeric`) must
-      // NOT fall through and fire a real auto-top-up charge. Fail closed: skip
-      // the trigger and surface the bad row instead of paying on an
-      // unvalidatable threshold. (#13415)
-      let threshold: number;
-      try {
-        threshold = parseAutoTopUpThreshold(org.auto_top_up_threshold);
-      } catch (error) {
-        logger.error(
-          `[CreditsService] Skipping auto top-up for org ${organizationId}: corrupt auto_top_up_threshold (${String(
-            org.auto_top_up_threshold,
-          )})`,
-          error,
-        );
-        return;
-      }
-
-      // Check if balance is below threshold
-      if (newBalance >= threshold) {
-        return;
-      }
-
-      logger.info(
-        `[CreditsService] Auto top-up triggered: balance $${newBalance.toFixed(2)} < threshold $${threshold.toFixed(2)}`,
-      );
-
-      // Import auto top-up service dynamically for lazy loading (only when needed)
-      const { autoTopUpService } = await import("./auto-top-up");
-
-      // Execute auto top-up asynchronously (don't block the main operation)
-      autoTopUpService.executeAutoTopUp(org).catch((error) => {
-        logger.error(
-          `[CreditsService] Auto top-up execution failed for org ${organizationId}:`,
-          error,
-        );
-      });
-    } catch (error) {
-      logger.error(`[CreditsService] Error checking auto top-up for org ${organizationId}:`, error);
-    }
   }
 
   private async queueLowCreditsEmail(
@@ -1159,6 +1125,10 @@ export class CreditsService {
           UPDATE organizations AS o
           SET
             credit_balance = candidate.new_balance,
+            -- A Stripe refund/dispute must never look like fresh usage and
+            -- automatically charge the saved card again. Disable atomically
+            -- with the clawback; an operator/user can explicitly re-enable it.
+            auto_top_up_enabled = false,
             updated_at = NOW()
           FROM candidate
           WHERE o.id = candidate.id
@@ -1676,7 +1646,11 @@ export class CreditsService {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
     if (result.balanceDecreaseMetadata && result.newBalance !== undefined) {
-      this.notifyBalanceDecrease(organizationId, result.newBalance, result.balanceDecreaseMetadata);
+      await this.notifyBalanceDecrease(
+        organizationId,
+        result.newBalance,
+        result.balanceDecreaseMetadata,
+      );
     }
     return result;
   }
@@ -1876,7 +1850,7 @@ export class CreditsService {
         // committed; this legacy cache eviction is separately observable.
         logger.error("[CreditsService] Failed to invalidate org cache:", error);
       });
-      this.notifyBalanceDecrease(params.organizationId, outcome.newBalance, {
+      await this.notifyBalanceDecrease(params.organizationId, outcome.newBalance, {
         requestId: params.requestId,
         model: params.model,
         source: "deferred_affiliate_fallback",

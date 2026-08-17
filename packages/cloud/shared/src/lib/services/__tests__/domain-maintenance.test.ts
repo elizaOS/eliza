@@ -23,7 +23,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 process.env.ELIZA_CF_REGISTRAR_DEV_STUB = "1";
 
-// Non-billing fire-and-forget side-effects of the success path — NOT under test.
+// Non-billing deferred side effects of the success path — NOT under test.
 mock.module("../email", () => ({
   emailService: { sendLowCreditsEmail: mock(async () => false) },
 }));
@@ -33,7 +33,7 @@ mock.module("../waifu-webhook", () => ({
   emitWaifuCreditWebhook: mock(async () => undefined),
 }));
 mock.module("../auto-top-up", () => ({
-  autoTopUpService: { executeAutoTopUp: mock(async () => undefined) },
+  autoTopUpService: { executeAutoTopUpForOrganization: mock(async () => undefined) },
 }));
 
 // Outbound network for the health probe (path resolves to lib/security/safe-fetch).

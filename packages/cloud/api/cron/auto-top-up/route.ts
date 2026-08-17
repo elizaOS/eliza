@@ -1,7 +1,6 @@
 /**
- * Exposes the secret-protected scheduled auto-top-up cutover check. Both the
- * Worker scheduler's POST and an operator's GET return the authoritative
- * paused state with zero work while this bridge release is deployed.
+ * Runs a bounded recovery and claim sweep for durable auto-top-up attempts.
+ * The internal GET and scheduled POST boundary are protected by CRON_SECRET.
  */
 
 import { type Context, Hono } from "hono";
@@ -12,26 +11,36 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+const AUTO_TOP_UP_CRON_LIMIT = 100;
 
-async function handleAutoTopUpCutover(c: Context<AppEnv>) {
+async function handleAutoTopUp(c: Context<AppEnv>) {
   const startTime = Date.now();
   try {
     requireCronSecret(c);
 
-    const result = await autoTopUpService.checkAndExecuteAutoTopUps();
+    const result = await autoTopUpService.checkAndExecuteAutoTopUps({
+      source: "cron",
+      limit: AUTO_TOP_UP_CRON_LIMIT,
+    });
     const durationMs = Date.now() - startTime;
 
-    logger.info("[AutoTopUp] Scheduled cutover check remained sealed", {
+    logger.info("[AutoTopUp] Scheduled durable sweep completed", {
       durationMs,
-      controlMode: result.controlMode,
       checked: result.organizationsChecked,
       processed: result.organizationsProcessed,
+      successful: result.successful,
+      failed: result.failed,
+      recovered: result.recovered,
+      claimed: result.claimed,
+      skipped: result.skipped,
+      rolloutPaused: result.rolloutPaused,
+      cutoverPaused: result.cutoverPaused,
+      controlMode: result.controlMode,
     });
 
     return c.json({
       success: true,
-      status: "cutover_paused" as const,
-      message: "Auto top-up charging is paused during the durable cutover.",
+      message: "Auto top-up check completed successfully",
       cutoverPaused: result.cutoverPaused,
       controlMode: result.controlMode,
       stats: {
@@ -41,21 +50,38 @@ async function handleAutoTopUpCutover(c: Context<AppEnv>) {
         organizationsProcessed: result.organizationsProcessed,
         successful: result.successful,
         failed: result.failed,
-        details: result.results,
+        limit: AUTO_TOP_UP_CRON_LIMIT,
+        recovered: result.recovered,
+        claimed: result.claimed,
+        skipped: result.skipped,
+        rolloutPaused: result.rolloutPaused,
+        cutoverPaused: result.cutoverPaused,
+        controlMode: result.controlMode,
+        details: result.results.map((item) => ({
+          organizationId: item.organizationId,
+          success: item.success,
+          amount: item.amount,
+          previousBalance: item.previousBalance,
+          newBalance: item.newBalance,
+          message: item.message,
+          error: item.error,
+          attemptId: item.attemptId,
+          status: item.status,
+          recovered: item.recovered,
+        })),
       },
     });
   } catch (error) {
-    // error-policy:J1 boundary translation — a missing secret or unavailable
-    // control authority is returned as failure, never fabricated zero work.
-    logger.error("[AutoTopUp] Scheduled cutover check failed", {
-      error: error instanceof Error ? error.message : String(error),
+    // error-policy:J1 The internal HTTP boundary reports a retryable sweep failure.
+    logger.error("[AutoTopUp] Scheduled durable sweep failed", {
+      error: error instanceof Error ? error.message : "Unknown error",
       durationMs: Date.now() - startTime,
     });
     return failureResponse(c, error);
   }
 }
 
-app.get("/", handleAutoTopUpCutover);
-app.post("/", handleAutoTopUpCutover);
+app.get("/", handleAutoTopUp);
+app.post("/", handleAutoTopUp);
 
 export default app;

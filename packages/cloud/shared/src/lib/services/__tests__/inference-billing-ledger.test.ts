@@ -6,7 +6,7 @@
  * reserve (admission) and how the deferred cost is collected (settle / sweep). A
  * regression here is either a free-inference leak or a double charge, so every
  * test drives the REAL SQL against in-process PGlite — the same honest pattern as
- * `credits-deduct-guard.test.ts`. Only the fire-and-forget, non-billing
+ * `credits-deduct-guard.test.ts`. Only the deferred, non-billing
  * side-effects on the deduct success path (email / webhook / auto-top-up) are
  * stubbed; the admission accounting, the atomic claim, and the debit run real.
  *
@@ -35,7 +35,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 process.env.CACHE_ENABLED = "true";
 
-// Stub the non-billing fire-and-forget side-effects the deduct success path kicks
+// Stub the non-billing deferred side effects the deduct success path kicks
 // off — NOT the code under test. The deduct + guard SQL runs real against PGlite.
 mock.module("../email", () => ({
   emailService: { sendLowCreditsEmail: mock(async () => false) },
@@ -46,7 +46,7 @@ mock.module("../waifu-webhook", () => ({
   emitWaifuCreditWebhook: mock(async () => undefined),
 }));
 mock.module("../auto-top-up", () => ({
-  autoTopUpService: { executeAutoTopUp: mock(async () => undefined) },
+  autoTopUpService: { executeAutoTopUpForOrganization: mock(async () => undefined) },
 }));
 
 const PGLITE_TIMEOUT = 60000;

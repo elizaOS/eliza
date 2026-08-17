@@ -11,7 +11,9 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-interface RequestContext {
+export type RequestTaskDefer = (task: Promise<unknown>) => void;
+
+export interface RequestContext {
   clientIp?: string;
   /**
    * Stable per-request idempotency key (from the `Idempotency-Key`/`X-Request-Id`
@@ -21,6 +23,12 @@ interface RequestContext {
    * threading it through every intermediate helper.
    */
   idempotencyKey?: string;
+  /**
+   * Register post-response work with the current runtime. Worker shells bind
+   * this to `c.executionCtx.waitUntil(task)`; non-Worker callers omit it and
+   * shared services must await the same task before returning.
+   */
+  defer?: RequestTaskDefer;
 }
 
 const als = new AsyncLocalStorage<RequestContext>();
@@ -40,4 +48,9 @@ export function getClientIp(): string | undefined {
 /** The stable per-request idempotency key for the current request, or `undefined`. */
 export function getRequestIdempotencyKey(): string | undefined {
   return als.getStore()?.idempotencyKey;
+}
+
+/** Runtime-owned post-response task registrar for the current async chain. */
+export function getRequestTaskDefer(): RequestTaskDefer | undefined {
+  return als.getStore()?.defer;
 }

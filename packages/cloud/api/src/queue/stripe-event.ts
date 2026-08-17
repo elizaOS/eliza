@@ -41,6 +41,7 @@ import { safeFetch } from "@/lib/security/safe-fetch";
 import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
 import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
 import { appCreditsService } from "@/lib/services/app-credits";
+import { autoTopUpService } from "@/lib/services/auto-top-up";
 import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
 import { invoicesService } from "@/lib/services/invoices";
@@ -623,12 +624,60 @@ async function handlePaymentIntentSucceeded(
   // affiliate markup is applied when the PaymentIntent is created, so
   // the only payout here is the auto-top-up affiliate fee.
   const purchaseType = paymentIntent.metadata?.type;
+  const hasDurableAutoTopUpMarker = Object.hasOwn(
+    paymentIntent.metadata ?? {},
+    "auto_top_up_attempt_id",
+  );
+  const durableAttemptId = paymentIntent.metadata?.auto_top_up_attempt_id;
 
-  if (!purchaseType || purchaseType === "credit_pack") {
+  if (
+    !hasDurableAutoTopUpMarker &&
+    (!purchaseType || purchaseType === "credit_pack")
+  ) {
     logger.debug(
       `[Stripe Queue] Skipping payment intent ${paymentIntent.id} - type: ${purchaseType || "unknown"}`,
     );
     return;
+  }
+
+  const isDurableAutoTopUp = hasDurableAutoTopUpMarker;
+
+  if (isDurableAutoTopUp) {
+    // Durable reconciliation validates and settles the signed receipt before
+    // this consumer may project any payout or invoice side effect.
+    let reconciliation: Awaited<
+      ReturnType<typeof autoTopUpService.reconcileSucceededPaymentIntent>
+    >;
+    try {
+      reconciliation =
+        await autoTopUpService.reconcileSucceededPaymentIntent(paymentIntent);
+    } catch (cause) {
+      // error-policy:J2 A missing or unavailable durable attempt must exhaust
+      // queue retries and reach the DLQ, never be mistaken for bad metadata.
+      throw new Error("Durable auto-top-up reconciliation failed", { cause });
+    }
+    if (reconciliation.disposition === "rejected") {
+      logger.warn(
+        `[Stripe Queue] Durable auto top-up ${durableAttemptId || "invalid-attempt-id"} rejected payment intent ${paymentIntent.id}; skipping financial side effects`,
+        {
+          attemptId: durableAttemptId,
+          status: reconciliation.result.status,
+        },
+      );
+      return;
+    }
+    if (reconciliation.disposition === "validated_deferred") {
+      logger.warn(
+        `[Stripe Queue] Durable auto top-up ${durableAttemptId || "invalid-attempt-id"} validated payment intent ${paymentIntent.id} but settlement is deferred; retrying without projections`,
+        {
+          attemptId: durableAttemptId,
+          status: reconciliation.result.status,
+        },
+      );
+      // error-policy:J2 Preserve the signed receipt in the retry/DLQ lane;
+      // only a settled attempt may project affiliate earnings or an invoice.
+      throw new Error("Durable auto-top-up settlement is deferred");
+    }
   }
 
   const organizationId = paymentIntent.metadata?.organization_id;
@@ -652,7 +701,7 @@ async function handlePaymentIntentSucceeded(
 
   if (
     affiliateFeeStr &&
-    (!Number.isFinite(affiliateFeeAmount) || affiliateFeeAmount <= 0)
+    (!Number.isFinite(affiliateFeeAmount) || affiliateFeeAmount < 0)
   ) {
     logger.warn(
       `[Stripe Queue] Permanent failure - Invalid affiliate metadata in payment intent ${paymentIntent.id}`,
@@ -676,7 +725,7 @@ async function handlePaymentIntentSucceeded(
       ? `Auto top-up - $${credits.toFixed(2)}`
       : `One-time purchase - $${credits.toFixed(2)}`;
 
-  if (!isDuplicate) {
+  if (!isDuplicate && !isDurableAutoTopUp) {
     await creditsService.addCredits({
       organizationId,
       amount: credits,
@@ -753,11 +802,8 @@ async function handlePaymentIntentSucceeded(
     }
   }
 
-  if (isDuplicate) {
-    return;
-  }
-
-  // Invoice creation is non-critical — credits were already added above.
+  // Invoice creation is non-critical. It deliberately runs for duplicate
+  // credit rows because synchronous durable settlement may win first.
   try {
     const invoiceIdOrObject = (
       paymentIntent as Stripe.PaymentIntent & {
@@ -842,6 +888,14 @@ async function handlePaymentIntentSucceeded(
       "[Stripe Queue] Non-critical error creating invoice record",
       invoiceError,
     );
+    if (isDurableAutoTopUp) {
+      // error-policy:J2 Durable settlement can win before this projection.
+      // Retry the idempotent queue message instead of permanently losing the
+      // invoice that proves the card charge to the organization.
+      throw new Error("Durable auto-top-up invoice projection failed", {
+        cause: invoiceError,
+      });
+    }
   }
 }
 
