@@ -19,6 +19,16 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  *
  * Tunables via query string: `?minAgeMs=<n>&max=<n>`.
  */
+function parseCronPositiveInt(
+  raw: string | null,
+): number | undefined | "invalid" {
+  if (raw === null || raw === "") return undefined;
+  if (!/^[1-9]\d*$/.test(raw)) return "invalid";
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return "invalid";
+  return parsed;
+}
+
 async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(
     c.req.raw,
@@ -28,12 +38,21 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   if (authError) return authError;
 
   const url = new URL(c.req.url);
-  const minAgeMs = Number(url.searchParams.get("minAgeMs"));
-  const max = Number(url.searchParams.get("max"));
+  const minAgeMs = parseCronPositiveInt(url.searchParams.get("minAgeMs"));
+  const max = parseCronPositiveInt(url.searchParams.get("max"));
+  if (minAgeMs === "invalid" || max === "invalid") {
+    return c.json(
+      {
+        success: false,
+        error: "minAgeMs and max must be canonical positive integers",
+      },
+      400,
+    );
+  }
 
   const result = await reapOrphanedSharedBridges({
-    minAgeMs: Number.isFinite(minAgeMs) && minAgeMs > 0 ? minAgeMs : undefined,
-    max: Number.isFinite(max) && max > 0 ? max : undefined,
+    minAgeMs,
+    max,
   });
 
   logger.info("[Reap Orphan Shared Bridges] sweep complete", { ...result });
