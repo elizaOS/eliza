@@ -171,14 +171,14 @@ async function seedOwnedCharacter(input: {
 /**
  * Seeds the real "signed-in user chatted with an affiliate character" state
  * the claim-affiliate-characters route reads: an anonymous affiliate owner
- * (own org + @anonymous.elizacloud.ai email), a user_characters row it owns,
- * the eliza runtime rows (agents / entities / rooms) and a participants row
- * linking the claiming user (entity_id = users.id, rooms.agent_id =
+ * in the persistent affiliate fixture organization, a user_characters row it
+ * owns, the eliza runtime rows (agents / entities / rooms) and a participants
+ * row linking the claiming user (entity_id = users.id, rooms.agent_id =
  * user_characters.id — the route's "new architecture" mapping).
  */
 async function seedAffiliateInteraction(input: {
   userId: string;
-}): Promise<{ characterId: string; anonOrgId: string }> {
+}): Promise<{ characterId: string; anonUserId: string }> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error(
@@ -187,7 +187,6 @@ async function seedAffiliateInteraction(input: {
   }
 
   const suffix = crypto.randomUUID().slice(0, 8);
-  const anonOrgId = crypto.randomUUID();
   const anonUserId = crypto.randomUUID();
   const characterId = crypto.randomUUID();
   const roomId = crypto.randomUUID();
@@ -195,10 +194,16 @@ async function seedAffiliateInteraction(input: {
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
-    await client.query(
-      `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
-      [anonOrgId, `E2E Anon Org ${suffix}`, `e2e-anon-org-${suffix}`],
+    const affiliateOrganization = await client.query<{ id: string }>(
+      `SELECT id FROM organizations WHERE slug = $1`,
+      ["playwright-e2e-affiliate-org"],
     );
+    const affiliateOrganizationId = affiliateOrganization.rows[0]?.id;
+    if (!affiliateOrganizationId) {
+      throw new Error(
+        "E2E preload must seed the persistent affiliate organization",
+      );
+    }
     await client.query(
       `INSERT INTO users (id, email, steward_user_id, is_anonymous, organization_id)
        VALUES ($1, $2, $3, true, $4)`,
@@ -206,12 +211,12 @@ async function seedAffiliateInteraction(input: {
         anonUserId,
         `e2e-anon-${suffix}@anonymous.elizacloud.ai`,
         `e2e-anon-steward-${suffix}`,
-        anonOrgId,
+        affiliateOrganizationId,
       ],
     );
     await seedOwnedCharacter({
       id: characterId,
-      organizationId: anonOrgId,
+      organizationId: affiliateOrganizationId,
       userId: anonUserId,
       name: `E2E Affiliate ${suffix}`,
     });
@@ -238,10 +243,10 @@ async function seedAffiliateInteraction(input: {
     await client.end();
   }
 
-  return { characterId, anonOrgId };
+  return { characterId, anonUserId };
 }
 
-const seededAnonOrgIds: string[] = [];
+const seededAnonUserIds: string[] = [];
 
 afterAll(async () => {
   if (!serverReachable || !hasTestApiKey) return;
@@ -250,9 +255,10 @@ afterAll(async () => {
       headers: bearerHeaders(),
     });
   }
-  // Remove the affiliate-claim seed rows (agents cascades rooms/participants/
-  // entities; organizations cascades the anonymous owner user).
-  if (seededAnonOrgIds.length > 0) {
+  // The affiliate organization is a durable preload fixture. Keeping it also
+  // exercises the production rule that only a non-final user can be removed
+  // while auto-top-up cutover is paused.
+  if (seededAnonUserIds.length > 0) {
     const databaseUrl =
       process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
     if (databaseUrl) {
@@ -262,10 +268,8 @@ afterAll(async () => {
         for (const id of createdCharacterIds) {
           await client.query(`DELETE FROM agents WHERE id = $1`, [id]);
         }
-        for (const orgId of seededAnonOrgIds) {
-          await client.query(`DELETE FROM organizations WHERE id = $1`, [
-            orgId,
-          ]);
+        for (const userId of seededAnonUserIds) {
+          await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
         }
       } finally {
         await client.end();
@@ -1341,7 +1345,7 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
 
     const seeded = await seedAffiliateInteraction({ userId });
     createdCharacterIds.push(seeded.characterId);
-    seededAnonOrgIds.push(seeded.anonOrgId);
+    seededAnonUserIds.push(seeded.anonUserId);
 
     const sessionCookie = await exchangeApiKeyForSession();
     const res = await api.post(
