@@ -129,6 +129,26 @@ describe("ElizaAgentLogsViewer", () => {
     expect(screen.getByRole("button", { name: "Refresh logs" })).toBeTruthy();
   });
 
+  it.each([
+    "Agent is provisioning — no container assigned yet.",
+    "Logs unavailable: sandbox provider does not implement fetchLogs.",
+  ])("renders a producer-owned unavailable notice: %s", async (notice) => {
+    loadAgentLogs.mockResolvedValue({ logs: "", notice });
+
+    render(
+      <ElizaAgentLogsViewer
+        agentId="agent-1"
+        agentName="Eliza"
+        status="running"
+      />,
+    );
+
+    expect(await screen.findByText(notice)).toBeTruthy();
+    expect(screen.getByTestId("lines").textContent).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Refresh logs" })).toBeTruthy();
+  });
+
   it("aborts a superseded request and ignores its stale completion", async () => {
     const first = deferred<{ logs: string; notice: null }>();
     const second = deferred<{ logs: string; notice: null }>();

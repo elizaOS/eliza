@@ -138,6 +138,28 @@ describe("agent log protocol", () => {
     ).toThrow("finished without log data");
   });
 
+  it.each([
+    "Agent is provisioning — no container assigned yet.",
+    "Logs unavailable: sandbox provider does not implement fetchLogs.",
+  ])(
+    "preserves the producer's message-only unavailable result: %s",
+    (message) => {
+      expect(
+        parseAgentLogsJob({
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result: { cloudAgentId: "agent-1", message },
+          },
+        }),
+      ).toEqual({
+        kind: "complete",
+        result: { logs: "", notice: message },
+      });
+    },
+  );
+
   it("keeps a bounded informational message well-formed at a surrogate boundary", () => {
     const result = parseAgentLogsJob({
       success: true,

@@ -199,6 +199,13 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
       "This agent is no longer available. Refresh the agent list and try again.",
     );
   }
+  const resultMessage = readBoundedText(result.message);
+  if (result.logs === undefined && resultMessage) {
+    return {
+      kind: "complete",
+      result: { logs: "", notice: resultMessage },
+    };
+  }
   if (typeof result.logs !== "string") {
     throw new AgentLogsUnavailableError(
       result.logs === undefined
@@ -211,7 +218,7 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
     kind: "complete",
     result: {
       logs: result.logs,
-      notice: readBoundedText(result.message),
+      notice: resultMessage,
     },
   };
 }
