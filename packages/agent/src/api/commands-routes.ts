@@ -31,8 +31,7 @@ const VALID_SURFACES: ReadonlySet<string> = new Set([
 
 type CommandSurface = "gui" | "tui" | "discord" | "telegram";
 
-const SURFACE_ERROR =
-  "surface must be one of: gui, tui, discord, telegram";
+const SURFACE_ERROR = "surface must be one of: gui, tui, discord, telegram";
 
 /**
  * Parse the slash-command catalog `surface` query. Omitted/empty keeps the
