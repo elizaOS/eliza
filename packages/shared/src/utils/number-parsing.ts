@@ -86,7 +86,8 @@ export function parsePositiveFloat(
     return normalizeFallback(options?.fallback);
   }
 
-  return options?.floor ? Math.floor(parsed) : parsed;
+  const result = options?.floor ? Math.floor(parsed) : parsed;
+  return result > 0 ? result : normalizeFallback(options?.fallback);
 }
 
 export function parseClampedFloat(
@@ -134,9 +135,7 @@ export function parseClampedInteger(
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) return normalizeFallback(options.fallback);
 
-  const { min, max } = options;
-  if (min !== undefined && parsed < min) return min;
-  if (max !== undefined && parsed > max) return max;
-
-  return parsed;
+  const min = options.min ?? -Infinity;
+  const max = options.max ?? Infinity;
+  return Math.max(min, Math.min(max, parsed));
 }
