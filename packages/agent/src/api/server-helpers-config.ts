@@ -245,7 +245,6 @@ export function applyFirstRunVoicePreset(
 
   messages.tts = {
     ...existingTts,
-    provider: "elevenlabs",
     elevenlabs: {
       ...existingElevenlabs,
       voiceId,

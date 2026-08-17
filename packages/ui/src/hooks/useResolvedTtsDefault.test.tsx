@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("useResolvedTtsDefault", () => {
-  it("desktop-local with staged on-device Kokoro resolves to local-inference", async () => {
+  it("desktop-local with cloud access resolves to managed cloud voice even when local is staged", async () => {
     const last = await resolveOnce(
       {
         platformOverride: "desktop",
@@ -85,7 +85,7 @@ describe("useResolvedTtsDefault", () => {
         remoteApiBaseConfigured: false,
       },
     );
-    expect(last.provider).toBe("local-inference");
+    expect(last.provider).toBe("eliza-cloud");
   });
 
   it("desktop-local without a staged voice falls to Eliza Cloud Kokoro", async () => {

@@ -1041,15 +1041,17 @@ export function saveOsIntentAutoStartConsent(
 // (see useWakeListenWindow). Stored here — not under `messages.voice` — because
 // it gates a device-local capture loop the shell reads synchronously on render,
 // the same dual-store pattern continuous-chat-mode and vad-auto-stop use. It
-// defaults ON so existing installs keep the always-available wake entry ramp;
-// the Settings → Voice toggle is what lets a user turn it off.
-const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled";
+// Wake capture is opt-in because it keeps the microphone pipeline available in
+// the background. Versioning the consent key prevents the former implicit-on
+// default from being mistaken for an explicit user choice after this policy
+// change; enabling it in Settings persists the new consent normally.
+const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled:v2";
 
 export function loadWakeWordEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(WAKE_WORD_ENABLED_KEY);
-    return stored === null ? true : stored === "true";
-  }, true);
+    return stored === "true";
+  }, false);
 }
 
 export function saveWakeWordEnabled(value: boolean): void {

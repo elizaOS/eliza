@@ -1,12 +1,47 @@
 /**
- * Tests for the destructive-reset guard (#8801 / #9943). isSafeResetStateDir
- * decides whether a path may be wiped by the "reset state" operation. A bug here
- * could erase the filesystem root, $HOME, or an unrelated directory — so the
- * guard (under-home AND contains an "eliza" segment, never root/home itself) is
- * pinned.
+ * Tests configuration helpers whose first-run defaults and destructive-reset
+ * boundary must remain safe without a live agent process.
  */
-import { describe, expect, it } from "vitest";
-import { isSafeResetStateDir } from "./server-helpers-config";
+import { afterEach, describe, expect, it } from "vitest";
+import type { ElizaConfig } from "../config/config";
+import {
+  applyFirstRunVoicePreset,
+  isSafeResetStateDir,
+} from "./server-helpers-config";
+
+const originalElevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+
+afterEach(() => {
+  if (originalElevenLabsApiKey === undefined) {
+    delete process.env.ELEVENLABS_API_KEY;
+  } else {
+    process.env.ELEVENLABS_API_KEY = originalElevenLabsApiKey;
+  }
+});
+
+describe("applyFirstRunVoicePreset", () => {
+  it("stores persona voice metadata without pinning new installs to ElevenLabs", () => {
+    process.env.ELEVENLABS_API_KEY = "test-key";
+    const config = { messages: { tts: {} } } as ElizaConfig;
+
+    applyFirstRunVoicePreset(config, {}, "en");
+
+    expect(config.messages?.tts?.provider).toBeUndefined();
+    expect(config.messages?.tts?.elevenlabs?.voiceId).toBeTruthy();
+    expect(config.messages?.tts?.elevenlabs?.modelId).toBe("eleven_flash_v2_5");
+  });
+
+  it("preserves an explicit provider while adding first-run voice metadata", () => {
+    process.env.ELEVENLABS_API_KEY = "test-key";
+    const config = {
+      messages: { tts: { provider: "eliza-cloud" } },
+    } as ElizaConfig;
+
+    applyFirstRunVoicePreset(config, {}, "en");
+
+    expect(config.messages?.tts?.provider).toBe("eliza-cloud");
+  });
+});
 
 describe("isSafeResetStateDir", () => {
   const home = "/home/user";

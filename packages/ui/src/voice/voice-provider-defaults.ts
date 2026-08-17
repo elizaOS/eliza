@@ -12,7 +12,7 @@
  *     is Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
  *     heavier than TTS — but see the layering note below: on native mobile the
  *     live capture engine is the OS recognizer, not this provider.
- *   - Cloud agents (any device) → free cloud Kokoro TTS
+ *   - Cloud agents (any device) → managed cloud TTS
  *     (`eliza-cloud`) for speech, Eliza Cloud (`eliza-cloud`) for ASR.
  *     ElevenLabs is not a default (slow and key-gated); users can still opt
  *     into it from the advanced voice picker.
@@ -48,8 +48,9 @@
  *
  * `pickDefaultVoiceProvider` gives the platform/mode *preference*.
  * `resolveDefaultTtsProvider` (below) turns that preference into a concrete
- * provider against the runtime's actual capabilities — Kokoro on-device when
- * staged, else Kokoro via Eliza Cloud when a session exists, else ElevenLabs
+ * provider against the runtime's actual capabilities — managed cloud voice
+ * (Cartesia for an unpinned cloud request) when a session exists, else an
+ * on-device voice when staged, else ElevenLabs
  * (key-gated), else browser SpeechSynthesis — so a default is never pinned to a
  * backend that will fail on the first utterance.
  */
@@ -147,15 +148,16 @@ export const BROWSER_TTS_PROVIDER: VoiceProvider = "robot-voice";
  * and what the runtime can actually do right now. This is the "no explicit user
  * choice" chain the product wants for bidirectional voice:
  *
- *   Kokoro on-device (`local-inference`, when its engine is staged)
- *     → Kokoro via Eliza Cloud (`eliza-cloud`, when a cloud session exists)
+ *   managed voice via Eliza Cloud (`eliza-cloud`, when a cloud session exists)
+ *     → Kokoro on-device (`local-inference`, when its engine is staged)
  *     → ElevenLabs (`elevenlabs`, only if a key is configured)
  *     → browser SpeechSynthesis ({@link BROWSER_TTS_PROVIDER}).
  *
- * The preferred entry point (from {@link pickDefaultVoiceProvider}) only orders
- * the two Kokoro transports for this platform — on desktop/mobile-local the
- * on-device path is tried first; on web/cloud the cloud path is. Whatever the
- * preference, an unavailable backend is skipped, never selected-then-failed.
+ * An authenticated managed-cloud route is preferred on desktop and every
+ * cloud/remote surface so those installs use the product voice rather than
+ * silently varying by host hardware. Native-local mobile retains its staged
+ * on-device preference. An unavailable backend is skipped, never
+ * selected-then-failed.
  * ElevenLabs is deliberately last and key-gated: it is slow and never a silent
  * default. There is always a terminal answer (browser TTS), so this never
  * returns a provider that cannot run.
@@ -171,16 +173,20 @@ export function resolveDefaultTtsProvider(
 ): VoiceProvider {
   const preferred = pickDefaultVoiceProvider(input).tts;
 
-  // On-device Kokoro first when the platform/mode preference chose it AND the
-  // engine is actually staged. A desktop/mobile-local box whose voice bundle
-  // isn't downloaded yet skips this and falls to the cloud path below.
+  // An unpinned managed-cloud request selects Cartesia at the cloud boundary.
+  // Desktop and remote/cloud surfaces share that product voice; native-local
+  // mobile retains its deliberately staged on-device path.
+  if (
+    capabilities.cloudVoiceAvailable &&
+    (input.platform === "desktop" || preferred === "eliza-cloud")
+  ) {
+    return "eliza-cloud";
+  }
+
   if (preferred === "local-inference" && capabilities.localInferenceTtsReady) {
     return "local-inference";
   }
 
-  // Eliza Cloud Kokoro when a linked cloud session with a working TTS proxy
-  // exists. This is the default on web/cloud, and the fallback when on-device
-  // Kokoro isn't staged.
   if (capabilities.cloudVoiceAvailable) {
     return "eliza-cloud";
   }

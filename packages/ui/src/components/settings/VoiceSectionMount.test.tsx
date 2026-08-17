@@ -1,4 +1,4 @@
-/** Verifies VoiceSectionMount — wake-word toggle wiring (FIX 3) through the package's configured test harness. */
+/** Verifies device-local voice controls through the real settings component. */
 // @vitest-environment jsdom
 /**
  * Mounts VoiceSectionMount (the fetch-and-persist wrapper around VoiceSection)
@@ -54,9 +54,9 @@ import {
 } from "./VoiceSection.helpers";
 import { VoiceSectionMount } from "./VoiceSectionMount";
 
-const WAKE_KEY = "eliza:voice:wake-word-enabled";
+const WAKE_KEY = "eliza:voice:wake-word-enabled:v2";
 
-describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
+describe("VoiceSectionMount — wake-word toggle wiring", () => {
   beforeEach(() => {
     window.localStorage.clear();
     clientMock.getConfig.mockResolvedValue({});
@@ -71,15 +71,23 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     cleanup();
   });
 
-  it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
+  it("defaults the wake-word toggle OFF until the user opts in", async () => {
     render(<VoiceSectionMount />);
     const toggle = await screen.findByTestId("voice-section-wake-toggle");
     expect(toggle.getAttribute("role")).toBe("switch");
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     // Let the mount-time async config/tier fetches settle to avoid act warnings.
     await waitFor(() =>
       expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
     );
+  });
+
+  it("does not treat the former implicit-on key as current consent", async () => {
+    window.localStorage.setItem("eliza:voice:wake-word-enabled", "true");
+    render(<VoiceSectionMount />);
+
+    const toggle = await screen.findByTestId("voice-section-wake-toggle");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
   });
 
   it("persists the toggle so the shell's wake pref maps to actual enablement", async () => {
@@ -87,19 +95,19 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     render(<VoiceSectionMount />);
     const toggle = await screen.findByTestId("voice-section-wake-toggle");
 
-    // Turning it off writes the persisted pref the shell reads for wake gating.
-    await user.click(toggle);
-    await waitFor(() =>
-      expect(toggle.getAttribute("aria-checked")).toBe("false"),
-    );
-    expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
-
-    // Turning it back on flips the pref again.
+    // Turning it on writes the explicit consent the shell reads for wake gating.
     await user.click(toggle);
     await waitFor(() =>
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     expect(window.localStorage.getItem(WAKE_KEY)).toBe("true");
+
+    // Turning it back off revokes that consent.
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
   });
 
   it("reflects a persisted wake-word-disabled pref on mount", async () => {

@@ -148,19 +148,16 @@ function ensureCloudContainerCharacterDefaults(
     assistant.name = defaultPreset.name;
   }
 
-  // Apply the matching voice preset so TTS uses the correct voice.
-  // First try the standard path (requires ELEVENLABS_API_KEY for direct mode).
+  // Preserve the matching voice metadata without pinning the transport. The
+  // capability resolver chooses managed cloud voice for connected installs and
+  // retains the stored preset if the user explicitly selects ElevenLabs later.
   ctx.applyFirstRunVoicePreset(
     config,
     { presetId: defaultPreset.id, avatarIndex: defaultPreset.avatarIndex },
     language,
   );
-  // Cloud containers typically use cloud-proxy TTS without a direct API key.
-  // If applyFirstRunVoicePreset bailed (no ELEVENLABS_API_KEY), write the
-  // voice config anyway so resolveCharacterVoiceConfigFromAppConfig on the
-  // client picks up the correct voiceId via the ui.presetId -> preset lookup.
-  // The client-side voice resolver reads config.ui.presetId and maps it to the
-  // character's voicePresetId, so having presetId set is sufficient.
+  // Without a direct ElevenLabs key, ui.presetId remains sufficient for the
+  // client-side character voice resolver to recover the intended persona.
 
   // Ensure serviceRouting is set for cloud inference so the cloud topology
   // resolver recognises this as a cloud-inference container and keeps the

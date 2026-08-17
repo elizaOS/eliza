@@ -125,7 +125,7 @@ describe("pickDefaultVoiceProvider", () => {
 });
 
 describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
-  it("desktop-local prefers on-device Kokoro when the engine is staged", () => {
+  it("desktop-local prefers managed cloud voice when both cloud and local are available", () => {
     expect(
       resolveDefaultTtsProvider(
         { platform: "desktop", runtimeMode: "local" },
@@ -135,7 +135,7 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
           elevenLabsKeyConfigured: true,
         },
       ),
-    ).toBe("local-inference");
+    ).toBe("eliza-cloud");
   });
 
   it("desktop-local falls to Eliza Cloud Kokoro when the on-device engine is NOT staged", () => {
