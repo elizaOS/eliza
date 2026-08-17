@@ -18,6 +18,7 @@ import type {
   PrepareOperationInput,
   PrepareOperationResult,
   RegisterObservedAuthorityInput,
+  ResolveObjectReadByKeyResult,
   SourceAbsenceProof,
 } from "../org-storage-object-authority";
 
@@ -43,6 +44,26 @@ let orgStorageQuota: typeof import("../../schemas/org-storage-quota").orgStorage
 let reader: typeof import("../org-storage-object-authority").orgStorageObjectAuthorityReader;
 let writer: typeof import("../org-storage-object-authority").orgStorageObjectAuthorityWriter;
 let orgStorageProviderKey: typeof import("../org-storage-object-authority").orgStorageProviderKey;
+
+type PresentOrgStorageObject = OrgStorageObject & {
+  provider_version: string;
+  provider_etag: string;
+  content_type: string;
+  provider_uploaded_at: Date;
+};
+
+function assertPresentOrgStorageObject(
+  authority: OrgStorageObject,
+): asserts authority is PresentOrgStorageObject {
+  if (
+    authority.provider_version === null ||
+    authority.provider_etag === null ||
+    authority.content_type === null ||
+    authority.provider_uploaded_at === null
+  ) {
+    throw new Error("Registered present authority is missing provider evidence");
+  }
+}
 
 function uuid(): string {
   const suffix = sequence.toString(16).padStart(12, "0");
@@ -106,7 +127,7 @@ async function registerPresent(
   organizationId: string,
   suffix: string,
   sizeBytes: bigint,
-): Promise<OrgStorageObject> {
+): Promise<PresentOrgStorageObject> {
   const result = await writer.registerObservedAuthority({
     organizationId,
     objectKey: logicalKey(organizationId, suffix),
@@ -121,7 +142,9 @@ async function registerPresent(
     },
   });
   if (result.outcome === "conflict") throw new Error("Unexpected authority conflict");
-  return result.authority;
+  const { authority } = result;
+  assertPresentOrgStorageObject(authority);
+  return authority;
 }
 
 function putInput(
@@ -166,6 +189,13 @@ function prepared(result: PrepareOperationResult): OrgStorageOperation {
     throw new Error(`Expected prepared, received ${result.outcome}`);
   }
   return result.operation;
+}
+
+function presentSnapshot(result: ResolveObjectReadByKeyResult) {
+  if (result.outcome !== "present") {
+    throw new Error(`Expected present read projection, received ${result.outcome}`);
+  }
+  return result.snapshot;
 }
 
 async function claim(
@@ -401,6 +431,203 @@ describe("Org storage object authority repository", () => {
       Date.now() + 1_000,
     );
     expect(await dbWrite.select().from(orgStorageObjects)).toHaveLength(4);
+  });
+
+  test("resolves missing, tombstone, legacy, prepared, and tenant-scoped read windows", async () => {
+    const missingKey = logicalKey(ORG_A, "missing-read");
+    expect(await reader.resolveObjectReadByKey(ORG_A, missingKey)).toEqual({ outcome: "absent" });
+
+    const tombstone = await registerAbsent(ORG_A, "tombstone-read");
+    expect(await reader.resolveObjectReadByKey(ORG_A, tombstone.object_key)).toEqual({
+      outcome: "absent",
+    });
+
+    const legacy = await registerPresent(ORG_A, "legacy-read", 7n);
+    const deleteSource = await registerPresent(ORG_A, "prepared-delete-read", 5n);
+    const creation = await registerAbsent(ORG_A, "prepared-create-read");
+    const otherTenant = await registerPresent(ORG_B, "tenant-only-read", 3n);
+    await seedQuota(ORG_A, 12n, 100n);
+
+    expect(presentSnapshot(await reader.resolveObjectReadByKey(ORG_A, legacy.object_key))).toEqual({
+      organizationId: ORG_A,
+      objectId: legacy.id,
+      objectKey: legacy.object_key,
+      committedGeneration: 1n,
+      sizeBytes: 7n,
+      providerKey: legacy.object_key,
+      providerVersion: legacy.provider_version,
+      providerEtag: legacy.provider_etag,
+      contentType: legacy.content_type,
+      checksumSha256: legacy.checksum_sha256,
+      providerUploadedAt: legacy.provider_uploaded_at,
+    });
+
+    prepared(
+      await writer.prepareOperation(
+        putInput(legacy, {
+          idempotencyKey: "prepared-overwrite-read",
+          targetSizeBytes: 9n,
+          checksumSeed: 91,
+        }),
+      ),
+    );
+    prepared(await writer.prepareOperation(deleteInput(deleteSource, "prepared-delete-read")));
+    prepared(
+      await writer.prepareOperation(
+        putInput(creation, {
+          idempotencyKey: "prepared-create-read",
+          targetSizeBytes: 2n,
+          checksumSeed: 92,
+        }),
+      ),
+    );
+
+    expect(
+      presentSnapshot(await reader.resolveObjectReadByKey(ORG_A, legacy.object_key))
+        .providerVersion,
+    ).toBe(legacy.provider_version);
+    expect(
+      presentSnapshot(await reader.resolveObjectReadByKey(ORG_A, deleteSource.object_key))
+        .providerVersion,
+    ).toBe(deleteSource.provider_version);
+    expect(await reader.resolveObjectReadByKey(ORG_A, creation.object_key)).toEqual({
+      outcome: "absent",
+    });
+
+    expect(
+      presentSnapshot(await reader.resolveObjectReadByKey(ORG_B, otherTenant.object_key)),
+    ).toMatchObject({
+      organizationId: ORG_B,
+      objectId: otherTenant.id,
+      objectKey: otherTenant.object_key,
+      providerVersion: otherTenant.provider_version,
+    });
+    expect(
+      await reader.resolveObjectReadByKey(ORG_A, logicalKey(ORG_A, "tenant-only-read")),
+    ).toEqual({ outcome: "absent" });
+  });
+
+  test("returns explicit provider-started and quarantined mutation fences", async () => {
+    const present = await registerPresent(ORG_A, "started-read", 5n);
+    const absent = await registerAbsent(ORG_A, "quarantined-read");
+    await seedQuota(ORG_A, 5n, 100n);
+
+    const presentOperation = prepared(
+      await writer.prepareOperation(
+        putInput(present, {
+          idempotencyKey: "started-read",
+          targetSizeBytes: 6n,
+          checksumSeed: 93,
+        }),
+      ),
+    );
+    const presentStarted = await startProvider(await claim(presentOperation));
+    expect(await reader.resolveObjectReadByKey(ORG_A, present.object_key)).toEqual({
+      outcome: "in_progress",
+      objectId: present.id,
+      committedGeneration: 1n,
+      targetGeneration: presentStarted.operation.target_generation,
+      activeState: "provider_started",
+    });
+
+    const absentOperation = prepared(
+      await writer.prepareOperation(
+        putInput(absent, {
+          idempotencyKey: "quarantined-read",
+          targetSizeBytes: 2n,
+          checksumSeed: 94,
+        }),
+      ),
+    );
+    const absentStarted = await startProvider(await claim(absentOperation));
+    await writer.quarantineOperation({
+      ...fence(absentStarted),
+      errorCode: "READ_FENCE_QUARANTINE",
+      errorDigest: digest(95),
+    });
+    expect(await reader.resolveObjectReadByKey(ORG_A, absent.object_key)).toEqual({
+      outcome: "in_progress",
+      objectId: absent.id,
+      committedGeneration: 0n,
+      targetGeneration: absentStarted.operation.target_generation,
+      activeState: "quarantined",
+    });
+  });
+
+  test("projects committed immutable PUT evidence and committed DELETE absence", async () => {
+    const putTarget = await registerAbsent(ORG_A, "committed-put-read");
+    const deleteTarget = await registerPresent(ORG_A, "committed-delete-read", 4n);
+    await seedQuota(ORG_A, 4n, 100n);
+
+    const putOperation = prepared(
+      await writer.prepareOperation(
+        putInput(putTarget, {
+          idempotencyKey: "committed-put-read",
+          targetSizeBytes: 3n,
+          checksumSeed: 96,
+        }),
+      ),
+    );
+    const putClaim = await startProvider(await claim(putOperation));
+    const putReceipt = putCommitInput(putClaim, "provider-version-committed-read");
+    await writer.commitPut(putReceipt);
+
+    if (putOperation.target_provider_key === null) {
+      throw new Error("Prepared PUT operation is missing its target provider key");
+    }
+
+    const committedSnapshot = presentSnapshot(
+      await reader.resolveObjectReadByKey(ORG_A, putTarget.object_key),
+    );
+    expect(committedSnapshot).toEqual({
+      organizationId: ORG_A,
+      objectId: putTarget.id,
+      objectKey: putTarget.object_key,
+      committedGeneration: putOperation.target_generation,
+      sizeBytes: putReceipt.targetEvidence.sizeBytes,
+      providerKey: putOperation.target_provider_key,
+      providerVersion: putReceipt.targetEvidence.providerVersion,
+      providerEtag: putReceipt.targetEvidence.providerEtag,
+      contentType: putReceipt.targetEvidence.contentType,
+      checksumSha256: putReceipt.targetEvidence.checksumSha256,
+      providerUploadedAt: putReceipt.targetEvidence.providerUploadedAt,
+    });
+    expect(committedSnapshot.providerKey).toBe(
+      orgStorageProviderKey(ORG_A, putTarget.id, putOperation.target_generation),
+    );
+
+    const deleteOperation = prepared(
+      await writer.prepareOperation(deleteInput(deleteTarget, "committed-delete-read")),
+    );
+    await commitDelete(await startProvider(await claim(deleteOperation)));
+    expect(await reader.resolveObjectReadByKey(ORG_A, deleteTarget.object_key)).toEqual({
+      outcome: "absent",
+    });
+  });
+
+  test("fails closed when a present read snapshot is malformed", async () => {
+    const object = await registerPresent(ORG_A, "malformed-read", 1n);
+    await dbWrite
+      .update(orgStorageObjects)
+      .set({ key_fingerprint: prefixedDigest(97) })
+      .where(eq(orgStorageObjects.id, object.id));
+    await expectErrorCode(
+      reader.resolveObjectReadByKey(ORG_A, object.object_key),
+      "ORG_STORAGE_AUTHORITY_INVARIANT",
+    );
+
+    await dbWrite
+      .update(orgStorageObjects)
+      .set({
+        key_fingerprint: object.key_fingerprint,
+        provider_version: "malformed\nversion",
+      })
+      .where(eq(orgStorageObjects.id, object.id));
+
+    await expectErrorCode(
+      reader.resolveObjectReadByKey(ORG_A, object.object_key),
+      "ORG_STORAGE_AUTHORITY_INVARIANT",
+    );
   });
 
   test("requires an explicitly reconciled quota baseline before admission", async () => {

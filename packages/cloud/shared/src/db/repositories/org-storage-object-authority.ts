@@ -50,6 +50,31 @@ export type ObservedObjectAuthority =
       providerUploadedAt: Date;
     };
 
+export interface OrgStorageObjectReadSnapshot {
+  readonly organizationId: string;
+  readonly objectId: string;
+  readonly objectKey: string;
+  readonly committedGeneration: bigint;
+  readonly sizeBytes: bigint;
+  readonly providerKey: string;
+  readonly providerVersion: string;
+  readonly providerEtag: string;
+  readonly contentType: string;
+  readonly checksumSha256: string | null;
+  readonly providerUploadedAt: Date;
+}
+
+export type ResolveObjectReadByKeyResult =
+  | { outcome: "absent" }
+  | {
+      outcome: "in_progress";
+      objectId: string;
+      committedGeneration: bigint;
+      targetGeneration: bigint;
+      activeState: "provider_started" | "quarantined";
+    }
+  | { outcome: "present"; snapshot: OrgStorageObjectReadSnapshot };
+
 export interface RegisterObservedAuthorityInput {
   organizationId: string;
   objectKey: string;
@@ -836,6 +861,181 @@ async function updateOperationOrFail(
 
 /** Primary-only correctness reader for object authority and operation receipts. */
 export class OrgStorageObjectAuthorityReader {
+  async resolveObjectReadByKey(
+    organizationId: string,
+    objectKey: string,
+  ): Promise<ResolveObjectReadByKeyResult> {
+    requireUuid(organizationId, "organizationId");
+    requireObjectKey(organizationId, objectKey);
+
+    const rows = await dbWrite
+      .select({
+        organizationId: orgStorageObjects.organization_id,
+        objectId: orgStorageObjects.id,
+        objectKey: orgStorageObjects.object_key,
+        keyFingerprint: orgStorageObjects.key_fingerprint,
+        presence: orgStorageObjects.presence,
+        committedGeneration: orgStorageObjects.committed_generation,
+        sizeBytes: orgStorageObjects.size_bytes,
+        providerKey: orgStorageObjects.current_provider_key,
+        providerVersion: orgStorageObjects.provider_version,
+        providerEtag: orgStorageObjects.provider_etag,
+        contentType: orgStorageObjects.content_type,
+        checksumSha256: orgStorageObjects.checksum_sha256,
+        providerUploadedAt: orgStorageObjects.provider_uploaded_at,
+        activeOrganizationId: orgStorageOperations.organization_id,
+        activeObjectId: orgStorageOperations.object_id,
+        activeState: orgStorageOperations.state,
+        activeTargetGeneration: orgStorageOperations.target_generation,
+      })
+      .from(orgStorageObjects)
+      .leftJoin(
+        orgStorageOperations,
+        and(
+          eq(orgStorageOperations.organization_id, orgStorageObjects.organization_id),
+          eq(orgStorageOperations.object_id, orgStorageObjects.id),
+          inArray(orgStorageOperations.state, ["prepared", "provider_started", "quarantined"]),
+        ),
+      )
+      .where(
+        and(
+          eq(orgStorageObjects.organization_id, organizationId),
+          eq(orgStorageObjects.storage_namespace, ORG_STORAGE_NAMESPACE),
+          eq(orgStorageObjects.object_key, objectKey),
+        ),
+      )
+      .limit(2);
+
+    if (rows.length === 0) return { outcome: "absent" };
+    if (rows.length !== 1) invariant("object_read_active_operation_not_unique");
+    const row = rows[0];
+    if (!row) invariant("object_read_projection_missing");
+    if (
+      row.organizationId !== organizationId ||
+      row.objectKey !== objectKey ||
+      row.keyFingerprint !== sha256(objectKey)
+    ) {
+      invariant("object_read_identity");
+    }
+
+    const activeState = row.activeState;
+    if (activeState === null) {
+      if (
+        row.activeOrganizationId !== null ||
+        row.activeObjectId !== null ||
+        row.activeTargetGeneration !== null
+      ) {
+        invariant("object_read_active_operation_shape");
+      }
+    } else if (
+      row.activeOrganizationId !== organizationId ||
+      row.activeObjectId !== row.objectId ||
+      row.activeTargetGeneration === null ||
+      row.activeTargetGeneration <= row.committedGeneration ||
+      (activeState !== "prepared" &&
+        activeState !== "provider_started" &&
+        activeState !== "quarantined")
+    ) {
+      invariant("object_read_active_operation_shape");
+    }
+
+    if (row.presence === "absent") {
+      if (
+        row.committedGeneration < 0n ||
+        row.sizeBytes !== 0n ||
+        row.providerKey !== null ||
+        row.providerVersion !== null ||
+        row.providerEtag !== null ||
+        row.contentType !== null ||
+        row.checksumSha256 !== null ||
+        row.providerUploadedAt !== null
+      ) {
+        invariant("object_read_absent_shape");
+      }
+    } else if (row.presence === "present") {
+      const providerKey = row.providerKey;
+      const providerVersion = row.providerVersion;
+      const providerEtag = row.providerEtag;
+      const contentType = row.contentType;
+      const providerUploadedAt = row.providerUploadedAt;
+      const immutableProviderKey =
+        row.committedGeneration > 0n
+          ? orgStorageProviderKey(organizationId, row.objectId, row.committedGeneration)
+          : null;
+      if (
+        row.organizationId !== organizationId ||
+        row.objectKey !== objectKey ||
+        row.committedGeneration < 1n ||
+        row.sizeBytes < 0n ||
+        providerKey === null ||
+        (providerKey !== immutableProviderKey &&
+          (row.committedGeneration !== 1n || providerKey !== objectKey)) ||
+        providerVersion === null ||
+        providerVersion.length < 1 ||
+        providerVersion.length > 1024 ||
+        /[\r\n]/.test(providerVersion) ||
+        providerEtag === null ||
+        providerEtag.length < 1 ||
+        providerEtag.length > 512 ||
+        /["\r\n]/.test(providerEtag) ||
+        contentType === null ||
+        contentType.length < 1 ||
+        contentType.length > 255 ||
+        /[\r\n]/.test(contentType) ||
+        (row.checksumSha256 !== null && !SHA256_PATTERN.test(row.checksumSha256)) ||
+        providerUploadedAt === null ||
+        !Number.isFinite(providerUploadedAt.getTime())
+      ) {
+        invariant("object_read_present_shape");
+      }
+    } else {
+      invariant("object_read_presence");
+    }
+
+    if (activeState === "provider_started" || activeState === "quarantined") {
+      if (row.activeTargetGeneration === null) invariant("object_read_active_operation_shape");
+      return {
+        outcome: "in_progress",
+        objectId: row.objectId,
+        committedGeneration: row.committedGeneration,
+        targetGeneration: row.activeTargetGeneration,
+        activeState,
+      };
+    }
+    if (row.presence === "absent") return { outcome: "absent" };
+
+    const providerKey = row.providerKey;
+    const providerVersion = row.providerVersion;
+    const providerEtag = row.providerEtag;
+    const contentType = row.contentType;
+    const providerUploadedAt = row.providerUploadedAt;
+    if (
+      providerKey === null ||
+      providerVersion === null ||
+      providerEtag === null ||
+      contentType === null ||
+      providerUploadedAt === null
+    ) {
+      invariant("object_read_present_shape");
+    }
+    return {
+      outcome: "present",
+      snapshot: {
+        organizationId: row.organizationId,
+        objectId: row.objectId,
+        objectKey: row.objectKey,
+        committedGeneration: row.committedGeneration,
+        sizeBytes: row.sizeBytes,
+        providerKey,
+        providerVersion,
+        providerEtag,
+        contentType,
+        checksumSha256: row.checksumSha256,
+        providerUploadedAt: new Date(providerUploadedAt.getTime()),
+      },
+    };
+  }
+
   async findObjectById(
     organizationId: string,
     objectId: string,
