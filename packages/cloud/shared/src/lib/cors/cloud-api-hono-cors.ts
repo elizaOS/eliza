@@ -29,11 +29,12 @@ import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 
 import {
-  APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,
+  CAPACITOR_WEBVIEW_ORIGIN,
   CORS_ALLOW_HEADER_NAMES,
   CORS_ALLOW_METHOD_NAMES,
   CORS_EXPOSE_HEADER_NAMES,
+  isLocalDevLoopbackOrigin,
 } from "../cors-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
@@ -94,30 +95,6 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
 ]);
 
 /**
- * Exact Capacitor WebView origin (`iosScheme="https"`, no port — see
- * packages/app/capacitor.config.ts). A browser page cannot mint a portless
- * loopback origin for a credentialed cross-origin request, so this one stays
- * first-party in every environment.
- */
-const CAPACITOR_WEBVIEW_ORIGIN = "https://localhost";
-
-/**
- * Loopback http(s) origins with an explicit port (`http://localhost:5173`,
- * `http://127.0.0.1:3000`, the https and `[::1]` variants). Any local process
- * can serve one of these, so in production reflecting them WITH
- * `Access-Control-Allow-Credentials: true` would let a hostile local page ride
- * a user's cloud session cookies against the API. They are a local-dev
- * convenience and stay first-party only outside production.
- */
-function isLoopbackDevOrigin(origin: string): boolean {
-  return (
-    origin.startsWith("http://localhost:") ||
-    origin.startsWith("http://127.0.0.1:") ||
-    APP_LOCAL_ORIGIN_RE.test(origin)
-  );
-}
-
-/**
  * First-party origins that may use cookie/session credentials. These get
  * `Access-Control-Allow-Credentials: true` with the origin reflected.
  */
@@ -129,7 +106,9 @@ export function isFirstPartyOrigin(origin: string): boolean {
   if (origin === CAPACITOR_WEBVIEW_ORIGIN || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
-  if (isLoopbackDevOrigin(origin)) {
+  // Any-port loopback origins are a local-dev convenience: any local process
+  // can serve one, so they stay first-party only outside production.
+  if (isLocalDevLoopbackOrigin(origin)) {
     return getCloudAwareEnv().ENVIRONMENT !== "production";
   }
   return false;
