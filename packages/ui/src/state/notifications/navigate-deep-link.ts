@@ -25,6 +25,7 @@ import {
   dispatchChatOpen,
   dispatchChatPrefill,
   dispatchNavigateViewEvent,
+  dispatchOpenNotificationCenter,
 } from "../../events";
 
 /** Whether a deep link is a safe navigation target (see module doc). */
@@ -58,6 +59,10 @@ export function navigateDeepLink(deepLink: string): void {
       const prefill = new URLSearchParams(query).get("prefill")?.trim();
       if (prefill) dispatchChatPrefill({ text: prefill });
       else dispatchChatOpen();
+      return;
+    }
+    if (viewId === "notifications") {
+      dispatchOpenNotificationCenter();
       return;
     }
     dispatchNavigateViewEvent({ viewId, viewPath: deepLink });
