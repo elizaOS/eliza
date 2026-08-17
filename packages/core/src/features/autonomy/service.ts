@@ -93,6 +93,41 @@ export class AutonomyService extends Service {
 		return "continuous";
 	}
 
+	/**
+	 * Operator override for the autonomy loop interval (`AUTONOMY_INTERVAL_MS`).
+	 * The 30s default fires ~2,900 background drains/day on an idle agent (live
+	 * sol-dev: 2,248 no-op drains in 29h, each a full large-model call), so a
+	 * deployment can widen the cadence without a code change. Clamped to the
+	 * same [5s, 600s] range as `setLoopInterval`; unset or malformed values keep
+	 * the default.
+	 */
+	private resolveConfiguredIntervalMs(): number | null {
+		const raw = this.runtime.getSetting("AUTONOMY_INTERVAL_MS");
+		const value =
+			typeof raw === "number"
+				? raw
+				: typeof raw === "string" && raw.trim().length > 0
+					? Number(raw.trim())
+					: Number.NaN;
+		if (!Number.isFinite(value) || value <= 0) return null;
+		return Math.min(600_000, Math.max(5_000, Math.floor(value)));
+	}
+
+	/**
+	 * Model size preference for autonomy background thinks
+	 * (`AUTONOMY_MODEL_SIZE`: "small" | "large", default "large"). Background
+	 * autonomy is deferred reasoning — an idle tick mostly re-affirms a frozen
+	 * plan — so an operator can route it to the small/cheap model tier while
+	 * interactive turns keep the large one.
+	 */
+	private resolveAutonomyModelSize(): "small" | "large" {
+		const raw = this.runtime.getSetting("AUTONOMY_MODEL_SIZE");
+		if (typeof raw === "string" && raw.trim().toLowerCase() === "small") {
+			return "small";
+		}
+		return "large";
+	}
+
 	private getTargetRoomId(): UUID | null {
 		const raw = this.runtime.getSetting("AUTONOMY_TARGET_ROOM_ID");
 		if (typeof raw !== "string" || raw.trim().length === 0) return null;
@@ -381,7 +416,8 @@ export class AutonomyService extends Service {
 
 	constructor() {
 		super();
-		// Default interval of 30 seconds
+		// Default interval of 30 seconds (see resolveConfiguredIntervalMs for the
+		// AUTONOMY_INTERVAL_MS override applied at start()).
 		this.intervalMs = 30000;
 		// Generate unique room ID for autonomous thoughts
 		this.autonomousRoomId = stringToUuid(uuidv4());
@@ -401,6 +437,16 @@ export class AutonomyService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<AutonomyService> {
 		const service = new AutonomyService();
 		service.runtime = runtime;
+		// Apply the operator interval override before the batcher section is
+		// registered so minCycleMs is correct from the first drain.
+		const configuredInterval = service.resolveConfiguredIntervalMs();
+		if (configuredInterval !== null) {
+			service.intervalMs = configuredInterval;
+			runtime.logger.info(
+				{ src: "autonomy", agentId: runtime.agentId },
+				`Autonomy interval overridden via AUTONOMY_INTERVAL_MS: ${configuredInterval}ms`,
+			);
+		}
 		service.releaseInternalActorRegistration =
 			registerRuntimeManagedInternalActor(runtime, service.autonomyEntityId);
 		try {
@@ -1118,7 +1164,11 @@ export class AutonomyService extends Service {
 				text: "",
 				providers: [],
 			},
-			model: "large",
+			// Background autonomy thinks default to the large tier; operators can
+			// route them to the small/cheap tier via AUTONOMY_MODEL_SIZE=small
+			// (idle ticks mostly re-affirm a frozen plan and don't need the
+			// flagship model).
+			model: this.resolveAutonomyModelSize(),
 			execOptions: {
 				temperature: 0.2,
 				maxTokens: 512,
