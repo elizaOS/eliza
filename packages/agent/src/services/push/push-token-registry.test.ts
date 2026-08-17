@@ -2,13 +2,17 @@
  * Covers the push-token registry: register/list/count/unregister, idempotent
  * upsert, moving a token between platforms, whitespace trimming and empty-token
  * rejection, platform filtering, cache-backed persistence with rehydration, and
- * dropping malformed records on hydrate. Backed by a Map-backed mock runtime
- * cache — no real storage.
+ * dropping malformed records on hydrate, concurrent first-use hydration, and
+ * serialized persistence. Backed by a Map-backed mock runtime cache — no real
+ * storage.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";
-import { PushTokenRegistry } from "./push-token-registry.ts";
+import {
+  type PushTokenRecord,
+  PushTokenRegistry,
+} from "./push-token-registry.ts";
 
 function createRuntime(): {
   runtime: IAgentRuntime;
@@ -100,5 +104,86 @@ describe("PushTokenRegistry", () => {
     const fresh = new PushTokenRegistry(ctx.runtime);
     const list = await fresh.list();
     expect(list.map((r) => r.token)).toEqual(["good"]);
+  });
+
+  it("preserves registrations made while first-use hydration is in flight", async () => {
+    const cache = new Map<string, unknown>();
+    const cacheReads: Array<(value: unknown) => void> = [];
+    const runtime = createMockRuntime({
+      agentId: "00000000-0000-0000-0000-0000000000aa",
+      getCache: <T>(): Promise<T | undefined> =>
+        new Promise((resolve) => {
+          cacheReads.push(resolve as (value: unknown) => void);
+        }),
+      setCache: async <T>(key: string, value: T): Promise<boolean> => {
+        cache.set(key, value);
+        return true;
+      },
+    });
+    const concurrentRegistry = new PushTokenRegistry(runtime);
+
+    const first = concurrentRegistry.register("ios", "ios-token");
+    const second = concurrentRegistry.register("android", "android-token");
+    await Promise.resolve();
+    expect(cacheReads).toHaveLength(1);
+
+    cacheReads[0]([]);
+    await first;
+    await second;
+
+    expect(
+      (await concurrentRegistry.list()).map((record) => record.token).sort(),
+    ).toEqual(["android-token", "ios-token"]);
+  });
+
+  it("serializes concurrent mutations so persisted tokens cannot regress", async () => {
+    let persisted: PushTokenRecord[] = [];
+    const pendingWrites: Array<() => void> = [];
+    const snapshots: PushTokenRecord[][] = [];
+    let firstWriteStarted!: () => void;
+    let secondWriteStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstWriteStarted = resolve;
+    });
+    const secondStarted = new Promise<void>((resolve) => {
+      secondWriteStarted = resolve;
+    });
+    const runtime = createMockRuntime({
+      agentId: "00000000-0000-0000-0000-0000000000aa",
+      getCache: async <T>(): Promise<T | undefined> => persisted as T,
+      setCache: <T>(_key: string, value: T): Promise<boolean> => {
+        const snapshot = value as PushTokenRecord[];
+        snapshots.push(snapshot);
+        (snapshots.length === 1 ? firstWriteStarted : secondWriteStarted)();
+        return new Promise((resolve) => {
+          pendingWrites.push(() => {
+            persisted = snapshot;
+            resolve(true);
+          });
+        });
+      },
+    });
+    const concurrentRegistry = new PushTokenRegistry(runtime);
+
+    const first = concurrentRegistry.register("ios", "ios-token");
+    const second = concurrentRegistry.register("android", "android-token");
+    await firstStarted;
+    expect(snapshots).toHaveLength(1);
+
+    pendingWrites[0]();
+    await first;
+    await secondStarted;
+    expect(snapshots[1]?.map((record) => record.token).sort()).toEqual([
+      "android-token",
+      "ios-token",
+    ]);
+    pendingWrites[1]();
+    await second;
+
+    const fresh = new PushTokenRegistry(runtime);
+    expect((await fresh.list()).map((record) => record.token).sort()).toEqual([
+      "android-token",
+      "ios-token",
+    ]);
   });
 });
