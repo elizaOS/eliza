@@ -218,11 +218,14 @@ describe("agent entry character passthrough", () => {
       },
     } as ElizaConfig);
 
+    // The builder normalizes the config's `directory` spelling to the
+    // DocumentDirectory `path` field (both are legal on the type; `path` is
+    // what the ingestion consumer reads first).
     expect(character.documents).toEqual([
       {
         item: {
           case: "directory",
-          value: { directory: "/knowledge" },
+          value: { path: "/knowledge" },
         },
       },
     ]);

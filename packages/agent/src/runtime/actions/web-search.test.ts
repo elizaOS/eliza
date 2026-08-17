@@ -201,7 +201,10 @@ describe("WEB_SEARCH action", () => {
     mockProviders({ parallel: mcpJson("y".repeat(20_000)) });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(true);
-    expect((result.text ?? "").length).toBe(4_012);
+    // The "\n[truncated]" marker is reserved WITHIN the 4000-char cap (the
+    // truncation-suffix-reserve contract), so the total never exceeds the cap.
+    expect((result.text ?? "").length).toBe(4_000);
+    expect(result.text).toMatch(/\[truncated\]$/);
     expect(result.data).toMatchObject({ truncated: true });
   });
 });
