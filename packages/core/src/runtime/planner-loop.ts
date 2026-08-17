@@ -390,6 +390,7 @@ async function runPlannerLoopIterations(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	let memorySearchBudgetDeadRounds = 0;
 	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
 	// terminal REPLY before any non-terminal tool has run is almost always the
 	// "Creating the app now…" narration that leaves nothing on disk. Force the
@@ -1345,14 +1346,92 @@ async function runPlannerLoopIterations(
 				);
 			}
 			repeatedNonTerminalToolCalls = 0;
-			trajectory.plannedQueue.push(...validNonTerminalCalls);
+			// Memory-recall search budget: cap `*_SEARCH`-recall rounds per turn and
+			// skip near-duplicate reformulations of a query already executed. Every
+			// extra recall round is a full planner prompt round-trip; the results of
+			// executed searches are already in the trajectory, so skipped calls lose
+			// nothing — the instruction below points the model back at them.
+			const memoryBudget = partitionMemorySearchBudget(
+				validNonTerminalCalls,
+				trajectory,
+				config.maxMemorySearchRounds,
+			);
+			const skippedSearchCalls = [
+				...memoryBudget.skippedOverBudget,
+				...memoryBudget.skippedNearDuplicate,
+			];
+			if (skippedSearchCalls.length > 0) {
+				params.runtime.logger?.warn?.(
+					{
+						iteration,
+						maxMemorySearchRounds: config.maxMemorySearchRounds,
+						skippedOverBudget: memoryBudget.skippedOverBudget.map(
+							(call) => call.name,
+						),
+						skippedNearDuplicate: memoryBudget.skippedNearDuplicate.map(
+							(call) => call.name,
+						),
+					},
+					"Memory-search round budget: skipping recall searches (over budget or near-duplicate query); answering from results already gathered",
+				);
+				const budgetParts: string[] = [];
+				if (memoryBudget.skippedNearDuplicate.length > 0) {
+					budgetParts.push(
+						"A memory search with essentially the same query already ran this " +
+							"turn; rephrasing it will not surface new stored results.",
+					);
+				}
+				if (memoryBudget.skippedOverBudget.length > 0) {
+					budgetParts.push(
+						`The per-turn memory search budget (${config.maxMemorySearchRounds}) is spent.`,
+					);
+				}
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `memory-search-budget:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					content:
+						`${budgetParts.join(" ")} The search results already gathered this ` +
+						"turn are in the trajectory above. Answer the user now from those " +
+						"results; if they do not contain the answer, say plainly what you " +
+						"looked for and did not find.",
+				});
+				if (memoryBudget.allowed.length === 0) {
+					// Dead round: every planned call was a skipped recall search. A
+					// model that keeps emitting new-phrase searches after the budget is
+					// spent would otherwise spin here forever; after the same bound as
+					// the repeated-call breaker, force one terminal synthesis from the
+					// results already gathered.
+					memorySearchBudgetDeadRounds++;
+					if (memorySearchBudgetDeadRounds > config.maxRepeatedToolCalls) {
+						return finishWithForcedSynthesis({
+							loop: params,
+							config,
+							trajectory,
+							iteration,
+							onUsage: observePlannerUsage,
+							instruction:
+								"The per-turn memory search budget is spent and further " +
+								"searches were skipped. Do not call any tool. Answer the user " +
+								"now from the search results already in this trajectory; if " +
+								"they do not contain the answer, say plainly what you looked " +
+								"for and did not find.",
+						});
+					}
+					trajectory.plannedQueue.length = 0;
+					continue;
+				}
+			}
+			memorySearchBudgetDeadRounds = 0;
+			trajectory.plannedQueue.push(...memoryBudget.allowed);
 			// The queue keeps the exact raw calls for the handler path; the context
 			// copies below are diagnostics and carry the redacted projection only.
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
 					...(trajectory.context.plannedQueue ?? []),
-					...validNonTerminalCalls.map((toolCall) => ({
+					...memoryBudget.allowed.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
 						args: stringifyToolArgsForDiagnostics(
@@ -1364,7 +1443,7 @@ async function runPlannerLoopIterations(
 					})),
 				],
 			};
-			for (const toolCall of validNonTerminalCalls) {
+			for (const toolCall of memoryBudget.allowed) {
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
 					type: "planned_tool_call",
@@ -4100,6 +4179,112 @@ export function partitionRedundantSucceededCalls(
 		else fresh.push(call);
 	}
 	return { fresh, redundant, nonRetryable };
+}
+
+/**
+ * Whether a planned tool call is a memory/knowledge-recall search: the
+ * MEMORY_SEARCH promoted virtual (or the MEMORY umbrella invoked with a
+ * search op) and SEARCH_KNOWLEDGE. Deliberately narrow — web search, message
+ * search, and file search are not recall-over-stored-memory and stay
+ * unbudgeted.
+ */
+export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
+	const name = toolCall.name.trim().toUpperCase();
+	if (name === "MEMORY_SEARCH" || name === "SEARCH_KNOWLEDGE") return true;
+	if (name === "MEMORY") {
+		const params = (toolCall.params ?? {}) as Record<string, unknown>;
+		const op = params.action ?? params.op ?? params.subaction;
+		return typeof op === "string" && op.trim().toLowerCase() === "search";
+	}
+	return false;
+}
+
+/**
+ * Order-insensitive token key for a recall query so reformulations of the SAME
+ * lookup ("alexis gym signup" vs "gym signup alexis" vs "alexis gym signup?")
+ * map to one identity. Null when the call carries no usable query text — such
+ * calls are only governed by the round budget, never the near-dup check.
+ */
+export function normalizedRecallQueryKey(
+	toolCall: PlannerToolCall,
+): string | null {
+	const params = (toolCall.params ?? {}) as Record<string, unknown>;
+	const raw = params.query ?? params.q ?? params.text ?? params.search;
+	if (typeof raw !== "string") return null;
+	const tokens = raw
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length > 0)
+		.sort();
+	if (tokens.length === 0) return null;
+	return tokens.join(" ");
+}
+
+/**
+ * Per-turn budget for memory/knowledge-recall searches. Two failure modes
+ * escaped the byte-identical redundant-call breaker (live sol-dev 2026-08-17,
+ * 3-5 MEMORY_SEARCH rounds per turn = 30-117s tails):
+ *
+ *  1. near-duplicate reformulations of the same query — skipped here whenever
+ *     an executed step (or an allowed call earlier in this batch) already
+ *     carries the same normalized query tokens for the same tool, regardless
+ *     of remaining budget;
+ *  2. open-ended "search again with a different phrase" churn — bounded by
+ *     `maxRounds` executed recall searches per turn (executed = the step ran,
+ *     successfully or not; each one cost a full planner round).
+ *
+ * Nothing is lost when a call is skipped: results from executed searches stay
+ * in the trajectory, and the caller appends an instruction to answer from
+ * them. Non-search calls always pass through.
+ */
+export function partitionMemorySearchBudget(
+	calls: PlannerToolCall[],
+	trajectory: PlannerTrajectory,
+	maxRounds: number,
+): {
+	allowed: PlannerToolCall[];
+	skippedOverBudget: PlannerToolCall[];
+	skippedNearDuplicate: PlannerToolCall[];
+} {
+	const executedQueryKeys = new Set<string>();
+	let executedRounds = 0;
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || !step.result) continue;
+		if (!isMemoryRecallSearchCall(step.toolCall)) continue;
+		executedRounds++;
+		// Only SUCCESSFUL executions seed the near-duplicate set: a failed search
+		// (schema rejection, backend error) put no results in context, so a
+		// same-query retry with corrected arguments is legitimate — it competes
+		// only against the round budget, never the dedup gate.
+		if (step.result.success !== true) continue;
+		const key = normalizedRecallQueryKey(step.toolCall);
+		if (key)
+			executedQueryKeys.add(`${step.toolCall.name.toUpperCase()} ${key}`);
+	}
+	const allowed: PlannerToolCall[] = [];
+	const skippedOverBudget: PlannerToolCall[] = [];
+	const skippedNearDuplicate: PlannerToolCall[] = [];
+	let plannedRounds = executedRounds;
+	for (const call of calls) {
+		if (!isMemoryRecallSearchCall(call)) {
+			allowed.push(call);
+			continue;
+		}
+		const key = normalizedRecallQueryKey(call);
+		const scopedKey = key ? `${call.name.toUpperCase()} ${key}` : null;
+		if (scopedKey && executedQueryKeys.has(scopedKey)) {
+			skippedNearDuplicate.push(call);
+			continue;
+		}
+		if (plannedRounds >= maxRounds) {
+			skippedOverBudget.push(call);
+			continue;
+		}
+		plannedRounds++;
+		if (scopedKey) executedQueryKeys.add(scopedKey);
+		allowed.push(call);
+	}
+	return { allowed, skippedOverBudget, skippedNearDuplicate };
 }
 
 /**
