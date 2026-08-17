@@ -10,6 +10,8 @@ import {
   AgentEventService,
   type AgentNotification,
   AgentRuntime,
+  basicProviders,
+  basicServices,
   ChannelType,
   createMessageMemory,
   type GenerateTextParams,
@@ -199,9 +201,17 @@ function sharedMediaPlugin(media: SharedMediaGenerationPort): Plugin {
   };
 }
 
+const sharedSystemLifecyclePlugin: Plugin = {
+  name: "shared-system-lifecycle",
+  description: "Action-free message lifecycle plumbing for server-authenticated system turns.",
+  providers: basicProviders,
+  services: basicServices,
+};
+
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
+  actionsEnabled: boolean;
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
@@ -224,13 +234,15 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
-      webSearchEdgePlugin,
-      ...(options.mediaPlugin ? [options.mediaPlugin] : []),
-      ...(options.reminderPlugin ? [options.reminderPlugin] : []),
-      ...(options.todoPlugin ? [options.todoPlugin] : []),
+      ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
+      ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
+      ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
+      ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
+      ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
     ],
     logLevel: "error",
-    actionPlanning: true,
+    disableBasicCapabilities: !options.actionsEnabled,
+    actionPlanning: options.actionsEnabled,
     checkShouldRespond: false,
     enableAutonomy: false,
     enableDocuments: false,
@@ -245,6 +257,7 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
   sharedRuntimeKernelReady ??= (async () => {
     const runtime = createRuntime({
       agentKey: "shared-runtime-kernel-prewarm",
+      actionsEnabled: true,
       adapter: new InMemoryDatabaseAdapter(),
       character: {
         name: "Shared Eliza",
@@ -512,23 +525,32 @@ async function executeSharedElizaRuntimeTurn(
   };
 
   const modelPlugin = sharedModelPlugin(modelHandler);
-  const reminderPlugin = input.execution?.reminders
-    ? createSharedRemindersEdgePlugin({
-        runner: input.execution.reminders.runner,
-        agentId: input.agentKey,
-        delivery: input.execution.reminders.delivery,
-      })
-    : undefined;
-  const todoPlugin = input.execution?.todos
-    ? createTodosEdgePlugin({ store: input.execution.todos.store })
-    : undefined;
-  const mediaPlugin = input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
+  const actionsEnabled = input.messageRole !== "system";
+  const reminderPlugin =
+    actionsEnabled && input.execution?.reminders
+      ? createSharedRemindersEdgePlugin({
+          runner: input.execution.reminders.runner,
+          agentId: input.agentKey,
+          delivery: input.execution.reminders.delivery,
+        })
+      : undefined;
+  const todoPlugin =
+    actionsEnabled && input.execution?.todos
+      ? createTodosEdgePlugin({ store: input.execution.todos.store })
+      : undefined;
+  const mediaPlugin =
+    actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
   const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
-  const entityId =
+  const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
+  const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);
+  const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
+  const authenticatedPersonalSharedUser =
+    actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
+    actionsEnabled,
     adapter,
     character: input.character,
     modelPlugin,
@@ -539,7 +561,7 @@ async function executeSharedElizaRuntimeTurn(
 
   try {
     await runtime.initialize({ skipMigrations: true });
-    if (input.execution?.media) {
+    if (mediaPlugin) {
       await runtime.getServiceLoadPromise(ServiceType.MEDIA_GENERATION);
     }
     const pushDispatches: Promise<void>[] = [];
@@ -562,37 +584,45 @@ async function executeSharedElizaRuntimeTurn(
     if (runtime.actions.some((action) => action.name === "VIEWS")) {
       throw new Error("Eliza Shared runtime must not register client view-navigation actions");
     }
-    if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
-      throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
-    }
-    if (
-      input.execution?.reminders &&
-      !runtime.actions.some((action) => action.name === "REMINDERS")
-    ) {
-      throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
-    }
-    if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
-      throw new Error("Eliza Shared runtime initialized without its TODO action");
-    }
-    if (
-      input.execution?.media &&
-      !runtime.actions.some((action) => action.name === generateMediaAction.name)
-    ) {
-      throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
+    if (!actionsEnabled) {
+      if (runtime.actions.length > 0) {
+        throw new Error(
+          `Eliza Shared system lifecycle runtime must register zero actions: ${runtime.actions.map((action) => action.name).join(", ")}`,
+        );
+      }
+    } else {
+      if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
+        throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+      }
+      if (
+        input.execution?.reminders &&
+        !runtime.actions.some((action) => action.name === "REMINDERS")
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
+      }
+      if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
+        throw new Error("Eliza Shared runtime initialized without its TODO action");
+      }
+      if (
+        input.execution?.media &&
+        !runtime.actions.some((action) => action.name === generateMediaAction.name)
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
+      }
     }
     const roomId = sharedRuntimeConversationRoomId(input.agentKey);
     await runtime.ensureConnection({
-      entityId,
+      entityId: incomingEntityId,
       roomId,
       worldId: sharedRuntimeWorldId(input.agentKey),
-      userName: "Shared user",
-      source: "shared-runtime",
+      userName: actionsEnabled ? "Shared user" : "Shared lifecycle",
+      source: actionsEnabled ? "shared-runtime" : "shared-runtime-system",
       type: ChannelType.DM,
-      ...(input.execution?.authenticatedPersonalSharedUser
+      ...(authenticatedPersonalSharedUser
         ? {
             metadata: {
-              roles: { [entityId]: "USER" },
-              roleSources: { [entityId]: "manual" },
+              roles: { [userEntityId]: "USER" },
+              roleSources: { [userEntityId]: "manual" },
             },
           }
         : {}),
@@ -604,12 +634,17 @@ async function executeSharedElizaRuntimeTurn(
           const createdAt = historyTimestamps[index];
           const memory = createMessageMemory({
             id: runtimeMemoryId(message, index),
-            entityId: message.role === "assistant" ? runtime.agentId : entityId,
+            entityId:
+              message.role === "assistant"
+                ? runtime.agentId
+                : message.role === "system"
+                  ? lifecycleEntityId
+                  : userEntityId,
             agentId: runtime.agentId,
             roomId,
             content: {
               text: message.content,
-              source: "shared-runtime",
+              source: message.role === "system" ? "shared-runtime-system" : "shared-runtime",
               channelType: ChannelType.DM,
             },
           });
@@ -635,7 +670,7 @@ async function executeSharedElizaRuntimeTurn(
       runtime,
       createMessageMemory({
         id: stringToUuid(input.messageIds?.user ?? `${input.agentKey}:${input.message}`),
-        entityId,
+        entityId: incomingEntityId,
         agentId: runtime.agentId,
         roomId,
         content: {
@@ -643,9 +678,11 @@ async function executeSharedElizaRuntimeTurn(
           // Only the server-owned execution attestation may translate a Shared
           // turn to authenticated client-chat provenance. Connector payloads and
           // direct runtime callers remain on the fail-closed Shared source.
-          source: input.execution?.authenticatedPersonalSharedUser
-            ? MESSAGE_SOURCE_CLIENT_CHAT
-            : "shared-runtime",
+          source: !actionsEnabled
+            ? "shared-runtime-system"
+            : authenticatedPersonalSharedUser
+              ? MESSAGE_SOURCE_CLIENT_CHAT
+              : "shared-runtime",
           channelType: ChannelType.DM,
           ...(input.originClientMessageId
             ? {
