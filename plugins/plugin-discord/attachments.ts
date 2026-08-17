@@ -11,6 +11,7 @@ import {
 	type IAgentRuntime,
 	type Media,
 	ModelType,
+	resolveAttachmentBytes,
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
@@ -214,19 +215,22 @@ export class AttachmentManager {
 		attachment: Attachment,
 	): Promise<Media> {
 		try {
-			const response = await fetch(attachment.url);
-			const audioVideoArrayBuffer = await response.arrayBuffer();
+			// SSRF-guarded + byte-capped connector fetch (repo media invariant) —
+			// never a raw unbounded fetch of a chat-supplied URL.
+			const { buffer: audioVideoBuffer } = await resolveAttachmentBytes(
+				attachment.url,
+			);
 
 			let audioBuffer: Buffer;
 			let audioFileName: string;
 			let audioMimeType: string;
 
 			if (attachment.contentType?.startsWith("audio/")) {
-				audioBuffer = Buffer.from(audioVideoArrayBuffer);
+				audioBuffer = audioVideoBuffer;
 				audioFileName = attachment.name || "audio.mp3";
 				audioMimeType = attachment.contentType;
 			} else if (attachment.contentType?.startsWith("video/mp4")) {
-				audioBuffer = await this.extractAudioFromMP4(audioVideoArrayBuffer);
+				audioBuffer = await this.extractAudioFromMP4(audioVideoBuffer);
 				audioFileName = "extracted_audio.mp3";
 				audioMimeType = "audio/mpeg";
 			} else {
@@ -355,7 +359,7 @@ export class AttachmentManager {
 	 * @param {ArrayBuffer} mp4Data - The MP4 data to extract audio from
 	 * @returns {Promise<Buffer>} - A Promise that resolves with the converted audio data as a Buffer
 	 */
-	private async extractAudioFromMP4(mp4Data: ArrayBuffer): Promise<Buffer> {
+	private async extractAudioFromMP4(mp4Data: Uint8Array): Promise<Buffer> {
 		// Use fluent-ffmpeg to extract the audio stream from the MP4 data
 		// and convert it to MP3 format
 		const tmpDir = os.tmpdir();
@@ -365,7 +369,7 @@ export class AttachmentManager {
 
 		try {
 			// Write the MP4 data to a temporary file
-			fs.writeFileSync(tempMP4File, Buffer.from(mp4Data));
+			fs.writeFileSync(tempMP4File, mp4Data);
 
 			// Check if file has audio stream using ffprobe
 			await new Promise<void>((resolve, reject) => {
@@ -472,15 +476,16 @@ export class AttachmentManager {
 	 */
 	private async processPdfAttachment(attachment: Attachment): Promise<Media> {
 		try {
-			const response = await fetch(attachment.url);
-			const pdfBuffer = await response.arrayBuffer();
+			const { buffer: pdfBuffer } = await resolveAttachmentBytes(
+				attachment.url,
+			);
 			const pdfService = this.runtime.getService(ServiceType.PDF) as
 				| ({ convertPdfToText: (buffer: Buffer) => Promise<string> } & Service)
 				| null;
 			if (!pdfService) {
 				throw new Error("PDF service not found");
 			}
-			const text = await pdfService.convertPdfToText(Buffer.from(pdfBuffer));
+			const text = await pdfService.convertPdfToText(pdfBuffer);
 			this.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -534,8 +539,10 @@ export class AttachmentManager {
 		attachment: Attachment,
 	): Promise<Media> {
 		try {
-			const response = await fetch(attachment.url);
-			const text = await response.text();
+			const { buffer: plaintextBuffer } = await resolveAttachmentBytes(
+				attachment.url,
+			);
+			const text = plaintextBuffer.toString("utf8");
 			this.runtime.logger.debug(
 				{
 					src: "plugin:discord",

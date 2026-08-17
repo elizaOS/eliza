@@ -27,6 +27,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  resolveAttachmentBytes,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
@@ -573,13 +574,11 @@ export class MessageManager {
         };
       }
 
-      const response = await fetch(documentUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch PDF: ${response.status}`);
-      }
-
-      const pdfBuffer = await response.arrayBuffer();
-      const text = await pdfService.convertPdfToText(Buffer.from(pdfBuffer));
+      // SSRF-guarded + byte-capped connector fetch (repo media invariant) —
+      // the file URL comes from the (possibly self-hosted) Bot API, never
+      // fetch it raw and unbounded.
+      const { buffer: pdfBuffer } = await resolveAttachmentBytes(documentUrl);
+      const text = await pdfService.convertPdfToText(pdfBuffer);
 
       logger.debug(
         {
@@ -627,12 +626,8 @@ export class MessageManager {
     documentUrl: string,
   ): Promise<DocumentProcessingResult> {
     try {
-      const response = await fetch(documentUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch text document: ${response.status}`);
-      }
-
-      const text = await response.text();
+      const { buffer: textBuffer } = await resolveAttachmentBytes(documentUrl);
+      const text = textBuffer.toString("utf8");
 
       logger.debug(
         {
