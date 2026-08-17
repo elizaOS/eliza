@@ -423,7 +423,7 @@ export class SurfaceWindowManager {
       slug && this.boundsStore ? this.boundsStore.load(slug) : null;
     const frame = savedFrame ?? SURFACE_FRAMES[surface];
 
-    if (surface === "dashboard") {
+    if (surface === "app") {
       this.onDashboardVisibilityChanged?.(true);
     }
 
@@ -438,7 +438,7 @@ export class SurfaceWindowManager {
         transparent: false,
       });
     } catch (error) {
-      if (surface === "dashboard") {
+      if (surface === "app") {
         this.onDashboardVisibilityChanged?.(false);
       }
       throw error;
@@ -468,7 +468,7 @@ export class SurfaceWindowManager {
     }, 0);
     window.on("close", () => {
       this.windows.delete(id);
-      if (surface === "dashboard") {
+      if (surface === "app") {
         this.onDashboardVisibilityChanged?.(false);
       }
       this.notifyRegistryChanged();
