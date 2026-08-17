@@ -18,6 +18,33 @@ import {
   sendJson,
 } from "./route-utils.js";
 
+const ISSUE_LIST_STATES = ["open", "closed", "all"] as const;
+type IssueListState = (typeof ISSUE_LIST_STATES)[number];
+
+/**
+ * GET /api/issues `state` is list-filter identity, leftover tax after
+ * orchestrator includeArchived (#21265). Stock develop cast any token
+ * through to listIssues, so `state=OPEN` / `foo` / `1` kept an unknown
+ * catalog value instead of a 400. labels / repo stay untouched.
+ * Missing / empty still means open (today's default).
+ */
+function parseIssuesStateQuery(
+  searchParams: URLSearchParams,
+): IssueListState | "invalid" {
+  const requested = searchParams.getAll("state");
+  if (requested.length > 1) {
+    return "invalid";
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return "open";
+  }
+  if ((ISSUE_LIST_STATES as readonly string[]).includes(raw)) {
+    return raw as IssueListState;
+  }
+  return "invalid";
+}
+
 /**
  * Handle issue routes (/api/issues/*)
  * Returns true if the route was handled, false otherwise
@@ -44,18 +71,18 @@ export async function handleIssueRoutes(
         sendError(res, "repo query parameter required", 400);
         return true;
       }
-      const state = url.searchParams.get("state") as
-        | "open"
-        | "closed"
-        | "all"
-        | null;
+      const state = parseIssuesStateQuery(url.searchParams);
+      if (state === "invalid") {
+        sendError(res, "Invalid state", 400);
+        return true;
+      }
       const labelsParam = url.searchParams.get("labels");
       const labels = labelsParam
         ? labelsParam.split(",").map((s) => s.trim())
         : undefined;
 
       const issues = await ctx.workspaceService.listIssues(repo, {
-        state: state ?? "open",
+        state,
         labels,
       });
       sendJson(res, issues);
