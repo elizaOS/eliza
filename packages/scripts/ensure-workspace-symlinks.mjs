@@ -145,7 +145,6 @@ function main() {
   // (b) is imported across workspace boundaries.
   const HOIST_TRANSITIVE = [
     { name: "adze", consumer: "@elizaos/logger" },
-    { name: "fast-redact", consumer: "@elizaos/logger" },
   ];
   let hoisted = 0;
   for (const root of NODE_MODULES_DIRS) {
