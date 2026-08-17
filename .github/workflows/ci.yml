@@ -50,6 +50,24 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      # A mid-merge tree can carry literal conflict markers into otherwise
+      # buildable source — auth-critical UI files once shipped this way.
+      # Fail in seconds, before install/build spend, when any tracked file
+      # starts a line with the <<<<<<< or >>>>>>> marker.
+      - name: Reject unresolved merge-conflict markers
+        run: |
+          set -euo pipefail
+          status=0
+          git grep -n -E '^(<{7}|>{7})( |$)' -- . || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Unresolved git merge-conflict marker(s) in the tracked files listed above. Finish or abort the merge before landing."
+            exit 1
+          elif [ "$status" -gt 1 ]; then
+            echo "::error::merge-conflict marker scan failed (git grep exit $status)"
+            exit 1
+          fi
+          echo "No unresolved merge-conflict markers in tracked files."
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
