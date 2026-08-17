@@ -47,20 +47,23 @@ import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
 import { CodingWorkspaceService } from "../../src/services/workspace-service.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
-// the #8896 default-criteria feature. createTask now auto-populates acceptance
-// criteria for criteria-free, non-trivial goals (which would make these tasks
-// auto-verify on `task_complete` instead of parking in `validating`). Disable
-// the goal contract here so these tests exercise the original criteria-free
-// behavior; the default-criteria feature has its own dedicated suites
-// (acceptance-criteria.test.ts, create-task-default-criteria.test.ts).
+// the default-criteria or completion-residuals gates. Both features have
+// dedicated suites; leaving either default-on here can make a fixture's
+// intentional dirty workspace re-engage its worker before the lifecycle
+// assertion observes `validating`.
 const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+const PREV_RESIDUALS_GATE = process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
 beforeAll(() => {
   process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "0";
+  process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "0";
 });
 afterAll(() => {
   if (PREV_GOAL_CONTRACT === undefined)
     delete process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
   else process.env.ELIZA_REQUIRE_GOAL_CONTRACT = PREV_GOAL_CONTRACT;
+  if (PREV_RESIDUALS_GATE === undefined)
+    delete process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
+  else process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = PREV_RESIDUALS_GATE;
 });
 
 interface SpawnResult {
