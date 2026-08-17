@@ -1491,6 +1491,14 @@ async function persistTranscript(
 	return transcript;
 }
 
+function decodeTranscriptId(raw: string): UUID | null {
+	try {
+		return decodeURIComponent(raw) as UUID;
+	} catch {
+		return null;
+	}
+}
+
 async function handleTranscriptsRoute(
 	runtime: IAgentRuntime,
 	method: string,
@@ -1529,7 +1537,19 @@ async function handleTranscriptsRoute(
 
 	const idMatch = pathname.match(/^\/api\/transcripts\/([^/]+)$/);
 	if (!idMatch) return null;
-	const id = decodeURIComponent(idMatch[1] ?? "") as UUID;
+	/**
+	 * Decode the untrusted transcript-id path segment. Leftover tax after
+	 * Android notifications / other path-decode work: stock develop called
+	 * `decodeURIComponent` on GET/PUT/DELETE `/api/transcripts/:id`, so `%` /
+	 * `%2` / `%ZZ` threw URIError instead of a typed 400. List and create
+	 * stay untouched.
+	 */
+	const id = decodeTranscriptId(idMatch[1] ?? "");
+	if (id === null) {
+		return jsonResponse(400, {
+			error: "invalid transcript id: malformed URL encoding",
+		});
+	}
 
 	if (method === "GET") {
 		const transcript = await getTranscript(runtime, id);
