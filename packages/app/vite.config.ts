@@ -1543,7 +1543,8 @@ function resolveManualChunk(id: string): string | undefined {
   if (
     normalizedId.includes("vite/preload-helper") ||
     normalizedId.includes("native-stub:") ||
-    normalizedId.includes(BUFFER_ESM_SHIM_ID)
+    normalizedId.includes(BUFFER_ESM_SHIM_ID) ||
+    normalizedId.includes("/src/shims/use-sync-external-store")
   ) {
     return "runtime-shims";
   }
