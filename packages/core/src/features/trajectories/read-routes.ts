@@ -106,6 +106,21 @@ function sendJson(
 	res.end(JSON.stringify(body));
 }
 
+/**
+ * Decode the untrusted `:id` path segment. Leftover tax after media-store /
+ * views-routes path work: stock develop called `decodeURIComponent` on
+ * `GET /api/trajectories/:id` before the handler try/catch, so `%` / `%2` /
+ * `%ZZ` threw URIError (500) instead of a typed 400. List and stats stay
+ * untouched.
+ */
+function decodeTrajectoryId(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+}
+
 // timeout collapses to the viewer's tri-state "error".
 function normalizeStatus(
 	status: string | undefined,
@@ -291,10 +306,16 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 	const isList = pathname === "/api/trajectories";
 	const isStats = pathname === "/api/trajectories/stats";
 	const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);
-	const detailId =
-		idMatch && idMatch[1] !== "stats" && idMatch[1] !== "config"
-			? decodeURIComponent(idMatch[1])
-			: null;
+	let detailId: string | null = null;
+	if (idMatch && idMatch[1] !== "stats" && idMatch[1] !== "config") {
+		detailId = decodeTrajectoryId(idMatch[1] ?? "");
+		if (detailId === null) {
+			sendJson(res, 400, {
+				error: "invalid trajectory id: malformed URL encoding",
+			});
+			return true;
+		}
+	}
 	if (!isList && !isStats && !detailId) {
 		return false;
 	}
