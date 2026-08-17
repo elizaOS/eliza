@@ -408,9 +408,7 @@ async function fetchMemoriesFromTables(
  */
 export function parseMemoryTableFilter(
   typeParam: string | null,
-):
-  | { ok: true; tables?: readonly string[] }
-  | { ok: false; message: string } {
+): { ok: true; tables?: readonly string[] } | { ok: false; message: string } {
   if (typeParam === null || typeParam === "") return { ok: true };
   const t = typeParam.toLowerCase();
   if (MEMORY_TABLE_NAMES.includes(t as (typeof MEMORY_TABLE_NAMES)[number])) {

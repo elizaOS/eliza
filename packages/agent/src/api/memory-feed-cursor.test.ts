@@ -6,10 +6,7 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
-import {
-  handleMemoryRoutes,
-  parseMemoryTableFilter,
-} from "./memory-routes.ts";
+import { handleMemoryRoutes, parseMemoryTableFilter } from "./memory-routes.ts";
 
 describe("GET /api/memories/feed cursor", () => {
   test("honors a before cursor at the Unix epoch", async () => {
