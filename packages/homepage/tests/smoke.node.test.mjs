@@ -149,6 +149,66 @@ test("large visual assets receive a durable browser cache policy", () => {
   }
 });
 
+test("every response carries the defense-in-depth security header suite", () => {
+  const headers = readFileSync(headersPath, "utf8");
+  const globalBlock = headers.match(/^\/\*\n((?:[ \t]+\S.*\n)+)/m)?.[1] ?? "";
+  const headerLine = (name) => {
+    const line = globalBlock
+      .split("\n")
+      .find((candidate) => candidate.trimStart().startsWith(`${name}:`));
+    assert.ok(line, `missing ${name} in the /* block`);
+    return line.trimStart();
+  };
+
+  const csp = headerLine("Content-Security-Policy");
+  assert.ok(
+    csp.length < 1900,
+    `CSP must stay under the Cloudflare Pages header limit (${csp.length} bytes)`,
+  );
+  // Clickjacking defense for the onboarding/auth pages.
+  assert.match(csp, /frame-ancestors 'self'/);
+  assert.match(headerLine("X-Frame-Options"), /^X-Frame-Options: SAMEORIGIN$/);
+  // The CSP must reflect what the homepage really loads: the /get-started
+  // Telegram widget is the only external script and renders its
+  // oauth.telegram.org iframe; the index.html <body> carries an inline style;
+  // sign-in providers are top-level navigations, not fetches.
+  assert.match(
+    csp,
+    /script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' https:\/\/telegram\.org/,
+  );
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/);
+  assert.match(csp, /frame-src 'self' https:\/\/oauth\.telegram\.org/);
+  assert.match(csp, /form-action 'self' https:\/\/oauth\.telegram\.org/);
+  assert.match(
+    csp,
+    /connect-src 'self' https:\/\/eliza\.app https:\/\/\*\.eliza\.app wss:\/\/\*\.eliza\.app/,
+  );
+  assert.match(csp, /object-src 'none'/);
+  assert.match(csp, /base-uri 'self'/);
+
+  assert.match(
+    headerLine("X-Content-Type-Options"),
+    /^X-Content-Type-Options: nosniff$/,
+  );
+  assert.match(
+    headerLine("Referrer-Policy"),
+    /^Referrer-Policy: strict-origin-when-cross-origin$/,
+  );
+  assert.match(
+    headerLine("Strict-Transport-Security"),
+    /^Strict-Transport-Security: max-age=63072000; includeSubDomains; preload$/,
+  );
+  assert.match(
+    headerLine("Permissions-Policy"),
+    /^Permissions-Policy: camera=\(self\), microphone=\(self\), geolocation=\(self\)$/,
+  );
+
+  // A global Cache-Control would aggregate with the per-path rules below
+  // (matching _headers rules join instead of overriding) and destroy the
+  // durable asset caching enforced by the previous test.
+  assert.doesNotMatch(globalBlock, /Cache-Control/);
+});
+
 test("preloaded image declares the MIME type of the referenced asset", () => {
   const indexHtml = readFileSync(indexHtmlPath, "utf8");
   const preloadTag = indexHtml.match(/<link(?=[^>]*rel="preload")[^>]*>/)?.[0];
