@@ -35,9 +35,9 @@ const getUsageTimeSeries = mock(
     },
   ],
 );
-const generateProjections = mock(
-  (_historical: unknown, periods: number) => [{ periods }],
-);
+const generateProjections = mock((_historical: unknown, periods: number) => [
+  { periods },
+]);
 const generateProjectionAlerts = mock(() => []);
 const persistProjectionAlerts = mock(async () => []);
 const getById = mock(async () => ({ credit_balance: 0 }));
