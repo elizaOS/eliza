@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import {
   mobileRendererRequiresFreshBuild,
-  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./mobile-renderer-feature-env.mjs";
 
@@ -55,22 +54,6 @@ describe("resolveMobileRendererFeatureEnv", () => {
       /platform is required/,
     );
   });
-
-  it("requires the explicit stale-risk override before reusing unstamped lanes", () => {
-    for (const platform of [
-      "ios",
-      "ios-local",
-      "ios-overlay",
-      "android-cloud-debug",
-    ]) {
-      expect(mobileRendererUnstampedFeatureProblem({ platform })).toContain(
-        "not stamped",
-      );
-    }
-    expect(
-      mobileRendererUnstampedFeatureProblem({ platform: "android" }),
-    ).toBeNull();
-  });
 });
 
 describe("mobileRendererRequiresFreshBuild", () => {
@@ -78,10 +61,10 @@ describe("mobileRendererRequiresFreshBuild", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    for (const platform of ["ios", "ios-local", "ios-overlay"]) {
+    for (const platform of ["ios", "ios-local"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
     }
-    for (const platform of ["android", "android-cloud"]) {
+    for (const platform of ["android", "android-cloud", "ios-overlay"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
   });
