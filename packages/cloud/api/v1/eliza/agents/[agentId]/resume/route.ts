@@ -42,19 +42,22 @@ async function __hono_POST(
     // Agent-resume wait identity, not leftover tax on agent-create
     // autoProvision. sync=TRUE used to silently stay async (202 job)
     // instead of blocking provision.
-    const requestedSync = new URL(request.url).searchParams.get("sync");
+    const syncValues = new URL(request.url).searchParams.getAll("sync");
+    const requestedSync = syncValues[0];
     if (
-      requestedSync != null &&
-      requestedSync !== "" &&
-      requestedSync !== "true" &&
-      requestedSync !== "false"
+      syncValues.length > 1 ||
+      (requestedSync != null &&
+        requestedSync !== "" &&
+        requestedSync !== "true" &&
+        requestedSync !== "false")
     ) {
       return applyCorsHeaders(
         Response.json(
           {
             success: false,
             error: "Invalid sync",
-            message: 'sync must be "true" or "false".',
+            message:
+              'sync must be specified at most once as "true" or "false".',
           },
           { status: 400 },
         ),

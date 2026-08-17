@@ -135,6 +135,29 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
       expect(checkAgentCreditGate).not.toHaveBeenCalled();
       expect(provision).not.toHaveBeenCalled();
       expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+      expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+      expect(triggerImmediate).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    "?sync=false&sync=true",
+    "?sync=true&sync=false",
+    "?sync=true&sync=true",
+    "?sync=&sync=false",
+  ])(
+    "rejects ambiguous duplicate query %s without side effects",
+    async (query) => {
+      const response = await post(query);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "Invalid sync" });
+      expect(getAgentForWrite).not.toHaveBeenCalled();
+      expect(checkAgentCreditGate).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+      expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+      expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+      expect(triggerImmediate).not.toHaveBeenCalled();
     },
   );
 });
