@@ -35,6 +35,7 @@ import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "./documents-service-loader.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
@@ -660,18 +661,14 @@ export async function handleMemoryRoutes(
   }
 
   if (method === "GET" && pathname.startsWith("/api/memories/by-entity/")) {
-    let primaryEntityId: string;
-    try {
-      primaryEntityId = decodeURIComponent(
-        pathname.slice("/api/memories/by-entity/".length),
-      );
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      error(res, "Invalid entity identifier encoding.", 400);
-      return true;
-    }
-    if (!primaryEntityId) {
-      error(res, "Missing entity identifier.", 400);
+    const primaryEntityId = decodePathComponent(
+      pathname.slice("/api/memories/by-entity/".length),
+      res,
+      "entity identifier",
+    );
+    if (primaryEntityId === null) return true;
+    if (!UUID_REGEX.test(primaryEntityId)) {
+      error(res, "Invalid entity identifier.", 400);
       return true;
     }
 
@@ -731,14 +728,8 @@ export async function handleMemoryRoutes(
 
   const memoryIdMatch = /^\/api\/memories\/([^/]+)$/.exec(pathname);
   if (memoryIdMatch && (method === "DELETE" || method === "PATCH")) {
-    let rawId: string;
-    try {
-      rawId = decodeURIComponent(memoryIdMatch[1] ?? "");
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      error(res, "Invalid memory id.", 400);
-      return true;
-    }
+    const rawId = decodePathComponent(memoryIdMatch[1] ?? "", res, "memory id");
+    if (rawId === null) return true;
     if (!UUID_REGEX.test(rawId)) {
       error(res, "Invalid memory id.", 400);
       return true;
