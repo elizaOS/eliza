@@ -461,6 +461,44 @@ describe("SubAgentRouter", () => {
     );
   });
 
+  it("delivers nested sub-agent planner replies internally, never via a connector send", async () => {
+    // A nested swarm child's origin is the parent's synthetic task room with
+    // source `sub_agent` — no connector owns it, so the previous connector
+    // send could only fail ("no conversation available to deliver message",
+    // live 2026-08-17) and the reply was dropped.
+    session = makeSession({
+      metadata: {
+        label: "nested-child",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "sub_agent",
+        subAgent: true,
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, createMemory, sendMessageToTarget } =
+      makeRuntime({ acp: acp.service });
+    handleMessage.mockImplementation(async (_runtime, _memory, callback) => {
+      await callback?.({ text: "nested result" });
+      return {};
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "nested result",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(sendMessageToTarget).not.toHaveBeenCalled();
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    const persisted = createMemory.mock.calls[0]?.[0];
+    expect(persisted?.roomId).toBe(ROOM);
+    expect(persisted?.content?.text).toBe("nested result");
+    expect(persisted?.content?.inReplyTo).toBe(PARENT_MSG);
+  });
+
   it("keeps the internal workdir out of the task_complete planner header", async () => {
     session = makeSession({
       metadata: {

@@ -1234,6 +1234,7 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			{ name: "OWNER_ALARMS", similes: [], tags: [] },
 			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
 			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+			{ name: "CALENDAR", similes: [], tags: [] },
 		];
 		const cases = [
 			[
@@ -1250,6 +1251,14 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			["reschedule the scheduled task", "SCHEDULED_TASKS"],
 			["delete scheduled task st_custom_123", "SCHEDULED_TASKS"],
 			["snooze the task until tomorrow", "SCHEDULED_TASKS"],
+			// Calendar-event mutations reach the CALENDAR surface so state is
+			// read before acting — Stage-1 must never assert calendar state from
+			// stale room history (live regression: "move the lunch with dana").
+			["move the lunch with dana to friday 1pm instead", "CALENDAR"],
+			["cancel my dentist appointment", "CALENDAR"],
+			["reschedule the team meeting to 3pm", "CALENDAR"],
+			["clear my calendar for tomorrow", "CALENDAR"],
+			["push the dinner reservation back an hour", "CALENDAR"],
 		] as const;
 
 		for (const [message, expected] of cases) {

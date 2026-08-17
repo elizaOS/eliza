@@ -5,7 +5,12 @@
   "type": "module",
   "elizaos": {
     "app": {
-      "defaults": {},
+      "defaults": {
+        "personal-assistant": {
+          "enabled": true,
+          "requiredForReady": true
+        }
+      },
       "capabilities": {
         "text-large": "required",
         "messaging": "optional",
@@ -323,6 +328,11 @@
     "@types/react-dom": "19.2.3",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "lodash": "4.18.1",
+    "tar": "7.5.22",
+    "adm-zip": "0.6.0",
+    "serialize-javascript": "7.0.5",
+    "tmp": "0.2.7",
     "@electric-sql/client": "1.0.14",
     "@electric-sql/experimental": "1.0.14",
     "form-data": "4.0.6",
@@ -355,13 +365,13 @@
     "@vitest/coverage-v8": "4.1.5",
     "next": "16.2.11",
     "@next/swc-darwin-arm64": "16.2.11",
-    "wrangler": "4.100.0",
-    "miniflare": "4.20260611.0",
-    "workerd": "1.20260611.1",
-    "@cloudflare/workerd-darwin-arm64": "1.20260611.1",
+    "wrangler": "4.116.0",
+    "miniflare": "4.20260730.0",
+    "workerd": "1.20260730.1",
+    "@cloudflare/workerd-darwin-arm64": "1.20260730.1",
     "lucide-react": "1.18.0",
-    "viem": "2.49.3",
-    "ox": "0.14.20",
+    "viem": "2.55.17",
+    "ox": "0.14.33",
     "posthog-js": "1.386.8",
     "@solana/web3.js": "1.98.4",
     "@slack/web-api": "7.15.2",

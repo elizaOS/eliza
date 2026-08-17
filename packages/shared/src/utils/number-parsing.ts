@@ -53,6 +53,27 @@ export function parsePositiveInteger(
     : normalizeFallback(fallback);
 }
 
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback: number,
+): number;
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback?: number,
+): number | undefined;
+export function parseNonNegativeInteger(
+  value: string | null | undefined,
+  fallback?: number,
+): number | undefined {
+  const raw = sanitizeNumericText(value);
+  if (!raw || !/^\d+$/.test(raw)) return normalizeFallback(fallback);
+
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? parsed
+    : normalizeFallback(fallback);
+}
+
 export function parsePositiveFloat(
   value: string | null | undefined,
   options?: ParsePositiveNumberOptions,

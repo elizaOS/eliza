@@ -17,6 +17,10 @@ const wranglerSource = readFileSync(
   new URL("packages/cloud/api/wrangler.toml", repoRoot),
   "utf8",
 );
+const releaseWorkflowSource = readFileSync(
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
+  "utf8",
+);
 
 /** Parse var names per environment from wrangler.toml ("default" = top-level [vars]). */
 function parseWranglerVars(source: string): Map<string, Set<string>> {
@@ -54,6 +58,9 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   // The staging cutover uses a fresh secret name because keep_vars preserved
   // the legacy plaintext binding on the served Worker (run 31970252094).
   { name: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED", envs: ["staging"] },
+  // Self-hosted TEI sidecar bearer key, published by cloud-cf-release; must
+  // never appear as a [vars] entry anywhere.
+  { name: "LOCAL_EMBEDDINGS_API_KEY", envs: ["staging"] },
 ];
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
@@ -122,5 +129,42 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
         .get("production")
         ?.has("PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED") ?? false,
     ).toBe(false);
+  });
+
+  test("configures authenticated local embeddings only in staging", () => {
+    const config = Bun.TOML.parse(wranglerSource) as {
+      vars?: { LOCAL_EMBEDDINGS_BASE_URL?: string };
+      env?: {
+        staging?: { vars?: { LOCAL_EMBEDDINGS_BASE_URL?: string } };
+        production?: { vars?: { LOCAL_EMBEDDINGS_BASE_URL?: string } };
+      };
+    };
+
+    expect(config.vars?.LOCAL_EMBEDDINGS_BASE_URL).toBeUndefined();
+    expect(config.env?.staging?.vars?.LOCAL_EMBEDDINGS_BASE_URL).toBe(
+      "https://embeddings-staging-staging.up.railway.app",
+    );
+    expect(
+      config.env?.production?.vars?.LOCAL_EMBEDDINGS_BASE_URL,
+    ).toBeUndefined();
+    for (const [environment, names] of vars) {
+      expect(
+        names.has("LOCAL_EMBEDDINGS_API_KEY"),
+        `${environment} must not publish LOCAL_EMBEDDINGS_API_KEY as plaintext`,
+      ).toBe(false);
+    }
+    expect(releaseWorkflowSource).toContain(
+      "LOCAL_EMBEDDINGS_API_KEY: $" +
+        "{{ steps.env.outputs.deploy_environment == 'staging' && secrets.LOCAL_EMBEDDINGS_API_KEY || '' }}",
+    );
+    expect(releaseWorkflowSource).toContain(
+      'LOCAL_EMBEDDINGS_API_KEY)\n                if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then',
+    );
+    expect(releaseWorkflowSource).toContain(
+      'if (!available.has("LOCAL_EMBEDDINGS_API_KEY"))',
+    );
+    expect(releaseWorkflowSource).toContain(
+      'required.push("LOCAL_EMBEDDINGS_API_KEY")',
+    );
   });
 });

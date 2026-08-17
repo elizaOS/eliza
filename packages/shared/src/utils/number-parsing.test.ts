@@ -1,6 +1,5 @@
 /**
- * Coverage for the strict numeric parsers (`parsePositiveInteger`,
- * `parsePositiveFloat`, `parseClampedFloat`, `parseClampedInteger`) used to
+ * Coverage for the strict numeric parsers used to
  * sanitize config / env / form inputs. Pins the fallback behaviour and the
  * rejection of partial, malformed, non-finite, and unsafe-integer strings
  * rather than silently coercing them.
@@ -10,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseClampedFloat,
   parseClampedInteger,
+  parseNonNegativeInteger,
   parsePositiveFloat,
   parsePositiveInteger,
 } from "./number-parsing";
@@ -20,6 +20,15 @@ describe("number parsing utilities", () => {
     expect(parsePositiveInteger("0", 7)).toBe(7);
     expect(parsePositiveInteger("-1", 7)).toBe(7);
     expect(parsePositiveInteger("12abc", 7)).toBe(7);
+  });
+
+  it("parses non-negative integers without accepting alternate syntax", () => {
+    expect(parseNonNegativeInteger("0", 7)).toBe(0);
+    expect(parseNonNegativeInteger(" 12 ", 7)).toBe(12);
+    expect(parseNonNegativeInteger("1e3", 7)).toBe(7);
+    expect(parseNonNegativeInteger("5junk", 7)).toBe(7);
+    expect(parseNonNegativeInteger("-1", 7)).toBe(7);
+    expect(parseNonNegativeInteger("9007199254740993", 7)).toBe(7);
   });
 
   it("parses positive floats with optional flooring", () => {

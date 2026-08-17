@@ -278,8 +278,16 @@ export class DefinitionsDomain {
       "timezone",
       current.definition.timezone,
     );
+    const windowPolicyInput =
+      request.windowPolicy ??
+      (request.timezone === undefined
+        ? current.definition.windowPolicy
+        : {
+            ...current.definition.windowPolicy,
+            timezone: nextTimezone,
+          });
     const nextWindowPolicy = normalizeWindowPolicyInput(
-      request.windowPolicy ?? current.definition.windowPolicy,
+      windowPolicyInput,
       "windowPolicy",
       nextTimezone,
     );

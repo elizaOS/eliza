@@ -13,6 +13,7 @@ import {
   attachPtySessionWsBridge,
   cancelPendingPtySessionStop,
   DEFAULT_PTY_DISCONNECT_GRACE_MS,
+  MAX_PTY_DISCONNECT_GRACE_MS,
   type PtyWsFrame,
   resolvePtyDisconnectGraceMs,
   schedulePtySessionStopAfterGrace,
@@ -241,5 +242,26 @@ describe("resolvePtyDisconnectGraceMs", () => {
   it("honors explicit values, including 0 (legacy stop-on-close)", () => {
     expect(resolvePtyDisconnectGraceMs("0")).toBe(0);
     expect(resolvePtyDisconnectGraceMs("15000")).toBe(15_000);
+    expect(resolvePtyDisconnectGraceMs("2147483647")).toBe(
+      MAX_PTY_DISCONNECT_GRACE_MS,
+    );
   });
+
+  it.each(["2147483648", "9007199254740991"] as const)(
+    "keeps the documented default for timer-overflow %j (Node would schedule ~1ms)",
+    (raw) => {
+      expect(resolvePtyDisconnectGraceMs(raw)).toBe(
+        DEFAULT_PTY_DISCONNECT_GRACE_MS,
+      );
+    },
+  );
+
+  it.each(["1e4", "12px", "007", "0x10", "1.5", "15000abc"] as const)(
+    "keeps the documented default for prefix-coerced %j (does not apply parseInt)",
+    (raw) => {
+      expect(resolvePtyDisconnectGraceMs(raw)).toBe(
+        DEFAULT_PTY_DISCONNECT_GRACE_MS,
+      );
+    },
+  );
 });

@@ -441,7 +441,7 @@ export async function maybeAugmentChatMessageWithDocuments(
       const text = (match.content.text ?? "").trim();
       const snippet =
         text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
-          ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS)}...`
+          ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS - 3)}...`
           : text;
       return [
         `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(

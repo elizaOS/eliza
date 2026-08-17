@@ -202,10 +202,162 @@ jobs:
             echo "Superseded staging release: run=$GITHUB_RUN_ID latest=$latest_eligible_run_id" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  authorize-production:
-    name: Authorize production environment
+  validate-staging-certification:
+    name: Validate staging certification for production tree
     needs: validate-deploy-source
     if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      tree_sha: ${{ steps.identity.outputs.tree_sha }}
+      artifact_id: ${{ steps.resolve.outputs.artifact_id }}
+      artifact_digest: ${{ steps.resolve.outputs.artifact_digest }}
+      staging_run_id: ${{ steps.resolve.outputs.staging_run_id }}
+    steps:
+      - name: Checkout exact production candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind production candidate to its Git tree
+        id: identity
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          [ "$actual_sha" = "$EXPECTED_SHA" ] || {
+            echo "::error::Production certification checkout resolved ${actual_sha}, expected ${EXPECTED_SHA}"
+            exit 1
+          }
+          [ -z "$(git status --porcelain)" ] || {
+            echo "::error::Production certification checkout is not clean"
+            exit 1
+          }
+          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          artifact_name="cloud-staging-certification-v1-${tree_sha}"
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve immutable successful staging artifact
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.identity.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          candidates_file="${RUNNER_TEMP}/staging-certification-candidates.json"
+          artifact_file="${RUNNER_TEMP}/staging-certification-artifact.json"
+          run_file="${RUNNER_TEMP}/staging-certification-run.json"
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${ARTIFACT_NAME}&per_page=100" \
+            > "$candidates_file"
+
+          selected=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            artifact_id="$(jq -r '.id' <<<"$candidate")"
+            run_id="$(jq -r '.workflow_run.id // empty' <<<"$candidate")"
+            [ -n "$artifact_id" ] && [ -n "$run_id" ] || continue
+
+            if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > "$run_file"; then
+              continue
+            fi
+            if ! jq -e \
+              --arg repo "$GITHUB_REPOSITORY" \
+              '.status == "completed"
+                and .conclusion == "success"
+                and .event == "push"
+                and .head_branch == "develop"
+                and .path == ".github/workflows/cloud-cf-deploy.yml"
+                and .repository.full_name == $repo' \
+              "$run_file" >/dev/null; then
+              continue
+            fi
+
+            selected="$candidate"
+            break
+          done < <(
+            jq -c \
+              --arg name "$ARTIFACT_NAME" \
+              '[.artifacts[]
+                | select(.name == $name)
+                | select(.expired == false)
+                | select((.digest // "") | test("^sha256:[0-9a-f]{64}$"))]
+               | sort_by(.created_at)
+               | reverse[]' \
+              "$candidates_file"
+          )
+
+          [ -n "$selected" ] || {
+            echo "::error::No unexpired successful develop Cloud certification exists for production tree ${ARTIFACT_NAME#cloud-staging-certification-v1-}"
+            exit 1
+          }
+
+          printf '%s\n' "$selected" > "$artifact_file"
+          artifact_id="$(jq -r '.id' "$artifact_file")"
+          artifact_digest="$(jq -r '.digest' "$artifact_file")"
+          staging_run_id="$(jq -r '.workflow_run.id' "$artifact_file")"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "staging_run_id=$staging_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download selected certification artifact by id
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ steps.resolve.outputs.artifact_id }}
+          path: ${{ runner.temp }}/staging-certification
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.resolve.outputs.staging_run_id }}
+          digest-mismatch: error
+
+      - name: Verify certification payload and GitHub ownership
+        env:
+          EXPECTED_TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          ARTIFACT_ID: ${{ steps.resolve.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ steps.resolve.outputs.artifact_digest }}
+          STAGING_RUN_ID: ${{ steps.resolve.outputs.staging_run_id }}
+        run: |
+          set -euo pipefail
+          certification_dir="${RUNNER_TEMP}/staging-certification"
+          mapfile -t files < <(find "$certification_dir" -type f -print)
+          [ "${#files[@]}" -eq 1 ] \
+            && [ "$(basename "${files[0]}")" = "staging-cloud-certification.json" ] || {
+              echo "::error::Certification artifact must contain exactly staging-cloud-certification.json"
+              exit 1
+            }
+
+          result="$(
+            node packages/cloud/scripts/staging-release-certification.mjs verify \
+              --cert "${files[0]}" \
+              --run-json "${RUNNER_TEMP}/staging-certification-run.json" \
+              --artifact-json "${RUNNER_TEMP}/staging-certification-artifact.json" \
+              --expected-repository "$EXPECTED_REPOSITORY" \
+              --expected-tree-sha "$EXPECTED_TREE_SHA" \
+              --workflow-file .github/workflows/cloud-cf-deploy.yml
+          )"
+          jq -e \
+            --arg artifact_id "$ARTIFACT_ID" \
+            --arg artifact_digest "$ARTIFACT_DIGEST" \
+            --arg staging_run_id "$STAGING_RUN_ID" \
+            '.artifactId == $artifact_id
+              and .artifactDigest == $artifact_digest
+              and .runId == $staging_run_id' \
+            <<<"$result" >/dev/null
+          echo "Staging certification admitted tree ${EXPECTED_TREE_SHA} from run ${STAGING_RUN_ID}, artifact ${ARTIFACT_ID} (${ARTIFACT_DIGEST})." >> "$GITHUB_STEP_SUMMARY"
+
+  authorize-production:
+    name: Authorize production environment
+    needs: [validate-deploy-source, validate-staging-certification]
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     # Approval only. This job must not share a mutation concurrency group, or
@@ -217,8 +369,8 @@ jobs:
 
   release:
     name: Mutate and verify Cloud CF release
-    needs: [validate-deploy-source, admit-staging, authorize-production]
-    if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
+    needs: [validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
+    if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
     # releases wait instead of the default one-pending eviction. FIFO is by
@@ -233,6 +385,77 @@ jobs:
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+
+  certify-staging-release:
+    name: Certify successful staging Cloud tree
+    needs: release
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact released staging source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Create tree-bound staging certificate
+        id: identity
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          [ "$actual_sha" = "$EXPECTED_SHA" ] || {
+            echo "::error::Staging certification checkout resolved ${actual_sha}, expected ${EXPECTED_SHA}"
+            exit 1
+          }
+          [ -z "$(git status --porcelain)" ] || {
+            echo "::error::Staging certification checkout is not clean"
+            exit 1
+          }
+          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          artifact_name="cloud-staging-certification-v1-${tree_sha}"
+          node packages/cloud/scripts/staging-release-certification.mjs create \
+            --out staging-cloud-certification.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --source-sha "$GITHUB_SHA" \
+            --tree-sha "$tree_sha" \
+            --artifact-name "$artifact_name" \
+            --workflow-file .github/workflows/cloud-cf-deploy.yml
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable staging certification
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.identity.outputs.artifact_name }}
+          path: staging-cloud-certification.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record certification identity
+        env:
+          TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Certification upload did not return an artifact id"
+            exit 1
+          }
+          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::Certification upload did not return a SHA-256 digest"
+            exit 1
+          }
+          echo "Certified staging tree ${TREE_SHA} with artifact ${ARTIFACT_ID} (${ARTIFACT_DIGEST}) after all release and routing checks passed." >> "$GITHUB_STEP_SUMMARY"
 
   resolve-pages-preview-config:
     name: Resolve Pages preview configuration

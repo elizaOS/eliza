@@ -4885,8 +4885,10 @@ export class AgentRuntime implements IAgentRuntime {
 				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
-			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
-				audienceCacheKey
+			(cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
+				audienceCacheKey &&
+				(cachedCandidate.data as Record<string, unknown>).__roomId ===
+					message.roomId)
 				? cachedCandidate
 				: emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
@@ -5051,7 +5053,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const providerRuntime: IAgentRuntime = this;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -5513,6 +5515,7 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			data: {
 				...cachedState.data,
+				__roomId: message.roomId,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
@@ -5569,6 +5572,7 @@ export class AgentRuntime implements IAgentRuntime {
 				state: {
 					values: { ...publicValues, providers: publicText },
 					data: {
+						__roomId: message.roomId,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),
@@ -9218,7 +9222,7 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 500)}...` : content;
+								content.length > 500 ? `${content.slice(0, 497)}...` : content;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);

@@ -913,6 +913,8 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
       .mockReset()
       .mockResolvedValue({ notifications: [], unreadCount: 0 });
     onWsEvent.mockReset().mockReturnValue(() => {});
+    getBaseUrl.mockReset().mockReturnValue("");
+    onBaseUrlChange.mockReset().mockReturnValue(() => {});
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
   });
 
@@ -924,13 +926,14 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
     }
   });
 
-  it("holds GET /api/notifications on the unauthenticated Cloud origin, then hydrates after sign-in", async () => {
+  it("holds the inbox on a bare Cloud authority after sign-in, then hydrates exactly once when a Dedicated agent is selected", async () => {
     setOrigin("https://app.elizacloud.ai/");
     initNotifications();
     // WS subscriptions still wire up; only the protected hydrate is held.
     await Promise.resolve();
     expect(listNotifications).not.toHaveBeenCalled();
     expect(onWsEvent).toHaveBeenCalled();
+    expect(__getStateForTests().hydrationStatus).toBe("disabled");
 
     __setAuthStatusForTests({
       phase: "authenticated",
@@ -943,7 +946,56 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
         role: "OWNER",
       },
     });
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(__getStateForTests().hydrationStatus).toBe("disabled");
+
+    const baseUrlHandler = onBaseUrlChange.mock.calls[0][0] as () => void;
+    getBaseUrl.mockReturnValue(
+      "https://api.eliza.app/api/v1/eliza/agents/11111111-1111-4111-8111-111111111111",
+    );
+    baseUrlHandler();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(__getStateForTests().hydrationStatus).toBe("disabled");
+
+    getBaseUrl.mockReturnValue(
+      "https://11111111-1111-4111-8111-111111111111.cloud.eliza.app",
+    );
+    baseUrlHandler();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+    expect(__getStateForTests().hydrationStatus).toBe("ready");
+  });
+
+  it("keeps an authenticated managed Shared agent capability-disabled", async () => {
+    setOrigin("https://cloud-staging.eliza.app/");
+    getBaseUrl.mockReturnValue(
+      "https://api-staging.eliza.app/api/v1/eliza/agents/11111111-1111-4111-8111-111111111111",
+    );
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+
+    initNotifications();
+    await Promise.resolve();
+
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(onWsEvent).toHaveBeenCalled();
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [],
+      unreadCount: 0,
+      hydrated: false,
+      hydrationStatus: "disabled",
+      hydrationError: null,
+    });
   });
 
   it("hydrates on mount on a non-Cloud origin regardless of auth (unchanged)", async () => {

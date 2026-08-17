@@ -9,3 +9,11 @@ export function parseClampedLimit(
   const parsed = Number(param);
   return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, max) : fallback;
 }
+
+/** Non-negative offset parser — same strict `^\d+$` + `isSafeInteger` contract but allows `0`. */
+export function parseClampedOffset(param: string | null | undefined, fallback = 0): number {
+  if (!param) return fallback;
+  if (!/^\d+$/.test(param)) return fallback;
+  const parsed = Number(param);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}

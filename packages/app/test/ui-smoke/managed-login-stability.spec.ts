@@ -3,6 +3,8 @@
  * The fixture proxies the local renderer behind the canonical app hostname so
  * production hostname gates run unchanged while all application bytes remain
  * exact-head and local; network-bound auth provider discovery is deterministic.
+ * Authenticated Shared/agentless shells also prove unsupported standalone-agent
+ * notification routes stay capability-disabled instead of painting an error.
  */
 
 import { writeFile } from "node:fs/promises";
@@ -129,6 +131,7 @@ for (const surface of SURFACES) {
     const pageErrors: string[] = [];
     const requestFailures: string[] = [];
     const consoleMessages: Array<{ type: string; text: string }> = [];
+    let notificationRequests = 0;
     let releasePersonal: (() => void) | undefined;
     const personalGate = new Promise<void>((resolve) => {
       releasePersonal = resolve;
@@ -140,6 +143,9 @@ for (const surface of SURFACES) {
     );
 
     page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/notifications")) {
+        notificationRequests += 1;
+      }
       if (
         request.isNavigationRequest() &&
         request.frame() === page.mainFrame()
@@ -177,6 +183,8 @@ for (const surface of SURFACES) {
     expect(documentRequests).toHaveLength(1);
     expect(personalRequests()).toBe(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/join");
+    expect(notificationRequests).toBe(0);
+    await expect(page.getByText("Notifications unavailable")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
     expect(requestFailures).toEqual([]);
 
@@ -196,6 +204,7 @@ for (const surface of SURFACES) {
             finalUrl: page.url(),
             documentRequests,
             personalRequests: personalRequests(),
+            notificationRequests,
             pageErrors,
             requestFailures,
             consoleMessages,

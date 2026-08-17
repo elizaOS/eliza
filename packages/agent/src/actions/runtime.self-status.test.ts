@@ -1,8 +1,8 @@
 /**
  * Verifies the RUNTIME action's `self_status` op resolves the self-awareness
- * registry solely from the AWARENESS_REGISTRY runtime service and fails closed
- * when that service is absent or does not expose `getDetail`. Deterministic:
- * drives the handler against a hand-built in-memory runtime stub, no live model.
+ * registry solely from the AWARENESS_REGISTRY runtime service, bounds returned
+ * detail, and degrades to live status when the registry is unavailable.
+ * Deterministic: drives the handler against an in-memory runtime stub.
  */
 import type {
   ActionResult,
@@ -35,12 +35,21 @@ function makeRuntime(service: AwarenessServiceLike | null): IAgentRuntime {
 
 const message = { content: { text: "" } } as unknown as Memory;
 
-async function runSelfStatus(runtime: IAgentRuntime): Promise<ActionResult> {
+async function runSelfStatus(
+  runtime: IAgentRuntime,
+  detailLevel: "brief" | "full" = "brief",
+): Promise<ActionResult> {
   return (await runtimeAction.handler(
     runtime,
     message,
     {} as State,
-    { parameters: { action: "self_status", module: "runtime" } },
+    {
+      parameters: {
+        action: "self_status",
+        module: "runtime",
+        detailLevel,
+      },
+    },
     (() => Promise.resolve([])) as unknown as HandlerCallback,
   )) as ActionResult;
 }
@@ -60,6 +69,25 @@ describe("RUNTIME self_status registry seam", () => {
     expect(result.text).toBe("runtime module detail from service");
     expect(seen).toEqual({ module: "runtime", level: "brief" });
   });
+
+  it.each([
+    ["brief", 1200],
+    ["full", 8000],
+  ] as const)(
+    "keeps truncated %s detail within its %i-character contract",
+    async (detailLevel, maxChars) => {
+      const service: AwarenessServiceLike = {
+        getDetail: async () => "x".repeat(maxChars + 100),
+      };
+
+      const result = await runSelfStatus(makeRuntime(service), detailLevel);
+
+      expect(result.success).toBe(true);
+      expect(result.text).toHaveLength(maxChars);
+      expect(result.text?.endsWith("\n…[self-status truncated]")).toBe(true);
+      expect(result.data?.truncated).toBe(true);
+    },
+  );
 
   it("degrades to the live status snapshot when no AWARENESS_REGISTRY service is registered", async () => {
     // The registry is optional enrichment; without it the runtime still owns a

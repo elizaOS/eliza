@@ -2869,13 +2869,24 @@ export function buildCadenceFromUpdateFields(args: {
       return dueAt ? { cadence: { kind: "once", dueAt } } : null;
     }
     if (timeOfDayMinute !== null) {
+      if (currentCadence.kind !== "once") {
+        return null;
+      }
+      const currentLocalDate = getZonedDateParts(
+        new Date(currentCadence.dueAt),
+        currentWindowPolicy.timezone,
+      );
       return {
         cadence: {
           kind: "once",
-          dueAt: buildOneOffDueAtFromMinuteOfDay({
-            minuteOfDay: timeOfDayMinute,
-            timeZone,
-          }),
+          dueAt: buildUtcDateFromLocalParts(timeZone, {
+            year: currentLocalDate.year,
+            month: currentLocalDate.month,
+            day: currentLocalDate.day,
+            hour: Math.floor(timeOfDayMinute / 60),
+            minute: timeOfDayMinute % 60,
+            second: 0,
+          }).toISOString(),
         },
       };
     }

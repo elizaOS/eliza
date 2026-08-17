@@ -40,12 +40,15 @@ function authKey(
  * GET /api/v1/user — current user's org summary for the billing surface. Gated
  * on the synchronous session check so we never fire before the session restores.
  */
-export function useBillingUser() {
+export function useBillingUser(
+  options: { requireFreshOrganization?: boolean } = {},
+) {
   const gate = useAuthGate();
+  const requireFreshOrganization = options.requireFreshOrganization === true;
   const query = useQuery({
     queryKey: authKey(["billing-user"], gate),
-    queryFn: async (): Promise<BillingUser | null> => {
-      const res = await api<CurrentUserResponse>("/api/v1/user");
+    queryFn: async ({ signal }): Promise<BillingUser | null> => {
+      const res = await api<CurrentUserResponse>("/api/v1/user", { signal });
       const { organization_id, wallet_address, organization } = res.data;
       if (!organization_id || !organization) return null;
       return {
@@ -55,6 +58,11 @@ export function useBillingUser() {
       };
     },
     enabled: gate.enabled,
+    // Tenant-sensitive surfaces must not paint a cached organization after an
+    // invite or membership change. They opt into a fresh membership read and
+    // keep their content gated while that request is in flight.
+    refetchOnMount: requireFreshOrganization ? "always" : undefined,
+    refetchOnWindowFocus: requireFreshOrganization ? "always" : undefined,
   });
   return {
     ...query,

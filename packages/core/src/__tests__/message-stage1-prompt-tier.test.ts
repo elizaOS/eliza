@@ -7,8 +7,15 @@
  * receives, including the footprint drop on the compact tier.
  */
 import { describe, expect, it, vi } from "vitest";
-import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import {
+	HANDLE_RESPONSE_SCHEMA,
+	HANDLE_RESPONSE_TOOL_NAME,
+	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+} from "../actions/to-tool";
+import {
+	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	shouldRespondFieldEvaluator,
+} from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
@@ -26,7 +33,9 @@ const DIRECT_MESSAGE_MARKER = "direct/private rules:";
 /** Full vs compressed shouldRespond field docs. */
 const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
 const COMPACT_SHOULD_RESPOND_DOCS =
-	"RESPOND if asked/active conversation; IGNORE if not yours; STOP only explicit stop.";
+	"RESPOND if asked, active in the conversation, or able to usefully add to substantive ambient chatter";
+const SHARED_SHOULD_RESPOND_SCHEMA_DOCS =
+	"ambient chatter with real substance you can usefully add to";
 
 const LONG_CONTEXT_DESCRIPTION =
 	"Helpdesk operations of any kind: any imperative ('open a ticket', " +
@@ -227,6 +236,15 @@ describe("isUnaddressedTextGroupTurn", () => {
 });
 
 describe("Stage-1 prompt tiering", () => {
+	it("keeps the production and compatibility shouldRespond schemas aligned", () => {
+		expect(shouldRespondFieldEvaluator.schema.description).toBe(
+			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+		);
+		expect(HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.description).toBe(
+			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+		);
+	});
+
 	it("renders the compact triage block for an unaddressed group message", async () => {
 		const { systemContent, outcome } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
@@ -242,6 +260,13 @@ describe("Stage-1 prompt tiering", () => {
 		expect(systemContent).not.toContain(LONG_CONTEXT_DESCRIPTION);
 		// Compressed field docs replace the full slices.
 		expect(systemContent).toContain(COMPACT_SHOULD_RESPOND_DOCS);
+		expect(systemContent).toContain(SHARED_SHOULD_RESPOND_SCHEMA_DOCS);
+		expect(systemContent).toContain(
+			"IGNORE content-free reactions, feeds, or others' conversation",
+		);
+		expect(systemContent).not.toContain(
+			"RESPOND if asked/active conversation; IGNORE if not yours",
+		);
 		expect(systemContent).not.toContain(FULL_SHOULD_RESPOND_DOCS);
 		// The envelope still parses and routes: IGNORE ends the turn.
 		expect(outcome.kind).toBe("terminal");

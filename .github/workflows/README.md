@@ -141,6 +141,17 @@ through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
 
+Production Cloud admission is also tree-bound to staging. After every
+successful automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
+14-day immutable certification whose JSON names the repository, workflow,
+source SHA, root Git tree, run/attempt, environment, and deterministic artifact
+name. A production dispatch checks out the exact requested `main` SHA and must
+resolve that tree's non-expired artifact from a completed successful
+`push`/`develop` run before the protected `production` approval job is even
+reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+bytes, and expiry are all checked. Different merge commits are accepted only
+when their root trees are byte-identical; `force` never bypasses this gate.
+
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and
 `SSL and Certificates Write` access because it manages advanced wildcard

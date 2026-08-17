@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { logger, type Plugin } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   resolvePlugins,
   resolveRuntimePluginImportSpecifier,
@@ -143,6 +144,67 @@ describe("resolvePlugins manifest discovery", () => {
       else process.env.ELIZA_PLATFORM = previousPlatform;
     }
   });
+
+  it("loads a host-manifest readiness plugin in blocking only", async () => {
+    const previousCwd = process.cwd();
+    const workspace = await mkdtemp(path.join(tmpdir(), "eliza-app-ready-"));
+    const dropinsDir = path.join(workspace, "dropins");
+    const pluginRoot = path.join(dropinsDir, "ready-fixture");
+    const pluginName = "@fixture/plugin-ready";
+
+    try {
+      await mkdir(pluginRoot, { recursive: true });
+      await writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "ready-host-fixture",
+          elizaos: {
+            app: {
+              defaults: {
+                [pluginName]: { enabled: true, requiredForReady: true },
+              },
+            },
+          },
+        }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(pluginRoot, "package.json"),
+        JSON.stringify({
+          name: pluginName,
+          version: "0.0.0-test",
+          type: "module",
+          main: "./index.js",
+        }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(pluginRoot, "index.js"),
+        `export default { name: ${JSON.stringify(pluginName)}, description: "ready fixture", services: [] };\n`,
+        "utf8",
+      );
+      process.chdir(workspace);
+      const config: ElizaConfig = {
+        plugins: { allow: [], entries: {}, load: { paths: [dropinsDir] } },
+      } as ElizaConfig;
+
+      const blocking = await resolvePlugins(config, {
+        quiet: true,
+        phase: "blocking",
+      });
+      expect(blocking.map((plugin) => plugin.name)).toContain(pluginName);
+      expect(config.plugins?.entries?.[pluginName]).toEqual({ enabled: true });
+
+      const deferred = await resolvePlugins(config, {
+        quiet: true,
+        phase: "deferred",
+      });
+      expect(deferred.map((plugin) => plugin.name)).not.toContain(pluginName);
+    } finally {
+      process.chdir(previousCwd);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("resolvePlugins boot-phase split for model providers (#14038)", () => {

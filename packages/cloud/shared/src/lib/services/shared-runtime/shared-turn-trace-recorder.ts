@@ -107,7 +107,7 @@ function compactUsage(usage: SharedAgentTurnUsage): SharedTurnTraceUsage | undef
 /** The result fields the summary derives from; the reply/history text is never read. */
 export type SharedTurnSummaryResult = Pick<
   RunSharedAgentTurnResult,
-  "model" | "degraded" | "usage" | "actionResults" | "navIntent" | "capabilityWall"
+  "model" | "degraded" | "usage" | "actionResults" | "capabilityWall"
 >;
 
 export interface BuildTurnSummaryInput {
@@ -126,9 +126,9 @@ export interface BuildTurnSummaryInput {
 /**
  * Derive the compact stage list from what `runSharedAgentTurn` already
  * returns. Only structural facts are read — model id, degrade flag, usage
- * numbers, registered action names (`data.actionName`), capability labels,
- * and nav view ids. Reply text, history, prompts, and action payload text are
- * deliberately never copied into the summary.
+ * numbers, registered action names (`data.actionName`), and capability labels.
+ * Reply text, history, prompts, and action payload text are deliberately never
+ * copied into the summary.
  */
 export function buildTurnSummary(input: BuildTurnSummaryInput): SharedTurnSummary {
   const { result } = input;
@@ -137,9 +137,6 @@ export function buildTurnSummary(input: BuildTurnSummaryInput): SharedTurnSummar
   if (result.capabilityWall) {
     finishReason = "capability-wall";
     stages.push({ name: "capability-wall", tool: result.capabilityWall.capability });
-  } else if (result.navIntent) {
-    finishReason = "nav-intent";
-    stages.push({ name: "nav-intent", tool: result.navIntent.viewId });
   } else if (result.degraded) {
     finishReason = "degraded";
     stages.push({ name: "unavailable" });

@@ -34,6 +34,10 @@ const SETTINGS_MOUNTED_DIRS = [
  */
 const BRANDCARD_ALLOWLIST = new Map<string, string>([
   [
+    "cloud/billing/components/account-limits-card.tsx",
+    "billing multi-metric account-limit snapshot",
+  ],
+  [
     "cloud/billing/components/auto-top-up-card.tsx",
     "billing multi-field editor (switch + amounts + save)",
   ],

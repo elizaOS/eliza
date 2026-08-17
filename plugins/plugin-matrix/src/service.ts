@@ -235,6 +235,7 @@ const CRYPTO_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 const VERIFICATION_START_FALLBACK_MS = 4000;
 const ROOM_KEY_SCRYPT_SALT = "matrix.roomKeys.v1";
 const ROOM_KEY_BYTES = 32;
+const ROOM_AUTH_TAG_BYTES = 16;
 const ROOM_KEY_NONCE_BYTES = 12;
 
 /**
@@ -282,7 +283,9 @@ function decryptCryptoStore(accessToken: string, ciphertext: string): Buffer {
   const nonce = Buffer.from(parts[1], "base64");
   const tag = Buffer.from(parts[2], "base64");
   const ct = Buffer.from(parts[3], "base64");
-  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+  const decipher = createDecipheriv("aes-256-gcm", key, nonce, {
+    authTagLength: ROOM_AUTH_TAG_BYTES,
+  });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]);
 }

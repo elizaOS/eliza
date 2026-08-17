@@ -39,7 +39,10 @@ import { setupDiscordEventListeners } from "../discord-events";
 
 const BOT_ID = "123";
 
-function makeService(shouldRespondOnlyToMentions: boolean) {
+function makeService(
+	shouldRespondOnlyToMentions: boolean,
+	settings: Record<string, unknown> = {},
+) {
 	const client = new EventEmitter() as EventEmitter & {
 		user?: { id: string };
 	};
@@ -69,7 +72,7 @@ function makeService(shouldRespondOnlyToMentions: boolean) {
 		runtime: {
 			agentId: "agent",
 			emitEvent: vi.fn(),
-			getSetting: vi.fn(() => undefined),
+			getSetting: vi.fn((key: string) => settings[key]),
 			logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 		},
 		slashCommands: [],
@@ -102,6 +105,24 @@ describe("setupDiscordEventListeners config", () => {
 			expect.objectContaining({
 				shouldRespondOnlyToMentions: false,
 			}),
+		);
+	});
+
+	it.each([
+		["0", 0],
+		[" 2500 ", 2500],
+		["5junk", 3000],
+		["1e3", 3000],
+		["9007199254740993", 3000],
+		[-1, 3000],
+	])("parses debounce setting %j as %i", (raw, expected) => {
+		setupDiscordEventListeners(
+			makeService(false, { DISCORD_CHANNEL_DEBOUNCE_MS: raw }) as never,
+		);
+
+		expect(debouncerState.createChannelDebouncer).toHaveBeenCalledWith(
+			expect.any(Function),
+			expect.objectContaining({ debounceMs: expected }),
 		);
 	});
 

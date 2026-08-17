@@ -891,6 +891,9 @@ export function normalizeWindowPolicyInput(
     `${field}.timezone`,
     timeZone,
   );
+  if (policyTimeZone !== timeZone) {
+    fail(400, `${field}.timezone must match timezone`);
+  }
   const seenNames = new Set<string>();
   const windows = input.windows.map((candidate, index) => {
     const windowInput = requireRecord(candidate, `${field}.windows[${index}]`);

@@ -83,6 +83,8 @@ export async function runManagedDiscordGuildTextTurn(
     context.namespace,
     `discord-guild:${input.messageId}`,
     "platform",
+    undefined,
+    input.message,
   );
   return {
     replyText: reply.text.trim(),
@@ -189,6 +191,8 @@ export async function runManagedDiscordGuildVoiceTurn(
     context.namespace,
     input.utteranceId,
     "platform",
+    undefined,
+    transcript,
   );
   const replyText = reply.text.trim();
   if (!replyText) throw new Error("Shared Eliza returned no guild voice reply");

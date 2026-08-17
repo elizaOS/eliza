@@ -280,6 +280,33 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	it("routes invented document candidate names to the DOCUMENT parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "DOCUMENT",
+				description: "List, search, and read stored documents.",
+				similes: ["search documents", "read document", "list documents"],
+			},
+			...actions,
+		]);
+		for (const candidateAction of [
+			"DOCUMENT_SEARCH",
+			"SEARCH_DOCUMENT",
+			"READ_DOCUMENTS",
+			"GET_DOCUMENTS",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "what documents do i have",
+				candidateActions: [candidateAction],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "DOCUMENT",
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
+	});
+
 	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
 		// The live collision this locks: LIST_FILES was a simile on BOTH the
 		// coding-tools FILE action and the stored-media FILES action; catalog

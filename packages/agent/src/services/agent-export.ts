@@ -523,7 +523,9 @@ async function decrypt(
 ): Promise<Buffer> {
   const key = await deriveKey(password, salt, iterations);
 
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(tag);
 
   const plaintext = Buffer.concat([

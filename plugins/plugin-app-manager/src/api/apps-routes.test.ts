@@ -149,6 +149,21 @@ function sanitizeExpectedFavorites(values: readonly string[]): string[] {
 }
 
 describe("handleAppsRoutes", () => {
+  it("rejects relative app directories at the host boundary", async () => {
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/load-from-directory",
+      body: { directory: "apps" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(400);
+    expect(result.res.body).toEqual({
+      error:
+        "Invalid request body at directory: directory must be an absolute path",
+    });
+  });
+
   it("rejects malformed favorite updates before writing the store", async () => {
     const store = createFavoriteStore(["@elizaos/plugin-phone"]);
 

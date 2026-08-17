@@ -77,6 +77,7 @@ export function aeadDecrypt(
 		"aes-256-gcm",
 		asBuffer(key),
 		asBuffer(nonce),
+		{ authTagLength: AEAD_TAG_BYTES },
 	);
 	decipher.setAAD(asBuffer(requiredAad));
 	decipher.setAuthTag(asBuffer(authTag));

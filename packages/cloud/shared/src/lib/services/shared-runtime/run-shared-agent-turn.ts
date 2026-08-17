@@ -29,9 +29,12 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
-import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
+import {
+  resolveSharedCapabilityIntent,
+  type SharedCapabilityResolution,
+  type SharedCapabilityWall,
+} from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
-import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
@@ -64,6 +67,8 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Authenticated raw utterance used for capability checks when `message` includes server context. */
+  capabilityText?: string;
   /** Trusted lifecycle callers may add a system event instead of impersonating the user. */
   messageRole?: "system" | "user";
   /** Stable ids assigned by the transport for the persisted user/assistant pair. */
@@ -121,14 +126,10 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
-  /**
-   * Set when the turn was an in-app navigation command handled deterministically
-   * (no LLM call). The caller attaches a VIEWS navigation handoff to the turn's
-   * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
-   */
-  navIntent?: SharedNavIntent;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
+  /** Unsupported clauses that follow an enabled primary reminder or Todo. */
+  blockedSecondaryCapabilities?: SharedCapabilityWall[];
 }
 
 export type SharedAgentTurnStreamPart =
@@ -151,15 +152,10 @@ export interface RunSharedAgentTurnStreamResult {
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
   /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
   cancel?: (reason?: unknown) => Promise<void>;
-  /**
-   * Set when the turn was an in-app navigation command handled deterministically
-   * (no LLM call, so `parts` streams the canned confirmation text). The caller
-   * attaches a VIEWS navigation handoff to the `done` SSE frame from this so the
-   * PWA opens the view. See shared-nav-intent.ts.
-   */
-  navIntent?: SharedNavIntent;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
+  /** Unsupported clauses that follow an enabled primary reminder or Todo. */
+  blockedSecondaryCapabilities?: SharedCapabilityWall[];
 }
 
 /**
@@ -291,8 +287,8 @@ export function appendSharedTurn(
  * Durable commit of the landed user/assistant pair into the tenant-scoped
  * memory table. Runs only when the caller attached a flag-gated
  * `execution.memory` store, and only for turns a model/runtime actually
- * produced — the deterministic capability-wall/nav-intent/degraded fast paths
- * are transport UX, not model conversation, and stay out of the memory rows.
+ * produced — the capability-wall and degraded paths are transport UX, not
+ * model conversation, and stay out of the memory rows.
  *
  * WHY a plain await and not waitUntil: this module is deliberately
  * executionCtx-independent (it also runs outside Cloudflare Workers), so no
@@ -322,6 +318,64 @@ function modelHistoryContent(message: SharedTurnMessage): string {
   return message.content;
 }
 
+function capabilityResolution(
+  input: RunSharedAgentTurnInput,
+  capabilities: { reminders: boolean; todos: boolean },
+): SharedCapabilityResolution | null {
+  return resolveSharedCapabilityIntent(input.capabilityText ?? input.message, capabilities);
+}
+
+function appendBlockedCapabilityReplies(reply: string, blocked: SharedCapabilityWall[]): string {
+  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
+  return additions.length ? `${reply.trim()}\n\n${additions.join("\n\n")}` : reply;
+}
+
+function blockedCapabilityReplySuffix(reply: string, blocked: SharedCapabilityWall[]): string {
+  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
+  return additions.length ? `\n\n${additions.join("\n\n")}` : "";
+}
+
+function withBlockedSecondaryCapabilities(
+  result: RunSharedAgentTurnResult,
+  input: RunSharedAgentTurnInput,
+  blocked: SharedCapabilityWall[],
+): RunSharedAgentTurnResult {
+  if (!blocked.length) return result;
+  const reply = appendBlockedCapabilityReplies(result.reply, blocked);
+  return {
+    ...result,
+    reply,
+    history: appendSharedTurn(
+      input.history,
+      input.message.trim(),
+      reply,
+      input.messageIds,
+      input.messageRole,
+    ),
+    blockedSecondaryCapabilities: blocked,
+  };
+}
+
+function withBlockedSecondaryStream(
+  result: RunSharedAgentTurnStreamResult,
+  blocked: SharedCapabilityWall[],
+): RunSharedAgentTurnStreamResult {
+  if (!blocked.length || !result.parts) return result;
+  const source = result.parts;
+  const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+    for await (const part of source) {
+      if (part.type === "text-delta") {
+        yield part;
+        continue;
+      }
+      const suffix = blockedCapabilityReplySuffix(part.text, blocked);
+      const text = `${part.text.trim()}${suffix}`;
+      if (suffix) yield { type: "text-delta", text: suffix };
+      yield { ...part, text };
+    }
+  })();
+  return { ...result, parts, blockedSecondaryCapabilities: blocked };
+}
 /**
  * Run one shared (container-free) turn for a simple agent. Returns a degraded
  * result only when NO shared model is configured (a designed-unavailable state);
@@ -336,11 +390,14 @@ export async function runSharedAgentTurn(
 
   const remindersEnabled = Boolean(input.execution?.reminders);
   const todosEnabled = Boolean(input.execution?.todos);
-  const requestedCapability = resolveSharedCapabilityWall(message);
-  const capabilityWall = resolveSharedCapabilityWall(message, {
+  const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
-  });
+  };
+  const resolution = capabilityResolution(input, capabilities);
+  const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
+  const blockedSecondary =
+    resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
   if (capabilityWall) {
     return {
       reply: capabilityWall.reply,
@@ -354,33 +411,6 @@ export async function runSharedAgentTurn(
       model: "capability-wall",
       degraded: false,
       capabilityWall,
-    };
-  }
-
-  // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
-  // shared agent has no VIEWS action, so "go to settings" would otherwise be a
-  // hallucinated prose refusal; resolve it here and hand the client a VIEWS
-  // navigation so the view actually opens (#F5-ACTIONS).
-  // "Add this to my todo list" overlaps the To-dos view matcher. Once the
-  // durable action is registered, persistence must win over an app-navigation
-  // handoff or the turn would claim success without writing anything.
-  const navIntent =
-    todosEnabled && requestedCapability?.capability === "todos"
-      ? null
-      : resolveSharedNavIntent(message);
-  if (navIntent) {
-    return {
-      reply: navIntent.reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        navIntent.reply,
-        input.messageIds,
-        input.messageRole,
-      ),
-      model: "nav-intent",
-      degraded: false,
-      navIntent,
     };
   }
 
@@ -398,7 +428,7 @@ export async function runSharedAgentTurn(
 
   if (input.execution?.engine === "eliza-runtime") {
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    const turn = await runSharedElizaRuntimeTurn({
+    const result = await runSharedElizaRuntimeTurn({
       ...input,
       character: {
         ...input.character,
@@ -410,6 +440,7 @@ export async function runSharedAgentTurn(
       agentKey: input.execution.agentKey,
       model: modelId,
     });
+    const turn = withBlockedSecondaryCapabilities(result, input, blockedSecondary);
     await commitSharedTurnMemory(input, turn.reply);
     return turn;
   }
@@ -437,13 +468,23 @@ export async function runSharedAgentTurn(
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
     const reply = text.trim() || "…";
-    turn = {
-      reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
-      model: modelId,
-      degraded: false,
-      usage,
-    };
+    turn = withBlockedSecondaryCapabilities(
+      {
+        reply,
+        history: appendSharedTurn(
+          input.history,
+          message,
+          reply,
+          input.messageIds,
+          input.messageRole,
+        ),
+        model: modelId,
+        degraded: false,
+        usage,
+      },
+      input,
+      blockedSecondary,
+    );
   } catch (error) {
     // error-policy:J2 context-adding rethrow. An inference/provider failure is an
     // INTERNAL failure, not a designed-empty result: swallowing it into a
@@ -477,12 +518,14 @@ export async function runSharedAgentTurnStream(
 
   const remindersEnabled = Boolean(input.execution?.reminders);
   const todosEnabled = Boolean(input.execution?.todos);
-  const requestedCapability = resolveSharedCapabilityWall(message);
-
-  const capabilityWall = resolveSharedCapabilityWall(message, {
+  const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
-  });
+  };
+  const resolution = capabilityResolution(input, capabilities);
+  const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
+  const blockedSecondary =
+    resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
   if (capabilityWall) {
     const reply = capabilityWall.reply;
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -496,30 +539,6 @@ export async function runSharedAgentTurnStream(
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       capabilityWall,
-    };
-  }
-
-  // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
-  // one-shot stream that yields the confirmation text so the SSE shape is
-  // identical to a normal turn; the caller reads `navIntent` to attach a VIEWS
-  // navigation handoff to the `done` frame (#F5-ACTIONS).
-  const navIntent =
-    todosEnabled && requestedCapability?.capability === "todos"
-      ? null
-      : resolveSharedNavIntent(message);
-  if (navIntent) {
-    const reply = navIntent.reply;
-    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-      yield { type: "text-delta", text: reply };
-      yield { type: "finish", text: reply };
-    })();
-    return {
-      model: "nav-intent",
-      degraded: false,
-      reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
-      parts,
-      navIntent,
     };
   }
 
@@ -537,18 +556,21 @@ export async function runSharedAgentTurnStream(
 
   if (input.execution?.engine === "eliza-runtime") {
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
-    return await runSharedElizaRuntimeTurnStream({
-      ...input,
-      character: {
-        ...input.character,
-        system: buildSystemPrompt(input.character, {
-          reminders: remindersEnabled,
-          todos: todosEnabled,
-        }),
-      },
-      agentKey: input.execution.agentKey,
-      model: modelId,
-    });
+    return withBlockedSecondaryStream(
+      await runSharedElizaRuntimeTurnStream({
+        ...input,
+        character: {
+          ...input.character,
+          system: buildSystemPrompt(input.character, {
+            reminders: remindersEnabled,
+            todos: todosEnabled,
+          }),
+        },
+        agentKey: input.execution.agentKey,
+        model: modelId,
+      }),
+      blockedSecondary,
+    );
   }
 
   try {
@@ -645,12 +667,15 @@ export async function runSharedAgentTurnStream(
       }
     })();
 
-    return {
-      model: modelId,
-      degraded: false,
-      parts,
-      cancel,
-    };
+    return withBlockedSecondaryStream(
+      {
+        model: modelId,
+        degraded: false,
+        parts,
+        cancel,
+      },
+      blockedSecondary,
+    );
   } catch (error) {
     // error-policy:J2 context-adding rethrow. Preserve the setup/provider cause
     // so the caller refunds only a provably unaccepted invocation.

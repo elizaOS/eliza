@@ -3632,6 +3632,38 @@ function latestUnresolvedFailedNonTerminalToolStep(
  * may stand in for the generic fallback when the failed tool owns no
  * user-safe text of its own (#17948).
  */
+/**
+ * User-safe, tool-owned result text from non-terminal steps that SUCCEEDED
+ * after `failedStep` in trajectory order — the structural evidence that the
+ * turn recovered past the failure and produced real work. Capped to the most
+ * recent entries so a long build does not flood the terminal message (see
+ * terminalMessageWithFailureAuthority).
+ */
+function toolOwnedSuccessEvidenceAfter(
+	trajectory: PlannerTrajectory,
+	failedStep: PlannerStep,
+): string[] {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const failedIndex = steps.indexOf(failedStep);
+	if (failedIndex === -1) return [];
+	const evidence: string[] = [];
+	for (const step of steps.slice(failedIndex + 1)) {
+		if (
+			step.toolCall === undefined ||
+			isTerminalToolCall(step.toolCall) ||
+			step.result?.success !== true
+		) {
+			continue;
+		}
+		const owned = sanitizePlannerMessage(
+			step.result.userFacingText ?? step.result.text,
+		);
+		if (!owned || isUnsafeUserVisibleText(owned)) continue;
+		if (!evidence.includes(owned)) evidence.push(owned);
+	}
+	return evidence.slice(-3);
+}
+
 function terminalMessageWithFailureAuthority(
 	trajectory: PlannerTrajectory,
 	candidate: string | undefined,
@@ -3658,7 +3690,29 @@ function terminalMessageWithFailureAuthority(
 		return pendingInteraction;
 	}
 
-	return groundedFailedToolMessage(unresolvedFailure, failureReport);
+	// Chat mode replaces the candidate on purpose: the exact-fallback final
+	// message is the trigger for ensureFailedTurnFinalMessage, whose model
+	// call rewrites it into an honest mixed report. Coding/full-surface mode
+	// SKIPS that synthesis (its result feeds the orchestrator), so the raw
+	// replacement shipped a lie: the sub-agent built and deployed its page and
+	// the relayed reply claimed it "never produced a usable result" (live
+	// 2026-08-16). Model prose after a failed operation stays untrusted here —
+	// it can affirmatively contradict the failure — but TOOL-OWNED text from
+	// steps that succeeded AFTER the failure cannot launder by construction.
+	// So in coding mode the failure text keeps the lead and the tool-owned
+	// success evidence is appended, giving the orchestrator's summary both
+	// truths instead of only the failure.
+	const failureNote = groundedFailedToolMessage(
+		unresolvedFailure,
+		failureReport,
+	);
+	if (!isCodingFullSurfaceMode()) return failureNote;
+	const successEvidence = toolOwnedSuccessEvidenceAfter(
+		trajectory,
+		unresolvedFailure,
+	);
+	if (successEvidence.length === 0) return failureNote;
+	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
 }
 
 /**

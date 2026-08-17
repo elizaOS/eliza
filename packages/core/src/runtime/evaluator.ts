@@ -1333,9 +1333,57 @@ function trailingFinishEnvelopeMessage(text: string): string | null {
 		: null;
 }
 
+/**
+ * Real emittable widget markers — a paired `[NAME]…[/NAME]` (or single-line
+ * `[NAME…]`) block with one of these names renders to a native component and
+ * must NOT be treated as a fabricated tool invocation. Everything else that
+ * looks like `[SOME_ACTION] {json} [/SOME_ACTION]` is the model inventing a
+ * marker to "call" an action in prose (observed live: a documents ask replied
+ * `checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]`
+ * — the raw marker shipped to the user AND no search actually ran). Kept in
+ * lockstep with the widget markers `stripDashboardOnlyMarkers` /
+ * `parseInteractionBlocks` recognize. */
+const KNOWN_WIDGET_MARKER_NAMES = new Set([
+	"CHECKLIST",
+	"WORKFLOW",
+	"FORM",
+	"CONFIG",
+	"BACKGROUND",
+	"FOLLOWUPS",
+	"CHOICE",
+	"TASK",
+]);
+
+/** A fabricated marker invocation: a paired uppercase bracket tag whose name is
+ * not a known widget marker and whose body is a JSON-shaped action payload.
+ * Literal bracket-tag examples and fenced code are user-visible content, not
+ * planner control flow. */
+function containsFabricatedMarkerInvocation(text: string): boolean {
+	const prose = text
+		.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "")
+		.replace(/`[^`\r\n]*`/g, "");
+	for (const match of prose.matchAll(
+		/\[[ \t]*([A-Z][A-Z0-9_]{2,})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*\1[ \t]*\]/g,
+	)) {
+		const name = match[1];
+		if (!name || KNOWN_WIDGET_MARKER_NAMES.has(name)) continue;
+		const body = match[2]?.trim();
+		if (!body) continue;
+		if (
+			(body.startsWith("{") && body.endsWith("}")) ||
+			(body.startsWith("[") && body.endsWith("]"))
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function containsInvocationDsl(text: string): boolean {
-	return /(?:^|[^A-Za-z0-9_])(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/im.test(
-		text,
+	return (
+		/(?:^|[^A-Za-z0-9_])(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/im.test(
+			text,
+		) || containsFabricatedMarkerInvocation(text)
 	);
 }
 

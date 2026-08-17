@@ -65,6 +65,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
+import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -3613,7 +3614,7 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
-function normalizeCalendarAttendees(
+export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
@@ -3622,10 +3623,9 @@ function normalizeCalendarAttendees(
   }
   const mapped: Array<CreateLifeOpsCalendarEventAttendee | null> =
     attendees.map((attendee) => {
-      if (typeof attendee === "string" && attendee.trim().length > 0) {
-        return {
-          email: attendee.trim(),
-        };
+      if (typeof attendee === "string") {
+        const email = attendee.trim();
+        return basicEmailValid(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -3636,7 +3636,7 @@ function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" && record.email.trim().length > 0
+        typeof record.email === "string" && basicEmailValid(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {

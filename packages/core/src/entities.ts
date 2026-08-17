@@ -654,12 +654,13 @@ function formatEntityNames(names: string[]): string {
 		: renderedNames;
 }
 
-function truncateEntityMetadata(metadata: unknown): string {
+export function truncateEntityMetadata(metadata: unknown): string {
 	const rendered = stableStringify(metadata);
 	if (rendered.length <= MAX_ENTITY_METADATA_CHARS) {
 		return rendered;
 	}
-	return `${truncateWellFormed(rendered, MAX_ENTITY_METADATA_CHARS)}... (truncated)`;
+	const suffix = "... (truncated)";
+	return `${truncateWellFormed(rendered, MAX_ENTITY_METADATA_CHARS - suffix.length)}${suffix}`;
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {

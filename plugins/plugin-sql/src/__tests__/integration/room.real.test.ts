@@ -86,6 +86,23 @@ describe("Room Integration Tests", () => {
       expect(rooms).toHaveLength(2);
     });
 
+    it("applies zero and positive limits in getRoomsByWorlds", async () => {
+      const rooms: Room[] = ["Room 1", "Room 2", "Room 3"].map((name) => ({
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: "test",
+        type: ChannelType.GROUP,
+        name,
+      }));
+      await adapter.createRooms(rooms);
+
+      expect(await adapter.getRoomsByWorlds([testWorldId])).toHaveLength(3);
+      expect(await adapter.getRoomsByWorlds([testWorldId], 0, 0)).toEqual([]);
+      expect(await adapter.getRoomsByWorlds([testWorldId], 1, 0)).toHaveLength(1);
+      expect(await adapter.getRoomsByWorlds([testWorldId], 1, 1)).toHaveLength(1);
+    });
+
     it("should update a room", async () => {
       const roomId = uuidv4() as UUID;
       const room = {

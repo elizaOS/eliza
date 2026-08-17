@@ -242,7 +242,7 @@ function serializeForRuntimeDebug(
       return {
         __type: "string",
         length: (current as string).length,
-        preview: `${(current as string).slice(0, options.maxStringLength)}...`,
+        preview: `${(current as string).slice(0, options.maxStringLength - 3)}...`,
         truncated: true,
       };
     }
@@ -282,7 +282,7 @@ function serializeForRuntimeDebug(
       if (err.stack) {
         out.stack =
           err.stack.length > options.maxStringLength
-            ? `${err.stack.slice(0, options.maxStringLength)}...`
+            ? `${err.stack.slice(0, options.maxStringLength - 3)}...`
             : err.stack;
       }
       if (err.cause !== undefined) {
