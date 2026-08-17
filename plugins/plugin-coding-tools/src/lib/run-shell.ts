@@ -494,6 +494,14 @@ async function runInBubblewrap(
     appendDestinationParents(args, root, createdDirectories);
     args.push("--bind", root, root);
   }
+  // Bubblewrap starts with an empty writable root, and `--dir` creates the
+  // absolute ancestors needed by the selected workspace binds. Without this
+  // non-recursive remount, a command can create an ephemeral file in one of
+  // those synthetic ancestors and receive exit 0 even though no host mutation
+  // occurred. Make that root read-only so out-of-workspace writes fail
+  // explicitly. The workspace bind and the intentional per-command /tmp and
+  // /run scratch mounts are separate child mounts, so they remain writable.
+  args.push("--remount-ro", "/");
   const childEnv = bubblewrapSpawnEnv(process.env);
   for (const [key, value] of Object.entries(childEnv)) {
     if (value !== undefined) args.push("--setenv", key, value);
