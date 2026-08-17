@@ -18,6 +18,7 @@ import {
   profileIsUsable,
   provision,
   reconcileBundleCapabilities,
+  replacementDevelopmentProfileName,
   resolveAscCredentials,
   validateBundleIds,
   validateProvisioningEntitlements,
@@ -355,7 +356,7 @@ describe("mintDevelopmentProfile", () => {
     ]);
   });
 
-  it("fails closed when a same-named profile does not cover the request", async () => {
+  it("preserves and replaces a same-named profile that does not cover the request", async () => {
     const fetchImpl = mockFetch({
       "GET /v1/profiles": {
         body: {
@@ -374,22 +375,38 @@ describe("mintDevelopmentProfile", () => {
           ],
         },
       },
+      "POST /v1/profiles": {
+        status: 201,
+        body: {
+          data: {
+            id: "REPLACEMENT",
+            attributes: { name: "replacement", profileContent: "AA==" },
+          },
+        },
+      },
     });
     const asc = makeAscClient({ jwt: "t", fetchImpl });
-    await expect(
-      mintDevelopmentProfile(asc, {
-        name: "n",
-        bundleIdRef: "B1",
-        deviceIds: ["DEV1"],
-        certificateIds: ["C1"],
-      }),
-    ).rejects.toThrow(/Refusing to delete/);
+    const profile = await mintDevelopmentProfile(asc, {
+      name: "n",
+      bundleIdRef: "B1",
+      deviceIds: ["DEV1"],
+      certificateIds: ["C1"],
+      replacementNameFactory: () => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    });
+    expect(profile.id).toBe("REPLACEMENT");
     expect(fetchImpl.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       "GET /v1/profiles",
+      "POST /v1/profiles",
     ]);
+    expect(fetchImpl.calls.some((call) => call.method === "DELETE")).toBe(
+      false,
+    );
+    expect(fetchImpl.calls.at(-1).body.data.attributes.name).toBe(
+      "n - refresh-aaaaaaaabbbb",
+    );
   });
 
-  it("fails closed when a same-named profile is expired even if it covers the request", async () => {
+  it("preserves and replaces an expired same-named profile", async () => {
     const fetchImpl = mockFetch({
       "GET /v1/profiles": {
         body: {
@@ -414,19 +431,32 @@ describe("mintDevelopmentProfile", () => {
           ],
         },
       },
+      "POST /v1/profiles": {
+        status: 201,
+        body: {
+          data: {
+            id: "REPLACEMENT",
+            attributes: { name: "replacement", profileContent: "AA==" },
+          },
+        },
+      },
     });
     const asc = makeAscClient({ jwt: "t", fetchImpl });
-    await expect(
-      mintDevelopmentProfile(asc, {
-        name: "n",
-        bundleIdRef: "B1",
-        deviceIds: ["DEV1"],
-        certificateIds: ["C1"],
-      }),
-    ).rejects.toThrow(/expired or inactive/);
+    const profile = await mintDevelopmentProfile(asc, {
+      name: "n",
+      bundleIdRef: "B1",
+      deviceIds: ["DEV1"],
+      certificateIds: ["C1"],
+      replacementNameFactory: () => "ffffffff-1111-2222-3333-444444444444",
+    });
+    expect(profile.id).toBe("REPLACEMENT");
     expect(fetchImpl.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       "GET /v1/profiles",
+      "POST /v1/profiles",
     ]);
+    expect(fetchImpl.calls.some((call) => call.method === "DELETE")).toBe(
+      false,
+    );
   });
 
   it("mints a new development profile when no same-named profile exists", async () => {
@@ -539,6 +569,15 @@ describe("developmentProfileName", () => {
     expect(first).not.toBe(second);
     expect(developmentProfileName("ai.elizaos.app", "DEVICE-A")).toBe(first);
   });
+
+  it("uses a collision-resistant suffix for preserved-profile replacements", () => {
+    expect(
+      replacementDevelopmentProfileName(
+        "Eliza Dev - ai.elizaos.app - abc",
+        () => "12345678-90ab-cdef-1234-567890abcdef",
+      ),
+    ).toBe("Eliza Dev - ai.elizaos.app - abc - refresh-1234567890ab");
+  });
 });
 
 describe("writeProfile", () => {
@@ -629,7 +668,7 @@ describe("provision — full idempotent flow", () => {
       "GET /v1/bundleIds/BID/bundleIdCapabilities": {
         body: { data: [] },
       },
-      "GET /v1/profiles": { body: { data: [] } },
+      "GET /v1/bundleIds/BID/profiles": { body: { data: [] } },
       "POST /v1/profiles": {
         status: 201,
         body: {
@@ -690,6 +729,239 @@ describe("provision — full idempotent flow", () => {
         dir: tmpDir(),
       }),
     ).rejects.toThrow(/No DEVELOPMENT certificate/);
+  });
+
+  it("creates a replacement after capability reconciliation invalidates the stable profile", async () => {
+    const dir = tmpDir();
+    const stableName = developmentProfileName("ai.elizaos.app", "DEV");
+    let stableProfileState = "ACTIVE";
+    const goodContent = Buffer.from("good-grants").toString("base64");
+    const fetchImpl = mockFetch({
+      "GET /v1/devices": { body: { data: [{ id: "DEV" }] } },
+      "GET /v1/certificates": { body: { data: [{ id: "CERT" }] } },
+      "GET /v1/bundleIds": { body: { data: [{ id: "BID" }] } },
+      "GET /v1/bundleIds/BID/bundleIdCapabilities": {
+        body: { data: [] },
+      },
+      "POST /v1/bundleIdCapabilities": () => {
+        // Apple invalidates profiles that use an App ID whose capabilities
+        // changed. The following profile lookup must observe that transition.
+        stableProfileState = "INVALID";
+        return { status: 201, body: { data: {} } };
+      },
+      "GET /v1/bundleIds/BID/profiles": () => ({
+        body: {
+          data: [
+            {
+              id: "STABLE",
+              attributes: {
+                name: stableName,
+                profileType: "IOS_APP_DEVELOPMENT",
+                profileState: stableProfileState,
+              },
+            },
+          ],
+        },
+      }),
+      "POST /v1/profiles": (_method, _url, body) => ({
+        status: 201,
+        body: {
+          data: {
+            id: "REPLACEMENT",
+            attributes: {
+              name: body.data.attributes.name,
+              uuid: "REPLACEMENT-UUID",
+              profileContent: goodContent,
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await provision({
+      creds: { keyId: "K", issuerId: "I", privateKeyPem: P8 },
+      udid: "UDID",
+      bundleIds: [
+        {
+          identifier: "ai.elizaos.app",
+          name: "App",
+          entitlements: {
+            "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+          },
+        },
+      ],
+      fetchImpl,
+      dir,
+      now: 1_700_000_000,
+      decodeProfile: (file) => ({
+        Entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
+          ? {
+              "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+            }
+          : {},
+      }),
+      replacementNameFactory: () => "11111111-2222-3333-4444-555555555555",
+    });
+
+    expect(result.results[0].profile).toBe(
+      `${stableName} - refresh-111111112222`,
+    );
+    expect(fetchImpl.calls.some((call) => call.method === "DELETE")).toBe(
+      false,
+    );
+    expect(
+      fetchImpl.calls.map((call) => `${call.method} ${call.path}`),
+    ).toEqual(
+      expect.arrayContaining([
+        "POST /v1/bundleIdCapabilities",
+        "GET /v1/bundleIds/BID/profiles",
+        "POST /v1/profiles",
+      ]),
+    );
+  });
+
+  it("recovers on rerun after an admin corrects a stale App Group grant", async () => {
+    const dir = tmpDir();
+    const stableName = developmentProfileName("ai.elizaos.app", "DEV");
+    const staleContent = Buffer.from("stale-grants").toString("base64");
+    const goodContent = Buffer.from("good-grants").toString("base64");
+    let adminAssignedGroup = false;
+    let replacementCount = 0;
+    const replacements = [];
+    const replacementUuids = [
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "ffffffff-1111-2222-3333-444444444444",
+    ];
+    const fetchImpl = mockFetch({
+      "GET /v1/devices": { body: { data: [{ id: "DEV" }] } },
+      "GET /v1/certificates": { body: { data: [{ id: "CERT" }] } },
+      "GET /v1/bundleIds": { body: { data: [{ id: "BID" }] } },
+      "GET /v1/bundleIds/BID/bundleIdCapabilities": {
+        body: {
+          data: [{ attributes: { capabilityType: "APP_GROUPS" } }],
+        },
+      },
+      "GET /v1/bundleIds/BID/profiles": () => ({
+        body: {
+          data: [
+            {
+              id: "STABLE",
+              attributes: {
+                name: stableName,
+                profileType: "IOS_APP_DEVELOPMENT",
+                profileState: "ACTIVE",
+                createdDate: "2026-08-17T00:00:00Z",
+              },
+            },
+            ...replacements.map((profile) => ({
+              id: profile.id,
+              attributes: {
+                name: profile.attributes.name,
+                profileType: "IOS_APP_DEVELOPMENT",
+                profileState: "ACTIVE",
+                createdDate: profile.attributes.createdDate,
+              },
+            })),
+          ],
+        },
+      }),
+      "GET /v1/profiles/STABLE": {
+        body: {
+          data: {
+            id: "STABLE",
+            attributes: {
+              name: stableName,
+              uuid: "STABLE-UUID",
+              profileState: "ACTIVE",
+              profileContent: staleContent,
+            },
+            relationships: {
+              bundleId: { data: { id: "BID" } },
+              devices: { data: [{ id: "DEV" }] },
+              certificates: { data: [{ id: "CERT" }] },
+            },
+          },
+        },
+      },
+      "GET /v1/profiles/REPLACEMENT-1": () => ({
+        body: { data: replacements[0] },
+      }),
+      "GET /v1/profiles/REPLACEMENT-2": () => ({
+        body: { data: replacements[1] },
+      }),
+      "POST /v1/profiles": (_method, _url, body) => {
+        replacementCount += 1;
+        const profile = {
+          id: `REPLACEMENT-${replacementCount}`,
+          attributes: {
+            name: body.data.attributes.name,
+            uuid: `REPLACEMENT-UUID-${replacementCount}`,
+            createdDate: `2026-08-17T00:0${replacementCount}:00Z`,
+            profileState: "ACTIVE",
+            profileContent: adminAssignedGroup ? goodContent : staleContent,
+          },
+          relationships: {
+            bundleId: { data: { id: "BID" } },
+            devices: { data: [{ id: "DEV" }] },
+            certificates: { data: [{ id: "CERT" }] },
+          },
+        };
+        replacements.push(profile);
+        return {
+          status: 201,
+          body: { data: profile },
+        };
+      },
+    });
+    const request = {
+      creds: { keyId: "K", issuerId: "I", privateKeyPem: P8 },
+      udid: "UDID",
+      bundleIds: [
+        {
+          identifier: "ai.elizaos.app",
+          name: "App",
+          entitlements: {
+            "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+          },
+        },
+      ],
+      fetchImpl,
+      dir,
+      now: 1_700_000_000,
+      decodeProfile: (file) => ({
+        Entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
+          ? {
+              "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+            }
+          : {},
+      }),
+      replacementNameFactory: () => replacementUuids.shift(),
+    };
+
+    await expect(provision(request)).rejects.toThrow(
+      /does not grant target entitlements.*application-groups/,
+    );
+    adminAssignedGroup = true;
+    const recovered = await provision(request);
+    const recoveredAgain = await provision(request);
+
+    expect(recovered.results[0].profile).toBe(
+      `${stableName} - refresh-ffffffff1111`,
+    );
+    expect(recoveredAgain.results[0].profile).toBe(
+      recovered.results[0].profile,
+    );
+    const profilePosts = fetchImpl.calls.filter(
+      (call) => call.method === "POST" && call.path === "/v1/profiles",
+    );
+    expect(profilePosts.map((call) => call.body.data.attributes.name)).toEqual([
+      `${stableName} - refresh-aaaaaaaabbbb`,
+      `${stableName} - refresh-ffffffff1111`,
+    ]);
+    expect(profilePosts).toHaveLength(2);
+    expect(fetchImpl.calls.some((call) => call.method === "DELETE")).toBe(
+      false,
+    );
   });
 
   it("requires a udid and at least one bundle id", async () => {

@@ -66,7 +66,11 @@ Provisioning enables capabilities exposed by the public App Store Connect API,
 then decodes every minted profile and verifies the complete target entitlement
 set. Family Controls approval and exact App Group registration/assignment must
 already be completed by an Apple Account Holder/Admin; missing grants fail the
-lane rather than silently installing a reduced app.
+lane rather than silently installing a reduced app. Capability changes can
+invalidate immutable profiles, so the provisioner preserves the prior profile
+and creates a uniquely named replacement; rerun it after an administrator fixes
+a missing managed grant. Later runs reuse the first replacement whose decoded
+grants still cover the target instead of minting another profile.
 
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
 not from inside this package â `packages/app` only produces the renderer.

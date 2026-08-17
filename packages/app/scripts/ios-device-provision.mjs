@@ -31,8 +31,8 @@
  * entitlements (including exact App Groups) or the run fails closed. Each
  * device gets its own stable profile name, so provisioning one device never
  * removes another device's working profile. Existing valid profiles are
- * reused; an invalid same-name profile fails the run instead of being deleted
- * before replacement.
+ * reused; invalid or stale same-name profiles are preserved while a uniquely
+ * named replacement is created and validated.
  * Minted profiles are written into the profiles dir where `discoverProfiles()`
  * looks.
  *
@@ -377,11 +377,29 @@ export function developmentProfileName(identifier, deviceId) {
 }
 
 /**
+ * Give a replacement profile a collision-resistant name while leaving the
+ * previous profile intact. ASC profile names are unique and profiles are
+ * immutable, so recovery must create-before-delete; stale profiles can be
+ * retired manually after the replacement has been exercised on a device.
+ */
+export function replacementDevelopmentProfileName(
+  stableName,
+  randomUuid = () => crypto.randomUUID(),
+) {
+  const suffix = String(randomUuid()).replaceAll("-", "").slice(0, 12);
+  if (!suffix) {
+    throw new Error(
+      "Unable to generate a development profile replacement name.",
+    );
+  }
+  return `${stableName} - refresh-${suffix}`;
+}
+
+/**
  * Mint a development profile for a bundle id, or reuse a same-named profile
  * that already covers this bundle/device/certificate set. Development profiles
  * are immutable and ASC profile names are unique, so an invalid same-name
- * profile fails closed instead of deleting the last usable profile before a
- * replacement exists.
+ * profile is preserved while a uniquely named replacement is created.
  */
 function relationshipIds(resource, relationship) {
   const data = resource?.relationships?.[relationship]?.data;
@@ -414,44 +432,10 @@ export function profileIsUsable(profile, now = new Date()) {
   return true;
 }
 
-export async function mintDevelopmentProfile(
+async function createDevelopmentProfile(
   asc,
   { name, bundleIdRef, deviceIds, certificateIds },
 ) {
-  const existing = await asc(
-    "GET",
-    `/v1/profiles?filter[name]=${encodeURIComponent(name)}&include=bundleId,devices,certificates&limit=1`,
-  );
-  if (existing.data && existing.data.length > 0) {
-    const profile = existing.data[0];
-    if (
-      profileCoversRequest(profile, { bundleIdRef, deviceIds, certificateIds })
-    ) {
-      if (!profileIsUsable(profile)) {
-        throw new Error(
-          `Existing development profile "${name}" covers the requested bundle/device/certificate set, ` +
-            "but is expired or inactive. Remove or rename that profile in ASC, then rerun.",
-        );
-      }
-      if (profile.attributes?.profileContent) return profile;
-      const fetched = await asc("GET", `/v1/profiles/${profile.id}`);
-      if (!profileIsUsable(fetched.data)) {
-        throw new Error(
-          `Existing development profile "${name}" covers the requested bundle/device/certificate set, ` +
-            "but is expired or inactive. Remove or rename that profile in ASC, then rerun.",
-        );
-      }
-      if (fetched.data?.attributes?.profileContent) return fetched.data;
-      throw new Error(
-        `Existing development profile "${name}" covers the requested bundle/device/certificate set, ` +
-          "but App Store Connect did not return profileContent. Download it in ASC or remove the stale profile before rerunning.",
-      );
-    }
-    throw new Error(
-      `Existing development profile "${name}" does not cover the requested bundle/device/certificate set. ` +
-        "Refusing to delete it before a replacement exists; remove or rename that profile in ASC, then rerun.",
-    );
-  }
   const created = await asc("POST", "/v1/profiles", {
     data: {
       type: "profiles",
@@ -468,6 +452,137 @@ export async function mintDevelopmentProfile(
     },
   });
   return created.data;
+}
+
+async function createReplacementDevelopmentProfile(
+  asc,
+  { name, bundleIdRef, deviceIds, certificateIds, replacementNameFactory },
+) {
+  return {
+    profile: await createDevelopmentProfile(asc, {
+      name: replacementDevelopmentProfileName(name, replacementNameFactory),
+      bundleIdRef,
+      deviceIds,
+      certificateIds,
+    }),
+    reused: false,
+  };
+}
+
+async function listReusableDevelopmentProfiles(
+  asc,
+  { stableName, bundleIdRef, deviceIds, certificateIds },
+) {
+  const listed = await asc(
+    "GET",
+    `/v1/bundleIds/${bundleIdRef}/profiles?fields[profiles]=name,profileType,profileState,profileContent,uuid,createdDate,expirationDate&limit=200`,
+  );
+  const refreshPrefix = `${stableName} - refresh-`;
+  const named = (listed.data ?? []).filter((profile) => {
+    const profileName = profile.attributes?.name;
+    const profileType = profile.attributes?.profileType;
+    return (
+      (profileName === stableName || profileName?.startsWith(refreshPrefix)) &&
+      (!profileType || profileType === "IOS_APP_DEVELOPMENT")
+    );
+  });
+  named.sort((left, right) => {
+    const leftCreated = Date.parse(left.attributes?.createdDate ?? "") || 0;
+    const rightCreated = Date.parse(right.attributes?.createdDate ?? "") || 0;
+    return rightCreated - leftCreated;
+  });
+
+  const reusable = [];
+  for (const summary of named) {
+    if (!profileIsUsable(summary)) continue;
+    const fetched = await asc(
+      "GET",
+      `/v1/profiles/${summary.id}?include=bundleId,devices,certificates`,
+    );
+    const profile = fetched.data;
+    if (
+      profileIsUsable(profile) &&
+      profileCoversRequest(profile, {
+        bundleIdRef,
+        deviceIds,
+        certificateIds,
+      }) &&
+      profile.attributes?.profileContent
+    ) {
+      reusable.push(profile);
+    }
+  }
+  return { reusable, namedCount: named.length };
+}
+
+async function resolveDevelopmentProfile(
+  asc,
+  { name, bundleIdRef, deviceIds, certificateIds, replacementNameFactory },
+) {
+  const existing = await asc(
+    "GET",
+    `/v1/profiles?filter[name]=${encodeURIComponent(name)}&include=bundleId,devices,certificates&limit=1`,
+  );
+  if (existing.data && existing.data.length > 0) {
+    const profile = existing.data[0];
+    if (
+      profileCoversRequest(profile, { bundleIdRef, deviceIds, certificateIds })
+    ) {
+      if (!profileIsUsable(profile)) {
+        return createReplacementDevelopmentProfile(asc, {
+          name,
+          bundleIdRef,
+          deviceIds,
+          certificateIds,
+          replacementNameFactory,
+        });
+      }
+      if (profile.attributes?.profileContent) {
+        return { profile, reused: true };
+      }
+      const fetched = await asc("GET", `/v1/profiles/${profile.id}`);
+      if (!profileIsUsable(fetched.data)) {
+        return createReplacementDevelopmentProfile(asc, {
+          name,
+          bundleIdRef,
+          deviceIds,
+          certificateIds,
+          replacementNameFactory,
+        });
+      }
+      if (fetched.data?.attributes?.profileContent) {
+        return { profile: fetched.data, reused: true };
+      }
+      return createReplacementDevelopmentProfile(asc, {
+        name,
+        bundleIdRef,
+        deviceIds,
+        certificateIds,
+        replacementNameFactory,
+      });
+    }
+    return createReplacementDevelopmentProfile(asc, {
+      name,
+      replacementNameFactory,
+      bundleIdRef,
+      deviceIds,
+      certificateIds,
+    });
+  }
+  return {
+    profile: await createDevelopmentProfile(asc, {
+      name,
+      bundleIdRef,
+      deviceIds,
+      certificateIds,
+    }),
+    reused: false,
+  };
+}
+
+export async function mintDevelopmentProfile(asc, request) {
+  const resolution = await resolveDevelopmentProfile(asc, request);
+  return resolution.profile;
 }
 
 /**
@@ -601,6 +716,7 @@ export async function provision({
   dir = profilesDir(),
   now,
   decodeProfile = decodeMobileProvision,
+  replacementNameFactory,
 }) {
   if (!udid) throw new Error("provision: a device UDID is required.");
   validateBundleIds(bundleIds);
@@ -619,19 +735,55 @@ export async function provision({
       entitlements: bid.entitlements ?? {},
     });
     const profileName = developmentProfileName(bid.identifier, device.id);
-    const profile = await mintDevelopmentProfile(asc, {
-      name: profileName,
+    const listedProfiles = await listReusableDevelopmentProfiles(asc, {
+      stableName: profileName,
       bundleIdRef: bundle.id,
       deviceIds: [device.id],
       certificateIds,
     });
-    const file = writeProfile(profile, dir);
-    const decoded = decodeProfile(file);
-    validateProvisioningEntitlements(
-      bid.entitlements ?? {},
-      decoded?.Entitlements ?? {},
-      bid.identifier,
-    );
+    let profile = null;
+    let file = null;
+    for (const candidate of listedProfiles.reusable) {
+      const candidateFile = writeProfile(candidate, dir);
+      const decoded = decodeProfile(candidateFile);
+      try {
+        validateProvisioningEntitlements(
+          bid.entitlements ?? {},
+          decoded?.Entitlements ?? {},
+          bid.identifier,
+        );
+        profile = candidate;
+        file = candidateFile;
+        break;
+      } catch {
+        // error-policy:J3 ASC profile content is untrusted input; an explicit
+        // validation failure rejects only this candidate and scans the rest.
+        // An ACTIVE profile can still carry stale managed grants. Keep scanning
+        // newer/older candidates before minting another immutable profile.
+      }
+    }
+    if (!profile) {
+      const createName =
+        listedProfiles.namedCount === 0
+          ? profileName
+          : replacementDevelopmentProfileName(
+              profileName,
+              replacementNameFactory,
+            );
+      profile = await createDevelopmentProfile(asc, {
+        name: createName,
+        bundleIdRef: bundle.id,
+        deviceIds: [device.id],
+        certificateIds,
+      });
+      file = writeProfile(profile, dir);
+      const decoded = decodeProfile(file);
+      validateProvisioningEntitlements(
+        bid.entitlements ?? {},
+        decoded?.Entitlements ?? {},
+        bid.identifier,
+      );
+    }
     results.push({
       identifier: bid.identifier,
       bundleCreated: bundle.created,

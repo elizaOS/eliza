@@ -170,6 +170,9 @@ bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-
 bun run --cwd packages/app ios:device:provision -- --device <udid> --product <unsigned App.app>
 # Family Controls approval and exact App Group registration/assignment remain
 # Account Holder/Admin prerequisites: the public ASC API cannot grant them.
+# Stale/invalid immutable profiles are preserved while a uniquely named
+# replacement is created; rerun after an administrator corrects a managed grant.
+# A decoded, covering replacement is reused on later runs.
 
 # Bounded console capture (relaunches the app with devicectl --console attached,
 # default 120 s) and/or pull the boot-trace JSON from the app data container.
