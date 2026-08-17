@@ -2100,7 +2100,13 @@ async function runSpawnAgent(
         try {
           const detail = await spawnDurableService.createTask({
             title: label,
-            goal: task,
+            // The durable goal is what smithers step prompts, verify
+            // re-engages, and restart resumes compose FROM — the raw planner
+            // task here dropped the resolved-route contract on the child's
+            // actual prompt (live: tide-lines wrote to the workdir ROOT and
+            // 404'd because the data/apps placement rules never reached it,
+            // while initialTask carried them unused).
+            goal: taskWithRouteHints,
             kind: "coding",
             priority: "normal",
             originalRequest: requestText(message),
