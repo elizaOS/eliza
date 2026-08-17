@@ -1,7 +1,12 @@
 /**
  * Token Redemption Price Quote API
  *
- * GET /api/v1/redemptions/quote - Get current elizaOS price and calculate redemption.
+ * GET /api/v1/redemptions/quote returns the current elizaOS price and a
+ * preview conversion. `pointsAmount` is untrusted query input: absent or empty
+ * keeps the documented default of 100, and any present token must be a
+ * complete ASCII decimal safe integer ≥ 1. Prefix-legal garbage must not
+ * coerce (`parseInt("1e4")` is 1) before payout-status, TWAP, or
+ * token-availability I/O.
  */
 
 import { Hono } from "hono";
@@ -25,6 +30,30 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+export const DEFAULT_QUOTE_POINTS_AMOUNT = 100;
+
+/**
+ * Canonical redemption-quote `pointsAmount` at the HTTP boundary.
+ * Missing or empty defaults to 100. Any other token must be a complete
+ * ASCII decimal safe integer ≥ 1 — no sign, zero, fraction, hex, scientific
+ * notation, leading zeros, whitespace, junk, or unsafe integers.
+ */
+export function parseRedemptionQuotePointsAmount(
+  raw: string | undefined,
+): { ok: true; pointsAmount: number } | { ok: false } {
+  if (raw === undefined || raw === "") {
+    return { ok: true, pointsAmount: DEFAULT_QUOTE_POINTS_AMOUNT };
+  }
+  if (!/^\d+$/.test(raw)) {
+    return { ok: false };
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(parsed) || String(parsed) !== raw || parsed < 1) {
+    return { ok: false };
+  }
+  return { ok: true, pointsAmount: parsed };
+}
 
 const validNetworkParams = [
   "ethereum",
@@ -57,10 +86,17 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
+    const parsedPoints = parseRedemptionQuotePointsAmount(
+      c.req.query("pointsAmount"),
+    );
+    if (!parsedPoints.ok) {
+      return c.json({ success: false, error: "Invalid pointsAmount" }, 400);
+    }
+    const { pointsAmount } = parsedPoints;
+
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const networkParam = c.req.query("network");
-    const pointsParam = c.req.query("pointsAmount");
 
     if (
       !networkParam ||
@@ -76,11 +112,6 @@ app.get("/", async (c) => {
     }
 
     const network = normalizeNetworkParam(networkParam as NetworkParam);
-    const pointsAmount = pointsParam ? parseInt(pointsParam, 10) : 100;
-
-    if (Number.isNaN(pointsAmount) || pointsAmount < 1) {
-      return c.json({ success: false, error: "Invalid pointsAmount" }, 400);
-    }
 
     const networkAvailability =
       await payoutStatusService.isNetworkAvailable(network);
