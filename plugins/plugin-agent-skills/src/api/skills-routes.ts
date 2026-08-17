@@ -151,6 +151,11 @@ export interface SkillsRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   readBody: (req: http.IncomingMessage) => Promise<string>;
+  decodePathComponent: (
+    raw: string,
+    res: http.ServerResponse,
+    fieldName: string,
+  ) => string | null;
   // Functions from server.ts that skills routes need
   discoverSkills: (
     workspaceDir: string,
@@ -193,15 +198,11 @@ function decodeAndValidateSkillId(
   rawSkillId: string,
   res: http.ServerResponse,
   errorFn: SkillsRouteContext["error"],
+  decodePathComponent: SkillsRouteContext["decodePathComponent"],
+  fieldName = "skill ID",
 ): string | null {
-  let skillId: string;
-  try {
-    skillId = decodeURIComponent(rawSkillId);
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-    errorFn(res, "Invalid skill ID: malformed URL encoding", 400);
-    return null;
-  }
+  const skillId = decodePathComponent(rawSkillId, res, fieldName);
+  if (skillId === null) return null;
   return validateSkillId(skillId, res, errorFn);
 }
 
@@ -382,6 +383,7 @@ export async function handleSkillsRoutes(
     error,
     readJsonBody,
     discoverSkills,
+    decodePathComponent,
   } = ctx;
 
   // ── GET /api/skills/catalog ───────────────────────────────────────────
@@ -497,16 +499,14 @@ export async function handleSkillsRoutes(
 
   // ── GET /api/skills/catalog/:slug ──────────────────────────────────────
   if (method === "GET" && pathname.startsWith("/api/skills/catalog/")) {
-    let slug: string;
-    try {
-      slug = decodeURIComponent(
-        pathname.slice("/api/skills/catalog/".length),
-      );
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      error(res, "Invalid skill slug encoding", 400);
-      return true;
-    }
+    const slug = decodeAndValidateSkillId(
+      pathname.slice("/api/skills/catalog/".length),
+      res,
+      error,
+      decodePathComponent,
+      "skill slug",
+    );
+    if (slug === null) return true;
     // Exclude "search" which is handled above
     if (slug && slug !== "search") {
       if (!shouldExposeBinanceSkillId(slug)) {
@@ -758,6 +758,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -783,6 +784,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const rawAck = await readJsonBody<Record<string, unknown>>(req, res);
@@ -934,6 +936,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -1016,6 +1019,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -1099,6 +1103,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
 
@@ -1163,6 +1168,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
 
@@ -1197,6 +1203,7 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const rawSource = await readJsonBody<Record<string, unknown>>(req, res);
@@ -1296,6 +1303,7 @@ export async function handleSkillsRoutes(
       pathname.slice("/api/skills/".length),
       res,
       error,
+      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
