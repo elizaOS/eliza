@@ -26,6 +26,40 @@ function parseSlot(value: unknown): VertexTuningSlot | undefined {
     : undefined;
 }
 
+class VertexAssignmentActiveError extends Error {
+  constructor(message = "Invalid active") {
+    super(message);
+    this.name = "VertexAssignmentActiveError";
+  }
+}
+
+/**
+ * GET /api/training/vertex/assignments `active` is tuned-model
+ * active-row identity, leftover tax after vertex assignment scope
+ * (#20973) and vertex-jobs persisted (#21173). Stock develop treated
+ * every non-exact `false` token as active-only, so `active=TRUE` /
+ * `1` / `0` still listed only live assignments instead of a 400.
+ * Missing / empty still means active-only (today's default).
+ * scope / slot parsers stay untouched.
+ */
+function parseActiveOnlyQuery(searchParams: URLSearchParams): boolean {
+  const requested = searchParams.getAll("active");
+  if (requested.length > 1) {
+    throw new VertexAssignmentActiveError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return true;
+  }
+  if (raw === "true") {
+    return true;
+  }
+  if (raw === "false") {
+    return false;
+  }
+  throw new VertexAssignmentActiveError();
+}
+
 async function ensureGlobalAccess(request: Request): Promise<void> {
   const admin = await requireAdmin(request);
   if (admin.role !== "super_admin") {
@@ -43,7 +77,7 @@ async function __hono_GET(request: Request) {
     // relationships-scope tax. parseScope maps unknown tokens to
     // organization, so scope=GLOBAL / USER listed org assignments.
     // Missing / empty still means unfiltered. Garbage 400s before
-    // listVisibleAssignments. POST/DELETE and slot/active untouched.
+    // listVisibleAssignments. POST/DELETE and slot stay untouched.
     const rawScope = searchParams.get("scope");
     if (
       rawScope !== null &&
@@ -57,7 +91,15 @@ async function __hono_GET(request: Request) {
     const scope = parseScope(rawScope);
     const rawSlot = searchParams.get("slot");
     const slot = parseSlot(rawSlot);
-    const activeOnly = searchParams.get("active") !== "false";
+    let activeOnly: boolean;
+    try {
+      activeOnly = parseActiveOnlyQuery(searchParams);
+    } catch (activeError) {
+      if (activeError instanceof VertexAssignmentActiveError) {
+        return Response.json({ error: activeError.message }, { status: 400 });
+      }
+      throw activeError;
+    }
 
     if (rawSlot && !slot) {
       return Response.json({ error: "Invalid slot." }, { status: 400 });
