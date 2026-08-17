@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 market trades chain address route traffic with route-local auth expectations.
+/** Proxies validated token-trade history requests to the market-data provider. */
 import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
@@ -13,6 +13,14 @@ import {
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
+export const TOKEN_TRADE_TYPES = ["swap", "add", "remove", "all"] as const;
+const TOKEN_TRADE_TYPE_SET = new Set<string>(TOKEN_TRADE_TYPES);
+
+function isTokenTradeType(
+  value: string,
+): value is (typeof TOKEN_TRADE_TYPES)[number] {
+  return TOKEN_TRADE_TYPE_SET.has(value);
+}
 
 async function __hono_OPTIONS() {
   return handleCorsOptions(CORS_METHODS);
@@ -64,19 +72,17 @@ async function __hono_GET(
   // Token-trade type identity, not leftover tax on market-candles
   // OHLCV type. Unknown tokens (SWAP / buy / 1e2) used to be
   // forwarded to the paid market-data provider.
-  const TX_TYPES = ["swap", "add", "remove", "all"] as const;
   const requestedTxType = searchParams.get("tx_type");
   if (
     requestedTxType != null &&
     requestedTxType !== "" &&
-    !TX_TYPES.includes(requestedTxType as (typeof TX_TYPES)[number])
+    !isTokenTradeType(requestedTxType)
   ) {
     return applyCorsHeaders(
       Response.json(
         {
           error: "Invalid tx_type",
-          details:
-            "tx_type must be a canonical Birdeye trade type (swap, add, remove, all).",
+          details: `tx_type must be a canonical Birdeye trade type (${TOKEN_TRADE_TYPES.join(", ")}).`,
         },
         { status: 400 },
       ),
