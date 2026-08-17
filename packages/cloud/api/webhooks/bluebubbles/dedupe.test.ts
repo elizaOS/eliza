@@ -59,7 +59,14 @@ let closeDb: (() => Promise<void>) | undefined;
 let bbRoute: typeof import("./route").default;
 
 const SECRET = "bb-secret";
-const ENV = { BLUEBUBBLES_GATEWAY_SECRET: SECRET };
+const ENV = {
+  BLUEBUBBLES_GATEWAY_SECRET: SECRET,
+  // The route fails closed (503) when no registered gateway matches and the
+  // legacy identity is unset; this suite tests DEDUPE, so provide the legacy
+  // identity to reach the routing path.
+  BLUEBUBBLES_GATEWAY_ORG_ID: "00000000-0000-0000-0000-0000000000aa",
+  BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+15550001111",
+};
 
 function delivery(guid: string) {
   const app = new Hono();

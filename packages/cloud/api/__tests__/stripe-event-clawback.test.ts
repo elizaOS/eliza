@@ -93,6 +93,10 @@ mock.module("@/lib/services/credits", () => ({
     clawbackCredits,
     refundCredits,
   },
+  // credit-reservation.ts (pulled in transitively by the route graph) binds
+  // this named export; the whole-module mock must re-export it or bun fails
+  // linking (see the ai-billing comment above).
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
 }));
 mock.module("@/lib/services/discord", () => ({
   discordService: {},
