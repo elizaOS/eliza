@@ -1,21 +1,12 @@
 /**
- * GET /api/v1/approval-requests/:id `public` is checkout-visibility identity,
- * leftover tax after payment-request public (#20954) and ballot public
- * (#21131). Stock develop treated every non-exact `1` token as the
- * authenticated creator view, so `public=true` still required auth instead
- * of a 400. Approval id parser stays untouched.
+ * Exercises the real approval-request GET route's public/creator selection.
+ * Authentication and persistence are mocked so the suite can assert that
+ * invalid or ambiguous query input has no downstream side effects.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const APPROVAL_ID = "11111111-1111-4111-8111-111111111111";
-
-const requireUserOrApiKeyWithOrg = mock(async () => ({
-  id: "user-1",
-  organization_id: "org-1",
-}));
-const getMock = mock(async (_id: string, _organizationId: string) => null);
-const getPublicMock = mock(async (_id: string) => null);
 
 const approvalRow = {
   id: APPROVAL_ID,
@@ -28,6 +19,20 @@ const approvalRow = {
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 };
+
+const requireUserOrApiKeyWithOrg = mock(async () => ({
+  id: "user-1",
+  organization_id: "org-1",
+}));
+const getMock = mock(
+  async (
+    _id: string,
+    _organizationId: string,
+  ): Promise<typeof approvalRow | null> => null,
+);
+const getPublicMock = mock(
+  async (_id: string): Promise<typeof approvalRow | null> => null,
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -115,4 +120,15 @@ describe("GET /api/v1/approval-requests/:id public visibility identity", () => {
       expectNoLookup();
     },
   );
+
+  test.each([
+    "?public=1&public=true",
+    "?public=true&public=1",
+    "?public=&public=1",
+    "?public=1&public=1",
+  ])("rejects ambiguous duplicate query %s before lookup", async (query) => {
+    const response = await app.request(`/${APPROVAL_ID}${query}`);
+    expect(response.status).toBe(400);
+    expectNoLookup();
+  });
 });

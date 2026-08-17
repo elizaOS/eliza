@@ -44,16 +44,15 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: parsedId.error }, 400);
     }
     const { id } = parsedId;
-    // Only the exact token `1` selects the unauthenticated, redacted
-    // approval DTO. Missing or empty selects the authenticated creator
-    // view; any other token is leftover identity after payment-request
-    // public (#20954) and ballot public (#21131) and must fail before
-    // authentication or lookup.
-    const requestedPublic = c.req.query("public");
+    // The public view is an unauthenticated security boundary, so ambiguous
+    // duplicates and every token other than the documented empty/`1` forms
+    // must fail before authentication or lookup.
+    const requestedPublicValues = c.req.queries("public");
+    const requestedPublic = requestedPublicValues?.[0];
     if (
-      requestedPublic !== undefined &&
-      requestedPublic !== "" &&
-      requestedPublic !== "1"
+      requestedPublicValues !== undefined &&
+      (requestedPublicValues.length !== 1 ||
+        (requestedPublic !== "" && requestedPublic !== "1"))
     ) {
       return c.json(
         {
