@@ -31,9 +31,13 @@ export async function handleGetOnchainIdentity(
       agentId,
       auth.user.organization_id,
     ).catch(() => null);
-    const chainId = normalizeChainId(
-      Number(url.searchParams.get("chainId")) || dbIdentity?.chain_id || 56,
-    );
+    const chainIdRaw = url.searchParams.get("chainId");
+    const chainIdTrimmed = chainIdRaw?.trim() ?? "";
+    const chainIdParsed =
+      chainIdTrimmed !== "" && /^\d+$/.test(chainIdTrimmed) && Number.isSafeInteger(Number(chainIdTrimmed))
+        ? Number(chainIdTrimmed)
+        : undefined;
+    const chainId = normalizeChainId(chainIdParsed ?? dbIdentity?.chain_id ?? 56);
     if (!chainId)
       return json(
         { success: false, error: "chainId must be 56 or 97" },
