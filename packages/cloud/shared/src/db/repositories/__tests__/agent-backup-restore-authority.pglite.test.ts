@@ -966,11 +966,11 @@ describe("strict restore catalogue authority", () => {
       copyRole: "primary",
       restoreAttemptId: "00000000-0000-4000-8000-00000000d040",
       ownerId: "delayed-restore-worker",
-      leaseMs: 20,
+      leaseMs: 1_000,
     });
     const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
     const digestSpy = spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
-      await Bun.sleep(40);
+      await Bun.sleep(1_250);
       return originalDigest(algorithm, data);
     });
     try {
@@ -980,5 +980,5 @@ describe("strict restore catalogue authority", () => {
     } finally {
       digestSpy.mockRestore();
     }
-  });
+  }, 10_000);
 });
