@@ -100,6 +100,47 @@ describe("matchViewCommand — multilingual", () => {
 	}
 });
 
+describe("matchViewCommand — negated navigation", () => {
+	const negatedCommands = [
+		// English direct, indirect, punctuation, and typographic apostrophe forms.
+		"do not open settings",
+		"don't open settings",
+		"don’t open settings",
+		"I don't want to open settings",
+		"don't try to open settings",
+		"never ever open settings",
+		"do not, under any circumstances, open settings",
+		"do not open settings, open calendar",
+		// The matcher is multilingual, so its side-effect guard must be too.
+		"no abrir ajustes",
+		"não abrir configurações",
+		"ne pas ouvrir les paramètres",
+		"n’ouvre pas les paramètres",
+		"nicht öffnen die einstellungen",
+		"öffne nicht die einstellungen",
+		"不要打开设置",
+		"別打開設定",
+		"đừng mở cài đặt",
+		"huwag buksan ang settings",
+	] as const;
+
+	it.each(negatedCommands)("%j stays in normal action planning", (text) => {
+		expect(matchViewCommand(text)).toBeNull();
+	});
+
+	it("does not treat a negation prefix inside a word as negation", () => {
+		expect(matchViewCommand("notable request: open settings")).toBe("settings");
+	});
+
+	it("does not carry negation across a sentence boundary", () => {
+		expect(matchViewCommand("Never mind. Open settings")).toBe("settings");
+	});
+
+	it("does not confuse an unaccented Vietnamese noun with negation", () => {
+		expect(matchViewCommand("open ung dung dam may")).toBe("cloud-apps");
+	});
+});
+
 describe("matchViewCommand — localized Knowledge labels", () => {
 	const cases = [
 		["en", "Knowledge", "open Knowledge"],
