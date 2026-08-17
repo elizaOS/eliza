@@ -74,6 +74,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawTimeRange = c.req.query("timeRange");
+    if (rawTimeRange && !isTimeRange(rawTimeRange)) {
+      return c.json({ error: "Invalid timeRange" }, 400);
+    }
     const timeRange: TimeRange = isTimeRange(rawTimeRange)
       ? rawTimeRange
       : "weekly";
