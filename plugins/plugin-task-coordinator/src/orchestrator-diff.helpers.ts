@@ -1,7 +1,7 @@
 // Pure line-diff helpers for the tool-call cards, split out of orchestrator-diff.tsx
 // so that file exports only React components (+ the DiffRow type) and stays
 // Fast-Refresh-compatible. A real, interleaved, line-aligned diff — the way
-// Claude Code / Codex / opencode render an edit.
+// Claude Code / Codex render an edit.
 
 export interface DiffRow {
   type: "context" | "add" | "remove";

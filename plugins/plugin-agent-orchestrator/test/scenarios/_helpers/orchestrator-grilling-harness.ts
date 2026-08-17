@@ -117,7 +117,7 @@ export async function seedActiveTask(acceptanceCriteria: string[]): Promise<{
     id: "row-1",
     taskId,
     sessionId,
-    framework: "opencode",
+    framework: "codex",
     label: "Ada",
     originalTask: "implement the widget",
     workdir: "/tmp/widget",

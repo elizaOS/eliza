@@ -15,7 +15,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.ts";
 import { ADMIN_STOP_META_KEY } from "../services/admin-stop-marker.ts";
 import { MAX_AUTO_VERIFY_ATTEMPTS } from "../services/goal-llm-verifier.ts";
-import { OrchestratorTaskService } from "../services/orchestrator-task-service.ts";
+import {
+  composeVerifyEscalationNotice,
+  OrchestratorTaskService,
+} from "../services/orchestrator-task-service.ts";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
 import type {
   SessionInfo,
@@ -127,8 +130,9 @@ function makeRuntime(
     router?: Record<string, unknown>;
     sendMessageToTarget?: (
       target: unknown,
-      content: { text: string },
+      content: { text: string; agentVoiced?: boolean },
     ) => Promise<unknown>;
+    useModel?: (type: string, params: unknown) => Promise<string>;
   } = {},
 ): Record<string, unknown> {
   return {
@@ -137,7 +141,7 @@ function makeRuntime(
     databaseAdapter: undefined,
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getSetting: () => undefined,
-    useModel: vi.fn(async () => "{}"),
+    useModel: extras.useModel ?? vi.fn(async () => "{}"),
     reportError: vi.fn(),
     ...(extras.sendMessageToTarget
       ? { sendMessageToTarget: extras.sendMessageToTarget }
@@ -473,6 +477,87 @@ describe("park-notice request-level dedupe", () => {
     expect(claims).toHaveLength(1);
     expect(claims[0]).toContain("req-session-55");
     expect(claims[0]).not.toContain(`task:${detail.task.id}`);
+  });
+
+  it("posts the model-phrased notice (title intact, agent-voiced) when the model produces valid output", async () => {
+    const sends: Array<{ text: string; agentVoiced?: boolean }> = [];
+    const phrased =
+      "Quick heads up — I parked parked-build for you after verification kept coming up short. The work itself might be fine; take a look and tell me to accept it or what to fix.";
+    const { store, service } = await harness({
+      useModel: async () => phrased,
+      sendMessageToTarget: async (_target, content) => {
+        sends.push(content);
+        return { id: "m", metadata: { platformMessageId: "pm" } };
+      },
+    });
+    const detail = await store.createTask({
+      title: "parked-build",
+      goal: "goal",
+      roomId: ROOM,
+    });
+    await (service as unknown as PrivateSurface).notifyVerifyEscalation(
+      detail.task.id,
+      { attempts: 3, summary: "gave up", missing: [] },
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe(phrased);
+    expect(sends[0]?.agentVoiced).toBe(true);
+  });
+
+  it("falls back to the deterministic composeVerifyEscalationNotice text when the model rejects", async () => {
+    const sends: Array<{ text: string; agentVoiced?: boolean }> = [];
+    const { store, service } = await harness({
+      useModel: async () => {
+        throw new Error("model down");
+      },
+      sendMessageToTarget: async (_target, content) => {
+        sends.push(content);
+        return { id: "m", metadata: { platformMessageId: "pm" } };
+      },
+    });
+    const detail = await store.createTask({
+      title: "parked-build",
+      goal: "goal",
+      roomId: ROOM,
+    });
+    const details = { attempts: 3, summary: "gave up", missing: ["proof"] };
+    await (service as unknown as PrivateSurface).notifyVerifyEscalation(
+      detail.task.id,
+      details,
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe(
+      composeVerifyEscalationNotice("parked-build", details),
+    );
+    // Facts survive the outage: title, attempts, and the missing item.
+    expect(sends[0]?.text).toContain("parked-build");
+    expect(sends[0]?.text).toContain("3 attempts");
+    expect(sends[0]?.text).toContain("proof");
+  });
+
+  it("rejects phrased output that drops the title (mustInclude) and uses the fallback", async () => {
+    const sends: Array<{ text: string }> = [];
+    const { store, service } = await harness({
+      useModel: async () => "I parked the thing, check it later.",
+      sendMessageToTarget: async (_target, content) => {
+        sends.push(content);
+        return { id: "m", metadata: { platformMessageId: "pm" } };
+      },
+    });
+    const detail = await store.createTask({
+      title: "parked-build",
+      goal: "goal",
+      roomId: ROOM,
+    });
+    const details = { attempts: 2, summary: "gave up", missing: [] };
+    await (service as unknown as PrivateSurface).notifyVerifyEscalation(
+      detail.task.id,
+      details,
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe(
+      composeVerifyEscalationNotice("parked-build", details),
+    );
   });
 
   it("sends as today when the router is absent (fail-open)", async () => {

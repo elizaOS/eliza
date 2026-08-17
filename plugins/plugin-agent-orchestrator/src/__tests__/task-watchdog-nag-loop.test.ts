@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { composeVerifyEscalationNotice } from "../services/orchestrator-task-service.js";
 import {
+  composeCapWarning,
   STALL_GRILL_PROMPT,
   TaskWatchdogService,
 } from "../services/task-watchdog-service.js";
@@ -144,6 +145,124 @@ describe("watchdog nag loop (live regression)", () => {
     await watchdog.runOnce();
     await watchdog.runOnce();
     expect(acp.sendToSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── cap-warning phrasing (model-voiced posts, deterministic fallback) ───────
+
+const CAP_ROOM = "22222222-2222-4222-8222-222222222222";
+
+// The phrase helper memoizes successful phrasings per agentId+cacheKey at
+// module level; a unique agentId per harness keeps tests independent.
+let capAgentSeq = 0;
+
+function capHarness(useModel: ReturnType<typeof vi.fn>) {
+  const sends: Array<{
+    text: string;
+    source: string;
+    agentVoiced?: boolean;
+  }> = [];
+  const sessions: FakeSession[] = [
+    {
+      id: "s1",
+      status: "running",
+      lastActivityAt: new Date(),
+      metadata: { roomId: CAP_ROOM, source: "discord", label: "wkr-1" },
+    },
+  ];
+  const acp = {
+    listSessions: async () => sessions.map((s) => ({ ...s })),
+    sendToSession: vi.fn(async () => ({ ok: true })),
+  };
+  // 9/10 round-trips = 90% ≥ the 80% default warn ratio.
+  const router = { getRoundTripCount: () => 9, getRoundTripCap: () => 10 };
+  const runtime = {
+    agentId: `00000000-0000-4000-8000-0000000000${(21 + capAgentSeq++)
+      .toString()
+      .padStart(2, "0")}`,
+    character: { name: "Watcher", bio: ["test agent"] },
+    getSetting: () => undefined,
+    useModel,
+    sendMessageToTarget: vi.fn(
+      async (_target: unknown, content: (typeof sends)[number]) => {
+        sends.push(content);
+        return { id: "m", metadata: { platformMessageId: "pm" } };
+      },
+    ),
+    getService: (type: string) => {
+      if (type === "ACP_SUBPROCESS_SERVICE") return acp;
+      if (type === "ACPX_SUB_AGENT_ROUTER") return router;
+      return undefined;
+    },
+  };
+  const watchdog = new TaskWatchdogService(runtime as never);
+  return { watchdog, sends, useModel, runtime };
+}
+
+const CAP_FALLBACK = composeCapWarning(
+  { id: "s1", kind: "round-trip", count: 9, limit: 10, ratio: 0.9 },
+  "wkr-1",
+);
+
+describe("cap warning phrasing", () => {
+  it("claims the warned slot BEFORE the model resolves (a concurrent tick cannot double-post) and stamps the phrased send agent-voiced", async () => {
+    let resolveModel!: (text: string) => void;
+    const pending = new Promise<string>((resolve) => {
+      resolveModel = resolve;
+    });
+    const { watchdog, sends, useModel } = capHarness(vi.fn(() => pending));
+
+    const first = watchdog.runOnce();
+    // Drain microtasks until the model call is in flight (the warned slot must
+    // already be claimed at this point).
+    for (let i = 0; i < 40 && useModel.mock.calls.length === 0; i++) {
+      await Promise.resolve();
+    }
+    expect(useModel).toHaveBeenCalledTimes(1);
+    // A second tick while the phrase call is pending: the synchronous claim
+    // must make it skip — no second model call, no second post.
+    const second = watchdog.runOnce();
+    resolveModel("Heads up: wkr-1 is close to its loop limit — 9 of 10.");
+    await Promise.all([first, second]);
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe(
+      "Heads up: wkr-1 is close to its loop limit — 9 of 10.",
+    );
+    expect(sends[0]?.agentVoiced).toBe(true);
+  });
+
+  it("uses the deterministic composeCapWarning fallback (all facts intact) when the model call rejects", async () => {
+    const { watchdog, sends } = capHarness(
+      vi.fn(async () => {
+        throw new Error("no model");
+      }),
+    );
+    await watchdog.runOnce();
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe(CAP_FALLBACK);
+    expect(sends[0]?.text).toContain("wkr-1");
+    expect(sends[0]?.text).toContain("9/10");
+    // The fallback still rides as agent-voiced text on a converted send.
+    expect(sends[0]?.agentVoiced).toBe(true);
+    // One warning per approach: a later tick at the same ratio stays silent.
+    await watchdog.runOnce();
+    expect(sends).toHaveLength(1);
+  });
+
+  it("rejects phrased output that drops the label or leaks mechanism vocabulary, falling back", async () => {
+    const missingLabel = capHarness(
+      vi.fn(async () => "You are close to the limit, be careful."),
+    );
+    await missingLabel.watchdog.runOnce();
+    expect(missingLabel.sends[0]?.text).toBe(CAP_FALLBACK);
+
+    const bannedVocab = capHarness(
+      vi.fn(async () => "wkr-1's session is close to its planner cap."),
+    );
+    await bannedVocab.watchdog.runOnce();
+    expect(bannedVocab.sends[0]?.text).toBe(CAP_FALLBACK);
   });
 });
 

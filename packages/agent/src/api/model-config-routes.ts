@@ -54,7 +54,7 @@ import {
 } from "./model-catalog.ts";
 
 export type ModelConfigTarget = "small" | "large" | "coding";
-export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+export type CodingBackend = "codex" | "claude" | "eliza-code";
 
 export interface ModelConfigWriteBody {
   target: ModelConfigTarget;
@@ -83,7 +83,6 @@ const TARGETS = new Set<ModelConfigTarget>(["small", "large", "coding"]);
 const CODING_BACKENDS = new Set<CodingBackend>([
   "codex",
   "claude",
-  "opencode",
   "eliza-code",
 ]);
 
@@ -133,11 +132,6 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
     effortKey: "ELIZA_CLAUDE_EFFORT",
     catalogProvider: "claude-coding",
   },
-  opencode: {
-    modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL",
-    effortKey: null,
-    catalogProvider: null,
-  },
   "eliza-code": {
     modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL",
     effortKey: null,
@@ -151,7 +145,6 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
 const DEFAULT_BACKEND_PERSISTED_VALUE: Record<CodingBackend, string> = {
   codex: "codex",
   claude: "claude",
-  opencode: "opencode",
   "eliza-code": "elizaos",
 };
 
@@ -668,7 +661,6 @@ function buildEffectiveConfig(
         resolve("ELIZA_CLAUDE_MODEL_POWERFUL") ??
         (claudeDefault ? { value: claudeDefault, source: "default" } : null),
       ELIZA_CLAUDE_EFFORT: resolve("ELIZA_CLAUDE_EFFORT"),
-      ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
       ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
     },
   };

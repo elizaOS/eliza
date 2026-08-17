@@ -182,9 +182,9 @@ function isCodingFullSurfaceMode(): boolean {
  * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
  * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
  * (1024), which truncates the tool-call argument mid-stream so the model either
- * narrates without ever completing the call or the provider 400s. opencode on
- * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
- * it does not clamp the file-emitting completion to a chat-sized budget.
+ * narrates without ever completing the call or the provider 400s. Coding CLIs
+ * on the same Cerebras `zai-glm-4.7` build the same app reliably precisely
+ * because they do not clamp the file-emitting completion to a chat-sized budget.
  * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
  */
 const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;

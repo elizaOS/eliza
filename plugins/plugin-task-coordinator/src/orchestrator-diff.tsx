@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { type DiffRow, lineDiff } from "./orchestrator-diff.helpers";
 
 // A real, interleaved, line-aligned diff for the tool-call cards — the way
-// Claude Code / Codex / opencode render an edit. The tool view already carries
+// Claude Code / Codex render an edit. The tool view already carries
 // oldText/newText (parsed from the ACP tool input), so this is a pure
 // presentation concern: align the two texts (via lineDiff) and render
 // add/remove/context rows with old+new line-number gutters.

@@ -32,6 +32,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
@@ -2088,6 +2089,11 @@ export class SubAgentRouter extends Service {
             // handler skips it (echo-loop guard), so the question is never fed
             // back into the asking session as a prompt.
             source: ACPX_ROUTER_SOURCE,
+            // The body is the sub-agent's OWN model prose — rewriting it risks
+            // corrupting the question, and the core transport voice gate would
+            // also strip the `❓ [label]` marker. Stamp it as already voiced so
+            // the gate passes it through verbatim.
+            ...AGENT_VOICED_METADATA,
             ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
           },
         ),

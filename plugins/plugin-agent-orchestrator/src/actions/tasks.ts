@@ -75,6 +75,10 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  phraseForUser,
+  withMachineAppendix,
+} from "../voice/phrase-for-user.js";
+import {
   awaitCodingSupervisionBound,
   callbackText,
   contentRecord,
@@ -949,9 +953,17 @@ async function runCreateLegacy(
   );
   const tasks = taskParts(params, content, text);
   if (tasks.length > MAX_CONCURRENT_AGENTS) {
-    const msg = `Too many task agents requested (${tasks.length}); maximum is ${MAX_CONCURRENT_AGENTS}.`;
-    await callbackText(callback, msg);
-    return errorResult("TOO_MANY_AGENTS", msg);
+    // Planner-facing refusal: mechanical text + structured facts; the planner
+    // phrases the denial in voice instead of a canned callback bubble.
+    return {
+      success: false,
+      error: "TOO_MANY_AGENTS",
+      text: `Too many task agents requested (${tasks.length}); maximum is ${MAX_CONCURRENT_AGENTS}.`,
+      data: {
+        requestedParts: tasks.length,
+        maxConcurrent: MAX_CONCURRENT_AGENTS,
+      },
+    };
   }
 
   // Backend routing (see resolveCodingBackend): explicit ask > character policy
@@ -1085,14 +1097,7 @@ async function runCreateLegacy(
           })
         : undefined;
     if (duplicate) {
-      const replyText = duplicateSpawnReply(duplicate);
-      await callbackText(callback, replyText);
-      return {
-        success: true,
-        text: replyText,
-        continueChain: false,
-        data: { actionName: "TASKS", duplicateSpawnGuard: true },
-      };
+      return duplicateSpawnGuardResult(runtime, callback, duplicate);
     }
   }
   const useSmithers = shouldUseSmithersTaskRunner();
@@ -1173,10 +1178,14 @@ async function runCreateLegacy(
       logger(runtime).error(
         `[TASKS:create] refusing Smithers launch without a durable task: ${detail}`,
       );
-      const textOut =
-        "I couldn't create the durable task record, so no workflow agent was started. Please retry once task storage is available.";
-      await callbackText(callback, textOut);
-      return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+      // Planner-facing: the truth-critical negative claim ("no workflow agent
+      // was started") stays in the text; the planner voices the refusal.
+      return {
+        success: false,
+        error: "SMITHERS_DURABLE_TASK_UNAVAILABLE",
+        text: "The durable task record could not be created, so no workflow agent was started. Task storage is unavailable right now.",
+        data: { nothingStarted: true },
+      };
     }
     logger(runtime).warn(
       `[TASKS:create] durable task thread creation failed: ${detail}`,
@@ -1186,10 +1195,13 @@ async function runCreateLegacy(
 
   const smithersOwnerTaskId = useSmithers ? (threadId ?? undefined) : undefined;
   if (useSmithers && !smithersOwnerTaskId) {
-    const textOut =
-      "I couldn't establish a durable task owner, so no workflow agent was started.";
-    await callbackText(callback, textOut);
-    return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+    // Planner-facing (see the catch above): keep the negative claim in text.
+    return {
+      success: false,
+      error: "SMITHERS_DURABLE_TASK_UNAVAILABLE",
+      text: "No durable task owner could be established, so no workflow agent was started.",
+      data: { nothingStarted: true },
+    };
   }
 
   const settled = await Promise.allSettled(
@@ -1478,7 +1490,29 @@ async function runCreateLegacy(
   setCurrentSessions(state, sessions);
   const failed = results.filter((result) => result.status === "failed");
   if (failed.length > 0) {
-    const textOut = `I started some task agents, but ${failed.length} failed to launch: ${failed.map((item) => String(item.error)).join("; ")}.`;
+    // ONE model-phrased message from structured facts. The raw error.message
+    // joins stay in logs (above) and in data.agents alongside the per-lane
+    // session ids, which remain the receipts.
+    const launchedCount = results.length - failed.length;
+    const failedLabels = failed.map((item) => String(item.label));
+    const failFallback =
+      launchedCount > 0
+        ? `Started ${launchedCount} of ${results.length} task agents; ${failed.length} failed to launch (${failedLabels.join(", ")}).`
+        : `No task agents could be started — ${failed.length === 1 ? "the launch" : `all ${failed.length} launches`} failed (${failedLabels.join(", ")}).`;
+    const { text: textOut } = await phraseForUser(
+      runtime,
+      {
+        intent: "fail",
+        facts: { launchedCount, failedCount: failed.length, failedLabels },
+        mustNotClaim: [
+          "every agent started successfully",
+          launchedCount > 0
+            ? "nothing was started"
+            : "some of the work is still running",
+        ],
+      },
+      failFallback,
+    );
     await callbackText(callback, textOut);
     return {
       success: false,
@@ -1487,16 +1521,20 @@ async function runCreateLegacy(
     };
   }
 
-  const widgetBlock = threadId
-    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
-    : "";
-  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
+  // Machine widget rides as an appendix, byte-identical below whatever prose
+  // the model wrote — widget parsers and the settle receipt binding depend on
+  // the exact block.
+  const widgetBlock = threadId ? `[TASK:${threadId}]${taskTitle}[/TASK]` : "";
+  const composeCreateText = (prose: string): string =>
+    widgetBlock ? withMachineAppendix(prose, widgetBlock) : prose;
+  const createdFallback = `Created task agent${results.length > 1 ? "s" : ""}.`;
 
   // Respawn-ack suppression: an internally-routed re-spawn (verify-driven
   // successor) must not post a second "Created task agent(s)." ack for the
-  // same user request. The text stays planner-only, and the request-voice ack
-  // slot is claimed for the successor session so the progress hook's ack is
-  // denied too (fail-open when the router lacks the API).
+  // same user request. The text stays planner-only (no model call spent on
+  // it), and the request-voice ack slot is claimed for the successor session
+  // so the progress hook's ack is denied too (fail-open when the router lacks
+  // the API).
   if (syntheticRespawnInbound) {
     // The composed voice key (root + inherited fan-out part) via the SAME
     // ladder the router uses, so a lane respawn claims/revives ITS lane's
@@ -1510,7 +1548,7 @@ async function runCreateLegacy(
     reviveRouterRequestVoice(runtime, respawnVoiceKey);
     return {
       success: true,
-      text: proseText,
+      text: composeCreateText(createdFallback),
       data: {
         agents: results,
         taskId: threadId,
@@ -1519,6 +1557,20 @@ async function runCreateLegacy(
     };
   }
 
+  // Canonical text is assigned BEFORE the callback so the settle wrapper's
+  // receipt binding sees result.text === delivered callback text.
+  const { text: createdProse } = await phraseForUser(
+    runtime,
+    {
+      intent: "confirm",
+      facts: {
+        createdCount: results.length,
+        titles: results.map((item) => String(item.label)),
+      },
+    },
+    createdFallback,
+  );
+  const proseText = composeCreateText(createdProse);
   await callbackText(callback, proseText);
 
   // The creation ack is the complete answer to a single-operation turn:
@@ -1603,13 +1655,16 @@ async function runCreate(
       (String(error.code).startsWith("LANE_DEPENDENCY_") ||
         error.code === "LANE_PLAN_DEADLOCK")
     ) {
+      // Planner-facing: the producer prose stays in logs; the planner voices
+      // the failure from the structured code.
       const msg = failureMessage(error);
-      await callbackText(callback, msg);
+      logger(runtime).warn(`[TASKS:create] lane plan rejected: ${msg}`);
       return {
         success: false,
         error: error.code,
         text: msg,
         continueChain: false,
+        data: { laneErrorCode: error.code },
       };
     }
     logger(runtime).warn(
@@ -1979,9 +2034,12 @@ async function runSpawnAgent(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    const text = "ACP service is not available. Cannot spawn a task agent.";
-    await callbackText(callback, text);
-    return errorResult("SERVICE_UNAVAILABLE");
+    // Planner-facing only (same contract as runSend): the evaluator owns
+    // telling the user coding tasks are unavailable, in voice.
+    return errorResult(
+      "SERVICE_UNAVAILABLE",
+      "ACP service is not available. Cannot spawn a task agent.",
+    );
   }
 
   try {
@@ -2115,14 +2173,7 @@ async function runSpawnAgent(
           })
         : undefined;
       if (duplicate) {
-        const replyText = duplicateSpawnReply(duplicate);
-        await callbackText(callback, replyText);
-        return {
-          success: true,
-          text: replyText,
-          continueChain: false,
-          data: { actionName: "TASKS", duplicateSpawnGuard: true },
-        };
+        return duplicateSpawnGuardResult(runtime, callback, duplicate);
       }
     }
     // Nested/child sub-agents JOIN the parent's task room when an explicit
@@ -2205,23 +2256,55 @@ async function runSpawnAgent(
       const cap = maxSpawnsPerOrigin(runtime);
       if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
         const best = spawnCapRouter.bestResultFor(spawnOriginKey);
-        // Relay the captured deliverable when we have one (the router records
-        // it before its early returns too). Only when there is genuinely no
-        // result do we fall back — and then be HONEST that we hit the attempt
-        // cap rather than implying it's still in progress ("still working"),
-        // which conflates capped-and-failed with in-flight.
-        const replyText =
-          (best?.deliverable ?? best?.text ?? "").trim() ||
-          `I attempted this task ${cap} times but couldn't complete it. Try giving me more specific instructions, or breaking it into smaller steps.`;
         logger(runtime).warn(
           `[TASKS:spawn_agent] per-origin spawn cap (${cap}) reached for ${spawnOriginKey}; relaying best result instead of re-spawning`,
         );
-        await callbackText(callback, replyText);
+        // Relay the captured deliverable when we have one (the router records
+        // it before its early returns too) — verbatim, it IS the answer.
+        const bestText = (best?.deliverable ?? best?.text ?? "").trim();
+        if (bestText) {
+          await callbackText(callback, bestText);
+          return {
+            success: true,
+            text: bestText,
+            continueChain: false,
+            data: { actionName: "TASKS", spawnCapped: true },
+          };
+        }
+        // No captured result: `continueChain:false` ends the turn, so no
+        // later planner call exists to phrase the facts — phrase the honest
+        // "attempt cap exhausted" report here (factual fallback on model
+        // outage) and deliver it via the callback, like the relay above. Be
+        // explicit that nothing is still in flight (capped-and-failed, not
+        // in-progress).
+        const { text: exhaustedText } = await phraseForUser(
+          runtime,
+          {
+            intent: "fail",
+            facts: {
+              attempts: cap,
+              outcome: "no attempt produced a result",
+              retriesStopped: true,
+              nothingStillRunning: true,
+              suggestion:
+                "the user could give more specific instructions or smaller steps",
+            },
+            mustInclude: [String(cap)],
+            mustNotClaim: ["work is still in progress", "the task succeeded"],
+          },
+          `I tried that ${cap} times and no attempt produced a result, so I stopped retrying — nothing is still running. More specific instructions or smaller steps might help.`,
+        );
+        await callbackText(callback, exhaustedText);
         return {
           success: true,
-          text: replyText,
+          text: exhaustedText,
           continueChain: false,
-          data: { actionName: "TASKS", spawnCapped: true },
+          data: {
+            actionName: "TASKS",
+            spawnCapped: true,
+            attempts: cap,
+            outcome: "exhausted",
+          },
         };
       }
     }
@@ -2440,7 +2523,7 @@ async function runSpawnAgent(
       // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
       // duplicate spawns per Discord message, which (a) burns through
       // the 8-slot concurrent-session pool inside a single turn, (b)
-      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
+      // costs 5x more Cerebras tokens, and (c) wastes sub-agent CPU
       // running the same task in parallel.
       //
       // `continueChain: false` is the planner-loop's terminal flag —
@@ -2652,7 +2735,16 @@ async function runStopAgent(
       if (state) (state as { codingSessions?: unknown }).codingSessions = [];
       // The stop confirmation is the complete answer to a single-operation
       // turn: verified + turnComplete make the callback the sole delivery.
-      const text = `Stopped ${sessions.length} task agent${sessions.length === 1 ? "" : "s"}.`;
+      // Model-phrased from facts; canonical text assigned pre-callback so the
+      // settle receipt binding holds.
+      const { text } = await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { stoppedCount: sessions.length },
+        },
+        `Stopped ${sessions.length} task agent${sessions.length === 1 ? "" : "s"}.`,
+      );
       await callbackText(callback, text);
       return {
         success: true,
@@ -2679,7 +2771,15 @@ async function runStopAgent(
           `Session ${requestedId} not found.`,
         );
       }
-      const noneText = "There are no task agents running.";
+      const { text: noneText } = await phraseForUser(
+        runtime,
+        {
+          intent: "notify",
+          facts: { stoppedCount: 0, nothingRunning: true },
+          mustNotClaim: ["anything was stopped"],
+        },
+        "There are no task agents running.",
+      );
       await callbackText(callback, noneText);
       return {
         success: true,
@@ -2701,7 +2801,14 @@ async function runStopAgent(
     ) {
       (state as { codingSession?: unknown }).codingSession = undefined;
     }
-    const stoppedText = "Stopped the task agent.";
+    const { text: stoppedText } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: { stoppedCount: 1, label: labelFor(target) },
+      },
+      "Stopped the task agent.",
+    );
     await callbackText(callback, stoppedText);
     return {
       success: true,
@@ -2731,12 +2838,12 @@ async function runListAgents(
   _state: State | undefined,
   _params: Record<string, unknown>,
   _content: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "ACP service is not available.");
-    return errorResult("SERVICE_UNAVAILABLE");
+    // Planner-facing only (see runSend): the evaluator voices unavailability.
+    return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
   const sessions = await listSessionsWithin(service);
@@ -2829,7 +2936,14 @@ async function runCancel(
       }
       // The cancel confirmation is the complete answer to a single-operation
       // turn: verified + turnComplete make the callback the sole delivery.
-      const text = `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`;
+      const { text } = await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { canceledCount: stoppedSessions.length },
+        },
+        `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`,
+      );
       await callbackText(callback, text);
       return {
         success: true,
@@ -2867,8 +2981,18 @@ async function runCancel(
     await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
-    const id = threadId ?? target.id;
-    const text = `Canceled task ${id}.`;
+    // Chat gets the task LABEL (findInFlightWork naming), never the raw
+    // session/thread id — structural ids stay in data as receipts.
+    const label = labelFor(target);
+    const { text } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: { canceledCount: 1, label },
+        mustInclude: [label],
+      },
+      `Canceled "${label}".`,
+    );
     await callbackText(callback, text);
     return {
       success: true,
@@ -3289,15 +3413,57 @@ async function findNearDuplicateInFlightWork(args: {
   return undefined;
 }
 
-function duplicateSpawnReply(duplicate: {
-  name: string;
-  status: string;
-}): string {
-  const statusLine =
+/**
+ * Duplicate-spawn guard reply: the request matched work already in flight, so
+ * no new agent starts. `continueChain:false` terminates the turn, which means
+ * NO later planner call exists to phrase these facts — so the guard phrases
+ * them itself through `phraseForUser` (deterministic factual fallback on
+ * model outage) and delivers via the callback, exactly like the cap-relay
+ * branch above it.
+ */
+async function duplicateSpawnGuardResult(
+  runtime: IAgentRuntime,
+  callback: HandlerCallback | undefined,
+  duplicate: {
+    name: string;
+    status: string;
+  },
+): Promise<ActionResult> {
+  const statusFact =
     duplicate.status === "validating"
-      ? "it finished its work and is awaiting completion verification"
-      : `its status is ${duplicate.status}`;
-  return `That work is already underway: ${duplicate.name} — ${statusLine}. I won't start a duplicate; ask me for its status any time, or say "run it again" if you want a fresh attempt.`;
+      ? "finished its work and is awaiting completion verification"
+      : duplicate.status;
+  const { text } = await phraseForUser(
+    runtime,
+    {
+      intent: "notify",
+      facts: {
+        existingWork: duplicate.name,
+        currentState: statusFact,
+        newAgentStarted: false,
+        howToForceFreshAttempt: 'the user says "run it again"',
+      },
+      // The quoted label is a fact receipt; the generic fallback name is not
+      // forced (it contains no user-recognizable identity to anchor on).
+      ...(duplicate.name.startsWith('"')
+        ? { mustInclude: [duplicate.name] }
+        : {}),
+      mustNotClaim: ["new work started"],
+    },
+    `That work (${duplicate.name}, ${statusFact}) is already underway. I didn't start a new one — say "run it again" for a fresh attempt.`,
+  );
+  await callbackText(callback, text);
+  return {
+    success: true,
+    text,
+    continueChain: false,
+    data: {
+      actionName: "TASKS",
+      duplicateSpawnGuard: true,
+      duplicateOfLabel: duplicate.name,
+      status: duplicate.status,
+    },
+  };
 }
 
 /**
@@ -3352,21 +3518,40 @@ function failureResult(
   };
 }
 
+/**
+ * Planner-facing task-policy denial. The task-policy reason string is
+ * planner/log detail — it is NOT echoed to chat via callback; the planner
+ * phrases the denial (a denial stays a denial; role names only) from the
+ * structured {requiredRole, actualRole, connector} facts in data.
+ */
+function taskPolicyDenialResult(
+  actionName: string,
+  access: {
+    connector: string | null;
+    requiredRole: string;
+    actualRole: string;
+    reason: string;
+  },
+): ActionResult {
+  return failureResult(actionName, "FORBIDDEN", access.reason, {
+    reason: "access_denied",
+    requiredRole: access.requiredRole,
+    actualRole: access.actualRole,
+    connector: access.connector,
+  });
+}
+
 async function runHistory(
   runtime: IAgentRuntime,
   message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return failureResult("TASKS:history", "FORBIDDEN", reason, {
-      reason: "access_denied",
-    });
+    return taskPolicyDenialResult("TASKS:history", access);
   }
 
   const text = requestText(message);
@@ -3512,21 +3697,21 @@ async function runHistory(
         },
       };
     } catch (error) {
-      // error-policy:J1 history action boundary → user-facing error + structured failure.
+      // error-policy:J1 history action boundary → structured failure to the
+      // planner (symmetric with the plannerOnlyRead successes: no callback).
       const msg = failureMessage(error);
-      if (callback)
-        await callback({ text: `Failed to read task history: ${msg}` });
       return failureResult("TASKS:history", "TASK_HISTORY_FAILED", msg);
     }
   }
 
   const service = getAcpService(runtime);
   if (!service) {
-    const msg = "ACP service is not available.";
-    if (callback) await callback({ text: msg });
-    return failureResult("TASKS:history", "SERVICE_UNAVAILABLE", msg, {
-      reason: "acp_unavailable",
-    });
+    return failureResult(
+      "TASKS:history",
+      "SERVICE_UNAVAILABLE",
+      "ACP service is not available.",
+      { reason: "acp_unavailable" },
+    );
   }
   const sessions = (await listSessionsWithin(service))
     .filter(
@@ -3605,16 +3790,12 @@ async function runControl(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return failureResult("TASKS:control", "FORBIDDEN", reason, {
-      reason: "access_denied",
-    });
+    return taskPolicyDenialResult("TASKS:control", access);
   }
 
   const service = getAcpService(runtime);
   if (!service) {
-    if (callback) await callback({ text: "ACP service is not available." });
+    // Planner-facing only: the evaluator voices unavailability.
     return failureResult(
       "TASKS:control",
       "SERVICE_UNAVAILABLE",
@@ -3704,7 +3885,14 @@ async function runControl(
   );
   if (!target.session) {
     if (resumedTask && controlTaskId) {
-      const out = "Resumed the coding task.";
+      const { text: out } = await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { action: "resume", resumed: true },
+        },
+        "Resumed the coding task.",
+      );
       if (callback) await callback({ text: out });
       return {
         success: true,
@@ -3742,22 +3930,42 @@ async function runControl(
     data = { ...data, taskId: controlTaskId };
   }
 
+  const controlLabel = labelFor(target.session);
   let responseText = "";
   if (action === "stop") {
-    // Mark BEFORE stopping: the control confirmation below is the single
-    // manual-stop notice for this administrative stop.
+    // Mark BEFORE stopping: admin-stop-marker-first ordering is load-bearing —
+    // the control confirmation below stays the single manual-stop notice.
     await markSessionAdministrativelyStopped(
       service,
       target.session.id,
       "user_stop",
     );
     await service.stopSession(target.session.id);
-    responseText = "Stopped the coding task.";
+    responseText = (
+      await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { action: "stop", label: controlLabel },
+        },
+        "Stopped the coding task.",
+      )
+    ).text;
   } else {
     const nextInstruction =
       instruction?.trim() || "Continue with the current task.";
     await service.sendToSession(target.session.id, nextInstruction);
-    responseText = "Passed your follow-up instructions to the coding agent.";
+    responseText = (
+      await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { action: "forwarded follow-up", label: controlLabel },
+          mustNotClaim: ["the follow-up work is already done"],
+        },
+        "Passed your follow-up instructions to the coding agent.",
+      )
+    ).text;
     data = { ...data, instruction: nextInstruction };
   }
 
@@ -3782,19 +3990,17 @@ async function runShare(
   state: State | undefined,
   params: Record<string, unknown>,
   _content: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return { success: false, error: "FORBIDDEN", text: reason };
+    return taskPolicyDenialResult("TASKS:share", access);
   }
 
   const service = getAcpService(runtime);
   if (!service) {
-    if (callback) await callback({ text: "ACP service is not available." });
-    return { success: false, error: "SERVICE_UNAVAILABLE" };
+    // Planner-facing only (symmetric with the plannerOnlyRead successes).
+    return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
   const target = await resolveSession(
@@ -3803,9 +4009,10 @@ async function runShare(
     state,
   );
   if (!target.session) {
-    const text = "I could not find an active ACP session to share.";
-    if (callback) await callback({ text });
-    return { success: false, error: "SESSION_NOT_FOUND", text };
+    return errorResult(
+      "SESSION_NOT_FOUND",
+      "No active coding session was found to share.",
+    );
   }
 
   const responseText = [
@@ -3846,16 +4053,16 @@ async function runProvisionWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "create");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return { success: false, error: "FORBIDDEN", text: reason };
+    return taskPolicyDenialResult("TASKS:provision_workspace", access);
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
-    if (callback)
-      await callback({ text: "Workspace Service is not available." });
-    return { success: false, error: "SERVICE_UNAVAILABLE" };
+    // Planner-facing only: the evaluator voices unavailability.
+    return errorResult(
+      "SERVICE_UNAVAILABLE",
+      "Workspace service is not available.",
+    );
   }
 
   const content = message.content as {
@@ -3958,10 +4165,22 @@ async function runProvisionWorkspace(
       };
     }
 
-    const createdText =
-      `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
-      `Branch: ${workspace.branch}\n` +
-      `Type: ${workspace.isWorktree ? "worktree" : "clone"}`;
+    const workspacePath = workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS);
+    const { text: createdText } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: {
+          path: workspacePath,
+          branch: workspace.branch,
+          isWorktree: workspace.isWorktree,
+        },
+        mustInclude: [workspacePath, workspace.branch],
+      },
+      `Created workspace at ${workspacePath}\n` +
+        `Branch: ${workspace.branch}\n` +
+        `Type: ${workspace.isWorktree ? "worktree" : "clone"}`,
+    );
     if (callback) await callback({ text: createdText });
 
     // The provisioning confirmation is the complete answer to a
@@ -3981,13 +4200,14 @@ async function runProvisionWorkspace(
       },
     };
   } catch (error) {
-    // error-policy:J1 provision action boundary → user-facing error + structured failure.
+    // error-policy:J1 provision action boundary → structured failure to the
+    // planner; the evaluator reports the failure in voice.
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (callback)
-      await callback({
-        text: `Failed to provision workspace: ${errorMessage}`,
-      });
-    return { success: false, error: errorMessage };
+    return {
+      success: false,
+      error: "PROVISION_FAILED",
+      text: `Failed to provision workspace: ${errorMessage}`,
+    };
   }
 }
 
@@ -4003,16 +4223,16 @@ async function runSubmitWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return { success: false, error: "FORBIDDEN", text: reason };
+    return taskPolicyDenialResult("TASKS:submit_workspace", access);
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
-    if (callback)
-      await callback({ text: "Workspace Service is not available." });
-    return { success: false, error: "SERVICE_UNAVAILABLE" };
+    // Planner-facing only: the evaluator voices unavailability.
+    return errorResult(
+      "SERVICE_UNAVAILABLE",
+      "Workspace service is not available.",
+    );
   }
 
   const content = message.content as {
@@ -4070,7 +4290,15 @@ async function runSubmitWorkspace(
     const status = await workspaceService.getStatus(workspaceId);
 
     if (status.clean && status.staged.length === 0) {
-      const noChangesText = "No changes to commit in this workspace.";
+      const { text: noChangesText } = await phraseForUser(
+        runtime,
+        {
+          intent: "notify",
+          facts: { changesToCommit: false, workspaceClean: true },
+          mustNotClaim: ["work was lost", "anything was pushed"],
+        },
+        "No changes to commit in this workspace.",
+      );
       if (callback) await callback({ text: noChangesText });
       return {
         success: true,
@@ -4115,12 +4343,30 @@ async function runSubmitWorkspace(
       });
     }
 
-    const finalizedText = prInfo
-      ? `Workspace finalized!\n` +
-        `Commit: ${commitHash.slice(0, 8)}\n` +
-        `PR #${prInfo.number}: ${prInfo.url}`
-      : `Workspace changes committed and pushed.\n` +
-        `Commit: ${commitHash.slice(0, 8)}`;
+    // HIGH receipt sensitivity: the commit hash and PR URL must ride verbatim
+    // (userFacingEffectReceiptIds bind on them), so they travel as a machine
+    // appendix below whatever prose the model wrote — never through the model.
+    const commitShort = commitHash.slice(0, 8);
+    const machineAppendix = prInfo
+      ? `Commit: ${commitShort}\nPR #${prInfo.number}: ${prInfo.url}`
+      : `Commit: ${commitShort}`;
+    const { text: finalizedProse } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: {
+          pushed: true,
+          committed: true,
+          ...(prInfo
+            ? { pullRequestOpened: true, prNumber: `#${prInfo.number}` }
+            : { pullRequestOpened: false }),
+        },
+      },
+      prInfo
+        ? "Workspace finalized — committed, pushed, and a pull request is open."
+        : "Workspace changes committed and pushed.",
+    );
+    const finalizedText = withMachineAppendix(finalizedProse, machineAppendix);
     if (callback) await callback({ text: finalizedText });
 
     // The finalize confirmation is the complete answer to a single-operation
@@ -4263,15 +4509,28 @@ export async function createIssueWithBestEffortLabels(
  */
 export function issueFailureReply(repo: string, errorMessage: string): string {
   if (/permission|unauthorized|forbidden|403/i.test(errorMessage)) {
-    return `couldn't do that on ${repo} — the connected github account doesn't have permission for it.`;
+    return `Couldn't do that on ${repo} — the connected GitHub account doesn't have permission for it.`;
   }
   if (/not found|404/i.test(errorMessage)) {
-    return `couldn't find that on ${repo} — the repo or issue doesn't exist (or isn't visible to the connected account).`;
+    return `Couldn't find that on ${repo} — the repo or issue doesn't exist (or isn't visible to the connected account).`;
   }
-  return `couldn't finish that github operation on ${repo}. logged the details.`;
+  return `Couldn't finish that GitHub operation on ${repo}. Logged the details.`;
+}
+
+/** Structural failure class for the phrased issue-failure line; the raw
+ * provider message stays planner/log-side. */
+function issueFailureClass(
+  errorMessage: string,
+): "permission" | "not_found" | "unknown" {
+  if (/permission|unauthorized|forbidden|403/i.test(errorMessage)) {
+    return "permission";
+  }
+  if (/not found|404/i.test(errorMessage)) return "not_found";
+  return "unknown";
 }
 
 async function handleIssueAction(
+  runtime: IAgentRuntime,
   service: CodingWorkspaceService,
   repo: string,
   action: string,
@@ -4306,14 +4565,23 @@ async function handleIssueAction(
             // Create/list/get answers are the complete answer to the turn:
             // verified + turnComplete make the callback the sole delivery.
             // Missing-param clarifications stay planner-facing — the
-            // evaluator owns asking the user, in voice.
+            // evaluator owns asking the user, in voice. Issue numbers + URLs
+            // are receipts: they ride as a machine appendix, byte-identical.
             const summary = created
               .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
               .join("\n");
+            const { text: bulkProse } = await phraseForUser(
+              runtime,
+              {
+                intent: "confirm",
+                facts: { action: "created issues", count: created.length },
+              },
+              `Created ${created.length} issues:`,
+            );
             // The chat confirmation stays clean; a label degrade is recorded
             // planner-side (`text` + data) so the model can answer honestly
             // if asked, without machinery notes in the user's message.
-            const bulkText = `Created ${created.length} issues:\n${summary}`;
+            const bulkText = withMachineAppendix(bulkProse, summary);
             if (callback) await callback({ text: bulkText });
             return {
               success: true,
@@ -4341,8 +4609,23 @@ async function handleIssueAction(
           { title, body: body ?? "", labels },
         );
         // Clean human confirmation only; the label degrade stays
-        // planner-side (`text` + data) — no machinery notes in chat.
-        const createdText = `Created issue #${issue.number}: ${issue.title}\n${issue.url}`;
+        // planner-side (`text` + data) — no machinery notes in chat. The
+        // issue number is pinned via mustInclude and the URL rides as a
+        // byte-identical machine appendix (both are receipts).
+        const { text: createdProse } = await phraseForUser(
+          runtime,
+          {
+            intent: "confirm",
+            facts: {
+              action: "created issue",
+              number: `#${issue.number}`,
+              title: issue.title,
+            },
+            mustInclude: [`#${issue.number}`],
+          },
+          `Created issue #${issue.number}: ${issue.title}`,
+        );
+        const createdText = withMachineAppendix(createdProse, issue.url);
         if (callback) await callback({ text: createdText });
         return {
           success: true,
@@ -4417,10 +4700,22 @@ async function handleIssueAction(
           body: params.body as string | undefined,
           labels: labels.length > 0 ? labels : undefined,
         });
-        if (callback)
-          await callback({
-            text: `Updated issue #${issue.number}: ${issue.title}`,
-          });
+        if (callback) {
+          const { text: updatedText } = await phraseForUser(
+            runtime,
+            {
+              intent: "confirm",
+              facts: {
+                action: "updated issue",
+                number: `#${issue.number}`,
+                title: issue.title,
+              },
+              mustInclude: [`#${issue.number}`],
+            },
+            `Updated issue #${issue.number}: ${issue.title}`,
+          );
+          await callback({ text: updatedText });
+        }
         return { success: true, data: { issue } };
       }
 
@@ -4435,7 +4730,17 @@ async function handleIssueAction(
           };
         }
         const comment = await service.addComment(repo, issueNumber, body);
-        const commentedText = `Added comment to issue #${issueNumber}: ${comment.url}`;
+        // The comment URL is the receipt — machine appendix, never the model.
+        const { text: commentedProse } = await phraseForUser(
+          runtime,
+          {
+            intent: "confirm",
+            facts: { action: "added comment", number: `#${issueNumber}` },
+            mustInclude: [`#${issueNumber}`],
+          },
+          `Added a comment to issue #${issueNumber}.`,
+        );
+        const commentedText = withMachineAppendix(commentedProse, comment.url);
         if (callback) await callback({ text: commentedText });
         // Settled like create/list/get: the callback is the sole delivery, so
         // the planner does not append a second "done, commented" bubble
@@ -4460,10 +4765,22 @@ async function handleIssueAction(
           };
         }
         const issue = await service.closeIssue(repo, issueNumber);
-        if (callback)
-          await callback({
-            text: `Closed issue #${issue.number}: ${issue.title}`,
-          });
+        if (callback) {
+          const { text: closedText } = await phraseForUser(
+            runtime,
+            {
+              intent: "confirm",
+              facts: {
+                action: "closed issue",
+                number: `#${issue.number}`,
+                title: issue.title,
+              },
+              mustInclude: [`#${issue.number}`],
+            },
+            `Closed issue #${issue.number}: ${issue.title}`,
+          );
+          await callback({ text: closedText });
+        }
         return { success: true, data: { issue } };
       }
 
@@ -4477,10 +4794,22 @@ async function handleIssueAction(
           };
         }
         const issue = await service.reopenIssue(repo, issueNumber);
-        if (callback)
-          await callback({
-            text: `Reopened issue #${issue.number}: ${issue.title}`,
-          });
+        if (callback) {
+          const { text: reopenedText } = await phraseForUser(
+            runtime,
+            {
+              intent: "confirm",
+              facts: {
+                action: "reopened issue",
+                number: `#${issue.number}`,
+                title: issue.title,
+              },
+              mustInclude: [`#${issue.number}`],
+            },
+            `Reopened issue #${issue.number}: ${issue.title}`,
+          );
+          await callback({ text: reopenedText });
+        }
         return { success: true, data: { issue } };
       }
 
@@ -4495,19 +4824,32 @@ async function handleIssueAction(
           };
         }
         const issue = await service.addLabels(repo, issueNumber, labels);
-        if (callback)
-          await callback({
-            text: `Added labels [${labels.join(", ")}] to issue #${issueNumber}`,
-          });
+        if (callback) {
+          const { text: labeledText } = await phraseForUser(
+            runtime,
+            {
+              intent: "confirm",
+              facts: {
+                action: "added labels",
+                labels,
+                number: `#${issueNumber}`,
+              },
+              mustInclude: [`#${issueNumber}`],
+            },
+            `Added labels [${labels.join(", ")}] to issue #${issueNumber}`,
+          );
+          await callback({ text: labeledText });
+        }
         return { success: true, data: { issue } };
       }
 
       default:
-        if (callback)
-          await callback({
-            text: `Unknown issue action: ${action}. Use: create, list, get, update, comment, close, reopen, add_labels`,
-          });
-        return { success: false, error: "UNKNOWN_OPERATION" };
+        // Planner-facing (see the missing-title guard): the evaluator owns
+        // asking the user, in voice.
+        return errorResult(
+          "UNKNOWN_OPERATION",
+          `Unknown issue action "${action}"; valid operations are create, list, get, update, comment, close, reopen, add_labels.`,
+        );
     }
   } catch (error) {
     // error-policy:J1 issue-operation boundary → in-voice user line +
@@ -4515,8 +4857,18 @@ async function handleIssueAction(
     // only: shipping API JSON and docs links to chat was the 2026-08-10
     // incident's second half.
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (callback)
-      await callback({ text: issueFailureReply(repo, errorMessage) });
+    if (callback) {
+      const { text: failureText } = await phraseForUser(
+        runtime,
+        {
+          intent: "fail",
+          facts: { repo, failureClass: issueFailureClass(errorMessage) },
+          mustNotClaim: ["the operation succeeded"],
+        },
+        issueFailureReply(repo, errorMessage),
+      );
+      await callback({ text: failureText });
+    }
     return { success: false, error: errorMessage };
   }
 }
@@ -4531,16 +4883,16 @@ async function runManageIssues(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
-    if (callback) await callback({ text: reason });
-    return { success: false, error: "FORBIDDEN", text: reason };
+    return taskPolicyDenialResult("TASKS:manage_issues", access);
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
   if (!workspaceService) {
-    if (callback)
-      await callback({ text: "Workspace Service is not available." });
-    return { success: false, error: "SERVICE_UNAVAILABLE" };
+    // Planner-facing only: the evaluator voices unavailability.
+    return errorResult(
+      "SERVICE_UNAVAILABLE",
+      "Workspace service is not available.",
+    );
   }
 
   workspaceService.setAuthPromptCallback(
@@ -4577,14 +4929,16 @@ async function runManageIssues(
       /(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
     );
     if (!urlMatch) {
-      if (callback)
-        await callback({
-          text: "Please specify a repository (e.g., owner/repo or a GitHub URL).",
-        });
-      return { success: false, error: "MISSING_REPO" };
+      // Planner-facing clarification (the :4340 missing-title guard is the
+      // model): the evaluator owns asking the user, in voice.
+      return errorResult(
+        "MISSING_REPO",
+        "No repository found in the request; ask the user which repository they mean (owner/repo or a GitHub URL).",
+      );
     }
     return (
       (await handleIssueAction(
+        runtime,
         workspaceService,
         urlMatch[1],
         action,
@@ -4597,6 +4951,7 @@ async function runManageIssues(
 
   return (
     (await handleIssueAction(
+      runtime,
       workspaceService,
       repo,
       action,
@@ -4633,22 +4988,25 @@ async function runTaskLifecycleControl(
     pickString(params, content, "taskId") ??
     pickString(params, content, "threadId");
   if (!taskId) {
-    const msg = "taskId is required.";
-    await callbackText(callback, msg);
-    return failureResult(actionName, "MISSING_TASK_ID", msg, {
-      reason: "missing_task_id",
-    });
+    // Planner-facing guard (the missing-title guard is the model): the
+    // evaluator owns asking the user, in voice.
+    return failureResult(
+      actionName,
+      "MISSING_TASK_ID",
+      `No taskId was provided; ask the user which task to ${op}.`,
+      { reason: "missing_task_id" },
+    );
   }
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;
   if (!taskService) {
-    const msg = `Task ${op} is unavailable without the orchestrator task service.`;
-    await callbackText(callback, msg);
-    return failureResult(actionName, "UNSUPPORTED_OPERATION", msg, {
-      reason: "acp_only",
-      action: op,
-    });
+    return failureResult(
+      actionName,
+      "UNSUPPORTED_OPERATION",
+      `Task ${op} is unavailable without the orchestrator task service.`,
+      { reason: "acp_only", action: op },
+    );
   }
   try {
     const result =
@@ -4658,16 +5016,27 @@ async function runTaskLifecycleControl(
           ? await taskService.reopenTask(taskId)
           : await taskService.pauseTask(taskId);
     if (!result) {
-      const msg = `Task ${taskId} not found.`;
-      await callbackText(callback, msg);
-      return failureResult(actionName, "TASK_NOT_FOUND", msg, {
-        reason: "task_not_found",
-        taskId,
-      });
+      return failureResult(
+        actionName,
+        "TASK_NOT_FOUND",
+        `Task ${taskId} not found.`,
+        { reason: "task_not_found", taskId },
+      );
     }
     const verb =
       op === "archive" ? "Archived" : op === "reopen" ? "Reopened" : "Paused";
-    const out = `${verb} coding task ${taskId}.`;
+    // Chat gets the task title (never a raw uuid); the id stays in data as
+    // the receipt the settle wrapper binds on.
+    const title = plainString(objectValue(result)?.title);
+    const { text: out } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: { action: op, ...(title ? { title } : {}) },
+        ...(title ? { mustInclude: [title] } : {}),
+      },
+      title ? `${verb} "${title}".` : `${verb} the coding task.`,
+    );
     await callbackText(callback, out);
     return {
       success: true,
@@ -4675,16 +5044,16 @@ async function runTaskLifecycleControl(
       data: { actionName, taskId, task: result },
     };
   } catch (err) {
-    // error-policy:J1 lifecycle action boundary → warns + user-facing error +
-    // structured failure result.
+    // error-policy:J1 lifecycle action boundary → warns + structured failure
+    // to the planner; the evaluator reports the failure in voice.
     const errMsg = err instanceof Error ? err.message : String(err);
     coreLogger.warn(`[${actionName}] failed: ${errMsg}`);
-    const out = `Failed to ${op} coding task ${taskId}: ${errMsg}`;
-    await callbackText(callback, out);
-    return failureResult(actionName, "LIFECYCLE_FAILED", out, {
-      reason: "lifecycle_failed",
-      taskId,
-    });
+    return failureResult(
+      actionName,
+      "LIFECYCLE_FAILED",
+      `Failed to ${op} coding task ${taskId}: ${errMsg}`,
+      { reason: "lifecycle_failed", taskId },
+    );
   }
 }
 
@@ -4828,6 +5197,9 @@ function tasksNoopReason(
   if (result.success && isIssueReadOperation(operation, params, content)) {
     return "The operation only read provider issue state.";
   }
+  if (result.success && data.duplicateSpawnGuard === true) {
+    return "A near-duplicate of in-flight work was detected; no new agent was started.";
+  }
   if (
     operation === "submit_workspace" &&
     result.success &&
@@ -4840,7 +5212,9 @@ function tasksNoopReason(
     result.success &&
     data.spawnCapped === true
   ) {
-    return "The spawn cap reused an already captured result.";
+    return data.outcome === "exhausted"
+      ? "The spawn cap was exhausted with no captured result; no new agent was started."
+      : "The spawn cap reused an already captured result.";
   }
   if (
     operation === "create" &&
@@ -5098,15 +5472,15 @@ function tasksEffectReceipt(args: {
   };
 }
 
+/** Factual fallback for an unconfirmed effect. Deliberately free of commit /
+ * receipt vocabulary — that is internal mechanism, not user language. */
 function unverifiedTasksText(operation: TaskOp): string {
-  return (
-    `The ${operation.replaceAll("_", " ")} request may have reached its target, ` +
-    "but no authoritative commit receipt was returned. Verify the external state before retrying."
-  );
+  return `The ${operation.replaceAll("_", " ")} may have gone through, but I could not confirm it — please check before retrying.`;
 }
 
 async function settleTasksOperation(args: {
   operation: TaskOp;
+  runtime: IAgentRuntime;
   message: Memory;
   params: Record<string, unknown>;
   content: Record<string, unknown>;
@@ -5162,7 +5536,22 @@ async function settleTasksOperation(args: {
     };
   }
   if (result.success && receipt.outcome === "failed") {
-    const text = unverifiedTasksText(args.operation);
+    // Model-phrased "unconfirmed outcome" note; the fallback carries the same
+    // facts. This projection replaces whatever optimistic text the op wrote,
+    // so it never claims success the receipt cannot back.
+    const { text } = await phraseForUser(
+      args.runtime,
+      {
+        intent: "warn",
+        facts: {
+          operation: args.operation.replaceAll("_", " "),
+          outcome: "unconfirmed",
+          userShouldCheckBeforeRetrying: true,
+        },
+        mustNotClaim: ["the operation definitely succeeded"],
+      },
+      unverifiedTasksText(args.operation),
+    );
     result = {
       ...result,
       text,
@@ -5422,15 +5811,15 @@ export const tasksAction: Action & {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
-    "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+    "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -5479,7 +5868,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Heuristic backend guess (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
+        "Heuristic backend guess (elizaos, pi-agent, codex, and claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5493,11 +5882,11 @@ export const tasksAction: Action & {
     {
       name: "requestedBackend",
       description:
-        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, opencode, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
+        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, codex, and claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: ["elizaos", "pi-agent", "opencode", "codex", "claude"],
+        enum: ["elizaos", "pi-agent", "codex", "claude"],
       },
     },
     {
@@ -5923,6 +6312,7 @@ export const tasksAction: Action & {
     );
     return settleTasksOperation({
       operation: action,
+      runtime,
       message,
       params,
       content,
@@ -5941,7 +6331,7 @@ export const tasksAction: Action & {
     // inline FILE.write or hallucinate a refusal. The cluster covers
     // explicit verbs (spawn / delegate / fire up), explicit nouns
     // (sub-agent / coding agent / sub-process), and the
-    // user-naming-the-adapter case (elizaos / pi-agent / opencode /
+    // user-naming-the-adapter case (elizaos / pi-agent /
     // claude / codex) so the
     // few-shot matches whatever provider the user has wired.
     [
@@ -5958,7 +6348,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],
@@ -5984,17 +6374,17 @@ export const tasksAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "use opencode to write a script that prints hello world",
+          text: "use codex to write a script that prints hello world",
           source: "chat",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Spawning an opencode sub-agent for the script.",
+          text: "Spawning a codex sub-agent for the script.",
           actions: ["TASKS"],
           thought:
-            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
+            "User explicitly named the coding adapter (codex). TASKS action=spawn_agent with agentType=codex hands off to the configured codex provider (openai-codex / openai-api via the account bridge).",
         },
       },
     ],
@@ -6030,7 +6420,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],

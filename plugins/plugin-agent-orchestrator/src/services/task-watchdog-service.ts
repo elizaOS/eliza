@@ -31,6 +31,10 @@ import {
   requireConfirmedSendHandlerDelivery,
   Service,
 } from "@elizaos/core";
+import {
+  AGENT_VOICED_METADATA,
+  phraseForUser,
+} from "../voice/phrase-for-user.js";
 import { getSessionSpendUsd, readSpendCapUsd } from "./spend-allowance.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
@@ -170,13 +174,17 @@ function sessionLabel(metadata: Record<string, unknown> | undefined): string {
   return typeof label === "string" && label.trim() ? label : "A sub-agent";
 }
 
-/** Deterministic warning text for the originating room. */
+/** Deterministic FALLBACK warning text for the originating room — used verbatim
+ * only when the model-phrased line (see `postCapWarning`) is unavailable.
+ * Minimal facts only (label, count/limit, percent, what the user can do); no
+ * internal action names or mechanism vocabulary — the module's own
+ * banned-vocab contract would reject equivalent model output. */
 export function composeCapWarning(warning: CapWarning, label: string): string {
   const pct = Math.round(warning.ratio * 100);
   if (warning.kind === "round-trip") {
-    return `⚠️ ${label} is at ${warning.count}/${warning.limit} round-trips (${pct}%) — risk of a runaway loop. Consider stopping it (STOP_AGENT) or redirecting it (SEND_TO_AGENT) before it force-stops.`;
+    return `${label} is at ${warning.count}/${warning.limit} check-ins (${pct}%) and may be stuck in a loop — you can stop it or redirect it.`;
   }
-  return `⚠️ ${label} has spent $${warning.count.toFixed(2)} of its $${warning.limit.toFixed(2)} budget (${pct}%) — approaching the spend cap. Consider stopping or redirecting it.`;
+  return `${label} has spent $${warning.count.toFixed(2)} of its $${warning.limit.toFixed(2)} budget (${pct}%) — you can stop it or redirect it.`;
 }
 
 interface AcpServiceLike {
@@ -328,7 +336,10 @@ export class TaskWatchdogService extends Service {
       // status check cannot unblock them. Sessions with no resolvable task
       // record fail open (grilled once) — an ad-hoc session can still wedge.
       const taskStatus = taskStatusBySession.get(s.id);
-      if (taskStatus !== undefined && !GRILLABLE_TASK_STATUSES.has(taskStatus)) {
+      if (
+        taskStatus !== undefined &&
+        !GRILLABLE_TASK_STATUSES.has(taskStatus)
+      ) {
         logger.debug(
           `[TaskWatchdogService] session ${s.id} idle but its task is ${taskStatus} — not grilling`,
         );
@@ -456,11 +467,43 @@ export class TaskWatchdogService extends Service {
     if (typeof send !== "function") return;
     const origin = resolveOrigin(metadata);
     if (!origin) return; // no chat origin — nothing to warn into
-    const text = composeCapWarning(warning, sessionLabel(metadata));
+    // Model-phrased warning (owner directive: user-facing text is LLM-written).
+    // The caller has already claimed the `warned` slot synchronously, so the
+    // model latency here cannot double the warning. composeCapWarning stays the
+    // factual fallback when the model is unavailable.
+    const label = sessionLabel(metadata);
+    const { text } = await phraseForUser(
+      this.runtime,
+      {
+        intent: "warn",
+        facts: {
+          label,
+          kind: warning.kind,
+          count:
+            warning.kind === "spend"
+              ? `$${warning.count.toFixed(2)}`
+              : warning.count,
+          limit:
+            warning.kind === "spend"
+              ? `$${warning.limit.toFixed(2)}`
+              : warning.limit,
+          percentUsed: Math.round(warning.ratio * 100),
+          suggestStopOrRedirect: true,
+        },
+        mustInclude: [label],
+      },
+      composeCapWarning(warning, label),
+      // The memo serves cached text WITHOUT re-validating facts, so the key
+      // must pin every fact the text embeds (label via mustInclude, counts in
+      // prose) — a kind-only key would replay another session's numbers.
+      {
+        cacheKey: `capwarn:${warning.kind}:${label}:${warning.count}/${warning.limit}`,
+      },
+    );
     requireConfirmedSendHandlerDelivery(
       await send(
         { source: origin.source, roomId: origin.roomId },
-        { text, source: origin.source },
+        { text, source: origin.source, ...AGENT_VOICED_METADATA },
       ),
     );
     logger.info(

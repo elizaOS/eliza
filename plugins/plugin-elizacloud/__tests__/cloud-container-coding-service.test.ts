@@ -55,13 +55,13 @@ describe("CloudContainerService coding-container methods", () => {
   it("posts coding-agent container requests with requested agent and promotion id", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const request: RequestCodingAgentContainerRequest = {
-      agent: "opencode",
+      agent: "codex",
       promotionId: "promo-1",
       prompt: "Implement the mobile shell hook",
       container: {
         cpu: 2048,
         memory: 4096,
-        environmentVars: { ELIZA_CODING_AGENT: "opencode" },
+        environmentVars: { ELIZA_CODING_AGENT: "codex" },
       },
     };
     const service = serviceWithClient({
@@ -72,7 +72,7 @@ describe("CloudContainerService coding-container methods", () => {
           data: {
             containerId: "container-real",
             status: "requested",
-            agent: "opencode",
+            agent: "codex",
             promotionId: "promo-1",
             workspacePath: "/workspace",
             createdAt: "2026-05-11T00:00:00.000Z",

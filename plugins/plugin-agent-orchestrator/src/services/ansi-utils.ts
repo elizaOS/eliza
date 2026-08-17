@@ -85,8 +85,7 @@ const SOURCE_PUNCTUATION_LINE =
   /[{}();=]|\b(?:const|let|var|function|return|class|import|export)\b/;
 const PUBLIC_URL_RE =
   /https?:\/\/(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"'`)\]]*)?/gi;
-const ASSISTANT_FINAL_MARKER_LINE =
-  /^(?:codex|claude|claude code|opencode|openai)$/i;
+const ASSISTANT_FINAL_MARKER_LINE = /^(?:codex|claude|claude code|openai)$/i;
 const FINAL_BLOCK_STOP_LINE =
   /^(?:diff --git\b|exec\b|tokens used\b|thinking\b|error:\s|warning:\s|index\s+[a-f0-9]{7,}\.\.[a-f0-9]{7,}|@@\s|---\s+[ab]\/|\+\+\+\s+[ab]\/)/i;
 /** Codex/Claude launcher banners and trust screens that pollute failover prompts. */

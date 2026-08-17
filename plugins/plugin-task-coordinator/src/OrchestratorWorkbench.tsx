@@ -2812,7 +2812,7 @@ export function OrchestratorWorkbench() {
   }, [selectedId]);
 
   // Stop every still-running coding agent on the open task — the prominent
-  // in-conversation interrupt (parity with Claude Code / Codex / opencode),
+  // in-conversation interrupt (parity with Claude Code / Codex),
   // also bound to Esc below.
   const handleStopActive = useCallback(() => {
     const current = detail;

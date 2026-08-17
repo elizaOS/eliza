@@ -168,7 +168,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
       taskId: { type: "string", description: "Target task thread id" },
       framework: {
         type: "string",
-        description: "Coding agent framework (claude, codex, opencode...)",
+        description: "Coding agent framework (eliza-code, claude, codex...)",
       },
       providerSource: {
         type: "string",

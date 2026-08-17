@@ -66,7 +66,7 @@ SwiftBun does not replace:
 ## Mobile Coding Agents
 
 The native iOS app can run the Eliza agent on-device. That does not make iOS a
-coding sandbox. Codex, Claude Code, OpenCode, PTY sessions, host shell tooling,
+coding sandbox. Codex, Claude Code, PTY sessions, host shell tooling,
 `xcodebuild`, and app compilation route to a remote sandbox, Eliza Cloud, or a
 trusted home machine worker. The local iOS runtime is for foreground agent
 interaction, local model/voice where supported, native device capability

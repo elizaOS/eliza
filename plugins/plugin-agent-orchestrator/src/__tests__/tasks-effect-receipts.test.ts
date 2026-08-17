@@ -104,7 +104,11 @@ describe("TASKS effect receipts", () => {
     // Receipt settlement provides canonical planner input without leaking a
     // raw tool callback; the turn evaluator remains the sole visible voice.
     expect(replies).toEqual([]);
-    expect(result?.userFacingText).toContain("no authoritative commit receipt");
+    // The unconfirmed-outcome projection is model-phrased with a factual
+    // fallback (this runtime has no model) and carries no internal
+    // receipt/commit vocabulary.
+    expect(result?.userFacingText).toContain("could not confirm");
+    expect(result?.userFacingText).not.toMatch(/receipt|commit/i);
     expect(result?.userFacingEffectReceiptIds).toEqual([
       result?.effectReceipts?.[0]?.receiptId,
     ]);

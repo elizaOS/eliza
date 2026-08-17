@@ -609,6 +609,10 @@ describe("SubAgentRouter", () => {
     expect(content.text).toContain("❓ [fix-bug-42]");
     expect(content.text).not.toContain("[sub-agent:");
     expect(content.source).toBe("sub_agent");
+    // The question body is the sub-agent's own model prose; the post is
+    // stamped agent-voiced so the core transport voice gate cannot rewrite it
+    // or strip the ❓ [label] marker.
+    expect((content as { agentVoiced?: boolean }).agentVoiced).toBe(true);
   });
 
   it("does not add a direct post for QUESTION_FOR_TASK_CREATOR when the origin room IS the task room", async () => {

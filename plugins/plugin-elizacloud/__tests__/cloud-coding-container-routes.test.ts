@@ -93,7 +93,7 @@ describe("cloud coding-container routes", () => {
     });
   });
 
-  it("forwards coding-agent container requests with Claude/Codex/OpenCode agent ids", async () => {
+  it("forwards coding-agent container requests with Claude/Codex/elizaOS agent ids", async () => {
     let captured: RequestCodingAgentContainerRequest | null = null;
     const service = {
       promoteVfsToCloudContainer: async () => {
@@ -222,7 +222,7 @@ describe("cloud coding-container routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.jsonBody()).toEqual({
-      error: 'Invalid option: expected one of "claude"|"codex"|"opencode"|"elizaos"',
+      error: 'Invalid option: expected one of "claude"|"codex"|"elizaos"',
     });
   });
 

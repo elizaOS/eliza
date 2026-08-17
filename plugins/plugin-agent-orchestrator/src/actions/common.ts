@@ -369,7 +369,7 @@ export async function listSessionsWithin(
  * configured ceiling, so concurrent spawns don't stampede the model
  * provider.
  *
- * Why this exists: coding sub-agents (opencode + gpt-oss-class models on
+ * Why this exists: coding sub-agents (gpt-oss-class models on
  * Cerebras / other OpenAI-compatible providers) degrade hard under
  * concurrent load — the provider rate-limits, and the model responds by
  * silently skipping its Write/tool calls and "completing" with a text-only
@@ -494,6 +494,7 @@ export async function awaitCodingSupervisionBound(
     if (bind.status === "unbound") {
       return {
         ok: false,
+        // Mechanical reason string, never promote to chat text.
         reason: bind.reason ?? "ACP stream not bound (status=unbound)",
       };
     }
@@ -517,6 +518,7 @@ export async function awaitCodingSupervisionBound(
   }
   return {
     ok: false,
+    // Mechanical reason string, never promote to chat text.
     reason: `ACP stream not bound (status=pending) after ${waitMs}ms`,
   };
 }

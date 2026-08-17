@@ -181,9 +181,11 @@ describe("manage_issues planner-only read settlement (#18244)", () => {
       "Investigating now.",
     );
     expect(callback).toHaveBeenCalledTimes(1);
+    // Model-phrased prose (factual fallback here — no model registered) with
+    // the comment URL riding byte-identical as the machine appendix.
     expect(callback).toHaveBeenCalledWith(
       {
-        text: "Added comment to issue #42: https://github.com/owner/repo/issues/42#issuecomment-1",
+        text: "Added a comment to issue #42.\n\nhttps://github.com/owner/repo/issues/42#issuecomment-1",
       },
       undefined,
     );

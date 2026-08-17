@@ -43,6 +43,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  AGENT_VOICED_METADATA,
+  phraseForUser,
+} from "../voice/phrase-for-user.js";
+import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
   isNonTrivialGoal,
@@ -288,7 +292,7 @@ function configuredDefaultAgentType(runtime: {
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
   // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
+  // the default elizaos adapter. This mirrors the env
   // resolution the spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
@@ -606,10 +610,13 @@ function terminalClaimDenied(result: unknown): boolean {
 }
 
 /**
- * User-facing notice for an auto-verify give-up. Deliberately honest about the
+ * FALLBACK notice for an auto-verify give-up — used verbatim only when the
+ * model-phrased line (see `notifyVerifyEscalation`) is unavailable, so it must
+ * carry every fact the phrased path is given. Deliberately honest about the
  * split state: the WORK may be fine (it often is — the live regression was a
  * served, working page) while VERIFICATION could not confirm it. Never leaks
  * internal ids; caps the missing list so a long verifier dump stays readable.
+ * Sentence case: this is Eliza's voice, not nubilio's lowercase register.
  */
 export function composeVerifyEscalationNotice(
   title: string,
@@ -620,11 +627,11 @@ export function composeVerifyEscalationNotice(
     .filter((item) => item.trim().length > 0)
     .slice(0, 3);
   const missingLine =
-    missing.length > 0 ? ` couldn't confirm: ${missing.join("; ")}.` : "";
+    missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "";
   return (
-    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so i've parked it for you. ` +
+    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so I've parked it for you. ` +
     `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}${missingLine} ` +
-    `the work itself may still be fine — check the result, then tell me to accept it or what to fix.`
+    `The work itself may still be fine — check the result, then tell me to accept it or what to fix.`
   );
 }
 
@@ -3223,7 +3230,7 @@ export class OrchestratorTaskService extends Service {
         this.runtime as IAgentRuntime & {
           sendMessageToTarget?: (
             target: { source: string; roomId?: UUID },
-            content: { text: string; source: string },
+            content: { text: string; source: string; agentVoiced?: boolean },
           ) => Promise<unknown>;
         }
       ).sendMessageToTarget;
@@ -3294,10 +3301,38 @@ export class OrchestratorTaskService extends Service {
         },
       });
       if (suppressed) return;
-      const text = composeVerifyEscalationNotice(doc.task.title, details);
+      // Model-phrased park notice (owner directive: user-facing text is
+      // LLM-written). Runs AFTER the terminal claim + stamp above
+      // (claim-before-phrase), so model latency cannot double the notice.
+      // composeVerifyEscalationNotice remains the factual fallback.
+      const label = doc.task.title.trim() || "the coding task";
+      const missing = details.missing
+        .filter((item) => item.trim().length > 0)
+        .slice(0, 3);
+      const { text } = await phraseForUser(
+        this.runtime,
+        {
+          intent: "warn",
+          facts: {
+            title: label,
+            attempts: details.attempts,
+            summary: details.summary,
+            ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
+            parked: true,
+            workMayStillBeFine: true,
+            userShouldCheckThenAcceptOrSayWhatToFix: true,
+          },
+          mustInclude: [label],
+          mustNotClaim: [
+            "the work was confirmed good",
+            "the task was abandoned",
+          ],
+        },
+        composeVerifyEscalationNotice(doc.task.title, details),
+      );
       await send(
         { source: origin.source, roomId: origin.roomId as UUID },
-        { text, source: origin.source },
+        { text, source: origin.source, ...AGENT_VOICED_METADATA },
       );
     } catch (err) {
       // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
@@ -4549,7 +4584,7 @@ export class OrchestratorTaskService extends Service {
         : 0;
     const spawn = await acp.spawnSession({
       // Undefined defers to acp-service's defaultAgent (eliza-code on the
-      // native transport); opencode is opt-in via explicit settings only.
+      // native transport).
       agentType: configuredDefaultAgentType(this.runtime),
       workdir,
       initialTask: prompt,
@@ -4692,7 +4727,7 @@ export class OrchestratorTaskService extends Service {
     } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
-      // the default framework (opencode + Cerebras) into a per-task workdir.
+      // the default framework (eliza-code) into a per-task workdir.
       try {
         await this.spawnAgentForTask(taskId, {
           task: content,
@@ -5311,8 +5346,7 @@ export class OrchestratorTaskService extends Service {
         // undefined and spawnSession resolves acp-service's `defaultAgent`
         // (eliza-code under the native transport) — the single source of
         // truth, so an unconfigured host dogfoods eliza-code rather than a
-        // vendored CLI. opencode remains available only as an explicit
-        // selection (settings/routing/request).
+        // vendored CLI.
         agentType: framework,
         workdir,
         initialTask: goalPrompt,

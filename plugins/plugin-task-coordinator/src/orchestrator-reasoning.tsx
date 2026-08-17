@@ -50,7 +50,7 @@ const REASONING_SHIMMER_CSS = `
 }
 `;
 
-// A collapsible "reasoning / thinking" cell, matching the Codex / opencode
+// A collapsible "reasoning / thinking" cell, matching the Codex
 // shape: a dim one-line header you can expand into the model's raw chain of
 // thought. The cloud-ui ai-elements `Reasoning` primitive
 // (packages/ui/.../ai-elements/reasoning.tsx) carries a Radix

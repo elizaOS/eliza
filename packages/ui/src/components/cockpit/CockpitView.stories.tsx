@@ -39,8 +39,8 @@ const ROSTER: OrchestratorRoomRosterOverview = {
         {
           kind: "sub_agent",
           id: "a2",
-          label: "opencode-1",
-          framework: "opencode",
+          label: "codex-1",
+          framework: "codex",
           status: "running",
           active: true,
           activeTool: "bash",

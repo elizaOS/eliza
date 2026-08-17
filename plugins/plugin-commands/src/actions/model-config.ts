@@ -24,7 +24,7 @@ const CHAT_PROVIDERS = ["cerebras", "elizacloud", "claude-chat"] as const;
 type ChatProvider = (typeof CHAT_PROVIDERS)[number];
 
 /** Coding backends accepted by POST /api/models/config for target "coding". */
-export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+export type CodingBackend = "codex" | "claude" | "eliza-code";
 
 // "elizaos" is the orchestrator's spelling of the in-house backend (and what
 // ELIZA_DEFAULT_AGENT_TYPE persists); the API literal is "eliza-code" and the
@@ -33,7 +33,6 @@ export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
 export const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
 	codex: "codex",
 	claude: "claude",
-	opencode: "opencode",
 	eliza: "eliza-code",
 	"eliza-code": "eliza-code",
 	elizaos: "eliza-code",
@@ -41,9 +40,7 @@ export const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
 
 /**
  * One user-facing name per OFFERED backend, for display strings. The token
- * map above is the INPUT surface (aliases welcome — including "opencode",
- * which stays switchable by name but is deliberately not offered in lists
- * and pickers; owner decision, 2026-07-13).
+ * map above is the INPUT surface (aliases welcome).
  */
 export const CODING_BACKEND_DISPLAY: readonly string[] = [
 	"codex",
@@ -414,7 +411,6 @@ export function renderModelConfigShow(
 				modelKey: "ELIZA_CLAUDE_MODEL_POWERFUL",
 				effortKey: "ELIZA_CLAUDE_EFFORT",
 			},
-			{ label: "opencode", modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL" },
 			{ label: "eliza", modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL" },
 		];
 		for (const b of backends) {
