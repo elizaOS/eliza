@@ -66,11 +66,7 @@ export function createBatches(files, batchSize) {
 }
 
 function isFile(filePath) {
-  try {
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
+  return statSync(filePath, { throwIfNoEntry: false })?.isFile() === true;
 }
 
 function unquotePath(value) {
