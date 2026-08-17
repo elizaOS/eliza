@@ -8,6 +8,7 @@
  * harness: real module under test, env-driven, with a stubbed global fetch.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { CANONICAL_EMBEDDING_MODEL } from "@elizaos/core/edge";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -24,6 +25,7 @@ mock.module("@/lib/utils/logger", () => ({
 const { embed } = await import("ai");
 
 const {
+  CANONICAL_CLOUD_EMBEDDING_MODEL_ID,
   getTextEmbeddingModel,
   hasTextEmbeddingProviderConfigured,
   resolveEmbeddingProviderSource,
@@ -68,6 +70,24 @@ afterEach(() => {
 });
 
 describe("getTextEmbeddingModel local-sidecar routing", () => {
+  test("managed env's full canonical model routes only to the BGE sidecar", async () => {
+    process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
+    const managedModel = CANONICAL_EMBEDDING_MODEL;
+    const captured: CapturedRequest[] = [];
+    stubEmbeddingsFetch(captured);
+
+    expect(managedModel).toBe(CANONICAL_CLOUD_EMBEDDING_MODEL_ID);
+    await embed({ model: getTextEmbeddingModel(managedModel), value: "hi" });
+
+    expect(captured).toEqual([
+      {
+        url: "http://tei.internal:8080/v1/embeddings",
+        model: LOCAL_EMBEDDING_MODEL_ID,
+        authorization: "Bearer local",
+      },
+    ]);
+  });
+
   test("local id routes to the sidecar even when OpenAI is configured", async () => {
     process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
     const captured: CapturedRequest[] = [];
@@ -137,6 +157,16 @@ describe("getTextEmbeddingModel local-sidecar routing", () => {
     expect((thrown as Error).message).toContain("LOCAL_EMBEDDINGS_BASE_URL");
   });
 
+  test("full canonical id without a sidecar fails before OpenAI dispatch", () => {
+    const captured: CapturedRequest[] = [];
+    stubEmbeddingsFetch(captured);
+
+    expect(() => getTextEmbeddingModel(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toThrow(
+      ProviderConfigurationError,
+    );
+    expect(captured).toHaveLength(0);
+  });
+
   test("sidecar auth: dummy bearer by default, LOCAL_EMBEDDINGS_API_KEY when set", async () => {
     process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
     const captured: CapturedRequest[] = [];
@@ -155,9 +185,11 @@ describe("mirror helpers agree with the router", () => {
   test("resolveEmbeddingProviderSource follows the same precedence", () => {
     expect(resolveEmbeddingProviderSource()).toBe("openai");
     expect(resolveEmbeddingProviderSource(LOCAL_EMBEDDING_MODEL_ID)).toBeNull();
+    expect(resolveEmbeddingProviderSource(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toBeNull();
 
     process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
     expect(resolveEmbeddingProviderSource(LOCAL_EMBEDDING_MODEL_ID)).toBe("selfhosted");
+    expect(resolveEmbeddingProviderSource(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toBe("selfhosted");
     expect(resolveEmbeddingProviderSource("text-embedding-3-small")).toBe("openai");
     expect(resolveEmbeddingProviderSource()).toBe("openai");
 
@@ -169,9 +201,11 @@ describe("mirror helpers agree with the router", () => {
   test("hasTextEmbeddingProviderConfigured follows the same precedence", () => {
     expect(hasTextEmbeddingProviderConfigured()).toBe(true);
     expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(false);
+    expect(hasTextEmbeddingProviderConfigured(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toBe(false);
 
     process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
     expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(true);
+    expect(hasTextEmbeddingProviderConfigured(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toBe(true);
 
     delete process.env.OPENAI_API_KEY;
     expect(hasTextEmbeddingProviderConfigured("text-embedding-3-small")).toBe(false);
@@ -184,6 +218,7 @@ describe("mirror helpers agree with the router", () => {
     expect(resolvePassthroughEmbeddingsUpstream("text-embedding-3-small")).not.toBeNull();
     // The local-only id never goes to OpenAI, configured sidecar or not.
     expect(resolvePassthroughEmbeddingsUpstream(LOCAL_EMBEDDING_MODEL_ID)).toBeNull();
+    expect(resolvePassthroughEmbeddingsUpstream(CANONICAL_CLOUD_EMBEDDING_MODEL_ID)).toBeNull();
 
     process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
     expect(resolvePassthroughEmbeddingsUpstream(LOCAL_EMBEDDING_MODEL_ID)).toBeNull();

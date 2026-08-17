@@ -10,10 +10,11 @@
  * unrelated endpoint.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   CANONICAL_EMBEDDING_DIMENSION,
   CANONICAL_EMBEDDING_MODEL,
-  type IAgentRuntime,
+  CANONICAL_EMBEDDING_POOLING,
   logger,
   resolveSetting,
 } from "@elizaos/core";
@@ -101,6 +102,10 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "EMBEDDING_MODEL") ?? CANONICAL_EMBEDDING_MODEL;
 }
 
+export function getEmbeddingPooling(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "EMBEDDING_POOLING") ?? CANONICAL_EMBEDDING_POOLING;
+}
+
 export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
   const baseURL = getSetting(runtime, "EMBEDDING_FALLBACK_BASE_URL");
   return baseURL && baseURL.trim() !== "" ? baseURL.trim() : undefined;
@@ -162,8 +167,6 @@ export function logResolvedConfig(runtime: IAgentRuntime): void {
   const baseURL = getEmbeddingBaseURL(runtime);
   const fallbackBaseURL = getEmbeddingFallbackBaseURL(runtime);
   logger.info(
-    `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(
-      runtime
-    )} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
+    `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(runtime)} pooling=${getEmbeddingPooling(runtime)} normalization=l2 endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
   );
 }

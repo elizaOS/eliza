@@ -7,11 +7,14 @@
  * are vi.fn stubs (fake embedding vectors); no live model or database.
  */
 import { describe, expect, it, vi } from "vitest";
+import { canonicalTestEmbedding } from "../../../testing/canonical-embedding";
 import type { Memory, UUID } from "../../../types";
 import { MemoryType, ModelType } from "../../../types";
 import { bm25Scores, normalizeBm25Scores, tokenize } from "../bm25";
 import { embedRecallQuery } from "../recall-embed";
 import { DocumentService } from "../service";
+
+const TEST_EMBEDDING = canonicalTestEmbedding();
 
 // ── BM25 unit tests ────────────────────────────────────────────────────────
 
@@ -155,8 +158,7 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 			return undefined;
 		}),
 		useModel: vi.fn(async (_modelType: string, _params: unknown) => {
-			// Return a fake embedding array
-			return Array.from({ length: 8 }, () => Math.random());
+			return TEST_EMBEDDING;
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
@@ -487,7 +489,7 @@ describe("DocumentService.searchDocuments", () => {
 			];
 			const rt = buildSlowEmbedRuntime({
 				fragments,
-				embed: async () => [0.1, 0.2, 0.3],
+				embed: async () => TEST_EMBEDDING,
 			});
 			const svc = buildService(rt);
 
@@ -521,7 +523,7 @@ describe("DocumentService.searchDocuments", () => {
 			}) as ReturnType<typeof buildRuntime> & { getCurrentRunId: () => string };
 			let runId: string = R_AUG;
 			rt.getCurrentRunId = () => runId;
-			rt.useModel = vi.fn(async () => [0.1, 0.2, 0.3]) as typeof rt.useModel;
+			rt.useModel = vi.fn(async () => TEST_EMBEDDING) as typeof rt.useModel;
 			return {
 				rt,
 				startRun: () => {
@@ -564,7 +566,7 @@ describe("DocumentService.searchDocuments", () => {
 					text,
 					{ messageId: TURN_MESSAGE_ID },
 				);
-				expect(vector).toEqual([0.1, 0.2, 0.3]);
+				expect(vector).toEqual(TEST_EMBEDDING);
 				expect(embedCallCount(rt)).toBe(1);
 			},
 		);

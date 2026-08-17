@@ -34,16 +34,6 @@
       "advanced": false,
       "autoEnableProvider": true
     },
-    "GOOGLE_EMBEDDING_MODEL": {
-      "type": "string",
-      "required": false,
-      "sensitive": false,
-      "default": "text-embedding-004",
-      "label": "Embedding Model",
-      "help": "Overrides the default text embedding model used by Google Generative AI.",
-      "placeholder": "e.g., text-embedding-3-small",
-      "advanced": false
-    },
     "GOOGLE_IMAGE_MODEL": {
       "type": "string",
       "required": false,

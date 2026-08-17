@@ -26,7 +26,7 @@ import type {
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_SPACE_FINGERPRINT, logger, ModelType } from "@elizaos/core";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -280,6 +280,12 @@ export const openaiPlugin: Plugin = {
       params: ResearchParams
     ): Promise<ResearchResult> => {
       return handleResearch(runtime, params);
+    },
+  },
+
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
     },
   },
 

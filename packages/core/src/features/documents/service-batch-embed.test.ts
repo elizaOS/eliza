@@ -3,8 +3,16 @@
  * registry and in-memory persistence, including both serial fallback paths.
  */
 import { describe, expect, test } from "vitest";
+import {
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	prepareCanonicalEmbeddingInput,
+} from "../../constants/embeddings.ts";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import {
+	canonicalEmbeddingRegistrationMetadata,
+	canonicalTestEmbedding,
+} from "../../testing/canonical-embedding";
 import type { Character, JsonValue, Memory, UUID } from "../../types";
 import { ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
@@ -18,7 +26,7 @@ function vecOf(text: string): number[] {
 	for (let index = 0; index < text.length; index++) {
 		hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
 	}
-	return [hash % 100_000, text.length];
+	return canonicalTestEmbedding((hash % 100_000) + text.length);
 }
 
 const DOC_TEXT = [
@@ -95,6 +103,7 @@ async function makeHarness(options: HarnessOptions): Promise<{
 		async (_runtime, params) => options.single(requireText(params)),
 		"document-batch-test-single",
 		100,
+		canonicalEmbeddingRegistrationMetadata,
 	);
 	const batch = options.batch;
 	if (batch) {
@@ -103,6 +112,7 @@ async function makeHarness(options: HarnessOptions): Promise<{
 			async (_runtime, params) => batch(requireTexts(params)),
 			"document-batch-test-batch",
 			100,
+			canonicalEmbeddingRegistrationMetadata,
 		);
 	}
 	return { runtime, service: new DocumentService(runtime) };
@@ -169,6 +179,54 @@ describe("DocumentService batched fragment embedding", () => {
 		});
 	});
 
+	test("bounds default long-document fragments before batch dispatch", async () => {
+		const markers = Array.from(
+			{ length: 360 },
+			(_, index) => `internal-${index.toString().padStart(3, "0")}-🧪`,
+		);
+		const longText = markers.join(" ");
+		const batches: string[][] = [];
+		const { runtime, service } = await makeHarness({
+			single: vecOf,
+			batch: (texts) => {
+				batches.push([...texts]);
+				return texts.map(vecOf);
+			},
+		});
+
+		await service._internalAddDocument({
+			id: ITEM_ID,
+			content: { text: longText },
+			metadata: { source: "long-document-boundary-test" },
+		});
+
+		expect(batches).toHaveLength(1);
+		const embeddedTexts = batches[0] ?? [];
+		expect(embeddedTexts.length).toBeGreaterThan(1);
+		for (const text of embeddedTexts) {
+			expect(text.length).toBeLessThanOrEqual(
+				CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+			);
+			expect(prepareCanonicalEmbeddingInput(text)).toBe(text);
+		}
+		for (const marker of markers) {
+			expect(embeddedTexts.some((text) => text.includes(marker))).toBe(true);
+		}
+
+		const fragments = await getStoredFragments(runtime);
+		expect(fragments).toHaveLength(embeddedTexts.length);
+		expect(fragments.map(fragmentPosition)).toEqual(
+			fragments.map((_, index) => index),
+		);
+		expect(new Set(fragments.map((fragment) => fragment.id)).size).toBe(
+			fragments.length,
+		);
+		expect(fragments.map((fragment) => fragment.content.text)).toEqual(
+			embeddedTexts,
+		);
+		expectTextDerivedEmbeddings(fragments);
+	});
+
 	test("uses the real single-model path when no batch model is registered", async () => {
 		const singleTexts: string[] = [];
 		const { runtime, service } = await makeHarness({
@@ -215,7 +273,7 @@ describe("DocumentService batched fragment embedding", () => {
 		expect(runtime.getRecentReportedErrors()).toContainEqual(
 			expect.objectContaining({
 				scope: "DocumentService.batchFragmentEmbedding",
-				message: "TEXT_EMBEDDING_BATCH returned 1 vectors for 6 fragments",
+				message: expect.stringContaining("expected 6 vectors, received 1"),
 				context: expect.objectContaining({ fragmentCount: 6 }),
 			}),
 		);

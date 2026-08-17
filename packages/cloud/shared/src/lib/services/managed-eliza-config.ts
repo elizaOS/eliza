@@ -1,17 +1,21 @@
 // Coordinates cloud service managed eliza config behavior behind route handlers.
 import crypto from "node:crypto";
-import { CANONICAL_EMBEDDING_DIMENSION, CANONICAL_EMBEDDING_MODEL } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
+} from "@elizaos/core/edge";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import type { DbTransaction } from "../../db/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
-import { EMBEDDING_SIDECAR_AGENT_BASE_URL } from "./containers/embedding-sidecar";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
 const DEFAULT_CLOUD_PUBLIC_URL = "https://cloud.eliza.app";
+export const MANAGED_EMBEDDING_SIDECAR_BASE_URL = "http://eliza-embedding-sidecar:80/v1";
 const DEV_ELIZA_APP_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -200,34 +204,52 @@ export function mergeManagedPublicBaseUrl(
 }
 
 /**
- * The cloud-managed inference defaults: the node-local canonical embedding
- * sidecar contract and the Cerebras-direct small/large
- * model pins. Pure and single-source-of-truth - both the provision path (via
- * prepareManagedElizaBaseEnvironment) and the blue/green fleet-upgrade path
- * (eliza-sandbox.ts) backfill these onto an agent's stored env so an agent
- * provisioned BEFORE these pins landed heals on upgrade (#8434). Embedding
- * identity and width are deliberately forced rather than preserved: allowing a
- * stale per-agent 1536 override would mix incompatible vector spaces. Runtime
- * boot probes 384 and reclaims/re-embeds stale-width rows before recall.
+ * The cloud-managed inference defaults. Both the provision path (via
+ * prepareManagedElizaBaseEnvironment) and blue/green fleet upgrades apply this
+ * patch, so old 1536-d or same-width GTE configuration converges on the one
+ * first-party vector space: BAAI/bge-small-en-v1.5, 384 dimensions, explicit
+ * mean pooling, and provider-side L2 normalization.
  *
- * The dimension hints describe the registered handler's output; they do not
- * directly size the plugin-sql storage column. Runtime probes the handler
- * before bundled docs are seeded, then aligns storage with the canonical
- * 384-dimensional vector contract.
+ * Fresh provisions use the immutable node-local TEI sidecar. Existing agents
+ * keep their local-vs-cloud routing choice, but both routes now use the same
+ * canonical BGE space. Generic custom/fallback embedding URLs are cleared: a
+ * same-width endpoint that ignores the requested model cannot be identified by
+ * dimension checks, so managed agents may use only the labeled BGE sidecar or
+ * the platform Cloud embedding endpoint. Text-model pins remain overridable.
+ *
+ * At boot, AgentRuntime probes the registered handler, reconciles the persisted
+ * embedding-space fingerprint, clears incompatible vectors, and re-embeds the
+ * surviving memories asynchronously. That reconciliation is what makes the
+ * GTE/384 -> BGE/384 cutover safe; width alone cannot distinguish them.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
 ): Record<string, string> {
-  const embeddingDimension = String(CANONICAL_EMBEDDING_DIMENSION);
+  const explicitLean = existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS;
+  const isFreshProvision = !existingEnv.ELIZAOS_CLOUD_API_KEY?.trim();
+  const sidecarPrimaryEmbeddings =
+    (explicitLean === "1" || (isFreshProvision && explicitLean !== "0")) &&
+    existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
+  const canonicalDimension = String(CANONICAL_EMBEDDING_DIMENSION);
   return {
-    ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
-    ELIZA_EMBEDDING_PROVIDER: "embeddings",
-    EMBEDDING_BASE_URL: EMBEDDING_SIDECAR_AGENT_BASE_URL,
+    ...(sidecarPrimaryEmbeddings ? { ELIZAOS_CLOUD_USE_EMBEDDINGS: "false" } : {}),
+    // The old flag kept plugin-local-inference in lean-chat. Managed local
+    // embeddings now come from the prewarmed node sidecar, so force that slower
+    // per-agent provider back out even when an old stored env opted it in.
+    ...(explicitLean === "1" ? { ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "0" } : {}),
+    EMBEDDING_BASE_URL: sidecarPrimaryEmbeddings ? MANAGED_EMBEDDING_SIDECAR_BASE_URL : "",
+    EMBEDDING_API_KEY: "",
+    EMBEDDING_FALLBACK_BASE_URL: "",
+    EMBEDDING_FALLBACK_API_KEY: "",
     EMBEDDING_MODEL: CANONICAL_EMBEDDING_MODEL,
-    EMBEDDING_DIMENSIONS: embeddingDimension,
-    EMBEDDING_DIMENSION: embeddingDimension,
+    EMBEDDING_FALLBACK_MODEL: CANONICAL_EMBEDDING_MODEL,
+    EMBEDDING_POOLING: CANONICAL_EMBEDDING_POOLING,
+    EMBEDDING_DIMENSIONS: canonicalDimension,
+    EMBEDDING_DIMENSION: canonicalDimension,
+    ELIZAOS_CLOUD_EMBEDDING_URL: resolveCloudApiBaseUrl(),
+    ELIZAOS_CLOUD_EMBEDDING_API_KEY: "",
     ELIZAOS_CLOUD_EMBEDDING_MODEL: CANONICAL_EMBEDDING_MODEL,
-    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: embeddingDimension,
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: canonicalDimension,
     ELIZAOS_CLOUD_SMALL_MODEL:
       existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     ELIZAOS_CLOUD_LARGE_MODEL:
@@ -289,11 +311,11 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
-      // Cloud-managed inference defaults: every managed agent uses the
-      // supervised node-local gte-small sidecar at 384 dimensions. These keys
-      // intentionally override stale per-agent embedding settings; mixing model
-      // families or widths corrupts similarity semantics even when SQL accepts
-      // both vector columns. Text model overrides remain per-agent.
+      // Canonical BGE-small/384/mean/L2 embedding config plus the healthy
+      // Cerebras-direct text-model pins. Fresh agents use the prewarmed node
+      // sidecar; cloud-routed agents use the platform endpoint. Both converge
+      // on the same fingerprint, and custom/fallback embedding endpoints are
+      // cleared so an unverifiable same-width GTE service cannot slip through.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;

@@ -68,7 +68,7 @@ if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
 }
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-// First boot may download the gte-small embedding GGUF (~64MB) before the
+// First boot may download the BGE-small embedding GGUF (~24MB) before the
 // health endpoint comes up; keep headroom for cold caches + slow networks.
 const READY_TIMEOUT_MS = 300_000;
 const STREAM_DEADLINE_MS = 90_000;
@@ -283,7 +283,7 @@ async function ensureAgentDevDistLinks(): Promise<void> {
 async function startStack(): Promise<Stack> {
   const stateRoot = path.join(REPO_ROOT, ".tmp");
   await mkdir(stateRoot, { recursive: true });
-  // Persistent cache for immutable model artifacts (the gte-small embedding
+  // Persistent cache for immutable model artifacts (the BGE-small embedding
   // GGUF). The state dir is a throwaway mkdtemp per run, so without this
   // every run re-downloads ~64MB and can blow the ready timeout.
   const modelsCacheDir = path.join(stateRoot, "eliza-live-models");

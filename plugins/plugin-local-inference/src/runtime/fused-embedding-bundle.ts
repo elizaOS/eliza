@@ -4,10 +4,13 @@
  * remain pinned to an obsolete GGUF inode after an artifact refresh.
  */
 
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	linkSync,
 	mkdirSync,
+	readdirSync,
+	readFileSync,
 	renameSync,
 	rmSync,
 	statSync,
@@ -19,6 +22,68 @@ export interface FusedEmbeddingBundleConfig {
 	modelsDir: string;
 	model: string;
 	override?: string;
+	expectedSizeBytes?: number;
+	sha256?: string;
+}
+
+/** Fail closed unless an embedding GGUF is the exact reviewed artifact. */
+export function assertEmbeddingArtifactIdentity(
+	modelPath: string,
+	expectedSizeBytes: number,
+	expectedSha256: string,
+): void {
+	const size = statSync(modelPath).size;
+	if (size !== expectedSizeBytes) {
+		throw new Error(
+			`Embedding GGUF size mismatch for ${modelPath}: got ${size}, expected ${expectedSizeBytes}`,
+		);
+	}
+	const digest = createHash("sha256")
+		.update(readFileSync(modelPath))
+		.digest("hex");
+	if (digest !== expectedSha256.toLowerCase()) {
+		throw new Error(
+			`Embedding GGUF sha256 mismatch for ${modelPath}: got ${digest}, expected ${expectedSha256}`,
+		);
+	}
+}
+
+/**
+ * Accept an operator-provided fused root only when its text region contains
+ * exactly the canonical GGUF requested by the semantic-embedding handler.
+ * Merely finding a `text/` directory is not an identity attestation: the native
+ * loader would otherwise accept an arbitrary same-width model while the runtime
+ * registration declared the canonical BGE fingerprint.
+ */
+export function assertCanonicalFusedEmbeddingOverride(
+	override: string,
+	model: string,
+	expectedSizeBytes?: number,
+	sha256?: string,
+): void {
+	const textDir = path.join(override, "text");
+	if (!existsSync(textDir)) {
+		throw new Error(`Embedding bundle override must contain text/${model}`);
+	}
+	const artifacts = readdirSync(textDir, { withFileTypes: true })
+		.filter(
+			(entry) =>
+				(entry.isFile() || entry.isSymbolicLink()) &&
+				entry.name.toLowerCase().endsWith(".gguf"),
+		)
+		.map((entry) => entry.name);
+	if (artifacts.length !== 1 || artifacts[0] !== model) {
+		throw new Error(
+			`Embedding bundle override must contain exactly text/${model}; found ${artifacts.length === 0 ? "no GGUF" : artifacts.join(", ")}`,
+		);
+	}
+	if (expectedSizeBytes !== undefined && sha256 !== undefined) {
+		assertEmbeddingArtifactIdentity(
+			path.join(textDir, model),
+			expectedSizeBytes,
+			sha256,
+		);
+	}
 }
 
 function referencesCurrentModel(source: string, staged: string): boolean {
@@ -59,15 +124,42 @@ export function resolveFusedEmbeddingBundleRoot({
 	modelsDir,
 	model,
 	override,
+	expectedSizeBytes,
+	sha256,
 }: FusedEmbeddingBundleConfig): string | null {
-	if (override && existsSync(path.join(override, "text"))) return override;
+	if (override) {
+		assertCanonicalFusedEmbeddingOverride(
+			override,
+			model,
+			expectedSizeBytes,
+			sha256,
+		);
+		return override;
+	}
 
 	const modelPath = path.resolve(modelsDir, model);
+	if (
+		existsSync(modelPath) &&
+		expectedSizeBytes !== undefined &&
+		sha256 !== undefined
+	) {
+		assertEmbeddingArtifactIdentity(modelPath, expectedSizeBytes, sha256);
+	}
 	const parent = path.dirname(modelPath);
 	if (path.basename(parent) === "text" && existsSync(modelPath)) {
 		return path.dirname(parent);
 	}
-	if (existsSync(path.join(modelsDir, "text", model))) return modelsDir;
+	const bundledModelPath = path.join(modelsDir, "text", model);
+	if (existsSync(bundledModelPath)) {
+		if (expectedSizeBytes !== undefined && sha256 !== undefined) {
+			assertEmbeddingArtifactIdentity(
+				bundledModelPath,
+				expectedSizeBytes,
+				sha256,
+			);
+		}
+		return modelsDir;
+	}
 	if (!existsSync(modelPath)) return null;
 
 	const root = path.join(modelsDir, ".eliza-embed-bundle");

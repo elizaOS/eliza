@@ -3,6 +3,10 @@
  * (Apple Silicon / GPU / RAM). Pure-function assertions.
  */
 
+import {
+	CANONICAL_EMBEDDING_GGUF_SHA256,
+	CANONICAL_EMBEDDING_GGUF_SIZE_BYTES,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { HardwareProbe } from "../services/types";
 import {
@@ -27,6 +31,19 @@ function probe(overrides: Partial<HardwareProbe> = {}): HardwareProbe {
 }
 
 describe("embedding preset hardware selection", () => {
+	it("pins every hardware tier to the same canonical BGE-small vector space", () => {
+		for (const preset of Object.values(EMBEDDING_PRESETS)) {
+			expect(preset.model).toBe("bge-small-en-v1.5-q4_k_m.gguf");
+			expect(preset.modelRepo).toBe("CompendiumLabs/bge-small-en-v1.5-gguf");
+			expect(preset.dimensions).toBe(384);
+			expect(preset.contextSize).toBe(512);
+			expect(preset.expectedSizeBytes).toBe(
+				CANONICAL_EMBEDDING_GGUF_SIZE_BYTES,
+			);
+			expect(preset.sha256).toBe(CANONICAL_EMBEDDING_GGUF_SHA256);
+		}
+	});
+
 	it.each([
 		["cuda", "linux"],
 		["vulkan", "linux"],

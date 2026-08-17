@@ -13,6 +13,7 @@
  * deterministic no-model reply path.
  */
 import { describe, expect, it, vi } from "vitest";
+import { CANONICAL_EMBEDDING_DIMENSION } from "../constants/embeddings";
 import { embedRecallQuery } from "../features/documents/recall-embed";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { getTrajectoryContext } from "../trajectory-context";
@@ -32,7 +33,10 @@ const RUN_ID = "00000000-0000-0000-0000-0000000000f1" as UUID;
 // RUN_ID so the R_aug≠R_run mismatch the fix targets is actually exercised.
 const PRERUN_ID = "00000000-0000-0000-0000-0000000000f9" as UUID;
 const MESSAGE_ID = "00000000-0000-0000-0000-0000000000e2" as UUID;
-const WARM_VECTOR = [0.11, 0.22, 0.33];
+const WARM_VECTOR = Array.from(
+	{ length: CANONICAL_EMBEDDING_DIMENSION },
+	(_, index) => (index === 0 ? 0.6 : index === 1 ? 0.8 : 0),
+);
 
 interface RuntimeOptions {
 	/** Seed a MUTED participant state to exercise the early mute drop. */

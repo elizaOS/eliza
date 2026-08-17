@@ -1,47 +1,67 @@
 /**
  * Pins the flag-gated semantic recall skeleton for the Shared edge runtime:
- * the sidecar embedding call's request/response contract and typed failures,
- * and the miss-only orchestration (flag off / keyword hit / blank query never
- * embed; K-cap, char-cap, and recent-window dedupe bound the block). The
- * harness is deterministic — the global fetch is stubbed and restored, and the
- * orchestrator's collaborators are injected fakes.
+ * the native Workers AI request/response contract and typed failures, and the
+ * miss-only orchestration (flag off / keyword hit / blank query never embed;
+ * K-cap, char-cap, and recent-window dedupe bound the block). The harness is
+ * deterministic: Workers AI and the orchestrator collaborators are injected
+ * fakes.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { isElizaError } from "@elizaos/core/edge";
+import { describe, expect, mock, test } from "bun:test";
+import { CANONICAL_EMBEDDING_SPACE_FINGERPRINT, isElizaError } from "@elizaos/core/edge";
+import type { RuntimeWorkersAiBinding } from "../../../types/cloud-worker-env";
 import {
   buildSharedRecallContext,
-  embedTextsViaSidecar,
-  embedTextViaSidecar,
+  embedTextsViaWorkersAi,
+  embedTextViaWorkersAi,
   SHARED_RECALL_DEFAULT_MAX_CHARS,
   SHARED_RECALL_DEFAULT_TOP_K,
   SHARED_RECALL_EDGE_COMPATIBILITY,
+  SHARED_RECALL_EMBED_MAX_BATCH_SIZE,
+  SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS,
+  SHARED_RECALL_EMBED_MAX_INPUT_TOKENS,
   SHARED_RECALL_EMBED_TIMEOUT_MS,
   SHARED_RECALL_EMBEDDING_DIMENSIONS,
   SHARED_RECALL_EMBEDDING_MODEL,
+  SHARED_RECALL_EMBEDDING_POOLING,
+  SHARED_RECALL_WORKERS_AI_MODEL,
   type SharedRecallRow,
 } from "./shared-recall";
-
-const originalFetch = globalThis.fetch;
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
 
 function vectorOf(length: number): number[] {
   return Array.from({ length }, (_, index) => index / length);
 }
 
-function embeddingResponse(embedding: number[]): Response {
-  return new Response(
-    JSON.stringify({
-      object: "list",
-      data: [{ object: "embedding", index: 0, embedding }],
-      model: SHARED_RECALL_EMBEDDING_MODEL,
-      usage: { prompt_tokens: 3, total_tokens: 3 },
-    }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+function embeddingResponse(vectors: number[][], pooling: "mean" | "cls" = "mean") {
+  return {
+    shape: [vectors.length, vectors[0]?.length ?? 0],
+    data: vectors,
+    pooling,
+  };
+}
+
+function aiReturning(payload: unknown): {
+  ai: RuntimeWorkersAiBinding;
+  calls: Array<{
+    model: string;
+    input: { text: string | string[]; pooling?: "mean" | "cls" };
+    options?: { signal?: AbortSignal; tags?: string[] };
+  }>;
+} {
+  const calls: Array<{
+    model: string;
+    input: { text: string | string[]; pooling?: "mean" | "cls" };
+    options?: { signal?: AbortSignal; tags?: string[] };
+  }> = [];
+  return {
+    calls,
+    ai: {
+      async run(model, input, options) {
+        calls.push({ model, input, options });
+        return payload;
+      },
+    },
+  };
 }
 
 async function expectElizaError(
@@ -58,139 +78,155 @@ async function expectElizaError(
   throw new Error(`expected rejection with ${code}, but the promise resolved`);
 }
 
-describe("embedTextViaSidecar — request contract", () => {
-  test("POSTs the OpenAI embeddings shape with auth and a bounded abort signal", async () => {
-    const calls: Array<{ url: string; init: RequestInit }> = [];
-    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-      calls.push({ url: String(url), init: init ?? {} });
-      return embeddingResponse(vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS));
-    }) as unknown as typeof fetch;
+describe("Workers AI embedding request contract", () => {
+  test("pins the model, mean pooling, limits, timeout, and L2-normalized space", async () => {
+    const raw = new Array(SHARED_RECALL_EMBEDDING_DIMENSIONS).fill(0);
+    raw[0] = 3;
+    raw[1] = 4;
+    const { ai, calls } = aiReturning(embeddingResponse([raw]));
 
-    const embedding = await embedTextViaSidecar(
-      "https://sidecar.internal/",
-      "sk-sidecar",
-      "what was my keyboard budget?",
-    );
+    const embedding = await embedTextViaWorkersAi(ai, "  what was my keyboard budget?  ");
 
-    expect(embedding).toHaveLength(SHARED_RECALL_EMBEDDING_DIMENSIONS);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("https://sidecar.internal/v1/embeddings");
-    expect(calls[0].init.method).toBe("POST");
-    const headers = calls[0].init.headers as Record<string, string>;
-    expect(headers["content-type"]).toBe("application/json");
-    expect(headers.authorization).toBe("Bearer sk-sidecar");
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({
-      input: "what was my keyboard budget?",
-      model: SHARED_RECALL_EMBEDDING_MODEL,
-    });
-    const signal = calls[0].init.signal;
-    expect(signal).toBeInstanceOf(AbortSignal);
-    expect((signal as AbortSignal).aborted).toBe(false);
+    expect(SHARED_RECALL_WORKERS_AI_MODEL).toBe("@cf/baai/bge-small-en-v1.5");
+    expect(SHARED_RECALL_EMBEDDING_MODEL).toBe(CANONICAL_EMBEDDING_SPACE_FINGERPRINT);
+    expect(SHARED_RECALL_EMBEDDING_DIMENSIONS).toBe(384);
+    expect(SHARED_RECALL_EMBEDDING_POOLING).toBe("mean");
+    expect(SHARED_RECALL_EMBED_MAX_INPUT_TOKENS).toBe(512);
+    expect(SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS).toBe(510);
+    expect(SHARED_RECALL_EMBED_MAX_BATCH_SIZE).toBe(100);
     expect(SHARED_RECALL_EMBED_TIMEOUT_MS).toBe(5_000);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.model).toBe(SHARED_RECALL_WORKERS_AI_MODEL);
+    expect(calls[0]?.input).toEqual({
+      text: ["what was my keyboard budget?"],
+      pooling: "mean",
+    });
+    expect(calls[0]?.options?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[0]?.options?.signal?.aborted).toBe(false);
+    expect(calls[0]?.options?.tags).toEqual(["eliza:shared-recall"]);
+    expect(embedding).toHaveLength(SHARED_RECALL_EMBEDDING_DIMENSIONS);
+    expect(embedding[0]).toBeCloseTo(0.6);
+    expect(embedding[1]).toBeCloseTo(0.8);
+    expect(Math.hypot(...embedding)).toBeCloseTo(1);
   });
 
-  test("omits the authorization header when the sidecar needs no key", async () => {
-    let seenHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      seenHeaders = (init?.headers ?? {}) as Record<string, string>;
-      return embeddingResponse(vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS));
-    }) as unknown as typeof fetch;
+  test("batches texts in input order and normalizes every vector", async () => {
+    const first = new Array(SHARED_RECALL_EMBEDDING_DIMENSIONS).fill(0);
+    first[0] = 2;
+    const second = new Array(SHARED_RECALL_EMBEDDING_DIMENSIONS).fill(0);
+    second[1] = 7;
+    const { ai, calls } = aiReturning(embeddingResponse([first, second]));
 
-    await embedTextViaSidecar("https://sidecar.internal", undefined, "hello");
+    const vectors = await embedTextsViaWorkersAi(ai, [" user ", " assistant "]);
 
-    expect("authorization" in seenHeaders).toBe(false);
+    expect(calls[0]?.input.text).toEqual(["user", "assistant"]);
+    expect(vectors[0]?.[0]).toBe(1);
+    expect(vectors[1]?.[1]).toBe(1);
   });
 
-  test("rejects blank input before any network call", async () => {
-    const fetchSpy = mock(async () => embeddingResponse([]));
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+  test("rejects blank or oversized batches before invoking the binding", async () => {
+    const { ai, calls } = aiReturning(embeddingResponse([]));
 
-    await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "   "),
-      "SHARED_RECALL_EMBEDDING_EMPTY_TEXT",
+    await expectElizaError(embedTextViaWorkersAi(ai, "   "), "SHARED_RECALL_EMBEDDING_EMPTY_TEXT");
+    const oversized = Array.from({ length: SHARED_RECALL_EMBED_MAX_BATCH_SIZE + 1 }, () => "x");
+    const error = await expectElizaError(
+      embedTextsViaWorkersAi(ai, oversized),
+      "SHARED_RECALL_EMBEDDING_BATCH_LIMIT",
     );
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(error.context).toMatchObject({
+      actual: SHARED_RECALL_EMBED_MAX_BATCH_SIZE + 1,
+      max: SHARED_RECALL_EMBED_MAX_BATCH_SIZE,
+    });
+    const overLimit = await expectElizaError(
+      embedTextViaWorkersAi(ai, "x".repeat(SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS + 1)),
+      "SHARED_RECALL_EMBEDDING_INVALID_INPUT",
+    );
+    expect(overLimit.context).toMatchObject({
+      index: 0,
+      maxInputCodeUnits: SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS,
+    });
+    await expectElizaError(
+      embedTextViaWorkersAi(ai, "bad \uD83D input"),
+      "SHARED_RECALL_EMBEDDING_INVALID_INPUT",
+    );
+    await expectElizaError(
+      embedTextsViaWorkersAi(ai, ["ok", 42] as never),
+      "SHARED_RECALL_EMBEDDING_INVALID_INPUT",
+    );
+    expect(calls).toHaveLength(0);
   });
 });
 
-describe("embedTextViaSidecar — typed failure surface", () => {
-  test("a timeout/network failure wraps as UNREACHABLE with the cause preserved", async () => {
+describe("Workers AI embedding fail-closed validation", () => {
+  test("a provider/timeout failure wraps as UNREACHABLE with its cause and contract", async () => {
     const timeout = new DOMException("The operation timed out.", "TimeoutError");
-    globalThis.fetch = (async () => {
-      throw timeout;
-    }) as unknown as typeof fetch;
+    const ai: RuntimeWorkersAiBinding = {
+      async run() {
+        throw timeout;
+      },
+    };
 
     const error = await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "hi"),
+      embedTextViaWorkersAi(ai, "hi"),
       "SHARED_RECALL_EMBEDDING_UNREACHABLE",
     );
     expect(error.cause).toBe(timeout);
-    expect(error.context?.timeoutMs).toBe(SHARED_RECALL_EMBED_TIMEOUT_MS);
+    expect(error.context).toMatchObject({
+      model: SHARED_RECALL_WORKERS_AI_MODEL,
+      pooling: "mean",
+      maxInputTokens: 512,
+      timeoutMs: SHARED_RECALL_EMBED_TIMEOUT_MS,
+    });
   });
 
-  test("a non-2xx status is a typed HTTP error carrying the status", async () => {
-    globalThis.fetch = (async () =>
-      new Response("busy", { status: 503 })) as unknown as typeof fetch;
-
+  test("an async request id without vectors is invalid, never a fabricated result", async () => {
+    const { ai } = aiReturning({ request_id: "queued-1" });
     const error = await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "hi"),
-      "SHARED_RECALL_EMBEDDING_HTTP_ERROR",
-    );
-    expect(error.context?.status).toBe(503);
-  });
-
-  test("a non-JSON 2xx body is an invalid-response failure, not a fake vector", async () => {
-    globalThis.fetch = (async () =>
-      new Response("<html>proxy</html>", { status: 200 })) as unknown as typeof fetch;
-
-    const error = await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "hi"),
+      embedTextViaWorkersAi(ai, "hi"),
       "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
     );
-    expect(error.context?.reason).toBe("non-json-body");
+    expect(error.context?.reason).toBe("invalid-vector-count");
   });
 
-  test("a JSON body without a numeric embedding is invalid", async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ data: [{ embedding: ["not", "numbers"] }] }), {
-        status: 200,
-      })) as unknown as typeof fetch;
-
+  test("rejects wrong pooling metadata", async () => {
+    const { ai } = aiReturning(
+      embeddingResponse([vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS)], "cls"),
+    );
     const error = await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "hi"),
+      embedTextViaWorkersAi(ai, "hi"),
       "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
     );
-    expect(error.context?.reason).toBe("missing-embedding");
+    expect(error.context).toMatchObject({
+      reason: "wrong-pooling",
+      expected: "mean",
+      actual: "cls",
+    });
   });
 
-  test("a wrong-dimensionality vector is rejected, never returned", async () => {
-    globalThis.fetch = (async () => embeddingResponse(vectorOf(3))) as unknown as typeof fetch;
-
+  test("rejects shape metadata inconsistent with batch count and dimensions", async () => {
+    const { ai } = aiReturning({
+      shape: [1, 3],
+      data: [vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS)],
+      pooling: "mean",
+    });
     const error = await expectElizaError(
-      embedTextViaSidecar("https://sidecar.internal", undefined, "hi"),
+      embedTextViaWorkersAi(ai, "hi"),
       "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
     );
-    expect(error.context?.reason).toBe("wrong-dimensions");
-    expect(error.context?.expected).toBe(SHARED_RECALL_EMBEDDING_DIMENSIONS);
-    expect(error.context?.actual).toBe(3);
+    expect(error.context).toMatchObject({
+      reason: "wrong-shape",
+      expected: [1, SHARED_RECALL_EMBEDDING_DIMENSIONS],
+      actual: [1, 3],
+    });
   });
-});
 
-describe("embedTextsViaSidecar — batch validation", () => {
-  test("rejects a wrong-dimensional vector before it can reach vector(384) storage", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({
-          data: [
-            { embedding: vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS) },
-            { embedding: vectorOf(3) },
-          ],
-        }),
-        { status: 200 },
-      )) as unknown as typeof fetch;
-
+  test("rejects wrong-dimensional vectors before vector(384) storage", async () => {
+    const { ai } = aiReturning({
+      data: [vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS), vectorOf(3)],
+      pooling: "mean",
+    });
     const error = await expectElizaError(
-      embedTextsViaSidecar("https://sidecar.internal", undefined, ["user", "assistant"]),
+      embedTextsViaWorkersAi(ai, ["user", "assistant"]),
       "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
     );
     expect(error.context).toMatchObject({
@@ -201,15 +237,29 @@ describe("embedTextsViaSidecar — batch validation", () => {
     });
   });
 
-  test("classifies a non-JSON success body as an invalid batch response", async () => {
-    globalThis.fetch = (async () =>
-      new Response("upstream proxy", { status: 200 })) as unknown as typeof fetch;
+  test("rejects non-finite and zero-norm vectors", async () => {
+    const nonFinite = vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS);
+    nonFinite[7] = Number.NaN;
+    const first = aiReturning(embeddingResponse([nonFinite]));
+    expect(
+      (
+        await expectElizaError(
+          embedTextViaWorkersAi(first.ai, "hi"),
+          "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+        )
+      ).context?.reason,
+    ).toBe("non-finite-vector");
 
-    const error = await expectElizaError(
-      embedTextsViaSidecar("https://sidecar.internal", undefined, ["user", "assistant"]),
-      "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
-    );
-    expect(error.context?.reason).toBe("non-json-body");
+    const zero = new Array(SHARED_RECALL_EMBEDDING_DIMENSIONS).fill(0);
+    const second = aiReturning(embeddingResponse([zero]));
+    expect(
+      (
+        await expectElizaError(
+          embedTextViaWorkersAi(second.ai, "hi"),
+          "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+        )
+      ).context?.reason,
+    ).toBe("invalid-l2-norm");
   });
 });
 
@@ -308,7 +358,7 @@ describe("buildSharedRecallContext — gating", () => {
   });
 
   test("embed failures propagate to the caller — the orchestrator owns no degrade policy", async () => {
-    const failure = new Error("sidecar down");
+    const failure = new Error("embedding provider down");
     const storeSearch = mock(async () => [row("a", "anything")]);
 
     await expect(
@@ -489,9 +539,9 @@ describe("SHARED_RECALL_EDGE_COMPATIBILITY", () => {
     expect(SHARED_RECALL_EDGE_COMPATIBILITY.state).toBe("tenant-postgres");
     expect([...SHARED_RECALL_EDGE_COMPATIBILITY.effects]).toEqual([
       "tenant-postgres-read",
-      "sidecar-embeddings",
+      "workers-ai-embeddings",
     ]);
-    expect([...SHARED_RECALL_EDGE_COMPATIBILITY.requiredBindings]).toEqual(["HYPERDRIVE"]);
+    expect([...SHARED_RECALL_EDGE_COMPATIBILITY.requiredBindings]).toEqual(["HYPERDRIVE", "AI"]);
     expect([...SHARED_RECALL_EDGE_COMPATIBILITY.requiredSecrets]).toEqual([]);
   });
 });

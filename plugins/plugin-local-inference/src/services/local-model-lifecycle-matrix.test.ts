@@ -276,7 +276,7 @@ describe("buildLocalModelLifecycleMatrix", () => {
 
 	it("records the product decision for a tier that ships no bundle embedding (#10727)", () => {
 		// 2b-style tier: no embedding source component — TEXT_EMBEDDING is
-		// served by the gte-small preset, so the row must not be a permanent
+		// served by the BGE-small preset, so the row must not be a permanent
 		// unfixable fail.
 		const model = catalogModel({ id: "eliza-1-2b", displayName: "eliza-1-2B" });
 		const components = { ...model.sourceModel?.components };
@@ -298,7 +298,7 @@ describe("buildLocalModelLifecycleMatrix", () => {
 		const embedding = matrix.rows.find((row) => row.component === "embedding");
 		expect(embedding?.knownGap?.kind).toBe("served-by-alternate-runtime");
 		expect(embedding?.checks.implemented.status).toBe("skipped");
-		expect(embedding?.checks.implemented.detail).toContain("gte-small");
+		expect(embedding?.checks.implemented.detail).toContain("bge-small");
 		expect(embedding?.checks.published.status).toBe("skipped");
 		expect(embedding?.checks.downloadable.status).toBe("skipped");
 		expect(embedding?.checks.deployable.status).toBe("skipped");

@@ -8,6 +8,14 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
+  ElizaError,
+  normalizeCanonicalEmbedding,
+  prepareCanonicalEmbeddingInput,
+} from "@elizaos/core/edge";
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -43,19 +51,63 @@ import {
   InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
 } from "@/lib/services/organization-inference-admission";
+import {
+  embedTextsViaWorkersAi,
+  SHARED_RECALL_EMBED_MAX_BATCH_SIZE,
+} from "@/lib/services/shared-runtime/shared-recall";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface EmbeddingsRequest {
-  input: string | string[];
-  model: string;
+  input?: unknown;
+  model?: unknown;
   encoding_format?: "float" | "base64";
   dimensions?: number;
+  pooling?: "mean" | "cls";
   user?: string;
 }
 
 const app = new Hono<AppEnv>();
+
+function invalidCanonicalSdkResponse(
+  reason: string,
+  context: Record<string, unknown> = {},
+  cause?: unknown,
+): never {
+  throw new ElizaError(
+    "Canonical embedding provider returned an invalid response",
+    {
+      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+      cause,
+      context: { reason, ...context },
+      severity: "ephemeral",
+    },
+  );
+}
+
+function validateCanonicalSdkEmbeddings(
+  candidates: unknown,
+  expectedCount: number,
+): number[][] {
+  if (!Array.isArray(candidates) || candidates.length !== expectedCount) {
+    invalidCanonicalSdkResponse("invalid-vector-count", {
+      expected: expectedCount,
+      actual: Array.isArray(candidates) ? candidates.length : undefined,
+    });
+  }
+
+  return candidates.map((candidate, index) => {
+    if (!Array.isArray(candidate)) {
+      return invalidCanonicalSdkResponse("missing-vector", { index });
+    }
+    try {
+      return normalizeCanonicalEmbedding(candidate as number[]);
+    } catch (cause) {
+      return invalidCanonicalSdkResponse("invalid-vector", { index }, cause);
+    }
+  });
+}
 
 app.post("/", async (c) => {
   let settleReservation: OrganizationInferenceAdmission["settle"] | undefined;
@@ -229,13 +281,24 @@ app.post("/", async (c) => {
     if (orgRateLimited) return orgRateLimited;
     const request = await requestPromise;
 
-    if (!request?.model || !request.input) {
+    if (
+      !request ||
+      typeof request.model !== "string" ||
+      request.model.trim().length === 0 ||
+      request.input === undefined ||
+      request.input === null
+    ) {
       return c.json(
         {
           error: {
             message: "Missing required fields: model and input",
             type: "invalid_request_error",
-            param: !request?.model ? "model" : "input",
+            param:
+              !request ||
+              typeof request.model !== "string" ||
+              request.model.trim().length === 0
+                ? "model"
+                : "input",
             code: "missing_required_parameter",
           },
         },
@@ -243,7 +306,9 @@ app.post("/", async (c) => {
       );
     }
 
-    if (Array.isArray(request.input) && request.input.length === 0) {
+    const model = request.model;
+    const rawInput = request.input;
+    if (Array.isArray(rawInput) && rawInput.length === 0) {
       return c.json(
         {
           error: {
@@ -257,10 +322,7 @@ app.post("/", async (c) => {
       );
     }
 
-    if (
-      typeof request.input === "string" &&
-      request.input.trim().length === 0
-    ) {
+    if (typeof rawInput === "string" && rawInput.trim().length === 0) {
       return c.json(
         {
           error: {
@@ -274,12 +336,135 @@ app.post("/", async (c) => {
       );
     }
 
-    const model = request.model;
-    const provider = getProviderFromModel(model);
-    const normalizedModel = normalizeModelName(model);
-    const billingSource = resolveEmbeddingProviderSource();
+    if (typeof rawInput !== "string" && !Array.isArray(rawInput)) {
+      return c.json(
+        {
+          error: {
+            message: "input must be a string or an array of strings",
+            type: "invalid_request_error",
+            param: "input",
+            code: "invalid_value",
+          },
+        },
+        400,
+      );
+    }
 
-    if (!hasTextEmbeddingProviderConfigured() || !billingSource) {
+    if (
+      Array.isArray(rawInput) &&
+      rawInput.some(
+        (value) => typeof value !== "string" || value.trim().length === 0,
+      )
+    ) {
+      return c.json(
+        {
+          error: {
+            message: "input array must contain only non-blank strings",
+            type: "invalid_request_error",
+            param: "input",
+            code: "invalid_value",
+          },
+        },
+        400,
+      );
+    }
+
+    let input = rawInput as string | string[];
+    const isCanonicalWorkersAiModel = model === CANONICAL_EMBEDDING_MODEL;
+    if (isCanonicalWorkersAiModel) {
+      try {
+        input = Array.isArray(input)
+          ? input.map((value) => prepareCanonicalEmbeddingInput(value))
+          : prepareCanonicalEmbeddingInput(input);
+      } catch (error) {
+        return c.json(
+          {
+            error: {
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Invalid canonical embedding input",
+              type: "invalid_request_error",
+              param: "input",
+              code: "invalid_value",
+            },
+          },
+          400,
+        );
+      }
+    }
+    if (
+      isCanonicalWorkersAiModel &&
+      request.dimensions !== undefined &&
+      request.dimensions !== CANONICAL_EMBEDDING_DIMENSION
+    ) {
+      return c.json(
+        {
+          error: {
+            message: `dimensions must be ${CANONICAL_EMBEDDING_DIMENSION} for ${CANONICAL_EMBEDDING_MODEL}`,
+            type: "invalid_request_error",
+            param: "dimensions",
+            code: "invalid_value",
+          },
+        },
+        400,
+      );
+    }
+    if (
+      isCanonicalWorkersAiModel &&
+      request.pooling !== undefined &&
+      request.pooling !== CANONICAL_EMBEDDING_POOLING
+    ) {
+      return c.json(
+        {
+          error: {
+            message: `pooling must be ${CANONICAL_EMBEDDING_POOLING} for ${CANONICAL_EMBEDDING_MODEL}`,
+            type: "invalid_request_error",
+            param: "pooling",
+            code: "invalid_value",
+          },
+        },
+        400,
+      );
+    }
+    if (
+      isCanonicalWorkersAiModel &&
+      Array.isArray(input) &&
+      input.length > SHARED_RECALL_EMBED_MAX_BATCH_SIZE
+    ) {
+      return c.json(
+        {
+          error: {
+            message: `input batch cannot exceed ${SHARED_RECALL_EMBED_MAX_BATCH_SIZE} texts`,
+            type: "invalid_request_error",
+            param: "input",
+            code: "invalid_value",
+          },
+        },
+        400,
+      );
+    }
+
+    const nativeWorkersAi = isCanonicalWorkersAiModel ? c.env?.AI : undefined;
+    // Billing uses the provider-local spelling so the canonical public BAAI
+    // identity resolves the existing first-party embedding price row.
+    const billingModel = isCanonicalWorkersAiModel
+      ? normalizeModelName(model)
+      : model;
+    const provider = getProviderFromModel(billingModel);
+    const normalizedModel = normalizeModelName(billingModel);
+    // Provider identity is model-dependent. Managed agents send the full
+    // canonical BAAI model name, which resolves to native Workers AI whenever
+    // this Worker has its required binding and otherwise to the immutable BGE
+    // sidecar. It must never inherit an otherwise-configured OpenAI provider.
+    const billingSource = nativeWorkersAi
+      ? "selfhosted"
+      : resolveEmbeddingProviderSource(model);
+
+    if (
+      (!nativeWorkersAi && !hasTextEmbeddingProviderConfigured(model)) ||
+      !billingSource
+    ) {
       return c.json(
         {
           error: {
@@ -292,9 +477,7 @@ app.post("/", async (c) => {
       );
     }
 
-    const inputText = Array.isArray(request.input)
-      ? request.input.join(" ")
-      : request.input;
+    const inputText = Array.isArray(input) ? input.join(" ") : input;
     const estimatedInputTokens = estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
@@ -305,7 +488,7 @@ app.post("/", async (c) => {
           organizationId: user.organization_id,
           userId: user.id,
           apiKeyId,
-          model,
+          model: billingModel,
           provider,
           billingSource,
           requestId,
@@ -371,7 +554,7 @@ app.post("/", async (c) => {
 
     logger.info("[Embeddings] Request", {
       model,
-      inputCount: Array.isArray(request.input) ? request.input.length : 1,
+      inputCount: Array.isArray(input) ? input.length : 1,
       estimatedTokens: estimatedInputTokens,
     });
 
@@ -386,11 +569,20 @@ app.post("/", async (c) => {
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&
-      resolveEmbeddingProviderSource() === "openai"
+      resolveEmbeddingProviderSource(model) === "openai"
         ? resolvePassthroughEmbeddingsUpstream(model)
         : null;
 
-    if (passthroughUpstream) {
+    if (nativeWorkersAi) {
+      await markProviderDispatched?.();
+      providerDispatched = true;
+      embeddings = await embedTextsViaWorkersAi(
+        nativeWorkersAi,
+        Array.isArray(input) ? input : [input],
+        { tags: ["eliza:cloud-embeddings"] },
+      );
+      actualTokens = estimatedInputTokens;
+    } else if (passthroughUpstream) {
       await markProviderDispatched?.();
       providerDispatched = true;
       const upstreamResponse = await fetch(passthroughUpstream.url, {
@@ -401,6 +593,7 @@ app.post("/", async (c) => {
         },
         body: JSON.stringify({
           ...request,
+          input,
           model: passthroughUpstream.modelId,
         }),
       });
@@ -421,15 +614,17 @@ app.post("/", async (c) => {
         usage?: { prompt_tokens?: number };
       };
       actualTokens = parsed.usage?.prompt_tokens || estimatedInputTokens;
-    } else if (Array.isArray(request.input)) {
+    } else if (Array.isArray(input)) {
       const embeddingModel = getTextEmbeddingModel(model);
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await embedMany({
         model: embeddingModel,
-        values: request.input,
+        values: input,
       });
-      embeddings = result.embeddings;
+      embeddings = isCanonicalWorkersAiModel
+        ? validateCanonicalSdkEmbeddings(result.embeddings, input.length)
+        : result.embeddings;
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     } else {
       const embeddingModel = getTextEmbeddingModel(model);
@@ -437,9 +632,11 @@ app.post("/", async (c) => {
       providerDispatched = true;
       const result = await embed({
         model: embeddingModel,
-        value: request.input,
+        value: input,
       });
-      embeddings = [result.embedding];
+      embeddings = isCanonicalWorkersAiModel
+        ? validateCanonicalSdkEmbeddings([result.embedding], 1)
+        : [result.embedding];
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     }
     // Reconciliation and usage recording run after the vector response. The
@@ -461,7 +658,7 @@ app.post("/", async (c) => {
             organizationId: user.organization_id,
             userId: user.id,
             apiKeyId,
-            model,
+            model: billingModel,
             provider,
             billingSource,
             // #11588: the server-generated requestId keys the affiliate
@@ -619,6 +816,25 @@ app.post("/", async (c) => {
           },
         },
         status,
+      );
+    }
+
+    const workersAiCode =
+      providerError &&
+      typeof providerError === "object" &&
+      "code" in providerError
+        ? String(providerError.code)
+        : "";
+    if (workersAiCode.startsWith("SHARED_RECALL_EMBEDDING_")) {
+      return c.json(
+        {
+          error: {
+            message: "Canonical embedding provider is temporarily unavailable",
+            type: "service_unavailable",
+            code: "provider_error",
+          },
+        },
+        503,
       );
     }
 

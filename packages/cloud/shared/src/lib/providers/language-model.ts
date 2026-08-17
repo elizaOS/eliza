@@ -1,6 +1,7 @@
 // Defines cloud shared language model behavior for backend service consumers.
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { CANONICAL_EMBEDDING_MODEL } from "@elizaos/core/edge";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
@@ -50,6 +51,18 @@ export function isProviderConfigurationError(error: unknown): boolean {
  * the requested spelling.
  */
 export const LOCAL_EMBEDDING_MODEL_ID = "bge-small-en-v1.5";
+
+/**
+ * Public model identity accepted from managed agents. Keep this distinct from
+ * the bare TEI upstream id: the full repository-qualified name attests the
+ * canonical BGE vector space at the Cloud API boundary, while the immutable
+ * sidecar's OpenAI-compatible endpoint expects its local catalog spelling.
+ */
+export const CANONICAL_CLOUD_EMBEDDING_MODEL_ID = CANONICAL_EMBEDDING_MODEL;
+
+function isCanonicalSidecarEmbeddingModel(model: string): boolean {
+  return model === CANONICAL_CLOUD_EMBEDDING_MODEL_ID || model === LOCAL_EMBEDDING_MODEL_ID;
+}
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
 let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
@@ -137,7 +150,7 @@ function isLocalEmbeddingsForced(): boolean {
 /** True when the local sidecar serves this embedding id (mirrors getTextEmbeddingModel). */
 function isLocalEmbeddingRoutingActive(model: string): boolean {
   if (!getLocalEmbeddingsBaseURL()) return false;
-  return isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID;
+  return isLocalEmbeddingsForced() || isCanonicalSidecarEmbeddingModel(model);
 }
 
 function getLocalEmbeddingsClient(baseURL: string) {
@@ -395,7 +408,7 @@ export function resolvePassthroughEmbeddingsUpstream(
   // The self-hosted sidecar claims the local id (and everything under
   // force-local); OpenAI must never receive those requests, so the pass-through
   // fast path stands down and the SDK path routes (or config-errors) instead.
-  if (model === LOCAL_EMBEDDING_MODEL_ID || isLocalEmbeddingRoutingActive(model)) {
+  if (isCanonicalSidecarEmbeddingModel(model) || isLocalEmbeddingRoutingActive(model)) {
     return null;
   }
   const apiKey = getProviderKey("OPENAI_API_KEY");
@@ -742,11 +755,11 @@ export function hasTextEmbeddingProviderConfigured(model?: string): boolean {
   // an argless call only credits the sidecar for the force-local deployment.
   if (
     getLocalEmbeddingsBaseURL() &&
-    (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)
+    (isLocalEmbeddingsForced() || (model !== undefined && isCanonicalSidecarEmbeddingModel(model)))
   ) {
     return true;
   }
-  if (model === LOCAL_EMBEDDING_MODEL_ID) return false;
+  if (model !== undefined && isCanonicalSidecarEmbeddingModel(model)) return false;
   return Boolean(getProviderKey("OPENAI_API_KEY"));
 }
 
@@ -817,16 +830,16 @@ export function getTextEmbeddingModel(model: string) {
   // deployment onto it. The upstream request always carries the local id — the
   // sidecar embeds with its one loaded model regardless of requested spelling.
   const localBaseURL = getLocalEmbeddingsBaseURL();
-  if (localBaseURL && (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)) {
+  if (localBaseURL && (isLocalEmbeddingsForced() || isCanonicalSidecarEmbeddingModel(model))) {
     return getLocalEmbeddingsClient(localBaseURL).textEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
   }
 
   // Only the sidecar can serve the local id — OpenAI would 404 it, so a
   // deployment without the sidecar URL is a configuration error, not a
   // fallthrough to a provider that cannot answer.
-  if (model === LOCAL_EMBEDDING_MODEL_ID) {
+  if (isCanonicalSidecarEmbeddingModel(model)) {
     throw new ProviderConfigurationError(
-      `LOCAL_EMBEDDINGS_BASE_URL environment variable is required for ${LOCAL_EMBEDDING_MODEL_ID}`,
+      `LOCAL_EMBEDDINGS_BASE_URL environment variable is required for ${model}`,
     );
   }
 
@@ -904,11 +917,11 @@ export function resolveEmbeddingProviderSource(model?: string): "openai" | "self
   // an argless call only reports "selfhosted" for the force-local deployment.
   if (
     getLocalEmbeddingsBaseURL() &&
-    (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)
+    (isLocalEmbeddingsForced() || (model !== undefined && isCanonicalSidecarEmbeddingModel(model)))
   ) {
     return "selfhosted";
   }
-  if (model === LOCAL_EMBEDDING_MODEL_ID) return null;
+  if (model !== undefined && isCanonicalSidecarEmbeddingModel(model)) return null;
   if (getProviderKey("OPENAI_API_KEY")) {
     return "openai";
   }

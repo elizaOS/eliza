@@ -5,9 +5,23 @@
  * embedding model's output width — the others stay null. Supporting multiple
  * fixed-width columns instead of a single variable-length vector lets
  * PostgreSQL index each dimension separately.
+ *
+ * Canonical BGE-small vectors deliberately live in a separate physical table.
+ * A still-running legacy binary can update or delete rows in `embeddings`, but
+ * it cannot name (and therefore cannot corrupt) the versioned BGE table. The
+ * adapter creates that table additively, outside migration snapshots.
  */
 import { relations, sql } from "drizzle-orm";
-import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  vector,
+} from "drizzle-orm/pg-core";
 import { memoryTable } from "./memory";
 
 export const VECTOR_DIMS = {
@@ -33,6 +47,18 @@ export const DIMENSION_MAP = {
   [VECTOR_DIMS.XXXL]: "dim3072",
 } as const;
 
+/** Physical vector width for every adapter-selectable column. */
+export const EMBEDDING_DIMENSION_BY_COLUMN = {
+  dim384: VECTOR_DIMS.SMALL,
+  dim512: VECTOR_DIMS.MEDIUM,
+  dim768: VECTOR_DIMS.LARGE,
+  dim1024: VECTOR_DIMS.XL,
+  dim1536: VECTOR_DIMS.XXL,
+  dim2048: VECTOR_DIMS.XXL2,
+  dim3072: VECTOR_DIMS.XXXL,
+} as const;
+
+/** Migration-facing legacy shape. */
 export const embeddingTable = pgTable(
   "embeddings",
   {
@@ -59,6 +85,27 @@ export const embeddingTable = pgTable(
     }).onDelete("cascade"),
   ]
 );
+
+/**
+ * Versioned canonical storage. This symbol must stay out of `schema/index.ts`:
+ * `ensureEmbeddingDimension(384)` creates the table idempotently outside the
+ * migration snapshot, so older binaries keep their known schema hash and can
+ * neither update nor delete canonical BGE vectors during a rolling upgrade.
+ *
+ * The TypeScript property is named `dim384` so the adapter can use the same
+ * dimension key for both legacy and canonical storage; its physical column is
+ * simply `embedding` in this version-specific table.
+ */
+export const bgeSmallEnV15EmbeddingTable = pgTable("embeddings_bge_small_en_v1_5", {
+  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  memoryId: uuid("memory_id")
+    .references(() => memoryTable.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  sourceText: text("source_text"),
+  dim384: vector("embedding", { dimensions: VECTOR_DIMS.SMALL }).notNull(),
+});
 
 /** Column names for each supported embedding width. */
 export type EmbeddingDimensionColumn =

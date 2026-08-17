@@ -1649,6 +1649,15 @@ export interface ModelHandler<
  */
 export interface ModelRegistrationMetadata {
 	/**
+	 * Exact semantic vector-space identity for embedding registrations.
+	 *
+	 * `TEXT_EMBEDDING` and `TEXT_EMBEDDING_BATCH` handlers are eligible for
+	 * runtime selection only when this equals the core canonical fingerprint.
+	 * Width alone is deliberately insufficient: two 384-dimensional models can
+	 * produce mutually incompatible vectors.
+	 */
+	embeddingSpaceFingerprint?: string;
+	/**
 	 * Concrete model id to display for this registration when callers ask what
 	 * model is powering a slot.
 	 */

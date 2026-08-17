@@ -7,6 +7,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
+import {
+	canonicalEmbeddingRegistrationMetadata,
+	canonicalTestEmbedding,
+} from "../../testing/canonical-embedding";
 import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import type { Character, Memory, UUID } from "../../types";
 import { MemoryType, ModelType } from "../../types";
@@ -17,7 +21,7 @@ const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 function embeddingFor(text: string): number[] {
-	return [text.length, 1, 0.5];
+	return canonicalTestEmbedding(text.length);
 }
 
 async function createRealRuntime(): Promise<AgentRuntime> {
@@ -115,6 +119,7 @@ describe("DocumentService character document ingestion boot races", () => {
 				embeddingFor(params.text ?? ""),
 			"document-character-ingest-test",
 			1_000,
+			canonicalEmbeddingRegistrationMetadata,
 		);
 		const service = new DocumentService(runtime);
 		const options = {
@@ -240,6 +245,7 @@ describe("DocumentService character document ingestion boot races", () => {
 			},
 			"document-character-ingest-test",
 			100,
+			canonicalEmbeddingRegistrationMetadata,
 		);
 		const service = new DocumentService(runtime);
 
@@ -291,7 +297,10 @@ describe("DocumentService character document ingestion boot races", () => {
 		}
 		expect(thrown.cause.cause).toMatchObject({
 			code: "EMBEDDING_MODEL_OUTPUT_INVALID",
-			context: { outputKind: "empty-array" },
+			context: {
+				modelType: ModelType.TEXT_EMBEDDING,
+				provider: "document-character-ingest-test",
+			},
 		});
 		expect(embeddings).toBe(2);
 		await expect(getStoredMemories(runtime, DOCUMENTS_TABLE)).resolves.toEqual(
@@ -314,6 +323,7 @@ describe("DocumentService character document ingestion boot races", () => {
 			async () => [],
 			"document-character-disabled-embedding-test",
 			100,
+			canonicalEmbeddingRegistrationMetadata,
 		);
 		await expect(runtime.ensureEmbeddingDimension()).rejects.toThrow();
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);

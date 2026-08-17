@@ -169,12 +169,12 @@
         "type": "string",
         "description": "Identifier of the model to use for generating text embeddings.",
         "required": false,
-        "default": "thenlper/gte-small",
+        "default": "BAAI/bge-small-en-v1.5",
         "sensitive": false
       },
       "OPENAI_EMBEDDING_URL": {
         "type": "string",
-        "description": "Required explicit OpenAI-compatible endpoint serving thenlper/gte-small at 384 dimensions.",
+        "description": "Required explicit OpenAI-compatible endpoint serving BAAI/bge-small-en-v1.5 at 384 dimensions with mean pooling.",
         "required": false,
         "sensitive": false
       },

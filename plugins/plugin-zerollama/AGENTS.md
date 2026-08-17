@@ -1,10 +1,10 @@
 # @elizaos/plugin-zerollama
 
-Local LLM inference via [Ollama](https://ollama.com/)-compatible servers for Eliza agents — text generation, streaming, structured output, embeddings, and native tool calling without any cloud API. Auto-detects zerollama vs stock Ollama via `GET /api/version` and uses native zerollama wire format when available.
+Local LLM inference via [Ollama](https://ollama.com/)-compatible servers for Eliza agents — text generation, streaming, structured output, and native tool calling without any cloud API. Auto-detects zerollama vs stock Ollama via `GET /api/version` and uses native zerollama wire format when available.
 
 ## Purpose / role
 
-Registers model handlers for every text and embedding `ModelType` so an Eliza agent can run fully local inference against a running Ollama or zerollama daemon. The plugin is **opt-in**: it auto-enables when `OLLAMA_BASE_URL` is set in the environment (see `auto-enable.ts` and `elizaos.plugin.autoEnableModule` in `package.json`). Add `@elizaos/plugin-zerollama` to a character's plugin list to enable it explicitly without the env gate.
+Registers text-generation model handlers so an Eliza agent can run local inference against a running Ollama or zerollama daemon. It deliberately does not register `ModelType.TEXT_EMBEDDING`: semantic embeddings must come from the canonical BGE-small provider selected by the runtime. The plugin is **opt-in**: it auto-enables when `OLLAMA_BASE_URL` is set in the environment (see `auto-enable.ts` and `elizaos.plugin.autoEnableModule` in `package.json`). Add `@elizaos/plugin-zerollama` to a character's plugin list to enable it explicitly without the env gate.
 
 ## Plugin surface
 
@@ -12,7 +12,6 @@ This plugin registers **model handlers only** — no actions, providers, service
 
 | Model type | Handler | Description |
 |---|---|---|
-| `ModelType.TEXT_EMBEDDING` | `handleTextEmbedding` | Vector embeddings via AI SDK `embed` + `ollama-ai-provider-v2`. Auto-pulls model if missing. |
 | `ModelType.TEXT_NANO` | `handleTextNano` | Cheapest/fastest text; defaults to `OLLAMA_NANO_MODEL` → `NANO_MODEL` → small model. |
 | `ModelType.TEXT_SMALL` | `handleTextSmall` | Small text; defaults to `eliza-1-2b`. |
 | `ModelType.TEXT_MEDIUM` | `handleTextMedium` | Medium text; defaults to small model when no medium override is set. |
@@ -41,7 +40,7 @@ plugins/plugin-zerollama/
   models/
     availability.ts          Checks model availability and pulls missing models
     text.ts                  handleTextWithModelType and all exported text handlers
-    embedding.ts             handleTextEmbedding
+    embedding.ts             Legacy direct helper; not registered as a runtime semantic-embedding handler
     audio.ts                 handleTextToSpeech, handleTranscription
     zerollama-text.ts        Native zerollama /api/chat text handler
     index.ts                 Re-exports handleTextEmbedding, handleTextLarge, handleTextSmall, ensureModelAvailable
@@ -82,7 +81,7 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 | `OLLAMA_NANO_MODEL` / `NANO_MODEL` | → small model | No | TEXT_NANO. |
 | `OLLAMA_MEDIUM_MODEL` / `MEDIUM_MODEL` | → small model | No | TEXT_MEDIUM. |
 | `OLLAMA_MEGA_MODEL` / `MEGA_MODEL` | → large model | No | TEXT_MEGA. |
-| `OLLAMA_EMBEDDING_MODEL` | `eliza-1-2b` | No | TEXT_EMBEDDING. |
+| `OLLAMA_EMBEDDING_MODEL` | `eliza-1-2b` | No | Legacy direct-helper setting only; ignored by runtime semantic-embedding selection. |
 | `OLLAMA_HOST_FLAVOR` | auto via `GET /api/version` | No | Pin `zerollama` or `ollama`. Zerollama uses a native `/api/chat` + `/api/embed` client (no AI SDK wire aliases); stock Ollama keeps `ollama-ai-provider-v2`. |
 | `OLLAMA_RESPONSE_HANDLER_MODEL` / `OLLAMA_SHOULD_RESPOND_MODEL` / `RESPONSE_HANDLER_MODEL` / `SHOULD_RESPOND_MODEL` | → nano model | No | RESPONSE_HANDLER. |
 | `OLLAMA_ACTION_PLANNER_MODEL` / `OLLAMA_PLANNER_MODEL` / `ACTION_PLANNER_MODEL` / `PLANNER_MODEL` | → medium model | No | ACTION_PLANNER. |
@@ -113,6 +112,7 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 - **`AI_SDK_LOG_WARNINGS`** is set to `false` at module load to suppress Vercel AI SDK noise in tight loops / desktop shells. Unset it in dev if you need SDK diagnostics.
 - **Browser build:** `package.json` exports a `browser` entry (`dist/browser/index.browser.js`). Keep `auto-enable.ts` free of Node-only imports.
 - **Structured output + tools conflict:** When both `responseSchema` and `tools` are present, tools win — schema is dropped. This matches the v5 Stage 1 contract.
+- **Semantic embedding ownership:** Do not add `TEXT_EMBEDDING` back to this plugin. Runtime semantic memory uses the canonical BGE-small-en-v1.5 384-dimensional mean-pooled L2-normalized space.
 - See root `AGENTS.md` for repo-wide architecture rules, naming, logger usage, and git workflow.
 
 ## Live evidence

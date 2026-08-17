@@ -2,12 +2,22 @@
  * TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH handlers: POST to an OpenAI-compatible
  * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), optionally
  * retry one configured fallback endpoint, validate the returned vector width
- * against the configured VECTOR_DIMS dimension, and emit a MODEL_USED event.
- * Input is capped at MAX_EMBEDDING_CHARS. Registered by the plugin in
- * ../index.ts; see the package CLAUDE.md for the routing priority.
+ * against the canonical BGE-small vector-space contract, and emit MODEL_USED.
+ * Input validation delegates to core's fail-closed canonical BGE boundary.
+ * Registered by the plugin in ../index.ts; see the package CLAUDE.md for the
+ * routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { assertCanonicalEmbeddingConfig, logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import {
+  assertCanonicalEmbeddingConfig,
+  type CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
+  logger,
+  ModelType,
+  normalizeCanonicalEmbedding,
+  prepareCanonicalEmbeddingInput,
+} from "@elizaos/core";
 
 import type { EmbeddingResponse } from "../types";
 import {
@@ -18,12 +28,13 @@ import {
   getEmbeddingFallbackBaseURL,
   getEmbeddingFallbackModel,
   getEmbeddingModel,
+  getEmbeddingPooling,
   getEndpointAuthHeader,
   getSetting,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-type VectorDimension = (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
+type VectorDimension = typeof CANONICAL_EMBEDDING_DIMENSION;
 type EmbeddingEndpoint = {
   role: "primary" | "fallback";
   baseURL: string;
@@ -31,17 +42,8 @@ type EmbeddingEndpoint = {
   model: string;
 };
 
-// OpenAI embedding models support up to 8191 tokens per input; 8000 provides a
-// safe buffer at the conventional ~4 chars/token estimate.
-const MAX_EMBEDDING_CHARS = 8_000 * 4;
-
 export function validateEmbeddingDimension(dimension: number): VectorDimension {
-  const validDimensions = Object.values(VECTOR_DIMS) as number[];
-  if (!validDimensions.includes(dimension)) {
-    throw new Error(
-      `Invalid embedding dimension: ${dimension}. Must be one of: ${validDimensions.join(", ")}`
-    );
-  }
+  assertCanonicalEmbeddingConfig(CANONICAL_EMBEDDING_MODEL, dimension, CANONICAL_EMBEDDING_POOLING);
   return dimension as VectorDimension;
 }
 
@@ -87,6 +89,17 @@ function requireBaseURL(runtime: IAgentRuntime): string {
 }
 
 function getEmbeddingEndpoints(runtime: IAgentRuntime): EmbeddingEndpoint[] {
+  const pooling = getEmbeddingPooling(runtime);
+  assertCanonicalEmbeddingConfig(
+    getEmbeddingModel(runtime),
+    getEmbeddingDimensions(runtime),
+    pooling
+  );
+  assertCanonicalEmbeddingConfig(
+    getEmbeddingFallbackModel(runtime),
+    getEmbeddingDimensions(runtime),
+    pooling
+  );
   const primary: EmbeddingEndpoint = {
     role: "primary",
     baseURL: requireBaseURL(runtime),
@@ -108,35 +121,6 @@ function getEmbeddingEndpoints(runtime: IAgentRuntime): EmbeddingEndpoint[] {
   ];
 }
 
-function assertCanonicalEndpointModels(
-  endpoints: EmbeddingEndpoint[],
-  embeddingDimension: number
-): void {
-  for (const endpoint of endpoints) {
-    assertCanonicalEmbeddingConfig(
-      endpoint.model,
-      embeddingDimension,
-      `${endpoint.role} EMBEDDING_*`
-    );
-  }
-}
-
-function truncate(text: string): string {
-  if (text.length <= MAX_EMBEDDING_CHARS) {
-    return text;
-  }
-  logger.warn(
-    `[Embeddings] Input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
-  );
-  // Never cut between the halves of a surrogate pair: a trailing lone high
-  // surrogate is not valid Unicode, so it reaches the endpoint as U+FFFD (or a
-  // hard reject on strict JSON parsers) and corrupts the embedded text.
-  const lastKept = text.charCodeAt(MAX_EMBEDDING_CHARS - 1);
-  const end =
-    lastKept >= 0xd800 && lastKept <= 0xdbff ? MAX_EMBEDDING_CHARS - 1 : MAX_EMBEDDING_CHARS;
-  return text.slice(0, end);
-}
-
 /**
  * Embed `input` (a single string or an array of strings) against the configured
  * OpenAI-compatible `/embeddings` endpoint. Returns one numeric vector per
@@ -150,7 +134,6 @@ async function requestEmbeddings(
   signal?: AbortSignal
 ): Promise<number[][]> {
   const endpoints = getEmbeddingEndpoints(runtime);
-  assertCanonicalEndpointModels(endpoints, embeddingDimension);
   const expectedCount = Array.isArray(input) ? input.length : 1;
   const failures: string[] = [];
 
@@ -210,6 +193,7 @@ async function requestEmbeddingsFromEndpoint(
     body: JSON.stringify({
       model: endpoint.model,
       input,
+      pooling: CANONICAL_EMBEDDING_POOLING,
       ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
     ...(signal ? { signal } : {}),
@@ -226,6 +210,12 @@ async function requestEmbeddingsFromEndpoint(
   }
 
   const data = (await response.json()) as EmbeddingResponse;
+
+  if (data.model !== endpoint.model) {
+    throw new Error(
+      `${endpoint.role} embedding model mismatch: endpoint returned ${JSON.stringify(data.model)}, expected ${JSON.stringify(endpoint.model)}`
+    );
+  }
 
   if (!Array.isArray(data.data) || data.data.length !== expectedCount) {
     throw new Error(
@@ -262,7 +252,7 @@ async function requestEmbeddingsFromEndpoint(
         }, expected ${embeddingDimension}. Check EMBEDDING_DIMENSIONS / EMBEDDING_MODEL.`
       );
     }
-    vectors[idx] = item.embedding;
+    vectors[idx] = normalizeCanonicalEmbedding(item.embedding);
   }
 
   if (data.usage) {
@@ -289,7 +279,6 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
-  assertCanonicalEmbeddingConfig(getEmbeddingModel(runtime), embeddingDimension, "EMBEDDING_*");
   const signal = extractSignal(params);
 
   const text = extractText(params);
@@ -300,12 +289,8 @@ export async function handleTextEmbedding(
     return probe;
   }
 
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    throw new Error("Cannot generate embedding for empty text");
-  }
-
-  const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension, signal);
+  const prepared = prepareCanonicalEmbeddingInput(text);
+  const vectors = await requestEmbeddings(runtime, prepared, embeddingDimension, signal);
   const vector = vectors[0];
   if (!vector) {
     throw new Error("Embedding provider returned no vector for the input");
@@ -322,18 +307,23 @@ export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
   texts: string[]
 ): Promise<number[][]> {
-  if (!Array.isArray(texts) || texts.length === 0) {
+  if (!Array.isArray(texts)) {
+    throw new TypeError("Canonical embedding batch input must be a string array");
+  }
+  if (texts.length === 0) {
     return [];
   }
 
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
-  assertCanonicalEmbeddingConfig(getEmbeddingModel(runtime), embeddingDimension, "EMBEDDING_*");
 
-  const prepared = texts.map((text, i) => {
-    if (typeof text !== "string" || text.trim().length === 0) {
-      throw new Error(`Cannot generate embedding for empty text at index ${i}`);
+  const prepared = Array.from(texts, (text, index) => {
+    try {
+      return prepareCanonicalEmbeddingInput(text);
+    } catch (cause) {
+      throw new Error(`Invalid canonical embedding input at index ${index}`, {
+        cause,
+      });
     }
-    return truncate(text.trim());
   });
 
   return requestEmbeddings(runtime, prepared, embeddingDimension);

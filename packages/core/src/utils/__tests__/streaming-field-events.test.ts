@@ -268,6 +268,95 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks.join("")).toBe("hi");
 	});
 
+	it.each([
+		["action record", ["act", "ion: BROW", 'SER, parameters: {"url":"x"}']],
+		["tool record", ["to", "ol: WEB_SEARCH in", 'put={"query":"x"}']],
+		["planner record", ["name", ": functions.RUN_TASK, ar", 'gs={"id":1}']],
+		[
+			"Markdown bullet action record",
+			["- act", "ion: BROW", 'SER, parameters: {"url":"x"}'],
+		],
+	] as const)(
+		"holds and suppresses a chunk-split compact %s",
+		(_label, pieces) => {
+			const chunks: string[] = [];
+			const extractor = new ResponseSkeletonStreamExtractor({
+				skeleton,
+				streamFields: ["replyText"],
+				onChunk: (chunk) => chunks.push(chunk),
+			});
+
+			for (const piece of pieces) extractor.push(piece);
+			extractor.flush();
+
+			expect(chunks).toEqual([]);
+		},
+	);
+
+	it.each([
+		[
+			"multiline fenced JSON",
+			["```js", 'on\n{"act', 'ion":"BROWSER","parameters":{"url":"x"}}\n```'],
+		],
+		[
+			"single-line fenced JSON",
+			["```json ", '{"action":"BROWSER",', '"parameters":{}} ```'],
+		],
+		[
+			"unlabeled fenced compact action",
+			["```\n", "action: WEB_", 'SEARCH, input={"query":"x"}\n```'],
+		],
+	] as const)(
+		"never emits a chunk-split %s control envelope",
+		(_label, pieces) => {
+			const chunks: string[] = [];
+			const extractor = new ResponseSkeletonStreamExtractor({
+				skeleton,
+				streamFields: ["replyText"],
+				onChunk: (chunk) => chunks.push(chunk),
+			});
+
+			for (const piece of pieces) {
+				extractor.push(piece);
+				expect(chunks).toEqual([]);
+			}
+			extractor.flush();
+
+			expect(chunks).toEqual([]);
+		},
+	);
+
+	it("still streams a non-JSON language fence after its tag disambiguates", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push("```t");
+		expect(chunks).toEqual(["```t"]);
+		extractor.push("s\nconst value = 1;\n```");
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("```ts\nconst value = 1;\n```");
+	});
+
+	it("releases an action-like prose heading only after terminal disambiguation", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push("Action: BROWSER is useful for research.");
+		expect(chunks).toEqual([]);
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("Action: BROWSER is useful for research.");
+	});
+
 	it("decodes JSON string escapes before emitting text", () => {
 		const chunks: string[] = [];
 		const extractor = new ResponseSkeletonStreamExtractor({

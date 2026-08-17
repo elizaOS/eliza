@@ -18,6 +18,8 @@ import path from "node:path";
 import {
   type Action,
   AgentRuntime,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   ChannelType,
   DefaultMessageService,
   drainPostDeliveryTasks,
@@ -1312,10 +1314,17 @@ describe("trajectory capture -> DB -> viewer", () => {
     runtime.registerAction(afterAction);
     runtime.registerModel(
       ModelType.TEXT_EMBEDDING,
-      async () => [0.1, 0.2, 0.3],
+      async () =>
+        Array.from({ length: CANONICAL_EMBEDDING_DIMENSION }, (_, index) =>
+          index === 0 ? 1 : 0,
+        ),
       "terminal-owner-embedding",
       10_000,
+      {
+        embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+      },
     );
+    await runtime.ensureEmbeddingDimension();
     runtime.registerModel(
       ModelType.RESPONSE_HANDLER,
       async () => directResponseEnvelope("Delivery completed immediately."),

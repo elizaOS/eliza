@@ -1,28 +1,10 @@
 /**
- * Embedding-handler wiring tests.
- *
- * Pins the runtime contract for `useModel(TEXT_EMBEDDING, ...)`:
- *   - the unified local provider registers a TEXT_EMBEDDING handler,
- *   - the handler dispatches `embed({ input })` onto the loader registered
- *     as "localInferenceLoader",
- *   - null/warmup probes throw LOCAL_INFERENCE_UNAVAILABLE rather than
- *     synthesizing a fake vector (Commandment 8: don't hide broken pipelines),
- *   - missing backend service throws so callers can fall through to another
- *     real embedding provider instead of persisting fake zero vectors,
- *   - the same input always returns the exact array the loader returned
- *     (determinism is the *loader's* contract — the provider does not
- *     re-quantize or perturb).
- *
- * The catalog (`packages/shared/src/local-inference/catalog.ts`) declares
- * a single 1024-dim Matryoshka embedding region for every tier that has
- * `hasEmbedding: true` (every tier except the 2b entry tier, which serves
- * embeddings by pooling the text backbone via the lazily-started sidecar).
- * The shape is enforced by `EMBEDDING_FULL_DIM = 1024` and
- * `isValidEmbeddingDim`. The provider passes the bytes through verbatim
- * — this test asserts that pass-through, not the dimensionality of the
- * actual GGUF (that lives in `services/voice/embedding.test.ts`).
+ * Unit coverage for the unregistered embedding-handler factory. The runtime
+ * boot path decides whether a loader is trusted enough to register; once a
+ * trusted path invokes this factory, outputs still must satisfy the canonical
+ * BGE-small 384-dimensional, finite, nonzero, L2-normalized contract.
  */
-import { ModelType } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_DIMENSION, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createLocalInferenceModelHandlers,
@@ -37,13 +19,11 @@ function runtimeWithService(service: Record<string, unknown>) {
 	};
 }
 
-function makeUnitVector(dim: number, seed = 0.1): number[] {
-	// Deterministic synthetic vector; the loader is mocked so the actual
-	// bytes don't matter for shape stability — only that the provider
-	// returns exactly what the loader returned.
-	const v: number[] = new Array(dim);
-	for (let i = 0; i < dim; i += 1) v[i] = (i + 1) * seed;
-	return v;
+function makeCanonicalUnitVector(index = 0): number[] {
+	return Array.from(
+		{ length: CANONICAL_EMBEDDING_DIMENSION },
+		(_, position) => (position === index ? 1 : 0),
+	);
 }
 
 describe("provider TEXT_EMBEDDING dispatch", () => {
@@ -52,8 +32,8 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 		expect(typeof handlers[ModelType.TEXT_EMBEDDING]).toBe("function");
 	});
 
-	it("dispatches embed({ input }) on the loader and returns the raw float array", async () => {
-		const expected = makeUnitVector(1024);
+	it("dispatches embed({ input }) and returns a canonical unit vector", async () => {
+		const expected = makeCanonicalUnitVector();
 		const embed = vi.fn(async (args: { input: string }) => {
 			expect(args.input).toBe("hello world");
 			return expected;
@@ -67,11 +47,13 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 
 		expect(Array.isArray(result)).toBe(true);
 		expect(result).toEqual(expected);
-		expect((result as number[]).length).toBe(1024);
+		expect((result as number[]).length).toBe(
+			CANONICAL_EMBEDDING_DIMENSION,
+		);
 	});
 
 	it("accepts a raw string input (action-runner shape) without re-wrapping", async () => {
-		const expected = makeUnitVector(1024, 0.2);
+		const expected = makeCanonicalUnitVector(1);
 		const embed = vi.fn(async (args: { input: string }) => {
 			expect(args.input).toBe("plain string");
 			return expected;
@@ -87,7 +69,7 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 	});
 
 	it("accepts the { embedding: number[] } loader shape too", async () => {
-		const expected = makeUnitVector(1024, 0.3);
+		const expected = makeCanonicalUnitVector(2);
 		const embed = vi.fn(async () => ({ embedding: expected }));
 		const handlers = createLocalInferenceModelHandlers();
 		const runtime = runtimeWithService({ embed });
@@ -98,12 +80,9 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 		expect(result).toEqual(expected);
 	});
 
-	it("returns the *same* vector for the same input — pass-through, no perturbation", async () => {
-		// Deterministic-for-same-input is a *loader* contract; the provider
-		// promises pass-through. Two calls with the same loader and the
-		// same input must yield equal arrays (by deep equality).
+	it("returns the same normalized vector for the same input", async () => {
 		let counter = 0;
-		const fixed = makeUnitVector(1024, 0.4);
+		const fixed = makeCanonicalUnitVector(3);
 		const embed = vi.fn(async () => {
 			counter += 1;
 			return fixed;
@@ -121,6 +100,24 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 		expect(counter).toBe(2);
 		expect(a).toEqual(b);
 		expect((a as number[]).length).toBe((b as number[]).length);
+	});
+
+	it("normalizes a finite canonical-width loader result", async () => {
+		const raw = Array.from(
+			{ length: CANONICAL_EMBEDDING_DIMENSION },
+			(_, index) => (index === 0 ? 3 : index === 1 ? 4 : 0),
+		);
+		const handlers = createLocalInferenceModelHandlers();
+		const runtime = runtimeWithService({ embed: vi.fn(async () => raw) });
+
+		const result = (await handlers[ModelType.TEXT_EMBEDDING]?.(
+			runtime as never,
+			{ text: "normalize me" } as never,
+		)) as number[];
+
+		expect(result[0]).toBeCloseTo(0.6);
+		expect(result[1]).toBeCloseTo(0.8);
+		expect(Math.hypot(...result)).toBeCloseTo(1);
 	});
 
 	it("rejects null warmup probes — must NOT serve a fake zero vector (Commandment 8)", async () => {
@@ -170,6 +167,19 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 		});
 	});
 
+	it("rejects a noncanonical embedding width", async () => {
+		const handlers = createLocalInferenceModelHandlers();
+		const runtime = runtimeWithService({
+			embed: vi.fn(async () => [0.6, 0.8]),
+		});
+
+		await expect(
+			handlers[ModelType.TEXT_EMBEDDING]?.(runtime as never, {
+				text: "wrong width",
+			} as never),
+		).rejects.toThrow(`expected ${CANONICAL_EMBEDDING_DIMENSION}`);
+	});
+
 	it("rejects when no loader is registered instead of returning zero vectors", async () => {
 		const handlers = createLocalInferenceModelHandlers();
 		await expect(
@@ -194,24 +204,5 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 			code: "LOCAL_INFERENCE_UNAVAILABLE",
 			reason: "capability_unavailable",
 		});
-	});
-});
-
-describe("embedding dim contract (1024 — Matryoshka-truncatable)", () => {
-	it("the catalog's full embedding width is 1024", async () => {
-		// EMBEDDING_FULL_DIM is the single point of truth — every tier with
-		// `hasEmbedding: true` ships the same 1024-dim Matryoshka region.
-		// Smaller widths (768/512/256/128/64) are truncations of the same
-		// vector. Asserting this here pins the shape contract for callers
-		// who don't import the voice subpackage.
-		const mod = await import(
-			"../src/services/voice/embedding"
-		);
-		expect(mod.EMBEDDING_FULL_DIM).toBe(1024);
-		expect(mod.EMBEDDING_MATRYOSHKA_DIMS).toEqual([
-			64, 128, 256, 512, 768, 1024,
-		]);
-		expect(mod.isValidEmbeddingDim(1024)).toBe(true);
-		expect(mod.isValidEmbeddingDim(1025)).toBe(false);
 	});
 });

@@ -99,6 +99,7 @@ describe("sanitizeUserVisibleModelOutput", () => {
 
 	it.each([
 		'action: BROWSER, parameters: {"url":"https://example.com"}',
+		'- action: BROWSER, parameters: {"url":"https://example.com"}',
 		'{action: BROWSER, parameters: {"url":"https://example.com"}}',
 		'action = BROWSER; parameters = {"url":"https://example.com"}',
 		'tool: WEB_SEARCH input={"query":"weather"}',

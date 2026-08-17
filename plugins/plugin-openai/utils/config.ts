@@ -7,7 +7,12 @@
  * whether an `Authorization` header is sent.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL, logger } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  logger,
+} from "@elizaos/core";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {
@@ -395,7 +400,7 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
 }
 
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "OPENAI_EMBEDDING_MODEL") ?? "thenlper/gte-small";
+  return getSetting(runtime, "OPENAI_EMBEDDING_MODEL") ?? CANONICAL_EMBEDDING_MODEL;
 }
 
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
@@ -427,7 +432,7 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
 }
 
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
-  return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", 384);
+  return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", CANONICAL_EMBEDDING_DIMENSION);
 }
 
 export function getImageDescriptionMaxTokens(runtime: IAgentRuntime): number {

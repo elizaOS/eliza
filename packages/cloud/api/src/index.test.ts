@@ -1006,6 +1006,30 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
+  test("binds native Workers AI in every environment while Shared recall remains flag-gated", async () => {
+    type AiConfig = { binding?: string };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      ai?: AiConfig;
+      vars?: { SHARED_RECALL_ENABLED?: string };
+      env?: {
+        staging?: { ai?: AiConfig; vars?: { SHARED_RECALL_ENABLED?: string } };
+        production?: {
+          ai?: AiConfig;
+          vars?: { SHARED_RECALL_ENABLED?: string };
+        };
+      };
+    };
+
+    expect(config.ai).toEqual({ binding: "AI" });
+    expect(config.env?.staging?.ai).toEqual({ binding: "AI" });
+    expect(config.env?.production?.ai).toEqual({ binding: "AI" });
+    expect(config.vars?.SHARED_RECALL_ENABLED).toBeUndefined();
+    expect(config.env?.staging?.vars?.SHARED_RECALL_ENABLED).toBe("true");
+    expect(config.env?.production?.vars?.SHARED_RECALL_ENABLED).toBeUndefined();
+  });
+
   test("keeps the legacy edge guard false and reserves the replacement names for the cutover secrets", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),

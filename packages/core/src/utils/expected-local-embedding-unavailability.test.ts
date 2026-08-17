@@ -69,4 +69,12 @@ describe("isExpectedLocalEmbeddingUnavailability", () => {
 			false,
 		);
 	});
+
+	it("accepts the runtime fingerprint-reconciliation gate", () => {
+		expect(
+			isExpectedLocalEmbeddingUnavailability({
+				code: "EMBEDDING_SPACE_UNAVAILABLE",
+			}),
+		).toBe(true);
+	});
 });

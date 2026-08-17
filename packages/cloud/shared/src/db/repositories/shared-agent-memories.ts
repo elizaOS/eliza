@@ -62,6 +62,15 @@ export interface MergeSharedAgentMessageMemoryInput
   interrupted: boolean;
 }
 
+export interface SetSharedAgentMemoryEmbeddingInput {
+  id: string;
+  scope: SharedAgentMemoryScope;
+  /** Exact row content embedded; stale interrupted enrichments must not win a retry race. */
+  contentText: string;
+  embedding: number[];
+  embeddingModel: string;
+}
+
 export type SharedAgentMemorySearchHit = SharedAgentMemoryRow & { distance: number };
 
 function requiredScope(scope: SharedAgentMemoryScope): SharedAgentMemoryScope {
@@ -190,10 +199,48 @@ export class SharedAgentMemoriesWriter {
         context: { field: "content.text" },
       });
     }
-    if (input.embedding != null) assertEmbedding(input.embedding);
+    let embeddingModel: string | null = null;
+    if (input.embedding != null) {
+      assertEmbedding(input.embedding);
+      embeddingModel = input.embeddingModel?.trim() ?? "";
+      if (!embeddingModel) {
+        throw new ElizaError(
+          "Shared agent message memory embedding and embedding model must be supplied together",
+          {
+            code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+            context: { field: "embeddingModel" },
+          },
+        );
+      }
+    } else if (input.embeddingModel != null) {
+      throw new ElizaError(
+        "Shared agent message memory embedding and embedding model must be supplied together",
+        {
+          code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+          context: { field: "embedding" },
+        },
+      );
+    }
     const content = { ...input.content };
     delete content.interrupted;
     if (input.interrupted) content.interrupted = true;
+
+    // Embeddings describe content.text, not the row id. A winning retry with
+    // new text must not inherit the prior prefix's vector. Keep the existing
+    // pair only when the embeddable text is unchanged; an incoming attested
+    // pair replaces both columns in the same UPSERT statement.
+    const retainedEmbedding = sql<number[] | null>`CASE
+      WHEN ${sharedAgentMemories.content}->>'text'
+        IS DISTINCT FROM ${sql.raw("excluded.content")}->>'text'
+      THEN NULL
+      ELSE ${sharedAgentMemories.embedding}
+    END`;
+    const retainedEmbeddingModel = sql<string | null>`CASE
+      WHEN ${sharedAgentMemories.content}->>'text'
+        IS DISTINCT FROM ${sql.raw("excluded.content")}->>'text'
+      THEN NULL
+      ELSE ${sharedAgentMemories.embedding_model}
+    END`;
 
     const [merged] = await dbWrite
       .insert(sharedAgentMemories)
@@ -208,12 +255,16 @@ export class SharedAgentMemoriesWriter {
         type: input.type,
         content: jsonbParam(content),
         embedding: input.embedding ?? null,
-        embedding_model: input.embeddingModel ?? null,
+        embedding_model: embeddingModel,
         ...(input.createdAt ? { created_at: input.createdAt } : {}),
       })
       .onConflictDoUpdate({
         target: [sharedAgentMemories.id],
-        set: { content: jsonbParam(content) },
+        set: {
+          content: jsonbParam(content),
+          embedding: input.embedding ?? retainedEmbedding,
+          embedding_model: embeddingModel ?? retainedEmbeddingModel,
+        },
         setWhere: sql`
           ${sharedAgentMemories.organization_id} = ${scope.organizationId}
           AND ${sharedAgentMemories.user_id} = ${scope.userId}
@@ -247,6 +298,39 @@ export class SharedAgentMemoriesWriter {
     }
     return { id: existing.id, inserted: false };
   }
+
+  /**
+   * Atomically enrich one already-landed tenant row with its attested vector
+   * and space fingerprint. Used by Worker waitUntil jobs so durable transcript
+   * writes need not wait for provider embedding latency. The content predicate
+   * makes a stale interrupted-turn job a no-op after a complete retry wins.
+   */
+  async setMemoryEmbedding(input: SetSharedAgentMemoryEmbeddingInput): Promise<boolean> {
+    const scope = requiredScope(input.scope);
+    assertEmbedding(input.embedding);
+    const embeddingModel = input.embeddingModel.trim();
+    if (!embeddingModel) {
+      throw new ElizaError("Shared agent memory embedding model is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "embeddingModel" },
+      });
+    }
+    const [updated] = await dbWrite
+      .update(sharedAgentMemories)
+      .set({
+        embedding: input.embedding,
+        embedding_model: embeddingModel,
+      })
+      .where(
+        and(
+          ...tenantPins(scope),
+          eq(sharedAgentMemories.id, input.id),
+          sql`${sharedAgentMemories.content}->>'text' = ${input.contentText}`,
+        ),
+      )
+      .returning({ id: sharedAgentMemories.id });
+    return Boolean(updated);
+  }
 }
 
 export class SharedAgentMemoriesReader {
@@ -275,17 +359,26 @@ export class SharedAgentMemoriesReader {
   /**
    * Exact cosine-distance search over the tenant's most recent embedded rows
    * (bounded window; see module header). Only rows whose stored vector has the
-   * query's dimensionality participate, so mixed-model histories cannot fail
-   * the whole query.
+   * query's dimensionality participate. Callers that persist a vector-space
+   * fingerprint must pass it here as `embeddingModel`; same-width vectors from
+   * another model/pooling/normalization contract are then excluded too.
    */
   async searchByEmbedding(
     scope: SharedAgentMemoryScope,
     embedding: number[],
     limit: number,
+    embeddingModel?: string,
   ): Promise<SharedAgentMemorySearchHit[]> {
     requiredScope(scope);
     assertLimit(limit);
     assertEmbedding(embedding);
+    const normalizedEmbeddingModel = embeddingModel?.trim();
+    if (embeddingModel !== undefined && !normalizedEmbeddingModel) {
+      throw new ElizaError("Shared agent memory embedding model is required when provided", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "embeddingModel" },
+      });
+    }
     const distance = sql<number>`(${sharedAgentMemories.embedding}::vector <=> ${vectorParam(
       embedding,
     )})`.as("distance");
@@ -311,6 +404,9 @@ export class SharedAgentMemoriesReader {
           ...tenantPins(scope),
           isNotNull(sharedAgentMemories.embedding),
           sql`cardinality(${sharedAgentMemories.embedding}) = ${embedding.length}`,
+          ...(normalizedEmbeddingModel
+            ? [eq(sharedAgentMemories.embedding_model, normalizedEmbeddingModel)]
+            : []),
         ),
       )
       .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))

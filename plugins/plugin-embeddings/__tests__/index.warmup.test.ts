@@ -32,7 +32,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
     json: async () => ({
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
-      model: "thenlper/gte-small",
+      model: "BAAI/bge-small-en-v1.5",
       usage: { prompt_tokens: 1, total_tokens: 1 },
     }),
     text: async () => "",

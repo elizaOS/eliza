@@ -1,6 +1,6 @@
 /**
  * Node-local embedding sidecar contract: one text-embeddings-inference (TEI)
- * container per Docker node serving gte-small so every agent on the node gets
+ * container per Docker node serving BGE-small so every agent on the node gets
  * local ~50ms embeddings instead of the cloud round-trip.
  *
  * THE GAP THIS CLOSES
@@ -21,16 +21,23 @@
  * reboots; the managed-by label keeps every reclamation path away from it.
  *
  * Agents consume it over the shared bridge network via plugin-embeddings
- * (`EMBEDDING_BASE_URL=http://eliza-embedding-sidecar:80/v1`, 384-dim). That
- * per-agent env cutover is a separate rollout (existing 1536-dim stores must
- * re-embed first — the #9911 recall-degradation class), so this module only
- * guarantees the endpoint exists and its absence is loudly visible.
+ * (`EMBEDDING_BASE_URL=http://eliza-embedding-sidecar:80/v1`). The server pins
+ * BGE-small + mean pooling; the provider validates 384 dimensions and performs
+ * explicit L2 normalization before persistence. The immutable contract label
+ * makes an old running GTE container ineligible for the idempotent fast path,
+ * so the next ensure replaces it instead of silently keeping the wrong space.
  *
  * Pure command builders + parser only (no I/O), mirroring node-disk-manager:
  * the SSH/cloud-init boundary stays with the callers and everything here
  * unit-tests exhaustively.
  */
 
+import {
+  assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+} from "@elizaos/core/edge";
 import { containersEnv } from "../../config/containers-env";
 import {
   CONTAINER_LABEL_MANAGED_BY,
@@ -47,6 +54,10 @@ export const EMBEDDING_SIDECAR_CONTAINER_NAME = "eliza-embedding-sidecar";
 /** OpenAI-compatible base URL visible to managed agent containers. */
 export const EMBEDDING_SIDECAR_AGENT_BASE_URL =
   `http://${EMBEDDING_SIDECAR_CONTAINER_NAME}:80/v1` as const;
+
+/** Labels used to prove a running container matches the canonical vector space/config. */
+export const EMBEDDING_SIDECAR_SPACE_LABEL = "ai.elizaos.embedding-space";
+export const EMBEDDING_SIDECAR_CONFIG_LABEL = "ai.elizaos.embedding-config";
 
 /** Host bind-mount for the TEI model cache so weights survive re-creates. */
 const MODEL_CACHE_HOST_DIR = "/data/embedding-models";
@@ -108,16 +119,33 @@ export function buildEnsureEmbeddingSidecarCmd(
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`[embedding-sidecar] invalid host port: ${port}`);
   }
+  assertCanonicalEmbeddingConfig(
+    modelId,
+    CANONICAL_EMBEDDING_DIMENSION,
+    CANONICAL_EMBEDDING_POOLING,
+  );
+  const space = assertShellSafe(
+    CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    "embedding space fingerprint",
+  );
+  const configIdentity = assertShellSafe(
+    `${image}@${space}@${network}@${port}`,
+    "immutable config identity",
+  );
+  const expectedInspect = `true|${space}|${configIdentity}`;
   return (
-    `docker inspect -f '{{.State.Running}}' ${name} 2>/dev/null | grep -q true || { ` +
+    `docker inspect -f '{{.State.Running}}|{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}|{{index .Config.Labels "${EMBEDDING_SIDECAR_CONFIG_LABEL}"}}' ${name} 2>/dev/null | grep -Fqx '${expectedInspect}' || { ` +
     // `|| true` on rm/pull: a missing container / transient pull failure must
     // not mask the `docker run` verdict (run pulls implicitly when needed).
     `docker rm -f ${name} >/dev/null 2>&1 || true; ` +
     `docker pull ${image} >/dev/null 2>&1 || true; ` +
     `docker run -d --name ${name} --restart always ` +
     `--label ${CONTAINER_LABEL_MANAGED_BY}=${CONTAINER_LABEL_MANAGED_BY_VALUE} ` +
+    `--label ${EMBEDDING_SIDECAR_SPACE_LABEL}=${space} ` +
+    `--label ${EMBEDDING_SIDECAR_CONFIG_LABEL}=${configIdentity} ` +
     `--network ${network} -p 127.0.0.1:${port}:80 ` +
-    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} --model-id ${modelId}; }`
+    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} ` +
+    `--model-id ${modelId} --pooling ${CANONICAL_EMBEDDING_POOLING}; }`
   );
 }
 
@@ -132,8 +160,12 @@ export function buildEmbeddingSidecarProbeCmd(
   hostPort: number = containersEnv.embeddingSidecarHostPort(),
 ): string {
   const name = EMBEDDING_SIDECAR_CONTAINER_NAME;
+  const expectedSpace = assertShellSafe(
+    CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    "embedding space fingerprint",
+  );
   return (
-    `docker inspect -f '{{.State.Running}}' ${name} 2>/dev/null | grep -q true` +
+    `docker inspect -f '{{.State.Running}}|{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}' ${name} 2>/dev/null | grep -Fqx 'true|${expectedSpace}'` +
     ` && { curl -fsS -m 5 http://127.0.0.1:${hostPort}/health >/dev/null 2>&1 && echo running || echo unresponsive; }` +
     ` || echo missing`
   );

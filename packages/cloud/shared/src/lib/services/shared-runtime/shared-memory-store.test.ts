@@ -10,6 +10,8 @@ import { stringToUuid } from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,
+  SetSharedAgentMemoryEmbeddingInput,
+  SharedAgentMemoriesReader,
   SharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import {
@@ -30,8 +32,10 @@ const AGENT_KEY = "agent-shared-42";
 function scriptedWriter(behavior?: { failOn?: number }): {
   writer: SharedAgentMemoriesWriter;
   inserts: InsertSharedAgentMemoryInput[];
+  embeddingUpdates: SetSharedAgentMemoryEmbeddingInput[];
 } {
   const inserts: InsertSharedAgentMemoryInput[] = [];
+  const embeddingUpdates: SetSharedAgentMemoryEmbeddingInput[] = [];
   const write = async (input: InsertSharedAgentMemoryInput) => {
     inserts.push(input);
     if (behavior?.failOn === inserts.length) {
@@ -51,8 +55,12 @@ function scriptedWriter(behavior?: { failOn?: number }): {
         },
       });
     },
+    async setMemoryEmbedding(input: SetSharedAgentMemoryEmbeddingInput) {
+      embeddingUpdates.push(input);
+      return true;
+    },
   } as SharedAgentMemoriesWriter;
-  return { writer, inserts };
+  return { writer, inserts, embeddingUpdates };
 }
 
 const originalFlag = process.env.SHARED_MEMORY_TABLES_ENABLED;
@@ -82,6 +90,103 @@ describe("sharedMemoryTablesEnabled / createSharedMemoryStore", () => {
 });
 
 describe("SharedMemoryStore.recordTurnPair", () => {
+  test("lands rows before deferred Workers AI enrichment settles", async () => {
+    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
+    const { writer, inserts, embeddingUpdates } = scriptedWriter();
+    let releaseEmbeddings!: (vectors: number[][]) => void;
+    const embeddingGate = new Promise<number[][]>((resolve) => {
+      releaseEmbeddings = resolve;
+    });
+    const scheduled: Promise<void>[] = [];
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      undefined,
+      { embedTexts: async () => embeddingGate, model: fingerprint },
+      (work) => scheduled.push(work),
+    );
+
+    await store.recordTurnPair({
+      userMessage: "remember this",
+      assistantReply: "remembered",
+      messageIds: {
+        user: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        assistant: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+    });
+
+    expect(inserts).toHaveLength(2);
+    expect(inserts.every((row) => row.embedding === undefined)).toBe(true);
+    expect(embeddingUpdates).toHaveLength(0);
+    expect(scheduled).toHaveLength(1);
+
+    const userVector = new Array(384).fill(0);
+    userVector[0] = 1;
+    const assistantVector = new Array(384).fill(0);
+    assistantVector[1] = 1;
+    releaseEmbeddings([userVector, assistantVector]);
+    await Promise.all(scheduled);
+
+    expect(embeddingUpdates).toEqual([
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        scope: {
+          organizationId: ORG,
+          userId: USER,
+          agentId: stringToUuid(AGENT_KEY),
+        },
+        contentText: "remember this",
+        embedding: userVector,
+        embeddingModel: fingerprint,
+      },
+      {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        scope: {
+          organizationId: ORG,
+          userId: USER,
+          agentId: stringToUuid(AGENT_KEY),
+        },
+        contentText: "remembered",
+        embedding: assistantVector,
+        embeddingModel: fingerprint,
+      },
+    ]);
+  });
+
+  test("persists and searches with one exact vector-space fingerprint", async () => {
+    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
+    const { writer, inserts } = scriptedWriter();
+    const searchCalls: unknown[][] = [];
+    const reader = {
+      async searchByEmbedding(...args: unknown[]) {
+        searchCalls.push(args);
+        return [];
+      },
+    } as unknown as SharedAgentMemoriesReader;
+    const vectors = [
+      new Array(384).fill(0).map((_, index) => (index === 0 ? 1 : 0)),
+      new Array(384).fill(0).map((_, index) => (index === 1 ? 1 : 0)),
+    ];
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      reader,
+      {
+        embedTexts: async () => vectors,
+        model: fingerprint,
+      },
+    );
+
+    await store.recordTurnPair({ userMessage: "remember this", assistantReply: "remembered" });
+    await store.searchByEmbedding(vectors[0] ?? [], 5);
+
+    expect(inserts[0]?.embedding).toBe(vectors[0]);
+    expect(inserts[1]?.embedding).toBe(vectors[1]);
+    expect(inserts[0]?.embeddingModel).toBe(fingerprint);
+    expect(inserts[1]?.embeddingModel).toBe(fingerprint);
+    expect(searchCalls[0]?.[3]).toBe(fingerprint);
+  });
+
   test("writes the pair with the runtime's storage identities and transport ids", async () => {
     const { writer, inserts } = scriptedWriter();
     const storage = sharedTodoStorageScope({ sourceAgentId: AGENT_KEY, ownerId: USER });

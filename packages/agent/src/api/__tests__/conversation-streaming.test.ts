@@ -730,10 +730,19 @@ describe("generateChatResponse token streaming", () => {
         thought: "Opened the Notes view successfully.",
       },
     });
+    const internalContextPayload = JSON.stringify({
+      type: "context_event",
+      event: {
+        id: "context-1",
+        type: "planner",
+        source: "sub-planner",
+      },
+    });
     const service: MessageService = {
       async handleMessage(_runtime, _message, _callback, options) {
         await options?.onStreamChunk?.(internalToolPayload);
         await options?.onStreamChunk?.(internalEvaluationPayload);
+        await options?.onStreamChunk?.(internalContextPayload);
         return {
           didRespond: true,
           responseContent: { text: "Navigated to Notes (gui)." },

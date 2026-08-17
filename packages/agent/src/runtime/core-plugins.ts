@@ -337,14 +337,10 @@ export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
   // inference) are coding surfaces a chat-only agent never uses.
   "@elizaos/plugin-pty",
   "@elizaos/plugin-cli-inference",
-  // Cloud chat agents route models to Eliza Cloud (plugin-elizacloud), which
-  // serves TEXT_EMBEDDING via the fast 1536-dim cloud endpoint. plugin-local-
-  // inference otherwise wins the TEXT_EMBEDDING registration with an on-device
-  // gte-small GGUF that runs on the container's (contended) CPU — measured at
-  // 1.5–98s per batch and ~30s/turn on a dedicated agent, plus a 384↔1536
-  // dimension mismatch that drops every memory insert. A cloud agent has no
-  // local GPU and no reason to run local inference, so exclude it and let the
-  // cloud embedding handler serve TEXT_EMBEDDING.
+  // Cloud chat agents use the managed canonical BGE-small endpoint. Loading the
+  // same canonical GGUF in a contended CPU-only container adds avoidable model
+  // memory and cold-start cost, so exclude local inference and let the remote
+  // provider serve the identical attested semantic space.
   "@elizaos/plugin-local-inference",
   // Cloud agent containers are Steward-provisioned (ELIZA_CLOUD_PROVISIONED=1 +
   // STEWARD_API_URL + STEWARD_AGENT_TOKEN), which trips plugin-wallet's

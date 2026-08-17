@@ -5,6 +5,7 @@
  */
 import {
 	type AgentRuntime,
+	CANONICAL_EMBEDDING_DIMENSION,
 	ModelType,
 	type Service,
 	type ServiceClass,
@@ -35,7 +36,9 @@ const engineState = vi.hoisted(() => ({
 	canEmbed: vi.fn(() => false),
 	conversation: vi.fn(() => null),
 	currentModelPath: vi.fn(() => null),
-	embed: vi.fn(async () => [[0.1, 0.2]]),
+	embed: vi.fn(async () => [
+		Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0)),
+	]),
 	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
 	generate: vi.fn(async () => "ok"),
 	generateInConversation: vi.fn(async () => ({
@@ -151,7 +154,13 @@ function makeRuntime(): {
 			loaderState.generateCalls.push(args);
 			return "ok";
 		}),
-		embed: vi.fn(async () => ({ embedding: [0.1, 0.2], tokens: 2 })),
+		embed: vi.fn(async () => ({
+			embedding: Array.from(
+				{ length: CANONICAL_EMBEDDING_DIMENSION },
+				(_, index) => (index === 0 ? 1 : 0),
+			),
+			tokens: 2,
+		})),
 	};
 	let runtime!: AgentRuntime;
 	runtime = {

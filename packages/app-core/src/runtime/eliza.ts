@@ -104,16 +104,11 @@ export async function bootElizaRuntime(
   // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
   // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
   // still surfaces progress through the startup overlay.
-  prepareLocalEmbeddingWarmup(opts.onEmbeddingProgress);
-
-  // Default the embedding-vector dimension plugin-sql provisions to 384 when
-  // unset: that is the compact SQL-safe column and the native width of the
-  // standalone gte-small embedding model. Setting it here lets plugin-sql
-  // provision the column without a boot-time model probe (see core
-  // provisioning). An explicit EMBEDDING_DIMENSION — a different local model,
-  // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
-  // still wins.
+  // Width is part of the canonical BGE-small semantic-space identity, so a
+  // stale same-process override may not survive into SQL provisioning or the
+  // asynchronously-started warmup.
   ensureDefaultEmbeddingDimension();
+  prepareLocalEmbeddingWarmup(opts.onEmbeddingProgress);
 
   // The agent host drains registry-declared pre-ready hooks during initialize.
   // Expose the app-bundled native library before entering that shared path.
@@ -186,10 +181,9 @@ export async function startEliza(
   // Fire-and-forget — see comment at the matching call in bootElizaRuntime
   // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
   // time while the warmup runs alongside.
-  prepareLocalEmbeddingWarmup(options?.onEmbeddingProgress);
-
-  // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
+  // Pin before starting the asynchronous warmup — see bootElizaRuntime.
   ensureDefaultEmbeddingDimension();
+  prepareLocalEmbeddingWarmup(options?.onEmbeddingProgress);
 
   if (options?.serverOnly) {
     return await startServerOnlyHost({

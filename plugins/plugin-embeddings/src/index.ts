@@ -21,7 +21,12 @@ import type {
   ProcessEnvLike,
   TextEmbeddingParams,
 } from "@elizaos/core";
-import { assertCanonicalEmbeddingConfig, logger, ModelType } from "@elizaos/core";
+import {
+  assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  logger,
+  ModelType,
+} from "@elizaos/core";
 
 import {
   handleBatchTextEmbedding,
@@ -32,6 +37,7 @@ import {
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
   getEmbeddingModel,
+  getEmbeddingPooling,
   hasEmbeddingConfig,
   logResolvedConfig,
 } from "./utils/config";
@@ -68,6 +74,7 @@ export const embeddingsPlugin: Plugin = {
     EMBEDDING_BASE_URL: env.EMBEDDING_BASE_URL ?? null,
     EMBEDDING_API_KEY: env.EMBEDDING_API_KEY ?? null,
     EMBEDDING_MODEL: env.EMBEDDING_MODEL ?? null,
+    EMBEDDING_POOLING: env.EMBEDDING_POOLING ?? null,
     EMBEDDING_FALLBACK_BASE_URL: env.EMBEDDING_FALLBACK_BASE_URL ?? null,
     EMBEDDING_FALLBACK_API_KEY: env.EMBEDDING_FALLBACK_API_KEY ?? null,
     EMBEDDING_FALLBACK_MODEL: env.EMBEDDING_FALLBACK_MODEL ?? null,
@@ -89,7 +96,7 @@ export const embeddingsPlugin: Plugin = {
     assertCanonicalEmbeddingConfig(
       getEmbeddingModel(runtime),
       getEmbeddingDimensions(runtime),
-      "EMBEDDING_*"
+      getEmbeddingPooling(runtime)
     );
     if (!getEmbeddingBaseURL(runtime)) {
       logger.warn(
@@ -124,6 +131,15 @@ export const embeddingsPlugin: Plugin = {
       runtime: IAgentRuntime,
       params: BatchTextEmbeddingParams
     ): Promise<number[][]> => handleBatchTextEmbedding(runtime, params.texts),
+  },
+
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    },
+    [ModelType.TEXT_EMBEDDING_BATCH]: {
+      embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    },
   },
 };
 

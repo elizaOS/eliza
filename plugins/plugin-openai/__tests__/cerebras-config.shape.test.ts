@@ -295,7 +295,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getUsageProvider(runtime)).toBe("openai");
   });
 
-  it("refuses to fabricate embeddings in Cerebras mode without the canonical endpoint", async () => {
+  it("refuses synthetic embeddings in Cerebras mode without a canonical endpoint", async () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
@@ -307,8 +307,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
 
     await expect(
       handleTextEmbedding(runtime, { text: "remember the launch code" })
-    ).rejects.toThrow(/OPENAI_EMBEDDING_URL is required/);
-
+    ).rejects.toThrow(/OPENAI_EMBEDDING_URL.*required/i);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

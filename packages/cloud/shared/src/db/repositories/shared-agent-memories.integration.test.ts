@@ -212,6 +212,63 @@ describe("SharedAgentMemoriesWriter.mergeMessageMemory (real PGlite)", () => {
     });
   });
 
+  test("clears a stale embedding pair when text changes and atomically accepts a replacement pair", async () => {
+    await sharedAgentMemoriesWriter.mergeMessageMemory({
+      ...message("partial", true),
+      embedding: [1, 0, 0],
+      embeddingModel: "partial-space",
+    });
+
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("complete response", false));
+    let [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content.text).toBe("complete response");
+    expect(row?.embedding).toBeNull();
+    expect(row?.embedding_model).toBeNull();
+
+    await sharedAgentMemoriesWriter.mergeMessageMemory({
+      ...message("replacement response", false),
+      embedding: [0, 1, 0],
+      embeddingModel: "replacement-space",
+    });
+    [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content.text).toBe("replacement response");
+    expect(row?.embedding).toEqual([0, 1, 0]);
+    expect(row?.embedding_model).toBe("replacement-space");
+  });
+
+  test("retains an embedding pair when only interrupted metadata changes", async () => {
+    await sharedAgentMemoriesWriter.mergeMessageMemory({
+      ...message("same response text", true),
+      embedding: [1, 0, 0],
+      embeddingModel: "same-text-space",
+    });
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("same response text", false));
+
+    const [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content).toEqual({
+      text: "same response text",
+      source: "shared-runtime",
+      channelType: "DM",
+    });
+    expect(row?.embedding).toEqual([1, 0, 0]);
+    expect(row?.embedding_model).toBe("same-text-space");
+  });
+
+  test("rejects half-supplied embedding metadata before writing", async () => {
+    await expect(
+      sharedAgentMemoriesWriter.mergeMessageMemory({
+        ...message("missing model", false),
+        embedding: [1, 0, 0],
+      }),
+    ).rejects.toThrow("must be supplied together");
+    await expect(
+      sharedAgentMemoriesWriter.mergeMessageMemory({
+        ...message("missing vector", false),
+        embeddingModel: "orphan-model",
+      }),
+    ).rejects.toThrow("must be supplied together");
+  });
+
   test("rejects a colliding id outside the tenant on the merge path", async () => {
     await sharedAgentMemoriesWriter.mergeMessageMemory(message("tenant A", true));
     await expect(
@@ -263,13 +320,15 @@ describe("SharedAgentMemoriesReader.listRecentByRoom (real PGlite)", () => {
 });
 
 describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)", () => {
-  test("ranks the tenant's rows by true cosine distance and never leaks across tenants", async () => {
+  test("ranks only the tenant's exact vector space and excludes same-width legacy models", async () => {
+    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeA,
       roomId: ROOM_A,
       type: "messages",
       content: { text: "exact match" },
       embedding: [1, 0, 0],
+      embeddingModel: fingerprint,
     });
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeA,
@@ -277,6 +336,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       type: "messages",
       content: { text: "near match" },
       embedding: [0.9, 0.1, 0],
+      embeddingModel: fingerprint,
     });
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeA,
@@ -284,6 +344,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       type: "messages",
       content: { text: "orthogonal" },
       embedding: [0, 1, 0],
+      embeddingModel: fingerprint,
     });
     // Dimension mismatch: must be filtered out, not fail the whole query.
     await sharedAgentMemoriesWriter.insertMemory({
@@ -292,6 +353,16 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       type: "messages",
       content: { text: "other model dims" },
       embedding: [1, 0],
+      embeddingModel: fingerprint,
+    });
+    // Same width and tenant, but an incompatible legacy vector space.
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeA,
+      roomId: ROOM_A,
+      type: "messages",
+      content: { text: "legacy GTE exact match" },
+      embedding: [1, 0, 0],
+      embeddingModel: "thenlper/gte-small:384:mean:l2:v1",
     });
     // Same vector in tenant B: a leak would rank first.
     await sharedAgentMemoriesWriter.insertMemory({
@@ -300,9 +371,15 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       type: "messages",
       content: { text: "tenant B exact match" },
       embedding: [1, 0, 0],
+      embeddingModel: fingerprint,
     });
 
-    const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, [1, 0, 0], 5);
+    const hits = await sharedAgentMemoriesReader.searchByEmbedding(
+      scopeA,
+      [1, 0, 0],
+      5,
+      fingerprint,
+    );
     expect(hits.map((hit) => hit.content.text)).toEqual([
       "exact match",
       "near match",

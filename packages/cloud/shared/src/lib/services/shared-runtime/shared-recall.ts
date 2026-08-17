@@ -3,29 +3,50 @@
  * FACTS-provider embedding fallback (#20514): the lexical salience path in
  * shared-runtime-history-policy.ts stays primary, and an embedding search over
  * the tenant Postgres transcript runs ONLY when that keyword path missed.
- * Embeddings come from a sidecar exposing the OpenAI `/v1/embeddings` shape
- * with `bge-small-en-v1.5` (384 dimensions).
+ * Embeddings come from the native Cloudflare Workers AI binding with the
+ * canonical BGE-small vector-space contract (384 dimensions, mean pooling,
+ * explicit L2 normalization).
  *
  * `buildSharedRecallContext` is pure orchestration over injected
  * `embed`/`storeSearch` collaborators and owns no degrade policy: failures
  * propagate typed so the live turn boundary decides whether recall loss is
- * survivable. Sidecar calls are fail-fast with a single bounded attempt (5s
- * abort, no retries); the caller owns retry/backoff policy.
+ * survivable. Workers AI calls are fail-fast with a single bounded attempt
+ * (5s abort, no retries); the caller owns retry/backoff policy.
  */
 
-import { ElizaError } from "@elizaos/core/edge";
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MAX_CONTEXT_TOKENS,
+  CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+  CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  ElizaError,
+  normalizeCanonicalEmbedding,
+  prepareCanonicalEmbeddingInput,
+} from "@elizaos/core/edge";
+import type { RuntimeWorkersAiBinding } from "../../../types/cloud-worker-env";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
 export const SHARED_RECALL_EDGE_COMPATIBILITY = {
   target: "edge",
   state: "tenant-postgres",
-  effects: ["tenant-postgres-read", "sidecar-embeddings"],
-  requiredBindings: ["HYPERDRIVE"],
+  effects: ["tenant-postgres-read", "workers-ai-embeddings"],
+  requiredBindings: ["HYPERDRIVE", "AI"],
   requiredSecrets: [],
 } as const;
 
-export const SHARED_RECALL_EMBEDDING_MODEL = "bge-small-en-v1.5";
-export const SHARED_RECALL_EMBEDDING_DIMENSIONS = 384;
+/** Exact Workers AI catalog id. It is distinct from the persisted space fingerprint. */
+export const SHARED_RECALL_WORKERS_AI_MODEL = "@cf/baai/bge-small-en-v1.5" as const;
+/** Persisted in `embedding_model` so legacy same-width GTE/BGE vectors never mix. */
+export const SHARED_RECALL_EMBEDDING_MODEL = CANONICAL_EMBEDDING_SPACE_FINGERPRINT;
+export const SHARED_RECALL_EMBEDDING_DIMENSIONS = CANONICAL_EMBEDDING_DIMENSION;
+export const SHARED_RECALL_EMBEDDING_POOLING = CANONICAL_EMBEDDING_POOLING;
+/** BGE context size retained for diagnostics and compatibility. */
+export const SHARED_RECALL_EMBED_MAX_INPUT_TOKENS = CANONICAL_EMBEDDING_MAX_CONTEXT_TOKENS;
+/** Conservative core boundary enforced before Workers AI dispatch. */
+export const SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS = CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS;
+/** Workers AI synchronous text-array limit from the model schema. */
+export const SHARED_RECALL_EMBED_MAX_BATCH_SIZE = 100;
 export const SHARED_RECALL_EMBED_TIMEOUT_MS = 5_000;
 export const SHARED_RECALL_DEFAULT_TOP_K = 5;
 export const SHARED_RECALL_DEFAULT_MAX_CHARS = 1_200;
@@ -62,7 +83,7 @@ export interface BuildSharedRecallContextInput {
   queryText: string;
   /** The already-projected recent window; recalled rows duplicated here are dropped. */
   history: readonly SharedTurnMessage[];
-  /** Embeds the query text (normally `embedTextViaSidecar` partially applied). */
+  /** Embeds the query text (normally `embedTextViaWorkersAi` partially applied). */
   embed: (text: string) => Promise<number[]>;
   /** Vector search over the tenant transcript store, ranked best match first. */
   storeSearch: (vector: number[]) => Promise<SharedRecallRow[]>;
@@ -72,181 +93,173 @@ export interface BuildSharedRecallContextInput {
   maxChars?: number;
 }
 
-function readSidecarEmbedding(payload: unknown): number[] | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
-  const data = (payload as { data?: unknown }).data;
-  if (!Array.isArray(data) || data.length === 0) return undefined;
-  const first = data[0];
-  if (!first || typeof first !== "object") return undefined;
-  const embedding = (first as { embedding?: unknown }).embedding;
-  if (!Array.isArray(embedding) || embedding.length === 0) return undefined;
-  if (!embedding.every((value) => typeof value === "number" && Number.isFinite(value))) {
-    return undefined;
+export interface RenderSharedRecallContextInput {
+  /** Already-ranked semantic hits, normally from the exact-query warm cache. */
+  rows: readonly SharedRecallRow[];
+  /** The current recent window; duplicate cached rows are removed at render time. */
+  history: readonly SharedTurnMessage[];
+  topK?: number;
+  maxChars?: number;
+}
+
+function invalidWorkersAiResponse(reason: string, context: Record<string, unknown> = {}): never {
+  throw new ElizaError("Workers AI returned an invalid embedding response", {
+    code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+    context: { reason, ...context },
+    severity: "ephemeral",
+  });
+}
+
+function validateWorkersAiEmbeddingResponse(payload: unknown, expectedCount: number): number[][] {
+  if (!payload || typeof payload !== "object") {
+    invalidWorkersAiResponse("missing-response-object");
   }
-  return embedding as number[];
+  const response = payload as { data?: unknown; pooling?: unknown; shape?: unknown };
+  if (response.pooling !== undefined && response.pooling !== SHARED_RECALL_EMBEDDING_POOLING) {
+    invalidWorkersAiResponse("wrong-pooling", {
+      expected: SHARED_RECALL_EMBEDDING_POOLING,
+      actual: response.pooling,
+    });
+  }
+  if (response.shape !== undefined) {
+    const validShape =
+      Array.isArray(response.shape) &&
+      response.shape.length === 2 &&
+      response.shape[0] === expectedCount &&
+      response.shape[1] === SHARED_RECALL_EMBEDDING_DIMENSIONS;
+    if (!validShape) {
+      invalidWorkersAiResponse("wrong-shape", {
+        expected: [expectedCount, SHARED_RECALL_EMBEDDING_DIMENSIONS],
+        actual: response.shape,
+      });
+    }
+  }
+  if (!Array.isArray(response.data) || response.data.length !== expectedCount) {
+    invalidWorkersAiResponse("invalid-vector-count", {
+      expected: expectedCount,
+      actual: Array.isArray(response.data) ? response.data.length : undefined,
+    });
+  }
+
+  return response.data.map((candidate, index) => {
+    if (!Array.isArray(candidate)) {
+      invalidWorkersAiResponse("missing-vector", { index });
+    }
+    if (candidate.length !== SHARED_RECALL_EMBEDDING_DIMENSIONS) {
+      invalidWorkersAiResponse("wrong-dimensions", {
+        index,
+        expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
+        actual: candidate.length,
+      });
+    }
+    if (!candidate.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      invalidWorkersAiResponse("non-finite-vector", { index });
+    }
+    try {
+      return normalizeCanonicalEmbedding(candidate as number[]);
+    } catch (cause) {
+      // error-policy:J3 malformed provider output must fail closed before it
+      // can enter vector storage or similarity search.
+      throw new ElizaError("Workers AI returned an unnormalizable embedding", {
+        code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+        cause,
+        context: { reason: "invalid-l2-norm", index },
+        severity: "ephemeral",
+      });
+    }
+  });
 }
 
 /**
- * Embeds one text through the platform embedding sidecar's OpenAI-shaped
- * `POST <baseUrl>/v1/embeddings` endpoint. Single attempt, 5s abort, typed
- * failures; never returns a partial or fabricated vector.
+ * Batch-embeds texts through the native Workers AI binding in input order.
+ * The model and mean pooling are explicit, the binding's 100-text synchronous
+ * limit and core's conservative 510-code-unit input boundary are enforced
+ * locally. A single bounded attempt either returns validated, L2-normalized
+ * canonical vectors or throws; partial/fabricated vectors are never returned.
  */
-/**
- * Batch variant of {@link embedTextViaSidecar}: one sidecar call for several
- * texts, vectors returned in input order. Used by the write path so a turn
- * pair costs a single embedding round-trip. Same 5s abort and typed failures;
- * a count mismatch is an invalid response, never a partial result.
- */
-export async function embedTextsViaSidecar(
-  baseUrl: string,
-  apiKey: string | undefined,
+export async function embedTextsViaWorkersAi(
+  ai: RuntimeWorkersAiBinding,
   texts: string[],
+  options: { tags?: string[] } = {},
 ): Promise<number[][]> {
-  const cleaned = texts.map((text) => text.trim());
-  if (cleaned.length === 0 || cleaned.some((text) => !text)) {
-    throw new ElizaError("Embedding sidecar rejected blank input text", {
+  if (!Array.isArray(texts) || texts.length === 0) {
+    throw new ElizaError("Workers AI embedding rejected blank input text", {
       code: "SHARED_RECALL_EMBEDDING_EMPTY_TEXT",
       severity: "fatal",
     });
   }
-  const url = `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({ input: cleaned, model: SHARED_RECALL_EMBEDDING_MODEL }),
-      signal: AbortSignal.timeout(SHARED_RECALL_EMBED_TIMEOUT_MS),
-    });
-  } catch (error) {
-    throw new ElizaError("Embedding sidecar was unreachable", {
-      code: "SHARED_RECALL_EMBEDDING_UNREACHABLE",
-      cause: error instanceof Error ? error : undefined,
-    });
+  const cleaned = new Array<string>(texts.length);
+  for (let index = 0; index < texts.length; index += 1) {
+    try {
+      cleaned[index] = prepareCanonicalEmbeddingInput(texts[index]);
+    } catch (cause) {
+      const blank = typeof texts[index] === "string" && texts[index].trim().length === 0;
+      throw new ElizaError(
+        blank
+          ? "Workers AI embedding rejected blank input text"
+          : "Workers AI embedding rejected invalid canonical input text",
+        {
+          code: blank
+            ? "SHARED_RECALL_EMBEDDING_EMPTY_TEXT"
+            : "SHARED_RECALL_EMBEDDING_INVALID_INPUT",
+          cause,
+          context: {
+            index,
+            maxInputCodeUnits: SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS,
+          },
+          severity: "fatal",
+        },
+      );
+    }
   }
-  if (!response.ok) {
-    throw new ElizaError(`Embedding sidecar returned HTTP ${response.status}`, {
-      code: "SHARED_RECALL_EMBEDDING_HTTP_ERROR",
-      context: { status: response.status },
-    });
-  }
-  let payload: { data?: Array<{ embedding?: unknown }> };
-  try {
-    payload = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
-  } catch (cause) {
-    // error-policy:J3 a non-JSON 2xx body becomes an explicit invalid-response
-    // failure so the memory store can degrade to vector-less rows.
-    throw new ElizaError("Embedding sidecar returned a non-JSON batch body", {
-      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
-      cause,
-      context: { reason: "non-json-body" },
-      severity: "ephemeral",
-    });
-  }
-  const data = Array.isArray(payload?.data) ? payload.data : [];
-  const vectors = data.map((entry) => readSidecarEmbedding({ data: [entry] }));
-  const wrongDimensionIndex = vectors.findIndex(
-    (vector) => vector !== undefined && vector.length !== SHARED_RECALL_EMBEDDING_DIMENSIONS,
-  );
-  if (
-    vectors.length !== cleaned.length ||
-    vectors.some((vector) => vector === undefined) ||
-    wrongDimensionIndex !== -1
-  ) {
-    throw new ElizaError("Embedding sidecar returned an invalid batch response", {
-      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
-      context:
-        wrongDimensionIndex === -1
-          ? { reason: "invalid-vector-count", expected: cleaned.length, received: vectors.length }
-          : {
-              reason: "wrong-dimensions",
-              index: wrongDimensionIndex,
-              expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
-              actual: vectors[wrongDimensionIndex]?.length,
-            },
-      severity: "ephemeral",
-    });
-  }
-  return vectors as number[][];
-}
-
-export async function embedTextViaSidecar(
-  baseUrl: string,
-  apiKey: string | undefined,
-  text: string,
-): Promise<number[]> {
-  if (!text.trim()) {
-    throw new ElizaError("Embedding sidecar rejected blank input text", {
-      code: "SHARED_RECALL_EMBEDDING_EMPTY_TEXT",
+  if (cleaned.length > SHARED_RECALL_EMBED_MAX_BATCH_SIZE) {
+    throw new ElizaError("Workers AI embedding batch exceeds the synchronous model limit", {
+      code: "SHARED_RECALL_EMBEDDING_BATCH_LIMIT",
+      context: { actual: cleaned.length, max: SHARED_RECALL_EMBED_MAX_BATCH_SIZE },
       severity: "fatal",
-    });
-  }
-  const url = `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({ input: text, model: SHARED_RECALL_EMBEDDING_MODEL }),
-      signal: AbortSignal.timeout(SHARED_RECALL_EMBED_TIMEOUT_MS),
-    });
-  } catch (cause) {
-    // error-policy:J2 network/timeout failure gains the sidecar identity and
-    // bounded-attempt context before the caller's retry policy classifies it.
-    throw new ElizaError("Embedding sidecar request failed", {
-      code: "SHARED_RECALL_EMBEDDING_UNREACHABLE",
-      cause,
-      context: { url, timeoutMs: SHARED_RECALL_EMBED_TIMEOUT_MS },
-      severity: "ephemeral",
-    });
-  }
-  if (!response.ok) {
-    throw new ElizaError(`Embedding sidecar returned HTTP ${response.status}`, {
-      code: "SHARED_RECALL_EMBEDDING_HTTP_ERROR",
-      context: { url, status: response.status },
-      severity: "ephemeral",
     });
   }
   let payload: unknown;
   try {
-    payload = await response.json();
+    payload = await ai.run(
+      SHARED_RECALL_WORKERS_AI_MODEL,
+      {
+        text: cleaned,
+        pooling: SHARED_RECALL_EMBEDDING_POOLING,
+      },
+      {
+        signal: AbortSignal.timeout(SHARED_RECALL_EMBED_TIMEOUT_MS),
+        tags: options.tags ?? ["eliza:shared-recall"],
+      },
+    );
   } catch (cause) {
-    // error-policy:J3 a non-JSON 2xx body becomes an explicit invalid-response
-    // failure, never an empty or fabricated vector.
-    throw new ElizaError("Embedding sidecar returned a non-JSON body", {
-      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+    // error-policy:J2 binding/provider/timeout failures gain the exact model
+    // and bounded-attempt context before the turn boundary degrades recall.
+    throw new ElizaError("Workers AI embedding request failed", {
+      code: "SHARED_RECALL_EMBEDDING_UNREACHABLE",
       cause,
-      context: { url, reason: "non-json-body" },
-      severity: "ephemeral",
-    });
-  }
-  const embedding = readSidecarEmbedding(payload);
-  if (!embedding) {
-    throw new ElizaError("Embedding sidecar response omitted a numeric embedding", {
-      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
-      context: { url, reason: "missing-embedding" },
-      severity: "ephemeral",
-    });
-  }
-  if (embedding.length !== SHARED_RECALL_EMBEDDING_DIMENSIONS) {
-    throw new ElizaError("Embedding sidecar returned the wrong vector dimensionality", {
-      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
       context: {
-        url,
-        reason: "wrong-dimensions",
-        expected: SHARED_RECALL_EMBEDDING_DIMENSIONS,
-        actual: embedding.length,
+        model: SHARED_RECALL_WORKERS_AI_MODEL,
+        pooling: SHARED_RECALL_EMBEDDING_POOLING,
+        maxInputTokens: SHARED_RECALL_EMBED_MAX_INPUT_TOKENS,
+        timeoutMs: SHARED_RECALL_EMBED_TIMEOUT_MS,
       },
       severity: "ephemeral",
     });
   }
-  return embedding;
+  return validateWorkersAiEmbeddingResponse(payload, cleaned.length);
+}
+
+export async function embedTextViaWorkersAi(
+  ai: RuntimeWorkersAiBinding,
+  text: string,
+): Promise<number[]> {
+  const vectors = await embedTextsViaWorkersAi(ai, [text]);
+  const vector = vectors[0];
+  if (!vector) {
+    invalidWorkersAiResponse("missing-single-vector");
+  }
+  return vector;
 }
 
 function clipRowContent(content: string): string {
@@ -286,6 +299,22 @@ export async function buildSharedRecallContext(
 
   const vector = await input.embed(queryText);
   const rows = await input.storeSearch(vector);
+
+  return renderSharedRecallContext({
+    rows,
+    history: input.history,
+    ...(input.topK !== undefined ? { topK: input.topK } : {}),
+    ...(input.maxChars !== undefined ? { maxChars: input.maxChars } : {}),
+  });
+}
+
+/**
+ * Render already-ranked recall rows without provider or database I/O. This is
+ * deliberately synchronous so a cache hit can enrich a prompt without adding
+ * an embedding/search await before provider dispatch.
+ */
+export function renderSharedRecallContext(input: RenderSharedRecallContextInput): string | null {
+  const rows = input.rows;
 
   const seenIds = new Set<string>();
   const seenContents = new Set<string>();

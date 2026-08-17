@@ -54,7 +54,9 @@ export class RecursiveCharacterTextSplitter {
 				splits = text.split(separator);
 			}
 		} else {
-			splits = text.split("");
+			// Iterate Unicode code points so a valid supplementary character is
+			// never divided into two ill-formed UTF-16 fragments.
+			splits = Array.from(text);
 		}
 		return splits.filter((s) => s !== "");
 	}

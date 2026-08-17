@@ -8,6 +8,7 @@ const streamTextMock = vi.fn((_options?: { onError?: (event: { error: unknown })
     yield "go";
     yield " stop";
   })(),
+  text: Promise.resolve("gogo stop"),
   usage: Promise.resolve(undefined),
   finishReason: Promise.resolve("stop"),
 }));
@@ -37,6 +38,7 @@ vi.mock("@elizaos/core", () => ({
     }
   },
   logger: { log: vi.fn(), warn: loggerWarnMock },
+  EventType: { MODEL_USED: "MODEL_USED" },
   ModelType: { TEXT_SMALL: "TEXT_SMALL", TEXT_LARGE: "TEXT_LARGE" },
 }));
 
@@ -228,6 +230,32 @@ describe("z.ai text parameter resolution", () => {
         finishReason: Promise.resolve(undefined),
       };
     });
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        stream: true,
+        onStreamChunk: () => undefined,
+      })
+    ).rejects.toBe(providerError);
+  });
+
+  it("rejects an aggregate-text failure when the adapter omits onError", async () => {
+    const providerError = new Error("z.ai aggregate failed");
+    streamTextMock.mockImplementationOnce(() => ({
+      textStream: (async function* () {})(),
+      text: Promise.reject(providerError),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve(undefined),
+    }));
     const runtime = {
       character: {},
       getSetting(key: string) {

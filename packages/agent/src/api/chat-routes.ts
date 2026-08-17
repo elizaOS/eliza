@@ -1169,6 +1169,10 @@ function isInternalStructuredStreamPayload(value: unknown): boolean {
     return true;
   }
 
+  if (type === "context_event") {
+    return true;
+  }
+
   if (type === "evaluation" && asRecord(record.evaluation)) {
     return true;
   }

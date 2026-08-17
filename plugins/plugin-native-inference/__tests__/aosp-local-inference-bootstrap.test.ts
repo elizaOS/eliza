@@ -7,7 +7,12 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AgentRuntime, ModelType } from "@elizaos/core";
+import {
+  AgentRuntime,
+  CANONICAL_EMBEDDING_GGUF_FILENAME,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  ModelType,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   firstSentenceEndIndex,
@@ -19,7 +24,6 @@ import {
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
-  disabledAospEmbeddingVector,
   ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
@@ -144,6 +148,7 @@ describe("AOSP headless boot ownership", () => {
     await withEnvAsync(
       {
         ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_EMBEDDING_ENABLED: "1",
         ELIZA_DISABLE_FFI_LLAMA: undefined,
         ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
         ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
@@ -219,6 +224,15 @@ describe("AOSP headless boot ownership", () => {
                 ),
             ).toHaveLength(1);
           }
+          expect(
+            runtime
+              .getModelRegistrations()
+              .find(
+                (entry) =>
+                  entry.modelType === ModelType.TEXT_EMBEDDING &&
+                  entry.provider === "eliza-aosp-llama",
+              )?.metadata?.embeddingSpaceFingerprint,
+          ).toBe(CANONICAL_EMBEDDING_SPACE_FINGERPRINT);
 
           const handler = runtime.getModel(ModelType.TEXT_SMALL);
           if (!handler) throw new Error("AOSP TEXT_SMALL handler missing");
@@ -608,6 +622,30 @@ describe("readAssignedBundledModels", () => {
     });
   });
 
+  it("rejects an assigned arbitrary same-width semantic model", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-wrong-embed-"));
+    const modelsDir = path.join(root, "local-inference", "models");
+    mkdirSync(modelsDir, { recursive: true });
+    const legacyModel = path.join(modelsDir, "gte-small_fp16.gguf");
+    writeFileSync(legacyModel, "legacy same-width embedding");
+    writeFileSync(
+      path.join(root, "local-inference", "assignments.json"),
+      JSON.stringify({
+        version: 1,
+        assignments: { TEXT_EMBEDDING: "gte-small" },
+      }),
+    );
+    writeFileSync(
+      path.join(root, "local-inference", "registry.json"),
+      JSON.stringify({
+        version: 1,
+        models: [{ id: "gte-small", path: legacyModel }],
+      }),
+    );
+
+    expect(readAssignedBundledModels(modelsDir).embedding).toBeNull();
+  });
+
   it("maps registry paths copied from another state root into the current device root", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-assigned-remap-"));
     const modelsDir = path.join(root, "local-inference", "models");
@@ -848,11 +886,110 @@ describe("AOSP embedding gate", () => {
     ).toBe(true);
   });
 
-  it("returns a SQL-compatible zero vector while native embeddings are disabled", () => {
-    expect(disabledAospEmbeddingVector({})).toHaveLength(384);
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
-    ).toHaveLength(1024);
+  it("does not advertise a semantic handler while native embeddings are disabled", async () => {
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-no-embed-"));
+    const modelsDir = path.join(stateDir, "local-inference", "models");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(path.join(modelsDir, "eliza-1-2b-128k.gguf"), "chat");
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_EMBEDDING_ENABLED: undefined,
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        const loader: AospLoader = {
+          loadModel: async () => undefined,
+          unloadModel: async () => undefined,
+          currentModelPath: () => null,
+          generate: async () => "ok",
+          embed: async () => ({ embedding: [1], tokens: 1 }),
+        };
+        try {
+          await ensureAospLocalInferenceHandlers(runtime, {
+            buildLoader: async () => loader,
+            prewarm: false,
+          });
+          expect(
+            runtime
+              .getModelRegistrations()
+              .some(
+                (entry) =>
+                  entry.modelType === ModelType.TEXT_EMBEDDING &&
+                  entry.provider === "eliza-aosp-llama",
+              ),
+          ).toBe(false);
+        } finally {
+          await runtime.stop({ fast: true });
+        }
+      },
+    );
+  });
+
+  it("rejects arbitrary bytes renamed to the canonical GGUF before native embed", async () => {
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-bad-embed-"));
+    const modelsDir = path.join(stateDir, "local-inference", "models");
+    mkdirSync(modelsDir, { recursive: true });
+    const embeddingPath = path.join(
+      modelsDir,
+      CANONICAL_EMBEDDING_GGUF_FILENAME,
+    );
+    writeFileSync(embeddingPath, "arbitrary renamed bytes");
+    writeFileSync(
+      path.join(modelsDir, "manifest.json"),
+      JSON.stringify({
+        models: [
+          {
+            role: "embedding",
+            ggufFile: CANONICAL_EMBEDDING_GGUF_FILENAME,
+          },
+        ],
+      }),
+    );
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_EMBEDDING_ENABLED: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        let embedCalls = 0;
+        const loader: AospLoader = {
+          loadModel: async () => undefined,
+          unloadModel: async () => undefined,
+          currentModelPath: () => null,
+          generate: async () => "ok",
+          embed: async () => {
+            embedCalls += 1;
+            return { embedding: new Array(384).fill(1), tokens: 1 };
+          },
+        };
+        try {
+          await ensureAospLocalInferenceHandlers(runtime, {
+            buildLoader: async () => loader,
+            prewarm: false,
+          });
+          const handler = runtime.getModel(ModelType.TEXT_EMBEDDING);
+          if (!handler) throw new Error("AOSP TEXT_EMBEDDING handler missing");
+          await expect(handler(runtime, { text: "hello" })).rejects.toThrow(
+            /GGUF size mismatch/i,
+          );
+          expect(embedCalls).toBe(0);
+        } finally {
+          await runtime.stop({ fast: true });
+        }
+      },
+    );
   });
 });
 

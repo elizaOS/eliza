@@ -14,6 +14,7 @@ import {
   type AgentRunSummary,
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -358,7 +359,12 @@ function isDuplicateKeyError(error: unknown): boolean {
 
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
+import {
+  bgeSmallEnV15EmbeddingTable,
+  DIMENSION_MAP,
+  EMBEDDING_DIMENSION_BY_COLUMN,
+  type EmbeddingDimensionColumn,
+} from "./schema/embedding";
 import {
   agentTable,
   cacheTable,
@@ -487,6 +493,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly maxDelay: number = 10000;
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  private canonicalBgeStorageActive = false;
   protected readonly databaseBackend: DatabaseBackend = "unknown";
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
@@ -524,6 +531,51 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   public abstract init(): Promise<void>;
   public abstract close(): Promise<void>;
+
+  /**
+   * Return the physical table selected for the active semantic space. The BGE
+   * table intentionally exposes the same `dim384` property name as the legacy
+   * table, so all query/write paths can share one dimension-keyed shape while
+   * Drizzle still emits the versioned table and physical `embedding` column.
+   */
+  private getActiveEmbeddingTable(): typeof embeddingTable {
+    return this.canonicalBgeStorageActive
+      ? (bgeSmallEnV15EmbeddingTable as unknown as typeof embeddingTable)
+      : embeddingTable;
+  }
+
+  /**
+   * Join an embedding only when it was generated from the memory's current
+   * exact non-blank text. Unstamped, null, or whitespace-only source rows are
+   * never valid vectors. The comparison is computed by PostgreSQL, so an old
+   * binary's raw content update is caught without its cooperation.
+   */
+  private activeEmbeddingJoinCondition(
+    embeddingMemoryId: SQLWrapper,
+    memoryId: SQLWrapper,
+    memoryContent: SQLWrapper
+  ): SQL {
+    const memoryMatches = sql`${embeddingMemoryId} = ${memoryId}`;
+    if (!this.canonicalBgeStorageActive) return memoryMatches;
+    return sql`${memoryMatches}
+      AND ${bgeSmallEnV15EmbeddingTable.sourceText} IS NOT NULL
+      AND btrim(${bgeSmallEnV15EmbeddingTable.sourceText}) <> ''
+      AND ${bgeSmallEnV15EmbeddingTable.sourceText} = (${memoryContent}->>'text')`;
+  }
+
+  /** Read the exact currently persisted source text inside the vector write transaction. */
+  private async getEmbeddableSourceText(
+    tx: DrizzleDatabase,
+    memoryId: UUID
+  ): Promise<string | null> {
+    const rows = await tx
+      .select({ text: sql<string | null>`${memoryTable.content}->>'text'` })
+      .from(memoryTable)
+      .where(eq(memoryTable.id, memoryId))
+      .limit(1);
+    const sourceText = rows[0]?.text;
+    return typeof sourceText === "string" && sourceText.trim().length > 0 ? sourceText : null;
+  }
 
   public async initialize(): Promise<void> {
     await this.init();
@@ -751,8 +803,45 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return;
       }
 
+      if (dimension === 384) {
+        // This additive, version-specific table intentionally lives outside the
+        // plugin schema snapshot. A still-running legacy process can update or
+        // delete rows in `embeddings`, including through its dimension cleanup,
+        // without being able to name or mutate canonical BGE vectors.
+        await this.db.execute(
+          sql.raw(
+            `CREATE TABLE IF NOT EXISTS "embeddings_bge_small_en_v1_5" (` +
+              `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), ` +
+              `"memory_id" uuid NOT NULL REFERENCES "memories"("id") ON DELETE CASCADE, ` +
+              `"created_at" timestamp NOT NULL DEFAULT now(), ` +
+              `"source_text" text, ` +
+              `"embedding" vector(384) NOT NULL)`
+          )
+        );
+        // A prior process may have created the versioned table and crashed
+        // before source binding was introduced. Nullable is deliberate: an
+        // unstamped row never satisfies exact text equality and reconciliation
+        // safely rediscovers it for backfill.
+        await this.db.execute(
+          sql.raw(
+            `ALTER TABLE "embeddings_bge_small_en_v1_5" ` +
+              `ADD COLUMN IF NOT EXISTS "source_text" text`
+          )
+        );
+        await this.db.execute(
+          sql.raw(
+            `CREATE UNIQUE INDEX IF NOT EXISTS ` +
+              `"idx_embeddings_bge_small_en_v1_5_memory" ` +
+              `ON "embeddings_bge_small_en_v1_5" ("memory_id")`
+          )
+        );
+        this.canonicalBgeStorageActive = true;
+      } else {
+        this.canonicalBgeStorageActive = false;
+      }
+
       this.embeddingDimension = resolvedDimension;
-      await this.ensureEmbeddingVectorIndex(dimension);
+      await this.ensureEmbeddingVectorIndex();
     });
   }
 
@@ -770,9 +859,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * writes are not blocked behind the index build's SHARE lock; PGlite is a
    * single connection where CONCURRENTLY is meaningless (and unsupported).
    */
-  private async ensureEmbeddingVectorIndex(dimension: number): Promise<void> {
-    const columnName = `dim_${dimension}`;
-    const indexName = `idx_embeddings_${columnName}_hnsw_cosine`;
+  private async ensureEmbeddingVectorIndex(): Promise<void> {
+    const dimension = EMBEDDING_DIMENSION_BY_COLUMN[this.embeddingDimension];
+    const activeEmbeddingTable = this.getActiveEmbeddingTable();
+    const columnName = activeEmbeddingTable[this.embeddingDimension].name;
+    const tableName = this.canonicalBgeStorageActive
+      ? "embeddings_bge_small_en_v1_5"
+      : "embeddings";
+    const indexName = `idx_${tableName}_${columnName}_hnsw_cosine`;
     // CONCURRENTLY cannot run inside a transaction block; this executes as a
     // standalone autocommit statement. PGlite is a single connection with
     // nothing to lock out (and no CONCURRENTLY support).
@@ -807,7 +901,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       await this.db.execute(
         sql.raw(
           `CREATE INDEX ${concurrently}IF NOT EXISTS "${indexName}" ` +
-            `ON "embeddings" USING hnsw ("${columnName}" vector_cosine_ops)`
+            `ON "${tableName}" USING hnsw ("${columnName}" vector_cosine_ops)`
         )
       );
     } catch (error) {
@@ -867,7 +961,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ id: memoryTable.id })
         .from(memoryTable)
         .where(eq(memoryTable.agentId, this.agentId));
-      const cleared = await this.db
+
+      if (this.canonicalBgeStorageActive) {
+        // Canonical vectors live elsewhere, so every legacy row for this agent
+        // is stale. Deleting it is also an exact rolling-version simulation:
+        // an older binary's cleanup can remove the whole legacy row while the
+        // physically separate BGE row remains untouched.
+        const clearedLegacy = await this.db
+          .delete(embeddingTable)
+          .where(inArray(embeddingTable.memoryId, agentMemoryIds))
+          .returning();
+        return clearedLegacy.map((row) => row.memoryId).filter((id): id is UUID => id !== null);
+      }
+
+      const clearedLegacy = await this.db
         .delete(embeddingTable)
         .where(
           and(
@@ -876,8 +983,114 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )
         )
         .returning();
-      return cleared.map((row) => row.memoryId).filter((id): id is UUID => id !== null);
+      const clearedCanonical = await this.db
+        .delete(bgeSmallEnV15EmbeddingTable)
+        .where(inArray(bgeSmallEnV15EmbeddingTable.memoryId, agentMemoryIds))
+        .returning();
+
+      return [
+        ...new Set(
+          [...clearedLegacy, ...clearedCanonical]
+            .map((row) => row.memoryId)
+            .filter((id): id is UUID => id !== null)
+        ),
+      ];
     });
+  }
+
+  /**
+   * Attest the active versioned vector space and return every agent memory that
+   * still lacks a canonical vector. Missing ids are rediscovered on every boot,
+   * even when the fingerprint is unchanged, so a crash between reconciliation
+   * and asynchronous backfill cannot strand memories permanently.
+   */
+  async reconcileEmbeddingSpace(activeFingerprint: string): Promise<{
+    activeFingerprint: string;
+    previousFingerprint?: string;
+    changed: boolean;
+    staleMemoryIds: UUID[];
+  }> {
+    if (activeFingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT) {
+      throw new ElizaError("Unsupported semantic embedding-space fingerprint", {
+        code: "EMBEDDING_SPACE_MISMATCH",
+        context: {
+          activeFingerprint,
+          expectedFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        },
+        severity: "fatal",
+      });
+    }
+    if (!this.canonicalBgeStorageActive || this.embeddingDimension !== DIMENSION_MAP[384]) {
+      throw new ElizaError("Canonical BGE storage is not active", {
+        code: "EMBEDDING_SPACE_MISMATCH",
+        context: {
+          activeColumn: this.embeddingDimension,
+          canonicalBgeStorageActive: this.canonicalBgeStorageActive,
+        },
+        severity: "fatal",
+      });
+    }
+
+    const cacheKey = "embedding-space-fingerprint:bge-small-en-v1.5:v2";
+    return this.withDatabase(async () =>
+      this.db.transaction(async (tx) => {
+        // The cache row is both the durable attestation and the per-agent
+        // reconciliation lock. Creating it inside this transaction closes the
+        // missing-row race: a concurrent boot blocks on the same unique key,
+        // then observes the committed fingerprint instead of deleting freshly
+        // generated canonical vectors a second time.
+        const inserted = await tx
+          .insert(cacheTable)
+          .values({
+            key: cacheKey,
+            agentId: this.agentId,
+            value: activeFingerprint,
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        let previousFingerprint: string | undefined;
+        if (inserted.length === 0) {
+          const rows = await tx
+            .select({ value: cacheTable.value })
+            .from(cacheTable)
+            .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, cacheKey)))
+            .for("update")
+            .limit(1);
+          const stored = rows[0]?.value;
+          previousFingerprint = typeof stored === "string" ? stored : undefined;
+        }
+
+        if (inserted.length === 0 && previousFingerprint !== activeFingerprint) {
+          await tx
+            .update(cacheTable)
+            .set({ value: activeFingerprint })
+            .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, cacheKey)));
+        }
+
+        const missing = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .leftJoin(
+            bgeSmallEnV15EmbeddingTable,
+            this.activeEmbeddingJoinCondition(
+              bgeSmallEnV15EmbeddingTable.memoryId,
+              memoryTable.id,
+              memoryTable.content
+            )
+          )
+          .where(
+            and(eq(memoryTable.agentId, this.agentId), isNull(bgeSmallEnV15EmbeddingTable.dim384))
+          );
+
+        return {
+          activeFingerprint,
+          ...(previousFingerprint ? { previousFingerprint } : {}),
+          changed: inserted.length > 0 || previousFingerprint !== activeFingerprint,
+          staleMemoryIds: missing.map((row) => row.id as UUID),
+        };
+      })
+    );
   }
 
   /**
@@ -2144,7 +2357,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
-    const expectedEmbeddingDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    const expectedEmbeddingDimension = EMBEDDING_DIMENSION_BY_COLUMN[this.embeddingDimension];
     validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension);
     const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
       ? params.agentId
@@ -2190,7 +2403,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return rows.map((row) => memoryFromRow(row.memory));
       }
 
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const activeEmbeddingTable = this.getActiveEmbeddingTable();
+      const activeColumn = activeEmbeddingTable[this.embeddingDimension];
       const distance = cosineDistance(activeColumn, params.embedding);
       const similarity = sql<number>`1 - (${distance})`;
       conditions.push(isNotNull(activeColumn));
@@ -2203,8 +2417,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           embedding: activeColumn,
           similarity,
         })
-        .from(embeddingTable)
-        .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
+        .from(activeEmbeddingTable)
+        .innerJoin(
+          fragment,
+          this.activeEmbeddingJoinCondition(
+            activeEmbeddingTable.memoryId,
+            fragment.id,
+            fragment.content
+          )
+        )
         .innerJoin(parent, parentJoin)
         .where(and(...conditions))
         .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id))
@@ -2439,13 +2660,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       });
 
       if (includeEmbedding) {
+        const activeEmbeddingTable = this.getActiveEmbeddingTable();
         const baseQuery = tx
           .select({
             memory: memorySelect,
-            embedding: embeddingTable[this.embeddingDimension],
+            embedding: activeEmbeddingTable[this.embeddingDimension],
           })
           .from(memoryTable)
-          .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+          .leftJoin(
+            activeEmbeddingTable,
+            this.activeEmbeddingJoinCondition(
+              activeEmbeddingTable.memoryId,
+              memoryTable.id,
+              memoryTable.content
+            )
+          )
           .where(and(...conditions))
           .orderBy(...order);
         const rows = await (async () => {
@@ -2780,13 +3009,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getMemoryById(id: UUID): Promise<Memory | null> {
     return this.withDatabase(async () => {
+      const activeEmbeddingTable = this.getActiveEmbeddingTable();
       const result = await this.db
         .select({
           memory: memoryTable,
-          embedding: embeddingTable[this.embeddingDimension],
+          embedding: activeEmbeddingTable[this.embeddingDimension],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .leftJoin(
+          activeEmbeddingTable,
+          this.activeEmbeddingJoinCondition(
+            activeEmbeddingTable.memoryId,
+            memoryTable.id,
+            memoryTable.content
+          )
+        )
         .where(eq(memoryTable.id, id))
         .limit(1);
 
@@ -2821,6 +3058,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
     return this.withDatabase(async () => {
       if (memoryIds.length === 0) return [];
+      const activeEmbeddingTable = this.getActiveEmbeddingTable();
 
       const conditions = [inArray(memoryTable.id, memoryIds)];
 
@@ -2831,10 +3069,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const rows = await this.db
         .select({
           memory: memoryTable,
-          embedding: embeddingTable[this.embeddingDimension],
+          embedding: activeEmbeddingTable[this.embeddingDimension],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          activeEmbeddingTable,
+          this.activeEmbeddingJoinCondition(
+            activeEmbeddingTable.memoryId,
+            memoryTable.id,
+            memoryTable.content
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
@@ -2877,6 +3122,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     return this.withDatabase(async () => {
       try {
+        const activeEmbeddingExpression = this.canonicalBgeStorageActive
+          ? sql`e.embedding`
+          : sql`COALESCE(
+              e.dim_384,
+              e.dim_512,
+              e.dim_768,
+              e.dim_1024,
+              e.dim_1536,
+              e.dim_3072
+            )`;
+        const activeEmbeddingJoin = this.canonicalBgeStorageActive
+          ? sql`LEFT JOIN embeddings_bge_small_en_v1_5 e
+              ON e.memory_id = ct.id
+              AND e.source_text IS NOT NULL
+              AND btrim(e.source_text) <> ''
+              AND e.source_text = (ct.source_content->>'text')`
+          : sql`LEFT JOIN embeddings e ON e.memory_id = ct.id`;
         // Drizzle database has execute method for raw SQL
         interface DrizzleDatabaseWithExecute {
           execute: (query: ReturnType<typeof sql>) => Promise<{ rows: Record<string, unknown>[] }>;
@@ -2885,6 +3147,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                     WITH content_text AS (
                         SELECT
                             m.id,
+                            m.content AS source_content,
                             COALESCE(
                                 m.content->>${opts.query_field_sub_name},
                                 ''
@@ -2896,16 +3159,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                     embedded_text AS (
                         SELECT
                             ct.content_text,
-                            COALESCE(
-                                e.dim_384,
-                                e.dim_512,
-                                e.dim_768,
-                                e.dim_1024,
-                                e.dim_1536,
-                                e.dim_3072
-                            ) as embedding
+                            ${activeEmbeddingExpression} as embedding
                         FROM content_text ct
-                        LEFT JOIN embeddings e ON e.memory_id = ct.id
+                        ${activeEmbeddingJoin}
                         WHERE e.memory_id IS NOT NULL
                     )
                     SELECT
@@ -3460,7 +3716,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const activeEmbeddingTable = this.getActiveEmbeddingTable();
+      const activeColumn = activeEmbeddingTable[this.embeddingDimension];
       const count = params.count ?? 10;
 
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
@@ -3513,8 +3770,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           similarity,
           embedding: activeColumn,
         })
-        .from(embeddingTable)
-        .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .from(activeEmbeddingTable)
+        .innerJoin(
+          memoryTable,
+          this.activeEmbeddingJoinCondition(
+            activeEmbeddingTable.memoryId,
+            memoryTable.id,
+            memoryTable.content
+          )
+        )
         .where(and(...conditions))
         .orderBy(asc(distance))
         .limit(count);
@@ -3595,7 +3859,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   private validateMemoryBatchEmbeddings(
     memories: Array<{ memory: Memory; tableName: string }>
   ): void {
-    const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    const expectedDimension = EMBEDDING_DIMENSION_BY_COLUMN[this.embeddingDimension];
     for (let index = 0; index < memories.length; index++) {
       const { memory, tableName } = memories[index];
       if (!memory.embedding) continue;
@@ -3649,7 +3913,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
 
     if (memory.embedding && Array.isArray(memory.embedding)) {
-      const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+      const expectedDimension = EMBEDDING_DIMENSION_BY_COLUMN[this.embeddingDimension];
       if (memory.embedding.length !== expectedDimension) {
         // The runtime's TEXT_EMBEDDING provider returned a vector whose width
         // does not match the column this agent is configured to write to —
@@ -3673,6 +3937,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memoryId: memoryId,
           createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
         };
+        if (this.canonicalBgeStorageActive) {
+          const sourceText = await this.getEmbeddableSourceText(tx, memoryId);
+          if (sourceText === null) {
+            logger.warn(
+              { src: "plugin:sql", agentId: this.agentId, memoryId },
+              "Skipping canonical embedding insert: memory source text is missing or blank"
+            );
+            return;
+          }
+          embeddingValues.sourceText = sourceText;
+        }
 
         const cleanVector = memory.embedding.map((n) =>
           Number.isFinite(n) ? Number(n.toFixed(6)) : 0
@@ -3680,7 +3955,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         embeddingValues[this.embeddingDimension] = cleanVector;
 
-        await tx.insert(embeddingTable).values([embeddingValues]);
+        await tx.insert(this.getActiveEmbeddingTable()).values([embeddingValues]);
       }
     }
   }
@@ -3732,7 +4007,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
           // Update embedding if provided
           if (memory.embedding && Array.isArray(memory.embedding)) {
-            const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+            const expectedDimension = EMBEDDING_DIMENSION_BY_COLUMN[this.embeddingDimension];
             if (memory.embedding.length !== expectedDimension) {
               logger.warn(
                 {
@@ -3749,23 +4024,40 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               const cleanVector = memory.embedding.map((n) =>
                 Number.isFinite(n) ? Number(n.toFixed(6)) : 0
               );
+              const activeEmbeddingTable = this.getActiveEmbeddingTable();
+              const sourceText = this.canonicalBgeStorageActive
+                ? await this.getEmbeddableSourceText(tx, memory.id)
+                : null;
+              if (this.canonicalBgeStorageActive && sourceText === null) {
+                await tx
+                  .delete(bgeSmallEnV15EmbeddingTable)
+                  .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memory.id));
+                logger.warn(
+                  { src: "plugin:sql", agentId: this.agentId, memoryId: memory.id },
+                  "Cleared canonical embedding: memory source text is missing or blank"
+                );
+                return;
+              }
 
               // Check if embedding exists
               const existingEmbedding = await tx
-                .select({ id: embeddingTable.id })
-                .from(embeddingTable)
-                .where(eq(embeddingTable.memoryId, memory.id))
+                .select({ id: activeEmbeddingTable.id })
+                .from(activeEmbeddingTable)
+                .where(eq(activeEmbeddingTable.memoryId, memory.id))
                 .limit(1);
 
               if (existingEmbedding.length > 0) {
                 // Update existing embedding
                 const updateValues: Record<string, unknown> = {};
                 updateValues[this.embeddingDimension] = cleanVector;
+                if (sourceText !== null) {
+                  updateValues.sourceText = sourceText;
+                }
 
                 await tx
-                  .update(embeddingTable)
+                  .update(activeEmbeddingTable)
                   .set(updateValues)
-                  .where(eq(embeddingTable.memoryId, memory.id));
+                  .where(eq(activeEmbeddingTable.memoryId, memory.id));
               } else {
                 // Create new embedding
                 const embeddingValues: Record<string, unknown> = {
@@ -3773,8 +4065,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   memoryId: memory.id,
                 };
                 embeddingValues[this.embeddingDimension] = cleanVector;
+                if (sourceText !== null) {
+                  embeddingValues.sourceText = sourceText;
+                }
 
-                await tx.insert(embeddingTable).values([embeddingValues]);
+                await tx.insert(activeEmbeddingTable).values([embeddingValues]);
               }
             }
           }
@@ -3801,11 +4096,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const activeEmbeddingTable = this.getActiveEmbeddingTable();
         // See if there are any fragments that we need to delete
         await this.deleteMemoryFragments(tx, memoryId);
 
         // Then delete the embedding for the main memory
-        await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+        await tx.delete(activeEmbeddingTable).where(eq(activeEmbeddingTable.memoryId, memoryId));
 
         // Finally delete the memory itself
         await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
@@ -3825,6 +4121,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const activeEmbeddingTable = this.getActiveEmbeddingTable();
         // Process in smaller batches to avoid query size limits
         const BATCH_SIZE = 100;
         for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
@@ -3838,7 +4135,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           );
 
           // Delete embeddings for the batch
-          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+          await tx
+            .delete(activeEmbeddingTable)
+            .where(inArray(activeEmbeddingTable.memoryId, batch));
 
           // Delete the memories themselves
           await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
@@ -3858,9 +4157,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     if (fragmentsToDelete.length > 0) {
       const fragmentIds = fragmentsToDelete.map((f) => f.id) as UUID[];
+      const activeEmbeddingTable = this.getActiveEmbeddingTable();
 
       // Delete embeddings for fragments
-      await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, fragmentIds));
+      await tx
+        .delete(activeEmbeddingTable)
+        .where(inArray(activeEmbeddingTable.memoryId, fragmentIds));
 
       // Delete the fragments
       await tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds));
@@ -3905,6 +4207,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       await this.db.transaction(async (tx) => {
+        const activeEmbeddingTable = this.getActiveEmbeddingTable();
         // 1) fetch all memory IDs for the requested rooms + table
         const rows = await tx
           .select({ id: memoryTable.id })
@@ -3931,7 +4234,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await Promise.all(
           ids.map(async (memoryId) => {
             await this.deleteMemoryFragments(tx, memoryId);
-            await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+            await tx
+              .delete(activeEmbeddingTable)
+              .where(eq(activeEmbeddingTable.memoryId, memoryId));
           })
         );
 
@@ -5031,9 +5336,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const memoryIdsInRooms = memoriesInRooms.map((m) => m.id as UUID);
 
         if (memoryIdsInRooms.length > 0) {
+          const activeEmbeddingTable = this.getActiveEmbeddingTable();
           await this.db
-            .delete(embeddingTable)
-            .where(inArray(embeddingTable.memoryId, memoryIdsInRooms));
+            .delete(activeEmbeddingTable)
+            .where(inArray(activeEmbeddingTable.memoryId, memoryIdsInRooms));
           await this.db.delete(memoryTable).where(inArray(memoryTable.id, memoryIdsInRooms));
         }
 

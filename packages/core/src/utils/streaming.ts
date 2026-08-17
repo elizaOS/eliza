@@ -9,6 +9,8 @@
  * Implementations can use these or create their own extractors.
  */
 
+import { classifyCompactUserVisibleControlStreamPrefix } from "../runtime/user-visible-control-dialect";
+import { sanitizeUserVisibleModelOutput } from "../runtime/user-visible-model-output";
 import type { StreamChunkCallback } from "../types/components";
 import type {
 	IStreamExtractor,
@@ -58,6 +60,62 @@ export class StreamError extends Error {
 
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
+
+type LeadingFenceDecision =
+	| { kind: "none" }
+	| { kind: "hold"; body: string }
+	| { kind: "prose" };
+
+/**
+ * Keep a leading JSON or unlabeled Markdown fence private until its body is
+ * known safe. Model control envelopes are frequently wrapped in ```json, and
+ * emitting the fence before the first JSON key would make terminal rejection
+ * too late. Non-JSON language fences are released as soon as their language
+ * tag disambiguates them so ordinary coding replies still stream normally.
+ */
+function classifyLeadingFencePrefix(text: string): LeadingFenceDecision {
+	const candidate = text.trimStart();
+	if (!candidate.startsWith("`")) return { kind: "none" };
+	if (!candidate.startsWith("```")) {
+		return "```".startsWith(candidate)
+			? { kind: "hold", body: "" }
+			: { kind: "none" };
+	}
+
+	let remainder = candidate.slice(3);
+	if (!remainder) return { kind: "hold", body: "" };
+
+	// A non-whitespace token directly after the opening fence is its language
+	// tag, except for an immediately-opened JSON/array/XML body.
+	if (!/\s/u.test(remainder[0] ?? "") && !"{[<".includes(remainder[0] ?? "")) {
+		const languageMatch = /^([^\s]+)/u.exec(remainder);
+		const language = languageMatch?.[1] ?? "";
+		const hasDelimiter = language.length < remainder.length;
+		if (!hasDelimiter) {
+			return "json".startsWith(language.toLowerCase())
+				? { kind: "hold", body: "" }
+				: { kind: "prose" };
+		}
+		if (language.toLowerCase() !== "json") return { kind: "prose" };
+		remainder = remainder.slice(language.length);
+	}
+
+	const body = remainder.replace(/^[ \t]*(?:\r?\n)?/u, "");
+	if (!body.trimStart()) return { kind: "hold", body };
+	if ("{[<".includes(body.trimStart()[0] ?? "")) {
+		return { kind: "hold", body };
+	}
+	const compact = classifyCompactUserVisibleControlStreamPrefix(
+		stripTrailingMarkdownFence(body),
+		false,
+	);
+	if (compact === "prose") return { kind: "prose" };
+	return { kind: "hold", body };
+}
+
+function stripTrailingMarkdownFence(text: string): string {
+	return text.replace(/\s*```\s*$/u, "");
+}
 
 /**
  * Validates and limits chunk size to prevent DoS attacks.
@@ -598,6 +656,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private state: ExtractorState = "streaming";
 	private formatDecided = false;
 	private passthrough = false;
+	private blockedPassthroughControl = false;
 	private passthroughEmitted = "";
 	private readonly streamFieldSet: Set<string>;
 	private readonly maxKeyPatternLength: number;
@@ -636,6 +695,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		if (!this.formatDecided) {
 			this.decideFormat();
 		}
+		if (!this.formatDecided || this.blockedPassthroughControl) {
+			return "";
+		}
 		if (this.passthrough) {
 			this.drainPassthrough();
 			return "";
@@ -649,7 +711,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			return "";
 		}
 		if (!this.formatDecided) {
-			this.decideFormat();
+			this.decideFormat(true);
+		}
+		if (this.blockedPassthroughControl) {
+			this.buffer = "";
+			this.state = "complete";
+			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+			return "";
 		}
 		if (this.passthrough) {
 			this.drainPassthrough();
@@ -683,6 +751,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.reasoningFilters.clear();
 		this.formatDecided = false;
 		this.passthrough = false;
+		this.blockedPassthroughControl = false;
 		this.passthroughEmitted = "";
 		this.state = "streaming";
 	}
@@ -698,15 +767,63 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	 * reply. Envelope-shaped output is unaffected, so the control fields
 	 * (thought/actions) are never leaked.
 	 */
-	private decideFormat(): void {
+	private decideFormat(final = false): void {
 		const trimmed = this.buffer.replace(/^\s+/, "");
 		if (trimmed.length === 0) {
 			return; // wait for the first non-whitespace token before deciding
 		}
+		const leadingFence = classifyLeadingFencePrefix(this.buffer);
+		if (leadingFence.kind === "hold") {
+			if (!final) return;
+
+			// The terminal sanitizer understands complete fences and the body-only
+			// pass also catches a truncated closing fence. Prefer an extracted reply
+			// field over replaying its surrounding response envelope.
+			const whole = sanitizeUserVisibleModelOutput(this.buffer);
+			const body = sanitizeUserVisibleModelOutput(
+				stripTrailingMarkdownFence(leadingFence.body),
+			);
+			const rejected = [whole, body].some(
+				(result) => result.kind === "control" || result.kind === "invalid",
+			);
+			if (rejected) {
+				this.formatDecided = true;
+				this.blockedPassthroughControl = true;
+				this.buffer = "";
+				return;
+			}
+			const projected = [whole, body].find(
+				(result) => result.kind === "text" && result.fieldPath.length > 0,
+			);
+			if (projected?.kind === "text") this.buffer = projected.text;
+			this.formatDecided = true;
+			this.passthrough = true;
+			return;
+		}
+		if (leadingFence.kind === "prose") {
+			this.formatDecided = true;
+			this.passthrough = true;
+			return;
+		}
 		const first = trimmed[0];
 		const looksStructured = first === "{" || first === "[" || first === "<";
+		if (!looksStructured) {
+			const decision = classifyCompactUserVisibleControlStreamPrefix(
+				this.buffer,
+				final,
+			);
+			if (decision === "undecided") return;
+			this.formatDecided = true;
+			if (decision === "control") {
+				this.blockedPassthroughControl = true;
+				this.buffer = "";
+				return;
+			}
+			this.passthrough = true;
+			return;
+		}
 		this.formatDecided = true;
-		this.passthrough = !looksStructured;
+		this.passthrough = false;
 	}
 
 	/** Stream buffered prose straight through as reply text (passthrough mode). */

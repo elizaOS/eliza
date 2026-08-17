@@ -1,6 +1,5 @@
 /** Tests for the embedding handlers against a mocked fetch: request shape, dimension validation, and batch handling (no live endpoint). */
-import type { IAgentRuntime } from "@elizaos/core";
-import { VECTOR_DIMS } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { handleBatchTextEmbedding, handleTextEmbedding } from "../src/models/embedding";
@@ -19,7 +18,7 @@ function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
 }
 
 function vectorOf(length: number): number[] {
-  return Array.from({ length }, (_v, i) => (i + 1) / length);
+  return Array.from({ length }, (_v, i) => (i === 0 ? 1 : 0));
 }
 
 function mockEmbeddingsResponse(vectors: number[][]): Response {
@@ -30,7 +29,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
     json: async () => ({
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
-      model: "thenlper/gte-small",
+      model: "BAAI/bge-small-en-v1.5",
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     text: async () => "",
@@ -56,7 +55,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
-    const probe = await handleTextEmbedding(createRuntime(), null);
+    const probe = await handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "384" }), null);
 
     expect(probe).toHaveLength(384);
     expect(probe[0]).toBeCloseTo(0.1);
@@ -64,13 +63,10 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a noncanonical init-probe width before any network call", async () => {
-    const fetchMock = vi.fn();
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
-    await expect(
-      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "1536" }), null)
-    ).rejects.toThrow(/expected 384/);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("defaults the probe width to 384 when EMBEDDING_DIMENSIONS is unset", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn() as typeof fetch);
+    const probe = await handleTextEmbedding(createRuntime(), null);
+    expect(probe).toHaveLength(384);
   });
 
   it("returns the parsed vector from a wire-mocked /embeddings response", async () => {
@@ -92,7 +88,35 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
     const body = JSON.parse(init.body as string);
     expect(body.input).toBe("hello world");
-    expect(body.model).toBe("thenlper/gte-small");
+    expect(body.model).toBe("BAAI/bge-small-en-v1.5");
+  });
+
+  it("rejects explicit response model mismatches and omitted identity", async () => {
+    const vector = vectorOf(384);
+    const response = (model: string | undefined): Response =>
+      ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          object: "list",
+          data: [{ object: "embedding", embedding: vector, index: 0 }],
+          ...(model === undefined ? {} : { model }),
+        }),
+        text: async () => "",
+      }) as unknown as Response;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response("text-embedding-3-small"))
+      .mockResolvedValueOnce(response(undefined));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), "first")).rejects.toThrow(
+      /embedding model mismatch/i
+    );
+    await expect(handleTextEmbedding(createRuntime(), "second")).rejects.toThrow(
+      /embedding model mismatch/i
+    );
   });
 
   it("uses the primary endpoint without touching fallback when primary succeeds", async () => {
@@ -104,7 +128,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       createRuntime({
         EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
         EMBEDDING_FALLBACK_API_KEY: "fallback-key",
-        EMBEDDING_FALLBACK_MODEL: "thenlper/gte-small",
+        EMBEDDING_FALLBACK_MODEL: "BAAI/bge-small-en-v1.5",
       }),
       { text: "hello world" }
     );
@@ -114,7 +138,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://embeddings.example/v1/embeddings");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
-    expect(JSON.parse(init.body as string).model).toBe("thenlper/gte-small");
+    expect(JSON.parse(init.body as string).model).toBe("BAAI/bge-small-en-v1.5");
   });
 
   it("retries once against fallback when the primary endpoint fails", async () => {
@@ -129,7 +153,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       createRuntime({
         EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1/",
         EMBEDDING_FALLBACK_API_KEY: "fallback-key",
-        EMBEDDING_FALLBACK_MODEL: "thenlper/gte-small",
+        EMBEDDING_FALLBACK_MODEL: "BAAI/bge-small-en-v1.5",
       }),
       { text: "hello world" }
     );
@@ -142,7 +166,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
       "Bearer fallback-key"
     );
     const body = JSON.parse(fallbackInit.body as string);
-    expect(body.model).toBe("thenlper/gte-small");
+    expect(body.model).toBe("BAAI/bge-small-en-v1.5");
     expect(body.input).toBe("hello world");
   });
 
@@ -150,7 +174,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(mockHttpError(502, "Bad Gateway", "primary down"))
-      .mockResolvedValueOnce(mockEmbeddingsResponse([vectorOf(768)]));
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vectorOf(385)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await expect(
@@ -161,7 +185,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
         }),
         { text: "hi" }
       )
-    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 384/i);
+    ).rejects.toThrow(/fallback embedding dimension mismatch: got 385, expected 384/i);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -196,7 +220,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(body).not.toHaveProperty("dimensions");
   });
 
-  it("sends the canonical dimensions field when EMBEDDING_DIMENSIONS is explicitly set", async () => {
+  it("sends the dimensions field when EMBEDDING_DIMENSIONS is explicitly set", async () => {
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
@@ -207,12 +231,12 @@ describe("plugin-embeddings handleTextEmbedding", () => {
   });
 
   it("throws on a dimension mismatch (never returns the wrong-width vector)", async () => {
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(768)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(385)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
-    await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(
-      /dimension mismatch/i
-    );
+    await expect(
+      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "384" }), { text: "hi" })
+    ).rejects.toThrow(/dimension mismatch/i);
   });
 
   it("throws on empty text before calling the provider", async () => {
@@ -220,7 +244,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     await expect(handleTextEmbedding(createRuntime(), { text: "   " })).rejects.toThrow(
-      /empty text/i
+      /cannot be blank/i
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -234,7 +258,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
         createRuntime({ EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1" }),
         { text: "   " }
       )
-    ).rejects.toThrow(/empty text/i);
+    ).rejects.toThrow(/cannot be blank/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -244,7 +268,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
 
     await expect(
       handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "999" }), { text: "hi" })
-    ).rejects.toThrow(/Invalid embedding dimension/i);
+    ).rejects.toThrow(/dimension mismatch/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -276,28 +300,21 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(/502/);
   });
 
-  it("emits only the canonical dimension and rejects every other supported storage width", async () => {
-    const dims = Object.values(VECTOR_DIMS) as number[];
-    for (const dim of dims) {
-      const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(dim)]));
-      vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
-      const call = handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: String(dim) }), {
-        text: "contract",
-      });
-      if (dim === 384) {
-        await expect(call).resolves.toHaveLength(384);
-      } else {
-        await expect(call).rejects.toThrow(/expected 384/);
-        expect(fetchMock).not.toHaveBeenCalled();
-      }
-      vi.restoreAllMocks();
-    }
+  it("emits only the canonical 384-dimensional contract", async () => {
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+    await expect(handleTextEmbedding(createRuntime(), { text: "contract" })).resolves.toHaveLength(
+      384
+    );
+    await expect(
+      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "512" }), { text: "contract" })
+    ).rejects.toThrow(/dimension mismatch/i);
   });
 });
 
 describe("plugin-embeddings handleBatchTextEmbedding", () => {
   it("returns one vector per input in order from a single request", async () => {
-    const v0 = vectorOf(384).map((x) => x * 0.5);
+    const v0 = vectorOf(384);
     const v1 = vectorOf(384);
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([v0, v1]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
@@ -321,7 +338,7 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
     await expect(handleBatchTextEmbedding(createRuntime(), ["ok", "  "])).rejects.toThrow(
-      /empty text at index 1/i
+      /input at index 1/i
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -341,7 +358,7 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
               { object: "embedding", embedding: vectorOf(384), index: 0 },
               { object: "embedding", embedding: vectorOf(384), index: 0 },
             ],
-            model: "thenlper/gte-small",
+            model: "BAAI/bge-small-en-v1.5",
           }),
           text: async () => "",
         }) as unknown as Response
@@ -366,7 +383,7 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
               { object: "embedding", embedding: vectorOf(384), index: 0.5 },
               { object: "embedding", embedding: vectorOf(384), index: 1 },
             ],
-            model: "thenlper/gte-small",
+            model: "BAAI/bge-small-en-v1.5",
           }),
           text: async () => "",
         }) as unknown as Response
@@ -379,37 +396,28 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
   });
 });
 
-describe("plugin-embeddings input truncation", () => {
-  const MAX_EMBEDDING_CHARS = 8_000 * 4;
-
-  it("never splits a surrogate pair at the truncation boundary", async () => {
-    // The 😀 spans code units MAX-1..MAX, so a blind slice(0, MAX) would keep a
-    // lone high surrogate — mojibake (U+FFFD) or a reject at the endpoint.
-    const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 1)}😀tail`;
+describe("plugin-embeddings canonical input boundary", () => {
+  it("sends an exact-limit input without truncation", async () => {
+    const text = "a".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS);
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await handleTextEmbedding(createRuntime(), text);
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const sent = body.input as string;
-    expect(sent.isWellFormed()).toBe(true);
-    expect(sent.length).toBeLessThanOrEqual(MAX_EMBEDDING_CHARS);
-    expect(sent).toBe("a".repeat(MAX_EMBEDDING_CHARS - 1));
+    expect(body.input).toBe(text);
   });
 
-  it("keeps an astral char that fits entirely under the cap", async () => {
-    // Here the pair ends exactly at the boundary — no back-off should occur.
-    const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀tail`;
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+  it("rejects one-over-limit and ill-formed Unicode without provider dispatch", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
-    await handleTextEmbedding(createRuntime(), text);
-
-    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const sent = body.input as string;
-    expect(sent.isWellFormed()).toBe(true);
-    expect(sent).toBe(`${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀`);
-    expect(sent.length).toBe(MAX_EMBEDDING_CHARS);
+    await expect(
+      handleTextEmbedding(createRuntime(), "a".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS + 1))
+    ).rejects.toThrow(/maximum is 510/i);
+    await expect(handleTextEmbedding(createRuntime(), "bad \uD83D input")).rejects.toThrow(
+      /well-formed Unicode/i
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

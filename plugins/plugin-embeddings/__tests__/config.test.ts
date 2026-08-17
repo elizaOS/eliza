@@ -48,8 +48,8 @@ describe("plugin-embeddings config", () => {
     expect(getEmbeddingApiKey(makeRuntime())).toBeUndefined();
   });
 
-  it("defaults the model to the canonical hosted gte-small id", () => {
-    expect(getEmbeddingModel(makeRuntime())).toBe("thenlper/gte-small");
+  it("defaults the model to BAAI/bge-small-en-v1.5", () => {
+    expect(getEmbeddingModel(makeRuntime())).toBe("BAAI/bge-small-en-v1.5");
     expect(getEmbeddingModel(makeRuntime({ EMBEDDING_MODEL: "voyage-3" }))).toBe("voyage-3");
   });
 
@@ -75,9 +75,9 @@ describe("plugin-embeddings config", () => {
     );
   });
 
-  it("defaults dimensions to the canonical 384 width", () => {
+  it("defaults dimensions to 384", () => {
     expect(getEmbeddingDimensions(makeRuntime())).toBe(384);
-    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "768" }))).toBe(768);
+    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "384" }))).toBe(384);
   });
 
   it("hasEmbeddingConfig is true when EITHER url or key is set", () => {

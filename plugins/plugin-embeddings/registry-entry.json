@@ -1,7 +1,7 @@
 {
   "id": "embeddings",
   "name": "Embeddings",
-  "description": "Canonical gte-small TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL at an OpenAI-compatible endpoint serving thenlper/gte-small at 384 dimensions. Model and width mismatches fail closed so local and hosted memory vectors remain compatible. Registers only embedding slots.",
+  "description": "Canonical BAAI/bge-small-en-v1.5 TEXT_EMBEDDING provider. The endpoint must return 384-dimensional mean-pooled vectors; results are L2-normalized and mismatches fail closed.",
   "npmName": "@elizaos/plugin-embeddings",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Embedding Base Url",
-      "help": "Base URL of an OpenAI-compatible /embeddings endpoint serving thenlper/gte-small with 384-dimensional output. Setting this (or the API key) activates the plugin.",
+      "help": "Base URL of an OpenAI-compatible /embeddings endpoint serving BAAI/bge-small-en-v1.5 with 384-dimensional mean-pooled output. Setting this (or the API key) activates the plugin.",
       "placeholder": "e.g., http://localhost:8080/v1",
       "advanced": false
     },
@@ -28,11 +28,20 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "thenlper/gte-small",
+      "default": "BAAI/bge-small-en-v1.5",
       "label": "Embedding Model",
       "help": "Embedding model identifier sent as the request `model` field.",
-      "placeholder": "thenlper/gte-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": false
+    },
+    "EMBEDDING_POOLING": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "mean",
+      "label": "Embedding Pooling",
+      "help": "Canonical pooling mode. Values other than mean fail closed.",
+      "advanced": true
     },
     "EMBEDDING_FALLBACK_BASE_URL": {
       "type": "url",
@@ -57,7 +66,7 @@
       "sensitive": false,
       "label": "Embedding Fallback Model",
       "help": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
-      "placeholder": "thenlper/gte-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": true
     },
     "EMBEDDING_DIMENSIONS": {
@@ -66,7 +75,7 @@
       "sensitive": false,
       "default": "384",
       "label": "Embedding Dimensions",
-      "help": "Canonical gte-small vector width. Values other than 384 are rejected to prevent incompatible vector spaces.",
+      "help": "Canonical BGE-small vector width. Values other than 384 fail closed.",
       "advanced": false
     },
     "EMBEDDING_BROWSER_URL": {

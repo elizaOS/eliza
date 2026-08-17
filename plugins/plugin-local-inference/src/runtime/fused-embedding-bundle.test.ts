@@ -3,6 +3,7 @@
  * artifact replacement and inode ownership are proven without filesystem mocks.
  */
 
+import { createHash } from "node:crypto";
 import {
 	linkSync,
 	mkdirSync,
@@ -16,7 +17,10 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
+import {
+	assertEmbeddingArtifactIdentity,
+	resolveFusedEmbeddingBundleRoot,
+} from "./fused-embedding-bundle";
 
 const temporaryRoots: string[] = [];
 
@@ -33,9 +37,32 @@ afterEach(() => {
 });
 
 describe("resolveFusedEmbeddingBundleRoot", () => {
+	it("rejects renamed same-width bytes that do not match the reviewed digest", () => {
+		const modelsDir = temporaryRoot();
+		const model = "bge-small-en-v1.5-q4_k_m.gguf";
+		const source = path.join(modelsDir, model);
+		writeFileSync(source, "arbitrary renamed bytes");
+
+		expect(() =>
+			assertEmbeddingArtifactIdentity(source, 23, "0".repeat(64)),
+		).toThrow(/sha256 mismatch/i);
+	});
+
+	it("accepts only bytes matching both the pinned size and digest", () => {
+		const modelsDir = temporaryRoot();
+		const source = path.join(modelsDir, "fixture.gguf");
+		const bytes = "reviewed fixture";
+		writeFileSync(source, bytes);
+		const digest = createHash("sha256").update(bytes).digest("hex");
+
+		expect(() =>
+			assertEmbeddingArtifactIdentity(source, Buffer.byteLength(bytes), digest),
+		).not.toThrow();
+	});
+
 	it("stages the configured model as the bundle's sole text artifact", () => {
 		const modelsDir = temporaryRoot();
-		const model = "gte-small.gguf";
+		const model = "bge-small.gguf";
 		const source = path.join(modelsDir, model);
 		writeFileSync(source, "current-model");
 
@@ -49,7 +76,7 @@ describe("resolveFusedEmbeddingBundleRoot", () => {
 
 	it("replaces a staged hardlink after the downloader replaces its source inode", () => {
 		const modelsDir = temporaryRoot();
-		const model = "gte-small.gguf";
+		const model = "bge-small.gguf";
 		const source = path.join(modelsDir, model);
 		writeFileSync(source, "truncated");
 		const root = path.join(modelsDir, ".eliza-embed-bundle");
@@ -67,18 +94,35 @@ describe("resolveFusedEmbeddingBundleRoot", () => {
 		expect(statSync(staged).ino).toBe(statSync(source).ino);
 	});
 
-	it("honors an explicit native bundle root without staging another model", () => {
+	it("honors an exact canonical native bundle root without staging another model", () => {
 		const modelsDir = temporaryRoot();
 		const override = path.join(modelsDir, "operator-bundle");
+		const model = "bge-small-en-v1.5-q4_k_m.gguf";
 		mkdirSync(path.join(override, "text"), { recursive: true });
+		writeFileSync(path.join(override, "text", model), "canonical-model");
 
 		expect(
 			resolveFusedEmbeddingBundleRoot({
 				modelsDir,
-				model: "missing.gguf",
+				model,
 				override,
 			}),
 		).toBe(override);
+	});
+
+	it("rejects an arbitrary or ambiguous native bundle override", () => {
+		const modelsDir = temporaryRoot();
+		const override = path.join(modelsDir, "operator-bundle");
+		mkdirSync(path.join(override, "text"), { recursive: true });
+		writeFileSync(path.join(override, "text", "gte-small_fp16.gguf"), "legacy");
+
+		expect(() =>
+			resolveFusedEmbeddingBundleRoot({
+				modelsDir,
+				model: "bge-small-en-v1.5-q4_k_m.gguf",
+				override,
+			}),
+		).toThrow(/must contain exactly text\/bge-small-en-v1\.5-q4_k_m\.gguf/);
 	});
 
 	it("returns null when neither a bundle nor the configured model exists", () => {

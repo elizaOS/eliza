@@ -1,7 +1,7 @@
 /**
  * Assembles the `googleGenAIPlugin` object: the plugin's entire surface is a
  * `models` map binding each elizaOS `ModelType` (nano/small/medium/large/mega,
- * response-handler, action-planner, embedding, image-description) to a handler
+ * response-handler, action-planner, image-description) to a handler
  * from `./models`. No actions, providers, evaluators, or routes are registered.
  *
  * `init` validates the API key at startup, `config` mirrors every supported env
@@ -18,7 +18,6 @@ import type {
   ProcessEnvLike,
   TestCase,
   TestSuite,
-  TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { GoogleGenAI } from "@google/genai";
@@ -27,7 +26,6 @@ import {
   handleActionPlanner,
   handleImageDescription,
   handleResponseHandler,
-  handleTextEmbedding,
   handleTextLarge,
   handleTextMedium,
   handleTextMega,
@@ -43,7 +41,6 @@ const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_SMALL_MODEL_TYPE = ModelType.TEXT_SMALL as string;
 const TEXT_LARGE_MODEL_TYPE = ModelType.TEXT_LARGE as string;
-const TEXT_EMBEDDING_MODEL_TYPE = ModelType.TEXT_EMBEDDING as string;
 const IMAGE_DESCRIPTION_MODEL_TYPE = ModelType.IMAGE_DESCRIPTION as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
@@ -67,26 +64,6 @@ const pluginTests = [
             models.push(model);
           }
           logger.log(`Available models: ${models.length}`);
-        },
-      },
-      {
-        name: "google_test_text_embedding",
-        fn: async (runtime: IAgentRuntime) => {
-          try {
-            const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-              text: "Hello, world!",
-            });
-            logger.log(`Embedding dimension: ${embedding.length}`);
-            if (embedding.length === 0) {
-              throw new Error("Failed to generate embedding");
-            }
-          } catch (error) {
-            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
-            logger.error(
-              `Error in test_text_embedding: ${error instanceof Error ? error.message : String(error)}`,
-            );
-            throw error;
-          }
         },
       },
       {
@@ -292,13 +269,6 @@ export const googleGenAIPlugin: Plugin = {
       params: GenerateTextParams,
     ): Promise<string> => {
       return handleActionPlanner(runtime, params);
-    },
-
-    [TEXT_EMBEDDING_MODEL_TYPE]: async (
-      runtime: IAgentRuntime,
-      params: TextEmbeddingParams | string | null,
-    ): Promise<number[]> => {
-      return handleTextEmbedding(runtime, params);
     },
 
     [IMAGE_DESCRIPTION_MODEL_TYPE]: async (

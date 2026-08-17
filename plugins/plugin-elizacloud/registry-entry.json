@@ -72,10 +72,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "thenlper/gte-small",
+      "default": "BAAI/bge-small-en-v1.5",
       "label": "Cloud Embedding Model",
       "help": "Identifier of the model to use for generating text embeddings.",
-      "placeholder": "thenlper/gte-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": false
     },
     "ELIZAOS_CLOUD_EMBEDDING_URL": {

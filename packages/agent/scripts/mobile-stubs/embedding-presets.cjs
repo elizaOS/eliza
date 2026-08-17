@@ -3,31 +3,34 @@
 "use strict";
 
 const COMPACT_ELIZA_1_EMBEDDING = {
-  model: "gte-small_fp16.gguf",
-  modelRepo: "ChristianAzinn/gte-small-gguf",
+  model: "bge-small-en-v1.5-q4_k_m.gguf",
+  modelRepo: "CompendiumLabs/bge-small-en-v1.5-gguf",
   dimensions: 384,
   gpuLayers: 0,
   contextSize: 512,
-  downloadSizeMB: 64,
+  downloadSizeMB: 24,
 };
 
 const EMBEDDING_PRESETS = {
   fallback: {
     tier: "fallback",
     label: "Efficient (mobile CPU)",
-    description: "gte-small local embeddings for the mobile agent bundle",
+    description:
+      "BGE-small-en-v1.5 local embeddings for the mobile agent bundle",
     ...COMPACT_ELIZA_1_EMBEDDING,
   },
   standard: {
     tier: "standard",
     label: "Efficient (mobile)",
-    description: "gte-small local embeddings for the mobile agent bundle",
+    description:
+      "BGE-small-en-v1.5 local embeddings for the mobile agent bundle",
     ...COMPACT_ELIZA_1_EMBEDDING,
   },
   performance: {
     tier: "performance",
     label: "Efficient (mobile)",
-    description: "gte-small local embeddings for the mobile agent bundle",
+    description:
+      "BGE-small-en-v1.5 local embeddings for the mobile agent bundle",
     ...COMPACT_ELIZA_1_EMBEDDING,
   },
 };

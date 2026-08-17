@@ -2,8 +2,8 @@
  * Local-AI plugin backed by the Capacitor-llama adapter.
  *
  * This is the unified replacement for the legacy capacitor-llama adapter.
- * It registers a `Plugin` that handles `ModelType.TEXT_SMALL/LARGE/EMBEDDING`
- * via `CapacitorLlamaContext` — a single contract that resolves to
+ * It registers a `Plugin` that handles `ModelType.TEXT_SMALL/LARGE` via
+ * `CapacitorLlamaContext` — a single contract that resolves to
  * `llama-cpp-capacitor` on mobile and the desktop bun:ffi adapter on
  * desktop. Both load THE vendored llama.cpp at
  * `plugins/plugin-local-inference/native/llama.cpp/` (Wave 2's cross-compiles).
@@ -21,7 +21,6 @@ import type {
 	ImageDescriptionResult,
 	JSONSchema,
 	ModelTypeName,
-	TextEmbeddingParams,
 	TextStreamResult,
 	TextToSpeechParams,
 	TokenizeTextParams,
@@ -55,7 +54,6 @@ import { streamCapacitorPrompt } from "./text-streaming";
 import {
 	type CapacitorLlamaCompletionParams,
 	type CapacitorLlamaContext,
-	type EmbeddingModelSpec,
 	MODEL_SPECS,
 	type ModelSpec,
 } from "./types";
@@ -102,29 +100,6 @@ type LocalNativeTextModelResult = string & {
 	toolCalls: ToolCallResult[];
 	finishReason?: string;
 };
-
-function getObjectField(value: unknown, key: string): unknown {
-	if (!value || typeof value !== "object") return undefined;
-	return (value as Record<string, unknown>)[key];
-}
-
-function extractEmbeddingText(
-	params: TextEmbeddingParams | string | null,
-): string | null {
-	if (typeof params === "string") return params;
-	const text = getObjectField(params, "text");
-	return typeof text === "string" ? text : null;
-}
-
-function getRequiredEmbeddingText(
-	params: TextEmbeddingParams | string | null,
-): string {
-	const text = extractEmbeddingText(params)?.trim();
-	if (!text) {
-		throw new Error("Embedding text must be a non-empty string");
-	}
-	return text;
-}
 
 function stringifyMessageContent(
 	content: NonNullable<GenerateTextParams["messages"]>[number]["content"],
@@ -220,16 +195,6 @@ function normalizedToTokenUsage(usage: NormalizedUsage): TokenUsage {
 	};
 }
 
-function estimateEmbeddingUsage(text: string): NormalizedUsage {
-	const promptTokens = estimateTokenCount(text);
-	return {
-		promptTokens,
-		completionTokens: 0,
-		totalTokens: promptTokens,
-		estimated: true,
-	};
-}
-
 function stripThinkTags(text: string): string {
 	return text.includes("<think>")
 		? text.replace(/<think>[\s\S]*?<\/think>\n?/g, "")
@@ -308,12 +273,6 @@ function getLocalModelLabel(
 	type: ModelTypeName,
 ): string {
 	const config = validateConfig();
-	if (type === ModelType.TEXT_EMBEDDING) {
-		return String(
-			runtime.getSetting("LOCAL_EMBEDDING_MODEL") ||
-				config.LOCAL_EMBEDDING_MODEL,
-		);
-	}
 	if (type === ModelType.TEXT_LARGE) {
 		return String(
 			runtime.getSetting("LOCAL_LARGE_MODEL") || config.LOCAL_LARGE_MODEL,
@@ -351,22 +310,19 @@ function emitModelUsed(
 }
 
 /**
- * Singleton manager. Holds one Capacitor context per `ModelType` (small,
- * large, embedding), plus the resolved environment configuration and model
- * paths. The KV cache survives between turns inside `CapacitorLlamaContext`
- * because we reuse the same handle.
+ * Singleton manager. Holds one Capacitor context per text `ModelType` (small
+ * and large), plus the resolved environment configuration and model paths. The
+ * KV cache survives between turns inside `CapacitorLlamaContext` because we
+ * reuse the same handle.
  */
 class LocalAIManager {
 	private static instance: LocalAIManager | null = null;
 	private smallCtx: ContextEntry | null = null;
 	private mediumCtx: ContextEntry | null = null;
-	private embeddingCtx: CapacitorLlamaContext | null = null;
 	private modelPath!: string;
 	private mediumModelPath!: string;
-	private embeddingModelPath!: string;
 	private cacheDir!: string;
 	private activeModelConfig: ModelSpec;
-	private embeddingModelConfig: EmbeddingModelSpec;
 	private config: Config | null = null;
 	private environmentInitialized = false;
 	private environmentInitializingPromise: Promise<void> | null = null;
@@ -376,7 +332,6 @@ class LocalAIManager {
 		this.config = validateConfig();
 		this._setupCacheDir();
 		this.activeModelConfig = MODEL_SPECS.small;
-		this.embeddingModelConfig = MODEL_SPECS.embedding;
 	}
 
 	private _setupModelsDir(): void {
@@ -424,15 +379,10 @@ class LocalAIManager {
 				this.modelsDir,
 				this.config.LOCAL_LARGE_MODEL,
 			);
-			this.embeddingModelPath = path.join(
-				this.modelsDir,
-				this.config.LOCAL_EMBEDDING_MODEL,
-			);
 			logger.info(
 				{
 					small: basename(this.modelPath),
 					medium: basename(this.mediumModelPath),
-					embedding: basename(this.embeddingModelPath),
 				},
 				"Model paths resolved",
 			);
@@ -539,29 +489,6 @@ class LocalAIManager {
 	): Promise<void> {
 		await this.initializeEnvironment();
 		await this.resolveCtx(modelType, DEFAULT_LOCAL_SYSTEM_PROMPT);
-	}
-
-	public async initializeEmbedding(): Promise<void> {
-		await this.initializeEnvironment();
-		if (this.embeddingCtx) return;
-		this.embeddingCtx = await initCapacitorLlama({
-			model: this.embeddingModelPath,
-			n_ctx: this.embeddingModelConfig.contextSize,
-			n_gpu_layers: 0,
-			embedding: true,
-			pooling_type: "mean",
-		});
-	}
-
-	async generateEmbedding(text: string): Promise<number[]> {
-		await this.initializeEmbedding();
-		if (!this.embeddingCtx) {
-			throw new Error("Failed to initialize embedding context");
-		}
-		const result = await this.embeddingCtx.embedding(text, {
-			embd_normalize: 2,
-		});
-		return result.embedding;
 	}
 
 	async generateText(
@@ -718,14 +645,9 @@ export const localAiPlugin: Plugin = {
 		}
 		const smallModelPath = path.join(modelsDir, config.LOCAL_SMALL_MODEL);
 		const largeModelPath = path.join(modelsDir, config.LOCAL_LARGE_MODEL);
-		const embeddingModelPath = path.join(
-			modelsDir,
-			config.LOCAL_EMBEDDING_MODEL,
-		);
 		const modelsExist = {
 			small: fs.existsSync(smallModelPath),
 			large: fs.existsSync(largeModelPath),
-			embedding: fs.existsSync(embeddingModelPath),
 		};
 		logger.info(modelsExist, "Local AI model file presence");
 		logger.info("Local AI plugin initialized");
@@ -770,28 +692,6 @@ export const localAiPlugin: Plugin = {
 				modelType: ModelType.TEXT_LARGE,
 			});
 			return finalizeTextResult(runtime, ModelType.TEXT_LARGE, params, result);
-		},
-
-		[ModelType.TEXT_EMBEDDING]: async (
-			runtime: IAgentRuntime,
-			params: TextEmbeddingParams | string | null,
-		) => {
-			const text = getRequiredEmbeddingText(params);
-			const routed = await tryLocalInferenceModel<number[]>(
-				runtime,
-				ModelType.TEXT_EMBEDDING,
-				params,
-			);
-			if (routed.handled) return routed.value;
-
-			const embedding = await localAIManager.generateEmbedding(text);
-			emitModelUsed(
-				runtime,
-				ModelType.TEXT_EMBEDDING,
-				getLocalModelLabel(runtime, ModelType.TEXT_EMBEDDING),
-				estimateEmbeddingUsage(text),
-			);
-			return embedding;
 		},
 
 		[ModelType.TEXT_TOKENIZER_ENCODE]: async (

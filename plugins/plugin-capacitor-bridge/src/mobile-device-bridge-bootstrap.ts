@@ -45,7 +45,6 @@ import {
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	ServiceType,
-	type TextEmbeddingParams,
 } from "@elizaos/core";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
 
@@ -81,14 +80,6 @@ const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
  * registerMobileDeviceBridgeModels, never by mere plugin presence.
  */
 let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
-const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
-	"eliza-1-embedding": 1024,
-	// 2B reuses the text backbone for embeddings (--pooling last), so its dim is the
-	// model's embedding_length = 2048 (device-verified: EMBED -> dim 2048), NOT 1536.
-	"eliza-1-2b": 2048,
-	"eliza-1-4b": 2560,
-};
-
 // Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
 // catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
 // window; omitting a drafter path would select the retired same-file path.
@@ -150,11 +141,6 @@ type GenerateTextHandler = (
 	params: GenerateTextParams,
 ) => Promise<string>;
 
-type EmbeddingHandler = (
-	runtime: IAgentRuntime,
-	params: TextEmbeddingParams | string | null,
-) => Promise<number[]>;
-
 interface LocalInferenceLoadArgs {
 	modelPath: string;
 	contextSize?: number;
@@ -172,12 +158,10 @@ interface LocalInferenceLoadArgs {
 }
 
 type RuntimeWithModelRegistration = AgentRuntime & {
-	getModel: (
-		modelType: string | number,
-	) => GenerateTextHandler | EmbeddingHandler | undefined;
+	getModel: (modelType: string | number) => GenerateTextHandler | undefined;
 	registerModel: (
 		modelType: string | number,
-		handler: GenerateTextHandler | EmbeddingHandler,
+		handler: GenerateTextHandler,
 		provider: string,
 		priority?: number,
 	) => void;
@@ -1226,7 +1210,7 @@ type RecommendedModel = {
 };
 
 const RECOMMENDED_MODELS: Record<
-	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	"TEXT_SMALL" | "TEXT_LARGE",
 	RecommendedModel
 > = {
 	// The quantized 2B is the shipped mobile default. Both chat slots resolve
@@ -1245,12 +1229,6 @@ const RECOMMENDED_MODELS: Record<
 		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
 		localFile: "eliza-1-2b-128k.gguf",
 	},
-	TEXT_EMBEDDING: {
-		id: "eliza-1-embedding",
-		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
-		localFile: "eliza-1-embedding.gguf",
-	},
 };
 
 const inflightDownloads = new Map<string, Promise<string>>();
@@ -1264,7 +1242,7 @@ function buildHfResolveUrl(model: RecommendedModel): string {
 }
 
 function buildRecommendedLoadArgs(
-	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	slot: "TEXT_SMALL" | "TEXT_LARGE",
 	modelPath: string,
 ): LocalInferenceLoadArgs {
 	const model = RECOMMENDED_MODELS[slot];
@@ -1272,7 +1250,7 @@ function buildRecommendedLoadArgs(
 }
 
 async function downloadRecommendedModelFor(
-	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	slot: "TEXT_SMALL" | "TEXT_LARGE",
 ): Promise<string> {
 	const model = RECOMMENDED_MODELS[slot];
 	const dir = modelsDir();
@@ -1351,7 +1329,7 @@ async function downloadRecommendedModelFor(
 }
 
 async function resolveLoadArgsWithAutoDownload(
-	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	slot: "TEXT_SMALL" | "TEXT_LARGE",
 ): Promise<LocalInferenceLoadArgs | null> {
 	const existing = resolveLocalLoadArgs(slot);
 	if (existing) return existing;
@@ -1360,20 +1338,6 @@ async function resolveLoadArgsWithAutoDownload(
 	}
 	const downloaded = await downloadRecommendedModelFor(slot);
 	return buildRecommendedLoadArgs(slot, downloaded);
-}
-
-function resolveEmbeddingDimension(): number {
-	const assigned = resolveAssignedRegistryModel("TEXT_EMBEDDING");
-	return (
-		positiveInteger(process.env.ELIZA_LOCAL_EMBEDDING_DIMENSIONS) ??
-		positiveInteger(process.env.TEXT_EMBEDDING_DIMENSIONS) ??
-		positiveInteger(assigned?.dimensions) ??
-		positiveInteger(assigned?.embeddingDimension) ??
-		positiveInteger(assigned?.embeddingDimensions) ??
-		(assigned?.id ? KNOWN_EMBEDDING_DIMENSIONS[assigned.id] : null) ??
-		KNOWN_EMBEDDING_DIMENSIONS[RECOMMENDED_MODELS.TEXT_EMBEDDING.id] ??
-		1024
-	);
 }
 
 // elizaOS v5 message-pipeline calls `runtime.useModel(TEXT_LARGE, params)`
@@ -1982,67 +1946,6 @@ function collectRoleLabeledPromptMessages(
 	return result.length > 0 ? result : null;
 }
 
-function extractEmbeddingText(
-	params: TextEmbeddingParams | string | null,
-): string {
-	if (params === null) return "";
-	if (typeof params === "string") return params;
-	return params.text;
-}
-
-function makeEmbeddingHandler(): EmbeddingHandler {
-	return async (_runtime, params) => {
-		if (params === null) {
-			// Runtime initialization uses a null embedding request only to size
-			// the vector column. On stock Capacitor, the WebView cannot attach to
-			// the device bridge until the agent HTTP server is already listening,
-			// so this startup probe must not try to load the native model.
-			return new Array(resolveEmbeddingDimension()).fill(0);
-		}
-		let loadArgs: LocalInferenceLoadArgs | null =
-			resolveLocalLoadArgs("TEXT_EMBEDDING");
-		let modelPath = loadArgs?.modelPath ?? null;
-		if (!modelPath) {
-			if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
-				throw new Error(
-					`[mobile-device-bridge] No local GGUF embedding model installed under ${modelsDir()} and auto-download is disabled.`,
-				);
-			}
-			modelPath = await downloadRecommendedModelFor("TEXT_EMBEDDING");
-			loadArgs = buildRecommendedLoadArgs("TEXT_EMBEDDING", modelPath);
-		}
-		if (!loadArgs) {
-			throw new Error(
-				`[mobile-device-bridge] No local GGUF embedding model resolved for ${modelsDir()}.`,
-			);
-		}
-
-		// GPU delegation: embed on the in-process bionic host (--pooling last over
-		// the fused text model), bypassing the device-bridge. This is what makes
-		// on-device memory + doc-seeding run locally instead of failing over to
-		// cloud BatchEmbeddings (401 on a fresh local install).
-		const bionicSock = bionicSocketName();
-		if (bionicSock) {
-			const res = await bionicHostGenerate(bionicSock, {
-				op: "embed",
-				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
-				text: extractEmbeddingText(params),
-			});
-			if (!res.ok || !Array.isArray(res.embedding)) {
-				throw new Error(
-					`[mobile-device-bridge] bionic embed failed: ${res.error ?? "no embedding"}`,
-				);
-			}
-			return res.embedding;
-		}
-
-		await mobileDeviceBridge.loadModel(loadArgs);
-		return mobileDeviceBridge.embed({
-			input: extractEmbeddingText(params),
-		});
-	};
-}
-
 export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
 	return mobileDeviceBridge.status();
 }
@@ -2284,7 +2187,7 @@ function makeBionicImageDescriptionHandler() {
 }
 
 /**
- * Register the capacitor-llama TEXT/embedding handlers on the runtime.
+ * Register the capacitor-llama text-generation handlers on the runtime.
  *
  * Callers must ensure a serving path actually exists first (bionic host
  * delegation, or an attached device bridge): registering these handlers
@@ -2341,16 +2244,11 @@ function registerMobileDeviceBridgeModels(
 			),
 		);
 	}
-	// Always register the TEXT_EMBEDDING handler. If the GGUF isn't on disk
-	// yet, the handler itself will trigger the auto-downloader on first
-	// real call (the null-params startup probe still returns zeros). This
-	// way the embedding slot becomes available without an agent restart.
-	runtimeWithRegistration.registerModel(
-		ModelType.TEXT_EMBEDDING,
-		makeEmbeddingHandler(),
-		PROVIDER,
-		LOCAL_INFERENCE_PRIORITY,
-	);
+	// Deliberately do not register TEXT_EMBEDDING. The stock Capacitor RPC does
+	// not carry a pooling contract and the bionic host explicitly used
+	// last-token pooling over the chat model. Neither path can attest the
+	// canonical BGE-small/384/mean/L2 space, so semantic embedding routing must
+	// fail closed to another fingerprinted provider.
 	// On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
 	// bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
 	// instead of degrading to the cloud handler. Only meaningful when bionic
@@ -2368,25 +2266,8 @@ function registerMobileDeviceBridgeModels(
 			"[mobile-device-bridge] Registered bionic IMAGE_DESCRIPTION handler (op=image)",
 		);
 	}
-	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
-	if (
-		!embeddingModelPath &&
-		process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
-	) {
-		// Kick off the embedding-model download in the background so it's
-		// ready by the time the WebView issues a real embed request.
-		// error-policy:J5 fire-and-forget pre-warm; surfaced via logger.warn and the
-		// first real embed request re-triggers the download, so registration of the
-		// TEXT_EMBEDDING handler must not block on it.
-		downloadRecommendedModelFor("TEXT_EMBEDDING").catch((err) =>
-			logger.warn(
-				`[mobile-device-bridge] Background embedding-model download failed: ${(err as Error).message}`,
-			),
-		);
-	}
-
 	logger.info(
-		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
+		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger}); semantic embeddings remain unregistered because this transport cannot attest mean-pooled BGE-small`,
 	);
 	registeredRuntimes.add(runtime);
 	registeredRuntimeCount += 1;

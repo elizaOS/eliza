@@ -135,7 +135,7 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  const signal = (params as GenerateTextParams & { signal?: AbortSignal }).signal;
+  const signal = params.signal;
   const generateParams = {
     model: zai(modelName),
     prompt: resolved.prompt,
@@ -160,19 +160,26 @@ async function generateTextWithModel(
         capturedError = error;
       },
     } as Parameters<typeof streamText>[0]);
-    // Attach handlers immediately: AI SDK companion promises can reject before
-    // the async text iterator finishes. The failure is rethrown below after the
-    // iterator has had a chance to run its transport cleanup.
+    // Companion promises may reject before the async iterator finishes. Attach
+    // observers immediately, then rethrow the authoritative finish failure once
+    // transport cleanup has completed.
+    const textPromise = Promise.resolve(result.text).catch((error) => {
+      // error-policy:J5 the SDK text aggregate reports the same provider
+      // failure as textStream/onError; retain it as a fallback when an adapter
+      // does not invoke onError.
+      capturedError ??= error;
+      return undefined;
+    });
     const finishReasonPromise = Promise.resolve(result.finishReason).catch((error) => {
-      // error-policy:J5 the finishError check below observes and rethrows this
-      // same rejection after the text iterator completes its cleanup.
+      // error-policy:J5 `finishError` is observed and rethrown below after the
+      // text iterator completes its cleanup.
       finishError = error;
       return undefined;
     });
     const usagePromise = Promise.resolve(result.usage).catch(() => {
-      // error-policy:J7 usage accounting is diagnostic and must not discard an
-      // otherwise successful streamed reply, but the missing metric must stay
-      // observable without logging a potentially sensitive provider payload.
+      // error-policy:J7 usage is diagnostic and must not discard an otherwise
+      // successful reply. Keep the failure observable without logging a
+      // potentially sensitive provider payload.
       logger.warn(`[z.ai] ${modelType} stream usage metadata was unavailable`);
       runtime.reportError(
         "zai.stream-usage",
@@ -180,10 +187,7 @@ async function generateTextWithModel(
           code: "MODEL_USAGE_UNAVAILABLE",
           context: { modelType, modelName },
         }),
-        {
-          modelType,
-          modelName,
-        }
+        { modelType, modelName }
       );
       return undefined;
     });
@@ -195,8 +199,11 @@ async function generateTextWithModel(
       signal?.throwIfAborted();
     }
     signal?.throwIfAborted();
-    const finishReason = await finishReasonPromise;
-    const usage = await usagePromise;
+    const [, finishReason, usage] = await Promise.all([
+      textPromise,
+      finishReasonPromise,
+      usagePromise,
+    ]);
     signal?.throwIfAborted();
     if (capturedError !== undefined) throw capturedError;
     if (finishError !== undefined) throw finishError;

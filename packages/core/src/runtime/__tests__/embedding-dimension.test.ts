@@ -28,6 +28,11 @@ import {
 	EmbeddingDimensionProbeError,
 	NoModelProviderConfiguredError,
 } from "../../runtime";
+import {
+	canonicalEmbeddingProbeMarker,
+	canonicalEmbeddingRegistrationMetadata,
+	canonicalTestEmbedding,
+} from "../../testing/canonical-embedding";
 import { type Character, type Memory, ModelType, type UUID } from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -62,21 +67,154 @@ function makeMemory(text: string): Memory {
 	};
 }
 
+function registerCanonicalModel(
+	runtime: AgentRuntime,
+	modelType: typeof ModelType.TEXT_EMBEDDING,
+	handler: Parameters<AgentRuntime["registerModel"]>[1],
+	provider: string,
+	priority?: number,
+): void {
+	runtime.registerModel(
+		modelType,
+		handler,
+		provider,
+		priority,
+		canonicalEmbeddingRegistrationMetadata,
+	);
+}
+
 describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
-	it("cleanly skips the probe when no embedding provider is registered", async () => {
+	it("fails closed when a custom adapter cannot reconcile same-width vector spaces", async () => {
 		const runtime = makeRuntime();
-		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+		(
+			runtime.adapter as { reconcileEmbeddingSpace?: unknown }
+		).reconcileEmbeddingSpace = undefined;
+		const singleHandler = vi.fn(async (_runtime, params) =>
+			params === null
+				? canonicalEmbeddingProbeMarker(0.1)
+				: canonicalTestEmbedding(),
+		);
+		const batchHandler = vi.fn(async () => [canonicalTestEmbedding()]);
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			singleHandler,
+			"direct",
+			0,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			batchHandler,
+			"direct",
+			0,
+			canonicalEmbeddingRegistrationMetadata,
+		);
+		const searchMemories = vi.spyOn(runtime.adapter, "searchMemories");
 
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
-		expect(ensureDim).not.toHaveBeenCalled();
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, { text: "must not run" }),
+		).rejects.toMatchObject({
+			code: "EMBEDDING_SPACE_UNAVAILABLE",
+			severity: "ephemeral",
+		});
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, { texts: ["blocked"] }),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_UNAVAILABLE" });
+		await expect(
+			runtime.searchMemories({
+				tableName: "memories",
+				embedding: canonicalTestEmbedding(),
+			}),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_UNAVAILABLE" });
+		expect(batchHandler).not.toHaveBeenCalled();
+		expect(searchMemories).not.toHaveBeenCalled();
+
+		// The exact-width finite null marker remains callable so a deferred
+		// reconciliation attempt can recover this runtime.
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, null, "direct"),
+		).resolves.toEqual(canonicalEmbeddingProbeMarker(0.1));
+		expect(singleHandler).toHaveBeenCalledTimes(2);
 	});
 
-	it("still rejects an explicitly configured provider with no handler", async () => {
-		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "direct" });
-
-		await expect(runtime.ensureEmbeddingDimension()).rejects.toThrow(
-			'Configured TEXT_EMBEDDING provider "direct" has no registered handler',
+	it("normalizes canonical semantic-query vectors before the adapter boundary", async () => {
+		const runtime = makeRuntime();
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			async (_runtime, params) =>
+				params === null
+					? canonicalEmbeddingProbeMarker()
+					: canonicalTestEmbedding(),
+			"direct",
+			0,
 		);
+		await runtime.ensureEmbeddingDimension();
+
+		const searchMemories = vi
+			.spyOn(runtime.adapter, "searchMemories")
+			.mockResolvedValue([]);
+		const query = new Array(384).fill(0);
+		query[0] = 3;
+		query[1] = 4;
+		await runtime.searchMemories({
+			tableName: "memories",
+			embedding: query,
+		});
+		expect(searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				embedding: expect.arrayContaining([0.6, 0.8]),
+			}),
+		);
+
+		await expect(
+			runtime.searchMemories({
+				tableName: "memories",
+				embedding: new Array(384).fill(0),
+			}),
+		).rejects.toMatchObject({ code: "EMBEDDING_QUERY_INVALID" });
+		expect(searchMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("gates generation and search when fingerprint reconciliation fails", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async (_runtime, params) =>
+			params === null
+				? canonicalEmbeddingProbeMarker()
+				: canonicalTestEmbedding(),
+		);
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			handler,
+			"direct",
+			0,
+		);
+		vi.spyOn(runtime.adapter, "reconcileEmbeddingSpace").mockRejectedValue(
+			new Error("fingerprint store unavailable"),
+		);
+		const searchMemories = vi.spyOn(runtime.adapter, "searchMemories");
+
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, { text: "blocked" }),
+		).rejects.toMatchObject({
+			code: "EMBEDDING_SPACE_UNAVAILABLE",
+			context: {
+				reason: expect.stringContaining("fingerprint store unavailable"),
+			},
+		});
+		await expect(
+			runtime.searchMemories({
+				tableName: "memories",
+				embedding: canonicalTestEmbedding(),
+			}),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_UNAVAILABLE" });
+		expect(searchMemories).not.toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
 	it("pins the canonically routed embedding provider instead of plugin priority", async () => {
@@ -84,8 +222,20 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
 		const directHandler = vi.fn(async () => new Array(384).fill(0));
 
-		runtime.registerModel(ModelType.TEXT_EMBEDDING, cloudHandler, "cloud", 100);
-		runtime.registerModel(ModelType.TEXT_EMBEDDING, directHandler, "direct", 0);
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			cloudHandler,
+			"cloud",
+			100,
+		);
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			directHandler,
+			"direct",
+			0,
+		);
 		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
 
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
@@ -96,13 +246,20 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 
 	it("regenerates empty vectors while preserving non-empty idempotency", async () => {
 		const runtime = makeRuntime();
-		const embedHandler = vi.fn(async () => [0.25, 0.5]);
-		runtime.registerModel(ModelType.TEXT_EMBEDDING, embedHandler, "direct", 0);
+		const embedHandler = vi.fn(async () => canonicalTestEmbedding());
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			embedHandler,
+			"direct",
+			0,
+		);
 
 		const empty = makeMemory("empty vector");
 		empty.embedding = [];
 		await expect(runtime.addEmbeddingToMemory(empty)).resolves.toBe(empty);
-		expect(empty.embedding).toEqual([0.25, 0.5]);
+		expect(empty.embedding).toHaveLength(384);
+		expect(Math.hypot(...(empty.embedding ?? []))).toBeCloseTo(1);
 
 		const existing = makeMemory("existing vector");
 		existing.embedding = [9];
@@ -115,7 +272,8 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 
 	it("rejects an empty provider result before a caller can persist the memory", async () => {
 		const runtime = makeRuntime();
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			async () => [],
 			"direct",
@@ -137,8 +295,8 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 				code: "EMBEDDING_MODEL_OUTPUT_INVALID",
 				severity: "fatal",
 				context: {
-					memoryId: memory.id,
-					outputKind: "empty-array",
+					modelType: ModelType.TEXT_EMBEDDING,
+					provider: "direct",
 				},
 			},
 		);
@@ -148,9 +306,10 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 
 	it("queues empty vectors while skipping non-empty vectors", async () => {
 		const runtime = makeRuntime();
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
-			async () => [0.25],
+			async () => canonicalTestEmbedding(),
 			"direct",
 			0,
 		);
@@ -172,15 +331,21 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		const brokenHandler = vi.fn(async () => {
 			throw new Error("Not Implemented");
 		});
-		const healthyHandler = vi.fn(async () => new Array(768).fill(0));
+		const healthyHandler = vi.fn(async (_runtime, params) =>
+			params === null
+				? canonicalEmbeddingProbeMarker()
+				: canonicalTestEmbedding(),
+		);
 
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			brokenHandler,
 			"ollama",
 			100,
 		);
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			healthyHandler,
 			"elizacloud",
@@ -192,7 +357,7 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 
 		expect(brokenHandler).toHaveBeenCalledTimes(1);
 		expect(healthyHandler).toHaveBeenCalledTimes(1);
-		expect(ensureDim).toHaveBeenCalledWith(768);
+		expect(ensureDim).toHaveBeenCalledWith(384);
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
 
 		// The column was sized from elizacloud's output, so later embedding
@@ -200,7 +365,7 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		// be retried (its vectors could have a different width and would be
 		// silently dropped by the SQL adapter's dimension guard).
 		const memory = await runtime.addEmbeddingToMemory(makeMemory("hello"));
-		expect(memory.embedding).toHaveLength(768);
+		expect(memory.embedding).toHaveLength(384);
 		expect(brokenHandler).toHaveBeenCalledTimes(1);
 		expect(healthyHandler).toHaveBeenCalledTimes(2);
 	});
@@ -212,13 +377,15 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		});
 		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
 
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			cloudHandler,
 			"elizacloud",
 			100,
 		);
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			localRouter,
 			"eliza-router",
@@ -245,7 +412,8 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 	it("fails closed when local ownership is configured without an on-device handler", async () => {
 		const runtime = makeRuntime({ embeddingProvider: "local" });
 		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			cloudHandler,
 			"elizacloud",
@@ -268,10 +436,17 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 	it("treats an invalid probe embedding as a failed attempt and advances", async () => {
 		const runtime = makeRuntime();
 		const emptyHandler = vi.fn(async () => []);
-		const healthyHandler = vi.fn(async () => new Array(384).fill(0));
+		const healthyHandler = vi.fn(async () => canonicalEmbeddingProbeMarker());
 
-		runtime.registerModel(ModelType.TEXT_EMBEDDING, emptyHandler, "empty", 50);
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			emptyHandler,
+			"empty",
+			50,
+		);
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			healthyHandler,
 			"healthy",
@@ -293,13 +468,15 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 			throw new Error("connect ECONNREFUSED 127.0.0.1:11434");
 		});
 
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			ollamaHandler,
 			"ollama",
 			100,
 		);
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			cloudHandler,
 			"elizacloud",
@@ -358,14 +535,17 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 	it("re-enables embedding writes at the correct dimension after a successful re-probe (recovery)", async () => {
 		const runtime = makeRuntime();
 		let recovered = false;
-		const flakyHandler = vi.fn(async () => {
+		const flakyHandler = vi.fn(async (_runtime, params) => {
 			if (!recovered) {
 				throw new Error("Not Implemented");
 			}
-			return new Array(1536).fill(0);
+			return params === null
+				? canonicalEmbeddingProbeMarker()
+				: canonicalTestEmbedding();
 		});
 
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			flakyHandler,
 			"elizacloud",
@@ -387,22 +567,23 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
 
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
-		expect(ensureDim).toHaveBeenCalledWith(1536);
+		expect(ensureDim).toHaveBeenCalledWith(384);
 
 		// No silent drop after recovery: the write resumes and its vector width
 		// matches the dimension the adapter column was just configured with, so
 		// the plugin-sql dimension guard cannot drop it.
 		const restored = await runtime.addEmbeddingToMemory(makeMemory("late"));
-		expect(restored.embedding).toHaveLength(1536);
-		expect(ensureDim).toHaveBeenLastCalledWith(1536);
+		expect(restored.embedding).toHaveLength(384);
+		expect(ensureDim).toHaveBeenLastCalledWith(384);
 	});
 
-	it("keeps the benign skip when every handler reports no backing provider configured", async () => {
+	it("fails semantic operations closed when every handler has no backing provider", async () => {
 		const runtime = makeRuntime();
 		const proxyHandler = vi.fn(async () => {
 			throw new NoModelProviderConfiguredError();
 		});
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			proxyHandler,
 			"elizacloud",
@@ -410,18 +591,24 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		);
 		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
 
-		// "No backing provider at all" means nothing will ever emit vectors, so
-		// a default-width column cannot cause a mismatch — not a degradation.
+		// No provider can attest/reconcile the active space, so even a caller-
+		// supplied vector must not query potentially stale same-width rows.
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
 		expect(ensureDim).not.toHaveBeenCalled();
-		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		await expect(
+			runtime.searchMemories({
+				tableName: "memories",
+				embedding: canonicalTestEmbedding(),
+			}),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_UNAVAILABLE" });
 	});
 });
-
 describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)", () => {
 	it("treats the pre-plugin local handler gap as expected startup sequencing", async () => {
 		const runtime = makeRuntime({ embeddingProvider: "local" });
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			async () => new Array(1536).fill(0),
 			"elizacloud",
@@ -442,7 +629,8 @@ describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)
 		const ollamaHandler = vi.fn(async () => {
 			throw new Error("Not Implemented");
 		});
-		runtime.registerModel(
+		registerCanonicalModel(
+			runtime,
 			ModelType.TEXT_EMBEDDING,
 			ollamaHandler,
 			"ollama",

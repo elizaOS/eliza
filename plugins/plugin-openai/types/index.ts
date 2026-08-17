@@ -309,7 +309,8 @@ export interface OpenAIEmbeddingResponse {
     embedding: number[];
     index: number;
   }>;
-  model: string;
+  /** Optional on the wire; canonical handlers reject omission at runtime. */
+  model?: string;
   usage: {
     prompt_tokens: number;
     total_tokens: number;

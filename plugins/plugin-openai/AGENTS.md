@@ -19,7 +19,7 @@ This plugin registers **model handlers only** (no actions, providers, services, 
 | `TEXT_MEGA` | falls back to large | `handleTextMega` |
 | `RESPONSE_HANDLER` | falls back to small | `handleResponseHandler` |
 | `ACTION_PLANNER` | falls back to medium | `handleActionPlanner` |
-| `TEXT_EMBEDDING` | `thenlper/gte-small` (384-dim, explicit endpoint required) | `handleTextEmbedding` |
+| `TEXT_EMBEDDING` | `BAAI/bge-small-en-v1.5` | `handleTextEmbedding` |
 | `TEXT_TOKENIZER_ENCODE` | js-tiktoken | `handleTokenizerEncode` |
 | `TEXT_TOKENIZER_DECODE` | js-tiktoken | `handleTokenizerDecode` |
 | `IMAGE` | `dall-e-3` | `handleImageGeneration` |
@@ -93,10 +93,10 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | no | falls back to large | TEXT_MEGA model |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | no | falls back to small | RESPONSE_HANDLER model |
 | `OPENAI_ACTION_PLANNER_MODEL` | no | falls back to medium | ACTION_PLANNER model |
-| `OPENAI_EMBEDDING_MODEL` | no | `thenlper/gte-small` | Canonical embedding model |
+| `OPENAI_EMBEDDING_MODEL` | no | `BAAI/bge-small-en-v1.5` | Embedding model |
 | `OPENAI_EMBEDDING_URL` | no | `OPENAI_BASE_URL` | Override embeddings endpoint |
 | `OPENAI_EMBEDDING_API_KEY` | no | `OPENAI_API_KEY` | Separate embedding auth |
-| `OPENAI_EMBEDDING_DIMENSIONS` | no | `384` | Canonical embedding vector dimensions |
+| `OPENAI_EMBEDDING_DIMENSIONS` | no | `384` | Canonical BGE-small width; other values fail closed |
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | no | `gpt-5-mini` | Vision model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | no | `OPENAI_BASE_URL` | Override vision endpoint |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | no | `OPENAI_API_KEY` | Separate vision auth |
@@ -139,7 +139,7 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 ## Conventions / gotchas
 
 - **Dual build (node + browser).** Exports differ: `dist/node/index.node.js` and `dist/browser/index.browser.js`. Browser build avoids sending `Authorization` headers by default; set `OPENAI_BROWSER_BASE_URL` to a server-side proxy.
-- **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. In Cerebras mode: structured output via `response_format: json_object` (not `json_schema`); `reasoning_effort` defaults to `"low"` for reasoning-capable models; `promptCacheRetention` is stripped (Cerebras rejects it); embeddings fall back to a deterministic local hash when no explicit embedding URL is set.
+- **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. Cerebras serves no embeddings, so canonical embeddings require an explicit `OPENAI_EMBEDDING_URL`; synthetic fallbacks are rejected.
 - **Strict-schema stripping (default for strict/unspecified tools, ALL providers).** `sanitizeJsonSchema` in `models/text.ts` is the single wire choke point for every `response_format` schema (`buildStructuredOutput`) and every strict or unspecified tool schema (`normalizeNativeTools`). It strips the constraint keywords strict-grammar providers (Cerebras via Eliza Cloud, OpenAI strict) 400 on — `maxItems`, `minItems`, `maxLength`, `minLength`, `pattern`, `format`, `minProperties`, `maxProperties` — folding each into the node's `description` so the model keeps the intent, and recurses through `properties`/`items`/`anyOf`/`oneOf`/`allOf`/`$defs`/`patternProperties`/`contains`/`if`-`then`-`else`. Numeric bounds (`minimum`/`maximum`/`multipleOf`/`uniqueItems`) pass through untouched. This is **not** gated on Cerebras mode — `isCerebrasMode` is proxy-blind (an agent on `api.eliza.app` with `OPENAI_API_KEY` looks like plain OpenAI, which is exactly where the 400s fired). Real bounds are still enforced app-side: `parseAndValidate` re-checks the caller's ORIGINAL schema. So do NOT add per-schema constraint-stripping — the choke point already does it (#11123 / #11153).
 - **Explicit non-strict tools preserve their schema.** A core `ToolDefinition` with `strict: false` bypasses strict-schema rewriting and reaches a non-Cerebras OpenAI-compatible endpoint with the caller's exact parameter schema and `strict: false`. This is reserved for transports whose contract requires optional fields to remain optional; strict/unspecified tools continue through the sanitizer above, and Cerebras mode still applies its compatibility normalization.
 - **Free-form record/map tool args use the #13111 strict-safe transform.** `sanitizeJsonSchema` still forces `additionalProperties: false` on every object for strict-grammar providers, but `normalizeNativeTools` rewrites declared free-form record/map tool args (`additionalProperties: true` or a value schema, e.g. contact `customFields`) into a model-facing `__eliza_record_entries` key/value array. Returned tool calls are reverse-mapped back to the original object shape before runtime validation, so tool authors still receive the schema they declared without reopening #11123/#11156 strict-schema 400s. Scoped to **tool parameters only** — `response_format` has no returned tool args to reverse-map and still uses plain sanitization.

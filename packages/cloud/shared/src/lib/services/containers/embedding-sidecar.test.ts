@@ -8,7 +8,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildEmbeddingSidecarProbeCmd,
   buildEnsureEmbeddingSidecarCmd,
+  EMBEDDING_SIDECAR_CONFIG_LABEL,
   EMBEDDING_SIDECAR_CONTAINER_NAME,
+  EMBEDDING_SIDECAR_SPACE_LABEL,
   embeddingSidecarStatusFromMetadata,
   parseEmbeddingSidecarProbe,
   resolveEmbeddingSidecarConfig,
@@ -28,16 +30,13 @@ afterEach(() => {
 });
 
 describe("buildEnsureEmbeddingSidecarCmd", () => {
-  test("is idempotent: leaves a running sidecar untouched, replaces anything else", () => {
+  test("is idempotent only for the exact running canonical config", () => {
     const cmd = buildEnsureEmbeddingSidecarCmd();
-    // Running-check short-circuits the whole install group.
-    expect(cmd).toMatch(
-      new RegExp(
-        `^docker inspect -f '\\{\\{\\.State\\.Running\\}\\}' ${EMBEDDING_SIDECAR_CONTAINER_NAME} 2>/dev/null \\| grep -q true \\|\\| \\{`,
-      ),
-    );
-    // Not-running path replaces (rm -f) rather than docker-start, so a config/
-    // image drift heals to the currently pinned contract.
+    expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}`);
+    expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_CONFIG_LABEL}"}}`);
+    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:mean:l2:v1|");
+    // A running legacy/unlabelled GTE container or any image/network/port drift
+    // misses the exact label identity and is replaced, rather than docker-started.
     expect(cmd).toContain(
       `docker rm -f ${EMBEDDING_SIDECAR_CONTAINER_NAME} >/dev/null 2>&1 || true`,
     );
@@ -50,13 +49,16 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     // managed-by label — an unlabeled sidecar is exactly how hand-installed
     // ones vanished. The label is load-bearing, not cosmetic.
     expect(cmd).toContain("--label ai.elizaos.managed-by=eliza-cloud");
+    expect(cmd).toContain(
+      "--label ai.elizaos.embedding-space=BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+    );
   });
 
-  test("serves gte-small on the shared bridge network with a loopback-only publish", () => {
+  test("serves canonical mean-pooled BGE-small on the shared bridge network", () => {
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain("--network containers-isolated");
     expect(cmd).toContain("-p 127.0.0.1:8290:80");
-    expect(cmd).toContain("--model-id thenlper/gte-small");
+    expect(cmd).toContain("--model-id BAAI/bge-small-en-v1.5 --pooling mean");
     expect(cmd).toContain("ghcr.io/huggingface/text-embeddings-inference:cpu-1.8");
     // Model cache persists across container replacement.
     expect(cmd).toContain("-v /data/embedding-models:/data");
@@ -66,16 +68,17 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     expect(buildEnsureEmbeddingSidecarCmd()).not.toMatch(/[\r\n]/);
   });
 
-  test("honors image and port overrides but rejects a different embedding model", () => {
+  test("honors image/port overrides but rejects a non-canonical model override", () => {
     process.env.CONTAINERS_EMBEDDING_SIDECAR_IMAGE = "ghcr.io/example/tei:cpu-9.9";
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "BAAI/bge-small-en-v1.5";
     process.env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT = "9411";
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain("ghcr.io/example/tei:cpu-9.9");
-    expect(cmd).toContain("--model-id thenlper/gte-small");
+    expect(cmd).toContain("--model-id BAAI/bge-small-en-v1.5");
     expect(cmd).toContain("-p 127.0.0.1:9411:80");
 
-    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "example/gte-small-v2";
-    expect(() => buildEnsureEmbeddingSidecarCmd()).toThrow(/model mismatch/);
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "thenlper/gte-small";
+    expect(() => buildEnsureEmbeddingSidecarCmd()).toThrow(/Embedding model mismatch/);
   });
 
   test("refuses shell-unsafe config instead of quoting around it", () => {
@@ -100,6 +103,10 @@ describe("buildEmbeddingSidecarProbeCmd + parseEmbeddingSidecarProbe", () => {
     expect(cmd).toContain("echo running");
     expect(cmd).toContain("echo unresponsive");
     expect(cmd).toContain("echo missing");
+    // A healthy-but-legacy GTE container is semantically absent. The probe
+    // only reports running when the canonical space label matches exactly.
+    expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}`);
+    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:mean:l2:v1'");
     // HTTP-level: a container that is up but cannot serve must not read present.
     expect(cmd).toContain("curl -fsS -m 5 http://127.0.0.1:8290/health");
 

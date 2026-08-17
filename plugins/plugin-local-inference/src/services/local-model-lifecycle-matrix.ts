@@ -115,7 +115,7 @@ export interface LifecycleBundleRemoteCheck {
  *   publish gap, and it counts in `pendingPublishRows`.
  * - `served-by-alternate-runtime`: the model slot is deliberately served by a
  *   different runtime artifact (e.g. the 2b tier ships no bundle embedding;
- *   `TEXT_EMBEDDING` is served by the gte-small preset). The row is `skipped`
+ *   `TEXT_EMBEDDING` is served by the BGE-small preset). The row is `skipped`
  *   with the recorded product decision instead of a permanent unfixable fail.
  */
 export interface LifecycleKnownGap {

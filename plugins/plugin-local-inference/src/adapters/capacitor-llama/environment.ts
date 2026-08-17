@@ -12,19 +12,22 @@ import { z } from "zod";
 
 const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-128k.gguf";
 const DEFAULT_LARGE_MODEL = "text/eliza-1-2b-128k.gguf";
-const DEFAULT_EMBEDDING_MODEL = "gte-small_fp16.gguf";
+const DEFAULT_EMBEDDING_MODEL = "bge-small-en-v1.5-q4_k_m.gguf";
 
 export const configSchema = z.object({
 	LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
 	LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_LARGE_MODEL),
-	LOCAL_EMBEDDING_MODEL: z.string().optional().default(DEFAULT_EMBEDDING_MODEL),
+	LOCAL_EMBEDDING_MODEL: z
+		.literal(DEFAULT_EMBEDDING_MODEL)
+		.optional()
+		.default(DEFAULT_EMBEDDING_MODEL),
 	MODELS_DIR: z.string().optional(),
 	CACHE_DIR: z.string().optional(),
 	LOCAL_EMBEDDING_DIMENSIONS: z
-		.string()
+		.literal("384")
 		.optional()
 		.default("384")
-		.transform((val) => parseInt(val, 10)),
+		.transform(() => 384),
 });
 
 export type Config = z.infer<typeof configSchema>;

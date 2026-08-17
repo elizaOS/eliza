@@ -22,7 +22,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 ### Model handlers (registered by `createLocalInferenceModelHandlers()`)
 `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, `TRANSCRIPTION`, `PII_SCRUB`
 
-`TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
+`TEXT_EMBEDDING` is **not** registered on the static plugin object. The independently hash-verified AOSP bootstrap owns its semantic registration; desktop boot registers only the exact hash-verified canonical BGE fused artifact. Generic `localInferenceLoader` services (including Capacitor and bionic-host loaders) are not semantic providers merely because they expose `embed()` or return 384 values.
 
 ### Registered elizaOS services
 - `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-capacitor-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
@@ -176,10 +176,10 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `LOCAL_INFERENCE_IMAGE_MODEL_KEY` | No | Pin a specific image-gen model key |
 | `LOCAL_INFERENCE_ACTIVE_TIER` | No | Pin a specific Eliza-1 tier (e.g. `eliza-1-4b`) |
 | `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN` | No | Developer-only diagnostic opt-in; set `1`/`true`/`yes` to include external GGUF files in installed-model inventory. Default product setup is curated Eliza-1 only. |
-| `LOCAL_EMBEDDING_MODEL` | No | Override embedding model filename |
+| `LOCAL_EMBEDDING_MODEL` | No | Canonical `bge-small-en-v1.5-q4_k_m.gguf` only; other identities fail closed |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | No | GPU layers for embedding model |
-| `LOCAL_EMBEDDING_CONTEXT_SIZE` | No | Context size for embedding model |
-| `LOCAL_EMBEDDING_DIMENSIONS` | No | Embedding dimension override |
+| `LOCAL_EMBEDDING_CONTEXT_SIZE` | No | Canonical embedding context size (`512`) |
+| `LOCAL_EMBEDDING_DIMENSIONS` | No | Canonical embedding width (`384`) |
 
 Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (defaults to `~/.eliza`). Set `ELIZA_STATE_DIR` to relocate.
 
@@ -208,7 +208,7 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 
 - **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
 - **One FFI implementation, two selectable runtimes.** `BackendDispatcher` always drives the fused `libelizainference` surface. It selects `llama-cpp` for GGUF (the default and the required path for specialized kernels) or `litert-lm` when a supported build has a `.litertlm` artifact. `ELIZA_INFERENCE_BACKEND` accepts `auto`, `llama-cpp`, or `litert-lm`; forcing an unsupported runtime fails at load rather than silently falling back. There is no separate generic-GGUF backend.
-- **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
+- **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** AOSP registers its independently verified canonical handler; desktop `ensureLocalInferenceHandler()` registers only an exact hash-verified BGE fused artifact. Never grant canonical metadata to an arbitrary same-width `localInferenceLoader` result.
 - **Native binary deps** (sd.cpp, mflux, Kokoro GGUF/fused `libelizainference`) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.
 - **Catalog source of truth** lives in `@elizaos/shared` (`MODEL_CATALOG`, tier ids, HuggingFace URL builders). `src/services/catalog.ts` is a thin re-export shim.

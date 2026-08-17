@@ -7,6 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../runtime.ts";
+import { canonicalEmbeddingRegistrationMetadata } from "../../testing/canonical-embedding.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
 import type { Memory, UUID } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
@@ -61,6 +62,7 @@ beforeAll(async () => {
 		async () => embed(),
 		"orphan-compensation-test",
 		1_000,
+		canonicalEmbeddingRegistrationMetadata,
 	);
 	runtime.registerModel(
 		ModelType.TEXT_EMBEDDING_BATCH,
@@ -70,7 +72,12 @@ beforeAll(async () => {
 		},
 		"orphan-compensation-test",
 		1_000,
+		canonicalEmbeddingRegistrationMetadata,
 	);
+	// createTestRuntime initializes before this test-only provider is injected;
+	// mirror the deferred production boot probe so the canonical fingerprint is
+	// reconciled before any fragment generation or semantic query is allowed.
+	await runtime.ensureEmbeddingDimension();
 	service = new DocumentService(runtime);
 }, 180_000);
 

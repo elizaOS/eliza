@@ -81,18 +81,18 @@
 			"type": "string",
 			"required": false,
 			"sensitive": false,
-			"default": "text/eliza-1-2b-128k.gguf",
+			"default": "bge-small-en-v1.5-q4_k_m.gguf",
 			"label": "Embedding Model",
-			"help": "Filename of the embedding model used for vector embeddings.",
+			"help": "Canonical BGE-small GGUF filename. Other semantic models are rejected to prevent vector-space mixing.",
 			"advanced": false
 		},
 		"LOCAL_EMBEDDING_DIMENSIONS": {
 			"type": "number",
 			"required": false,
 			"sensitive": false,
-			"default": "1024",
+			"default": "384",
 			"label": "Embedding Dimensions",
-			"help": "Number of dimensions the embedding model outputs.",
+			"help": "Canonical BGE-small vector width. Other dimensions are incompatible with first-party semantic memory.",
 			"advanced": false
 		},
 		"CUDA_VISIBLE_DEVICES": {

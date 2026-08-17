@@ -788,6 +788,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>;
 
 	/**
+	 * Reconcile persisted vectors against a semantic-space fingerprint. This is
+	 * distinct from width cleanup: two models can both emit 384 values while
+	 * occupying incompatible vector spaces. Official adapters clear every
+	 * vector owned by this agent when the stored fingerprint is absent or
+	 * differs, persist the active fingerprint, and return the memory ids to
+	 * re-embed. Optional for third-party adapter source compatibility; runtimes
+	 * must disable semantic embedding/search until an adapter implements it.
+	 */
+	reconcileEmbeddingSpace?(
+		activeFingerprint: string,
+	): Promise<EmbeddingSpaceReconciliation>;
+
+	/**
 	 * Execute a callback within a database transaction.
 	 *
 	 * WHY: Enables cross-method atomicity. Each batch method (createEntities,
@@ -1837,6 +1850,13 @@ export interface DbConnection {
 	isConnected?: boolean;
 	/** Close the connection */
 	close?: () => Promise<void>;
+}
+
+export interface EmbeddingSpaceReconciliation {
+	activeFingerprint: string;
+	previousFingerprint?: string;
+	changed: boolean;
+	staleMemoryIds: UUID[];
 }
 
 // Allowable vector dimensions

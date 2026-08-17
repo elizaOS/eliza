@@ -61,6 +61,7 @@
  * slowness into a failed embedding or throwing away useful completed work.
  */
 
+import { normalizeCanonicalEmbedding } from "../../constants/embeddings.ts";
 import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
@@ -322,7 +323,7 @@ export async function embedRecallQuery(
 					text: providerQueryText,
 					...(signal ? { signal } : {}),
 				}) as Promise<number[]>,
-			);
+			).then((vector) => normalizeCanonicalEmbedding(vector));
 		} catch (error) {
 			if (signal?.aborted) {
 				throw signal.reason ?? error;

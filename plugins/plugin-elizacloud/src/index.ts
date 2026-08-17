@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_SPACE_FINGERPRINT, logger, ModelType } from "@elizaos/core";
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -155,7 +155,8 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
       modelType,
       handler as Parameters<IAgentRuntime["registerModel"]>[1],
       elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority
+      elizaOSCloudPlugin.priority,
+      { embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT }
     );
   }
 }

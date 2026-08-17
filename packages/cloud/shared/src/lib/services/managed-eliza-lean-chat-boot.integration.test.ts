@@ -13,13 +13,13 @@
  *      that leaks `DATABASE_URL` back in would flip this and is the exact #8783
  *      regression.)
  *   2. PLUGIN SET = lean. `@elizaos/agent`'s `collectPluginNames`, driven by the
- *      env's `ELIZA_PLUGIN_SET=lean-chat` + `ELIZAOS_CLOUD_*`, must EXCLUDE
- *      local-inference / wallet / workflow but INCLUDE elizacloud (#8434).
- *   3. EMBEDDING COLUMN = dim384. A FRESH provision (no ELIZAOS_CLOUD_API_KEY in
- *      existingEnv) defaults to local-primary gte-small embeddings, so the env
- *      pins `EMBEDDING_DIMENSION=384` and the 384-d vectors land in the
- *      `dim_384` column. Existing provisioned agents retain their explicitly
- *      pinned width. We boot a REAL in-memory PGlite adapter, snap it to
+ *      env's `ELIZA_PLUGIN_SET=lean-chat` + canonical sidecar URL, must EXCLUDE
+ *      local-inference / wallet / workflow but INCLUDE plugin-embeddings and
+ *      elizacloud (#8434).
+ *   3. EMBEDDING COLUMN = dim384. A fresh provision (no ELIZAOS_CLOUD_API_KEY in
+ *      existingEnv) defaults to the node-local canonical BGE-small sidecar, so
+ *      the env pins BGE/384/mean and the vectors land in the `dim_384` column.
+ *      We boot a REAL in-memory PGlite adapter, snap it to
  *      the env's dimension, and prove a 384-d memory insert SUCCEEDS — while a
  *      1536-d insert hits the "dimension mismatch" guard (the negative
  *      control). Either drift — a revert to cloud-primary 1536 for fresh
@@ -68,13 +68,17 @@ async function buildManagedEnv(): Promise<Record<string, string>> {
 }
 
 describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
-  test("managed env pins local state + lean chat + 1536-d embeddings (no DATABASE_URL)", async () => {
+  test("managed env pins local state + lean chat + canonical BGE/384 (no DATABASE_URL)", async () => {
     const env = await buildManagedEnv();
     expect(env.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(env.ELIZA_PLUGIN_SET).toBe("lean-chat");
-    // Fresh provision (no ELIZAOS_CLOUD_API_KEY in existingEnv) => local-primary
-    // gte-small embeddings, 384-d hints, cloud embeddings off.
+    // Fresh provision => immutable node-local BGE sidecar, cloud embeddings off.
+    expect(env.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(env.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(env.EMBEDDING_POOLING).toBe("mean");
+    expect(env.EMBEDDING_DIMENSIONS).toBe("384");
     expect(env.EMBEDDING_DIMENSION).toBe("384");
+    expect(env.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
     expect(env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(env.ELIZAOS_CLOUD_ENABLED).toBe("true");
@@ -106,7 +110,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     expect(adapter.constructor.name).toBe("PgliteDatabaseAdapter");
   });
 
-  test("(2) resolved lean-chat plugin set excludes local-inference/wallet/workflow, includes elizacloud", async () => {
+  test("(2) lean chat activates sidecar embeddings, not per-agent local inference", async () => {
     const env = await buildManagedEnv();
     // The plugin resolver reads these signals from process.env directly.
     // Managed env producer always injects ELIZA_CLOUD_PROVISIONED=1 so the
@@ -120,6 +124,13 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     const plugins = [...collectPluginNames({} as never)];
 
     const has = (needle: string) => plugins.some((p) => p.includes(needle));
+    // collectPluginNames is the pre-manifest seed. The real resolver evaluates
+    // plugin-embeddings' manifest first, so prove the managed env satisfies that
+    // exact production gate instead of pretending it is a core lean plugin.
+    const { shouldEnable: shouldEnableEmbeddings } = await import(
+      "../../../../../../plugins/plugin-embeddings/auto-enable"
+    );
+    expect(shouldEnableEmbeddings({ env: process.env } as never)).toBe(true);
     expect(has("plugin-elizacloud")).toBe(true);
     expect(has("plugin-local-inference")).toBe(false);
     expect(has("plugin-wallet")).toBe(false);

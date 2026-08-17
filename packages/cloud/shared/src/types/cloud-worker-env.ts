@@ -13,6 +13,21 @@ export interface RuntimeRateLimitBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+/** Native Workers AI surface used by Shared semantic recall. */
+export interface RuntimeWorkersAiBinding {
+  run(
+    model: "@cf/baai/bge-small-en-v1.5",
+    input: {
+      text: string | string[];
+      pooling?: "mean" | "cls";
+    },
+    options?: {
+      signal?: AbortSignal;
+      tags?: string[];
+    },
+  ): Promise<unknown>;
+}
+
 export interface RuntimeDurableObjectStub {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
@@ -71,6 +86,10 @@ export interface Bindings {
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
+
+  // ---- Cloudflare Workers AI ----
+  /** Native inference binding used by flag-gated Shared semantic recall. */
+  AI?: RuntimeWorkersAiBinding;
 
   // ---- Cloudflare KV (Worker cache backend) ----
   /**

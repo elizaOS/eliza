@@ -9,7 +9,7 @@ This package enables on-device inference for Eliza agents running on Android (AO
 | Model type | Backend |
 |---|---|
 | `TEXT_SMALL` / `TEXT_LARGE` | llama.cpp FFI (`libllama.so` via `libeliza-llama-shim.so`) |
-| `TEXT_EMBEDDING` | llama.cpp FFI (separate embedding context, disabled by default) |
+| `TEXT_EMBEDDING` | Fused embedding FFI with exact BGE-small-en-v1.5 GGUF, 384 dimensions, mean pooling, and L2 normalization (opt-in) |
 | `TEXT_TO_SPEECH` | Fused Kokoro (`libelizainference.so`) — WAV output at 24 kHz |
 | `TRANSCRIPTION` | ASR via `libelizainference.so` |
 
@@ -56,9 +56,12 @@ Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority 
 2. `manifest.json` (written by `packages/app-core/scripts/aosp/stage-default-models.mjs`)
 3. Glob fallback scan for `*.gguf` matching expected name patterns
 
-Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not staged:
+Default models auto-downloaded from HuggingFace when not staged:
 - **Chat:** `bundles/2b/text/eliza-1-2b-128k.gguf`
-- **Embedding:** `bundles/4b/embedding/eliza-1-embedding.gguf`
+- **Embedding:** `CompendiumLabs/bge-small-en-v1.5-gguf` — `bge-small-en-v1.5-q4_k_m.gguf` (exact size and SHA-256 verified before load)
+
+When `ELIZA_LOCAL_EMBEDDING_ENABLED` is not `1`, the package does not register
+`TEXT_EMBEDDING`; it never fabricates a compatibility zero vector.
 
 ## Key environment variables
 

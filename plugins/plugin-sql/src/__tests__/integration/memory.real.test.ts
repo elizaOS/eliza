@@ -754,7 +754,7 @@ describe("Memory Integration Tests", () => {
       const rows = await (
         adapter as unknown as { db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> } }
       ).db.execute(
-        sql`SELECT indexname FROM pg_indexes WHERE tablename = 'embeddings' AND indexname = 'idx_embeddings_dim_384_hnsw_cosine'`
+        sql`SELECT indexname FROM pg_indexes WHERE tablename = 'embeddings_bge_small_en_v1_5' AND indexname = 'idx_embeddings_bge_small_en_v1_5_embedding_hnsw_cosine'`
       );
       const names = (rows.rows ?? rows) as Array<{ indexname: string }>;
       expect(names.length).toBe(1);
@@ -766,7 +766,7 @@ describe("Memory Integration Tests", () => {
           db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
         }
       ).db;
-      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_bge_small_en_v1_5_embedding_hnsw_cosine'`;
 
       await adapter.ensureEmbeddingDimension(384);
       const first = await db.execute(oidQuery);
@@ -788,7 +788,7 @@ describe("Memory Integration Tests", () => {
         }
       ).db;
       await adapter.ensureEmbeddingDimension(384);
-      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_bge_small_en_v1_5_embedding_hnsw_cosine'`;
       const before = await db.execute(oidQuery);
       const beforeRow = ((before.rows ?? before) as Array<{ oid: unknown }>)[0];
       expect(beforeRow).toBeDefined();
@@ -797,7 +797,7 @@ describe("Memory Integration Tests", () => {
       // catalog row exists but indisvalid = false (superuser catalog update —
       // the same state a failed concurrent build leaves behind).
       await db.execute(
-        sql`UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_embeddings_dim_384_hnsw_cosine'::regclass`
+        sql`UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_embeddings_bge_small_en_v1_5_embedding_hnsw_cosine'::regclass`
       );
 
       await adapter.ensureEmbeddingDimension(384);

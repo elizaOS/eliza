@@ -29,6 +29,16 @@ let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
+let boundWorkersAi:
+  | {
+      run(...args: unknown[]): Promise<unknown>;
+    }
+  | undefined;
+
+mock.module("../../runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => process.env,
+  getCloudBinding: (name: string) => (name === "AI" ? boundWorkersAi : undefined),
+}));
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -230,11 +240,15 @@ type TestMemoryPair = {
   interrupted?: boolean;
 };
 const memoryPairs: TestMemoryPair[] = [];
+let recallHits: Array<Record<string, unknown>> = [];
+const searchByEmbedding = mock(async () => recallHits);
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
 });
 const createSharedMemoryStore = mock(() =>
-  process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null,
+  process.env.SHARED_MEMORY_TABLES_ENABLED === "true"
+    ? { recordTurnPair, searchByEmbedding }
+    : null,
 );
 mock.module("./shared-memory-store", () => ({
   createSharedMemoryStore,
@@ -413,11 +427,15 @@ beforeEach(() => {
   billingGate = null;
   releaseBilling = () => {};
   streamAbortSignal = undefined;
+  boundWorkersAi = undefined;
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
+  delete process.env.SHARED_RECALL_ENABLED;
   memoryPairs.length = 0;
   recordTurnPair.mockClear();
+  searchByEmbedding.mockClear();
+  recallHits = [];
   createSharedMemoryStore.mockClear();
   turn = {
     degraded: false,
@@ -469,6 +487,92 @@ describe("SharedRuntimeChatService", () => {
         })
       ).error?.code,
     ).toBe(-32602);
+  });
+
+  test("keeps Shared recall disabled when the rollout flag is on but AI is unbound", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    process.env.SHARED_RECALL_ENABLED = "true";
+    const h = harness();
+
+    const response = await new SharedRuntimeChatService().bridge(agent, rpc, {
+      ...h,
+      funding: "platform",
+    });
+
+    expect(response.result?.text).toBe("hello back");
+    expect(lastTurnInput).not.toHaveProperty("recallContext");
+    expect(loggerWarn).not.toHaveBeenCalled();
+    await Promise.all(h.background);
+  });
+
+  test("dispatches without semantic I/O, then uses one-turn-lag warmed rows for a novel turn", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    process.env.SHARED_RECALL_ENABLED = "true";
+    recallHits = [
+      {
+        id: "recall-row-1",
+        agent_id: "agent-memory-id",
+        entity_id: "user-memory-id",
+        content: { text: "The keyboard budget was $200." },
+        created_at: new Date("2026-08-01T00:00:00.000Z"),
+      },
+    ];
+    const vector = new Array(384).fill(0);
+    vector[0] = 1;
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let aiCalls = 0;
+    boundWorkersAi = {
+      async run() {
+        aiCalls += 1;
+        await (aiCalls === 1 ? firstGate : secondGate);
+        return { data: [vector], shape: [1, 384], pooling: "mean" };
+      },
+    };
+    const service = new SharedRuntimeChatService();
+    const first = harness();
+
+    const firstResponse = await service.bridge(agent, rpc, {
+      ...first,
+      funding: "platform",
+    });
+
+    expect(firstResponse.result?.text).toBe("hello back");
+    expect(lastTurnInput).not.toHaveProperty("recallContext");
+    expect(aiCalls).toBe(1);
+    expect(searchByEmbedding).not.toHaveBeenCalled();
+
+    releaseFirst();
+    await Promise.all(first.background);
+    expect(searchByEmbedding).toHaveBeenCalledTimes(1);
+
+    const second = harness();
+    const novelRpc = {
+      ...rpc,
+      id: "turn-2",
+      params: { text: "Which switch type did I choose?", roomId: "room-1" },
+    };
+    const secondResponse = await service.bridge(agent, novelRpc, {
+      ...second,
+      funding: "platform",
+    });
+
+    expect(secondResponse.result?.text).toBe("hello back");
+    expect(String(lastTurnInput?.recallContext)).toContain("The keyboard budget was $200.");
+    // The second refresh is still blocked, proving neither Workers AI nor the
+    // ensuing Postgres search was awaited before provider dispatch/response.
+    expect(aiCalls).toBe(2);
+    expect(searchByEmbedding).toHaveBeenCalledTimes(1);
+
+    releaseSecond();
+    await Promise.all(second.background);
+    expect(searchByEmbedding).toHaveBeenCalledTimes(2);
   });
 
   test("ignores untrusted RPC roles and accepts only the server option", async () => {

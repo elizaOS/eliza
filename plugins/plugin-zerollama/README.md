@@ -2,7 +2,7 @@
 
 First-party elizaOS model provider for a local or self-hosted
 [Ollama](https://ollama.com/) compatible server. It supports text generation,
-streaming, tool calls, structured output, embeddings, and opt-in OpenAI-style
+streaming, tool calls, structured output, and opt-in OpenAI-style
 speech and transcription endpoints. A zerollama server is detected from
 `GET /api/version`; stock Ollama remains supported through the AI SDK adapter.
 
@@ -22,7 +22,6 @@ accepted:
 export OLLAMA_BASE_URL=http://127.0.0.1:11434
 export OLLAMA_SMALL_MODEL=qwen3:0.6b
 export OLLAMA_LARGE_MODEL=qwen3:0.6b
-export OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
 
 Endpoint precedence is `OLLAMA_API_ENDPOINT`, `OLLAMA_API_URL`, then
@@ -38,7 +37,7 @@ Common model overrides:
 | `OLLAMA_MEDIUM_MODEL` | medium-tier text | small model |
 | `OLLAMA_LARGE_MODEL` | large-tier text | `eliza-1-4b` |
 | `OLLAMA_MEGA_MODEL` | mega-tier text | large model |
-| `OLLAMA_EMBEDDING_MODEL` | embeddings | `eliza-1-2b` |
+| `OLLAMA_EMBEDDING_MODEL` | legacy direct embedding helper only | `eliza-1-2b` |
 | `OLLAMA_HOST_FLAVOR` | force `ollama` or `zerollama` | auto-detected |
 
 ## Voice endpoints
@@ -62,9 +61,10 @@ and cancellation signals are forwarded per request.
 
 This plugin talks to an external Ollama-compatible HTTP daemon. It is distinct
 from `@elizaos/plugin-local-inference`, which runs models in-process through the
-fused `libelizainference` runtime. Both may be installed; the runtime's typed
-provider routing and preference policy decides which handler serves each model
-type.
+fused `libelizainference` runtime. Both may be installed for text generation.
+This plugin does not register a semantic-embedding handler; runtime memory and
+document embeddings stay in the canonical BGE-small-en-v1.5 384-dimensional,
+mean-pooled, L2-normalized space.
 
 ## Development
 

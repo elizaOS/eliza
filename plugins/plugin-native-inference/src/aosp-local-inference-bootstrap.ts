@@ -29,6 +29,7 @@
  * local registration was skipped.
  */
 
+import { createHash } from "node:crypto";
 import {
   createWriteStream,
   existsSync,
@@ -49,13 +50,21 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_GGUF_FILENAME,
+  CANONICAL_EMBEDDING_GGUF_REPO,
+  CANONICAL_EMBEDDING_GGUF_SHA256,
+  CANONICAL_EMBEDDING_GGUF_SIZE_BYTES,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   createService,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
   InferenceBackgroundWaitTimeoutError,
   logger,
+  type ModelRegistrationMetadata,
   ModelType,
+  normalizeCanonicalEmbedding,
   resolveBackgroundInferenceBudget,
   resolveStateDir,
   Service,
@@ -586,27 +595,6 @@ export function isAospLocalEmbeddingEnabled(
   return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
 }
 
-export function disabledAospEmbeddingVector(
-  env: NodeJS.ProcessEnv = process.env,
-): number[] {
-  const dimensions =
-    readPositiveIntEnvFrom(env, "ELIZA_LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "EMBEDDING_DIMENSION", 384);
-  return Array.from({ length: dimensions }, () => 0);
-}
-
-function readPositiveIntEnvFrom(
-  env: NodeJS.ProcessEnv,
-  name: string,
-  fallback: number,
-): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function readBooleanEnv(name: string): boolean | null {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return null;
@@ -809,7 +797,7 @@ export function buildAospLoadModelArgs(
   }
   return {
     modelPath,
-    contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
+    contextSize: 512,
     useGpu: false,
     gpuLayers: 0,
     kvCacheType: {
@@ -837,6 +825,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
       | TranscriptionHandler,
     provider: string,
     priority?: number,
+    metadata?: ModelRegistrationMetadata,
   ) => void;
 };
 
@@ -1144,12 +1133,29 @@ function isChatModelPath(file: string): boolean {
 }
 
 function isEmbeddingModelPath(file: string): boolean {
-  const lowerPath = file.replaceAll("\\", "/").toLowerCase();
-  const lowerName = path.basename(file).toLowerCase();
-  return (
-    lowerName.endsWith(".gguf") &&
-    (lowerPath.includes("embedding") || lowerName.includes("bge"))
-  );
+  return path.basename(file) === CANONICAL_EMBEDDING_GGUF_FILENAME;
+}
+
+function assertCanonicalAospEmbeddingArtifact(modelPath: string): void {
+  if (!isEmbeddingModelPath(modelPath)) {
+    throw new Error(
+      `[aosp-local-inference] Refusing noncanonical embedding artifact ${modelPath}; expected ${CANONICAL_EMBEDDING_GGUF_FILENAME}`,
+    );
+  }
+  const size = statSync(modelPath).size;
+  if (size !== CANONICAL_EMBEDDING_GGUF_SIZE_BYTES) {
+    throw new Error(
+      `[aosp-local-inference] Embedding GGUF size mismatch: got ${size}, expected ${CANONICAL_EMBEDDING_GGUF_SIZE_BYTES}`,
+    );
+  }
+  const sha256 = createHash("sha256")
+    .update(readFileSync(modelPath))
+    .digest("hex");
+  if (sha256 !== CANONICAL_EMBEDDING_GGUF_SHA256) {
+    throw new Error(
+      `[aosp-local-inference] Embedding GGUF sha256 mismatch: got ${sha256}, expected ${CANONICAL_EMBEDDING_GGUF_SHA256}`,
+    );
+  }
 }
 
 function findModelUnderDirectory(
@@ -1265,7 +1271,13 @@ function readBundledModelManifest(modelsDir: string): {
       const abs = path.join(modelsDir, fileName);
       if (!existsSync(abs)) continue;
       if (entry.role === "chat" && !chat) chat = abs;
-      else if (entry.role === "embedding" && !embedding) embedding = abs;
+      else if (
+        entry.role === "embedding" &&
+        !embedding &&
+        isEmbeddingModelPath(abs)
+      ) {
+        embedding = abs;
+      }
     }
     return { chat, embedding };
   } catch (err) {
@@ -1295,6 +1307,7 @@ type AospRecommendedModel = {
   hfRepo: string;
   ggufFile: string;
   expectedSizeBytes?: number;
+  sha256?: string;
 };
 
 const AOSP_RECOMMENDED_MODELS: Record<
@@ -1311,9 +1324,11 @@ const AOSP_RECOMMENDED_MODELS: Record<
     ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
   },
   embedding: {
-    id: "eliza-1-embedding",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
+    id: "bge-small-en-v1.5",
+    hfRepo: CANONICAL_EMBEDDING_GGUF_REPO,
+    ggufFile: CANONICAL_EMBEDDING_GGUF_FILENAME,
+    expectedSizeBytes: CANONICAL_EMBEDDING_GGUF_SIZE_BYTES,
+    sha256: CANONICAL_EMBEDDING_GGUF_SHA256,
   },
 };
 
@@ -1330,11 +1345,21 @@ async function downloadRecommendedAospModel(
   if (existsSync(finalPath)) {
     const sz = statSync(finalPath).size;
     if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
-      return finalPath;
+      try {
+        if (role === "embedding")
+          assertCanonicalAospEmbeddingArtifact(finalPath);
+        return finalPath;
+      } catch (error) {
+        logger.warn(
+          `[aosp-local-inference] Existing ${role} artifact failed identity attestation: ${error instanceof Error ? error.message : String(error)}; re-downloading.`,
+        );
+      }
     }
-    logger.warn(
-      `[aosp-local-inference] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`,
-    );
+    if (model.expectedSizeBytes && sz !== model.expectedSizeBytes) {
+      logger.warn(
+        `[aosp-local-inference] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`,
+      );
+    }
     try {
       unlinkSync(finalPath);
     } catch {
@@ -1375,6 +1400,18 @@ async function downloadRecommendedAospModel(
       throw new Error(
         `[aosp-local-inference] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}.`,
       );
+    }
+    if (role === "embedding") {
+      try {
+        assertCanonicalAospEmbeddingArtifact(stagingPath);
+      } catch (error) {
+        try {
+          unlinkSync(stagingPath);
+        } catch {
+          // error-policy:J6 best-effort cleanup of a rejected download.
+        }
+        throw error;
+      }
     }
     renameSync(stagingPath, finalPath);
     logger.info(
@@ -1567,7 +1604,7 @@ function fallbackFindBundledModels(modelsDir: string): {
       const lowerName = name.toLowerCase();
       // Embedding match runs first so a dedicated embedding GGUF is assigned
       // before the broader Eliza-1 chat rule below.
-      if (!embedding && lowerPath.includes("embedding")) {
+      if (!embedding && isEmbeddingModelPath(abs)) {
         embedding = abs;
       } else if (
         !chat &&
@@ -1670,6 +1707,9 @@ function makeLoaderLifecycle(loader: AospLoader): {
         `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
       );
       try {
+        if (role === "embedding") {
+          assertCanonicalAospEmbeddingArtifact(target);
+        }
         await loader.loadModel(buildAospLoadModelArgs(role, target));
         currentRole = role;
         writeAospActiveModelState({
@@ -2073,21 +2113,16 @@ function makeEmbeddingHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): EmbeddingHandler {
-  let loggedDisabled = false;
   return async (_runtime, params) => {
-    if (!isAospLocalEmbeddingEnabled()) {
-      if (!loggedDisabled) {
-        loggedDisabled = true;
-        logger.info(
-          "[aosp-local-inference] Local embeddings disabled; serving zero-vector TEXT_EMBEDDING results (set ELIZA_LOCAL_EMBEDDING_ENABLED=1 to load the embedding GGUF)",
-        );
-      }
-      return disabledAospEmbeddingVector();
+    if (params === null) {
+      const probe = new Array(CANONICAL_EMBEDDING_DIMENSION).fill(0);
+      probe[0] = 1;
+      return probe;
     }
     await lifecycle.ensureEmbeddingLoaded();
     const text = extractEmbeddingText(params);
     const result = await loader.embed({ input: text });
-    return result.embedding;
+    return normalizeCanonicalEmbedding(result.embedding);
   };
 }
 
@@ -3522,16 +3557,19 @@ export async function ensureAospLocalInferenceHandlers(
   }
   const textLoader = owner.loader;
   const lifecycle = owner.lifecycle;
-  // TEXT_EMBEDDING is wired unconditionally: chat + embedding loads share one
-  // fused EliInferenceContext, and the C side resolves the text vs embedding
-  // region per call (`llm_stream_*` vs `embed`), so there is no cross-mode
-  // state bleed to gate against.
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
-    ModelType.TEXT_EMBEDDING,
     ModelType.TEXT_TO_SPEECH,
   ];
+  const embeddingEnabled = isAospLocalEmbeddingEnabled();
+  if (embeddingEnabled) {
+    slots.push(ModelType.TEXT_EMBEDDING);
+  } else {
+    logger.info(
+      "[aosp-local-inference] Local embeddings disabled; TEXT_EMBEDDING is intentionally not registered",
+    );
+  }
   // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
   // Registering it unconditionally made the readiness probe report local
   // transcription as available while every invocation threw "requires ASR
@@ -3569,6 +3607,11 @@ export async function ensureAospLocalInferenceHandlers(
       handler,
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
+      modelType === ModelType.TEXT_EMBEDDING
+        ? {
+            embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+          }
+        : undefined,
     );
   }
 
@@ -3599,9 +3642,9 @@ export async function ensureAospLocalInferenceHandlers(
     }),
   );
 
-  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
-    asrAssetsPresent ? " / TRANSCRIPTION" : ""
-  }`;
+  const registeredList = `TEXT_SMALL / TEXT_LARGE${
+    embeddingEnabled ? " / TEXT_EMBEDDING" : ""
+  } / TEXT_TO_SPEECH${asrAssetsPresent ? " / TRANSCRIPTION" : ""}`;
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend fused-libelizainference)`,
   );

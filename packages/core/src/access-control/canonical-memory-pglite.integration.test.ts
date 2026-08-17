@@ -8,6 +8,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+} from "../constants/embeddings";
 import { createMessageMemory } from "../memory";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -19,7 +23,13 @@ import {
 	createTestRuntime,
 	type TestRuntimeResult,
 } from "../testing/pglite-runtime";
-import { ChannelType, type Memory, type UUID } from "../types";
+import {
+	ChannelType,
+	type Memory,
+	ModelType,
+	type Plugin,
+	type UUID,
+} from "../types";
 import { stringToUuid } from "../utils";
 import { searchCanonicalConversationMemories } from "./provenance-envelope";
 
@@ -32,10 +42,24 @@ const GROUP_ROOM = "77777777-7777-7777-7777-777777777777" as UUID;
 const WORLD = "88888888-8888-8888-8888-888888888888" as UUID;
 
 function vector(seed: number): number[] {
-	const embedding = Array(384).fill(0);
+	const embedding = Array(CANONICAL_EMBEDDING_DIMENSION).fill(0);
 	embedding[0] = seed;
+	embedding[1] = Math.sqrt(Math.max(0, 1 - seed * seed));
 	return embedding;
 }
+
+const canonicalEmbeddingPlugin: Plugin = {
+	name: "canonical-memory-test-embeddings",
+	description: "Attested deterministic BGE-space fixture for canonical recall.",
+	models: {
+		[ModelType.TEXT_EMBEDDING]: async () => vector(1),
+	},
+	modelMetadata: {
+		[ModelType.TEXT_EMBEDDING]: {
+			embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+		},
+	},
+};
 
 function canonicalMessage(args: {
 	id: UUID;
@@ -85,6 +109,7 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		// helper's default in-memory database.
 		testRuntime = await createTestRuntime({
 			characterName: "CanonicalMemoryAgent",
+			plugins: [canonicalEmbeddingPlugin],
 			pgliteDir: fs.mkdtempSync(
 				path.join(os.tmpdir(), "eliza-canonical-memory-"),
 			),
@@ -206,6 +231,7 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		await testRuntime.cleanup();
 		testRuntime = await createTestRuntime({
 			characterName: "CanonicalMemoryAgent",
+			plugins: [canonicalEmbeddingPlugin],
 			pgliteDir,
 			removePgliteDirOnCleanup: false,
 		});

@@ -1,18 +1,15 @@
 /**
  * `handleTextEmbedding`: calls the OpenAI embeddings endpoint and validates the
- * returned vector dimension against the canonical gte-small/384 contract.
- * Cerebras serves no embeddings, so a Cerebras text configuration without an
- * explicit embedding endpoint fails closed and lets the runtime select the
- * local gte-small provider. It never fabricates hash vectors.
+ * returned vector against the canonical BGE-small/384/mean/L2 contract.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
   assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_POOLING,
   logger,
   ModelType,
-  toWellFormedUnicode,
-  truncateWellFormed,
-  VECTOR_DIMS,
+  normalizeCanonicalEmbedding,
+  prepareCanonicalEmbeddingInput,
 } from "@elizaos/core";
 
 import type { OpenAIEmbeddingResponse } from "../types";
@@ -25,18 +22,6 @@ import {
   isBrowser,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
-
-type VectorDimension = (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
-
-function validateDimension(dimension: number): VectorDimension {
-  const validDimensions = Object.values(VECTOR_DIMS) as number[];
-  if (!validDimensions.includes(dimension)) {
-    throw new Error(
-      `Invalid embedding dimension: ${dimension}. Must be one of: ${validDimensions.join(", ")}`
-    );
-  }
-  return dimension as VectorDimension;
-}
 
 function extractText(params: TextEmbeddingParams | string | null): string | null {
   if (params === null) {
@@ -71,14 +56,8 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingModel = getEmbeddingModel(runtime);
-  const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
-  assertCanonicalEmbeddingConfig(embeddingModel, embeddingDimension, "OPENAI_EMBEDDING_*");
-  if (!hasExplicitEmbeddingEndpoint(runtime)) {
-    throw new Error(
-      "OPENAI_EMBEDDING_URL is required for canonical gte-small embeddings. " +
-        "Cerebras/OpenAI text credentials are not embedding providers; configure the local or sidecar endpoint."
-    );
-  }
+  const embeddingDimension = getEmbeddingDimensions(runtime);
+  assertCanonicalEmbeddingConfig(embeddingModel, embeddingDimension, CANONICAL_EMBEDDING_POOLING);
   const signal = extractSignal(params);
 
   const text = extractText(params);
@@ -89,24 +68,13 @@ export async function handleTextEmbedding(
     return testVector;
   }
 
-  let trimmedText = text.trim();
-  if (trimmedText.length === 0) {
-    throw new Error("Cannot generate embedding for empty text");
-  }
+  const preparedText = prepareCanonicalEmbeddingInput(text);
 
-  // Truncate to stay within embedding model token limits.
-  // OpenAI embedding models support up to 8191 tokens per input;
-  // 8000 tokens provides a safe buffer (~4 chars per token).
-  const maxChars = 8_000 * 4;
-  if (trimmedText.length > maxChars) {
-    logger.warn(
-      `[OpenAI] Embedding input too long (~${Math.ceil(trimmedText.length / 4)} tokens), truncating to ~8000 tokens`
+  if (!hasExplicitEmbeddingEndpoint(runtime)) {
+    throw new Error(
+      "OPENAI_EMBEDDING_URL is required for canonical BGE-small embeddings (use OPENAI_BROWSER_EMBEDDING_URL in browser builds). Chat-provider endpoints and synthetic fallbacks are not embedding-compatible."
     );
-    trimmedText = truncateWellFormed(trimmedText, maxChars);
   }
-  // Wire-boundary guarantee: lone surrogates in the JSON body 400 on strict
-  // provider parsers (#18025).
-  trimmedText = toWellFormedUnicode(trimmedText);
 
   const baseURL = getEmbeddingBaseURL(runtime);
   const url = `${baseURL}/embeddings`;
@@ -122,7 +90,8 @@ export async function handleTextEmbedding(
     },
     body: JSON.stringify({
       model: embeddingModel,
-      input: trimmedText,
+      input: preparedText,
+      pooling: CANONICAL_EMBEDDING_POOLING,
       ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
     ...(signal ? { signal } : {}),
@@ -136,6 +105,12 @@ export async function handleTextEmbedding(
   }
 
   const data = (await response.json()) as OpenAIEmbeddingResponse;
+
+  if (data.model !== embeddingModel) {
+    throw new Error(
+      `Embedding model mismatch: endpoint returned ${JSON.stringify(data.model)}, expected ${JSON.stringify(embeddingModel)}`
+    );
+  }
 
   const firstResult = Array.isArray(data.data) ? data.data[0] : undefined;
   if (!firstResult?.embedding) {
@@ -155,7 +130,7 @@ export async function handleTextEmbedding(
     emitModelUsageEvent(
       runtime,
       ModelType.TEXT_EMBEDDING,
-      trimmedText,
+      preparedText,
       {
         promptTokens: data.usage.prompt_tokens,
         completionTokens: 0,
@@ -166,5 +141,5 @@ export async function handleTextEmbedding(
   }
 
   logger.debug(`[OpenAI] Generated embedding with ${embedding.length} dimensions`);
-  return embedding;
+  return normalizeCanonicalEmbedding(embedding);
 }

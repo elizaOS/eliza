@@ -1,7 +1,7 @@
 {
   "id": "zerollama",
   "name": "Ollama / zerollama",
-  "description": "Local and self-hosted Ollama-compatible inference for text, embeddings, tool calls, structured output, speech, and transcription.",
+  "description": "Local and self-hosted Ollama-compatible inference for text, tool calls, structured output, speech, and transcription.",
   "npmName": "@elizaos/plugin-zerollama",
   "version": "2.0.3-beta.7",
   "source": "bundled",
@@ -12,7 +12,6 @@
     "zerollama",
     "local-models",
     "self-hosted",
-    "embedding",
     "voice",
     "tts",
     "transcription"
@@ -63,15 +62,6 @@
       "default": "eliza-1-4b",
       "label": "Large Model",
       "help": "Model tag for large and mega text calls unless separately overridden.",
-      "advanced": false
-    },
-    "OLLAMA_EMBEDDING_MODEL": {
-      "type": "string",
-      "required": false,
-      "sensitive": false,
-      "default": "eliza-1-2b",
-      "label": "Embedding Model",
-      "help": "Ollama model tag used for TEXT_EMBEDDING.",
       "advanced": false
     },
     "OLLAMA_TTS_MODEL": {

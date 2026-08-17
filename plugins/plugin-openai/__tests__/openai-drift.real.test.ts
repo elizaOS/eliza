@@ -18,7 +18,7 @@ const LIVE =
 const BASE = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
 const KEY = process.env.OPENAI_API_KEY ?? "";
 const SMALL_MODEL = process.env.OPENAI_SMALL_MODEL?.trim() || "gpt-4o-mini";
-const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL?.trim() || "thenlper/gte-small";
+const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL?.trim() || "BAAI/bge-small-en-v1.5";
 
 describe.skipIf(!LIVE)("OpenAI live drift — mock shape vs reality", () => {
   it("GET /v1/models returns a list of { id, object } entries", async () => {

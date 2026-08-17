@@ -14,6 +14,11 @@
  */
 import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
+import {
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	normalizeCanonicalEmbedding,
+	prepareCanonicalEmbeddingInput,
+} from "../../constants/embeddings.ts";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import {
@@ -24,7 +29,6 @@ import {
 	type UUID,
 } from "../../types";
 import { splitChunks } from "../../utils";
-import { BatchProcessor } from "../../utils/batch-queue";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
 import {
 	DEFAULT_CHUNK_OVERLAP_TOKENS,
@@ -49,6 +53,105 @@ import {
 
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
+}
+
+const DOCUMENT_SPLITTER_CODE_UNITS_PER_TOKEN = 3.5;
+
+function isHighSurrogate(codeUnit: number): boolean {
+	return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+}
+
+function isLowSurrogate(codeUnit: number): boolean {
+	return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
+}
+
+function avoidsSplittingSurrogatePair(text: string, offset: number): number {
+	if (
+		offset > 0 &&
+		offset < text.length &&
+		isHighSurrogate(text.charCodeAt(offset - 1)) &&
+		isLowSurrogate(text.charCodeAt(offset))
+	) {
+		return offset - 1;
+	}
+	return offset;
+}
+
+/**
+ * Split document text into ordered, overlapping canonical embedding inputs.
+ *
+ * The documents feature historically expresses chunk and overlap sizes as
+ * approximate tokens. This boundary preserves that overlap ratio while capping
+ * every prepared fragment at core's conservative 510-code-unit BGE limit. The
+ * windows cover the complete trimmed source in order; overlap is additive and
+ * no provider-facing fragment is truncated. Valid surrogate pairs are kept
+ * together, while lone surrogates fail through the canonical input helper.
+ */
+export function splitDocumentTextForCanonicalEmbedding(
+	text: string,
+	targetTokens = DEFAULT_CHUNK_TOKEN_SIZE,
+	overlapTokens = DEFAULT_CHUNK_OVERLAP_TOKENS,
+): string[] {
+	if (!Number.isFinite(targetTokens) || targetTokens <= 0) {
+		throw new RangeError("Document embedding targetTokens must be positive.");
+	}
+	if (!Number.isFinite(overlapTokens) || overlapTokens < 0) {
+		throw new RangeError(
+			"Document embedding overlapTokens cannot be negative.",
+		);
+	}
+
+	const requestedWindow = Math.max(
+		2,
+		Math.floor(targetTokens * DOCUMENT_SPLITTER_CODE_UNITS_PER_TOKEN),
+	);
+	const requestedOverlap = Math.floor(
+		overlapTokens * DOCUMENT_SPLITTER_CODE_UNITS_PER_TOKEN,
+	);
+	if (requestedOverlap >= requestedWindow) {
+		throw new RangeError(
+			"Document embedding overlap must be smaller than its target size.",
+		);
+	}
+
+	const source = text.trim();
+	if (!source) {
+		return [];
+	}
+	const windowSize = Math.min(
+		requestedWindow,
+		CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	);
+	const scaledOverlap = Math.floor(
+		(requestedOverlap / requestedWindow) * windowSize,
+	);
+	const windowOverlap = Math.min(windowSize - 1, scaledOverlap);
+	const fragments: string[] = [];
+
+	let start = 0;
+	while (start < source.length) {
+		let end = Math.min(start + windowSize, source.length);
+		end = avoidsSplittingSurrogatePair(source, end);
+		if (end <= start) {
+			throw new Error(
+				"Document embedding window cannot preserve a Unicode scalar within the configured bound.",
+			);
+		}
+
+		fragments.push(prepareCanonicalEmbeddingInput(source.slice(start, end)));
+		if (end === source.length) {
+			break;
+		}
+
+		let nextStart = end - windowOverlap;
+		nextStart = avoidsSplittingSurrogatePair(source, nextStart);
+		if (nextStart <= start) {
+			nextStart = end;
+		}
+		start = nextStart;
+	}
+
+	return fragments;
 }
 
 function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
@@ -223,25 +326,26 @@ export async function processFragmentsSynchronously({
 		providerLimits.rateLimitEnabled,
 	);
 
-	const { savedCount, failedCount } = await processAndSaveFragments({
-		runtime,
-		documentId,
-		chunks,
-		fullDocumentText,
-		contentType,
-		agentId,
-		roomId: roomId || agentId,
-		entityId: entityId || agentId,
-		worldId: worldId || agentId,
-		concurrencyLimit: CONCURRENCY_LIMIT,
-		rateLimiter,
-		documentTitle,
-		documentMetadata,
-		batchDelayMs: providerLimits.batchDelayMs,
-	});
+	const { savedCount, failedCount, attemptedCount } =
+		await processAndSaveFragments({
+			runtime,
+			documentId,
+			chunks,
+			fullDocumentText,
+			contentType,
+			agentId,
+			roomId: roomId || agentId,
+			entityId: entityId || agentId,
+			worldId: worldId || agentId,
+			concurrencyLimit: CONCURRENCY_LIMIT,
+			rateLimiter,
+			documentTitle,
+			documentMetadata,
+			batchDelayMs: providerLimits.batchDelayMs,
+		});
 
 	if (failedCount > 0) {
-		logger.warn(`${failedCount}/${chunks.length} chunks failed processing`);
+		logger.warn(`${failedCount}/${attemptedCount} chunks failed processing`);
 	}
 
 	return savedCount;
@@ -469,6 +573,10 @@ export async function preparePreChunkedFragmentMemories({
 		};
 		if (hasDocumentEmbeddingModel(runtime)) {
 			try {
+				// Anchored producer fragments cannot be silently divided without
+				// inventing new time/segment anchors. Validate the redacted text at
+				// the document boundary and fail the whole atomic ingest instead.
+				prepareCanonicalEmbeddingInput(memory.content.text);
 				await runtime.addEmbeddingToMemory(memory);
 			} catch (error) {
 				// error-policy:J2 addEmbeddingToMemory rejects unusable provider
@@ -541,10 +649,12 @@ async function processAndSaveFragments({
 	savedCount: number;
 	failedCount: number;
 	failedChunks: number[];
+	attemptedCount: number;
 }> {
 	let savedCount = 0;
 	let failedCount = 0;
 	const failedChunks: number[] = [];
+	let nextFragmentPosition = 0;
 
 	for (let i = 0; i < chunks.length; i += concurrencyLimit) {
 		const batchChunks = chunks.slice(i, i + concurrencyLimit);
@@ -562,9 +672,34 @@ async function processAndSaveFragments({
 			documentTitle,
 		);
 
+		const embeddingChunks: Array<{
+			contextualizedText: string;
+			index: number;
+			success: boolean;
+		}> = [];
+		for (const chunk of contextualizedChunks) {
+			if (!chunk.success) {
+				embeddingChunks.push({
+					...chunk,
+					index: nextFragmentPosition++,
+				});
+				continue;
+			}
+			const boundedTexts = splitDocumentTextForCanonicalEmbedding(
+				chunk.contextualizedText,
+			);
+			for (const contextualizedText of boundedTexts) {
+				embeddingChunks.push({
+					contextualizedText,
+					index: nextFragmentPosition++,
+					success: true,
+				});
+			}
+		}
+
 		const embeddingResults = await generateEmbeddingsForChunks(
 			runtime,
-			contextualizedChunks,
+			embeddingChunks,
 			rateLimiter,
 		);
 
@@ -638,7 +773,12 @@ async function processAndSaveFragments({
 		}
 	}
 
-	return { savedCount, failedCount, failedChunks };
+	return {
+		savedCount,
+		failedCount,
+		failedChunks,
+		attemptedCount: nextFragmentPosition,
+	};
 }
 
 const EMBEDDING_BATCH_SIZE = 100;
@@ -697,7 +837,10 @@ function shouldUseBatchEmbeddings(runtime: IAgentRuntime): boolean {
 	// Default to false — batch embeddings require a cloud provider that
 	// supports the batch API.  Local embedding (the default) only handles
 	// single texts.  Opt-in with BATCH_EMBEDDINGS=true.
-	return setting === "true" || setting === true;
+	return (
+		(setting === "true" || setting === true) &&
+		Boolean(runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH))
+	);
 }
 
 async function generateEmbeddingsBatch(
@@ -815,59 +958,15 @@ async function generateBatchEmbeddingsViaRuntime(
 	runtime: IAgentRuntime,
 	texts: string[],
 ): Promise<number[][]> {
-	const batchResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+	const batchResult = await runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
 		texts,
-	} as {
-		text: string;
-	} & { texts: string[] });
-
-	const isEmbeddingBatch = (val: unknown): val is number[][] =>
-		Array.isArray(val) &&
-		val.length > 0 &&
-		Array.isArray(val[0]) &&
-		typeof val[0][0] === "number";
-
-	const isEmbeddingVector = (val: unknown): val is number[] =>
-		Array.isArray(val) && val.length > 0 && typeof val[0] === "number";
-
-	if (isEmbeddingBatch(batchResult)) {
-		return batchResult;
+	});
+	if (!Array.isArray(batchResult) || batchResult.length !== texts.length) {
+		throw new Error(
+			`TEXT_EMBEDDING_BATCH returned ${Array.isArray(batchResult) ? batchResult.length : "a non-array"} vectors for ${texts.length} texts`,
+		);
 	}
-
-	if (isEmbeddingVector(batchResult)) {
-		// Provider returned one vector for many texts — fall back to per-text calls with bounded
-		// concurrency (same stack as action-filter / embedding batch paths).
-		const slots: number[][] = new Array(texts.length);
-		const processor = new BatchProcessor<number>({
-			maxParallel: 10,
-			maxRetriesAfterFailure: 2,
-			process: async (idx) => {
-				const text = texts[idx];
-				if (text === undefined) {
-					return;
-				}
-				const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-					text,
-				});
-				if (isEmbeddingVector(result)) {
-					slots[idx] = result;
-				} else {
-					const embeddingResult = result as
-						| { embedding?: number[] }
-						| undefined;
-					slots[idx] = embeddingResult?.embedding ?? [];
-				}
-			},
-			onExhausted: (idx) => {
-				slots[idx] = [];
-			},
-		});
-		const indices = texts.map((_, idx) => idx);
-		await processor.processBatch(indices);
-		return slots;
-	}
-
-	throw new Error("Unexpected batch embedding result format");
+	return batchResult.map((vector) => normalizeCanonicalEmbedding(vector));
 }
 
 async function generateEmbeddingsIndividual(
@@ -1196,19 +1295,10 @@ async function generateEmbeddingWithValidation(
 			text,
 		});
 
-		const embedding = Array.isArray(embeddingResult)
-			? embeddingResult
-			: (embeddingResult as { embedding: number[] })?.embedding;
-
-		if (!embedding || embedding.length === 0) {
-			return {
-				embedding: null,
-				success: false,
-				error: new Error("Zero vector detected"),
-			};
-		}
-
-		return { embedding, success: true };
+		return {
+			embedding: normalizeCanonicalEmbedding(embeddingResult),
+			success: true,
+		};
 	} catch (error) {
 		// error-policy:J1 Embedding provider failures become explicit failed
 		// results for the fragment-ingestion boundary.

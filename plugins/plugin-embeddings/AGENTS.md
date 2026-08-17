@@ -1,10 +1,10 @@
 # @elizaos/plugin-embeddings
 
-Canonical gte-small `TEXT_EMBEDDING` provider for elizaOS agents. Points `EMBEDDING_*` at an OpenAI-compatible endpoint serving the same 384-dimensional model as local inference and the managed Cloud sidecar.
+Canonical BGE-small `TEXT_EMBEDDING` provider for elizaOS agents. Points `EMBEDDING_*` at an OpenAI-compatible endpoint serving the same 384-dimensional model as local inference and the managed Cloud sidecar.
 
 ## Purpose / role
 
-Decouples embeddings from text generation. A self-hosted bot whose chat provider serves no embeddings — Claude or Cerebras, for example — points `EMBEDDING_BASE_URL` at a local or hosted OpenAI-compatible endpoint serving `thenlper/gte-small`; changing model family or width is rejected.
+Decouples embeddings from text generation. A self-hosted bot whose chat provider serves no embeddings — Claude or Cerebras, for example — points `EMBEDDING_BASE_URL` at a local or hosted OpenAI-compatible endpoint serving `BAAI/bge-small-en-v1.5`; changing model family, pooling, or width is rejected.
 
 **Purely additive.** The plugin auto-enables **only** when `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is set (see `auto-enable.ts`). With neither set it never loads, so existing deployments — which use their chat provider's embedding slot, local inference, or Eliza Cloud — are unaffected.
 
@@ -77,11 +77,12 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 |---|---|---|---|
 | `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
 | `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
-| `EMBEDDING_MODEL` | no | `thenlper/gte-small` | Canonical model id; other model families fail closed. |
+| `EMBEDDING_MODEL` | no | `BAAI/bge-small-en-v1.5` | Model id sent as the request `model` field. |
+| `EMBEDDING_POOLING` | no | `mean` | Canonical pooling mode; other values fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
-| `EMBEDDING_DIMENSIONS` | no | `384` | Canonical gte-small width; other values fail closed. |
+| `EMBEDDING_DIMENSIONS` | no | `384` | Vector width. When explicitly set, sent as the request `dimensions` field. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
@@ -89,11 +90,11 @@ Fallback-only settings are inert until the primary plugin opt-in and primary bas
 
 ### Canonical model and dimensions
 
-The first-party contract is `thenlper/gte-small` at 384 dimensions. Other configured models or widths throw at boot and on every call. `VECTOR_DIMS` still lists legacy SQL storage widths for migration and reconciliation; it is not permission to mix embedding spaces.
+`EMBEDDING_DIMENSIONS` must be exactly `384`; the model must be `BAAI/bge-small-en-v1.5` and pooling must be `mean`. Returned vectors are validated and L2-normalized. Any mismatch throws at boot and on every call.
 
 ### Dimension-switch caveat
 
-The embedding dimension is part of the database vector schema. Changing `EMBEDDING_DIMENSIONS` (or the model's native width) invalidates existing vectors until the database adapter reclaims old-width embeddings and re-embeds those memories at the active width. SQL adapters do this through `clearEmbeddingsOutsideActiveDimension()` during runtime boot; custom stores need an equivalent path before searches are trustworthy after a switch.
+Dimension-only cleanup cannot distinguish legacy GTE-small/384 vectors from BGE-small/384. Stores must persist and filter by `CANONICAL_EMBEDDING_SPACE_FINGERPRINT`, clearing and re-embedding rows with any other fingerprint before semantic search is enabled.
 
 ## How to extend
 
