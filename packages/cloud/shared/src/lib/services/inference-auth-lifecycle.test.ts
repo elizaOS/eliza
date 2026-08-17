@@ -39,14 +39,27 @@ mock.module("./inference-auth-cache", () => ({
 }));
 
 mock.module("./inference-credential-revocation", () => ({
+  setInferenceSessionBindingActive: async (
+    orgId: string,
+    userId: string,
+    stewardUserId: string,
+    active: boolean,
+  ) => {
+    lifecycleEvents.push(`session-binding:${orgId}:${userId}:${stewardUserId}:${active}`);
+  },
   revokeInferenceSessionsThrough: async (orgId: string, userId: string) => {
     lifecycleEvents.push(`session:${orgId}:${userId}`);
   },
   setInferenceOrganizationActive: async (orgId: string, active: boolean) => {
     lifecycleEvents.push(`organization:${orgId}:${active}`);
   },
-  setInferenceSubjectActive: async (orgId: string, userId: string, active: boolean) => {
-    lifecycleEvents.push(`subject:${orgId}:${userId}:${active}`);
+  setInferenceSubjectActive: async (
+    orgId: string,
+    userId: string,
+    active: boolean,
+    reason: string,
+  ) => {
+    lifecycleEvents.push(`subject:${orgId}:${userId}:${active}:${reason}`);
   },
 }));
 
@@ -166,12 +179,13 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     await usersService.update("u1", { organization_id: "o2" });
 
     expect(lifecycleEvents).toEqual([
-      "subject:o1:u1:false",
-      "subject:o2:u1:false",
+      "subject:o1:u1:false:membership",
+      "subject:o2:u1:false:membership",
       "session:o2:u1",
       "session:o1:u1",
       "user-update:u1",
-      "subject:o2:u1:true",
+      "subject:o2:u1:true:account",
+      "subject:o2:u1:true:membership",
     ]);
   });
 
@@ -186,7 +200,48 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     const { usersService } = await import("./users");
     await usersService.upsertStewardIdentity("u1", "steward-new");
 
-    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-upsert:u1:steward-new"]);
+    expect(lifecycleEvents).toEqual([
+      "session-binding:o1:u1:steward-old:false",
+      "session:o1:u1",
+      "identity-upsert:u1:steward-new",
+      "session-binding:o1:u1:steward-new:true",
+    ]);
+  });
+
+  test("direct Steward identity update swaps the durable binding around the row write", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { steward_user_id: "steward-new" });
+
+    expect(lifecycleEvents).toEqual([
+      "session-binding:o1:u1:steward-old:false",
+      "session:o1:u1",
+      "user-update:u1",
+      "session-binding:o1:u1:steward-new:true",
+    ]);
+  });
+
+  test("retrying a committed Steward identity update repairs its active binding", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-current",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { steward_user_id: "steward-current" });
+
+    expect(lifecycleEvents).toEqual([
+      "user-update:u1",
+      "session-binding:o1:u1:steward-current:true",
+    ]);
   });
 
   test("Steward identity link fences the prior session generation before relinking", async () => {
@@ -200,7 +255,12 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     const { usersService } = await import("./users");
     await usersService.linkStewardId("u1", "steward-new");
 
-    expect(lifecycleEvents).toEqual(["session:o1:u1", "identity-link:u1:steward-new"]);
+    expect(lifecycleEvents).toEqual([
+      "session-binding:o1:u1:steward-old:false",
+      "session:o1:u1",
+      "identity-link:u1:steward-new",
+      "session-binding:o1:u1:steward-new:true",
+    ]);
   });
 
   test("delete resolves the key hashes BEFORE deleting the row", async () => {

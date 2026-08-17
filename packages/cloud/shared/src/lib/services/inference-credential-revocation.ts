@@ -20,7 +20,9 @@ const OPERATION_TIMEOUT_MS = 1_500;
 
 type CredentialCheck =
   | { kind: "api_key"; credentialId: string; userId: string }
-  | { kind: "steward_session"; userId: string; issuedAt: number };
+  | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
+
+export type InferenceSubjectDisableReason = "account" | "moderation" | "membership";
 
 interface RevocationResponse {
   allowed?: boolean;
@@ -168,8 +170,9 @@ export async function setInferenceSubjectActive(
   organizationId: string,
   userId: string,
   active: boolean,
+  reason: InferenceSubjectDisableReason,
 ): Promise<void> {
-  await commitMutation(organizationId, "/subject/set-active", { userId, active });
+  await commitMutation(organizationId, "/subject/set-active", { userId, active, reason });
 }
 
 /** Revoke Steward sessions issued at or before the supplied immutable iat. */
@@ -179,6 +182,20 @@ export async function revokeInferenceSessionsThrough(
   issuedAt: number,
 ): Promise<void> {
   await commitMutation(organizationId, "/session/revoke-through", { userId, issuedAt });
+}
+
+/** Disable or re-enable one Steward-subject to Cloud-user identity binding. */
+export async function setInferenceSessionBindingActive(
+  organizationId: string,
+  userId: string,
+  stewardUserId: string,
+  active: boolean,
+): Promise<void> {
+  await commitMutation(organizationId, "/session/set-binding-active", {
+    userId,
+    stewardUserId,
+    active,
+  });
 }
 
 /** Disable or re-enable every inference credential in an organization. */

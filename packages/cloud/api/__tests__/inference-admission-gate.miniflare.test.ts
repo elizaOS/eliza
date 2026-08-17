@@ -290,6 +290,7 @@ describe("Miniflare Durable Object integration", () => {
       organizationId: "org-miniflare",
       kind: "steward_session",
       userId: "00000000-0000-0000-0000-000000000202",
+      stewardUserId: "steward-user-202",
     };
     expect(
       (
@@ -308,6 +309,43 @@ describe("Miniflare Durable Object integration", () => {
     ).toBe(200);
   });
 
+  test("revoked session bindings reject new tokens using a stale user mapping", async () => {
+    const credential = {
+      organizationId: "org-miniflare-session-binding",
+      kind: "steward_session",
+      userId: "00000000-0000-0000-0000-000000000205",
+      stewardUserId: "steward-user-unlinked",
+      issuedAt: 201,
+    };
+    expect((await post("/credential/check", credential)).status).toBe(200);
+    expect(
+      (
+        await post("/session/set-binding-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          stewardUserId: credential.stewardUserId,
+          active: false,
+        })
+      ).status,
+    ).toBe(200);
+    const denied = await post("/credential/check", {
+      ...credential,
+      issuedAt: credential.issuedAt + 1,
+    });
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(await denied.text())).toEqual({
+      allowed: false,
+      reason: "session_binding_revoked",
+    });
+    await post("/session/set-binding-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      stewardUserId: credential.stewardUserId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
+
   test("subject and organization suspension are reversible durable fences", async () => {
     const credential = {
       organizationId: "org-miniflare",
@@ -321,6 +359,7 @@ describe("Miniflare Durable Object integration", () => {
           organizationId: credential.organizationId,
           userId: credential.userId,
           active: false,
+          reason: "account",
         })
       ).status,
     ).toBe(200);
@@ -329,6 +368,7 @@ describe("Miniflare Durable Object integration", () => {
       organizationId: credential.organizationId,
       userId: credential.userId,
       active: true,
+      reason: "account",
     });
     expect((await post("/credential/check", credential)).status).toBe(200);
 
@@ -344,12 +384,16 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
 
-  test("a separate rate-limit identity answers while the legacy ledger input gate is blocked", async () => {
+  test("a separate rate-limit identity answers without duplicating a window across cutover", async () => {
+    const windowMs = 1_000;
+    const legacyWindowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
     const policy = {
       endpointType: "completions",
-      windowMs: 60_000,
-      maxRequests: 2,
+      windowMs,
+      maxRequests: 1,
+      windowStartedAt: legacyWindowStartedAt,
     };
+    expect((await post("/rate-limit", policy)).status).toBe(200);
     expect((await post("/test-block-ledger", {})).status).toBe(202);
 
     const blockedLegacy = post("/rate-limit", policy);
@@ -359,8 +403,20 @@ describe("Miniflare Durable Object integration", () => {
     ]);
     expect(legacyAnsweredEarly).toBe(false);
 
+    const cutoverDelay = Math.max(
+      0,
+      legacyWindowStartedAt + windowMs - Date.now() + 10,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, cutoverDelay));
     const isolated = await Promise.race([
-      post("/rate-limit", policy, "rate-limit:v2:org-miniflare"),
+      post(
+        "/rate-limit",
+        {
+          ...policy,
+          windowStartedAt: legacyWindowStartedAt + windowMs,
+        },
+        "rate-limit:v2:org-miniflare",
+      ),
       new Promise<never>((_, reject) => {
         setTimeout(
           () => reject(new Error("isolated rate limit waited behind ledger")),
@@ -369,7 +425,7 @@ describe("Miniflare Durable Object integration", () => {
       }),
     ]);
     expect(isolated.status).toBe(200);
-    expect((await blockedLegacy).status).toBe(200);
+    expect((await blockedLegacy).status).toBe(429);
   }, 120_000);
 
   test("the cutover coordinator chooses the next exact fixed-window boundary", async () => {
@@ -384,4 +440,51 @@ describe("Miniflare Durable Object integration", () => {
     expect(body.cutoverAt).toBeGreaterThan(Date.now());
     expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
   }, 120_000);
+
+  test("clearing one subject denial cannot clear an independent denial", async () => {
+    const credential = {
+      organizationId: "org-miniflare-independent-fences",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000103",
+      userId: "00000000-0000-0000-0000-000000000204",
+    };
+    for (const reason of ["account", "moderation"]) {
+      expect(
+        (
+          await post("/subject/set-active", {
+            organizationId: credential.organizationId,
+            userId: credential.userId,
+            active: false,
+            reason,
+          })
+        ).status,
+      ).toBe(200);
+    }
+
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    expect(
+      (
+        await post("/subject/set-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          active: true,
+          reason: "moderation",
+        })
+      ).status,
+    ).toBe(200);
+    const stillDenied = await post("/credential/check", credential);
+    expect(stillDenied.status).toBe(403);
+    expect(JSON.parse(await stillDenied.text())).toEqual({
+      allowed: false,
+      reason: "subject_account_disabled",
+    });
+
+    await post("/subject/set-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      active: true,
+      reason: "account",
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
 });
