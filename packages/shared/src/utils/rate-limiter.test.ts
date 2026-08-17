@@ -41,6 +41,20 @@ describe("createRateLimiter", () => {
     ).toThrow(RangeError);
   });
 
+  it("rejects non-string or whitespace-only keys in check and peek", () => {
+    limiter = createRateLimiter({ windowMs: 5000 });
+
+    expect(() => limiter?.check("")).toThrow(TypeError);
+    expect(() => limiter?.check("   ")).toThrow(TypeError);
+    expect(() => limiter?.check(null as unknown as string)).toThrow(TypeError);
+    expect(() => limiter?.check(undefined as unknown as string)).toThrow(
+      TypeError,
+    );
+    expect(() => limiter?.peek("")).toThrow(TypeError);
+    expect(() => limiter?.peek("   ")).toThrow(TypeError);
+    expect(() => limiter?.peek(123 as unknown as string)).toThrow(TypeError);
+  });
+
   it("caps the derived sweep interval at the maximum timer delay", () => {
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
 
