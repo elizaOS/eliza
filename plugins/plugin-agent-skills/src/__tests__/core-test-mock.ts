@@ -128,6 +128,9 @@ vi.mock("@elizaos/core", () => {
 			async stop() {}
 		},
 		resolveStateDir: vi.fn(() => "/tmp/elizaos-test-state"),
+		formatError: vi.fn((err: unknown) =>
+			err instanceof Error ? err.message : String(err),
+		),
 		logger,
 	};
 });
