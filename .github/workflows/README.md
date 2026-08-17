@@ -57,7 +57,12 @@ Representative examples:
   The stable tag then triggers `release-electrobun.yml`, which resolves and
   checks out the peeled tag commit, verifies the existing release is bound to
   that commit, and uploads signed desktop assets without creating or replacing
-  the release. `snap-publish.yml` owns Snap Store publication.
+  the release. Because branch protection does not cover tags, the workflow
+  also requires the tagged commit to be an ancestor of `main` or `develop`
+  and gates every signing, release-upload, and OTA-publish job behind the
+  reviewer-approved `production-release` environment; a tag protection
+  ruleset restricting `v*` creation completes that boundary.
+  `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

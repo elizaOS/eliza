@@ -222,8 +222,11 @@ jobs:
           init_checkout_dir() {
             mkdir -p "$CHECKOUT_DIR"
             git init -q "$CHECKOUT_DIR"
-            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            # Keep the job token out of the persisted .git/config on this
+            # shared runner: the remote URL stays credential-free and the
+            # fetch below authenticates with an in-memory http.extraheader.
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           }
           init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
@@ -238,7 +241,7 @@ jobs:
           # path entirely at negligible cost for a single-stream shallow fetch.
           fetched=
           for attempt in 1 2 3; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: bearer ${CHECKOUT_TOKEN}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -1560,8 +1563,11 @@ jobs:
           init_checkout_dir() {
             mkdir -p "$CHECKOUT_DIR"
             git init -q "$CHECKOUT_DIR"
-            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            # Keep the job token out of the persisted .git/config on this
+            # shared runner: the remote URL stays credential-free and the
+            # fetch below authenticates with an in-memory http.extraheader.
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           }
           init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
@@ -1578,7 +1584,7 @@ jobs:
             # Blobless fetch pushes that cost into checkout as lazy hydration and
             # has repeatedly timed out on the deploy fleet, so use a normal
             # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: bearer ${CHECKOUT_TOKEN}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi

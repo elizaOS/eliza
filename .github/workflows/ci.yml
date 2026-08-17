@@ -50,6 +50,24 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      # A mid-merge tree can carry literal conflict markers into otherwise
+      # buildable source — auth-critical UI files once shipped this way.
+      # Fail in seconds, before install/build spend, when any tracked file
+      # starts a line with the <<<<<<< or >>>>>>> marker.
+      - name: Reject unresolved merge-conflict markers
+        run: |
+          set -euo pipefail
+          status=0
+          git grep -n -E '^(<{7}|>{7})( |$)' -- . || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Unresolved git merge-conflict marker(s) in the tracked files listed above. Finish or abort the merge before landing."
+            exit 1
+          elif [ "$status" -gt 1 ]; then
+            echo "::error::merge-conflict marker scan failed (git grep exit $status)"
+            exit 1
+          fi
+          echo "No unresolved merge-conflict markers in tracked files."
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -503,10 +521,15 @@ jobs:
         run: |
           set -euo pipefail
           version=8.30.1
+          # SHA256-pinned like the actionlint installer
+          # (.github/scripts/install-workflow-linters.sh); update both together
+          # on version bumps.
+          sha256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
           archive="$RUNNER_TEMP/gitleaks.tar.gz"
           curl --fail --location --silent --show-error \
             --output "$archive" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          echo "${sha256}  ${archive}" | sha256sum --check -
           tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
