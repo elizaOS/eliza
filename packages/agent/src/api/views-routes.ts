@@ -64,6 +64,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
@@ -876,6 +877,31 @@ export async function handleViewsRoutes(
       subResource,
     )
   ) {
+    const decodedSubResource = decodePathComponent(
+      subResource,
+      res,
+      "view asset path",
+    );
+    if (decodedSubResource === null) return true;
+
+    // URL assets use forward slashes. Reject control bytes, backslashes, and
+    // dot segments before platform policy, registry, or filesystem work.
+    const hasControlCharacter = Array.from(decodedSubResource).some((char) => {
+      const codePoint = char.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    });
+    const hasInvalidSegment = decodedSubResource
+      .split("/")
+      .some((segment) => segment === "" || segment === "." || segment === "..");
+    if (
+      decodedSubResource.includes("\\") ||
+      hasControlCharacter ||
+      hasInvalidSegment
+    ) {
+      error(res, "Malformed view asset path", 400);
+      return true;
+    }
+
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
       error(
@@ -910,19 +936,11 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
-    let decodedSubResource: string;
-    try {
-      decodedSubResource = decodeURIComponent(subResource);
-    } catch {
-      // error-policy:J3 malformed view asset path bytes are untrusted input,
-      // not an internal filesystem or route-dispatch failure.
-      error(res, "Malformed view asset path", 400);
-      return true;
-    }
     const assetPath = path.resolve(bundleDir, decodedSubResource);
     const relative = path.relative(bundleDir, assetPath);
     if (
-      relative.startsWith("..") ||
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
       path.isAbsolute(relative) ||
       relative === ""
     ) {

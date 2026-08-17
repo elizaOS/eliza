@@ -206,10 +206,23 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     pluginRoot = await mkdtemp(path.join(tmpdir(), "eliza-view-assets-"));
     const bundleDir = path.join(pluginRoot, "dist", "views");
     await mkdir(bundleDir, { recursive: true });
+    await mkdir(path.join(bundleDir, "chunks"), { recursive: true });
     await writeFile(path.join(bundleDir, "bundle.js"), "export {};\n");
     await writeFile(
       path.join(bundleDir, "chunk name.js"),
       "export const asset = true;\n",
+    );
+    await writeFile(
+      path.join(bundleDir, "chunks", "nested.js"),
+      "export const nested = true;\n",
+    );
+    await writeFile(
+      path.join(bundleDir, "..safe.js"),
+      "export const dotPrefixed = true;\n",
+    );
+    await writeFile(
+      path.join(pluginRoot, "dist", "outside.js"),
+      "must not escape the bundle directory\n",
     );
 
     await registerPluginViews(
@@ -231,18 +244,70 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     const started = await startViewsServer(runtime);
     server = started.server;
 
+    const malformedMissingView = await getJson(
+      started.baseUrl,
+      "/api/views/missing-view/%E0%A4",
+      400,
+    );
+    expect(malformedMissingView.error).toBe(
+      "Invalid view asset path: malformed URL encoding",
+    );
+
     const encodedAsset = await fetch(
       `${started.baseUrl}/api/views/${VIEW_ID}/chunk%20name.js`,
     );
     expect(encodedAsset.status).toBe(200);
     expect(await encodedAsset.text()).toBe("export const asset = true;\n");
 
-    const malformedGet = await getJson(
+    const encodedNestedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/chunks%2Fnested.js`,
+    );
+    expect(encodedNestedAsset.status).toBe(200);
+    expect(await encodedNestedAsset.text()).toBe(
+      "export const nested = true;\n",
+    );
+
+    const safeDotPrefixedAsset = await fetch(
+      `${started.baseUrl}/api/views/${VIEW_ID}/..safe.js`,
+    );
+    expect(safeDotPrefixedAsset.status).toBe(200);
+    expect(await safeDotPrefixedAsset.text()).toBe(
+      "export const dotPrefixed = true;\n",
+    );
+
+    const malformedEncoding = await getJson(
       started.baseUrl,
       `/api/views/${VIEW_ID}/%E0%A4`,
       400,
     );
-    expect(malformedGet.error).toBe("Malformed view asset path");
+    expect(malformedEncoding.error).toBe(
+      "Invalid view asset path: malformed URL encoding",
+    );
+
+    for (const adversarialPath of [
+      "..%2Foutside.js",
+      ".%2E%2Foutside.js",
+      "chunks%2F.%2E%2Foutside.js",
+      "%2Fetc%2Fpasswd",
+      "%00",
+      "%5C..%5Coutside.js",
+    ]) {
+      const rejected = await getJson(
+        started.baseUrl,
+        `/api/views/${VIEW_ID}/${adversarialPath}`,
+        400,
+      );
+      expect(rejected.error).toBe("Malformed view asset path");
+    }
+
+    const doubleEncodedTraversal = await getJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/%252E%252E%252Foutside.js`,
+      404,
+    );
+    expect(doubleEncodedTraversal.error).toBe(
+      'View asset "%2E%2E%2Foutside.js" not found',
+    );
 
     const malformedHead = await fetch(
       `${started.baseUrl}/api/views/${VIEW_ID}/%E0%A4`,
