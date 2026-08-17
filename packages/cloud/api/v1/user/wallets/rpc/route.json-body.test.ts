@@ -9,12 +9,21 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 
-const verifyWalletSignature = mock(async () => {
-  throw new Error("verifyWalletSignature must not run");
-});
-const executeServerWalletRpc = mock(async () => {
-  throw new Error("executeServerWalletRpc must not run");
-});
+interface RpcExecutionInput {
+  clientAddress: string;
+  payload: {
+    method: string;
+    params: unknown[];
+    timestamp: number;
+    nonce: string;
+  };
+  signature: `0x${string}`;
+}
+
+const verifyWalletSignature =
+  mock<(request: Request) => Promise<{ wallet_address?: string } | null>>();
+const executeServerWalletRpc =
+  mock<(input: RpcExecutionInput) => Promise<unknown>>();
 
 mock.module("@/lib/auth/wallet-auth", () => ({
   verifyWalletSignature,
@@ -32,8 +41,9 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: mock((c: { json: (body: unknown, status: number) => unknown }) =>
-    c.json({ success: false, error: "An unexpected error occurred" }, 500),
+  failureResponse: mock(
+    (c: { json: (body: unknown, status: number) => unknown }) =>
+      c.json({ success: false, error: "An unexpected error occurred" }, 500),
   ),
 }));
 
@@ -87,7 +97,7 @@ describe("POST /api/v1/user/wallets/rpc JSON body", () => {
       const res = await post(raw);
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({
+      expect((await res.json()) as unknown).toEqual({
         success: false,
         error: "Invalid JSON body",
       });
@@ -102,7 +112,7 @@ describe("POST /api/v1/user/wallets/rpc JSON body", () => {
       const res = await post(raw);
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({
+      expect((await res.json()) as unknown).toEqual({
         success: false,
         error: "Invalid JSON body",
       });
@@ -131,7 +141,7 @@ describe("POST /api/v1/user/wallets/rpc JSON body", () => {
     const res = await post(canonical);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as unknown).toEqual({
       success: true,
       data: { result: "0x1" },
     });
