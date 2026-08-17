@@ -466,7 +466,7 @@ export class MemoryService {
     const context = await this.getRoomContext(
       input.roomId,
       input.organizationId,
-      input.lastN || 50,
+      input.lastN ?? 50,
     );
 
     const summaryPrompt = this.buildSummaryPrompt(context, input.style || "brief");

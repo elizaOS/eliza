@@ -169,14 +169,14 @@ export class AppEarningsService {
       return await appEarningsRepository.listTransactionsByType(
         appId,
         options.type,
-        options?.limit || 50,
+        options?.limit ?? 50,
       );
     }
 
     return await appEarningsRepository.listTransactions(
       appId,
-      options?.limit || 50,
-      options?.offset || 0,
+      options?.limit ?? 50,
+      options?.offset ?? 0,
     );
   }
 

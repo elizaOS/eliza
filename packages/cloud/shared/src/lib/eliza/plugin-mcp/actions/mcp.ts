@@ -290,9 +290,11 @@ async function handleSearchActions(
   const content = message.content as Record<string, unknown>;
   const query = (params.query as string) || (content.text as string) || "";
   const platform = (params.platform as string) || undefined;
-  const rawLimit = Number(params.limit) || 10;
+  const parsedLimit = Number(params.limit);
+  const rawLimit = Number.isFinite(parsedLimit) ? parsedLimit : 10;
   const limit = Math.min(Math.max(rawLimit, 1), 20);
-  const offset = Math.max(Number(params.offset) || 0, 0);
+  const parsedOffset = Number(params.offset);
+  const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
 
   if (!query.trim()) {
     return { success: false, error: "A search query is required" };
