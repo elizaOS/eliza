@@ -19,6 +19,8 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
+import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
+import type { PublicObjectBindings } from "../../storage/r2-public-object";
 import { logger } from "../../utils/logger";
 import { settleOffResponsePath } from "../../utils/settle-off-response-path";
 import {
@@ -30,9 +32,15 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
+import { DEFAULT_IMAGE_MODEL_ID } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import {
+  executeImageGeneration,
+  imageProviderKeysFromCloudEnvironment,
+  isImageGenerationConfigured,
+} from "../image-generation";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
 import {
   getInferenceAdmissionSnapshotCacheOnly,
@@ -46,6 +54,7 @@ import {
   isKnownUnacceptedProviderError,
 } from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
+import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
@@ -54,6 +63,7 @@ import {
   runSharedAgentTurnStream,
   type SharedAgentCharacter,
   type SharedAgentTurnUsage,
+  type SharedMediaGenerationPort,
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
@@ -71,6 +81,7 @@ import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./share
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
+import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 import {
   buildTurnSummary,
   recordSharedTurnTrace,
@@ -78,6 +89,7 @@ import {
 } from "./shared-turn-trace-recorder";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
@@ -237,16 +249,168 @@ function trustedReminderDelivery(params: Record<string, unknown>) {
   return parseSharedReminderDelivery(params.trustedDelivery);
 }
 
+function imageDimensionsFromMediaSize(size: string | undefined): {
+  width?: number;
+  height?: number;
+} {
+  const match = size?.trim().match(/^(\d{3,4})x(\d{3,4})$/u);
+  if (!match) return {};
+  const width = Number.parseInt(match[1], 10);
+  const height = Number.parseInt(match[2], 10);
+  if (width < 128 || width > 4096 || height < 128 || height > 4096) return {};
+  return { width, height };
+}
+
+function personalSharedImagePort(
+  agent: SharedRuntimeAgent,
+  roomId: string,
+  turnKey: string | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
+): SharedMediaGenerationPort | undefined {
+  const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
+  const providerKeys = imageProviderKeysFromCloudEnvironment();
+  if (!blob) return undefined;
+  const cloudEnv = getCloudAwareEnv();
+  const bindings: PublicObjectBindings = {
+    BLOB: blob,
+    ...(cloudEnv.R2_PUBLIC_HOST ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST } : {}),
+  };
+  if (!isImageGenerationConfigured(DEFAULT_IMAGE_MODEL_ID, bindings, providerKeys)) {
+    return undefined;
+  }
+
+  const turnIdentity = turnKey ?? crypto.randomUUID();
+  let actionOrdinal = 0;
+  return {
+    canGenerateMedia: ({ mediaType }) => mediaType === "image",
+    generateMedia: async (request) => {
+      if (request.mediaType !== "image") {
+        throw new Error("Personal Shared media generation supports images only");
+      }
+      const ordinal = actionOrdinal;
+      actionOrdinal += 1;
+      let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+      if (executionCtx) {
+        try {
+          admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
+            agent.organization_id,
+            executionCtx,
+          );
+        } catch (error) {
+          // error-policy:J1 translate the cache-only admission boundary into
+          // the Shared runtime's single retryable warming signal.
+          if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
+            throw new SharedRuntimeCacheWarmingError(
+              "Image billing authorization is warming. Retry shortly.",
+            );
+          }
+          throw error;
+        }
+      }
+      let rateLimited: Response | null;
+      try {
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+          config: inferenceRateLimitConfig(admissionSnapshot, "strict"),
+        });
+      } catch (error) {
+        // error-policy:J1 translate the cache-only rate-limit boundary into
+        // the Shared runtime's single retryable warming signal.
+        if (error instanceof OrgRateLimitCacheNotReadyError) {
+          throw new SharedRuntimeCacheWarmingError(
+            "Image rate-limit authorization is warming. Retry shortly.",
+          );
+        }
+        throw error;
+      }
+      if (rateLimited) {
+        if (rateLimited.status === 429) {
+          const retryAfter = Number.parseInt(rateLimited.headers.get("Retry-After") ?? "", 10);
+          throw new RateLimitError(
+            "Image generation rate limit exceeded.",
+            Number.isFinite(retryAfter) ? retryAfter : undefined,
+          );
+        }
+        throw new SharedRuntimeCacheWarmingError(
+          "Image rate-limit authorization is unavailable. Retry shortly.",
+        );
+      }
+
+      const outcome = await executeImageGeneration({
+        input: {
+          prompt: request.prompt,
+          model: DEFAULT_IMAGE_MODEL_ID,
+          numImages: 1,
+          aspectRatio: request.aspectRatio,
+          stylePreset: request.style,
+          sourceImage: request.imageUrl,
+          ...imageDimensionsFromMediaSize(request.size),
+        },
+        actor: {
+          organizationId: agent.organization_id,
+          userId: agent.user_id,
+          apiKeyId: null,
+        },
+        identity: {
+          requestId: `shared-image:${stableUuid(`${agent.id}:${roomId}:${turnIdentity}:${ordinal}`)}`,
+          source: "personal-shared",
+          description: `Personal Shared image generation: ${agent.id}`,
+          metadata: {
+            agentId: agent.id,
+            channelId: roomId,
+            actionOrdinal: ordinal,
+            runtime: "shared",
+          },
+        },
+        bindings,
+        providerKeys,
+        admit: async ({ context, cost }) => ({
+          kind: "organization" as const,
+          admission: await admitOrganizationInference({
+            context,
+            apiKeyId: null,
+            estimatedInputTokens: 0,
+            estimatedOutputTokens: 0,
+            flatCost: cost,
+            executionCtx,
+            admissionSnapshot,
+          }),
+        }),
+      });
+      const image = outcome.images[0];
+      if (!image) throw new Error("Canonical Cloud image generation returned no artifact");
+      return {
+        mediaType: "image",
+        url: image.url,
+        imageUrl: image.url,
+        mimeType: image.mimeType,
+        provider: outcome.provider,
+      };
+    },
+  };
+}
+
 function sharedElizaRuntimeExecution(
   agent: SharedRuntimeAgent,
+  roomId: string,
+  turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
+  executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
-  const reminderDelivery = funding === "platform" ? trustedReminderDelivery(params) : undefined;
+  const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
+  const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
+  const media = personalShared
+    ? personalSharedImagePort(agent, roomId, turnKey, executionCtx)
+    : undefined;
   return {
     engine: "eliza-runtime",
     agentKey: agent.id,
+    // Personal funding is selected by the server-owned coordinator only after
+    // account/tenant resolution; RPC params cannot grant this attestation.
+    ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -269,6 +433,7 @@ function sharedElizaRuntimeExecution(
         }
       : {}),
     ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
+    ...(media ? { media } : {}),
   };
 }
 
@@ -369,27 +534,6 @@ function stableUuid(raw: string): string {
   }
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
-
-/**
- * Client-supplied idempotency key for a shared turn (#18045). When present it
- * becomes the durable message-identity seed and the coordinator's claim key,
- * so `turnMessageIds` derives the SAME user and assistant message ids on a
- * retry. A retried submission replays the stored terminal result without a second
- * admission, provider dispatch, or charge, and a reused key with different
- * text is rejected. Untrusted input: accept only a non-empty string of a
- * sane length; anything else means "no key" and the caller generates a fresh id
- * (a lost de-dupe, never a broken turn).
- */
-export function sharedTurnClientMessageId(body: unknown): string | undefined {
-  // error-policy:J3 untrusted request body — an absent/oversized/non-string key
-  // yields an explicit undefined, never a fabricated identity.
-  if (!body || typeof body !== "object") return undefined;
-  const raw = (body as { clientMessageId?: unknown }).clientMessageId;
-  if (typeof raw !== "string") return undefined;
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.length > 128) return undefined;
-  return trimmed;
 }
 
 /** Content identity for conflict detection: same key + different text is rejected. */
@@ -999,8 +1143,11 @@ export class SharedRuntimeChatService {
           ? {
               execution: sharedElizaRuntimeExecution(
                 agent,
+                roomId,
+                claimKey,
                 params,
                 options.funding,
+                options.executionCtx,
                 options.mobilePushDispatch,
               ),
             }
@@ -1198,8 +1345,11 @@ export class SharedRuntimeChatService {
           ? {
               execution: sharedElizaRuntimeExecution(
                 agent,
+                roomId,
+                claimKey,
                 params,
                 options.funding,
+                options.executionCtx,
                 options.mobilePushDispatch,
               ),
             }
