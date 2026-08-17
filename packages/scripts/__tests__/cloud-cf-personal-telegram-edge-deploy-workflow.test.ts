@@ -408,6 +408,7 @@ describe("Personal Shared Telegram edge deploy", () => {
       "cloud-cf-release-v6-${{ inputs.environment == 'production' && 'production' || 'staging' }}",
     );
     expect(job?.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(job?.concurrency?.queue).toBe("max");
     expect(job?.env?.REQUESTED_ENVIRONMENT).toBe("${{ inputs.environment }}");
     expect(job?.env?.TARGET_ENVIRONMENT).toBe(
       "${{ inputs.environment == 'production' && 'production' || 'staging' }}",

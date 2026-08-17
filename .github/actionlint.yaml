@@ -10,6 +10,12 @@ self-hosted-runner:
 paths:
   .github/workflows/*.yml:
     ignore:
+      # GitHub added concurrency.queue on 2026-05-07, but actionlint v1.7.12
+      # and its current main branch still use the pre-queue schema. The deploy
+      # contract tests validate queue:max and its cancel-in-progress:false
+      # requirement; ignore only actionlint's exact stale-schema diagnostic.
+      # https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
+      - 'unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"'
       # Keep workflow lint focused on actionable failures. actionlint surfaces
       # shellcheck `info` and `style` diagnostics as errors by default, which
       # makes this repo's workflow lint fail without any workflow syntax,
@@ -17,4 +23,6 @@ paths:
       - "shellcheck reported issue in this script: SC[0-9]+:(info|style):"
   .github/workflows/*.yaml:
     ignore:
+      # Match the same temporary GitHub/actionlint schema gap for .yaml files.
+      - 'unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"'
       - "shellcheck reported issue in this script: SC[0-9]+:(info|style):"
