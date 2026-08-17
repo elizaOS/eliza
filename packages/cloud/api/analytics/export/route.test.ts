@@ -2,7 +2,8 @@
  * Exercises the mounted analytics export Hono route with mocked auth, rate
  * limiting, export formatting, and analytics services. Invalid date queries
  * must fail before service lookups instead of reaching filename serialization.
- * Unknown `type` tokens must 400 instead of silently exporting timeseries.
+ * Unknown or ambiguous catalog and metadata selectors must fail instead of
+ * silently exporting a different representation.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -25,6 +26,13 @@ const getProviderBreakdown = mock(
 );
 const getUsageTimeSeries = mock(
   async (_organizationId: string, _range: AnalyticsRange) => [],
+);
+const generateCSV = mock(
+  (
+    _data: unknown,
+    _columns: unknown,
+    _options?: { includeMetadata?: boolean },
+  ) => "timestamp,requests\n",
 );
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -56,7 +64,7 @@ mock.module("@/lib/export/analytics", () => ({
   formatDate: String,
   formatNumber: String,
   formatPercentage: String,
-  generateCSV: () => "timestamp,requests\n",
+  generateCSV,
   generateExcel: async () => new Uint8Array(),
   generateJSON: () => "[]",
 }));
@@ -76,6 +84,7 @@ function clearServiceMocks() {
   getModelBreakdown.mockClear();
   getProviderBreakdown.mockClear();
   getUsageTimeSeries.mockClear();
+  generateCSV.mockClear();
 }
 
 function expectNoServiceLookups() {
@@ -83,6 +92,7 @@ function expectNoServiceLookups() {
   expect(getModelBreakdown).not.toHaveBeenCalled();
   expect(getProviderBreakdown).not.toHaveBeenCalled();
   expect(getUsageTimeSeries).not.toHaveBeenCalled();
+  expect(generateCSV).not.toHaveBeenCalled();
 }
 
 describe("GET /api/analytics/export date validation", () => {
@@ -158,6 +168,71 @@ describe("GET /api/analytics/export type identity", () => {
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: string };
       expect(body.error).toContain("Invalid type");
+      expectNoServiceLookups();
+    },
+  );
+});
+
+describe("GET /api/analytics/export includeMetadata identity", () => {
+  beforeEach(clearServiceMocks);
+
+  test.each(["", "?includeMetadata=", "?includeMetadata=false"])(
+    "accepts %s as omit-metadata timeseries export",
+    async (query) => {
+      const response = await getExport(query);
+      expect(response.status).toBe(200);
+      expect(getUsageTimeSeries).toHaveBeenCalledTimes(1);
+      expect(generateCSV).toHaveBeenCalledTimes(1);
+      expect(generateCSV.mock.calls[0][2]).toMatchObject({
+        includeMetadata: false,
+      });
+    },
+  );
+
+  test("accepts includeMetadata=true as metadata-bearing export", async () => {
+    const response = await getExport("?includeMetadata=true");
+    expect(response.status).toBe(200);
+    expect(getUsageTimeSeries).toHaveBeenCalledTimes(1);
+    expect(generateCSV).toHaveBeenCalledTimes(1);
+    expect(generateCSV.mock.calls[0][2]).toMatchObject({
+      includeMetadata: true,
+    });
+  });
+
+  test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo"])(
+    "rejects includeMetadata=%s before export work",
+    async (token) => {
+      const response = await getExport(
+        `?includeMetadata=${encodeURIComponent(token)}`,
+      );
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("Invalid includeMetadata");
+      expectNoServiceLookups();
+    },
+  );
+
+  test.each([
+    "?includeMetadata=true&includeMetadata=true",
+    "?includeMetadata=true&includeMetadata=false",
+    "?includeMetadata=false&includeMetadata=true",
+    "?includeMetadata=&includeMetadata=false",
+    "?includeMetadata=foo&includeMetadata=false",
+    "?includeMetadata=false&includeMetadata=foo",
+  ])(
+    "rejects ambiguous duplicate query %s without exporting",
+    async (query) => {
+      const response = await getExport(query);
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as {
+        error: string;
+        message: string;
+      };
+      expect(body).toEqual({
+        error: "Invalid includeMetadata",
+        message:
+          'includeMetadata must be specified at most once as "true" or "false".',
+      });
       expectNoServiceLookups();
     },
   );

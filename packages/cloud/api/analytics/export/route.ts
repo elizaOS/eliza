@@ -111,20 +111,22 @@ app.get("/", async (c) => {
         400,
       );
     }
-    // Analytics-export metadata identity, not leftover tax on export
-    // `type` (#20933). includeMetadata=TRUE used to silently omit
-    // metadata instead of 400.
-    const requestedMetadata = c.req.query("includeMetadata");
+    // Metadata changes the export schema, so reject ambiguous or non-canonical
+    // input before any analytics lookup or output generation can begin.
+    const requestedMetadataValues = c.req.queries("includeMetadata") ?? [];
+    const requestedMetadata = requestedMetadataValues[0];
     if (
-      requestedMetadata != null &&
-      requestedMetadata !== "" &&
-      requestedMetadata !== "true" &&
-      requestedMetadata !== "false"
+      requestedMetadataValues.length > 1 ||
+      (requestedMetadata != null &&
+        requestedMetadata !== "" &&
+        requestedMetadata !== "true" &&
+        requestedMetadata !== "false")
     ) {
       return c.json(
         {
           error: "Invalid includeMetadata",
-          message: 'includeMetadata must be "true" or "false".',
+          message:
+            'includeMetadata must be specified at most once as "true" or "false".',
         },
         400,
       );
