@@ -1,19 +1,8 @@
 /**
- * Producible-evidence contract for the auto goal-verifier (#20794).
- *
- * The verify pipeline reliably failed WORKING deliverables through three
- * structural mismatches: generated criteria invented concrete paths the
- * request never named, the CompletionEnvelope contract was demanded from
- * backends that never emit one, and re-engage corrections asked for evidence
- * (browser screenshots) the child sandbox cannot produce — while the
- * deterministic evidence the orchestrator already held (successful ledger
- * writes, probed non-loopback URLs, mined green check output) was never
- * allowed to PASS a task on its own.
- *
- * This module centralizes those three contracts, all deterministic and
- * model-free: per-backend/per-sandbox evidence capabilities, an
- * invented-artifact filter for generated criteria, and a per-criterion
- * deterministic verdict the pipeline consults BEFORE any model judgment.
+ * Defines the deterministic evidence contracts used by the goal verifier.
+ * It resolves backend capabilities, filters invented artifact criteria, and
+ * evaluates only claims that completion-time facts can prove without model
+ * judgment. Ambiguous or behavioral claims remain undetermined.
  */
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 
@@ -134,6 +123,10 @@ const BUILD_CRITERION_RE = /\b(build|compile|typecheck|tsc)\b/i;
 const LINT_CRITERION_RE = /\b(lint|biome|eslint|format)\b/i;
 const SCREENSHOT_CRITERION_RE = /\b(screenshot|screen\s*capture)\b/i;
 const EXPLICIT_HTTP_URL_RE = /https?:\/\/[^\s`"'<>]+/gi;
+const URL_BEHAVIOR_CRITERION_RE =
+  /\b(?:[1-5]\d{2}|status|response|body|json|xml|auth(?:entication|orization)?|unauthorized|forbidden|token|header|payload|method|redirect|error|returns?|responds?|contains?|matches?|accepts?|rejects?|requires?|allows?|denies?|get|post|put|patch|delete)\b/i;
+const IMPLICIT_REACHABILITY_CRITERION_RE =
+  /\b(?:live\s+url|public\s+url|(?:url|page|site|app|deployment)\s+(?:is\s+)?(?:live|reachable|available|served)|deployed\s+(?:app|page|site))\b/i;
 
 function normalizeExplicitHttpUrl(value: string): string | undefined {
   const candidate = value.replace(/[),.;!?]+$/, "");
@@ -158,6 +151,13 @@ function urlCriterionBasis(
   const verified = facts.verifiedPublicUrls
     .map(normalizeExplicitHttpUrl)
     .filter((url): url is string => Boolean(url));
+  if (URL_BEHAVIOR_CRITERION_RE.test(criterion)) return undefined;
+  if (
+    demandedUrls.length === 0 &&
+    !IMPLICIT_REACHABILITY_CRITERION_RE.test(criterion)
+  ) {
+    return undefined;
+  }
   const hit =
     demandedUrls.length > 0
       ? verified.find((url) => demandedUrls.includes(url))

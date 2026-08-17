@@ -1,11 +1,7 @@
 /**
- * Contract tests for the producible-evidence module (#20794): backend
- * capability resolution fails closed, invented-artifact criteria are dropped
- * while goal-named paths survive, and the deterministic ledger verdict
- * promotes only when EVERY criterion is satisfied by concrete facts — with
- * the live-incident shapes (invented `agent-home/canon-clock.html` path,
- * served-URL + ledger-write quick-app) pinned. Deterministic; no model, IO,
- * or environment mutation beyond scoped env stubs.
+ * Exercises deterministic goal-verifier evidence classification without a
+ * model or external I/O. The suite ensures only concrete, matching facts can
+ * promote a criterion while ambiguous claims fail closed.
  */
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -104,7 +100,7 @@ describe("deterministicLedgerVerdict", () => {
   test("the live quick-app incident shape passes deterministically", () => {
     const verdict = deterministicLedgerVerdict(
       [
-        "the live URL returns HTTP 200",
+        "the live URL is reachable",
         "the deliverable file exists in the workdir",
         "the change is summarized in the diff",
       ],
@@ -118,7 +114,7 @@ describe("deterministicLedgerVerdict", () => {
 
   test("an unsatisfied check criterion stays undetermined and blocks allMet", () => {
     const verdict = deterministicLedgerVerdict(
-      ["the live URL returns HTTP 200", "tests pass"],
+      ["the live URL is reachable", "tests pass"],
       quickAppFacts,
     );
     expect(verdict.allMet).toBe(false);
@@ -160,6 +156,36 @@ describe("deterministicLedgerVerdict", () => {
     expect(verdict.allMet).toBe(false);
   });
 
+  test.each([
+    "the API returns 401 for an invalid token",
+    "the endpoint requires authentication",
+    "the live URL returns HTTP 200",
+    "the response body contains the deployed version",
+    "POST /v1/jobs rejects an invalid payload",
+  ])(
+    "reachability alone does not satisfy behavioral claim: %s",
+    (criterion) => {
+      const verdict = deterministicLedgerVerdict([criterion], quickAppFacts);
+      expect(verdict.allMet).toBe(false);
+      expect(verdict.undetermined).toEqual([criterion]);
+    },
+  );
+
+  test("an unrelated verified URL does not satisfy an unnamed endpoint claim", () => {
+    const criterion = "the API endpoint is available";
+    const verdict = deterministicLedgerVerdict([criterion], quickAppFacts);
+    expect(verdict.allMet).toBe(false);
+    expect(verdict.undetermined).toEqual([criterion]);
+  });
+
+  test("a matching explicit URL can satisfy a reachability-only claim", () => {
+    const verdict = deterministicLedgerVerdict(
+      ["https://nubilio.org/apps/canon-clock/ is reachable"],
+      quickAppFacts,
+    );
+    expect(verdict.allMet).toBe(true);
+  });
+
   test("empty criteria never auto-pass", () => {
     expect(deterministicLedgerVerdict([], quickAppFacts).allMet).toBe(false);
   });
@@ -167,11 +193,11 @@ describe("deterministicLedgerVerdict", () => {
   test("renders met bases and undetermined markers", () => {
     const rendered = renderDeterministicVerdict(
       deterministicLedgerVerdict(
-        ["the live URL returns HTTP 200", "tests pass"],
+        ["the live URL is reachable", "tests pass"],
         quickAppFacts,
       ),
     );
-    expect(rendered).toContain("MET: the live URL returns HTTP 200");
+    expect(rendered).toContain("MET: the live URL is reachable");
     expect(rendered).toContain("undetermined (needs judgment): tests pass");
   });
 });
@@ -220,7 +246,7 @@ describe("generateDefaultAcceptanceCriteria enforcement (#20794)", () => {
       JSON.stringify({
         criteria: [
           "Diff confirms the creation of `agent-home/canon-clock.html`",
-          "the live URL returns HTTP 200",
+          "the live URL is reachable",
           "the page shows a ticking clock",
         ],
       });
@@ -228,7 +254,7 @@ describe("generateDefaultAcceptanceCriteria enforcement (#20794)", () => {
       useModel,
     } as never);
     expect(criteria.join("\n")).not.toContain("agent-home/canon-clock.html");
-    expect(criteria).toContain("the live URL returns HTTP 200");
+    expect(criteria).toContain("the live URL is reachable");
     expect(criteria.length).toBeGreaterThanOrEqual(3);
   });
 });
