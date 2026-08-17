@@ -364,6 +364,7 @@ function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
 async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity> {
   const response = await fetch(GOOGLE_USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     throw new Error(`Google userinfo request failed with ${response.status}`);
@@ -397,6 +398,7 @@ async function exchangeAuthorizationCode(args: {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     const body = await response.text();
