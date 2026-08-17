@@ -9,6 +9,7 @@
 import crypto from "node:crypto";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
+import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
   RateLimitError,
@@ -70,6 +71,11 @@ import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./share
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
+import {
+  buildTurnSummary,
+  recordSharedTurnTrace,
+  type SharedTurnSummaryResult,
+} from "./shared-turn-trace-recorder";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -107,6 +113,36 @@ export interface SharedRuntimeHistoryStore {
     channelId: string,
     messages: SharedTurnMessage[],
   ): Promise<SharedTurnMessage[]>;
+}
+
+/**
+ * P5 sampled turn trace, recorded strictly off the response path. The recorder
+ * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
+ * and never throws, so this adds zero turn latency and zero failure surface.
+ */
+function recordTurnTraceOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  agent: SharedRuntimeAgent,
+  channelId: string,
+  traceId: string,
+  startedAt: number,
+  result: SharedTurnSummaryResult,
+): void {
+  void settleOffResponsePath(executionCtx, async () => {
+    await recordSharedTurnTrace(
+      { insertTrace: (row) => sharedTurnTracesRepository.insertTrace(row) },
+      buildTurnSummary({
+        result,
+        organizationId: agent.organization_id,
+        userId: agent.user_id,
+        agentId: agent.id,
+        channelId,
+        traceId,
+        startedAt,
+        completedAt: Date.now(),
+      }),
+    );
+  });
 }
 
 function turnActionResults(
@@ -940,6 +976,7 @@ export class SharedRuntimeChatService {
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = sharedTurnMemoryStore(agent);
     const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const turnStartedAtEpochMs = Date.now();
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -970,6 +1007,14 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
+    recordTurnTraceOffPath(
+      options.executionCtx,
+      agent,
+      roomId,
+      messageIds.assistant,
+      turnStartedAtEpochMs,
+      turn,
+    );
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
@@ -1125,6 +1170,7 @@ export class SharedRuntimeChatService {
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     const streamMemoryStore = sharedTurnMemoryStore(agent);
     const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const streamTurnStartedAtEpochMs = Date.now();
     const providerSetupStartedAt = performance.now();
     try {
       turn = await runSharedAgentTurnStream({
@@ -1251,6 +1297,21 @@ export class SharedRuntimeChatService {
           });
         }
         await afterWrite?.();
+        // Stream traces omit usage (it lives on the finish frame, not the
+        // stream result); the recorder treats it as optional.
+        recordTurnTraceOffPath(
+          options.executionCtx,
+          agent,
+          roomId,
+          messageIds.assistant,
+          streamTurnStartedAtEpochMs,
+          {
+            model: turn.model,
+            degraded: turn.degraded,
+            ...(turn.actionResults ? { actionResults: turn.actionResults } : {}),
+            ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
+          },
+        );
         finalized = true;
       })().catch((error) => {
         finalizationPromise = null;

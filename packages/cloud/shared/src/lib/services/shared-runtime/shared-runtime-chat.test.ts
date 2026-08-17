@@ -498,7 +498,10 @@ describe("SharedRuntimeChatService", () => {
     expect(admissionContext?.metadata).not.toHaveProperty("prompt");
     expect(JSON.stringify(admissionContext)).not.toContain("hello");
     expect(h.history()).toHaveLength(3);
-    expect(h.background).toHaveLength(2);
+    // Third background task is the P5 sampled turn-trace write (flag-gated,
+    // no-op while SHARED_TURN_TRACES_ENABLED is off, but always scheduled
+    // off-path so enabling the flag never changes response ordering).
+    expect(h.background).toHaveLength(3);
     expect(settleCalls).toHaveLength(0);
     releaseBilling();
     await Promise.all(h.background);
