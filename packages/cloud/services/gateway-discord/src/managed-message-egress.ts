@@ -29,7 +29,13 @@ function isRoutedManagedReply(value: unknown): value is RoutedManagedReply {
 }
 
 export type ManagedRouteOutcome =
-  | { ok: true; routed: RoutedManagedReply; attempts: number }
+  | {
+      ok: true;
+      routed: RoutedManagedReply;
+      attempts: number;
+      traceId: string | null;
+      serverTiming: string | null;
+    }
   | {
       ok: false;
       attempts: number;
@@ -141,13 +147,21 @@ export async function postManagedAgentMessageWithRetry(options: {
     if (response) {
       if (response.ok) {
         try {
+          const traceId = response.headers.get("X-Eliza-Trace-Id");
+          const serverTiming = response.headers.get("Server-Timing");
           const routed: unknown = await response.json();
           if (!isRoutedManagedReply(routed)) {
             throw new TypeError(
               "managed route returned an invalid reply object",
             );
           }
-          return { ok: true, routed, attempts: attempt };
+          return {
+            ok: true,
+            routed,
+            attempts: attempt,
+            traceId,
+            serverTiming,
+          };
         } catch (error) {
           // error-policy:J4 A malformed success response is not delivered as a
           // healthy reply; expose it and retry the idempotent upstream turn.
