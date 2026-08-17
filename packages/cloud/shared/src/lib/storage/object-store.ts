@@ -767,6 +767,8 @@ async function headObjectOnBackend(
       metadata: { sizeBytes: requireObjectSize(object.ContentLength), checksum },
     };
   } catch (error) {
+    // error-policy:J1 translate only the provider's authoritative not-found
+    // response into the explicit absent result at the object-store boundary.
     if (!isS3ObjectNotFound(error)) throw error;
     return {
       status: "absent",
@@ -1036,7 +1038,8 @@ async function cancelUntransferredBody(body: unknown): Promise<void> {
       if (isReadableByteStream(stream)) await stream.cancel();
     }
   } catch {
-    // Best-effort teardown must not replace the static storage-domain error.
+    // error-policy:J6 best-effort teardown must not replace the static
+    // storage-domain error.
   }
 }
 
@@ -1096,8 +1099,9 @@ function createVerifiedExactRead(input: {
     resolveCompletion = resolve;
     rejectCompletion = reject;
   });
-  // The contract requires callers to await completion, but attach a rejection
-  // observer so an abandoned caller cannot create an unhandled rejection.
+  // error-policy:J5 the contract requires callers to await completion, but
+  // attach an observer so an abandoned caller cannot create an unhandled
+  // rejection. The same rejection remains observable through `completion`.
   void completion.catch(() => undefined);
 
   const cleanup = () => {
@@ -1113,6 +1117,8 @@ function createVerifiedExactRead(input: {
           () => undefined,
         );
       } catch {
+        // error-policy:J6 cancellation is best-effort after the read has
+        // already failed or been abandoned.
         providerCancellation = Promise.resolve();
       }
     }
@@ -1127,7 +1133,8 @@ function createVerifiedExactRead(input: {
     try {
       streamController?.error(translated);
     } catch {
-      // The public stream may already be in its cancelled state.
+      // error-policy:J6 the public stream may already be in its cancelled
+      // state; the completion promise retains the authoritative failure.
     }
     return cancelProvider();
   };
@@ -1188,6 +1195,8 @@ function createVerifiedExactRead(input: {
         hasher.update(next.value);
         controller.enqueue(next.value);
       } catch (error) {
+        // error-policy:J1 the ReadableStream boundary publishes the translated
+        // failure through both the stream and its completion promise.
         await fail(error);
       }
     },
@@ -1278,6 +1287,8 @@ async function getExactObjectOnBackend(
         object = await raceRuntimeGet(providerRequest, context);
       } catch (error) {
         if (context.signal.aborted) {
+          // error-policy:J5 the raced request is still observed and a late
+          // response body is cancelled; the abort remains authoritative.
           void providerRequest
             .then((lateObject) => lateObject?.body?.cancel())
             .catch(() => undefined);
@@ -1362,6 +1373,7 @@ async function getExactObjectOnBackend(
       if (!bodyTransferred) await cancelUntransferredBody(object.Body);
     }
   } catch (error) {
+    // error-policy:J2 add stable storage-domain context while preserving cause.
     context.dispose();
     throw providerReadFailure(error, context);
   }
@@ -1586,6 +1598,8 @@ async function putImmutableObjectOnBackend(params: {
       const receipt = immutableReceiptFromHead(observed, expected);
       if (receipt) return receipt;
     } catch (error) {
+      // error-policy:J1 reconcile the provider response at the immutable-write
+      // boundary before returning a receipt or a static domain failure.
       if (
         error instanceof ObjectStorageLifecycleError &&
         error.code === "OBJECT_STORAGE_IMMUTABLE_CONFLICT"
@@ -1745,6 +1759,8 @@ async function deleteObjectOnBackend(
       );
       providerRequestId = output.$metadata.requestId ?? null;
     } catch (error) {
+      // error-policy:J1 translate conditional-delete and not-found responses at
+      // the exact object lifecycle boundary; all other failures propagate.
       if (providerHttpStatus(error) === 412) {
         throw new ObjectStorageLifecycleError(
           "OBJECT_STORAGE_VERSION_MISMATCH",

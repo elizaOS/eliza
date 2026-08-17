@@ -323,6 +323,8 @@ export async function executeAgentBackupGcClaims(params: {
       await executeAgentBackupGcClaim({ claim, registry: params.registry });
       completed += 1;
     } catch (error) {
+      // error-policy:J1 the durable worker boundary translates provider failure
+      // into a retryable or terminal outbox receipt before continuing the batch.
       const ownerId = claim.outbox.claim_owner;
       const generation = claim.outbox.claim_generation;
       if (!ownerId || !generation) {
