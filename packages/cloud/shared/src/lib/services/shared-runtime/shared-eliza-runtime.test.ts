@@ -3,7 +3,8 @@
  * message pipeline while a deterministic HTTP boundary stands in for Cerebras.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { AgentRuntime } from "@elizaos/core/edge";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 
@@ -185,17 +186,26 @@ afterEach(() => {
 });
 
 describe("Shared Eliza Workerd runtime", () => {
-  test("prewarms the genuine runtime kernel without dispatching inference", async () => {
+  test("prewarms once, releases the runtime, and never dispatches inference", async () => {
     const { prewarmSharedElizaRuntime } = await import("./shared-eliza-runtime");
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop");
+    const closeSpy = spyOn(AgentRuntime.prototype, "close");
     let providerCalls = 0;
     globalThis.fetch = (async () => {
       providerCalls += 1;
       throw new Error("Runtime prewarm must not contact Cerebras");
     }) as typeof fetch;
 
-    await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
+    try {
+      await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
 
-    expect(providerCalls).toBe(0);
+      expect(providerCalls).toBe(0);
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stopSpy.mockRestore();
+      closeSpy.mockRestore();
+    }
   });
 
   test("routes ordinary focus language through HANDLE_RESPONSE in the genuine runtime", async () => {
