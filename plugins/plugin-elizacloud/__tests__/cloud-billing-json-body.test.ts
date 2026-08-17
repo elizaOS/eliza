@@ -46,13 +46,10 @@ function makeReq(raw: string, url: string): http.IncomingMessage {
 
 async function post(pathname: string, raw: string) {
   const cap = makeResponse();
-  const handled = await handleCloudBillingRoute(
-    makeReq(raw, pathname),
-    cap.res,
-    pathname,
-    "POST",
-    { config: {}, runtime: null },
-  );
+  const handled = await handleCloudBillingRoute(makeReq(raw, pathname), cap.res, pathname, "POST", {
+    config: {},
+    runtime: null,
+  });
   return { handled, cap };
 }
 
@@ -73,10 +70,7 @@ describe("billing checkout/quote JSON body", () => {
   });
 
   it("still 401s canonical checkout JSON when disconnected", async () => {
-    const { handled, cap } = await post(
-      "/api/cloud/billing/checkout",
-      '{"amountUsd":10}',
-    );
+    const { handled, cap } = await post("/api/cloud/billing/checkout", '{"amountUsd":10}');
     expect(handled).toBe(true);
     expect(cap.statusCode).toBe(401);
   });

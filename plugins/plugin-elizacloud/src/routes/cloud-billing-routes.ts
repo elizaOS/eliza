@@ -409,6 +409,8 @@ function parseJsonBody(body: string | undefined): Record<string, unknown> | null
     }
     return parsed as Record<string, unknown>;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed JSON is an
+    // explicit invalid body and never reaches authentication or money APIs.
     return null;
   }
 }
