@@ -774,6 +774,7 @@ export class DiscordLocalService extends Service {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
+			signal: AbortSignal.timeout(15_000),
 		});
 		if (!response.ok) {
 			throw new Error(
@@ -805,6 +806,7 @@ export class DiscordLocalService extends Service {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
+			signal: AbortSignal.timeout(15_000),
 		});
 		if (!response.ok) {
 			throw new Error(`Discord OAuth refresh failed with ${response.status}`);
