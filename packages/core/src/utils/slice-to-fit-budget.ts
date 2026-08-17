@@ -14,15 +14,18 @@ export function sliceToFitBudget<T>(
 	options?: { fromEnd?: boolean },
 ): T[] {
 	if (items.length === 0) return [];
-	// Zero or negative budget means no room - return empty array
-	if (targetChars <= 0) return [];
+	// Zero, negative, or non-finite budget means no room - return empty array
+	if (!Number.isFinite(targetChars) || targetChars <= 0) return [];
 
 	const fromEnd = options?.fromEnd ?? false;
 	let total = 0;
 	let count = 0;
 
 	// Calculate all sizes upfront to avoid double estimation
-	const sizes = items.map(estimateChars);
+	const sizes = items.map((item) => {
+		const size = estimateChars(item);
+		return Number.isFinite(size) && size > 0 ? size : 0;
+	});
 
 	if (fromEnd) {
 		for (let index = items.length - 1; index >= 0; index--) {

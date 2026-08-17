@@ -54,6 +54,7 @@ describe("sliceToFitBudget", () => {
 	it("returns empty for a zero or negative budget", () => {
 		expect(sliceToFitBudget(["a"], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget(["a"], byLength, -10)).toEqual([]);
+		expect(sliceToFitBudget(["a", "b"], byLength, Number.NaN)).toEqual([]);
 	});
 
 	it("treats a zero budget as no room even for a zero-cost item", () => {
@@ -62,10 +63,17 @@ describe("sliceToFitBudget", () => {
 		// wants nothing back, so the guard is load-bearing rather than cosmetic.
 		expect(sliceToFitBudget([""], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget([""], byLength, 0, { fromEnd: true })).toEqual([]);
+		expect(sliceToFitBudget([""], byLength, Number.NaN)).toEqual([]);
 	});
 
 	it("keeps zero-cost items when there is any budget at all", () => {
 		expect(sliceToFitBudget(["", "", "a"], byLength, 1)).toEqual(["", "", "a"]);
+	});
+
+	it("sanitizes invalid or negative estimator returns", () => {
+		const items = ["a", "b", "c"];
+		expect(sliceToFitBudget(items, () => Number.NaN, 5)).toEqual(items);
+		expect(sliceToFitBudget(items, () => -10, 5)).toEqual(items);
 	});
 
 	describe("fromEnd", () => {
