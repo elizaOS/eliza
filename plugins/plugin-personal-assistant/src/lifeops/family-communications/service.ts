@@ -14,6 +14,7 @@ import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,
   ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
@@ -1088,7 +1089,10 @@ export class FamilyCommunicationsRuntimeService extends Service {
       runtime.getServiceLoadPromise(
         FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
       ),
-      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+      // The scheduling plugin registers DEFERRED; a bare load-promise for a
+      // not-yet-announced type rejects fast and this service failed at every
+      // boot on the live box. The waiter polls registration first.
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new FamilyCommunicationsRuntimeService(runtime);
     await service.family.initialize();

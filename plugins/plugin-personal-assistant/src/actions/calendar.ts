@@ -84,7 +84,6 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { normalizeTimeZone } from "../lifeops/defaults.js";
 import {
   computeCreateEventTravelBuffer,
   resolveCreateEventTravelIntent,

@@ -16,6 +16,7 @@ import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
   ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import {
   type Entity,
@@ -3048,7 +3049,10 @@ export class HouseholdCoordinationRuntimeService extends Service {
   ): Promise<HouseholdCoordinationRuntimeService> {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
-      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+      // The scheduling plugin registers DEFERRED; a bare load-promise for a
+      // not-yet-announced type rejects fast and this service failed at every
+      // boot on the live box. The waiter polls registration first.
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();
