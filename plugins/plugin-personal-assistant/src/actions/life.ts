@@ -2874,7 +2874,7 @@ export function buildCadenceFromUpdateFields(args: {
       }
       const currentLocalDate = getZonedDateParts(
         new Date(currentCadence.dueAt),
-        timeZone,
+        currentWindowPolicy.timezone,
       );
       return {
         cadence: {

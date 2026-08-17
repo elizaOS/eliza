@@ -542,6 +542,29 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     });
   });
 
+  it("uses the stored timezone for the date when time and timezone change together", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        // July 3 at 23:00 in Los Angeles, but already July 4 in Tokyo.
+        dueAt: "2026-07-04T06:00:00.000Z",
+      },
+      currentWindowPolicy: {
+        timezone: "America/Los_Angeles",
+        windows: [],
+      },
+      timeZone: "Asia/Tokyo",
+      update: { ...emptyUpdate, timeOfDay: "09:00" },
+    });
+
+    // Preserve the stored July 3 calendar date, then interpret the requested
+    // wall time in the new timezone.
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-03T00:00:00.000Z",
+    });
+  });
+
   it("returns null (no silent no-op) when nothing reschedulable was extracted", () => {
     const built = buildCadenceFromUpdateFields({
       currentCadence,
