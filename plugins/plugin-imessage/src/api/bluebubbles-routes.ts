@@ -46,6 +46,50 @@ function resolveService(state: BlueBubblesRouteState): BlueBubblesServiceLike | 
   return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
 }
 
+const DEFAULT_CHATS_LIMIT = 100;
+const DEFAULT_MESSAGES_LIMIT = 50;
+const MAX_LIST_LIMIT = 500;
+
+/**
+ * Canonical BlueBubbles list page size. `Number.parseInt("1e2", 10) === 1`
+ * used to silently return one chat/message instead of a 400. chats default
+ * 100, messages default 50; webhook / status parsers stay untouched.
+ */
+function parseBlueBubblesLimit(
+  raw: string | null,
+  defaultValue: number,
+): number | null {
+  if (raw === null || raw === "") {
+    return defaultValue;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    return null;
+  }
+  return Math.min(parsed, MAX_LIST_LIMIT);
+}
+
+/**
+ * Canonical BlueBubbles list offset. Prefix-legal garbage must not coerce
+ * (`Number.parseInt("1e2", 10) === 1`) into `listChats` / `getMessages`.
+ */
+function parseBlueBubblesOffset(raw: string | null): number | null {
+  if (raw === null || raw === "") {
+    return 0;
+  }
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
 export function resolveBlueBubblesWebhookPath(state: BlueBubblesRouteState): string {
   const service = resolveService(state);
   const configuredPath = service?.getWebhookPath();
@@ -105,11 +149,21 @@ export async function handleBlueBubblesRoute(
     }
 
     const url = new URL(req.url ?? pathname, "http://localhost");
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100),
-      500
+    // BlueBubbles chats pagination leftover tax after iMessage messages
+    // limit (#20855). limit=1e2 used to silently return one chat.
+    const limit = parseBlueBubblesLimit(
+      url.searchParams.get("limit"),
+      DEFAULT_CHATS_LIMIT,
     );
-    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
+    const offset = parseBlueBubblesOffset(url.searchParams.get("offset"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
+    if (offset === null) {
+      helpers.error(res, "offset must be a non-negative integer", 400);
+      return true;
+    }
 
     try {
       const chats = await client.listChats(limit, offset);
@@ -144,11 +198,19 @@ export async function handleBlueBubblesRoute(
       return true;
     }
 
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
-      500
+    const limit = parseBlueBubblesLimit(
+      url.searchParams.get("limit"),
+      DEFAULT_MESSAGES_LIMIT,
     );
-    const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
+    const offset = parseBlueBubblesOffset(url.searchParams.get("offset"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
+    if (offset === null) {
+      helpers.error(res, "offset must be a non-negative integer", 400);
+      return true;
+    }
 
     try {
       const messages = await client.getMessages(chatGuid, limit, offset);
