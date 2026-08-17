@@ -680,7 +680,8 @@ function shortError(err: unknown, maxLen = 280): string {
       : String(err);
   const oneLine = raw.replace(/\s+/g, " ").trim();
   if (oneLine.length <= maxLen) return oneLine;
-  return `${oneLine.slice(0, maxLen)}... (see logs for full details)`;
+  const suffix = "... (see logs for full details)";
+  return `${oneLine.slice(0, maxLen - suffix.length)}${suffix}`;
 }
 
 export function redactSensitiveDiagnostics(input: string): string {
