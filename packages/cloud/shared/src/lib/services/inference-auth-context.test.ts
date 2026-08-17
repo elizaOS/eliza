@@ -1,9 +1,7 @@
 /**
- * Unit tests for the inference hot-path auth resolver + low-level cache (#9899).
- *
- * Uses the REAL CacheClient with MOCK_REDIS=1 (in-memory adapter) so the
- * read/write/invalidate round-trip is exercised end-to-end, and mocks only the
- * auth + moderation + api-key seams the resolver calls on a miss.
+ * Exercises the inference hot-path auth resolver and low-level cache with the
+ * real in-memory CacheClient. Authentication, moderation, API-key, admission,
+ * and revocation collaborators are deterministic mocks.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -100,6 +98,7 @@ mock.module("./inference-credential-revocation", () => ({
     credential: { kind: string; credentialId?: string; userId: string },
   ) => assertCredentialActive(organizationId, credential),
   revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
   setInferenceOrganizationActive: async () => undefined,
   setInferenceSubjectActive: async () => undefined,
