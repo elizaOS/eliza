@@ -206,7 +206,27 @@ export async function handleVoiceProfilesManagementRoutes(
 	if (pathname === "/api/voice/profiles") {
 		if (method === "GET") return listProfiles(res);
 		if (method === "DELETE") {
-			return deleteAll(res, url.searchParams.get("includeOwner") === "true");
+			// Mass-delete owner identity, leftover tax after voice-list
+			// includeInactive (#21106). includeOwner=TRUE used to silently
+			// spare the OWNER profile instead of a 400. Single-id DELETE
+			// / merge / bind parsers stay untouched.
+			const requestedOwnerValues = url.searchParams.getAll("includeOwner");
+			const requestedOwner = requestedOwnerValues[0];
+			if (
+				requestedOwnerValues.length > 1 ||
+				(requestedOwner != null &&
+					requestedOwner !== "" &&
+					requestedOwner !== "true" &&
+					requestedOwner !== "false")
+			) {
+				sendJsonError(
+					res,
+					'includeOwner must be specified at most once as "true" or "false".',
+					400,
+				);
+				return true;
+			}
+			return deleteAll(res, requestedOwner === "true");
 		}
 		return false;
 	}
