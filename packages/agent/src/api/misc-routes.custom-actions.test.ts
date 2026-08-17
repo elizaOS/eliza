@@ -17,9 +17,14 @@ function makeCustomActionContext(
   ctx: MiscRouteContext;
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
 } {
   const req = { url: pathname } as http.IncomingMessage;
-  const res = {} as http.ServerResponse;
+  const end = vi.fn();
+  const res = {
+    setHeader: vi.fn(),
+    end,
+  } as unknown as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
 
@@ -57,12 +62,12 @@ function makeCustomActionContext(
     setActiveTerminalRunCount: vi.fn(),
   };
 
-  return { ctx, json, error };
+  return { ctx, json, error, end };
 }
 
 describe("handleMiscRoutes custom actions encoding", () => {
   it("rejects malformed percent-encoding on POST /api/custom-actions/:id/test with 400", async () => {
-    const { ctx, error } = makeCustomActionContext(
+    const { ctx, end, error } = makeCustomActionContext(
       "POST",
       "/api/custom-actions/%/test",
       { params: {} },
@@ -71,15 +76,17 @@ describe("handleMiscRoutes custom actions encoding", () => {
     const handled = await handleMiscRoutes(ctx);
 
     expect(handled).toBe(true);
-    expect(error).toHaveBeenCalledWith(
-      ctx.res,
-      "Invalid action id encoding",
-      400,
+    expect(ctx.res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid custom action id: malformed URL encoding",
+      }),
     );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("rejects malformed percent-encoding on PUT /api/custom-actions/:id with 400", async () => {
-    const { ctx, error } = makeCustomActionContext(
+    const { ctx, end, error } = makeCustomActionContext(
       "PUT",
       "/api/custom-actions/%",
       { name: "TEST_ACTION" },
@@ -88,15 +95,17 @@ describe("handleMiscRoutes custom actions encoding", () => {
     const handled = await handleMiscRoutes(ctx);
 
     expect(handled).toBe(true);
-    expect(error).toHaveBeenCalledWith(
-      ctx.res,
-      "Invalid action id encoding",
-      400,
+    expect(ctx.res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid custom action id: malformed URL encoding",
+      }),
     );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("rejects malformed percent-encoding on DELETE /api/custom-actions/:id with 400", async () => {
-    const { ctx, error } = makeCustomActionContext(
+    const { ctx, end, error } = makeCustomActionContext(
       "DELETE",
       "/api/custom-actions/%",
     );
@@ -104,9 +113,29 @@ describe("handleMiscRoutes custom actions encoding", () => {
     const handled = await handleMiscRoutes(ctx);
 
     expect(handled).toBe(true);
+    expect(ctx.res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith(
+      JSON.stringify({
+        error: "Invalid custom action id: malformed URL encoding",
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["POST", "/api/custom-actions/not%2Da%2Duuid/test"],
+    ["PUT", "/api/custom-actions/not%2Da%2Duuid"],
+    ["DELETE", "/api/custom-actions/not%2Da%2Duuid"],
+  ])("rejects a decoded non-UUID on %s %s", async (method, pathname) => {
+    const { ctx, error } = makeCustomActionContext(method, pathname, {
+      params: {},
+    });
+
+    expect(await handleMiscRoutes(ctx)).toBe(true);
+
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "Invalid action id encoding",
+      "Invalid custom action id",
       400,
     );
   });
