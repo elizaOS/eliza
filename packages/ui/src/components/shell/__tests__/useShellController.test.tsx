@@ -2516,4 +2516,101 @@ describe("useShellController cloud-only auth gate", () => {
 
     expect(login).not.toHaveBeenCalled();
   });
+
+  it("sign-out is terminal for hands-free: no auto re-listen after re-login", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      const { result, rerender } = renderHook(() => useShellController());
+
+      // Engage the batch hands-free loop while signed in.
+      await act(async () => {
+        result.current.toggleHandsFree();
+      });
+      expect(result.current.handsFree).toBe(true);
+      expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+      // Session expires mid-conversation: the gate must tear down hands-free
+      // (state + persisted mode), not just the in-flight capture.
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+      act(() => rerender());
+      expect(result.current.handsFree).toBe(false);
+      expect(result.current.recording).toBe(false);
+      expect(
+        window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+      ).not.toBe("always-on");
+
+      // Re-login clears the gate. The re-listen loop and the boot auto-engage
+      // must both stay quiet — reopening the mic requires a fresh gesture.
+      createVoiceCaptureMock.mockClear();
+      authGateMock.value = { gated: false, phase: "clear" };
+      act(() => rerender());
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+      expect(result.current.handsFree).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("always-on boot restore aborts when the gate closes during the permission probe", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      // A persisted always-on session from a previous signed-in run.
+      window.localStorage.setItem(
+        "eliza:voice:continuous-chat-mode",
+        "always-on",
+      );
+
+      // Mount signed-in: the boot restore arms and awaits the async
+      // permission probe.
+      const { result, rerender } = renderHook(() => useShellController());
+
+      // The probe races a sign-out: the gate closes before it resolves.
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+      act(() => rerender());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // The continuation must not light hands-free, summon the overlay, or
+      // open a capture against the closed gate.
+      expect(result.current.handsFree).toBe(false);
+      expect(result.current.isOpen).toBe(false);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("always-on boot restore never arms while signed out", async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeCapture();
+      micPermissionMock.state = "unknown";
+      window.localStorage.setItem(
+        "eliza:voice:continuous-chat-mode",
+        "always-on",
+      );
+      authGateMock.value = { gated: true, phase: "needs-auth" };
+
+      const { result } = renderHook(() => useShellController());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.handsFree).toBe(false);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -479,6 +479,10 @@ export function useShellController(): ShellController {
     handleInteractiveCloudLogin,
   } = useAppSelectorShallow(selectShellController);
   const authGate = useShellAuthGate();
+  // Ref mirror for async continuations (permission probes, timers) that must
+  // read the gate as it is at fire time, not as it was when they were armed.
+  const authGateRef = React.useRef(authGate);
+  authGateRef.current = authGate;
   const [signingIn, setSigningIn] = React.useState(false);
   const signInInFlightRef = React.useRef(false);
   const requestSignIn = React.useCallback(() => {
@@ -1664,6 +1668,9 @@ export function useShellController(): ShellController {
     // hands-free state while startCapture correctly refuses Cloud ASR.
     if (realtimeVoiceEnabled) return;
     if (autoEngagedHandsFreeRef.current) return;
+    // Cloud-only signed out: leave the ref unset so a later sign-in retries
+    // this restore; auto-engage must not light hands-free against the gate.
+    if (authGate.gated) return;
     // Defer while a reply is mid-flight (voice is gated while responding); the
     // ref stays unset so this retries the instant `chatSending` clears.
     if (!ready || recording || captureRef.current || handsFree || chatSending)
@@ -1688,7 +1695,10 @@ export function useShellController(): ShellController {
       }
       // The probe is async: re-check the gating state so a capture that opened
       // via another path (or a hands-free toggle) during the await isn't
-      // double-opened / overridden.
+      // double-opened / overridden. The auth gate is re-read through the ref —
+      // sign-out during the await must not light hands-free or summon the
+      // overlay against a startCapture that will refuse.
+      if (authGateRef.current.gated) return;
       if (captureRef.current || handsFreeRef.current) return;
       setHandsFree(true);
       setIsOpen(true);
@@ -1702,6 +1712,7 @@ export function useShellController(): ShellController {
     startCapture,
     recheckMicPermission,
     realtimeVoiceEnabled,
+    authGate.gated,
   ]);
 
   // Populate the mic-permission state once on mount so a shell surface can
@@ -2565,11 +2576,25 @@ export function useShellController(): ShellController {
     if (visionCapturing && responding) setVisionCapturing(false);
   }, [visionCapturing, responding]);
 
+  // The auth boundary is terminal for the whole voice loop, not just the
+  // in-flight capture: hands-free and transcription state must fall too, or the
+  // re-listen loop / transcript-resume path silently reopens the mic the moment
+  // a later sign-in clears the gate — without a fresh voice gesture.
   React.useEffect(() => {
     if (!authGate.gated) return;
     if (captureRef.current) cancelCapture();
     if (isOpen) setIsOpen(false);
     stopRealtimeVoiceRef.current();
+    if (handsFreeRef.current) {
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+    }
+    resumeHandsFreeAfterTranscriptRef.current = false;
+    if (transcriptionModeRef.current) {
+      setTranscriptionMode(false);
+      transcriptionModeRef.current = false;
+    }
   }, [authGate.gated, cancelCapture, isOpen]);
 
   const startRecording = React.useCallback(
