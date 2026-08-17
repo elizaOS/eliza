@@ -50,8 +50,19 @@ function encodeAccount(username: string): string {
   return encodeURIComponent(username).replace(/\./g, "%2E");
 }
 
-function decodeAccount(segment: string): string {
-  return decodeURIComponent(segment);
+/**
+ * Decode the stored account segment. Leftover tax after other path-decode
+ * work: stock develop called `decodeURIComponent` while listing saved
+ * logins, so a vault key with `%` / `%2` / `%ZZ` in the account segment
+ * threw URIError and aborted the whole listing. Canonical encodeAccount
+ * usernames still decode. Malformed segments are skipped, not invented.
+ */
+function decodeAccount(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }
 
 /** Lower-case domains so `Github.com` and `github.com` collide. */
@@ -128,13 +139,15 @@ export async function listSavedLogins(
     const parsed = parseLoginKey(key, normalizedDomain);
     if (!parsed) continue;
     if (parsed.account === AUTOALLOW_SEGMENT) continue;
+    const username = decodeAccount(parsed.account);
+    if (username === null) continue;
     const descriptor = await vault.describe(key);
     if (!descriptor) continue;
     // describe() returns lastModified directly; we don't need to
     // decrypt the value to render the listing UI.
     summaries.push({
       domain: parsed.domain,
-      username: decodeAccount(parsed.account),
+      username,
       lastModified: descriptor.lastModified,
     });
   }
