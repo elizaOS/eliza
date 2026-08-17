@@ -318,7 +318,12 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(attachSession).not.toHaveBeenCalled();
   });
 
-  it("does NOT falsely promote the minted task to active for a single-turn create (real service)", async () => {
+  // 20s test cap to match the 15s inner waitFor below — the real git
+  // change-set capture + evidence assembly sit right at the 5s default on
+  // loaded runners.
+  it("does NOT falsely promote the minted task to active for a single-turn create (real service)", {
+    timeout: 20_000,
+  }, async () => {
     // Drive the real sequence — task mint → spawn → attach → prompt → stopped
     // event — against a REAL OrchestratorTaskService. The early attach makes
     // the work recoverable, while the terminal event still has to clear the
