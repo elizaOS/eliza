@@ -55,6 +55,15 @@ let memoryCache: {
 
 const MEMORY_TTL_MS = 600_000;
 
+function validateResultLimit(limit: number, operation: string): number {
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new RangeError(
+      `${operation} limit must be a non-negative safe integer`,
+    );
+  }
+  return limit;
+}
+
 function findCatalogPaths(): string[] {
   const paths: string[] = [];
 
@@ -118,6 +127,11 @@ export async function refreshCatalog(): Promise<CatalogSkill[]> {
   return getCatalogSkills();
 }
 
+/** Test hook for isolating the module-level catalog cache between test cases. */
+export function _resetCatalogCache(): void {
+  memoryCache = null;
+}
+
 export async function getCatalogSkill(
   slug: string,
 ): Promise<CatalogSkill | null> {
@@ -129,6 +143,7 @@ export async function searchCatalogSkills(
   query: string,
   limit = 30,
 ): Promise<CatalogSearchResult[]> {
+  const resultLimit = validateResultLimit(limit, "searchCatalogSkills");
   const skills = await getCatalogSkills();
   const lq = query.toLowerCase();
   const terms = lq.split(/\s+/).filter((t) => t.length > 1);
@@ -171,7 +186,7 @@ export async function searchCatalogSkills(
   );
   const max = scored[0]?.score || 1;
 
-  return scored.slice(0, limit).map(({ s, score }) => ({
+  return scored.slice(0, resultLimit).map(({ s, score }) => ({
     slug: s.slug,
     displayName: s.displayName,
     summary: s.summary,
@@ -184,11 +199,12 @@ export async function searchCatalogSkills(
 }
 
 export async function getTrendingSkills(limit = 30): Promise<CatalogSkill[]> {
+  const resultLimit = validateResultLimit(limit, "getTrendingSkills");
   const skills = await getCatalogSkills();
   return [...skills]
     .sort(
       (a, b) =>
         b.stats.downloads - a.stats.downloads || b.updatedAt - a.updatedAt,
     )
-    .slice(0, limit);
+    .slice(0, resultLimit);
 }
