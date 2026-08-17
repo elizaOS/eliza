@@ -928,10 +928,6 @@ export class GatewayManager {
         return;
       }
 
-      // Success - reset failure counter
-      this.consecutivePollFailures = 0;
-      this.lastSuccessfulPoll = new Date();
-
       const data = (await response.json()) as {
         assignments: Array<{
           connectionId: string;
@@ -1010,6 +1006,12 @@ export class GatewayManager {
       for (const connectionId of toDisconnect) {
         await this.disconnectBot(connectionId);
       }
+
+      // Readiness begins only after the complete assignment response has been
+      // validated and applied. A 2xx response with malformed data must not
+      // admit a cold replica.
+      this.consecutivePollFailures = 0;
+      this.lastSuccessfulPoll = new Date();
     } catch (error) {
       this.consecutivePollFailures++;
       logger.error("Error polling for bots", {
@@ -2748,6 +2750,8 @@ export class GatewayManager {
     const CRITICAL_FAILURE_THRESHOLD = 5;
     const controlPlaneLost =
       this.consecutivePollFailures >= CRITICAL_FAILURE_THRESHOLD;
+    const controlPlaneReady =
+      this.lastSuccessfulPoll !== null && !controlPlaneLost;
 
     // Note: draining pods are still "healthy" for liveness (don't restart)
     // but will fail readiness (don't accept new work)
@@ -2771,7 +2775,7 @@ export class GatewayManager {
       controlPlane: {
         consecutiveFailures: this.consecutivePollFailures,
         lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
-        healthy: !controlPlaneLost,
+        healthy: controlPlaneReady,
       },
     };
   }
