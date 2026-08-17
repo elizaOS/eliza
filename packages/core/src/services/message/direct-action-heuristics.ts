@@ -646,7 +646,8 @@ type ScheduledAdminDomain =
 	| "reminders"
 	| "alarms"
 	| "routines"
-	| "scheduled-tasks";
+	| "scheduled-tasks"
+	| "calendar-events";
 
 const SCHEDULED_ADMIN_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
@@ -664,6 +665,13 @@ const SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_REMINDER_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])reminders?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+// Calendar-event mutations also arrive as "move/push/bump/shift X to <time>",
+// verbs the shared admin set deliberately omits (they are too ambiguous
+// without a calendar noun anchoring them).
+const SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:move|push|bump|shift)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|events?|meetings?|appointments?|lunch(?:es)?|dinners?|breakfasts?|brunch(?:es)?|coffees?|reservations?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 
 const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	ScheduledAdminDomain,
@@ -673,6 +681,7 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
 	routines: OWNER_ROUTINES_ACTION_NAMES,
 	"scheduled-tasks": ["SCHEDULED_TASKS"],
+	"calendar-events": ["CALENDAR"],
 };
 
 /**
@@ -686,11 +695,21 @@ function detectScheduledItemAdminDomain(
 	text: string,
 ): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (
-		!normalized ||
-		looksLikeActionExplanationRequest(normalized) ||
-		!SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)
-	) {
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return null;
+	}
+	const sharedAdminVerb = SCHEDULED_ADMIN_VERB_PATTERN.test(normalized);
+	// A calendar noun admits the move-verb family the shared set omits.
+	// Live regression: "move the lunch with dana to friday 1pm" got NO
+	// deterministic candidate, Stage-1 answered ["simple"] from stale room
+	// history ("was never on the calendar" — no tool ran) and fabricated a
+	// calendar-state claim. The mutation must reach the CALENDAR surface,
+	// which reads real state before acting.
+	const calendarMutation =
+		SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
+		(sharedAdminVerb ||
+			SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized));
+	if (!sharedAdminVerb && !calendarMutation) {
 		return null;
 	}
 	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";
@@ -708,6 +727,7 @@ function detectScheduledItemAdminDomain(
 		return "scheduled-tasks";
 	}
 	if (SCHEDULED_ADMIN_REMINDER_PATTERN.test(normalized)) return "reminders";
+	if (calendarMutation) return "calendar-events";
 	return null;
 }
 
