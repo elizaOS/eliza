@@ -21,16 +21,18 @@ const getById = mock(async (id: string) =>
     ? { id: APP_ID, organization_id: ORG_A, github_repo: "elizaOS-apps/keep" }
     : null,
 );
-const deleteAppWithCleanup = mock(async () => ({
-  success: true,
-  errors: [],
-  cleaned: {
-    domainsRemoved: 0,
-    githubRepoDeleted: true,
-    secretBindingsRemoved: 0,
-    managedDomainsUnlinked: 0,
-  },
-}));
+const deleteAppWithCleanup = mock(
+  async (_appId: string, _options: { deleteGitHubRepo?: boolean } = {}) => ({
+    success: true,
+    errors: [],
+    cleaned: {
+      domainsRemoved: 0,
+      githubRepoDeleted: true,
+      secretBindingsRemoved: 0,
+      managedDomainsUnlinked: 0,
+    },
+  }),
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({

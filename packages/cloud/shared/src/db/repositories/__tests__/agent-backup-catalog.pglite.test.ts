@@ -45,6 +45,7 @@ import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import type { AgentBackupOperationExecution } from "../agent-backup-catalog";
 import {
   agentBackupObjectInventoryDigest,
   buildAgentBackupObjectKey,
@@ -696,7 +697,7 @@ async function claimExecution(backupId: string) {
 async function reserveCopy(
   backupId: string,
   copyRole: "primary" | "secondary",
-  execution: Awaited<ReturnType<typeof claimExecution>>,
+  execution: AgentBackupOperationExecution,
   descriptor = objectDescriptor(),
 ) {
   return reserveAgentBackupObject({
@@ -717,7 +718,7 @@ async function reserveCopy(
 
 async function markPresentAndVerified(
   objectId: string,
-  execution: Awaited<ReturnType<typeof claimExecution>>,
+  execution: AgentBackupOperationExecution,
   receipt = SHA_D,
 ) {
   await markAgentBackupObjectUploading({

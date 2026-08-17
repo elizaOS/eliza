@@ -20,11 +20,23 @@ const ORG_A = "11111111-1111-4111-8111-111111111111";
 const CONTAINER_ID = "ctr-keep-volume";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
-const deleteContainer = mock(async () => undefined);
-const stopContainer = mock(async () => ({
-  id: CONTAINER_ID,
-  status: "stopped",
-}));
+const deleteContainer = mock(
+  async (
+    _containerId: string,
+    _organizationId: string,
+    _options: { purgeVolume?: boolean } = {},
+  ) => undefined,
+);
+const stopContainer = mock(
+  async (
+    _containerId: string,
+    _organizationId: string,
+    _options: { purgeVolume?: boolean } = {},
+  ) => ({
+    id: CONTAINER_ID,
+    status: "stopped",
+  }),
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
