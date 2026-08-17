@@ -52,8 +52,11 @@ function normalizeOptions(
 	};
 }
 
+let tmpSequenceCounter = 0;
+
 function tmpPathFor(filePath: string): string {
-	return `${filePath}.tmp-${process.pid}-${Date.now()}`;
+	tmpSequenceCounter = (tmpSequenceCounter + 1) % 1_000_000;
+	return `${filePath}.tmp-${process.pid}-${Date.now()}-${tmpSequenceCounter}`;
 }
 
 function serialize(value: unknown, opts: NormalizedWriteOptions): string {
@@ -61,11 +64,18 @@ function serialize(value: unknown, opts: NormalizedWriteOptions): string {
 	return opts.trailingNewline ? `${body}\n` : body;
 }
 
+function assertFilePath(filePath: string): void {
+	if (typeof filePath !== "string" || filePath.trim().length === 0) {
+		throw new TypeError("filePath must be a non-empty string");
+	}
+}
+
 export async function writeJsonAtomic(
 	filePath: string,
 	value: unknown,
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
+	assertFilePath(filePath);
 	const o = normalizeOptions(opts);
 	if (!o.skipMkdir) {
 		await fsp.mkdir(path.dirname(filePath), {
@@ -102,6 +112,7 @@ export function writeJsonAtomicSync(
 	value: unknown,
 	opts?: WriteJsonAtomicOptions,
 ): void {
+	assertFilePath(filePath);
 	const o = normalizeOptions(opts);
 	if (!o.skipMkdir) {
 		fs.mkdirSync(path.dirname(filePath), {
@@ -137,6 +148,7 @@ export function writeJsonAtomicSync(
  * JSON and filesystem failures surface to the caller.
  */
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
+	assertFilePath(filePath);
 	try {
 		const raw = await fsp.readFile(filePath, "utf-8");
 		return JSON.parse(raw) as T;
@@ -155,6 +167,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
  * malformed JSON and filesystem failures surface to the caller.
  */
 export function readJsonFileSync<T>(filePath: string): T | null {
+	assertFilePath(filePath);
 	try {
 		const raw = fs.readFileSync(filePath, "utf-8");
 		return JSON.parse(raw) as T;

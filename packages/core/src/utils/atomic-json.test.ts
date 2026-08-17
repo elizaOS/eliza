@@ -99,4 +99,40 @@ describe("atomic-json", () => {
 			expect(raw).toBe('{"b":2}\n');
 		});
 	});
+
+	describe("concurrency and validation", () => {
+		it("handles multiple concurrent writes to separate files without collision", async () => {
+			const writes = Array.from({ length: 20 }, (_, i) => {
+				const file = path.join(tempDir, `concurrent-${i}.json`);
+				return writeJsonAtomic(file, { index: i, timestamp: Date.now() });
+			});
+
+			await Promise.all(writes);
+
+			for (let i = 0; i < 20; i++) {
+				const readBack = await readJsonFile<{ index: number }>(
+					path.join(tempDir, `concurrent-${i}.json`),
+				);
+				expect(readBack?.index).toBe(i);
+			}
+		});
+
+		it("rejects non-string or empty file paths", async () => {
+			await expect(
+				writeJsonAtomic("" as unknown as string, {}),
+			).rejects.toThrow(TypeError);
+			await expect(
+				writeJsonAtomic(null as unknown as string, {}),
+			).rejects.toThrow(TypeError);
+			expect(() => writeJsonAtomicSync("" as unknown as string, {})).toThrow(
+				TypeError,
+			);
+			await expect(readJsonFile("" as unknown as string)).rejects.toThrow(
+				TypeError,
+			);
+			expect(() => readJsonFileSync("" as unknown as string)).toThrow(
+				TypeError,
+			);
+		});
+	});
 });
