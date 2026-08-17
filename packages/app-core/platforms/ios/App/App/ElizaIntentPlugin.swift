@@ -126,13 +126,8 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
                 content.userInfo = ["deepLinkOnTap": deepLinkOnTap]
             }
 
-            let triggerComponents = Calendar.current.dateComponents(
-                [.year, .month, .day, .hour, .minute, .second],
-                from: resolvedDate
-            )
-            let trigger = UNCalendarNotificationTrigger(
-                dateMatching: triggerComponents,
-                repeats: false
+            let trigger = ElizaNotificationTriggerPolicy.trigger(
+                fireDate: resolvedDate
             )
             let scheduledId = UUID().uuidString
             let request = UNNotificationRequest(

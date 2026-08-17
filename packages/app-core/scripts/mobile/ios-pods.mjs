@@ -93,6 +93,16 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     ],
   },
   {
+    packageName: "@capacitor/local-notifications",
+    iosPods: [
+      {
+        name: "CapacitorLocalNotifications",
+        kind: "official",
+        spmHandling: "incompatible",
+      },
+    ],
+  },
+  {
     packageName: "@capacitor/push-notifications",
     android: { patchAgp9: true },
     iosPods: [

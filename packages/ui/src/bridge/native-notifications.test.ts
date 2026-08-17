@@ -26,6 +26,8 @@ vi.mock("./native-plugins", () => ({
 
 import {
   __resetEnsuredChannelsForTests,
+  __resetLocalNotificationTapRoutingForTests,
+  initLocalNotificationTapRouting,
   showNativeNotification,
   showWebNotification,
 } from "./native-notifications";
@@ -36,6 +38,7 @@ interface ScheduleArg {
     title: string;
     body: string;
     channelId?: string;
+    extra?: Record<string, unknown>;
   }>;
 }
 interface ChannelArg {
@@ -43,6 +46,11 @@ interface ChannelArg {
   name: string;
   importance: number;
   visibility?: number;
+}
+interface ElizaIntentArg {
+  kind: "reminder";
+  payload: Record<string, unknown>;
+  issuedAtIso: string;
 }
 
 function makeLocalNotifications(overrides: Record<string, unknown> = {}) {
@@ -60,6 +68,7 @@ beforeEach(() => {
   for (const key of Object.keys(plugins)) delete plugins[key];
   // Channel cache is module-level; clear it so each case exercises createChannel.
   __resetEnsuredChannelsForTests();
+  __resetLocalNotificationTapRoutingForTests();
 });
 
 afterEach(() => {
@@ -196,6 +205,257 @@ describe("showNativeNotification (web platform)", () => {
     });
     expect(result).toBe("none");
     expect(constructed).not.toHaveBeenCalled();
+  });
+});
+
+describe("showNativeNotification (iOS fallback)", () => {
+  it("keeps a safe app route for the Capacitor tap listener", async () => {
+    platform.value = "ios";
+    const local = makeLocalNotifications();
+    plugins.LocalNotifications = local;
+
+    const result = await showNativeNotification({
+      id: "ios-local",
+      title: "Reminder",
+      priority: "normal",
+      deepLink: "/apps/scheduled?source=notification",
+    });
+
+    expect(result).toBe("local");
+    expect(local.schedule.mock.calls[0]?.[0]?.notifications[0]?.extra).toEqual({
+      deepLink: "/apps/scheduled?source=notification",
+    });
+  });
+
+  it("does not hand an unsafe tap scheme to native iOS", async () => {
+    platform.value = "ios";
+    const local = makeLocalNotifications();
+    plugins.LocalNotifications = local;
+
+    await showNativeNotification({
+      id: "ios-unsafe",
+      title: "Reminder",
+      priority: "normal",
+      deepLink: "javascript:alert(1)",
+    });
+
+    expect(
+      local.schedule.mock.calls[0]?.[0]?.notifications[0]?.extra,
+    ).toBeUndefined();
+  });
+
+  it("supplies the required immediate schedule time to ElizaIntent", async () => {
+    platform.value = "ios";
+    const receiveIntent = vi.fn(async (_intent: ElizaIntentArg) => ({
+      accepted: true,
+      reason: "scheduled",
+    }));
+    plugins.ElizaIntent = { receiveIntent };
+
+    const result = await showNativeNotification({
+      id: "ios-fallback",
+      title: "Reminder",
+      body: "Time to stretch",
+      priority: "normal",
+      deepLink: "/apps/scheduled",
+    });
+
+    expect(result).toBe("intent");
+    const intent = receiveIntent.mock.calls[0]?.[0];
+    expect(intent).toEqual({
+      kind: "reminder",
+      issuedAtIso: expect.any(String),
+      payload: {
+        timeIso: expect.any(String),
+        title: "Reminder",
+        body: "Time to stretch",
+        priority: "normal",
+        deepLinkOnTap: "elizaos://apps/scheduled",
+      },
+    });
+    expect(intent?.payload.timeIso).toBe(intent?.issuedAtIso);
+    expect(Number.isNaN(Date.parse(intent?.issuedAtIso ?? ""))).toBe(false);
+  });
+});
+
+describe("initLocalNotificationTapRouting", () => {
+  it("accepts a native listener handle returned synchronously", async () => {
+    const navigate = vi.fn();
+    const addListener = vi.fn(
+      (
+        _event: string,
+        callback: (action: {
+          actionId: string;
+          notification: { extra?: unknown };
+        }) => void,
+      ) => {
+        callback({
+          actionId: "tap",
+          notification: { extra: { deepLink: "/notifications" } },
+        });
+        return { remove: async () => {} };
+      },
+    );
+
+    await expect(
+      initLocalNotificationTapRouting({
+        getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+        navigate,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(addListener).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/notifications");
+  });
+
+  it("deduplicates concurrent initialization before invoking the bridge", async () => {
+    const addListener = vi.fn(() => ({ remove: async () => {} }));
+    const deps = {
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate: vi.fn(),
+    };
+
+    const first = initLocalNotificationTapRouting(deps);
+    const second = initLocalNotificationTapRouting(deps);
+
+    expect(first).toBe(second);
+    await first;
+    expect(addListener).toHaveBeenCalledOnce();
+  });
+
+  it("consumes a retained cold-launch tap while the listener is attaching", async () => {
+    const navigate = vi.fn();
+    const addListener = vi.fn(
+      async (
+        _event: string,
+        callback: (action: {
+          actionId: string;
+          notification: { extra?: unknown };
+        }) => void,
+      ) => {
+        callback({
+          actionId: "tap",
+          notification: { extra: { deepLink: "/apps/scheduled" } },
+        });
+        return { remove: async () => {} };
+      },
+    );
+
+    await initLocalNotificationTapRouting({
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate,
+    });
+
+    expect(navigate).toHaveBeenCalledWith("/apps/scheduled");
+  });
+
+  it("routes a retained Capacitor tap through the canonical safe navigator", async () => {
+    let listener:
+      | ((action: {
+          actionId: string;
+          notification: { extra?: unknown };
+        }) => void)
+      | undefined;
+    const addListener = vi.fn(
+      async (
+        _event: string,
+        callback: NonNullable<typeof listener>,
+      ): Promise<{ remove: () => Promise<void> }> => {
+        listener = callback;
+        return { remove: async () => {} };
+      },
+    );
+    const navigate = vi.fn();
+    const deps = {
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate,
+    };
+
+    await initLocalNotificationTapRouting(deps);
+    await initLocalNotificationTapRouting(deps);
+    listener?.({
+      actionId: "tap",
+      notification: { extra: { deepLink: "/notifications" } },
+    });
+
+    expect(addListener).toHaveBeenCalledOnce();
+    expect(addListener).toHaveBeenCalledWith(
+      "localNotificationActionPerformed",
+      expect.any(Function),
+    );
+    expect(navigate).toHaveBeenCalledWith("/notifications");
+  });
+
+  it("drops dismisses, malformed payloads, and unsafe schemes", async () => {
+    let listener:
+      | ((action: {
+          actionId: string;
+          notification: { extra?: unknown };
+        }) => void)
+      | undefined;
+    const addListener = vi.fn(
+      async (_event: string, callback: typeof listener) => {
+        listener = callback;
+        return { remove: async () => {} };
+      },
+    );
+    const navigate = vi.fn();
+
+    await initLocalNotificationTapRouting({
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate,
+    });
+    listener?.({
+      actionId: "dismiss",
+      notification: { extra: { deepLink: "/notifications" } },
+    });
+    listener?.({
+      actionId: "tap",
+      notification: { extra: { deepLink: "javascript:alert(1)" } },
+    });
+    listener?.({ actionId: "tap", notification: { extra: "invalid" } });
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("can retry listener registration after a native bridge failure", async () => {
+    const addListener = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("bridge unavailable"))
+      .mockResolvedValueOnce({ remove: async () => {} });
+    const deps = {
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate: vi.fn(),
+    };
+
+    await expect(initLocalNotificationTapRouting(deps)).rejects.toThrow(
+      "bridge unavailable",
+    );
+    await expect(
+      initLocalNotificationTapRouting(deps),
+    ).resolves.toBeUndefined();
+    expect(addListener).toHaveBeenCalledTimes(2);
+  });
+
+  it("can retry after the native bridge throws synchronously", async () => {
+    const addListener = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("native attach threw");
+      })
+      .mockReturnValueOnce({ remove: async () => {} });
+    const deps = {
+      getPlugin: () => ({ ...makeLocalNotifications(), addListener }),
+      navigate: vi.fn(),
+    };
+
+    await expect(initLocalNotificationTapRouting(deps)).rejects.toThrow(
+      "native attach threw",
+    );
+    await expect(
+      initLocalNotificationTapRouting(deps),
+    ).resolves.toBeUndefined();
+    expect(addListener).toHaveBeenCalledTimes(2);
   });
 });
 

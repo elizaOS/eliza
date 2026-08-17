@@ -11,6 +11,7 @@
 import { logger } from "@elizaos/logger";
 import { useEffect } from "react";
 import { client } from "../../api/client";
+import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useAppSelector } from "../../state";
 import {
@@ -39,6 +40,22 @@ export function NotificationsShellBoot(): null {
   const setTab = useAppSelector((s) => s.setTab);
 
   useEffect(() => {
+    // Install the in-app destination before attaching the native bridge.
+    // Capacitor may synchronously replay a retained cold-launch tap from
+    // addListener(), so reversing this order would drop that first event.
+    const onOpen = () => {
+      setTab("chat");
+    };
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+
+    void initLocalNotificationTapRouting().catch((error: unknown) => {
+      // error-policy:J1 native notification tap registration is a transport
+      // boundary; a later shell mount may retry after the bridge recovers.
+      logger.error(
+        { src: "local-notification-tap", error },
+        "[local-notification-tap] failed to register native tap routing",
+      );
+    });
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     void initPushRegistration();
@@ -69,18 +86,8 @@ export function NotificationsShellBoot(): null {
     return () => {
       unsubscribeBase();
       window.removeEventListener("steward-token-sync", onTokenAuthorityChange);
-    };
-  }, []);
-
-  // Route every "open notifications" entry point to the combined home/apps
-  // dashboard, where the notification widget is always inline.
-  useEffect(() => {
-    const onOpen = () => {
-      setTab("chat");
-    };
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    return () =>
       window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    };
   }, [setTab]);
 
   return null;

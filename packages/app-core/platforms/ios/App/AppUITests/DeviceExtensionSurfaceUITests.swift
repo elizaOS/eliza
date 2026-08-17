@@ -9,6 +9,7 @@
  keyboard enablement still require the provisioned-device lane called out in
  #13567/#13563.
  */
+import UserNotifications
 import XCTest
 
 final class DeviceExtensionSurfaceUITests: XCTestCase {
@@ -17,6 +18,34 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    func testLocalNotificationTriggerStaysFireableAcrossPermissionDelay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let immediateDates = [
+            now.addingTimeInterval(-30),
+            now,
+            now.addingTimeInterval(0.5),
+        ]
+
+        for fireDate in immediateDates {
+            let trigger = ElizaNotificationTriggerPolicy.trigger(
+                fireDate: fireDate,
+                now: now
+            )
+            let interval = trigger as? UNTimeIntervalNotificationTrigger
+            XCTAssertEqual(interval?.timeInterval, 1)
+            XCTAssertEqual(interval?.repeats, false)
+        }
+
+        let future = ElizaNotificationTriggerPolicy.trigger(
+            fireDate: now.addingTimeInterval(60),
+            now: now,
+            calendar: Calendar(identifier: .gregorian)
+        )
+        let calendar = future as? UNCalendarNotificationTrigger
+        XCTAssertNotNil(calendar)
+        XCTAssertEqual(calendar?.repeats, false)
     }
 
     func testControlCenterGalleryListsElizaControls() throws {
