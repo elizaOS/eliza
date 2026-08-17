@@ -288,7 +288,7 @@ export function deterministicCriterionCheck(
   }
   if (
     FILE_CRITERION_RE.test(criterion) &&
-    !CONTENT_OR_BEHAVIOR_RE.test(criterion)
+    !CONTENT_OR_BEHAVIOR_RE.test(assertion)
   ) {
     const basis = fileCriterionBasis(criterion, facts);
     return basis
