@@ -6,15 +6,15 @@
  * createDraft stay untouched.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { XDmAdapter } from "./lifeops-message-adapter.js";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { XDmAdapter } from "./lifeops-message-adapter.ts";
 
-const sendDirectMessageForAccount = vi.fn(async () => ({
+const sendDirectMessageForAccount = mock(async () => ({
   ok: true,
   status: 201,
   messageId: "sent-1",
 }));
-const fetchDirectMessagesForAccount = vi.fn(async () => []);
+const fetchDirectMessagesForAccount = mock(async () => []);
 
 function runtimeWithXService(): IAgentRuntime {
   return {
@@ -36,7 +36,7 @@ describe("x dm draft participant encoding", () => {
     fetchDirectMessagesForAccount.mockClear();
   });
 
-  it("canonical createDraft still reaches sendDirectMessageForAccount", async () => {
+  test("canonical createDraft still reaches sendDirectMessageForAccount", async () => {
     const adapter = new XDmAdapter();
     const runtime = runtimeWithXService();
     const draft = await adapter.createDraft(runtime, {
@@ -51,7 +51,7 @@ describe("x dm draft participant encoding", () => {
     expect(sent).toEqual({ externalId: "sent-1" });
   });
 
-  it("canonical percent-encoded hyphen still decodes before send", async () => {
+  test("canonical percent-encoded hyphen still decodes before send", async () => {
     const adapter = new XDmAdapter();
     const runtime = runtimeWithXService();
     await adapter.sendDraft(runtime, draftId("user%2D1"));
@@ -61,7 +61,7 @@ describe("x dm draft participant encoding", () => {
     });
   });
 
-  it.each(["%", "%2", "%ZZ", "%E0%A4"])(
+  test.each(["%", "%2", "%ZZ", "%E0%A4"])(
     "rejects malformed recipient encoding %s before the X service",
     async (token) => {
       const adapter = new XDmAdapter();
@@ -73,7 +73,7 @@ describe("x dm draft participant encoding", () => {
     },
   );
 
-  it("list remains untouched", async () => {
+  test("list remains untouched", async () => {
     const adapter = new XDmAdapter();
     const runtime = runtimeWithXService();
     await adapter.listMessages(runtime, { limit: 5 });
