@@ -118,7 +118,7 @@ async function probeStagehand(
   const healthUrl = normalizeUrl(env.ELIZA_BROWSER_STAGEHAND_HEALTH_URL);
   if (!healthUrl) return true;
   try {
-    const response = await fetch(healthUrl, { method: "GET" });
+    const response = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(15_000) });
     return response.ok;
   } catch {
     return false;
@@ -133,6 +133,7 @@ async function executeStagehandCommand(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command }),
+    signal: AbortSignal.timeout(15_000),
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
