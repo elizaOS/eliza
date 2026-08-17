@@ -492,9 +492,22 @@
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
       if (!shell) return;
-      // The head classified public marketing before any CSS could paint. Drop
-      // the agent-branded boot shell synchronously and leave the already-white
-      // root visible until the static hero commits.
+      // The detached overlay owns a transparent native window and paints its
+      // compact material immediately. The full-app preboot panel must never
+      // become an opaque rectangle around it before React mounts.
+      const shellModeParams = new URLSearchParams(location.search);
+      const shellMode =
+        shellModeParams.get("shellMode") || shellModeParams.get("shell-mode");
+      if (shellMode === "chat-overlay") {
+        shell.remove();
+        document.documentElement.style.background = "transparent";
+        document.body.style.background = "transparent";
+        if (root) root.style.background = "transparent";
+        return;
+      }
+      // Public marketing was classified in the head before any CSS could
+      // paint. Leave its already-white root visible until the static hero
+      // commits instead of flashing the agent-branded boot shell.
       if (document.documentElement.getAttribute("data-public-marketing") === "true") {
         shell.remove();
         return;

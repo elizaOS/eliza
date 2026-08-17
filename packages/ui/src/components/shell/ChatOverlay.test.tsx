@@ -258,6 +258,131 @@ describe("ChatOverlay", () => {
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
   });
 
+  it("uses the canonical pill as a detached host's resting surface", () => {
+    const onWindowExpandedChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={false}
+        onWindowExpandedChange={onWindowExpandedChange}
+      />,
+    );
+
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "pill",
+    );
+    expect(onWindowExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reports the transformed visible material instead of the logical stage", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 820,
+        height: 432.1,
+        left: 0,
+        right: 599.2,
+        top: 387.9,
+        width: 599.2,
+        x: 0,
+        y: 387.9,
+        toJSON: () => ({}),
+      });
+    const onWindowMaterialSizeChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="input"
+        onWindowMaterialSizeChange={onWindowMaterialSizeChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onWindowMaterialSizeChange).toHaveBeenCalledWith({
+        width: 600,
+        height: 433,
+      });
+    });
+    rectSpy.mockRestore();
+  });
+
+  it("honors an already-open detached host snapshot on mount", () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={true}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    expect(onRequestedOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("mirrors local pill edges and external open requests without replacing its detent state", async () => {
+    const onRequestedOpenChange = vi.fn();
+    const onWindowExpandedChange = vi.fn();
+    const controller = makeController();
+    const { rerender } = render(
+      <ChatOverlay
+        controller={controller}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+        onWindowExpandedChange={onWindowExpandedChange}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+    expect(onWindowExpandedChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onWindowExpandedChange).toHaveBeenLastCalledWith(false);
+
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        initialMode="pill"
+        requestedOpen={true}
+        onRequestedOpenChange={onRequestedOpenChange}
+        onWindowExpandedChange={onWindowExpandedChange}
+      />,
+    );
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+        onWindowExpandedChange={onWindowExpandedChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+    expect(onWindowExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();
@@ -678,6 +803,65 @@ describe("ChatOverlay", () => {
         "--eliza-chat-side-clearance",
       );
       document.documentElement.style.removeProperty("--eliza-chat-clearance");
+    }
+  });
+
+  it("keeps a detached desktop overlay centered on its logical stage", () => {
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(
+      window,
+      "innerWidth",
+    );
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(
+      window,
+      "innerHeight",
+    );
+
+    try {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 360,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 56,
+      });
+      document.documentElement.style.removeProperty(
+        "--eliza-chat-side-clearance",
+      );
+
+      render(
+        <ChatOverlay
+          controller={makeController()}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+
+      const overlay = screen.getByTestId("chat-overlay");
+      const wrapper = screen.getByTestId("chat-sheet").parentElement;
+      expect(wrapper?.style.maxWidth).toBe("768px");
+      expect(overlay.className).toContain("items-center");
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-side-clearance",
+        ),
+      ).toBe("0px");
+      expect(
+        screen.getByLabelText("message").getAttribute("placeholder"),
+      ).not.toBe("Message");
+      expect(
+        Number.parseFloat(screen.getByTestId("chat-sheet").style.maxHeight),
+      ).toBeGreaterThan(700);
+    } finally {
+      if (originalInnerWidth) {
+        Object.defineProperty(window, "innerWidth", originalInnerWidth);
+      }
+      if (originalInnerHeight) {
+        Object.defineProperty(window, "innerHeight", originalInnerHeight);
+      }
+      document.documentElement.style.removeProperty(
+        "--eliza-chat-side-clearance",
+      );
     }
   });
 
@@ -2061,12 +2245,19 @@ describe("ChatOverlay", () => {
   });
 
   it("mounts an inert transcript preview during an upward drag before release", async () => {
-    render(<ChatOverlay controller={makeController()} />);
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     expect(screen.queryByTestId("chat-thread")).toBeNull();
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
 
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 1 });
@@ -2078,6 +2269,7 @@ describe("ChatOverlay", () => {
     expect(thread).toBeTruthy();
     expect(log?.getAttribute("aria-hidden")).toBe("true");
     expect(log?.getAttribute("tabindex")).toBe("-1");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
   });
 
   it("shows the attach (+) control", () => {
@@ -2207,6 +2399,54 @@ describe("ChatOverlay", () => {
       .getByTestId("chat-sheet-grabber")
       .querySelector("span");
     expect(grabberCue?.className).not.toContain("animate-pulse");
+  });
+
+  it("renders canonical animated phases for batch hands-free voice", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          phase: "listening",
+          recording: true,
+          transcript: "batch voice words",
+          realtimeVoice: undefined,
+        })}
+      />,
+    );
+    expect(
+      screen
+        .getByTestId("chat-composer-realtime-voice")
+        .getAttribute("data-status"),
+    ).toBe("listening");
+    expect(screen.getByTestId("chat-composer-realtime-copy").textContent).toBe(
+      "batch voice words",
+    );
+    expect(
+      screen
+        .getByTestId("chat-composer-realtime-waveform")
+        .getAttribute("data-orb-state"),
+    ).toBe("listening");
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          phase: "processing",
+          responding: true,
+          realtimeVoice: undefined,
+        })}
+      />,
+    );
+    expect(
+      screen
+        .getByTestId("chat-composer-realtime-voice")
+        .getAttribute("data-status"),
+    ).toBe("thinking");
+    expect(
+      screen
+        .getByTestId("chat-composer-realtime-waveform")
+        .getAttribute("data-orb-state"),
+    ).toBe("working");
   });
 
   it.each(["listening", "transcribing", "thinking", "speaking"] as const)(
@@ -4287,14 +4527,23 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("Escape from maximized collapses the whole sheet (not just restore)", () => {
     const { controller } = makeSwipeController();
-    render(<ChatOverlay controller={controller} />);
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={controller}
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
   });
 
   // ---- Full state-machine round-trips (long drags + gestures) --------------
@@ -4380,19 +4629,14 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("steps INPUT → pill (CLOSED) on a grabber pull-down, then back to INPUT on tap", () => {
     const { controller } = makeSwipeController();
-    const onPilledChange = vi.fn();
-    render(
-      <ChatOverlay controller={controller} onPilledChange={onPilledChange} />,
-    );
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
-    expect(onPilledChange).toHaveBeenLastCalledWith(false);
 
     // INPUT → pill: a downward pull folds the composer into the pill capsule.
     grabberDrag(600, 700, 800);
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
-    expect(onPilledChange).toHaveBeenLastCalledWith(true);
 
     // pill → back: a tap on the pill leaves the CLOSED/pill state (it re-forms
     // the bare input bar; thread reveal and keyboard are later gestures).
@@ -4401,7 +4645,6 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerUp(grabber, { clientY: 780, pointerId: 35 });
     expect(sheet.getAttribute("data-detent")).not.toBe("pill");
     expect(sheet.getAttribute("data-chat-state")).not.toBe("CLOSED");
-    expect(onPilledChange).toHaveBeenLastCalledWith(false);
   });
 
   it("an upward hold in the restore zone keeps it MAXIMIZED (only a downward pull exits)", () => {

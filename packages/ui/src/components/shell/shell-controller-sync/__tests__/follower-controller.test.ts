@@ -48,6 +48,25 @@ describe("buildFollowerController reads", () => {
     expect(controller.signingIn).toBe(true);
     expect(controller.analyser).toBeNull();
   });
+
+  it("mirrors realtime voice phase and forwards microphone mute", () => {
+    const { controller, dispatch } = build({
+      realtimeVoice: {
+        enabled: true,
+        active: true,
+        connecting: false,
+        paused: false,
+        microphoneMuted: false,
+        status: "thinking",
+        error: null,
+      },
+    });
+    expect(controller.realtimeVoice?.status).toBe("thinking");
+    controller.realtimeVoice?.toggleMicrophoneMute();
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "toggleRealtimeVoiceMicrophoneMute",
+    });
+  });
 });
 
 describe("buildFollowerController commands", () => {

@@ -52,7 +52,22 @@ export function shouldStartBottomBar(
  * background. Preserves any existing query string and hash routing.
  */
 export function appendChatOverlayShellModeParam(rendererUrl: string): string {
-  return appendShellModeParam(rendererUrl, "chat-overlay");
+  const tagged = appendShellModeParam(rendererUrl, "chat-overlay");
+  const metrics = {
+    chatOverlayStageWidth: String(EXPANDED_BOTTOM_BAR_WIDTH),
+    chatOverlayStageHeight: String(EXPANDED_BOTTOM_BAR_HEIGHT),
+    chatOverlayAuthWidth: String(AUTH_GATE_BOTTOM_BAR_WIDTH),
+    chatOverlayAuthHeight: String(AUTH_GATE_BOTTOM_BAR_HEIGHT),
+  };
+  try {
+    const url = new URL(tagged);
+    for (const [key, value] of Object.entries(metrics)) {
+      url.searchParams.set(key, value);
+    }
+    return url.href;
+  } catch {
+    return `${tagged}&${new URLSearchParams(metrics).toString()}`;
+  }
 }
 
 export interface ScreenWorkArea {
@@ -82,13 +97,14 @@ export interface DesktopShellWindowPresentation {
 /**
  * Resolve the window presentation for the current shell mode.
  *
- * Transparency is scoped to the chromeless bottom-bar shell on every desktop
- * platform. Its renderer paints only the resting pill or shared web chat panel,
- * so the native host must not expose an opaque rectangle around those surfaces.
- * The full dashboard ("default") window and kiosk stay opaque. The transparent
- * pill disables the native window shadow because its visible handle already
- * paints a neutral separator; stacking both creates a heavy halo on light
- * desktops.
+ * Transparency is scoped to the chromeless bottom-bar pill on macOS only. The
+ * full dashboard ("default") window and kiosk stay opaque: a transparent window
+ * over dark web content reads as a full-window frosted sheet (the pill is the
+ * only surface that should show the desktop through it). Win/Linux transparency
+ * support varies, so the pill also stays opaque there for now (fork gap G4).
+ * The transparent macOS pill disables the native window shadow because its
+ * visible handle already paints a neutral separator; stacking both creates a
+ * heavy halo on light desktops.
  */
 export function resolveDesktopShellWindowPresentation(
   env: Record<string, string | undefined> = process.env,
@@ -105,7 +121,7 @@ export function resolveDesktopShellWindowPresentation(
         : platform === "darwin"
           ? "hiddenInset"
           : "default",
-    transparent: bottomBar,
+    transparent: bottomBar && platform === "darwin",
     nativeShadow: !kiosk && !bottomBar,
   };
 }
@@ -114,13 +130,9 @@ export function resolveDesktopShellWindowPresentation(
 export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
 
-/** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
-export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
-export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
-
-/** Shallow host for the resting pill's composer preview while hovered. */
-export const HOVER_BOTTOM_BAR_WIDTH = 600;
-export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+/** Intermediate hit area around the cloud-only "Sign in to Eliza" chip. */
+export const AUTH_GATE_BOTTOM_BAR_WIDTH = 240;
+export const AUTH_GATE_BOTTOM_BAR_HEIGHT = DEFAULT_BOTTOM_BAR_HEIGHT;
 
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
@@ -130,11 +142,34 @@ export interface BottomBarSizeOptions {
   expanded: boolean;
   /** Labeled needs-auth chip. Ignored while the overlay is expanded. */
   chip?: boolean;
-  /** Resting composer preview. Ignored by expanded and auth-gated states. */
-  hovered?: boolean;
 }
 
-/** Resolve the native bottom-bar size for rest, hover, sign-in, or overlay. */
+export interface BottomBarMaterialSize {
+  width: number;
+  height: number;
+}
+
+/** Validate renderer-measured material geometry at the native boundary. */
+export function normalizeBottomBarMaterialSize(
+  size: BottomBarMaterialSize,
+): BottomBarMaterialSize {
+  if (
+    !Number.isFinite(size.width) ||
+    !Number.isFinite(size.height) ||
+    size.width <= 0 ||
+    size.height <= 0
+  ) {
+    throw new RangeError(
+      "[desktop-bottom-bar] material size must be positive and finite",
+    );
+  }
+  return {
+    width: Math.max(1, Math.round(size.width)),
+    height: Math.max(1, Math.round(size.height)),
+  };
+}
+
+/** Resolve the native bottom-bar size for rest, sign-in chip, or overlay. */
 export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
   width: number;
   height: number;
@@ -149,12 +184,6 @@ export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
     return {
       width: AUTH_GATE_BOTTOM_BAR_WIDTH,
       height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
-    };
-  }
-  if (options.hovered) {
-    return {
-      width: HOVER_BOTTOM_BAR_WIDTH,
-      height: HOVER_BOTTOM_BAR_HEIGHT,
     };
   }
   return {

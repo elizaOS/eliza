@@ -26,6 +26,7 @@ function snapshot(over: Record<string, unknown> = {}): Record<string, unknown> {
     agentVoiceMuted: false,
     needsAudioUnlock: false,
     handsFree: false,
+    realtimeVoice: null,
     micPermission: "granted",
     transcriptionMode: false,
     conversationNav: {

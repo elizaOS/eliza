@@ -1,149 +1,127 @@
-/**
- * Verifies desktop chat-overlay geometry and the deterministic async ordering
- * of mocked renderer-to-main bounds requests.
- */
+/** Verifies detached overlay stage parsing and native material-size ordering. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  type ChatOverlayWindowBounds,
-  computeChatOverlayWindowBounds,
-  createChatOverlayWindowBoundsCoordinator,
+  createChatOverlayWindowSizeCoordinator,
+  readChatOverlayAuthSize,
+  readChatOverlayStageSize,
+  resolveChatOverlayMaterialSize,
 } from "./chat-overlay-window-bounds";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+  const promise = new Promise<T>((resolvePromise) => {
     resolve = resolvePromise;
-    reject = rejectPromise;
   });
-  return { promise, reject, resolve };
+  return { promise, resolve };
 }
 
 async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 6; index += 1) {
-    await Promise.resolve();
-  }
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
 }
 
-describe("computeChatOverlayWindowBounds", () => {
-  it("clamps an opened overlay to a short primary-display work area", () => {
+describe("readChatOverlayStageSize", () => {
+  it("reads native-owned stage metrics and falls back for invalid input", () => {
     expect(
-      computeChatOverlayWindowBounds(
-        { x: 635, y: 712, width: 96, height: 56 },
-        { x: 0, y: 24, width: 1_366, height: 744 },
-        true,
+      readChatOverlayStageSize(
+        "?chatOverlayStageWidth=640&chatOverlayStageHeight=900",
       ),
-    ).toEqual({ x: 383, y: 24, width: 600, height: 744 });
-  });
-
-  it("restores the closed bar at the same in-work-area bottom edge", () => {
+    ).toEqual({ width: 640, height: 900 });
+    expect(readChatOverlayStageSize("?chatOverlayStageWidth=nope")).toEqual({
+      width: 600,
+      height: 820,
+    });
     expect(
-      computeChatOverlayWindowBounds(
-        { x: 383, y: 24, width: 600, height: 744 },
-        { x: 0, y: 24, width: 1_366, height: 744 },
-        false,
+      readChatOverlayAuthSize(
+        "?chatOverlayAuthWidth=256&chatOverlayAuthHeight=64",
       ),
-    ).toEqual({ x: 635, y: 712, width: 96, height: 56 });
+    ).toEqual({ width: 256, height: 64 });
   });
 });
 
-describe("createChatOverlayWindowBoundsCoordinator", () => {
-  it("serializes close behind an in-flight open and leaves the final frame closed", async () => {
-    let current: ChatOverlayWindowBounds = {
-      x: 672,
-      y: 844,
-      width: 96,
-      height: 56,
-    };
-    const firstSet = deferred<void>();
-    const applied: ChatOverlayWindowBounds[] = [];
-    const onFailure = vi.fn();
-    let setCount = 0;
-    const coordinator = createChatOverlayWindowBoundsCoordinator({
-      getWindowBounds: async () => current,
-      getPrimaryDisplay: async () => ({
-        workArea: { x: 0, y: 0, width: 1_440, height: 900 },
-      }),
-      setWindowBounds: async (bounds) => {
-        applied.push(bounds);
-        setCount += 1;
-        if (setCount === 1) await firstSet.promise;
-        current = bounds;
-      },
-      onFailure,
-    });
-
-    coordinator.schedule(true);
-    await flushMicrotasks();
-    expect(applied.map((bounds) => bounds.height)).toEqual([820]);
-
-    coordinator.schedule(false);
-    await flushMicrotasks();
-    expect(applied).toHaveLength(1);
-
-    firstSet.resolve();
-    await coordinator.whenIdle();
-    expect(applied.map((bounds) => bounds.height)).toEqual([820, 56]);
-    expect(current).toEqual({ x: 672, y: 844, width: 96, height: 56 });
-    expect(onFailure).not.toHaveBeenCalled();
+describe("resolveChatOverlayMaterialSize", () => {
+  it("keeps the collapsed native hit area at the canonical pill frame", () => {
+    expect(
+      resolveChatOverlayMaterialSize({ width: 162, height: 56 }, true),
+    ).toEqual({ width: 96, height: 56 });
   });
 
-  it("cancels a stale open before it can set bounds", async () => {
-    const firstBounds = deferred<ChatOverlayWindowBounds | null>();
-    const firstDisplay = deferred<{
-      workArea: ChatOverlayWindowBounds;
-    } | null>();
-    const current = { x: 672, y: 844, width: 96, height: 56 };
-    const setWindowBounds = vi.fn(async () => {});
-    let readCount = 0;
-    const coordinator = createChatOverlayWindowBoundsCoordinator({
-      getWindowBounds: async () => {
-        readCount += 1;
-        return readCount === 1 ? firstBounds.promise : current;
+  it("matches half-sheet pixels while retaining only the pill minimum", () => {
+    expect(
+      resolveChatOverlayMaterialSize({ width: 599.2, height: 432.1 }),
+    ).toEqual({ width: 600, height: 433 });
+    expect(resolveChatOverlayMaterialSize({ width: 15, height: 9 })).toEqual({
+      width: 96,
+      height: 56,
+    });
+  });
+});
+
+describe("createChatOverlayWindowSizeCoordinator", () => {
+  it("serializes motion frames and applies only the newest queued size", async () => {
+    const firstSet = deferred<void>();
+    const applied: Array<{ width: number; height: number }> = [];
+    let setCount = 0;
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async (size) => {
+        applied.push(size);
+        setCount += 1;
+        if (setCount === 1) await firstSet.promise;
       },
-      getPrimaryDisplay: async () =>
-        readCount === 1
-          ? firstDisplay.promise
-          : { workArea: { x: 0, y: 0, width: 1_440, height: 900 } },
-      setWindowBounds,
       onFailure: vi.fn(),
     });
 
-    coordinator.schedule(true);
+    coordinator.schedule({ width: 600, height: 433 });
     await flushMicrotasks();
-    coordinator.cancel();
-    coordinator.schedule(false);
-    firstBounds.resolve(current);
-    firstDisplay.resolve({
-      workArea: { x: 0, y: 0, width: 1_440, height: 900 },
-    });
-
+    coordinator.schedule({ width: 420.2, height: 210.1 });
+    coordinator.schedule({ width: 96, height: 56 });
+    firstSet.resolve();
     await coordinator.whenIdle();
-    expect(setWindowBounds).not.toHaveBeenCalled();
+
+    expect(applied).toEqual([
+      { width: 600, height: 433 },
+      { width: 96, height: 56 },
+    ]);
   });
 
-  it("reports a rejected bounds write and keeps the queue settled", async () => {
-    const failure = new Error("native setBounds rejected");
+  it("deduplicates integer-equivalent material frames", async () => {
+    const setBottomBarSize = vi.fn(async () => {});
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize,
+      onFailure: vi.fn(),
+    });
+
+    coordinator.schedule({ width: 599.2, height: 432.1 });
+    await coordinator.whenIdle();
+    coordinator.schedule({ width: 600, height: 433 });
+    await coordinator.whenIdle();
+    expect(setBottomBarSize).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a rejected native write and keeps the queue settled", async () => {
+    const failure = new Error("native setBottomBarSize rejected");
     const onFailure = vi.fn();
-    const coordinator = createChatOverlayWindowBoundsCoordinator({
-      getWindowBounds: async () => ({
-        x: 672,
-        y: 844,
-        width: 96,
-        height: 56,
-      }),
-      getPrimaryDisplay: async () => ({
-        workArea: { x: 0, y: 0, width: 1_440, height: 900 },
-      }),
-      setWindowBounds: async () => {
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async () => {
         throw failure;
       },
       onFailure,
     });
 
-    coordinator.schedule(true);
+    coordinator.schedule({ width: 600, height: 433 });
     await coordinator.whenIdle();
     expect(onFailure).toHaveBeenCalledWith(failure);
+  });
+
+  it("rejects invalid renderer geometry before crossing the bridge", () => {
+    const setBottomBarSize = vi.fn(async () => {});
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize,
+      onFailure: vi.fn(),
+    });
+    expect(() => coordinator.schedule({ width: 0, height: 56 })).toThrow(
+      "material size must be positive and finite",
+    );
+    expect(setBottomBarSize).not.toHaveBeenCalled();
   });
 });

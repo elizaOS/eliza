@@ -136,6 +136,7 @@ const NO_ARG_COMMANDS = new Set([
   "toggleRecording",
   "stopRecording",
   "toggleHandsFree",
+  "toggleRealtimeVoiceMicrophoneMute",
   "toggleTranscriptionMode",
   "stopTranscriptionAndMic",
   "recheckMicPermission",
@@ -262,7 +263,8 @@ export function isShellControllerCommand(value: unknown): boolean {
         value.intent === undefined ||
         value.intent === "converse" ||
         value.intent === "dictate" ||
-        value.intent === "transcription"
+        value.intent === "transcription" ||
+        value.intent === "ptt"
       );
     case "speak":
       return (
@@ -291,6 +293,7 @@ export function isShellControllerSnapshot(value: unknown): boolean {
   const micPermission = value.micPermission;
   const nav = value.conversationNav;
   const model = value.modelStatus;
+  const realtimeVoice = value.realtimeVoice;
   return (
     (phase === "booting" ||
       phase === "needs-auth" ||
@@ -328,6 +331,22 @@ export function isShellControllerSnapshot(value: unknown): boolean {
     typeof value.agentVoiceMuted === "boolean" &&
     typeof value.needsAudioUnlock === "boolean" &&
     typeof value.handsFree === "boolean" &&
+    (realtimeVoice === null ||
+      (isRecord(realtimeVoice) &&
+        typeof realtimeVoice.enabled === "boolean" &&
+        typeof realtimeVoice.active === "boolean" &&
+        typeof realtimeVoice.connecting === "boolean" &&
+        typeof realtimeVoice.paused === "boolean" &&
+        typeof realtimeVoice.microphoneMuted === "boolean" &&
+        (realtimeVoice.status === "idle" ||
+          realtimeVoice.status === "listening" ||
+          realtimeVoice.status === "thinking" ||
+          realtimeVoice.status === "speaking" ||
+          realtimeVoice.status === "interrupting" ||
+          realtimeVoice.status === "transcribing") &&
+        (realtimeVoice.error === null ||
+          (typeof realtimeVoice.error === "string" &&
+            realtimeVoice.error.length <= MAX_TEXT_LENGTH)))) &&
     (micPermission === "granted" ||
       micPermission === "denied" ||
       micPermission === "prompt" ||

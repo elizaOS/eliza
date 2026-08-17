@@ -51,15 +51,17 @@ describe("desktop bottom-bar config", () => {
     it("adds shellMode=chat-overlay, preserving query + hash", () => {
       expect(
         appendChatOverlayShellModeParam("http://localhost:2138/?foo=1#/chat"),
-      ).toBe("http://localhost:2138/?foo=1&shellMode=chat-overlay#/chat");
+      ).toBe(
+        "http://localhost:2138/?foo=1&shellMode=chat-overlay&chatOverlayStageWidth=600&chatOverlayStageHeight=820&chatOverlayAuthWidth=240&chatOverlayAuthHeight=56#/chat",
+      );
     });
 
     it("falls back to string concat for non-URL inputs", () => {
       expect(appendChatOverlayShellModeParam("not a url")).toBe(
-        "not a url?shellMode=chat-overlay",
+        "not a url?shellMode=chat-overlay&chatOverlayStageWidth=600&chatOverlayStageHeight=820&chatOverlayAuthWidth=240&chatOverlayAuthHeight=56",
       );
       expect(appendChatOverlayShellModeParam("not a url?x=1")).toBe(
-        "not a url?x=1&shellMode=chat-overlay",
+        "not a url?x=1&shellMode=chat-overlay&chatOverlayStageWidth=600&chatOverlayStageHeight=820&chatOverlayAuthWidth=240&chatOverlayAuthHeight=56",
       );
     });
   });

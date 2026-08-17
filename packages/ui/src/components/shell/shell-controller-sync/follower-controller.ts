@@ -86,6 +86,13 @@ export function buildFollowerController(
     stopRecording: () => fire({ kind: "stopRecording" }),
     cancelRecording: () => fire({ kind: "cancelRecording" }),
     handsFree: snapshot.handsFree,
+    realtimeVoice: snapshot.realtimeVoice
+      ? {
+          ...snapshot.realtimeVoice,
+          toggleMicrophoneMute: () =>
+            fire({ kind: "toggleRealtimeVoiceMicrophoneMute" }),
+        }
+      : undefined,
     toggleHandsFree: () => fire({ kind: "toggleHandsFree" }),
     micPermission: snapshot.micPermission,
     recheckMicPermission: (): Promise<MicrophonePermissionState> => {

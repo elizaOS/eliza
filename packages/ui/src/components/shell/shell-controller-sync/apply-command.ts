@@ -42,6 +42,8 @@ export function applyShellControllerCommand(
       return Promise.resolve(controller.cancelRecording());
     case "toggleHandsFree":
       return Promise.resolve(controller.toggleHandsFree());
+    case "toggleRealtimeVoiceMicrophoneMute":
+      return Promise.resolve(controller.realtimeVoice?.toggleMicrophoneMute());
     case "toggleTranscriptionMode":
       return Promise.resolve(controller.toggleTranscriptionMode());
     case "stopTranscriptionAndMic":

@@ -1457,6 +1457,10 @@ export type ElizaDesktopRPCSchema = {
         params: { expanded: boolean; chip?: boolean; hovered?: boolean };
         response: undefined;
       };
+      desktopSetBottomBarSize: {
+        params: { width: number; height: number };
+        response: undefined;
+      };
       desktopMinimizeWindow: { params: undefined; response: undefined };
       desktopUnminimizeWindow: { params: undefined; response: undefined };
       desktopMaximizeWindow: { params: undefined; response: undefined };
@@ -2449,6 +2453,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:getWindowBounds": "desktopGetWindowBounds",
   "desktop:setWindowBounds": "desktopSetWindowBounds",
   "desktop:setBottomBarExpanded": "desktopSetBottomBarExpanded",
+  "desktop:setBottomBarSize": "desktopSetBottomBarSize",
   "desktop:minimizeWindow": "desktopMinimizeWindow",
   "desktop:unminimizeWindow": "desktopUnminimizeWindow",
   "desktop:maximizeWindow": "desktopMaximizeWindow",

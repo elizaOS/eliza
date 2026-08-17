@@ -15,6 +15,11 @@ describe("shell authority protocol decoders", () => {
     });
     expect(
       parseShellControllerCommand({
+        kind: "toggleRealtimeVoiceMicrophoneMute",
+      }),
+    ).toEqual({ kind: "toggleRealtimeVoiceMicrophoneMute" });
+    expect(
+      parseShellControllerCommand({
         kind: "send",
         text: "hello",
         channelType: "VOICE_DM",

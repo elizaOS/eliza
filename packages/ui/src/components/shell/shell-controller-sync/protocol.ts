@@ -49,6 +49,7 @@ export type ShellControllerCommand =
   | { kind: "stopRecording" }
   | { kind: "cancelRecording" }
   | { kind: "toggleHandsFree" }
+  | { kind: "toggleRealtimeVoiceMicrophoneMute" }
   | { kind: "toggleTranscriptionMode" }
   | { kind: "stopTranscriptionAndMic" }
   | { kind: "recheckMicPermission" }
@@ -135,6 +136,7 @@ const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
   "stopRecording",
   "cancelRecording",
   "toggleHandsFree",
+  "toggleRealtimeVoiceMicrophoneMute",
   "toggleTranscriptionMode",
   "stopTranscriptionAndMic",
   "recheckMicPermission",

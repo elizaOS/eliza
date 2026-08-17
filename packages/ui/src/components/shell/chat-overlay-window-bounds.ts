@@ -1,137 +1,141 @@
 /**
- * Keeps the desktop chat-overlay window inside the primary display work area
- * while serializing renderer-to-main bounds updates across rapid open/close
- * transitions.
+ * Synchronizes the detached chat overlay with a small set of stable native
+ * window envelopes. Renderer springs animate inside those envelopes while the
+ * native host owns display clamping, placement, and settled hit-test bounds.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 
-export interface ChatOverlayWindowBounds {
-  x: number;
-  y: number;
+export interface ChatOverlayMaterialSize {
   width: number;
   height: number;
 }
 
-interface ChatOverlayDisplayInfo {
-  workArea: ChatOverlayWindowBounds;
-}
+export type ChatOverlayWindowSizeClass = "resting" | "input" | "sheet";
 
-interface ChatOverlayWindowBoundsBridge {
-  getWindowBounds: () => Promise<ChatOverlayWindowBounds | null>;
-  getPrimaryDisplay: () => Promise<ChatOverlayDisplayInfo | null>;
-  setWindowBounds: (bounds: ChatOverlayWindowBounds) => Promise<void>;
+interface ChatOverlayWindowSizeBridge {
+  setBottomBarSize: (size: ChatOverlayMaterialSize) => Promise<void>;
   onFailure: (error: unknown) => void;
 }
 
-export interface ChatOverlayWindowBoundsCoordinator {
+export interface ChatOverlayWindowSizeCoordinator {
   cancel: () => void;
-  schedule: (overlayOpen: boolean) => void;
+  schedule: (size: ChatOverlayMaterialSize) => void;
   whenIdle: () => Promise<void>;
 }
 
 export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 96;
 export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 56;
-export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
-export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
+export const CHAT_OVERLAY_STAGE_WIDTH = 600;
+export const CHAT_OVERLAY_STAGE_HEIGHT = 820;
+export const CHAT_OVERLAY_AUTH_WINDOW_WIDTH = 240;
+export const CHAT_OVERLAY_AUTH_WINDOW_HEIGHT = 56;
 
-function assertValidBounds(
-  bounds: ChatOverlayWindowBounds,
-  label: string,
-): void {
+function normalizeMaterialSize(
+  size: ChatOverlayMaterialSize,
+): ChatOverlayMaterialSize {
   if (
-    !Number.isFinite(bounds.x) ||
-    !Number.isFinite(bounds.y) ||
-    !Number.isFinite(bounds.width) ||
-    !Number.isFinite(bounds.height) ||
-    bounds.width <= 0 ||
-    bounds.height <= 0
+    !Number.isFinite(size.width) ||
+    !Number.isFinite(size.height) ||
+    size.width <= 0 ||
+    size.height <= 0
   ) {
-    throw new RangeError(`[chat-overlay-window] invalid ${label} bounds`);
+    throw new RangeError(
+      "[chat-overlay-window] material size must be positive and finite",
+    );
   }
+  return {
+    width: Math.max(1, Math.ceil(size.width)),
+    height: Math.max(1, Math.ceil(size.height)),
+  };
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(Math.max(value, minimum), maximum);
+/** Converts the transformed panel rect into the exact native hit-test size. */
+export function resolveChatOverlayMaterialSize(
+  rect: {
+    width: number;
+    height: number;
+  },
+  pilled = false,
+): ChatOverlayMaterialSize {
+  if (pilled) {
+    return {
+      width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+      height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+    };
+  }
+  return normalizeMaterialSize({
+    width: Math.max(CHAT_OVERLAY_RESTING_WINDOW_WIDTH, rect.width),
+    height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, rect.height),
+  });
 }
 
-/** Computes a fully visible bottom-anchored frame for the requested state. */
-export function computeChatOverlayWindowBounds(
-  current: ChatOverlayWindowBounds,
-  workArea: ChatOverlayWindowBounds,
-  overlayOpen: boolean,
-): ChatOverlayWindowBounds {
-  assertValidBounds(current, "window");
-  assertValidBounds(workArea, "work-area");
-
-  const requestedHeight = overlayOpen
-    ? CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT
-    : CHAT_OVERLAY_RESTING_WINDOW_HEIGHT;
-  const requestedWidth = overlayOpen
-    ? CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH
-    : CHAT_OVERLAY_RESTING_WINDOW_WIDTH;
-  const height = Math.min(requestedHeight, workArea.height);
-  const width = Math.min(requestedWidth, workArea.width);
-  const x = workArea.x + Math.round((workArea.width - width) / 2);
-  const bottom = clamp(
-    current.y + current.height,
-    workArea.y + height,
-    workArea.y + workArea.height,
-  );
-
-  return { x, y: bottom - height, width, height };
-}
-
-function boundsEqual(
-  left: ChatOverlayWindowBounds,
-  right: ChatOverlayWindowBounds,
+function sizesEqual(
+  left: ChatOverlayMaterialSize | null,
+  right: ChatOverlayMaterialSize,
 ): boolean {
-  return (
-    left.x === right.x &&
-    left.y === right.y &&
-    left.width === right.width &&
-    left.height === right.height
-  );
+  return left?.width === right.width && left.height === right.height;
 }
 
-/** Creates the serialized, latest-request-wins bounds-update queue. */
-export function createChatOverlayWindowBoundsCoordinator(
-  bridge: ChatOverlayWindowBoundsBridge,
-): ChatOverlayWindowBoundsCoordinator {
+/** Reads the native host's canonical logical stage dimensions from its URL. */
+export function readChatOverlayStageSize(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): ChatOverlayMaterialSize {
+  const params = new URLSearchParams(search);
+  const width = Number(params.get("chatOverlayStageWidth"));
+  const height = Number(params.get("chatOverlayStageHeight"));
+  return {
+    width:
+      Number.isFinite(width) && width > 0 ? width : CHAT_OVERLAY_STAGE_WIDTH,
+    height:
+      Number.isFinite(height) && height > 0
+        ? height
+        : CHAT_OVERLAY_STAGE_HEIGHT,
+  };
+}
+
+/** Reads the host-owned sign-in chip dimensions from the renderer URL. */
+export function readChatOverlayAuthSize(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): ChatOverlayMaterialSize {
+  const params = new URLSearchParams(search);
+  const width = Number(params.get("chatOverlayAuthWidth"));
+  const height = Number(params.get("chatOverlayAuthHeight"));
+  return {
+    width:
+      Number.isFinite(width) && width > 0
+        ? width
+        : CHAT_OVERLAY_AUTH_WINDOW_WIDTH,
+    height:
+      Number.isFinite(height) && height > 0
+        ? height
+        : CHAT_OVERLAY_AUTH_WINDOW_HEIGHT,
+  };
+}
+
+/** Creates a serialized latest-request-wins native size queue. */
+export function createChatOverlayWindowSizeCoordinator(
+  bridge: ChatOverlayWindowSizeBridge,
+): ChatOverlayWindowSizeCoordinator {
   let latestRevision = 0;
+  let lastApplied: ChatOverlayMaterialSize | null = null;
   let tail: Promise<void> = Promise.resolve();
 
-  const schedule = (overlayOpen: boolean): void => {
+  const schedule = (requestedSize: ChatOverlayMaterialSize): void => {
+    const size = normalizeMaterialSize(requestedSize);
+    if (sizesEqual(lastApplied, size)) return;
     const revision = ++latestRevision;
     const operation = tail.then(async () => {
-      if (revision !== latestRevision) return;
-
-      const [current, display] = await Promise.all([
-        bridge.getWindowBounds(),
-        bridge.getPrimaryDisplay(),
-      ]);
-      if (revision !== latestRevision) return;
-      if (!current || !display) {
-        throw new Error("[chat-overlay-window] desktop geometry unavailable");
-      }
-
-      const next = computeChatOverlayWindowBounds(
-        current,
-        display.workArea,
-        overlayOpen,
-      );
-      if (boundsEqual(current, next)) return;
-      await bridge.setWindowBounds(next);
+      if (revision !== latestRevision || sizesEqual(lastApplied, size)) return;
+      await bridge.setBottomBarSize(size);
+      if (revision === latestRevision) lastApplied = size;
     });
-
-    // error-policy:J4 A rejected desktop geometry request becomes a visible
-    // action notice through the hook's required onFailure callback.
+    // error-policy:J4 Native geometry failure becomes the visible action notice
+    // supplied by the detached shell boundary.
     tail = operation.catch((error: unknown) => {
-      if (revision === latestRevision) {
-        bridge.onFailure(error);
-      }
+      if (revision === latestRevision) bridge.onFailure(error);
     });
   };
 
@@ -144,11 +148,10 @@ export function createChatOverlayWindowBoundsCoordinator(
   };
 }
 
-/** Applies desktop overlay bounds whenever the shared shell opens or closes. */
-export function useChatOverlayWindowBounds(
-  overlayOpen: boolean,
+/** Applies measured material size without duplicating native display geometry. */
+export function useChatOverlayWindowSize(
   onFailure: (error: unknown) => void,
-): void {
+): (size: ChatOverlayMaterialSize) => void {
   const onFailureRef = useRef(onFailure);
   useEffect(() => {
     onFailureRef.current = onFailure;
@@ -156,22 +159,12 @@ export function useChatOverlayWindowBounds(
 
   const coordinator = useMemo(
     () =>
-      createChatOverlayWindowBoundsCoordinator({
-        getWindowBounds: () =>
-          invokeDesktopBridgeRequest<ChatOverlayWindowBounds>({
-            rpcMethod: "desktopGetWindowBounds",
-            ipcChannel: "desktop:getWindowBounds",
-          }),
-        getPrimaryDisplay: () =>
-          invokeDesktopBridgeRequest<ChatOverlayDisplayInfo>({
-            rpcMethod: "desktopGetPrimaryDisplay",
-            ipcChannel: "desktop:getPrimaryDisplay",
-          }),
-        setWindowBounds: async (bounds) => {
+      createChatOverlayWindowSizeCoordinator({
+        setBottomBarSize: async (size) => {
           await invokeDesktopBridgeRequest<void>({
-            rpcMethod: "desktopSetWindowBounds",
-            ipcChannel: "desktop:setWindowBounds",
-            params: bounds,
+            rpcMethod: "desktopSetBottomBarSize",
+            ipcChannel: "desktop:setBottomBarSize",
+            params: size,
           });
         },
         onFailure: (error) => onFailureRef.current(error),
@@ -179,9 +172,13 @@ export function useChatOverlayWindowBounds(
     [],
   );
 
-  useEffect(() => {
-    if (!isElectrobunRuntime()) return undefined;
-    coordinator.schedule(overlayOpen);
-    return () => coordinator.cancel();
-  }, [coordinator, overlayOpen]);
+  useEffect(() => () => coordinator.cancel(), [coordinator]);
+
+  return useCallback(
+    (size: ChatOverlayMaterialSize) => {
+      if (!isElectrobunRuntime()) return;
+      coordinator.schedule(size);
+    },
+    [coordinator],
+  );
 }

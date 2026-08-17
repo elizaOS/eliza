@@ -50,12 +50,12 @@ describe("buildElectrobunShellAuthorityTransport", () => {
   it("uses typed authority requests and waits for terminal command results", async () => {
     const { rpc, requests } = fakeRpc();
     const transport = buildElectrobunShellAuthorityTransport(rpc, () => {});
-    await expect(transport.connect("2")).resolves.toEqual(state);
+    await expect(transport.connect("3")).resolves.toEqual(state);
     await expect(
       transport.dispatchCommand("command-1", { kind: "stop" }),
     ).resolves.toEqual({ ok: true });
     expect(requests.shellControllerConnect).toHaveBeenCalledWith({
-      protocolVersion: "2",
+      protocolVersion: "3",
     });
     expect(requests.shellControllerDispatchCommand).toHaveBeenCalledWith({
       commandId: "command-1",

@@ -273,6 +273,22 @@ describe("brand surfaces", () => {
     expect(html).toContain("hasMeaningfulContent");
   });
 
+  it("removes the full-app preboot shell before compact chat-overlay paint", () => {
+    const html = read("index.html");
+    const compactBranch = html.slice(
+      html.indexOf('if (shellMode === "chat-overlay")'),
+      html.indexOf("if (MARKETING_HOSTNAMES.indexOf"),
+    );
+    expect(compactBranch).toContain("shell.remove()");
+    expect(compactBranch).toContain(
+      'document.documentElement.style.background = "transparent"',
+    );
+    expect(compactBranch).toContain(
+      'document.body.style.background = "transparent"',
+    );
+    expect(compactBranch).toContain('root.style.background = "transparent"');
+  });
+
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
     // BASE_URL resolves from the origin in web builds and beside the document
     // in packaged builds, preserving both deep SPA routes and bundled assets.

@@ -14,7 +14,7 @@
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
 import type { HomeModelStatus } from "../../../services/local-inference/home-model-status";
 import type { MicrophonePermissionState } from "../../../voice/local-asr-capture";
-import type { ShellAuthGate } from "../shell-auth-gate";
+import type { VoiceContinuousStatus } from "../../../voice/voice-chat-types";
 import {
   isShellPhase,
   type ShellMessage,
@@ -31,10 +31,18 @@ export interface ShellConversationNavSnapshot {
   index: number;
 }
 
+export interface ShellRealtimeVoiceSnapshot {
+  enabled: boolean;
+  active: boolean;
+  connecting: boolean;
+  paused: boolean;
+  microphoneMuted: boolean;
+  status: VoiceContinuousStatus;
+  error: string | null;
+}
+
 export interface ShellControllerSnapshot {
   phase: ShellPhase;
-  authGate: ShellAuthGate;
-  signingIn: boolean;
   responding: boolean;
   turnStatus: ChatTurnStatus | null;
   messages: readonly ShellMessage[];
@@ -49,6 +57,7 @@ export interface ShellControllerSnapshot {
   agentVoiceMuted: boolean;
   needsAudioUnlock: boolean;
   handsFree: boolean;
+  realtimeVoice: ShellRealtimeVoiceSnapshot | null;
   micPermission: MicrophonePermissionState;
   transcriptionMode: boolean;
   currentTab?: string;
@@ -73,19 +82,9 @@ export function parseShellControllerSnapshot(
   const nav = value.conversationNav;
   const model = value.modelStatus;
   const messages = value.messages;
-  const authGate = value.authGate;
+  const realtimeVoice = value.realtimeVoice;
   if (
     !isShellPhase(phase) ||
-    !isRecord(authGate) ||
-    typeof authGate.gated !== "boolean" ||
-    !(
-      authGate.phase === "checking" ||
-      authGate.phase === "unavailable" ||
-      authGate.phase === "needs-auth" ||
-      authGate.phase === "clear"
-    ) ||
-    authGate.gated !== (authGate.phase !== "clear") ||
-    typeof value.signingIn !== "boolean" ||
     typeof value.responding !== "boolean" ||
     (value.turnStatus !== null && !isRecord(value.turnStatus)) ||
     !Array.isArray(messages) ||
@@ -118,6 +117,24 @@ export function parseShellControllerSnapshot(
     typeof value.needsAudioUnlock !== "boolean" ||
     typeof value.handsFree !== "boolean" ||
     !(
+      realtimeVoice === null ||
+      (isRecord(realtimeVoice) &&
+        typeof realtimeVoice.enabled === "boolean" &&
+        typeof realtimeVoice.active === "boolean" &&
+        typeof realtimeVoice.connecting === "boolean" &&
+        typeof realtimeVoice.paused === "boolean" &&
+        typeof realtimeVoice.microphoneMuted === "boolean" &&
+        (realtimeVoice.status === "idle" ||
+          realtimeVoice.status === "listening" ||
+          realtimeVoice.status === "thinking" ||
+          realtimeVoice.status === "speaking" ||
+          realtimeVoice.status === "interrupting" ||
+          realtimeVoice.status === "transcribing") &&
+        (realtimeVoice.error === null ||
+          (typeof realtimeVoice.error === "string" &&
+            realtimeVoice.error.length <= 1_000_000)))
+    ) ||
+    !(
       micPermission === "granted" ||
       micPermission === "denied" ||
       micPermission === "prompt" ||
@@ -141,8 +158,6 @@ export function deriveShellControllerSnapshot(
 ): ShellControllerSnapshot {
   return {
     phase: controller.phase,
-    authGate: controller.authGate,
-    signingIn: controller.signingIn,
     responding: controller.responding,
     turnStatus: controller.turnStatus,
     messages: controller.messages,
@@ -157,6 +172,17 @@ export function deriveShellControllerSnapshot(
     agentVoiceMuted: controller.agentVoiceMuted,
     needsAudioUnlock: controller.needsAudioUnlock,
     handsFree: controller.handsFree,
+    realtimeVoice: controller.realtimeVoice
+      ? {
+          enabled: controller.realtimeVoice.enabled,
+          active: controller.realtimeVoice.active,
+          connecting: controller.realtimeVoice.connecting,
+          paused: controller.realtimeVoice.paused,
+          microphoneMuted: controller.realtimeVoice.microphoneMuted,
+          status: controller.realtimeVoice.status,
+          error: controller.realtimeVoice.error,
+        }
+      : null,
     micPermission: controller.micPermission,
     transcriptionMode: controller.transcriptionMode,
     currentTab: controller.currentTab,
@@ -181,6 +207,22 @@ function navEqual(
     a.hasNext === b.hasNext &&
     a.activeId === b.activeId &&
     a.index === b.index
+  );
+}
+
+function realtimeVoiceEqual(
+  a: ShellRealtimeVoiceSnapshot | null,
+  b: ShellRealtimeVoiceSnapshot | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.enabled === b.enabled &&
+    a.active === b.active &&
+    a.connecting === b.connecting &&
+    a.paused === b.paused &&
+    a.microphoneMuted === b.microphoneMuted &&
+    a.status === b.status &&
+    a.error === b.error
   );
 }
 
@@ -213,9 +255,6 @@ export function snapshotsEqual(
 ): boolean {
   return (
     a.phase === b.phase &&
-    a.authGate.gated === b.authGate.gated &&
-    a.authGate.phase === b.authGate.phase &&
-    a.signingIn === b.signingIn &&
     a.responding === b.responding &&
     a.turnStatus === b.turnStatus &&
     a.messages === b.messages &&
@@ -230,6 +269,7 @@ export function snapshotsEqual(
     a.agentVoiceMuted === b.agentVoiceMuted &&
     a.needsAudioUnlock === b.needsAudioUnlock &&
     a.handsFree === b.handsFree &&
+    realtimeVoiceEqual(a.realtimeVoice, b.realtimeVoice) &&
     a.micPermission === b.micPermission &&
     a.transcriptionMode === b.transcriptionMode &&
     a.currentTab === b.currentTab &&

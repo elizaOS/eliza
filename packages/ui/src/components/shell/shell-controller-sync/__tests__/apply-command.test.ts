@@ -40,6 +40,11 @@ describe("applyShellControllerCommand", () => {
 
     applyShellControllerCommand(c, { kind: "recheckMicPermission" });
     expect(c.recheckMicPermission).toHaveBeenCalledTimes(1);
+
+    applyShellControllerCommand(c, {
+      kind: "toggleRealtimeVoiceMicrophoneMute",
+    });
+    expect(c.realtimeVoice?.toggleMicrophoneMute).toHaveBeenCalledTimes(1);
   });
 
   it("routes nav prev/next to conversationNav", () => {

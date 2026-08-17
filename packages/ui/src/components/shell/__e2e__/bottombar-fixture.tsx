@@ -1,26 +1,18 @@
-// Self-contained fixture for the chromeless desktop bottom-bar e2e (#9953).
-//
-// Renders the REAL bottom-bar shell composition — the same one
-// `ShellFoundationMount` (App.tsx) mounts inside `ChatOverlayShell` when the
-// desktop boots with `?shellMode=chat-overlay`: a `HomePill` resting bar plus an
-// `AssistantOverlay` holding the glass `ChatSurface` composer (mic + VISION +
-// send). No app server, no agent — a headless browser drives the resting→open
-// flow and screenshots each state. Paired with run-bottombar-e2e.mjs.
-//
-// The VISION button (`onVision`) is the #9953 acceptance addition; it is wired
-// here exactly as App.tsx wires it (`onVision={controller.captureVision}`), so
-// the captured composer is faithful to the shipped bottom bar.
+/**
+ * Real-browser fixture for the detached desktop host of the canonical chat
+ * overlay. It keeps the same component, detents, composer, and voice controls
+ * as the full app while replacing only the runtime controller with local state.
+ */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
+import { client } from "../../../api";
 import { GlassStyles } from "../../../glass";
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import { AssistantOverlay } from "../AssistantOverlay";
-import { ChatSurface } from "../ChatSurface";
-import { HomePill } from "../HomePill";
+import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
-import type { ShellPhase } from "../shell-state";
+import type { ConversationNav, ShellController } from "../useShellController";
 
 const SEED: ShellMessage[] = [
   { id: "m1", role: "user", content: "what's on my screen?", createdAt: 1 },
@@ -47,40 +39,112 @@ const params =
     : new URLSearchParams();
 const startEmpty = params.has("empty");
 
-/**
- * Mirror of App.tsx `ShellFoundationMount`: HomePill (resting bar) + the
- * AssistantOverlay holding the ChatSurface composer. Drives `phase` locally so a
- * headless browser can flip resting↔open with a real pointer click on the pill.
- */
+// Provider truth is a real async selector in the canonical composer. Resolve
+// the fixture to the deterministic local route rather than leaving it in the
+// honest "unknown" state forever without an API server.
+client.getModelsConfig = async () => ({
+  targets: { small: {}, large: {}, coding: {} },
+});
+
+const CONVERSATION_NAV: ConversationNav = {
+  hasPrev: false,
+  hasNext: false,
+  goPrev: () => {},
+  goNext: () => {},
+  activeId: "bottom-bar-fixture",
+  index: 0,
+};
+
 function BottomBarShell() {
-  const [phase, setPhase] = React.useState<ShellPhase>("idle");
+  const [open, setOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [handsFree, setHandsFree] = React.useState(false);
   const [visionActive, setVisionActive] = React.useState(false);
+  const [events, setEvents] = React.useState<string[]>([]);
   const [messages, setMessages] = React.useState<ShellMessage[]>(
     startEmpty ? [] : SEED,
   );
 
-  const open = React.useCallback(() => setPhase("summoned"), []);
-  const close = React.useCallback(() => setPhase("idle"), []);
-
   const send = React.useCallback((text: string) => {
-    // eslint-disable-next-line no-console
-    console.log(`[fixture] send: ${text}`);
+    setEvents((current) => [...current, `send:${text}`]);
     setMessages((m) => [
       ...m,
       { id: `u${m.length}`, role: "user", content: text, createdAt: Date.now() },
     ]);
   }, []);
 
-  // Exactly how App.tsx wires the VISION button — a tap fires a screen-vision
-  // turn and pulses the button until the turn is in flight.
   const captureVision = React.useCallback(() => {
-    // eslint-disable-next-line no-console
-    console.log("[fixture] captureVision -> screen turn");
+    setEvents((current) => [...current, "capture-vision"]);
     setVisionActive(true);
     send("Take a look at my screen and tell me what you see.");
     setTimeout(() => setVisionActive(false), 1200);
   }, [send]);
+
+  const controller = React.useMemo<ShellController>(
+    () => ({
+      phase: recording ? "listening" : open ? "summoned" : "idle",
+      authGate: { gated: false, phase: "clear" },
+      requestSignIn: () => {},
+      signingIn: false,
+      responding: false,
+      turnStatus: null,
+      messages,
+      canSend: true,
+      modelStatus: {
+        kind: "ready",
+        blocksSend: false,
+        percent: null,
+        etaMs: null,
+        modelName: null,
+        errors: [],
+      },
+      recording,
+      waveformMode: recording ? "listening" : "idle",
+      analyser: null,
+      open: () => setOpen(true),
+      close: () => setOpen(false),
+      isOpen: open,
+      send,
+      captureVision,
+      visionCapturing: visionActive,
+      toggleRecording: () => setRecording((active) => !active),
+      startRecording: () => setRecording(true),
+      stopRecording: () => setRecording(false),
+      cancelRecording: () => setRecording(false),
+      transcript: "",
+      speaking: false,
+      speak: () => {},
+      stopSpeaking: () => {},
+      agentVoiceMuted: false,
+      toggleAgentVoiceMute: () => {},
+      needsAudioUnlock: false,
+      unlockAudio: () => {},
+      handsFree,
+      toggleHandsFree: () => {
+        setHandsFree((active) => {
+          setRecording(!active);
+          return !active;
+        });
+      },
+      micPermission: "granted",
+      recheckMicPermission: async () => "granted",
+      transcriptionMode: false,
+      toggleTranscriptionMode: () => {},
+      stopTranscriptionAndMic: () => {},
+      setDictationSink: () => {},
+      setTranscriptSessionSink: () => {},
+      setComposerHasDraft: () => {},
+      clearConversation: () => setMessages([]),
+      openSettings: () => {},
+      navigateHome: () => {},
+      currentTab: "home",
+      stop: () => {},
+      conversationNav: CONVERSATION_NAV,
+      conversationLoading: false,
+      noProviderConfigured: false,
+    }),
+    [captureVision, handsFree, messages, open, recording, send, visionActive],
+  );
 
   return (
     <>
@@ -95,27 +159,20 @@ function BottomBarShell() {
             "radial-gradient(1200px 700px at 18% -5%, #36204d 0%, #0c0c12 58%), linear-gradient(135deg,#1c1238 0%,#08080d 100%)",
         }}
       />
-      {/* Same bottom-anchored, transparent, pointer-pass-through wrapper the
-          real `ChatOverlayShell` mounts `ShellFoundationMount` inside (App.tsx),
-          so the resting bar pins to the screen bottom exactly as on desktop. */}
       <div
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <HomePill phase={phase} onOpen={open} onClose={close} />
-        <AssistantOverlay phase={phase} onClose={close}>
-          <ChatSurface
-            messages={messages}
-            onSend={send}
-            canSend
-            greeting="Ask Eliza anything."
-            recording={recording}
-            onToggleRecording={() => setRecording((r) => !r)}
-            onVision={captureVision}
-            visionActive={visionActive}
-          />
-        </AssistantOverlay>
+        <ChatOverlay
+          controller={controller}
+          initialMode="pill"
+          requestedOpen={open}
+          onRequestedOpenChange={setOpen}
+        />
       </div>
+      <output data-testid="fixture-events" hidden>
+        {events.join("|")}
+      </output>
     </>
   );
 }
