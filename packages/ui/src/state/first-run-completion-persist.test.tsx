@@ -3,6 +3,7 @@
 
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import {
   hydratePersistedFirstRunCompleteFromNativeStore,
   loadPersistedFirstRunComplete,
@@ -27,9 +28,12 @@ import { useFirstRunState } from "./useFirstRunState";
  */
 
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
+const CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY =
+  "eliza:first-run-complete:cloud-only:v1";
 
 beforeEach(() => {
   window.localStorage.clear();
+  setBootConfig(DEFAULT_BOOT_CONFIG);
 });
 
 afterEach(() => {
@@ -60,6 +64,39 @@ describe("first-run completion durable flag survives a process restart", () => {
       window.localStorage.getItem(FIRST_RUN_COMPLETE_STORAGE_KEY),
     ).toBeNull();
   });
+
+  it("does not treat a local-capable build's completion as Cloud-only onboarding", () => {
+    window.localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      branding: {
+        ...DEFAULT_BOOT_CONFIG.branding,
+        cloudOnly: true,
+      },
+    });
+
+    expect(loadPersistedFirstRunComplete()).toBe(false);
+  });
+
+  it("persists Cloud-only completion separately across a process restart", () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      branding: {
+        ...DEFAULT_BOOT_CONFIG.branding,
+        cloudOnly: true,
+      },
+    });
+
+    savePersistedFirstRunComplete(true);
+
+    expect(loadPersistedFirstRunComplete()).toBe(true);
+    expect(
+      window.localStorage.getItem(CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY),
+    ).toBe("1");
+    expect(
+      window.localStorage.getItem(FIRST_RUN_COMPLETE_STORAGE_KEY),
+    ).toBeNull();
+  });
 });
 
 describe("useFirstRunState seeds the completion ref from durable storage", () => {
@@ -73,6 +110,14 @@ describe("useFirstRunState seeds the completion ref from durable storage", () =>
 
   it("a fresh mount with no prior onboarding starts uncommitted", () => {
     const { result } = renderHook(() => useFirstRunState());
+    expect(result.current.completionCommittedRef.current).toBe(false);
+  });
+
+  it("uses the explicit Cloud-only scope before global boot config is available", () => {
+    window.localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+
+    const { result } = renderHook(() => useFirstRunState(true));
+
     expect(result.current.completionCommittedRef.current).toBe(false);
   });
 });
