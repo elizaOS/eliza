@@ -106,12 +106,26 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	return NSPointInRect(contentPoint, materialRect);
 }
 
+- (BOOL)materialCoversContentBounds {
+	NSView *contentView = self.window.contentView;
+	if (contentView == nil) {
+		return NO;
+	}
+	NSSize boundsSize = contentView.bounds.size;
+	return self.materialSize.width >= boundsSize.width &&
+		self.materialSize.height >= boundsSize.height;
+}
+
 - (void)applyForScreenPoint:(NSPoint)screenPoint {
 	NSWindow *window = self.window;
 	if (window == nil) {
 		return;
 	}
-	BOOL interactive = self.interactionPinned || [self containsScreenPoint:screenPoint];
+	// A fitted auth chip has no transparent envelope to pass through. Keeping it
+	// interactive immediately makes its first click reliable; partial-material
+	// windows still use pointer tracking for the transparent surrounding frame.
+	BOOL interactive = [self materialCoversContentBounds] ||
+		self.interactionPinned || [self containsScreenPoint:screenPoint];
 	if (window.ignoresMouseEvents == interactive) {
 		[window setIgnoresMouseEvents:!interactive];
 	}
