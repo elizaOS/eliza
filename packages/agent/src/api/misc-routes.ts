@@ -19,6 +19,7 @@ import {
   isLocalCodeExecutionAllowed,
   logger,
   ModelType,
+  parseBooleanValue,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
@@ -179,6 +180,15 @@ function resolveTerminalShellCommand(): {
   };
 }
 
+function parseOptionalBooleanQuery(
+  raw: string | null,
+): { ok: true; value?: boolean } | { ok: false } {
+  if (raw === null) return { ok: true };
+  const parsed = parseBooleanValue(raw);
+  if (parsed === undefined) return { ok: false };
+  return { ok: true, value: parsed };
+}
+
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,
 ): TerminalRunRequestBody {
@@ -298,7 +308,14 @@ export async function handleMiscRoutes(
 
   // ── GET /api/ingest/share ────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/ingest/share") {
-    const consume = url.searchParams.get("consume") === "1";
+    const consumeParsed = parseOptionalBooleanQuery(
+      url.searchParams.get("consume"),
+    );
+    if (!consumeParsed.ok) {
+      error(res, "consume must be a boolean", 400);
+      return true;
+    }
+    const consume = consumeParsed.value === true;
     if (consume) {
       const items = [...state.shareIngestQueue];
       state.shareIngestQueue.length = 0;
