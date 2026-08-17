@@ -17,6 +17,7 @@ import {
 import {
   assertDeviceUnlocked,
   buildCodesignPlan,
+  buildCodesignVerificationPlan,
   buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
   buildPlistXml,
@@ -24,6 +25,7 @@ import {
   buildSimctlListappsArgs,
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyCodesignPreflight,
+  classifyCodesignVerificationResults,
   classifyConsoleExit,
   classifyIsolatedReruns,
   classifyRunnerSigningMode,
@@ -263,6 +265,24 @@ describe("profileMatchesTarget", () => {
   });
 });
 
+describe("development runner profile requirement (#13567)", () => {
+  it("rejects a distribution profile without get-task-allow", () => {
+    const verdict = profileMatchesTarget(
+      normalized({
+        appIdentifier: `${TEAM}.ai.elizaos.app.xctrunner`,
+        getTaskAllow: false,
+      }),
+      {
+        bundleId: "ai.elizaos.app.xctrunner",
+        deviceUdid: DEVICE_UDID,
+        requireGetTaskAllow: true,
+      },
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reasons.join(" ")).toMatch(/get-task-allow/);
+  });
+});
+
 describe("selectProvisioningProfile", () => {
   const target = { bundleId: "ai.elizaos.app", deviceUdid: DEVICE_UDID };
 
@@ -445,6 +465,40 @@ describe("buildRunnerCodesignPlan (#13567)", () => {
     });
     expect(plan).toEqual([
       { path: "/dd/AppUITests-Runner.app", entitlementsPath: "/out/ent.plist" },
+    ]);
+  });
+});
+
+describe("buildCodesignVerificationPlan (#13567)", () => {
+  it("checks every nested object explicitly before the root deep check", () => {
+    expect(
+      buildCodesignVerificationPlan(
+        [
+          { path: "/App/F.framework", entitlementsPath: null },
+          { path: "/App/PlugIns/E.appex", entitlementsPath: "/ent.plist" },
+          { path: "/App", entitlementsPath: "/app.plist" },
+        ],
+        "/App",
+      ),
+    ).toEqual([
+      { path: "/App/F.framework", deep: false },
+      { path: "/App/PlugIns/E.appex", deep: false },
+      { path: "/App", deep: false },
+      { path: "/App", deep: true },
+    ]);
+  });
+});
+
+describe("classifyCodesignVerificationResults (#13567)", () => {
+  it("rejects reuse when the outer bundle is valid but nested code is invalid", () => {
+    const verdict = classifyCodesignVerificationResults([
+      { path: "/Runner.app/PlugIns/Tests.xctest", deep: false, valid: false },
+      { path: "/Runner.app", deep: false, valid: true },
+      { path: "/Runner.app", deep: true, valid: true },
+    ]);
+    expect(verdict.valid).toBe(false);
+    expect(verdict.failures.map((failure) => failure.path)).toEqual([
+      "/Runner.app/PlugIns/Tests.xctest",
     ]);
   });
 });

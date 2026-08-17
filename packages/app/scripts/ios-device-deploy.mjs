@@ -44,6 +44,7 @@ import {
 import {
   assertDeviceUnlocked,
   buildCodesignPlan,
+  buildCodesignVerificationPlan,
   buildPlistXml,
   DEFAULT_APP_BUNDLE_ID,
   deriveSigningEntitlements,
@@ -356,8 +357,15 @@ function signApp({
     runInherit("codesign", args);
   }
 
-  runInherit("codesign", ["--verify", "--deep", "--strict", stagedApp]);
-  log("codesign --verify --deep --strict: OK");
+  for (const verification of buildCodesignVerificationPlan(plan, stagedApp)) {
+    runInherit("codesign", [
+      "--verify",
+      ...(verification.deep ? ["--deep"] : []),
+      "--strict",
+      verification.path,
+    ]);
+  }
+  log("explicit nested + deep codesign verification: OK");
 }
 
 // ── Main ────────────────────────────────────────────────────────────────

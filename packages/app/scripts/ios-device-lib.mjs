@@ -287,11 +287,12 @@ export function normalizeProvisioningProfile(plist, sourcePath) {
  * Returns { ok, reasons } — reasons is the list of disqualifiers (empty when ok).
  *
  * @param {ReturnType<typeof normalizeProvisioningProfile>} profile
- * @param {{ bundleId: string, deviceUdid: string | null, now?: Date }} target
+ * @param {{ bundleId: string, deviceUdid: string | null, now?: Date,
+ *           requireGetTaskAllow?: boolean }} target
  */
 export function profileMatchesTarget(
   profile,
-  { bundleId, deviceUdid, now = new Date() },
+  { bundleId, deviceUdid, now = new Date(), requireGetTaskAllow = false },
 ) {
   const reasons = [];
   const appId = profile.applicationIdentifier;
@@ -320,6 +321,11 @@ export function profileMatchesTarget(
     if (!profile.provisionedDevices.includes(deviceUdid)) {
       reasons.push(`device UDID ${deviceUdid} not in ProvisionedDevices`);
     }
+  }
+  if (requireGetTaskAllow && !profile.getTaskAllow) {
+    reasons.push(
+      "profile is not a development/debug profile (get-task-allow is not true)",
+    );
   }
   return { ok: reasons.length === 0, reasons };
 }
@@ -496,6 +502,31 @@ export function buildRunnerCodesignPlan(layout) {
     entitlementsPath: layout.entitlementsPath,
   });
   return steps;
+}
+
+/**
+ * Expand a signing plan into explicit inner-to-outer verification targets.
+ * A final deep verification is useful, but it is not a substitute for checking
+ * every nested code object: codesign --deep has historically missed unsigned
+ * dylibs inside extensions on this lane.
+ */
+export function buildCodesignVerificationPlan(signingPlan, rootPath) {
+  const seen = new Set();
+  const targets = [];
+  for (const step of signingPlan) {
+    if (!step?.path || seen.has(step.path)) continue;
+    seen.add(step.path);
+    targets.push({ path: step.path, deep: false });
+  }
+  if (!seen.has(rootPath)) targets.push({ path: rootPath, deep: false });
+  targets.push({ path: rootPath, deep: true });
+  return targets;
+}
+
+/** Classify actual per-object codesign exits; one failed nested/deep check fails reuse. */
+export function classifyCodesignVerificationResults(results) {
+  const failures = results.filter((result) => !result.valid);
+  return { valid: failures.length === 0, failures };
 }
 
 /**
