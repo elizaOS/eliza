@@ -1,8 +1,8 @@
 /**
  * Regression coverage for the /api/memory/search corpus + BM25 cache:
  * identical ranking cached vs cold, explicit invalidation on module-local
- * mutations (remember / DELETE / PATCH), count-based staleness detection for
- * out-of-band writes, and the TTL bound for count-preserving edits.
+ * mutations (remember / DELETE / PATCH), count-based staleness detection,
+ * bounded refresh failure, runtime isolation, rebuild races, and memory limits.
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -55,6 +55,7 @@ function makeRuntime(store: Store) {
       },
     ),
     useModel: vi.fn(async () => [0.1, 0.2, 0.3]),
+    reportError: vi.fn(() => undefined),
   } as unknown as AgentRuntime;
   return { runtime, getMemories, countMemories };
 }
@@ -250,7 +251,7 @@ describe("GET /api/memory/search corpus cache", () => {
     expect(results.some((r) => r.text.includes("meteor shower"))).toBe(true);
   });
 
-  test("count-preserving out-of-band edit is picked up after the TTL (background refresh)", async () => {
+  test("count-preserving edit refreshes after one bounded stale response", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-17T00:00:00Z"));
     const target = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -264,15 +265,46 @@ describe("GET /api/memory/search corpus cache", () => {
     if (row)
       row.content = { text: "kestrel sighting", source: HASH_MEMORY_SOURCE };
 
-    // After the TTL the first search may still serve the cached corpus
-    // (stale-while-revalidate) but must kick off a refresh.
+    // The first request after the TTL remains warm and launches one refresh.
     vi.advanceTimersByTime(16_000);
-    await search(runtime, "kestrel");
-    // Let the background rebuild's microtasks settle (mock I/O is instant).
-    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const staleWhileRefreshing = await search(runtime, "kestrel");
+    expect(staleWhileRefreshing).toEqual([]);
+    for (let index = 0; index < 10; index++) await Promise.resolve();
 
     const results = await search(runtime, "kestrel");
     expect(results.some((r) => r.text === "kestrel sighting")).toBe(true);
+  });
+
+  test("persistent refresh failure cannot extend staleness past the hard bound", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T00:00:00Z"));
+    const store: Store = {
+      rows: [note("aaaaaaaa-0000-4000-8000-000000000001", "old osprey", 1)],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    await search(runtime, "osprey");
+    const row = store.rows[0];
+    if (row)
+      row.content = {
+        text: "replacement condor",
+        source: HASH_MEMORY_SOURCE,
+      };
+    getMemories.mockRejectedValue(new Error("refresh backend unavailable"));
+
+    vi.advanceTimersByTime(11_000);
+    const boundedStale = await search(runtime, "osprey");
+    expect(boundedStale).toHaveLength(1);
+    for (let index = 0; index < 10; index++) await Promise.resolve();
+
+    vi.advanceTimersByTime(10_000);
+    await expect(search(runtime, "osprey")).rejects.toThrow(
+      "refresh backend unavailable",
+    );
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "MemorySearchCache.refresh",
+      expect.objectContaining({ message: "refresh backend unavailable" }),
+      expect.objectContaining({ roomId: expect.any(String) }),
+    );
   });
 
   test("runtime without countMemories degrades to the uncached scan", async () => {
@@ -288,5 +320,126 @@ describe("GET /api/memory/search corpus cache", () => {
     const second = await search(runtime, "fallback");
     expect(getMemories).toHaveBeenCalledTimes(2); // no cache without a freshness signal
     expect(second).toEqual(first);
+  });
+
+  test("isolates equal-count corpora owned by distinct runtime instances", async () => {
+    const firstStore: Store = {
+      rows: [
+        note(
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "first runtime albatross",
+          1,
+        ),
+      ],
+    };
+    const secondStore: Store = {
+      rows: [
+        note(
+          "aaaaaaaa-0000-4000-8000-000000000002",
+          "second runtime kestrel",
+          1,
+        ),
+      ],
+    };
+    const first = makeRuntime(firstStore);
+    const second = makeRuntime(secondStore);
+
+    expect(await search(first.runtime, "albatross")).toHaveLength(1);
+    const secondResults = await search(second.runtime, "kestrel");
+
+    expect(secondResults.map((result) => result.text)).toEqual([
+      "second runtime kestrel",
+    ]);
+    expect(second.getMemories).toHaveBeenCalledOnce();
+  });
+
+  test("does not publish a corpus whose scan raced a row-count change", async () => {
+    const store: Store = {
+      rows: [
+        note("aaaaaaaa-0000-4000-8000-000000000001", "baseline sparrow", 1),
+      ],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    getMemories.mockImplementationOnce(async () => {
+      const staleSnapshot = [...store.rows];
+      store.rows.push(
+        note("aaaaaaaa-0000-4000-8000-000000000002", "racing pelican", 2),
+      );
+      return staleSnapshot;
+    });
+
+    expect(await search(runtime, "pelican")).toEqual([]);
+    const fresh = await search(runtime, "pelican");
+
+    expect(getMemories).toHaveBeenCalledTimes(2);
+    expect(fresh.map((result) => result.text)).toEqual(["racing pelican"]);
+  });
+
+  test("single-flights concurrent cold rebuilds for one runtime and room", async () => {
+    const store: Store = {
+      rows: [
+        note(
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "shared rebuild puffin",
+          1,
+        ),
+      ],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    let releaseScan = () => {};
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    getMemories.mockImplementationOnce(async () => {
+      await scanGate;
+      return [...store.rows];
+    });
+
+    const first = search(runtime, "puffin");
+    const second = search(runtime, "puffin");
+    await vi.waitFor(() => expect(getMemories).toHaveBeenCalledOnce());
+    releaseScan();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.any(Array),
+      expect.any(Array),
+    ]);
+    expect(getMemories).toHaveBeenCalledOnce();
+  });
+
+  test("reports count failures and keeps the fallback corpus uncached", async () => {
+    const store: Store = {
+      rows: [
+        note("aaaaaaaa-0000-4000-8000-000000000001", "fallback count heron", 1),
+      ],
+    };
+    const { runtime, getMemories, countMemories } = makeRuntime(store);
+    countMemories.mockRejectedValue(new Error("count backend unavailable"));
+
+    await search(runtime, "heron");
+    await search(runtime, "heron");
+
+    expect(getMemories).toHaveBeenCalledTimes(2);
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "MemorySearchCache.countRoomMessages",
+      expect.objectContaining({ message: "count backend unavailable" }),
+      expect.objectContaining({ roomId: expect.any(String) }),
+    );
+  });
+
+  test("does not retain a corpus whose source text exceeds the byte budget", async () => {
+    const rows = Array.from({ length: 2_000 }, (_, index) =>
+      note(
+        `aaaaaaaa-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+        `oversized-${index}-${"x".repeat(4_200)}`,
+        index,
+      ),
+    );
+    const { runtime, getMemories } = makeRuntime({ rows });
+
+    await search(runtime, "term-not-present");
+    await search(runtime, "term-not-present");
+
+    expect(getMemories).toHaveBeenCalledTimes(2);
   });
 });
