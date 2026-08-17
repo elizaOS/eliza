@@ -241,7 +241,7 @@ describe("personal Shared messaging deliveries", () => {
     });
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(response.headers.get("server-timing")).toMatch(
-      /^account;dur=\d+\.\d;desc="single-query-repeat", shared;dur=\d+\.\d$/,
+      /^account;dur=\d+\.\d;desc="single-query-repeat", prewarm;dur=\d+\.\d, shared;dur=\d+\.\d$/,
     );
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
@@ -291,6 +291,7 @@ describe("personal Shared messaging deliveries", () => {
         user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
+      { warmConversation: true },
     );
     expect(order).toEqual(["prewarm", "turn"]);
     expect(runtimeWaitUntil).toHaveBeenCalledTimes(1);
@@ -299,12 +300,21 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
-  test("keeps established personal turns on the direct warm path", async () => {
+  test("prewarms established personal turns before inference admission", async () => {
     const response = await request(valid);
 
     expect(response.status).toBe(200);
-    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
-    expect(runtimeWaitUntil).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+      }),
+      namespace,
+      { warmConversation: false },
+    );
+    expect(runtimeWaitUntil).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("server-timing")).toMatch(
+      /^account;dur=\d+\.\d;desc="[^"]+", prewarm;dur=\d+\.\d, shared;dur=\d+\.\d$/,
+    );
   });
 
   test("correlates a Shared failure without logging its sensitive message", async () => {

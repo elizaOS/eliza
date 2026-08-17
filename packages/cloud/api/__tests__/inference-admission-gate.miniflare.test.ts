@@ -151,8 +151,8 @@ describe("Miniflare Durable Object integration", () => {
       modules: true,
       script: await output.text(),
       durableObjects: {
-        TEST_ADMISSION_GATE: {
-          className: "InferenceAdmissionGate",
+        INFERENCE_ADMISSION_GATES: {
+          className: "TestInferenceAdmissionGate",
           useSQLite: true,
         },
       },
@@ -167,12 +167,14 @@ describe("Miniflare Durable Object integration", () => {
   async function post(
     path: string,
     body: Record<string, unknown>,
+    gateName = "org-miniflare",
   ): Promise<{ readonly status: number; text(): Promise<string> }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-test-organization-id": "org-miniflare",
+        "x-test-gate-name": gateName,
       },
       body: JSON.stringify(body),
     });
@@ -341,4 +343,45 @@ describe("Miniflare Durable Object integration", () => {
     });
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
+
+  test("a separate rate-limit identity answers while the legacy ledger input gate is blocked", async () => {
+    const policy = {
+      endpointType: "completions",
+      windowMs: 60_000,
+      maxRequests: 2,
+    };
+    expect((await post("/test-block-ledger", {})).status).toBe(202);
+
+    const blockedLegacy = post("/rate-limit", policy);
+    const legacyAnsweredEarly = await Promise.race([
+      blockedLegacy.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(legacyAnsweredEarly).toBe(false);
+
+    const isolated = await Promise.race([
+      post("/rate-limit", policy, "rate-limit:v2:org-miniflare"),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("isolated rate limit waited behind ledger")),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedLegacy).status).toBe(200);
+  }, 120_000);
+
+  test("the cutover coordinator chooses the next exact fixed-window boundary", async () => {
+    const response = await post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    expect(response.status).toBe(200);
+    const body = JSON.parse(await response.text()) as { cutoverAt: number };
+    expect(body.cutoverAt % 60_000).toBe(0);
+    expect(body.cutoverAt).toBeGreaterThan(Date.now());
+    expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
+  }, 120_000);
 });

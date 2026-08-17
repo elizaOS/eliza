@@ -1,11 +1,10 @@
 /**
- * Per-organization serialized admission controls for inference requests.
+ * Serialized admission controls for inference requests.
  *
- * The object never queries Postgres or Redis. It durably enforces exact
- * fixed-window endpoint limits and bounds concurrent provider dispatches to the
- * latest cached balance. Capacity can only increase from a cache snapshot
- * observed after the last accounting event, so stale KV values cannot
- * resurrect already-consumed spend.
+ * Billing leases retain one object identity per organization. Fixed-window
+ * limits use distinct rate-only identities after a globally coordinated window
+ * boundary, so their storage input gates cannot inherit ledger stalls without
+ * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
 import { runWithDbCacheAsync } from "@/db/client";
@@ -124,6 +123,10 @@ interface OrganizationStateRequest {
   active: boolean;
 }
 
+interface RateLimitCutoverRequest {
+  windowMs: number;
+}
+
 interface RateLimitWindow {
   windowStartedAt: number;
   windowMs: number;
@@ -142,6 +145,7 @@ const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
 const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
 const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
+const RATE_LIMIT_CUTOVERS_KEY = "rate-limit-v2-cutovers";
 const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
@@ -438,6 +442,9 @@ export class InferenceAdmissionGate {
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
+  // This queue orders calls within a rate-only identity. Cross-lane isolation
+  // comes from the distinct Durable Object identity selected by the caller.
+  private rateLimitOperationQueue: Promise<void> = Promise.resolve();
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -594,10 +601,59 @@ export class InferenceAdmissionGate {
     this.rateLimitWindows = snapshot;
   }
 
+  private async rateLimitCutover(
+    request: RateLimitCutoverRequest,
+  ): Promise<Response> {
+    if (!Number.isSafeInteger(request.windowMs) || request.windowMs <= 0) {
+      return jsonError("Invalid inference rate-limit cutover window", 400);
+    }
+    const key = String(request.windowMs);
+    const cutovers =
+      (await this.state.storage.get<Record<string, number>>(
+        RATE_LIMIT_CUTOVERS_KEY,
+      )) ?? {};
+    const existing = cutovers[key];
+    if (existing !== undefined) {
+      if (
+        !Number.isSafeInteger(existing) ||
+        existing <= 0 ||
+        existing % request.windowMs !== 0
+      ) {
+        throw new Error("Inference rate-limit cutover is corrupt");
+      }
+      return Response.json({ cutoverAt: existing });
+    }
+    const now = Date.now();
+    const cutoverAt =
+      (Math.floor(now / request.windowMs) + 1) * request.windowMs;
+    if (!Number.isSafeInteger(cutoverAt)) {
+      return jsonError("Invalid inference rate-limit cutover window", 400);
+    }
+    await this.state.storage.put(RATE_LIMIT_CUTOVERS_KEY, {
+      ...cutovers,
+      [key]: cutoverAt,
+    });
+    return Response.json({ cutoverAt });
+  }
+
   private async serialize<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.operationQueue;
     let release: () => void = () => undefined;
     this.operationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private async serializeRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.rateLimitOperationQueue;
+    let release: () => void = () => undefined;
+    this.rateLimitOperationQueue = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous;
@@ -1054,6 +1110,11 @@ export class InferenceAdmissionGate {
     return Response.json({ committed: true });
   }
 
+  private async warmRateLimit(): Promise<Response> {
+    await this.loadRateLimitWindows();
+    return Response.json({ warmed: true });
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
@@ -1068,7 +1129,8 @@ export class InferenceAdmissionGate {
       | CredentialRevokeRequest
       | SubjectStateRequest
       | SessionRevokeRequest
-      | OrganizationStateRequest;
+      | OrganizationStateRequest
+      | RateLimitCutoverRequest;
     try {
       body = (await request.json()) as
         | LeaseRequest
@@ -1080,7 +1142,8 @@ export class InferenceAdmissionGate {
         | CredentialRevokeRequest
         | SubjectStateRequest
         | SessionRevokeRequest
-        | OrganizationStateRequest;
+        | OrganizationStateRequest
+        | RateLimitCutoverRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
       return jsonError("Invalid JSON body", 400);
@@ -1107,8 +1170,16 @@ export class InferenceAdmissionGate {
       );
     }
     if (path === "/rate-limit") {
-      return await this.serialize(() =>
+      return await this.serializeRateLimit(() =>
         this.rateLimit(body as RateLimitRequest),
+      );
+    }
+    if (path === "/rate-limit-warm") {
+      return await this.serializeRateLimit(() => this.warmRateLimit());
+    }
+    if (path === "/rate-limit-v2-cutover") {
+      return await this.serializeRateLimit(() =>
+        this.rateLimitCutover(body as RateLimitCutoverRequest),
       );
     }
     if (path === "/credential/check") {

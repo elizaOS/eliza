@@ -14,6 +14,7 @@ import {
   InferenceAdmissionLeaseRejectedError,
   markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
+  warmInferenceRateLimitGate,
 } from "@/lib/services/inference-admission-gate";
 import * as admissionRecovery from "@/lib/services/inference-admission-recovery";
 import { InferenceAdmissionGate } from "../src/inference-admission-gate";
@@ -157,11 +158,14 @@ function storedLeaseKey(requestId: string): string {
   return `lease:${encodeURIComponent(requestId)}`;
 }
 
-function createGate(storage = new TestStorage()): InferenceAdmissionGate {
+function createGate(
+  storage = new TestStorage(),
+  env: Record<string, unknown> = {},
+): InferenceAdmissionGate {
   const state = {
     storage,
   } as unknown as DurableObjectState;
-  return new InferenceAdmissionGate(state, {} as never);
+  return new InferenceAdmissionGate(state, env as never);
 }
 
 function post(
@@ -172,7 +176,10 @@ function post(
     | "/dispatch"
     | "/release"
     | "/settle"
-    | "/rate-limit",
+    | "/rate-limit"
+    | "/rate-limit-v2-cutover"
+    | "/rate-limit-warm"
+    | "/rate-limit-handoff",
   body: Record<string, unknown>,
 ): Promise<Response> {
   const payload =
@@ -228,6 +235,42 @@ function gateBindings(gate: InferenceAdmissionGate) {
           gate.fetch(new Request(request, init)),
       }),
     },
+  };
+}
+
+function createRateLimitGateNetwork(organizationId = "org-a") {
+  const legacyStorage = new TestStorage();
+  const rateStorage = new TestStorage();
+  const cutoverStorage = new TestStorage();
+  const gates = new Map<string, InferenceAdmissionGate>();
+  const requestedNames: string[] = [];
+  const namespace = {
+    getByName: (name: string) => {
+      requestedNames.push(name);
+      return {
+        fetch: (request: RequestInfo | URL, init?: RequestInit) => {
+          const gate = gates.get(name);
+          if (!gate) throw new Error(`Unexpected gate identity: ${name}`);
+          return gate.fetch(new Request(request, init));
+        },
+      };
+    },
+  };
+  const env = { INFERENCE_ADMISSION_GATES: namespace };
+  const legacyGate = createGate(legacyStorage, env);
+  const rateGate = createGate(rateStorage, env);
+  const cutoverGate = createGate(cutoverStorage, env);
+  gates.set(organizationId, legacyGate);
+  gates.set(`rate-limit:v2:${organizationId}`, rateGate);
+  gates.set("rate-limit:v2:cutover", cutoverGate);
+  return {
+    bindings: { INFERENCE_ADMISSION_GATES: namespace },
+    legacyGate,
+    legacyStorage,
+    rateGate,
+    rateStorage,
+    cutoverStorage,
+    requestedNames,
   };
 }
 
@@ -302,9 +345,25 @@ describe("InferenceAdmissionGate", () => {
     }
   });
 
+  test("rejects a cutover window whose next boundary exceeds safe integer precision", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(Number.MAX_SAFE_INTEGER);
+    try {
+      const gate = createGate(new TestStorage());
+      expect(
+        (
+          await post(gate, "/rate-limit-v2-cutover", {
+            windowMs: Number.MAX_SAFE_INTEGER,
+          })
+        ).status,
+      ).toBe(400);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("rate-limit client returns denials without balance hydration", async () => {
-    const gate = createGate();
-    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+    const network = createRateLimitGateNetwork();
+    await runWithCloudBindingsAsync(network.bindings, async () => {
       expect(
         await consumeInferenceRateLimit({
           organizationId: "org-a",
@@ -330,6 +389,67 @@ describe("InferenceAdmissionGate", () => {
         maxRequests: 1,
       }),
     ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+  });
+
+  test("rate-limit prewarm loads its isolated window without consuming a request", async () => {
+    const network = createRateLimitGateNetwork();
+    await runWithCloudBindingsAsync(network.bindings, async () => {
+      await warmInferenceRateLimitGate("org-a");
+      await warmInferenceRateLimitGate("org-a");
+      expect(network.legacyStorage.read("ledger")).toBeUndefined();
+      expect(network.rateStorage.read("ledger")).toBeUndefined();
+      expect(network.rateStorage.read("rate-limits")).toBeUndefined();
+      expect(network.requestedNames).toContain("rate-limit:v2:org-a");
+      expect(
+        network.requestedNames.filter((name) => name === "rate-limit:v2:org-a"),
+      ).toHaveLength(1);
+      expect(
+        await consumeInferenceRateLimit({
+          organizationId: "org-a",
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+        }),
+      ).toMatchObject({ allowed: true, remaining: 0 });
+    });
+  });
+
+  test("cuts over only after the entire legacy fixed window has expired", async () => {
+    const network = createRateLimitGateNetwork();
+    const clock = spyOn(Date, "now").mockReturnValue(61_234);
+    const body = {
+      endpointType: "completions" as const,
+      windowMs: 61_000,
+      maxRequests: 1,
+    };
+    try {
+      await runWithCloudBindingsAsync(network.bindings, async () => {
+        expect(
+          await consumeInferenceRateLimit({
+            organizationId: "org-a",
+            ...body,
+          }),
+        ).toMatchObject({ allowed: true, remaining: 0 });
+        expect(
+          await consumeInferenceRateLimit({
+            organizationId: "org-a",
+            ...body,
+          }),
+        ).toMatchObject({ allowed: false, remaining: 0 });
+
+        clock.mockReturnValue(122_000);
+        expect(
+          await consumeInferenceRateLimit({
+            organizationId: "org-a",
+            ...body,
+          }),
+        ).toMatchObject({ allowed: true, remaining: 0 });
+      });
+      expect(network.legacyStorage.read("rate-limits")).toBeDefined();
+      expect(network.rateStorage.read("rate-limits")).toBeDefined();
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("policy changes preserve the current endpoint count", async () => {

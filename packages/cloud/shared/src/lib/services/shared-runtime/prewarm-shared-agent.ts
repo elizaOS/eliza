@@ -30,7 +30,10 @@ import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { calculateCost, getProviderFromModel, normalizeModelName } from "../../pricing";
 import { logger } from "../../utils/logger";
-import { warmInferenceAdmissionGate } from "../inference-admission-gate";
+import {
+  warmInferenceAdmissionGate,
+  warmInferenceRateLimitGate,
+} from "../inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot";
 import {
   coordinateSharedConversationPrewarm,
@@ -168,26 +171,30 @@ export async function prewarmSharedAgentTurnCaches(
 }
 
 /**
- * Warm the two authorities a newly auto-registered personal agent needs.
- * The messaging route starts these concurrent legs as soon as it resolves the
- * account, overlaps them with other preparation, and joins them before Shared
- * dispatch.
+ * Warm the authorities a Personal Shared turn needs. Platform-funded turns use
+ * only the rate-limit window, so this deliberately avoids balance-ledger
+ * hydration. Established accounts can skip the conversation leg while still
+ * keeping inference admission off the first model request.
  */
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
   namespace: RuntimeDurableObjectNamespace,
+  options: { warmConversation?: boolean } = {},
 ): Promise<void> {
-  await settlePrewarmLegs(agent, [
+  const legs: PrewarmLeg[] = [
     {
-      leg: "admission-gate",
-      run: warmInferenceAdmissionGate(agent.organization_id),
+      leg: "rate-limit-gate",
+      run: warmInferenceRateLimitGate(agent.organization_id),
     },
-    {
+  ];
+  if (options.warmConversation !== false) {
+    legs.push({
       leg: "conversation-object",
       run: coordinateSharedConversationPrewarm(agent.id, agent.id, {
         namespace,
         startEmpty: true,
       }),
-    },
-  ]);
+    });
+  }
+  await settlePrewarmLegs(agent, legs);
 }
