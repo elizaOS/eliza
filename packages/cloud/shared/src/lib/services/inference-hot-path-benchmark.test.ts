@@ -1,15 +1,8 @@
 /**
- * Hot-path benchmark / cost assertion for the inference single-cache auth (#9899).
- *
- * The headline claim of the design (packages/cloud/api/docs/inference-hot-path.md)
- * is that a WARM, fully-authorized API-key request resolves auth + org +
- * moderation with EXACTLY ONE cache read, ONE strong revocation-boundary call,
- * and ZERO authoritative-chain work (no auth DB read, no moderation Postgres
- * read, no reserve write on resolve).
- *
- * This test instruments the real CacheClient (MOCK_REDIS in-memory) and the
- * mocked auth/moderation seams to assert those exact counts, so a regression
- * that reintroduces a DB read into the hot path fails loudly here.
+ * Measures the warm inference authentication path with the real in-memory
+ * CacheClient and deterministic boundary mocks. A fully authorized API-key
+ * request must use one cache read, one strong-revocation check, and no
+ * authoritative authentication or moderation reads.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -32,10 +25,8 @@ let admissionLoadCalls = 0;
 let appScopeCalls = 0;
 let revocationBoundaryCalls = 0;
 
-// IAC v2 (#17805) co-locates the admission snapshot + app-key scope with the
-// cached identity: both authoritative loads may run ONLY while warming a cold
-// miss, never on the warm path. Counted here so a regression that moves either
-// read back onto the hot path fails this benchmark.
+// Admission and app scope are part of the cached identity, so their
+// authoritative reads are allowed only while warming a cold miss.
 const ADMISSION = {
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -66,6 +57,7 @@ mock.module("./inference-credential-revocation", () => ({
     revocationBoundaryCalls++;
   },
   revokeInferenceApiKey: async () => undefined,
+  setInferenceSessionBindingActive: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
   setInferenceOrganizationActive: async () => undefined,
   setInferenceSubjectActive: async () => undefined,
