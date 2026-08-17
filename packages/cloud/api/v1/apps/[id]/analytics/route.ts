@@ -35,9 +35,7 @@ app.get("/", async (c) => {
     if (
       requestedPeriod != null &&
       requestedPeriod !== "" &&
-      !APP_PERIODS.includes(
-        requestedPeriod as (typeof APP_PERIODS)[number],
-      )
+      !APP_PERIODS.includes(requestedPeriod as (typeof APP_PERIODS)[number])
     ) {
       return c.json(
         {
