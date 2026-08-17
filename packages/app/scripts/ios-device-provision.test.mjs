@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-
+import { parsePlist } from "./ios-device-lib.mjs";
 import {
+  capabilitiesForEntitlements,
+  classifyEntitlementProvisioningRequirements,
   createAscJwt,
   developmentProfileName,
   discoverAppBundleIds,
@@ -15,8 +17,10 @@ import {
   profileCoversRequest,
   profileIsUsable,
   provision,
+  reconcileBundleCapabilities,
   resolveAscCredentials,
   validateBundleIds,
+  validateProvisioningEntitlements,
   writeProfile,
 } from "./ios-device-provision.mjs";
 
@@ -202,6 +206,118 @@ describe("ensureDeviceRegistered / ensureBundleId — idempotent", () => {
     const asc = makeAscClient({ jwt: "t", fetchImpl });
     const r = await ensureBundleId(asc, { identifier: "ai.elizaos.app" });
     expect(r).toEqual({ id: "B1", created: false });
+  });
+});
+
+describe("ASC capability and app-group reconciliation", () => {
+  it("enables every missing ASC-supported target capability", async () => {
+    const fetchImpl = mockFetch({
+      "GET /v1/bundleIds/B1/bundleIdCapabilities": { body: { data: [] } },
+      "POST /v1/bundleIdCapabilities": { status: 201, body: { data: {} } },
+    });
+    const asc = makeAscClient({ jwt: "t", fetchImpl });
+    const enabled = await reconcileBundleCapabilities(asc, {
+      bundleIdRef: "B1",
+      entitlements: {
+        "com.apple.developer.associated-domains": ["applinks:eliza.app"],
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      },
+    });
+    expect(enabled).toEqual(["APP_GROUPS", "ASSOCIATED_DOMAINS"]);
+    expect(
+      fetchImpl.calls.filter((c) => c.path === "/v1/bundleIdCapabilities"),
+    ).toHaveLength(2);
+  });
+
+  it("maps every maintained entitlement requiring ASC capability state", () => {
+    expect(
+      capabilitiesForEntitlements({
+        "aps-environment": "development",
+        "com.apple.developer.healthkit": true,
+      }),
+    ).toEqual(["HEALTHKIT", "PUSH_NOTIFICATIONS"]);
+  });
+
+  it("classifies every entitlement in the maintained app and appex targets", () => {
+    const repoRelative = path.join(
+      process.cwd(),
+      "packages/app-core/platforms/ios/App/App",
+    );
+    const packageRelative = path.join(
+      process.cwd(),
+      "../app-core/platforms/ios/App/App",
+    );
+    const root = fs.existsSync(repoRelative) ? repoRelative : packageRelative;
+    const files = [
+      "App.entitlements",
+      "WebsiteBlockerContentExtension/WebsiteBlockerContentExtension.entitlements",
+      "DeviceActivityMonitorExtension/DeviceActivityMonitorExtension.entitlements",
+      "DeviceActivityReportExtension/DeviceActivityReportExtension.entitlements",
+      "ElizaWidgets/ElizaWidgets.entitlements",
+      "ElizaKeyboard/ElizaKeyboard.entitlements",
+    ];
+    const keys = new Set();
+    for (const file of files) {
+      const parsed = parsePlist(fs.readFileSync(path.join(root, file), "utf8"));
+      for (const key of Object.keys(parsed)) keys.add(key);
+    }
+    const classified = classifyEntitlementProvisioningRequirements(
+      Object.fromEntries([...keys].map((key) => [key, true])),
+    );
+    expect(classified.unclassified).toEqual([]);
+    expect(classified.supportedCapabilities).toEqual([
+      "APP_GROUPS",
+      "ASSOCIATED_DOMAINS",
+      "HEALTHKIT",
+      "PUSH_NOTIFICATIONS",
+    ]);
+    expect(classified.profileValidatedManaged.map((row) => row.key)).toEqual(
+      expect.arrayContaining([
+        "com.apple.developer.family-controls",
+        "com.apple.developer.healthkit.background-delivery",
+        "com.apple.developer.kernel.increased-memory-limit",
+        "com.apple.developer.kernel.extended-virtual-addressing",
+        "com.apple.security.application-groups",
+      ]),
+    );
+  });
+});
+
+describe("profile entitlement validation", () => {
+  it("accepts granted arrays and concrete build-variable values", () => {
+    expect(() =>
+      validateProvisioningEntitlements(
+        {
+          "aps-environment": "$(APS_ENVIRONMENT)",
+          "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+        },
+        {
+          "aps-environment": "development",
+          "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+        },
+        "ai.elizaos.app",
+      ),
+    ).not.toThrow();
+  });
+
+  it("fails closed and names missing target entitlements", () => {
+    expect(() =>
+      validateProvisioningEntitlements(
+        { "com.apple.developer.family-controls": true },
+        {},
+        "ai.elizaos.app",
+      ),
+    ).toThrow(/ai\.elizaos\.app.*family-controls.*Account Holder\/Admin/);
+  });
+
+  it("fails closed on target entitlements without an explicit policy", () => {
+    expect(() =>
+      validateProvisioningEntitlements(
+        { "com.apple.developer.future-capability": true },
+        { "com.apple.developer.future-capability": true },
+        "ai.elizaos.app",
+      ),
+    ).toThrow(/unclassified target entitlements.*future-capability/);
   });
 });
 
@@ -466,10 +582,21 @@ describe("discoverAppBundleIds", () => {
       [path.join(app, "PlugIns", "Widgets.appex", "Info.plist")]:
         "ai.elizaos.app.widgets",
     };
-    const out = discoverAppBundleIds(app, { runPlutil: (p) => ids[p] });
+    const out = discoverAppBundleIds(app, {
+      runPlutil: (p) => ids[p],
+      readTargetEntitlements: (name) => ({ target: name }),
+    });
     expect(out).toEqual([
-      { identifier: "ai.elizaos.app", name: "App" },
-      { identifier: "ai.elizaos.app.widgets", name: "Widgets" },
+      {
+        identifier: "ai.elizaos.app",
+        name: "App",
+        entitlements: { target: "App" },
+      },
+      {
+        identifier: "ai.elizaos.app.widgets",
+        name: "Widgets",
+        entitlements: { target: "Widgets" },
+      },
     ]);
   });
 });
@@ -499,6 +626,9 @@ describe("provision — full idempotent flow", () => {
       "GET /v1/certificates": { body: { data: [{ id: "CERT" }] } },
       "GET /v1/bundleIds": { body: { data: [] } },
       "POST /v1/bundleIds": { status: 201, body: { data: { id: "BID" } } },
+      "GET /v1/bundleIds/BID/bundleIdCapabilities": {
+        body: { data: [] },
+      },
       "GET /v1/profiles": { body: { data: [] } },
       "POST /v1/profiles": {
         status: 201,
@@ -521,6 +651,7 @@ describe("provision — full idempotent flow", () => {
       fetchImpl,
       dir,
       now: 1_700_000_000,
+      decodeProfile: () => ({ Entitlements: {} }),
     });
     expect(result.device).toEqual({ id: "DEV", created: true });
     expect(result.certificateIds).toEqual(["CERT"]);

@@ -25,10 +25,14 @@
  * Bundle ids are resolved from (in precedence order): explicit `--bundle-id`
  * flags, then the appexes discovered inside `--product <App.app>/PlugIns/*.appex`
  * (their `CFBundleIdentifier`) plus the app itself. Idempotent — an already
- * registered device / existing bundle id is reused; each device gets its own
- * stable profile name, so provisioning one device never removes another
- * device's working profile. Existing valid profiles are reused; an invalid
- * same-name profile fails the run instead of being deleted before replacement.
+ * registered device / existing bundle id is reused. Before minting, supported
+ * Bundle ID capabilities are reconciled from the maintained target entitlement
+ * files; every downloaded profile is decoded and must grant all target
+ * entitlements (including exact App Groups) or the run fails closed. Each
+ * device gets its own stable profile name, so provisioning one device never
+ * removes another device's working profile. Existing valid profiles are
+ * reused; an invalid same-name profile fails the run instead of being deleted
+ * before replacement.
  * Minted profiles are written into the profiles dir where `discoverProfiles()`
  * looks.
  *
@@ -43,6 +47,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { parsePlist } from "./ios-device-lib.mjs";
 
 export const ASC_API_BASE = "https://api.appstoreconnect.apple.com";
 export const ASC_AUDIENCE = "appstoreconnect-v1";
@@ -220,6 +226,143 @@ export async function ensureBundleId(
   return { id: created.data.id, created: true };
 }
 
+const ENTITLEMENT_REQUIREMENTS = Object.freeze({
+  "com.apple.developer.associated-domains": {
+    capabilityType: "ASSOCIATED_DOMAINS",
+  },
+  "com.apple.developer.family-controls": {
+    managed:
+      "Family Controls is approval-gated; an Account Holder/Admin must enable the approved capability on this App ID",
+  },
+  "com.apple.developer.healthkit": { capabilityType: "HEALTHKIT" },
+  "com.apple.developer.healthkit.background-delivery": {
+    managed:
+      "HealthKit background delivery is validated from the minted profile after enabling HEALTHKIT",
+  },
+  "com.apple.developer.kernel.extended-virtual-addressing": {
+    managed:
+      "extended virtual addressing is profile-managed and has no App Store Connect CapabilityType",
+  },
+  "com.apple.developer.kernel.increased-memory-limit": {
+    managed:
+      "increased memory limit is profile-managed and has no App Store Connect CapabilityType",
+  },
+  "com.apple.security.application-groups": {
+    capabilityType: "APP_GROUPS",
+    managed:
+      "App Group identifiers must already be registered and assigned to the App ID by an Account Holder/Admin; the public ASC API only enables APP_GROUPS",
+  },
+  "aps-environment": { capabilityType: "PUSH_NOTIFICATIONS" },
+});
+
+export function classifyEntitlementProvisioningRequirements(entitlements = {}) {
+  const supportedCapabilities = new Set();
+  const profileValidatedManaged = [];
+  const unclassified = [];
+  for (const key of Object.keys(entitlements)) {
+    const requirement = ENTITLEMENT_REQUIREMENTS[key];
+    if (!requirement) {
+      unclassified.push(key);
+      continue;
+    }
+    if (requirement.capabilityType) {
+      supportedCapabilities.add(requirement.capabilityType);
+    }
+    if (requirement.managed) {
+      profileValidatedManaged.push({ key, guidance: requirement.managed });
+    }
+  }
+  return {
+    supportedCapabilities: [...supportedCapabilities].sort(),
+    profileValidatedManaged,
+    unclassified,
+  };
+}
+
+export function capabilitiesForEntitlements(entitlements = {}) {
+  return classifyEntitlementProvisioningRequirements(entitlements)
+    .supportedCapabilities;
+}
+
+/** Reconcile every ASC-supported capability implied by target entitlements. */
+export async function reconcileBundleCapabilities(
+  asc,
+  { bundleIdRef, entitlements = {} },
+) {
+  const listed = await asc(
+    "GET",
+    `/v1/bundleIds/${bundleIdRef}/bundleIdCapabilities?limit=200`,
+  );
+  const existing = new Set(
+    (listed.data ?? []).map((row) => row.attributes?.capabilityType),
+  );
+  const enabled = [];
+  for (const capabilityType of capabilitiesForEntitlements(entitlements)) {
+    if (!existing.has(capabilityType)) {
+      await asc("POST", "/v1/bundleIdCapabilities", {
+        data: {
+          type: "bundleIdCapabilities",
+          attributes: { capabilityType },
+          relationships: {
+            bundleId: { data: { type: "bundleIds", id: bundleIdRef } },
+          },
+        },
+      });
+    }
+    enabled.push(capabilityType);
+  }
+  return enabled;
+}
+
+function entitlementValueCovered(required, granted) {
+  if (required === true) return granted === true;
+  if (Array.isArray(required)) {
+    return (
+      Array.isArray(granted) && required.every((item) => granted.includes(item))
+    );
+  }
+  // Build-variable values such as $(APS_ENVIRONMENT) mean the entitlement must
+  // exist; the profile chooses the concrete development value.
+  if (typeof required === "string" && /^\$\(.+\)$/.test(required)) {
+    return granted !== undefined && granted !== false;
+  }
+  return Object.is(required, granted);
+}
+
+export function validateProvisioningEntitlements(
+  required,
+  granted,
+  bundleIdentifier,
+) {
+  const requirements = classifyEntitlementProvisioningRequirements(required);
+  if (requirements.unclassified.length > 0) {
+    throw new Error(
+      `Provisioning requirements for ${bundleIdentifier} contain unclassified target entitlements: ${requirements.unclassified.join(", ")}. ` +
+        "Add an explicit ASC-supported or profile-managed policy before minting.",
+    );
+  }
+  const missing = Object.entries(required ?? {})
+    .filter(([key, value]) => !entitlementValueCovered(value, granted?.[key]))
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    const guidance = requirements.profileValidatedManaged
+      .filter((row) => missing.includes(row.key))
+      .map((row) => `${row.key}: ${row.guidance}`)
+      .join("; ");
+    throw new Error(
+      `Provisioning profile for ${bundleIdentifier} does not grant target entitlements: ${missing.join(", ")}. ` +
+        `${guidance || "Reconcile the Bundle ID capabilities in App Store Connect before deploying."}`,
+    );
+  }
+}
+
+export function decodeMobileProvision(file) {
+  const xml = execFileSync("security", ["cms", "-D", "-i", file], {
+    encoding: "utf8",
+  });
+  return parsePlist(xml);
+}
+
 /**
  * Keep development profile names stable per bundle+device without embedding the
  * full UDID in ASC-visible names.
@@ -353,7 +496,10 @@ export function writeProfile(profileData, dir = profilesDir()) {
  * each `CFBundleIdentifier` (`plutil`, macOS). `runPlutil` is injectable for
  * tests; the default shells out to `plutil`.
  */
-export function discoverAppBundleIds(productAppDir, { runPlutil } = {}) {
+export function discoverAppBundleIds(
+  productAppDir,
+  { runPlutil, readTargetEntitlements } = {},
+) {
   const read =
     runPlutil ||
     ((plistPath) =>
@@ -362,10 +508,49 @@ export function discoverAppBundleIds(productAppDir, { runPlutil } = {}) {
         ["-extract", "CFBundleIdentifier", "raw", "-o", "-", plistPath],
         { encoding: "utf8" },
       ).trim());
+  const entitlementsRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "app-core",
+    "platforms",
+    "ios",
+    "App",
+    "App",
+  );
+  const readEntitlements =
+    readTargetEntitlements ??
+    ((targetName) => {
+      const source =
+        targetName === "App"
+          ? path.join(entitlementsRoot, "App.entitlements")
+          : path.join(
+              entitlementsRoot,
+              targetName,
+              `${targetName}.entitlements`,
+            );
+      if (!fs.existsSync(source)) {
+        throw new Error(
+          `No maintained entitlement source found for iOS target ${targetName}: ${source}`,
+        );
+      }
+      const xml = execFileSync(
+        "plutil",
+        ["-convert", "xml1", "-o", "-", source],
+        {
+          encoding: "utf8",
+        },
+      );
+      return parsePlist(xml);
+    });
   const out = [];
   const appPlist = path.join(productAppDir, "Info.plist");
   if (fs.existsSync(appPlist)) {
-    out.push({ identifier: read(appPlist), name: "App" });
+    out.push({
+      identifier: read(appPlist),
+      name: "App",
+      entitlements: readEntitlements("App"),
+    });
   }
   const plugIns = path.join(productAppDir, "PlugIns");
   if (fs.existsSync(plugIns)) {
@@ -376,6 +561,7 @@ export function discoverAppBundleIds(productAppDir, { runPlutil } = {}) {
         out.push({
           identifier: read(plist),
           name: appex.replace(/\.appex$/, ""),
+          entitlements: readEntitlements(appex.replace(/\.appex$/, "")),
         });
       }
     }
@@ -414,6 +600,7 @@ export async function provision({
   fetchImpl = fetch,
   dir = profilesDir(),
   now,
+  decodeProfile = decodeMobileProvision,
 }) {
   if (!udid) throw new Error("provision: a device UDID is required.");
   validateBundleIds(bundleIds);
@@ -427,6 +614,10 @@ export async function provision({
       identifier: bid.identifier,
       name: bid.name,
     });
+    await reconcileBundleCapabilities(asc, {
+      bundleIdRef: bundle.id,
+      entitlements: bid.entitlements ?? {},
+    });
     const profileName = developmentProfileName(bid.identifier, device.id);
     const profile = await mintDevelopmentProfile(asc, {
       name: profileName,
@@ -435,6 +626,12 @@ export async function provision({
       certificateIds,
     });
     const file = writeProfile(profile, dir);
+    const decoded = decodeProfile(file);
+    validateProvisioningEntitlements(
+      bid.entitlements ?? {},
+      decoded?.Entitlements ?? {},
+      bid.identifier,
+    );
     results.push({
       identifier: bid.identifier,
       bundleCreated: bundle.created,
