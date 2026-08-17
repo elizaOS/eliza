@@ -17,6 +17,7 @@ import {
   detectCheckSurfaces,
   mineCandidatePaths,
   probeMappedUrls,
+  readFsVerifiedContents,
 } from "../services/quick-app-evidence.js";
 
 describe("mineCandidatePaths", () => {
@@ -153,5 +154,46 @@ describe("detectCheckSurfaces (dawn-mesa boundary)", () => {
     );
     expect(surfaces.test).toBe(true);
     expect(surfaces.typecheck).toBe(false);
+  });
+});
+
+describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
+  it("reads real file text with caps, skipping binaries and traversal", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "content-"));
+    try {
+      const appDir = path.join(workdir, "data", "apps", "reed-marsh");
+      fs.mkdirSync(appDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(appDir, "style.css"),
+        "body { background: linear-gradient(#3aa8a0, #0f2f2c); }",
+      );
+      fs.writeFileSync(path.join(appDir, "big.css"), "x".repeat(5000));
+      fs.writeFileSync(path.join(appDir, "img.png"), "notreally");
+
+      const contents = readFsVerifiedContents(workdir, [
+        "data/apps/reed-marsh/style.css",
+        "data/apps/reed-marsh/big.css",
+        "data/apps/reed-marsh/img.png",
+        "../outside.css",
+      ]);
+      expect(contents.map((c) => c.path)).toEqual([
+        "data/apps/reed-marsh/style.css",
+        "data/apps/reed-marsh/big.css",
+      ]);
+      expect(contents[0]?.content).toContain("linear-gradient(#3aa8a0");
+      expect(contents[1]?.content).toContain("[truncated]");
+      expect(contents[1]?.content.length).toBeLessThan(2100);
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("unreadable files are absent, never fabricated", () => {
+    const contents = readFsVerifiedContents(
+      "/nonexistent-root",
+      ["a.css"],
+      () => undefined,
+    );
+    expect(contents).toEqual([]);
   });
 });
