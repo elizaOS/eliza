@@ -11,9 +11,8 @@ import {
 	type EffectReceipt,
 	normalizeEffectReceipts,
 } from "../types/effects.ts";
-import { stableStringify } from "../utils/deterministic.ts";
 
-export const INTERACTION_CONTRACT_VERSION = 1 as const;
+export const INTERACTION_CONTRACT_VERSION = 2 as const;
 
 export const INTERACTION_CONTROL_PLANES = ["browser", "computer"] as const;
 export type InteractionControlPlane =
@@ -174,6 +173,29 @@ export interface InteractionSurfaceRef {
 	parentSurfaceId: string | null;
 }
 
+/** Proof that an owner explicitly granted one session access to an existing profile. */
+export interface InteractionProfileGrantRef {
+	grantId: string;
+	sessionId: string;
+	ownerId: string;
+	adapterId: string;
+	profileHandle: string;
+	issuedAt: string;
+	expiresAt: string;
+}
+
+export interface InteractionProfileGrantVerifier {
+	verify(
+		grant: InteractionProfileGrantRef,
+		context: {
+			sessionId: string;
+			ownerId: string;
+			adapterId: string;
+			now: number;
+		},
+	): boolean;
+}
+
 export interface InteractionSession {
 	contractVersion: typeof INTERACTION_CONTRACT_VERSION;
 	sessionId: string;
@@ -186,6 +208,7 @@ export interface InteractionSession {
 	createdAt: string;
 	updatedAt: string;
 	expiresAt: string | null;
+	profileGrant: InteractionProfileGrantRef | null;
 	surfaces: readonly InteractionSurfaceRef[];
 }
 
@@ -234,6 +257,61 @@ export interface InteractionRedaction {
 	reason: string;
 }
 
+export const INTERACTION_TRACE_EVENT_KINDS = [
+	"observation_captured",
+	"action_dispatched",
+	"action_completed",
+	"confirmation_requested",
+	"policy_blocked",
+	"lease_acquired",
+	"lease_released",
+	"redaction_applied",
+	"session_state_changed",
+] as const;
+export type InteractionTraceEventKind =
+	(typeof INTERACTION_TRACE_EVENT_KINDS)[number];
+
+export const INTERACTION_TRACE_REDACTION_REASONS = [
+	"policy",
+	"secure_input",
+	"credential",
+	"personal_data",
+	"user_redaction",
+] as const;
+export type InteractionTraceRedactionReason =
+	(typeof INTERACTION_TRACE_REDACTION_REASONS)[number];
+
+export type InteractionTraceAttribute =
+	| {
+			classification: "public";
+			name: string;
+			value: string | number | boolean | null;
+			opaqueToken: null;
+			reason: null;
+	  }
+	| {
+			classification: "personal_data" | "credential" | "secure_field";
+			name: string;
+			value: null;
+			opaqueToken: string | null;
+			reason: InteractionTraceRedactionReason;
+	  };
+
+/** Metadata-only trace record; sensitive values are structurally redacted. */
+export interface InteractionTraceEvent {
+	eventId: string;
+	sessionId: string;
+	adapterId: string;
+	surfaceId: string | null;
+	actionId: string | null;
+	observationId: string | null;
+	sequence: number;
+	occurredAt: string;
+	kind: InteractionTraceEventKind;
+	status: InteractionOutcomeStatus | null;
+	attributes: readonly InteractionTraceAttribute[];
+}
+
 export interface InteractionObservation {
 	contractVersion: typeof INTERACTION_CONTRACT_VERSION;
 	observationId: string;
@@ -247,6 +325,7 @@ export interface InteractionObservation {
 	viewport: InteractionRect | null;
 	cursor: InteractionPoint | null;
 	redactions: readonly InteractionRedaction[];
+	traceEvents: readonly InteractionTraceEvent[];
 }
 
 interface InteractionActionBase<K extends InteractionActionKind, P> {
@@ -260,6 +339,8 @@ interface InteractionActionBase<K extends InteractionActionKind, P> {
 	observationId: string | null;
 	observationSequence: number | null;
 	requestedAt: string;
+	confirmationGrant: InteractionConfirmationGrant | null;
+	leaseIds: readonly string[];
 }
 
 export type InteractionAction =
@@ -329,10 +410,30 @@ export interface InteractionConfirmationPreview {
 	expiresAt: string;
 }
 
-/** Return the canonical digest a confirmation preview must bind to. */
-export function interactionActionDigest(action: InteractionAction): string {
-	const digest = sha256(new TextEncoder().encode(stableStringify(action)));
-	return `sha256:${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+/** Host-issued proof that the exact previewed action was approved. */
+export interface InteractionConfirmationGrant {
+	confirmationId: string;
+	actionId: string;
+	actionDigest: string;
+	confirmedAt: string;
+	expiresAt: string;
+}
+
+export interface InteractionConfirmationGrantVerifier {
+	verify(
+		grant: InteractionConfirmationGrant,
+		action: InteractionAction,
+		now: number,
+	): boolean;
+}
+
+/** Atomically verify and consume a current grant, rejecting every replay. */
+export interface InteractionConfirmationGrantConsumer {
+	consume(
+		grant: InteractionConfirmationGrant,
+		action: InteractionAction,
+		now: number,
+	): Promise<void>;
 }
 
 export interface InteractionActionError {
@@ -348,20 +449,38 @@ export interface InteractionActionEvidence {
 	actualTarget: string | null;
 }
 
-export interface InteractionActionResult {
+interface InteractionActionResultBase {
 	contractVersion: typeof INTERACTION_CONTRACT_VERSION;
 	actionId: string;
 	sessionId: string;
 	adapterId: string;
-	status: InteractionOutcomeStatus;
 	startedAt: string;
 	completedAt: string;
-	error: InteractionActionError | null;
-	confirmation: InteractionConfirmationPreview | null;
 	evidence: InteractionActionEvidence;
 	effectReceipts: readonly EffectReceipt[];
 	observation: InteractionObservation | null;
+	traceEvents: readonly InteractionTraceEvent[];
 }
+
+export type InteractionActionResult =
+	| (InteractionActionResultBase & {
+			status: "SUCCEEDED";
+			error: null;
+			confirmation: null;
+	  })
+	| (InteractionActionResultBase & {
+			status: "NEEDS_CONFIRMATION";
+			error: null;
+			confirmation: InteractionConfirmationPreview;
+	  })
+	| (InteractionActionResultBase & {
+			status: Exclude<
+				InteractionOutcomeStatus,
+				"SUCCEEDED" | "NEEDS_CONFIRMATION"
+			>;
+			error: InteractionActionError;
+			confirmation: null;
+	  });
 
 export interface InteractionLease {
 	leaseId: string;
@@ -384,6 +503,18 @@ export interface AcquireInteractionLeaseRequest {
 	ttlMs: number;
 }
 
+export interface InteractionLeaseRequirement {
+	resourceKind: InteractionLeaseResourceKind;
+	resourceId: string;
+}
+
+const authorizedInteractionAction = Symbol("authorizedInteractionAction");
+
+/** An action that passed the host's atomic pre-dispatch authorization gate. */
+export type AuthorizedInteractionAction = InteractionAction & {
+	readonly [authorizedInteractionAction]: number;
+};
+
 export interface InteractionAdapter {
 	readonly id: string;
 	capabilities(): Promise<InteractionCapabilitySet>;
@@ -391,7 +522,9 @@ export interface InteractionAdapter {
 		session: InteractionSession,
 		surface: InteractionSurfaceRef,
 	): Promise<InteractionObservation>;
-	execute(action: InteractionAction): Promise<InteractionActionResult>;
+	execute(
+		action: AuthorizedInteractionAction,
+	): Promise<InteractionActionResult>;
 }
 
 type Clock = () => number;
@@ -425,6 +558,21 @@ function nonEmptyString(
 		});
 	}
 	return value.trim();
+}
+
+/** Preserve user-controlled semantic text exactly, including whitespace. */
+function textString(
+	value: unknown,
+	field: string,
+	context: Record<string, unknown> = {},
+): string {
+	if (typeof value !== "string") {
+		return invalid(`Interaction field '${field}' must be a string.`, {
+			...context,
+			field,
+		});
+	}
+	return value;
 }
 
 function nullableString(
@@ -576,6 +724,64 @@ function stringArray(
 	return Object.freeze([...new Set(normalized)]);
 }
 
+function booleanValue(
+	value: unknown,
+	field: string,
+	context: Record<string, unknown> = {},
+): boolean {
+	if (typeof value !== "boolean") {
+		return invalid(`Interaction field '${field}' must be a boolean.`, {
+			...context,
+			field,
+		});
+	}
+	return value;
+}
+
+function sha256Digest(
+	value: unknown,
+	field: string,
+	context: Record<string, unknown> = {},
+): string {
+	const digest = nonEmptyString(value, field, context).toLowerCase();
+	if (!/^[0-9a-f]{64}$/.test(digest)) {
+		return invalid(`Interaction field '${field}' must be a SHA-256 digest.`, {
+			...context,
+			field,
+		});
+	}
+	return digest;
+}
+
+function stableJson(value: unknown): string {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "boolean"
+	) {
+		return JSON.stringify(value);
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return JSON.stringify(value);
+	}
+	if (Array.isArray(value)) {
+		return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
+	}
+	const record = asRecord(value);
+	if (!record)
+		return invalid("Interaction digest input is not canonical JSON.");
+	return `{${Object.keys(record)
+		.sort()
+		.map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+		.join(",")}}`;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
+}
+
 function normalizeRect(
 	value: unknown,
 	field: string,
@@ -630,6 +836,284 @@ export function normalizeInteractionSurfaceRef(
 			context,
 		),
 	});
+}
+
+function validClock(value: number, field = "now"): number {
+	if (!Number.isFinite(value) || Number.isNaN(new Date(value).getTime())) {
+		return invalid(`Interaction field '${field}' must be a valid timestamp.`, {
+			field,
+		});
+	}
+	return value;
+}
+
+function normalizeProfileGrant(value: unknown): InteractionProfileGrantRef {
+	const raw = asRecord(value);
+	if (!raw) return invalid("Interaction profile grant must be an object.");
+	const grantId = nonEmptyString(raw.grantId, "profileGrant.grantId");
+	const context = { grantId };
+	const issuedAt = isoTimestamp(raw.issuedAt, "profileGrant.issuedAt", context);
+	const expiresAt = isoTimestamp(
+		raw.expiresAt,
+		"profileGrant.expiresAt",
+		context,
+	);
+	if (Date.parse(expiresAt) <= Date.parse(issuedAt)) {
+		return invalid(
+			"Interaction profile grant must expire after issuance.",
+			context,
+		);
+	}
+	return Object.freeze({
+		grantId,
+		sessionId: nonEmptyString(raw.sessionId, "profileGrant.sessionId", context),
+		ownerId: nonEmptyString(raw.ownerId, "profileGrant.ownerId", context),
+		adapterId: nonEmptyString(raw.adapterId, "profileGrant.adapterId", context),
+		profileHandle: nonEmptyString(
+			raw.profileHandle,
+			"profileGrant.profileHandle",
+			context,
+		),
+		issuedAt,
+		expiresAt,
+	});
+}
+
+export interface NormalizeInteractionSessionOptions {
+	capabilities: InteractionCapabilitySet;
+}
+
+/** Normalize stored or transported session state without requiring executability. */
+export function normalizeInteractionSession(
+	value: unknown,
+	options: NormalizeInteractionSessionOptions,
+): InteractionSession {
+	const raw = asRecord(value);
+	if (!raw) return invalid("Interaction session must be an object.");
+	if (raw.contractVersion !== INTERACTION_CONTRACT_VERSION) {
+		return invalid("Unsupported interaction contract version.", {
+			contractVersion: raw.contractVersion,
+		});
+	}
+	const capabilities = normalizeInteractionCapabilitySet(options.capabilities);
+	const sessionId = nonEmptyString(raw.sessionId, "sessionId");
+	const ownerId = nonEmptyString(raw.ownerId, "ownerId", { sessionId });
+	const adapterId = nonEmptyString(raw.adapterId, "adapterId", { sessionId });
+	if (adapterId !== capabilities.adapterId) {
+		return invalid(
+			"Interaction session adapter is not the advertised adapter.",
+			{
+				sessionId,
+				adapterId,
+				capabilityAdapterId: capabilities.adapterId,
+			},
+		);
+	}
+	const generation = nonNegativeInteger(raw.generation, "generation", {
+		sessionId,
+	});
+	const state = enumValue(raw.state, "state", INTERACTION_SESSION_STATES, {
+		sessionId,
+	});
+	const profileMode = enumValue(
+		raw.profileMode,
+		"profileMode",
+		INTERACTION_PROFILE_MODES,
+		{ sessionId },
+	);
+	if (!capabilities.profileAccess.modes.includes(profileMode)) {
+		return invalid("Interaction session profile mode was not advertised.", {
+			sessionId,
+			profileMode,
+		});
+	}
+	const createdAt = isoTimestamp(raw.createdAt, "createdAt", { sessionId });
+	const updatedAt = isoTimestamp(raw.updatedAt, "updatedAt", { sessionId });
+	if (Date.parse(updatedAt) < Date.parse(createdAt)) {
+		return invalid("Interaction session was updated before creation.", {
+			sessionId,
+		});
+	}
+	const expiresAt =
+		raw.expiresAt === null
+			? null
+			: isoTimestamp(raw.expiresAt, "expiresAt", { sessionId });
+	if (
+		expiresAt &&
+		(Date.parse(expiresAt) <= Date.parse(createdAt) ||
+			Date.parse(expiresAt) < Date.parse(updatedAt))
+	) {
+		return invalid("Interaction session expiry precedes its lifecycle.", {
+			sessionId,
+			expiresAt,
+		});
+	}
+	if (!Array.isArray(raw.surfaces) || raw.surfaces.length === 0) {
+		return invalid("Interaction session requires at least one surface.", {
+			sessionId,
+		});
+	}
+	const seenSurfaceIds = new Set<string>();
+	const surfaces = raw.surfaces.map((entry) => {
+		const surface = normalizeInteractionSurfaceRef(entry);
+		if (
+			surface.sessionId !== sessionId ||
+			surface.adapterId !== adapterId ||
+			surface.generation !== generation
+		) {
+			return invalid(
+				"Interaction session contains a foreign or stale surface.",
+				{
+					sessionId,
+					surfaceId: surface.surfaceId,
+				},
+			);
+		}
+		if (!capabilities.surfaceKinds.includes(surface.kind)) {
+			return invalid("Interaction surface kind was not advertised.", {
+				sessionId,
+				surfaceId: surface.surfaceId,
+				kind: surface.kind,
+			});
+		}
+		if (seenSurfaceIds.has(surface.surfaceId)) {
+			return invalid("Interaction session surface IDs must be unique.", {
+				sessionId,
+				surfaceId: surface.surfaceId,
+			});
+		}
+		seenSurfaceIds.add(surface.surfaceId);
+		return surface;
+	});
+	for (const candidate of surfaces) {
+		if (
+			candidate.parentSurfaceId !== null &&
+			(candidate.parentSurfaceId === candidate.surfaceId ||
+				!seenSurfaceIds.has(candidate.parentSurfaceId))
+		) {
+			return invalid("Interaction surface parent is not in the session.", {
+				sessionId,
+				surfaceId: candidate.surfaceId,
+				parentSurfaceId: candidate.parentSurfaceId,
+			});
+		}
+	}
+	const parentBySurfaceId = new Map(
+		surfaces.map((candidate) => [
+			candidate.surfaceId,
+			candidate.parentSurfaceId,
+		]),
+	);
+	for (const candidate of surfaces) {
+		const visited = new Set<string>([candidate.surfaceId]);
+		let parent = candidate.parentSurfaceId;
+		while (parent !== null) {
+			if (visited.has(parent)) {
+				return invalid("Interaction surface hierarchy contains a cycle.", {
+					sessionId,
+					surfaceId: candidate.surfaceId,
+				});
+			}
+			visited.add(parent);
+			parent = parentBySurfaceId.get(parent) ?? null;
+		}
+	}
+	const profileGrant =
+		raw.profileGrant === null ? null : normalizeProfileGrant(raw.profileGrant);
+	if (profileMode === "existing_explicit") {
+		if (!capabilities.profileAccess.requiresExplicitGrant) {
+			return invalid("Existing-profile sessions require explicit grants.", {
+				sessionId,
+			});
+		}
+		if (
+			!profileGrant ||
+			profileGrant.sessionId !== sessionId ||
+			profileGrant.ownerId !== ownerId ||
+			profileGrant.adapterId !== adapterId ||
+			(expiresAt !== null &&
+				Date.parse(expiresAt) > Date.parse(profileGrant.expiresAt))
+		) {
+			return invalid("Existing-profile session grant is missing or invalid.", {
+				sessionId,
+			});
+		}
+	} else if (profileGrant) {
+		return invalid(
+			"Only existing-profile sessions may carry a profile grant.",
+			{
+				sessionId,
+				profileMode,
+			},
+		);
+	}
+	return Object.freeze({
+		contractVersion: INTERACTION_CONTRACT_VERSION,
+		sessionId,
+		ownerId,
+		adapterId,
+		state,
+		isolationMode: enumValue(
+			raw.isolationMode,
+			"isolationMode",
+			INTERACTION_ISOLATION_MODES,
+			{ sessionId },
+		),
+		profileMode,
+		generation,
+		createdAt,
+		updatedAt,
+		expiresAt,
+		profileGrant,
+		surfaces: Object.freeze(surfaces),
+	});
+}
+
+export interface AssertInteractionSessionExecutableOptions
+	extends NormalizeInteractionSessionOptions {
+	now?: number;
+	profileGrantVerifier?: InteractionProfileGrantVerifier;
+}
+
+/** Require a normalized session to be live and authorized for execution. */
+export function assertInteractionSessionExecutable(
+	value: unknown,
+	options: AssertInteractionSessionExecutableOptions,
+): InteractionSession {
+	const session = normalizeInteractionSession(value, options);
+	const now = validClock(options.now ?? Date.now());
+	if (session.state !== "ready" && session.state !== "running") {
+		return invalid("Interaction session is not executable.", {
+			sessionId: session.sessionId,
+			state: session.state,
+		});
+	}
+	if (session.expiresAt && Date.parse(session.expiresAt) <= now) {
+		return invalid("Interaction session is expired.", {
+			sessionId: session.sessionId,
+			expiresAt: session.expiresAt,
+		});
+	}
+	if (session.profileMode === "existing_explicit") {
+		const grant = session.profileGrant;
+		if (
+			!grant ||
+			Date.parse(grant.issuedAt) > now ||
+			Date.parse(grant.expiresAt) <= now ||
+			!options.profileGrantVerifier?.verify(grant, {
+				sessionId: session.sessionId,
+				ownerId: session.ownerId,
+				adapterId: session.adapterId,
+				now,
+			})
+		) {
+			return invalid(
+				"Existing-profile session grant is not current and host-verified.",
+				{ sessionId: session.sessionId, grantId: grant?.grantId },
+			);
+		}
+	}
+	return session;
 }
 
 export function normalizeInteractionCapabilitySet(
@@ -806,6 +1290,555 @@ export function normalizeInteractionCapabilitySet(
 	});
 }
 
+function normalizeConfirmationGrant(
+	value: unknown,
+): InteractionConfirmationGrant {
+	const raw = asRecord(value);
+	if (!raw) return invalid("Interaction confirmation grant must be an object.");
+	const confirmationId = nonEmptyString(
+		raw.confirmationId,
+		"confirmationGrant.confirmationId",
+	);
+	const context = { confirmationId };
+	const confirmedAt = isoTimestamp(
+		raw.confirmedAt,
+		"confirmationGrant.confirmedAt",
+		context,
+	);
+	const expiresAt = isoTimestamp(
+		raw.expiresAt,
+		"confirmationGrant.expiresAt",
+		context,
+	);
+	if (Date.parse(expiresAt) <= Date.parse(confirmedAt)) {
+		return invalid(
+			"Interaction confirmation grant must expire after approval.",
+			{
+				confirmationId,
+			},
+		);
+	}
+	return Object.freeze({
+		confirmationId,
+		actionId: nonEmptyString(
+			raw.actionId,
+			"confirmationGrant.actionId",
+			context,
+		),
+		actionDigest: sha256Digest(
+			raw.actionDigest,
+			"confirmationGrant.actionDigest",
+			context,
+		),
+		confirmedAt,
+		expiresAt,
+	});
+}
+
+function nullablePoint(value: unknown, field: string): InteractionPoint | null {
+	return value === null ? null : normalizePoint(value, field);
+}
+
+function normalizeActionPayload(
+	kind: InteractionActionKind,
+	value: unknown,
+): InteractionAction["payload"] {
+	const raw = asRecord(value);
+	if (!raw)
+		return invalid("Interaction action payload must be an object.", { kind });
+	switch (kind) {
+		case "observe":
+		case "close":
+		case "back":
+		case "forward":
+		case "reload":
+		case "close_tab":
+		case "get_clipboard":
+		case "stop_capture":
+			return Object.freeze({});
+		case "click":
+		case "double_click":
+		case "context_click":
+		case "hover": {
+			const elementId = nullableString(raw.elementId, "payload.elementId", {
+				kind,
+			});
+			const point = nullablePoint(raw.point, "payload.point");
+			if (elementId === null && point === null) {
+				return invalid(
+					"Interaction pointer action requires an explicit target.",
+					{
+						kind,
+					},
+				);
+			}
+			return Object.freeze({ elementId, point });
+		}
+		case "drag": {
+			const fromElementId = nullableString(
+				raw.fromElementId,
+				"payload.fromElementId",
+				{ kind },
+			);
+			const toElementId = nullableString(
+				raw.toElementId,
+				"payload.toElementId",
+				{ kind },
+			);
+			const from = nullablePoint(raw.from, "payload.from");
+			const to = nullablePoint(raw.to, "payload.to");
+			if (
+				(fromElementId === null && from === null) ||
+				(toElementId === null && to === null)
+			) {
+				return invalid(
+					"Interaction drag requires explicit source and destination targets.",
+					{ kind },
+				);
+			}
+			return Object.freeze({ fromElementId, toElementId, from, to });
+		}
+		case "scroll":
+			return Object.freeze({
+				deltaX: finiteNumber(raw.deltaX, "payload.deltaX", { kind }),
+				deltaY: finiteNumber(raw.deltaY, "payload.deltaY", { kind }),
+				elementId: nullableString(raw.elementId, "payload.elementId", { kind }),
+			});
+		case "type_text":
+		case "set_value":
+			return Object.freeze({
+				text: textString(raw.text, "payload.text", { kind }),
+				elementId: nullableString(raw.elementId, "payload.elementId", { kind }),
+				sensitive: booleanValue(raw.sensitive, "payload.sensitive", { kind }),
+			});
+		case "press_key":
+			return Object.freeze({
+				key: nonEmptyString(raw.key, "payload.key", { kind }),
+			});
+		case "select":
+			return Object.freeze({
+				elementId: nonEmptyString(raw.elementId, "payload.elementId", { kind }),
+				value: textString(raw.value, "payload.value", { kind }),
+			});
+		case "focus":
+			return Object.freeze({
+				elementId: nullableString(raw.elementId, "payload.elementId", { kind }),
+			});
+		case "navigate":
+		case "open":
+		case "create_tab":
+			return Object.freeze({
+				url: nonEmptyString(raw.url, "payload.url", { kind }),
+			});
+		case "evaluate":
+			return Object.freeze({
+				expression: textString(raw.expression, "payload.expression", {
+					kind,
+				}),
+			});
+		case "upload": {
+			const fileHandles = stringArray(raw.fileHandles, "payload.fileHandles", {
+				kind,
+			});
+			if (fileHandles.length === 0) {
+				return invalid(
+					"Interaction upload requires at least one file handle.",
+					{
+						kind,
+					},
+				);
+			}
+			return Object.freeze({
+				elementId: nonEmptyString(raw.elementId, "payload.elementId", { kind }),
+				fileHandles,
+			});
+		}
+		case "download": {
+			const elementId = nullableString(raw.elementId, "payload.elementId", {
+				kind,
+			});
+			const url = nullableString(raw.url, "payload.url", { kind });
+			if (elementId === null && url === null) {
+				return invalid("Interaction download requires an explicit target.", {
+					kind,
+				});
+			}
+			return Object.freeze({ elementId, url });
+		}
+		case "wait": {
+			const timeoutMs = nonNegativeInteger(raw.timeoutMs, "payload.timeoutMs", {
+				kind,
+			});
+			if (timeoutMs === 0)
+				return invalid("Interaction wait timeout must be positive.");
+			return Object.freeze({
+				condition: nonEmptyString(raw.condition, "payload.condition", { kind }),
+				timeoutMs,
+			});
+		}
+		case "switch_tab":
+			return Object.freeze({
+				tabId: nonEmptyString(raw.tabId, "payload.tabId", { kind }),
+			});
+		case "move_window":
+			return Object.freeze({
+				point: normalizePoint(raw.point, "payload.point"),
+			});
+		case "resize_window": {
+			const width = finiteNumber(raw.width, "payload.width", { kind });
+			const height = finiteNumber(raw.height, "payload.height", { kind });
+			if (width <= 0 || height <= 0) {
+				return invalid("Interaction window dimensions must be positive.", {
+					kind,
+				});
+			}
+			return Object.freeze({ width, height });
+		}
+		case "launch_app":
+		case "quit_app":
+			return Object.freeze({
+				applicationId: nonEmptyString(
+					raw.applicationId,
+					"payload.applicationId",
+					{ kind },
+				),
+			});
+		case "set_clipboard":
+			return Object.freeze({
+				text: textString(raw.text, "payload.text", { kind }),
+				sensitive: booleanValue(raw.sensitive, "payload.sensitive", { kind }),
+			});
+		case "request_permission":
+			return Object.freeze({
+				permission: nonEmptyString(raw.permission, "payload.permission", {
+					kind,
+				}),
+			});
+		case "start_capture": {
+			const framesPerSecond = finiteNumber(
+				raw.framesPerSecond,
+				"payload.framesPerSecond",
+				{ kind },
+			);
+			if (framesPerSecond <= 0 || framesPerSecond > 240) {
+				return invalid("Interaction capture frame rate must be in (0, 240].", {
+					kind,
+				});
+			}
+			return Object.freeze({
+				framesPerSecond,
+				includeAudio: booleanValue(raw.includeAudio, "payload.includeAudio", {
+					kind,
+				}),
+			});
+		}
+	}
+}
+
+export interface NormalizeInteractionActionOptions {
+	session: InteractionSession;
+	now?: number;
+	confirmationGrantVerifier?: InteractionConfirmationGrantVerifier;
+}
+
+/** Normalize one exact action and bind it to a current session surface. */
+export function normalizeInteractionAction(
+	value: unknown,
+	options: NormalizeInteractionActionOptions,
+): InteractionAction {
+	const raw = asRecord(value);
+	if (!raw) return invalid("Interaction action must be an object.");
+	if (raw.contractVersion !== INTERACTION_CONTRACT_VERSION) {
+		return invalid("Unsupported interaction contract version.", {
+			contractVersion: raw.contractVersion,
+		});
+	}
+	const actionId = nonEmptyString(raw.actionId, "actionId");
+	const context = { actionId };
+	const sessionId = nonEmptyString(raw.sessionId, "sessionId", context);
+	const adapterId = nonEmptyString(raw.adapterId, "adapterId", context);
+	if (
+		sessionId !== options.session.sessionId ||
+		adapterId !== options.session.adapterId
+	) {
+		return invalid(
+			"Interaction action belongs to another session or adapter.",
+			{
+				...context,
+				sessionId,
+				adapterId,
+			},
+		);
+	}
+	const surface = normalizeInteractionSurfaceRef(raw.surface);
+	assertInteractionSurfaceCurrent(options.session, surface);
+	const observationId = nullableString(
+		raw.observationId,
+		"observationId",
+		context,
+	);
+	const observationSequence =
+		raw.observationSequence === null
+			? null
+			: nonNegativeInteger(
+					raw.observationSequence,
+					"observationSequence",
+					context,
+				);
+	if ((observationId === null) !== (observationSequence === null)) {
+		return invalid(
+			"Interaction observation ID and sequence must both be present or absent.",
+			context,
+		);
+	}
+	const kind = enumValue(raw.kind, "kind", INTERACTION_ACTION_KINDS, context);
+	const action = Object.freeze({
+		contractVersion: INTERACTION_CONTRACT_VERSION,
+		actionId,
+		sessionId,
+		adapterId,
+		surface,
+		kind,
+		payload: normalizeActionPayload(kind, raw.payload),
+		observationId,
+		observationSequence,
+		requestedAt: isoTimestamp(raw.requestedAt, "requestedAt", context),
+		confirmationGrant:
+			raw.confirmationGrant === null
+				? null
+				: normalizeConfirmationGrant(raw.confirmationGrant),
+		leaseIds: stringArray(raw.leaseIds, "leaseIds", context),
+	}) as InteractionAction;
+	const normalizationNow = validClock(options.now ?? Date.now());
+	if (Date.parse(action.requestedAt) > normalizationNow) {
+		return invalid("Interaction action request is future-dated.", {
+			actionId: action.actionId,
+			requestedAt: action.requestedAt,
+		});
+	}
+	if (action.confirmationGrant) {
+		assertInteractionConfirmationCurrent(
+			action.confirmationGrant,
+			action,
+			normalizationNow,
+		);
+		if (
+			!options.confirmationGrantVerifier?.verify(
+				action.confirmationGrant,
+				action,
+				normalizationNow,
+			)
+		) {
+			throw new ElizaError(
+				"Interaction confirmation grant is missing, stale, or already consumed.",
+				{
+					code: "STALE_INTERACTION_CONFIRMATION",
+					context: { actionId: action.actionId },
+					severity: "ephemeral",
+				},
+			);
+		}
+	}
+	return action;
+}
+
+/** Digest the immutable semantic action, excluding ephemeral grants and leases. */
+export function computeInteractionActionDigest(
+	action: InteractionAction,
+): string {
+	const canonical = stableJson({
+		contractVersion: action.contractVersion,
+		actionId: action.actionId,
+		sessionId: action.sessionId,
+		adapterId: action.adapterId,
+		surface: action.surface,
+		kind: action.kind,
+		payload: action.payload,
+		observationId: action.observationId,
+		observationSequence: action.observationSequence,
+		requestedAt: action.requestedAt,
+	});
+	return bytesToHex(
+		sha256(
+			new TextEncoder().encode(`elizaos:interaction-action:v2\n${canonical}`),
+		),
+	);
+}
+
+/** Verify that a preview or grant authorizes this exact, unmodified action. */
+export function assertInteractionConfirmationCurrent(
+	confirmation: InteractionConfirmationPreview | InteractionConfirmationGrant,
+	action: InteractionAction,
+	now: number = Date.now(),
+): void {
+	validClock(now);
+	if (
+		confirmation.actionId !== action.actionId ||
+		confirmation.actionDigest !== computeInteractionActionDigest(action)
+	) {
+		throw new ElizaError(
+			"Interaction confirmation does not authorize this exact action.",
+			{
+				code: "INTERACTION_CONFIRMATION_MISMATCH",
+				context: {
+					actionId: action.actionId,
+					confirmationActionId: confirmation.actionId,
+				},
+				severity: "fatal",
+			},
+		);
+	}
+	if (Date.parse(confirmation.expiresAt) <= now) {
+		throw new ElizaError("Interaction confirmation is expired.", {
+			code: "STALE_INTERACTION_CONFIRMATION",
+			context: { actionId: action.actionId, expiresAt: confirmation.expiresAt },
+			severity: "ephemeral",
+		});
+	}
+	if (
+		"confirmedAt" in confirmation &&
+		(Date.parse(confirmation.confirmedAt) > now ||
+			Date.parse(confirmation.confirmedAt) < Date.parse(action.requestedAt))
+	) {
+		throw new ElizaError(
+			"Interaction confirmation grant chronology is invalid.",
+			{
+				code: "STALE_INTERACTION_CONFIRMATION",
+				context: {
+					actionId: action.actionId,
+					confirmedAt: confirmation.confirmedAt,
+				},
+				severity: "ephemeral",
+			},
+		);
+	}
+}
+
+interface StoredInteractionConfirmation {
+	preview: InteractionConfirmationPreview;
+	actionDigest: string;
+}
+
+/**
+ * In-memory confirmation issuer with consume-once replay protection. Distributed
+ * hosts persist the same preview/grant states behind this verifier contract.
+ */
+export class InteractionConfirmationCoordinator
+	implements
+		InteractionConfirmationGrantVerifier,
+		InteractionConfirmationGrantConsumer
+{
+	private readonly pending = new Map<string, StoredInteractionConfirmation>();
+	private readonly issued = new Map<string, InteractionConfirmationGrant>();
+
+	register(
+		previewValue: unknown,
+		action: InteractionAction,
+		now: number = Date.now(),
+	): InteractionConfirmationPreview {
+		const preview = normalizeInteractionConfirmationPreview(previewValue);
+		const trustedNow = validClock(now);
+		assertInteractionConfirmationCurrent(preview, action, trustedNow);
+		if (Date.parse(preview.requestedAt) > trustedNow) {
+			return invalid("Interaction confirmation preview is future-dated.", {
+				confirmationId: preview.confirmationId,
+			});
+		}
+		if (
+			this.pending.has(preview.confirmationId) ||
+			this.issued.has(preview.confirmationId)
+		) {
+			return invalid("Interaction confirmation ID is already registered.", {
+				confirmationId: preview.confirmationId,
+			});
+		}
+		this.pending.set(preview.confirmationId, {
+			preview,
+			actionDigest: computeInteractionActionDigest(action),
+		});
+		return preview;
+	}
+
+	issue(
+		confirmationId: string,
+		action: InteractionAction,
+		confirmedAt: string,
+		now: number = Date.now(),
+	): InteractionConfirmationGrant {
+		const trustedNow = validClock(now);
+		const id = nonEmptyString(confirmationId, "confirmationId");
+		const stored = this.pending.get(id);
+		if (!stored) {
+			return invalid("Interaction confirmation preview is not pending.", {
+				confirmationId: id,
+			});
+		}
+		assertInteractionConfirmationCurrent(stored.preview, action, trustedNow);
+		const normalizedConfirmedAt = isoTimestamp(confirmedAt, "confirmedAt", {
+			confirmationId: id,
+		});
+		if (
+			Date.parse(normalizedConfirmedAt) <
+				Date.parse(stored.preview.requestedAt) ||
+			Date.parse(normalizedConfirmedAt) > trustedNow
+		) {
+			return invalid("Interaction confirmation approval time is invalid.", {
+				confirmationId: id,
+			});
+		}
+		const grant = Object.freeze({
+			confirmationId: id,
+			actionId: action.actionId,
+			actionDigest: stored.actionDigest,
+			confirmedAt: normalizedConfirmedAt,
+			expiresAt: stored.preview.expiresAt,
+		});
+		this.pending.delete(id);
+		this.issued.set(id, grant);
+		return grant;
+	}
+
+	verify(
+		grant: InteractionConfirmationGrant,
+		action: InteractionAction,
+		now: number,
+	): boolean {
+		const issued = this.issued.get(grant.confirmationId);
+		return (
+			issued !== undefined &&
+			issued.confirmationId === grant.confirmationId &&
+			issued.actionId === grant.actionId &&
+			issued.actionDigest === grant.actionDigest &&
+			issued.confirmedAt === grant.confirmedAt &&
+			issued.expiresAt === grant.expiresAt &&
+			issued.actionId === action.actionId &&
+			issued.actionDigest === computeInteractionActionDigest(action) &&
+			Date.parse(issued.expiresAt) > validClock(now)
+		);
+	}
+
+	async consume(
+		grant: InteractionConfirmationGrant,
+		action: InteractionAction,
+		now: number = Date.now(),
+	): Promise<void> {
+		if (!this.verify(grant, action, now)) {
+			throw new ElizaError(
+				"Interaction confirmation grant is missing, stale, or already consumed.",
+				{
+					code: "STALE_INTERACTION_CONFIRMATION",
+					context: {
+						actionId: action.actionId,
+						confirmationId: grant.confirmationId,
+					},
+					severity: "ephemeral",
+				},
+			);
+		}
+		this.issued.delete(grant.confirmationId);
+	}
+}
+
 function normalizeArtifact(
 	value: unknown,
 	index: number,
@@ -868,8 +1901,204 @@ function normalizeRedaction(
 	});
 }
 
+interface TraceIdentity {
+	sessionId: string;
+	adapterId: string;
+	surfaceId?: string | null;
+	actionId?: string | null;
+	observationId?: string | null;
+}
+
+function normalizeTraceEvents(
+	value: unknown,
+	identity: TraceIdentity,
+): readonly InteractionTraceEvent[] {
+	if (!Array.isArray(value)) {
+		return invalid("Interaction traceEvents must be an array.");
+	}
+	const eventIds = new Set<string>();
+	let previousSequence = -1;
+	return Object.freeze(
+		value.map((entry, index) => {
+			const raw = asRecord(entry);
+			if (!raw)
+				return invalid("Interaction trace event must be an object.", { index });
+			const eventId = nonEmptyString(
+				raw.eventId,
+				`traceEvents[${index}].eventId`,
+			);
+			if (eventIds.has(eventId)) {
+				return invalid("Interaction trace event IDs must be unique.", {
+					eventId,
+				});
+			}
+			eventIds.add(eventId);
+			const sequence = nonNegativeInteger(
+				raw.sequence,
+				`traceEvents[${index}].sequence`,
+			);
+			if (sequence <= previousSequence) {
+				return invalid("Interaction trace event sequence must increase.", {
+					eventId,
+					sequence,
+				});
+			}
+			previousSequence = sequence;
+			const sessionId = nonEmptyString(
+				raw.sessionId,
+				`traceEvents[${index}].sessionId`,
+			);
+			const adapterId = nonEmptyString(
+				raw.adapterId,
+				`traceEvents[${index}].adapterId`,
+			);
+			const surfaceId = nullableString(
+				raw.surfaceId,
+				`traceEvents[${index}].surfaceId`,
+			);
+			const actionId = nullableString(
+				raw.actionId,
+				`traceEvents[${index}].actionId`,
+			);
+			const observationId = nullableString(
+				raw.observationId,
+				`traceEvents[${index}].observationId`,
+			);
+			if (
+				sessionId !== identity.sessionId ||
+				adapterId !== identity.adapterId ||
+				(identity.surfaceId !== undefined &&
+					surfaceId !== identity.surfaceId) ||
+				(identity.actionId !== undefined && actionId !== identity.actionId) ||
+				(identity.observationId !== undefined &&
+					observationId !== identity.observationId)
+			) {
+				return invalid("Interaction trace event identity mismatch.", {
+					eventId,
+				});
+			}
+			if (!Array.isArray(raw.attributes)) {
+				return invalid("Interaction trace attributes must be an array.", {
+					eventId,
+				});
+			}
+			const attributes = raw.attributes.map((attribute, attributeIndex) => {
+				const item = asRecord(attribute);
+				if (!item) {
+					return invalid("Interaction trace attribute must be an object.", {
+						eventId,
+						attributeIndex,
+					});
+				}
+				const classification = enumValue(
+					item.classification,
+					`traceEvents[${index}].attributes[${attributeIndex}].classification`,
+					["public", "personal_data", "credential", "secure_field"] as const,
+				);
+				const name = nonEmptyString(
+					item.name,
+					`traceEvents[${index}].attributes[${attributeIndex}].name`,
+				);
+				if (!/^[a-z][a-z0-9_.-]{0,63}$/.test(name)) {
+					return invalid(
+						"Interaction trace attribute name is not a safe key.",
+						{
+							eventId,
+							name,
+						},
+					);
+				}
+				if (classification === "public") {
+					if (
+						item.value !== null &&
+						typeof item.value !== "string" &&
+						typeof item.value !== "number" &&
+						typeof item.value !== "boolean"
+					) {
+						return invalid("Public trace attribute has an invalid value.", {
+							eventId,
+							name,
+						});
+					}
+					if (typeof item.value === "number" && !Number.isFinite(item.value)) {
+						return invalid("Public trace attribute number must be finite.", {
+							eventId,
+							name,
+						});
+					}
+					return Object.freeze({
+						classification,
+						name,
+						value: item.value as string | number | boolean | null,
+						opaqueToken: null,
+						reason: null,
+					});
+				}
+				if (item.value !== null) {
+					return invalid(
+						"Sensitive trace attributes cannot contain raw values.",
+						{
+							eventId,
+							name,
+						},
+					);
+				}
+				return Object.freeze({
+					classification,
+					name,
+					value: null,
+					opaqueToken:
+						item.opaqueToken === null
+							? null
+							: nonEmptyString(
+									item.opaqueToken,
+									`traceEvents[${index}].attributes[${attributeIndex}].opaqueToken`,
+								),
+					reason: enumValue(
+						item.reason,
+						`traceEvents[${index}].attributes[${attributeIndex}].reason`,
+						INTERACTION_TRACE_REDACTION_REASONS,
+					),
+				});
+			});
+			return Object.freeze({
+				eventId,
+				sessionId,
+				adapterId,
+				surfaceId,
+				actionId,
+				observationId,
+				sequence,
+				occurredAt: isoTimestamp(
+					raw.occurredAt,
+					`traceEvents[${index}].occurredAt`,
+				),
+				kind: enumValue(
+					raw.kind,
+					`traceEvents[${index}].kind`,
+					INTERACTION_TRACE_EVENT_KINDS,
+				),
+				status:
+					raw.status === null
+						? null
+						: enumValue(
+								raw.status,
+								`traceEvents[${index}].status`,
+								INTERACTION_OUTCOME_STATUSES,
+							),
+				attributes: Object.freeze(attributes),
+			});
+		}),
+	);
+}
+
+export interface NormalizeInteractionObservationOptions {
+	actionId?: string | null;
+}
+
 export function normalizeInteractionObservation(
 	value: unknown,
+	options: NormalizeInteractionObservationOptions = {},
 ): InteractionObservation {
 	const raw = asRecord(value);
 	if (!raw) return invalid("Interaction observation must be an object.");
@@ -895,6 +2124,48 @@ export function normalizeInteractionObservation(
 			context,
 		);
 	}
+	const channels = enumArray(
+		raw.channels,
+		"channels",
+		INTERACTION_OBSERVATION_CHANNELS,
+		context,
+	);
+	if (channels.length === 0) {
+		return invalid(
+			"Interaction observation requires at least one channel.",
+			context,
+		);
+	}
+	const artifacts = Object.freeze(
+		raw.artifacts.map((entry, index) => normalizeArtifact(entry, index)),
+	);
+	const artifactWithoutChannel = artifacts.find((artifact) => {
+		switch (artifact.kind) {
+			case "screenshot":
+			case "video":
+			case "ocr":
+				return !channels.includes(artifact.kind);
+			case "event_log":
+				return !channels.includes("browser_events");
+			case "semantic_tree":
+				return !channels.some((channel) =>
+					["dom", "browser_accessibility", "os_accessibility"].includes(
+						channel,
+					),
+				);
+			default:
+				return false;
+		}
+	});
+	if (artifactWithoutChannel) {
+		return invalid(
+			"Interaction artifact lacks its declared observation channel.",
+			{
+				...context,
+				artifactKind: artifactWithoutChannel.kind,
+			},
+		);
+	}
 	return Object.freeze({
 		contractVersion: INTERACTION_CONTRACT_VERSION,
 		observationId,
@@ -903,21 +2174,21 @@ export function normalizeInteractionObservation(
 		surface,
 		sequence: nonNegativeInteger(raw.sequence, "sequence", context),
 		observedAt: isoTimestamp(raw.observedAt, "observedAt", context),
-		channels: enumArray(
-			raw.channels,
-			"channels",
-			INTERACTION_OBSERVATION_CHANNELS,
-			context,
-		),
-		artifacts: Object.freeze(
-			raw.artifacts.map((entry, index) => normalizeArtifact(entry, index)),
-		),
+		channels,
+		artifacts,
 		viewport:
 			raw.viewport === null ? null : normalizeRect(raw.viewport, "viewport"),
 		cursor: raw.cursor === null ? null : normalizePoint(raw.cursor, "cursor"),
 		redactions: Object.freeze(
 			raw.redactions.map((entry, index) => normalizeRedaction(entry, index)),
 		),
+		traceEvents: normalizeTraceEvents(raw.traceEvents, {
+			sessionId,
+			adapterId,
+			surfaceId: surface.surfaceId,
+			observationId,
+			actionId: options.actionId,
+		}),
 	});
 }
 
@@ -936,17 +2207,6 @@ export function normalizeInteractionConfirmationPreview(
 			context,
 		);
 	}
-	const actionDigest = nonEmptyString(
-		raw.actionDigest,
-		"actionDigest",
-		context,
-	);
-	if (!/^sha256:[0-9a-f]{64}$/i.test(actionDigest)) {
-		return invalid(
-			"Interaction confirmation actionDigest must be a SHA-256 digest.",
-			context,
-		);
-	}
 	return Object.freeze({
 		confirmationId,
 		actionId: nonEmptyString(raw.actionId, "actionId", context),
@@ -955,15 +2215,22 @@ export function normalizeInteractionConfirmationPreview(
 		destination: nullableString(raw.destination, "destination", context),
 		disclosures: stringArray(raw.disclosures, "disclosures", context),
 		consequence: nonEmptyString(raw.consequence, "consequence", context),
-		actionDigest: actionDigest.toLowerCase(),
+		actionDigest: sha256Digest(raw.actionDigest, "actionDigest", context),
 		requestedAt,
 		expiresAt,
 	});
 }
 
+export interface NormalizeInteractionActionResultOptions {
+	action: AuthorizedInteractionAction;
+	session: InteractionSession;
+	capabilities: InteractionCapabilitySet;
+	now?: number;
+}
+
 export function normalizeInteractionActionResult(
 	value: unknown,
-	expectedAction: InteractionAction,
+	options: NormalizeInteractionActionResultOptions,
 ): InteractionActionResult {
 	const raw = asRecord(value);
 	if (!raw) return invalid("Interaction action result must be an object.");
@@ -974,6 +2241,12 @@ export function normalizeInteractionActionResult(
 	}
 	const actionId = nonEmptyString(raw.actionId, "actionId");
 	const context = { actionId };
+	if (actionId !== options.action.actionId) {
+		return invalid("Interaction result belongs to another action.", {
+			actionId,
+			expectedActionId: options.action.actionId,
+		});
+	}
 	const status = enumValue(
 		raw.status,
 		"status",
@@ -982,8 +2255,46 @@ export function normalizeInteractionActionResult(
 	);
 	const startedAt = isoTimestamp(raw.startedAt, "startedAt", context);
 	const completedAt = isoTimestamp(raw.completedAt, "completedAt", context);
+	const trustedNow = validClock(options.now ?? Date.now());
 	if (Date.parse(completedAt) < Date.parse(startedAt)) {
 		return invalid("Interaction action completed before it started.", context);
+	}
+	if (Date.parse(completedAt) > trustedNow) {
+		return invalid("Interaction action completion is in the future.", context);
+	}
+	const normalizedCapabilities = normalizeInteractionCapabilitySet(
+		options.capabilities,
+	);
+	const normalizedSession = normalizeInteractionSession(options.session, {
+		capabilities: normalizedCapabilities,
+	});
+	const normalizedAction = options.action;
+	const authorizedAt = normalizedAction[authorizedInteractionAction];
+	if (!Number.isSafeInteger(authorizedAt)) {
+		return invalid(
+			"Interaction result action did not pass pre-dispatch authorization.",
+			context,
+		);
+	}
+	if (
+		Date.parse(normalizedAction.requestedAt) <
+			Date.parse(normalizedSession.createdAt) ||
+		Date.parse(normalizedAction.requestedAt) > Date.parse(startedAt) ||
+		Date.parse(startedAt) < authorizedAt
+	) {
+		return invalid("Interaction action chronology is invalid.", context);
+	}
+	const actionAdvertised = normalizedCapabilities.actionKinds.includes(
+		normalizedAction.kind,
+	);
+	if (!actionAdvertised && status !== "UNSUPPORTED") {
+		return invalid(
+			"Unadvertised interaction actions must return UNSUPPORTED.",
+			{
+				...context,
+				actionKind: normalizedAction.kind,
+			},
+		);
 	}
 	const errorRaw = raw.error === null ? null : asRecord(raw.error);
 	if (raw.error !== null && !errorRaw) {
@@ -1021,32 +2332,6 @@ export function normalizeInteractionActionResult(
 			context,
 		);
 	}
-	if (confirmation && confirmation.actionId !== actionId) {
-		return invalid(
-			"Interaction confirmation must authorize the result action.",
-			context,
-		);
-	}
-	if (
-		confirmation &&
-		(Date.parse(confirmation.requestedAt) < Date.parse(startedAt) ||
-			Date.parse(confirmation.requestedAt) > Date.parse(completedAt) ||
-			Date.parse(confirmation.expiresAt) <= Date.parse(completedAt))
-	) {
-		return invalid(
-			"Interaction confirmation must be requested during execution and remain unexpired after the result.",
-			context,
-		);
-	}
-	if (
-		confirmation &&
-		confirmation.actionDigest !== interactionActionDigest(expectedAction)
-	) {
-		return invalid(
-			"Interaction confirmation does not authorize the exact requested action.",
-			context,
-		);
-	}
 	if (status === "NEEDS_CONFIRMATION" && error) {
 		return invalid(
 			"NEEDS_CONFIRMATION results cannot also carry an execution error.",
@@ -1071,6 +2356,26 @@ export function normalizeInteractionActionResult(
 			context,
 		);
 	}
+	if (confirmation) {
+		if (Date.parse(confirmation.requestedAt) > Date.parse(completedAt)) {
+			return invalid(
+				"Interaction confirmation was requested after action completion.",
+				context,
+			);
+		}
+		assertInteractionConfirmationCurrent(
+			confirmation,
+			normalizedAction,
+			trustedNow,
+		);
+	}
+	if (normalizedAction.confirmationGrant) {
+		assertInteractionConfirmationCurrent(
+			normalizedAction.confirmationGrant,
+			normalizedAction,
+			trustedNow,
+		);
+	}
 	const evidenceRaw = asRecord(raw.evidence);
 	if (!evidenceRaw) {
 		return invalid("Interaction action evidence must be an object.", context);
@@ -1078,67 +2383,118 @@ export function normalizeInteractionActionResult(
 	const observation =
 		raw.observation === null
 			? null
-			: normalizeInteractionObservation(raw.observation);
+			: normalizeInteractionObservation(raw.observation, { actionId });
 	const sessionId = nonEmptyString(raw.sessionId, "sessionId", context);
 	const adapterId = nonEmptyString(raw.adapterId, "adapterId", context);
 	if (
+		sessionId !== normalizedSession.sessionId ||
+		adapterId !== normalizedSession.adapterId ||
+		normalizedAction.sessionId !== sessionId ||
+		normalizedAction.adapterId !== adapterId
+	) {
+		return invalid("Interaction result session or adapter identity mismatch.", {
+			...context,
+			sessionId,
+			adapterId,
+		});
+	}
+	if (
 		observation &&
-		(observation.sessionId !== sessionId || observation.adapterId !== adapterId)
+		(observation.sessionId !== sessionId ||
+			observation.adapterId !== adapterId ||
+			observation.surface.surfaceId !== normalizedAction.surface.surfaceId ||
+			observation.surface.kind !== normalizedAction.surface.kind ||
+			observation.surface.parentSurfaceId !==
+				normalizedAction.surface.parentSurfaceId ||
+			observation.surface.generation !== normalizedAction.surface.generation)
 	) {
 		return invalid(
 			"Interaction result observation belongs to another session or adapter.",
 			context,
 		);
 	}
-	if (
-		observation &&
-		nullableString(
-			evidenceRaw.afterObservationId,
-			"evidence.afterObservationId",
-			context,
-		) !== observation.observationId
-	) {
+	const unadvertisedResultChannel = observation?.channels.find(
+		(channel) => !normalizedCapabilities.observationChannels.includes(channel),
+	);
+	if (unadvertisedResultChannel) {
 		return invalid(
-			"Interaction result evidence must identify its attached observation.",
-			context,
+			"Interaction result observation used an unadvertised channel.",
+			{ ...context, channel: unadvertisedResultChannel },
 		);
 	}
 	const effectReceipts = normalizeEffectReceipts(raw.effectReceipts);
-	const hasCommittedEffect = effectReceipts.some(
-		(receipt) =>
-			receipt.outcome === "applied" ||
-			(receipt.outcome === "noop" && receipt.idempotency.replayed),
-	);
-	if (status !== "SUCCEEDED" && hasCommittedEffect) {
+	const invalidReceipt = effectReceipts.find((receipt) => {
+		switch (status) {
+			case "SUCCEEDED":
+				return receipt.outcome !== "applied" && receipt.outcome !== "noop";
+			case "NEEDS_CONFIRMATION":
+				return receipt.outcome !== "preview";
+			case "UNCERTAIN_EFFECT":
+				return (
+					receipt.outcome !== "failed" ||
+					receipt.failure.acceptance !== "unknown"
+				);
+			case "FAILED_NO_EFFECT":
+				return (
+					(receipt.outcome === "failed" &&
+						receipt.failure.acceptance !== "rejected") ||
+					(receipt.outcome !== "failed" &&
+						(receipt.outcome !== "noop" || receipt.idempotency.replayed))
+				);
+			default:
+				return true;
+		}
+	});
+	if (invalidReceipt) {
 		return invalid(
-			`Interaction result '${status}' cannot carry committed mutation proof.`,
+			"Interaction result status contradicts its effect receipt.",
+			{
+				...context,
+				status,
+				receiptId: invalidReceipt.receiptId,
+				receiptOutcome: invalidReceipt.outcome,
+			},
+		);
+	}
+	const evidence = Object.freeze({
+		beforeObservationId: nullableString(
+			evidenceRaw.beforeObservationId,
+			"evidence.beforeObservationId",
+			context,
+		),
+		afterObservationId: nullableString(
+			evidenceRaw.afterObservationId,
+			"evidence.afterObservationId",
+			context,
+		),
+		adapterTraceId: nullableString(
+			evidenceRaw.adapterTraceId,
+			"evidence.adapterTraceId",
+			context,
+		),
+		actualTarget: nullableString(
+			evidenceRaw.actualTarget,
+			"evidence.actualTarget",
+			context,
+		),
+	});
+	if (evidence.beforeObservationId !== normalizedAction.observationId) {
+		return invalid(
+			"Interaction result before-observation evidence does not match its action.",
 			context,
 		);
 	}
 	if (
-		actionId !== expectedAction.actionId ||
-		sessionId !== expectedAction.sessionId ||
-		adapterId !== expectedAction.adapterId
+		(observation === null) !== (evidence.afterObservationId === null) ||
+		(observation !== null &&
+			evidence.afterObservationId !== observation.observationId)
 	) {
 		return invalid(
-			"Interaction result does not belong to the requested action.",
+			"Interaction result observation must match its after-observation evidence.",
 			context,
 		);
 	}
-	if (
-		observation &&
-		(observation.surface.surfaceId !== expectedAction.surface.surfaceId ||
-			observation.surface.kind !== expectedAction.surface.kind ||
-			observation.surface.generation !== expectedAction.surface.generation ||
-			observation.surface.parentSurfaceId !==
-				expectedAction.surface.parentSurfaceId)
-	) {
-		return invalid(
-			"Interaction result observation escaped the requested action surface.",
-			context,
-		);
-	}
-	return Object.freeze({
+	const result = Object.freeze({
 		contractVersion: INTERACTION_CONTRACT_VERSION,
 		actionId,
 		sessionId,
@@ -1148,31 +2504,17 @@ export function normalizeInteractionActionResult(
 		completedAt,
 		error,
 		confirmation,
-		evidence: Object.freeze({
-			beforeObservationId: nullableString(
-				evidenceRaw.beforeObservationId,
-				"evidence.beforeObservationId",
-				context,
-			),
-			afterObservationId: nullableString(
-				evidenceRaw.afterObservationId,
-				"evidence.afterObservationId",
-				context,
-			),
-			adapterTraceId: nullableString(
-				evidenceRaw.adapterTraceId,
-				"evidence.adapterTraceId",
-				context,
-			),
-			actualTarget: nullableString(
-				evidenceRaw.actualTarget,
-				"evidence.actualTarget",
-				context,
-			),
-		}),
+		evidence,
 		effectReceipts,
 		observation,
+		traceEvents: normalizeTraceEvents(raw.traceEvents, {
+			sessionId,
+			adapterId,
+			surfaceId: normalizedAction.surface.surfaceId,
+			actionId,
+		}),
 	});
+	return result as InteractionActionResult;
 }
 
 /** Assert that a surface reference is current for one exact session. */
@@ -1239,76 +2581,185 @@ export function assertInteractionSurfaceCurrent(
  */
 export class InteractionLeaseCoordinator {
 	private readonly leases = new Map<string, InteractionLease>();
+	private readonly resourceKeyByLeaseId = new Map<string, string>();
+	static readonly MAX_TTL_MS = 60_000;
 
 	constructor(private readonly clock: Clock = Date.now) {}
 
 	acquire(request: AcquireInteractionLeaseRequest): InteractionLease {
-		const now = this.clock();
-		if (!Number.isFinite(now)) {
-			return invalid("Interaction lease clock must return a finite timestamp.");
-		}
-		if (!Number.isInteger(request.generation) || request.generation < 0) {
-			return invalid("Interaction lease generation must be non-negative.");
-		}
-		if (!Number.isFinite(request.ttlMs) || request.ttlMs <= 0) {
-			return invalid("Interaction lease ttlMs must be positive.");
-		}
-		const expiresAt = now + request.ttlMs;
-		if (!Number.isFinite(expiresAt) || expiresAt > 8.64e15) {
+		const now = validClock(this.clock(), "clock");
+		if (!Number.isSafeInteger(request.generation) || request.generation < 0) {
 			return invalid(
-				"Interaction lease expiry exceeds the supported date range.",
+				"Interaction lease generation must be a non-negative safe integer.",
 			);
 		}
-		for (const field of [
-			"leaseId",
-			"sessionId",
-			"ownerId",
-			"resourceId",
-		] as const) {
-			nonEmptyString(request[field], field);
+		if (
+			!Number.isSafeInteger(request.ttlMs) ||
+			request.ttlMs <= 0 ||
+			request.ttlMs > InteractionLeaseCoordinator.MAX_TTL_MS
+		) {
+			return invalid(
+				`Interaction lease ttlMs must be a positive safe integer no greater than ${InteractionLeaseCoordinator.MAX_TTL_MS}.`,
+			);
 		}
-		enumValue(
+		const leaseId = nonEmptyString(request.leaseId, "leaseId");
+		const sessionId = nonEmptyString(request.sessionId, "sessionId");
+		const ownerId = nonEmptyString(request.ownerId, "ownerId");
+		const resourceId = nonEmptyString(request.resourceId, "resourceId");
+		const resourceKind = enumValue(
 			request.resourceKind,
 			"resourceKind",
 			INTERACTION_LEASE_RESOURCE_KINDS,
 		);
-		const key = this.key(request.resourceKind, request.resourceId);
+		const key = this.key(resourceKind, resourceId);
+		const priorKey = this.resourceKeyByLeaseId.get(leaseId);
+		const priorLease = priorKey ? this.currentAt(priorKey, now) : null;
+		if (priorLease && priorKey !== key) {
+			throw new ElizaError("Interaction lease ID is already bound elsewhere.", {
+				code: "INTERACTION_LEASE_CONFLICT",
+				context: { leaseId, resourceKind, resourceId },
+				severity: "ephemeral",
+			});
+		}
 		const existing = this.currentAt(key, now);
-		if (
-			existing &&
-			(existing.sessionId !== request.sessionId ||
-				existing.ownerId !== request.ownerId ||
-				existing.generation !== request.generation)
-		) {
+		if (existing) {
+			if (
+				existing.leaseId === leaseId &&
+				existing.sessionId === sessionId &&
+				existing.ownerId === ownerId &&
+				existing.generation === request.generation
+			) {
+				return existing;
+			}
 			throw new ElizaError("Interaction resource is leased by another owner.", {
 				code: "INTERACTION_LEASE_CONFLICT",
 				context: {
-					resourceKind: request.resourceKind,
-					resourceId: request.resourceId,
-					requestingSessionId: request.sessionId,
+					resourceKind,
+					resourceId,
+					requestingSessionId: sessionId,
 					holdingSessionId: existing.sessionId,
 					expiresAt: existing.expiresAt,
 				},
 				severity: "ephemeral",
 			});
 		}
+		const expiresAtMs = now + request.ttlMs;
+		validClock(expiresAtMs, "lease.expiresAt");
 		const lease = Object.freeze({
-			leaseId: request.leaseId,
-			sessionId: request.sessionId,
-			ownerId: request.ownerId,
-			resourceKind: request.resourceKind,
-			resourceId: request.resourceId,
+			leaseId,
+			sessionId,
+			ownerId,
+			resourceKind,
+			resourceId,
 			generation: request.generation,
 			acquiredAt: new Date(now).toISOString(),
-			expiresAt: new Date(expiresAt).toISOString(),
+			expiresAt: new Date(expiresAtMs).toISOString(),
 		});
 		this.leases.set(key, lease);
+		this.resourceKeyByLeaseId.set(leaseId, key);
 		return lease;
+	}
+
+	renew(lease: InteractionLease, ttlMs: number): InteractionLease {
+		const now = validClock(this.clock(), "clock");
+		const existing = this.heldAt(lease, now);
+		if (
+			!Number.isSafeInteger(ttlMs) ||
+			ttlMs <= 0 ||
+			ttlMs > InteractionLeaseCoordinator.MAX_TTL_MS
+		) {
+			return invalid(
+				"Interaction lease renewal ttlMs is outside the allowed range.",
+			);
+		}
+		const expiresAtMs = now + ttlMs;
+		validClock(expiresAtMs, "lease.expiresAt");
+		const renewed = Object.freeze({
+			...existing,
+			expiresAt: new Date(expiresAtMs).toISOString(),
+		});
+		this.leases.set(
+			this.key(existing.resourceKind, existing.resourceId),
+			renewed,
+		);
+		return renewed;
+	}
+
+	/** Resolve every action lease against live host-owned coordinator state. */
+	assertActionLeases(
+		action: InteractionAction,
+		session: InteractionSession,
+		requirements: readonly InteractionLeaseRequirement[],
+	): readonly InteractionLease[] {
+		if (
+			action.sessionId !== session.sessionId ||
+			action.adapterId !== session.adapterId ||
+			action.surface.generation !== session.generation
+		) {
+			throw new ElizaError("Interaction action lease context is stale.", {
+				code: "STALE_INTERACTION_LEASE",
+				context: { actionId: action.actionId, sessionId: session.sessionId },
+				severity: "ephemeral",
+			});
+		}
+		const now = validClock(this.clock(), "clock");
+		const resolved = action.leaseIds.map((leaseId) => {
+			const key = this.resourceKeyByLeaseId.get(leaseId);
+			const lease = key ? this.currentAt(key, now) : null;
+			if (
+				!lease ||
+				lease.sessionId !== session.sessionId ||
+				lease.ownerId !== session.ownerId ||
+				lease.generation !== session.generation
+			) {
+				throw new ElizaError(
+					"Interaction action lease is missing or foreign.",
+					{
+						code: "INTERACTION_LEASE_CONFLICT",
+						context: { actionId: action.actionId, leaseId },
+						severity: "ephemeral",
+					},
+				);
+			}
+			return lease;
+		});
+		for (const requirement of requirements) {
+			const resourceId = nonEmptyString(
+				requirement.resourceId,
+				"requirement.resourceId",
+			);
+			const resourceKind = enumValue(
+				requirement.resourceKind,
+				"requirement.resourceKind",
+				INTERACTION_LEASE_RESOURCE_KINDS,
+			);
+			if (
+				!resolved.some(
+					(lease) =>
+						lease.resourceKind === resourceKind &&
+						lease.resourceId === resourceId,
+				)
+			) {
+				throw new ElizaError(
+					"Interaction action lacks a required resource lease.",
+					{
+						code: "INTERACTION_LEASE_CONFLICT",
+						context: {
+							actionId: action.actionId,
+							resourceKind,
+							resourceId,
+						},
+						severity: "ephemeral",
+					},
+				);
+			}
+		}
+		return Object.freeze(resolved);
 	}
 
 	release(lease: InteractionLease): boolean {
 		const key = this.key(lease.resourceKind, lease.resourceId);
-		const existing = this.currentAt(key, this.clock());
+		const existing = this.currentAt(key, validClock(this.clock(), "clock"));
 		if (!existing) return false;
 		if (
 			existing.leaseId !== lease.leaseId ||
@@ -1330,12 +2781,17 @@ export class InteractionLeaseCoordinator {
 				},
 			);
 		}
+		this.resourceKeyByLeaseId.delete(existing.leaseId);
 		return this.leases.delete(key);
 	}
 
 	assertHeld(lease: InteractionLease): void {
+		this.heldAt(lease, validClock(this.clock(), "clock"));
+	}
+
+	private heldAt(lease: InteractionLease, now: number): InteractionLease {
 		const key = this.key(lease.resourceKind, lease.resourceId);
-		const existing = this.currentAt(key, this.clock());
+		const existing = this.currentAt(key, now);
 		if (
 			!existing ||
 			existing.leaseId !== lease.leaseId ||
@@ -1353,6 +2809,7 @@ export class InteractionLeaseCoordinator {
 				severity: "ephemeral",
 			});
 		}
+		return existing;
 	}
 
 	private currentAt(key: string, now: number): InteractionLease | null {
@@ -1360,6 +2817,7 @@ export class InteractionLeaseCoordinator {
 		if (!lease) return null;
 		if (Date.parse(lease.expiresAt) <= now) {
 			this.leases.delete(key);
+			this.resourceKeyByLeaseId.delete(lease.leaseId);
 			return null;
 		}
 		return lease;
@@ -1371,4 +2829,132 @@ export class InteractionLeaseCoordinator {
 	): string {
 		return `${resourceKind}:${resourceId}`;
 	}
+}
+
+export interface AuthorizeInteractionDispatchOptions {
+	session: InteractionSession;
+	capabilities: InteractionCapabilitySet;
+	now?: number;
+	clock?: Clock;
+	profileGrantVerifier?: InteractionProfileGrantVerifier;
+	confirmationGrantConsumer?: InteractionConfirmationGrantConsumer;
+	leaseCoordinator?: InteractionLeaseCoordinator;
+	leaseRequirements: readonly InteractionLeaseRequirement[];
+}
+
+/**
+ * Atomically authorize one adapter dispatch before any side effect. The helper
+ * awaits an atomic consume-if-current operation after all session and lease
+ * checks, so concurrent or cross-process replay attempts cannot both reach an
+ * adapter.
+ */
+export async function authorizeInteractionDispatch(
+	value: unknown,
+	options: AuthorizeInteractionDispatchOptions,
+): Promise<AuthorizedInteractionAction> {
+	if (options.now !== undefined && options.clock) {
+		return invalid(
+			"Interaction dispatch accepts either now or clock, not both.",
+		);
+	}
+	const clock = options.clock ?? (() => options.now ?? Date.now());
+	const trustedNow = validClock(clock());
+	const capabilities = normalizeInteractionCapabilitySet(options.capabilities);
+	const session = assertInteractionSessionExecutable(options.session, {
+		capabilities,
+		now: trustedNow,
+		profileGrantVerifier: options.profileGrantVerifier,
+	});
+	const action = normalizeInteractionAction(value, {
+		session,
+		now: trustedNow,
+		// The awaited consume-if-current operation below is the authorization
+		// authority. This verifier only enables structural normalization.
+		confirmationGrantVerifier: options.confirmationGrantConsumer
+			? { verify: () => true }
+			: undefined,
+	});
+	if (Date.parse(action.requestedAt) < Date.parse(session.createdAt)) {
+		return invalid("Interaction action predates its session.", {
+			actionId: action.actionId,
+			sessionId: session.sessionId,
+		});
+	}
+	const leaseRequirements = options.leaseRequirements;
+	if (action.leaseIds.length > 0 || leaseRequirements.length > 0) {
+		if (!options.leaseCoordinator) {
+			return invalid("Interaction action leases require a host coordinator.", {
+				actionId: action.actionId,
+			});
+		}
+		options.leaseCoordinator.assertActionLeases(
+			action,
+			session,
+			leaseRequirements,
+		);
+	}
+	if (action.confirmationGrant) {
+		if (!options.confirmationGrantConsumer) {
+			return invalid(
+				"Confirmed interaction actions require a consume-once host issuer.",
+				{ actionId: action.actionId },
+			);
+		}
+		await options.confirmationGrantConsumer.consume(
+			action.confirmationGrant,
+			action,
+			trustedNow,
+		);
+	}
+	const authorizedAt = validClock(clock());
+	const currentSession = assertInteractionSessionExecutable(options.session, {
+		capabilities,
+		now: authorizedAt,
+		profileGrantVerifier: options.profileGrantVerifier,
+	});
+	if (
+		currentSession.sessionId !== session.sessionId ||
+		currentSession.ownerId !== session.ownerId ||
+		currentSession.adapterId !== session.adapterId ||
+		currentSession.generation !== session.generation
+	) {
+		throw new ElizaError(
+			"Interaction session changed while dispatch authorization was pending.",
+			{
+				code: "STALE_INTERACTION_REFERENCE",
+				context: {
+					actionId: action.actionId,
+					sessionId: session.sessionId,
+					initialGeneration: session.generation,
+					currentGeneration: currentSession.generation,
+				},
+				severity: "ephemeral",
+			},
+		);
+	}
+	assertInteractionSurfaceCurrent(currentSession, action.surface);
+	if (action.confirmationGrant) {
+		assertInteractionConfirmationCurrent(
+			action.confirmationGrant,
+			action,
+			authorizedAt,
+		);
+	}
+	if (action.leaseIds.length > 0 || leaseRequirements.length > 0) {
+		options.leaseCoordinator?.assertActionLeases(
+			action,
+			currentSession,
+			leaseRequirements,
+		);
+	}
+	const authorized = { ...action } as InteractionAction & {
+		[authorizedInteractionAction]: number;
+	};
+	Object.defineProperty(authorized, authorizedInteractionAction, {
+		value: authorizedAt,
+		enumerable: false,
+		configurable: false,
+		writable: false,
+	});
+	return Object.freeze(authorized) as AuthorizedInteractionAction;
 }

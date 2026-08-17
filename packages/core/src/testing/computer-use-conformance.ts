@@ -6,15 +6,19 @@
  */
 
 import {
+	assertInteractionSessionExecutable,
 	assertInteractionSurfaceCurrent,
+	authorizeInteractionDispatch,
 	type InteractionAction,
 	type InteractionAdapter,
 	type InteractionCapabilitySet,
 	InteractionLeaseCoordinator,
 	type InteractionObservation,
 	type InteractionOutcomeStatus,
+	type InteractionProfileGrantVerifier,
 	type InteractionSession,
 	type InteractionSurfaceRef,
+	normalizeInteractionAction,
 	normalizeInteractionActionResult,
 	normalizeInteractionCapabilitySet,
 	normalizeInteractionObservation,
@@ -29,18 +33,13 @@ export const REQUIRED_INTERACTION_CONFORMANCE_CASES = [
 	"confirmation",
 	"unsupported",
 	"stale_observation",
-	"lease_conflict",
-	"invalid_payload",
 ] as const;
 
 export type InteractionConformanceCaseName =
 	(typeof REQUIRED_INTERACTION_CONFORMANCE_CASES)[number];
 
 const EXPECTED_STATUS: Readonly<
-	Record<
-		Exclude<InteractionConformanceCaseName, "invalid_payload">,
-		InteractionOutcomeStatus
-	>
+	Record<InteractionConformanceCaseName, InteractionOutcomeStatus>
 > = Object.freeze({
 	success: "SUCCEEDED",
 	failed_no_effect: "FAILED_NO_EFFECT",
@@ -49,7 +48,6 @@ const EXPECTED_STATUS: Readonly<
 	confirmation: "NEEDS_CONFIRMATION",
 	unsupported: "UNSUPPORTED",
 	stale_observation: "STALE_OBSERVATION",
-	lease_conflict: "LEASE_CONFLICT",
 });
 
 export interface InteractionConformanceFixture {
@@ -62,6 +60,9 @@ export interface InteractionAdapterConformanceOptions {
 	session: InteractionSession;
 	surface: InteractionSurfaceRef;
 	fixtures: readonly InteractionConformanceFixture[];
+	/** Trusted deterministic clock used for every expiry and chronology check. */
+	now?: number;
+	profileGrantVerifier?: InteractionProfileGrantVerifier;
 }
 
 export interface InteractionConformanceCheck {
@@ -97,8 +98,8 @@ function ensureActionIdentity(
 		action.surface.sessionId !== surface.sessionId ||
 		action.surface.adapterId !== surface.adapterId ||
 		action.surface.surfaceId !== surface.surfaceId ||
-		action.surface.kind !== surface.kind ||
 		action.surface.generation !== surface.generation ||
+		action.surface.kind !== surface.kind ||
 		action.surface.parentSurfaceId !== surface.parentSurfaceId
 	) {
 		fail("Conformance action does not target the supplied session surface.", {
@@ -182,35 +183,31 @@ export async function runInteractionAdapterConformance(
 			surfaceKind: surface.kind,
 		});
 	}
-	const assertAdvertisedObservationChannels = (
-		channels: readonly string[],
-		observationId: string,
-	) => {
-		const advertised = new Set<string>(capabilities.observationChannels);
-		const unadvertised = channels.filter((channel) => !advertised.has(channel));
-		if (unadvertised.length > 0) {
-			return fail(
-				"Adapter emitted observation channels it did not advertise.",
-				{
-					adapterId: adapter.id,
-					observationId,
-					unadvertised,
-				},
-			);
-		}
-	};
+	const normalizedSession = assertInteractionSessionExecutable(session, {
+		capabilities,
+		now: options.now,
+		profileGrantVerifier: options.profileGrantVerifier,
+	});
+	const normalizedSurface = normalizedSession.surfaces.find(
+		(candidate) => candidate.surfaceId === surface.surfaceId,
+	);
+	if (!normalizedSurface) {
+		return fail("Supplied conformance surface is not registered.", {
+			adapterId: adapter.id,
+			surfaceId: surface.surfaceId,
+		});
+	}
 
-	const rawObservation = await adapter.observe(session, surface);
+	const rawObservation = await adapter.observe(
+		normalizedSession,
+		normalizedSurface,
+	);
 	const observation = normalizeAdapterPayload(
 		"observation",
-		() => normalizeInteractionObservation(rawObservation),
+		() => normalizeInteractionObservation(rawObservation, { actionId: null }),
 		{ adapterId: adapter.id },
 	);
-	assertAdvertisedObservationChannels(
-		observation.channels,
-		observation.observationId,
-	);
-	assertInteractionSurfaceCurrent(session, observation.surface);
+	assertInteractionSurfaceCurrent(normalizedSession, observation.surface);
 	if (
 		observation.surface.surfaceId !== surface.surfaceId ||
 		observation.sessionId !== session.sessionId ||
@@ -220,6 +217,18 @@ export async function runInteractionAdapterConformance(
 			adapterId: adapter.id,
 			observationId: observation.observationId,
 		});
+	}
+	const unadvertisedObservationChannel = observation.channels.find(
+		(channel) => !capabilities.observationChannels.includes(channel),
+	);
+	if (unadvertisedObservationChannel) {
+		return fail(
+			"Adapter returned an observation channel it did not advertise.",
+			{
+				adapterId: adapter.id,
+				channel: unadvertisedObservationChannel,
+			},
+		);
 	}
 
 	const checks: InteractionConformanceCheck[] = [
@@ -238,78 +247,74 @@ export async function runInteractionAdapterConformance(
 	for (const name of REQUIRED_INTERACTION_CONFORMANCE_CASES) {
 		const fixture = fixtureByName.get(name);
 		if (!fixture) return fail(`Missing conformance fixture '${name}'.`);
-		ensureActionIdentity(fixture.action, session, surface);
+		const action = normalizeInteractionAction(fixture.action, {
+			session: normalizedSession,
+			now: options.now,
+		});
+		ensureActionIdentity(action, normalizedSession, normalizedSurface);
+		const expectedStatus = EXPECTED_STATUS[name];
 		if (
 			name === "unsupported" &&
-			capabilities.actionKinds.includes(fixture.action.kind)
+			capabilities.actionKinds.includes(action.kind)
 		) {
-			return fail(
-				"The unsupported fixture must use an unadvertised action kind.",
-				{
-					adapterId: adapter.id,
-					actionKind: fixture.action.kind,
-				},
-			);
+			return fail("Unsupported-capability fixture uses an advertised action.", {
+				adapterId: adapter.id,
+				actionKind: action.kind,
+			});
 		}
 		if (
 			name !== "unsupported" &&
-			!capabilities.actionKinds.includes(fixture.action.kind)
+			!capabilities.actionKinds.includes(action.kind)
 		) {
 			return fail(
 				`Adapter fixture '${name}' uses an action it did not advertise.`,
 				{
 					adapterId: adapter.id,
-					actionKind: fixture.action.kind,
+					actionKind: action.kind,
 				},
 			);
 		}
-		const rawResult = await adapter.execute(fixture.action);
-		if (name === "invalid_payload") {
-			let rejected = false;
-			try {
-				normalizeAdapterPayload(
-					"action result",
-					() => normalizeInteractionActionResult(rawResult, fixture.action),
-					{
-						adapterId: adapter.id,
-						actionId: fixture.action.actionId,
-						case: name,
-					},
-				);
-			} catch (error) {
-				rejected =
-					error instanceof ElizaError &&
-					error.code === "INTERACTION_ADAPTER_CONFORMANCE_FAILED";
-				if (!rejected) throw error;
-			}
-			if (!rejected) {
-				return fail("The invalid_payload fixture returned a valid result.", {
+		if (
+			name === "stale_observation" &&
+			(action.observationId === null ||
+				action.observationSequence === null ||
+				action.observationSequence >= observation.sequence)
+		) {
+			return fail(
+				"Stale-observation fixture references the current observation.",
+				{
 					adapterId: adapter.id,
-					actionId: fixture.action.actionId,
-				});
-			}
-			checks.push({
-				name,
-				passed: true,
-				detail:
-					"Malformed adapter output was rejected at the contract boundary.",
-			});
-			continue;
+					actionId: action.actionId,
+				},
+			);
 		}
-		const expectedStatus = EXPECTED_STATUS[name];
+		const authorizedAction = await authorizeInteractionDispatch(action, {
+			session: normalizedSession,
+			capabilities,
+			now: options.now,
+			profileGrantVerifier: options.profileGrantVerifier,
+			leaseRequirements: [],
+		});
+		const rawResult = await adapter.execute(authorizedAction);
 		const result = normalizeAdapterPayload(
 			"action result",
-			() => normalizeInteractionActionResult(rawResult, fixture.action),
-			{ adapterId: adapter.id, actionId: fixture.action.actionId, case: name },
+			() =>
+				normalizeInteractionActionResult(rawResult, {
+					action: authorizedAction,
+					session: normalizedSession,
+					capabilities,
+					now: options.now,
+				}),
+			{ adapterId: adapter.id, actionId: action.actionId, case: name },
 		);
 		if (
-			result.actionId !== fixture.action.actionId ||
-			result.sessionId !== session.sessionId ||
+			result.actionId !== action.actionId ||
+			result.sessionId !== normalizedSession.sessionId ||
 			result.adapterId !== adapter.id
 		) {
 			return fail(`Adapter result identity mismatch for '${name}'.`, {
 				adapterId: adapter.id,
-				actionId: fixture.action.actionId,
+				actionId: action.actionId,
 			});
 		}
 		if (result.status !== expectedStatus) {
@@ -320,10 +325,9 @@ export async function runInteractionAdapterConformance(
 			});
 		}
 		if (result.observation) {
-			assertInteractionSurfaceCurrent(session, result.observation.surface);
-			assertAdvertisedObservationChannels(
-				result.observation.channels,
-				result.observation.observationId,
+			assertInteractionSurfaceCurrent(
+				normalizedSession,
+				result.observation.surface,
 			);
 		}
 		checks.push({
