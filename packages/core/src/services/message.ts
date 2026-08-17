@@ -1976,6 +1976,15 @@ export function answerlessToolTurnReport(args: {
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[] | undefined;
 	stageOneAck: string;
+	/**
+	 * True when a Stage-1 progress acknowledgement was already delivered this
+	 * turn. The async-handoff branch must not re-ack — the user already has
+	 * that bubble, and a connector-shaped ack can miss the downstream
+	 * normalized-equality dedupe — but grounded outcome text (a successful
+	 * action's userFacingText, a verified failure text, or the no-reportable
+	 * line) is still owed and still delivers. (#20086)
+	 */
+	earlyAckAlreadySent?: boolean;
 }): string {
 	const successful = preservedSettledToolResult(
 		args.settledToolResults,
@@ -1995,9 +2004,75 @@ export function answerlessToolTurnReport(args: {
 		)
 		.filter((name) => name.length > 0);
 	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
+		if (args.earlyAckAlreadySent === true) return "";
 		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
 	}
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+}
+
+/**
+ * Answerless-final fallback decision for a tool turn (#20086). Exported as a
+ * thin seam so regression tests drive the real decision logic instead of
+ * re-declaring a local copy — the v2 suite in #20402 re-declared the gate,
+ * stayed green with the production fix reverted, and was rejected for it.
+ *
+ * Two explicit signals keep "delivered work" distinct from "all failed":
+ * - `ranNonSilentAction`: at least one action genuinely succeeded
+ *   (`success === true`, the authoritative field the media-delivery path
+ *   already trusts). The report prefers the last successful userFacingText
+ *   or, for an accepted async handoff, the acknowledgement.
+ * - `ranFailedOnlyActions`: tools ran but every one failed. These turns must
+ *   still end in failure-aware wording — the verified failure text, else
+ *   NO_REPORTABLE_TOOL_OUTCOME_MESSAGE — never silence: v2's success-only
+ *   gate skipped the report here and collapsed the fallback to
+ *   `preservedAnswerFallback || ""`.
+ *
+ * An early progress acknowledgement does not end the turn either: when the
+ * tools finish without terminal/action-owned text the user is still owed a
+ * terminal reply, so `earlyReplySent` no longer excludes the turn from the
+ * report (issue criterion: recover even when an early ack was sent). It only
+ * excludes the handoff-ack branch, via `earlyAckAlreadySent`, because that
+ * ack was already delivered.
+ */
+export function answerlessAckFallback(args: {
+	actionResults: readonly ActionResult[];
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+	plannedText: string;
+	earlyReplySent: boolean;
+	suppressesPlannerReply: boolean;
+	preservedAnswerFallback: string;
+	mediaDeliverableShipped: boolean;
+}): string {
+	if (args.plannedText || args.suppressesPlannerReply) {
+		return args.preservedAnswerFallback;
+	}
+	const ranNonSilentAction =
+		args.actionResults.some((result) => result.success === true) &&
+		!args.suppressesPlannerReply;
+	const ranFailedOnlyActions =
+		args.actionResults.length > 0 &&
+		!args.actionResults.some((result) => result.success === true) &&
+		!args.suppressesPlannerReply;
+	return (
+		args.preservedAnswerFallback ||
+		((ranNonSilentAction || ranFailedOnlyActions) &&
+		!args.mediaDeliverableShipped
+			? answerlessToolTurnReport({
+					settledToolResults: args.settledToolResults,
+					deliveredVisibleTexts: args.deliveredVisibleTexts,
+					actionResults: args.actionResults,
+					actions: args.actions,
+					stageOneAck: args.stageOneAck,
+					earlyAckAlreadySent: args.earlyReplySent,
+				})
+			: "")
+	);
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -9560,8 +9635,6 @@ export async function runV5MessageRuntimeStage1(args: {
 						?.suppressPlannerReply === true,
 			) ||
 			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
-		const ranNonSilentAction =
-			actionResults.length > 0 && !suppressesPlannerReply;
 		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
@@ -9598,19 +9671,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// deliveredMediaUrls is non-empty only for a SYNCHRONOUSLY delivered media
 		// attachment, so a slow/async generation (nothing delivered yet) still acks.
 		const mediaDeliverableShipped = deliveredMediaUrls.length > 0;
-		const ackFallback =
-			!plannedText && !earlyReplySent && !suppressesPlannerReply
-				? preservedAnswerFallback ||
-					(ranNonSilentAction && !mediaDeliverableShipped
-						? answerlessToolTurnReport({
-								settledToolResults: settledPlannerToolResults,
-								deliveredVisibleTexts,
-								actionResults,
-								actions: args.runtime.actions,
-								stageOneAck,
-							})
-						: "")
-				: preservedAnswerFallback;
+		// Answerless-final fallback: see answerlessAckFallback (#20086) — the
+		// success-aware / failure-aware gate split and the early-ack recovery
+		// live in the exported seam so regression tests can drive them.
+		const ackFallback = answerlessAckFallback({
+			actionResults,
+			settledToolResults: settledPlannerToolResults,
+			deliveredVisibleTexts,
+			actions: args.runtime.actions,
+			stageOneAck,
+			plannedText,
+			earlyReplySent,
+			suppressesPlannerReply,
+			preservedAnswerFallback,
+			mediaDeliverableShipped,
+		});
 		let effectiveReplyText = plannedText || ackFallback;
 		// #18208: a failed sub-agent completion relay must not discard the
 		// finished result it carries. When the turn ended on the generic
