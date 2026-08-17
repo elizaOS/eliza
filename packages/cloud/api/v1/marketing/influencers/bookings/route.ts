@@ -27,11 +27,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    // Party identity, not leftover X connectionRole tax. The prior ternary
-    // mapped every non-"influencer" token — including INFLUENCER, advertiser
-    // typos, and 1e2 — onto the advertiser org list. Missing/empty still
-    // defaults to advertiser (this route's documented default). Garbage 400s
-    // before either booking list.
+    // The query selects a tenant-facing party view, so only the two documented
+    // identities are accepted. Missing or empty retains the advertiser default;
+    // ambiguous tokens fail before either booking list is read.
     const requestedAs = c.req.query("as");
     if (
       requestedAs !== undefined &&

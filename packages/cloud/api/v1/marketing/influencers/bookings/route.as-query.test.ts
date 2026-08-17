@@ -1,8 +1,7 @@
 /**
- * GET /api/v1/marketing/influencers/bookings `as` is marketplace party
- * identity, not leftover X connectionRole or catalog-sort tax. Stock develop
- * treated every non-"influencer" token as the advertiser org list, so
- * `as=INFLUENCER` / `as=advertiser` silently showed the wrong party's bookings.
+ * Deterministic route tests for influencer-booking party selection.
+ * Mocked marketplace lists prove canonical queries select exactly one party
+ * and ambiguous tokens do not read either list.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
