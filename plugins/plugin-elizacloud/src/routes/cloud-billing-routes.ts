@@ -399,10 +399,18 @@ function mapCryptoQuoteResponse(
   };
 }
 
-function parseJsonBody(body: string | undefined): Record<string, unknown> {
+function parseJsonBody(body: string | undefined): Record<string, unknown> | null {
   if (!body) return {};
-  const parsed = JSON.parse(body);
-  return isRecord(parsed) ? parsed : {};
+  try {
+    const parsed = JSON.parse(body);
+    // Arrays pass `typeof === "object"`; checkout/quote need a real object.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 async function forwardSummary(
@@ -551,6 +559,20 @@ export async function handleCloudBillingRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/cloud/billing")) return false;
 
+  if (
+    method === "POST" &&
+    (pathname === "/api/cloud/billing/checkout" ||
+      pathname === "/api/cloud/billing/crypto/quote")
+  ) {
+    const raw = await readBody(req);
+    const parsed = parseJsonBody(raw);
+    if (parsed === null) {
+      sendJsonError(res, "Invalid JSON body", 400);
+      return true;
+    }
+    (req as http.IncomingMessage & { body?: unknown }).body = parsed;
+  }
+
   const apiKey = resolveProxyApiKey(state);
   if (!apiKey) {
     sendJsonError(
@@ -627,6 +649,10 @@ export async function handleCloudBillingRoute(
   if (pathname === "/api/cloud/billing/checkout" && method === "POST") {
     const body = await readBody(req);
     const requestBody = parseJsonBody(body);
+    if (!requestBody) {
+      sendJsonError(res, "Invalid JSON body", 400);
+      return true;
+    }
     const amountUsd = readNumber(requestBody.amountUsd);
 
     if (!amountUsd || amountUsd <= 0) {
@@ -666,6 +692,10 @@ export async function handleCloudBillingRoute(
   if (pathname === "/api/cloud/billing/crypto/quote" && method === "POST") {
     const body = await readBody(req);
     const requestBody = parseJsonBody(body);
+    if (!requestBody) {
+      sendJsonError(res, "Invalid JSON body", 400);
+      return true;
+    }
     const amountUsd = readNumber(requestBody.amountUsd);
 
     if (!amountUsd || amountUsd <= 0) {
