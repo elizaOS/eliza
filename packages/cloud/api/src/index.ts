@@ -36,6 +36,7 @@ import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
+export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
