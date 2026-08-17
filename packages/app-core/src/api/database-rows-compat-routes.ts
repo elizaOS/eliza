@@ -70,6 +70,20 @@ function parseDatabaseRowsOffset(raw: string | null): number | null {
   return parsed;
 }
 
+/**
+ * Decode the untrusted `:name` path segment. Leftover tax after agent
+ * `database.ts` path work: stock develop called `decodeURIComponent` on
+ * `/api/database/tables/:name/rows`, so `%` / `%2` / `%ZZ` threw URIError
+ * (500) instead of a typed 400. Limit/offset parsers stay untouched.
+ */
+function decodeTableName(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 function rememberTableIntrospection(
   key: string,
   resolvedSchema: string,
@@ -101,6 +115,16 @@ export async function handleDatabaseRowsCompatRoute(
     return false;
   }
 
+  const decoded = decodeTableName(match[1] ?? "");
+  if (decoded === null) {
+    sendJsonErrorResponse(
+      res,
+      400,
+      "invalid table name: malformed URL encoding",
+    );
+    return true;
+  }
+
   const ensureOwner = deps.ensureOwner ?? ensureRouteMinRole;
   // Raw table reads expose arbitrary tables (secrets, sessions, identities),
   // so this must require OWNER - matching the sibling `/api/secrets/*` routes -
@@ -115,7 +139,7 @@ export async function handleDatabaseRowsCompatRoute(
     return true;
   }
 
-  const tableName = sanitizeIdentifier(decodeURIComponent(match[1]));
+  const tableName = sanitizeIdentifier(decoded);
   const requestUrl = new URL(req.url ?? "/", "http://localhost");
   const schemaName = sanitizeIdentifier(requestUrl.searchParams.get("schema"));
 
