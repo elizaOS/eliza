@@ -458,33 +458,36 @@ describe("GET /api/database/tables/:name/rows limit/offset query", () => {
     ["25", 25, 0],
     ["500", 500, 0],
     ["501", 500, 0],
-  ] as const)("accepts limit %j as %s", async (raw, expectedLimit, expectedOffset) => {
-    stubReadableTable();
-    const query =
-      raw === undefined
-        ? "/api/database/tables/secrets/rows?schema=public"
-        : `/api/database/tables/secrets/rows?schema=public&limit=${encodeURIComponent(raw)}`;
-    const req = makeReq({}, query);
-    const res = fakeRes();
-    const ensureOwner = vi.fn(async () => true);
+  ] as const)(
+    "accepts limit %j as %s",
+    async (raw, expectedLimit, expectedOffset) => {
+      stubReadableTable();
+      const query =
+        raw === undefined
+          ? "/api/database/tables/secrets/rows?schema=public"
+          : `/api/database/tables/secrets/rows?schema=public&limit=${encodeURIComponent(raw)}`;
+      const req = makeReq({}, query);
+      const res = fakeRes();
+      const ensureOwner = vi.fn(async () => true);
 
-    await expect(
-      handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
-        ensureOwner,
-      }),
-    ).resolves.toBe(true);
+      await expect(
+        handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+          ensureOwner,
+        }),
+      ).resolves.toBe(true);
 
-    expect(res.status()).toBe(200);
-    expect(res.json()).toMatchObject({
-      limit: expectedLimit,
-      offset: expectedOffset,
-    });
-    expect(
-      mocks.executeRawSql.mock.calls.some(([, sql]) =>
-        String(sql).includes(`LIMIT ${expectedLimit}`),
-      ),
-    ).toBe(true);
-  });
+      expect(res.status()).toBe(200);
+      expect(res.json()).toMatchObject({
+        limit: expectedLimit,
+        offset: expectedOffset,
+      });
+      expect(
+        mocks.executeRawSql.mock.calls.some(([, sql]) =>
+          String(sql).includes(`LIMIT ${expectedLimit}`),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("accepts canonical offset 0 and 10", async () => {
     stubReadableTable();
