@@ -910,9 +910,21 @@ jobs:
         shell: pwsh
         run: |
           $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe"
+          # SHA256-pinned like the actionlint/gitleaks installers; bump the
+          # version, URL, and hash together. Recorded from the is-6_7_1 release
+          # asset digest exposed by the GitHub API.
+          $expectedSha256 = "4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0"
           $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.1.exe"
           Write-Host "Downloading Inno Setup 6.7.1..."
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          # This job holds the Windows signing certificate, so the installer
+          # bytes must be verified before they are executed.
+          $actualSha256 = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            Write-Error "Inno Setup installer SHA256 mismatch: expected $expectedSha256, got $actualSha256"
+            exit 1
+          }
+          Write-Host "SHA256 verified: $actualSha256"
           Write-Host "Installing silently..."
           Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -NoNewWindow
 
