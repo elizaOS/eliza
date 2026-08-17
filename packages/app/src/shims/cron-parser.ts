@@ -2,9 +2,14 @@
  * Browser shim for the `cron-parser` package, mirroring the
  * `CronExpressionParser.parse(expr).next().toDate()` surface the app consumes.
  * `parse` validates a 5-field expression against the same per-field grammar the
- * real cron-parser accepts — `*`, step values (every-N), comma lists (`0,30`),
- * ranges (`9-17`), and range-steps (`0-11` every 2) — while still rejecting
- * malformed or out-of-range fields. The returned iterator is minimal: each
+ * server scheduler (`parseCronExpression` in
+ * `packages/core/src/services/triggerScheduling.ts`) accepts — `*`, star-steps
+ * (`*` every N), comma lists (`0,30`), ranges (`9-17`), range-steps (`0-11`
+ * every 2), and value-steps (`0/15`, `5/15`: from N to the field max every
+ * step) — while still rejecting malformed or out-of-range fields. Named tokens
+ * (`MON`, `JAN`) are deliberately rejected because the server scheduler rejects
+ * them too; accepting them here would let the form save a trigger the backend
+ * never runs. The returned iterator is minimal: each
  * `next()` advances the cursor by one minute from `currentDate` rather than
  * resolving the true next matching instant — enough to satisfy validation and
  * the API shape in the bundle without the full scheduler engine.
@@ -20,7 +25,8 @@ type ParseOptions = {
 };
 
 // Validate one comma-list element of a cron field: `*`, `*/N`, a range `A-B`, a
-// range-step `A-B/N`, or a bare integer, matching cron-parser's field grammar.
+// range-step `A-B/N`, a value-step `N/S`, or a bare integer, matching the
+// server scheduler's field grammar (`parseCronPart` in triggerScheduling.ts).
 function validateFieldElement(
   element: string,
   min: number,
@@ -29,27 +35,35 @@ function validateFieldElement(
 ): void {
   if (element === "*") return;
 
-  const step = element.match(/^\*\/(\d+)$/);
-  if (step) {
-    // A star-step fires from `min` every N; cron-parser only rejects a zero
-    // step, even when N exceeds the range (a step of 60 fires once at `min`).
-    if (Number(step[1]) > 0) return;
+  // A trailing `/step` may qualify any base term (`*/S`, `N/S`, `A-B/S`). Like
+  // the server scheduler, only a non-integer or non-positive step is rejected;
+  // a step that overshoots the range simply fires once at the base value.
+  const slashParts = element.split("/");
+  if (slashParts.length > 2) {
     throw new Error(`Invalid cron field: ${field}`);
   }
+  if (slashParts.length === 2) {
+    const stepToken = slashParts[1];
+    if (!/^\d+$/.test(stepToken) || Number(stepToken) <= 0) {
+      throw new Error(`Invalid cron field: ${field}`);
+    }
+  }
 
-  const range = element.match(/^(\d+)-(\d+)(?:\/(\d+))?$/);
+  const base = slashParts[0];
+  if (base === "*") return;
+
+  const range = base.match(/^(\d+)-(\d+)$/);
   if (range) {
     const lo = Number(range[1]);
     const hi = Number(range[2]);
-    const rangeStep = range[3] === undefined ? 1 : Number(range[3]);
-    if (lo < min || hi > max || lo > hi || rangeStep <= 0) {
+    if (lo < min || hi > max || lo > hi) {
       throw new Error(`Invalid cron field: ${field}`);
     }
     return;
   }
 
-  if (/^\d+$/.test(element)) {
-    const parsed = Number(element);
+  if (/^\d+$/.test(base)) {
+    const parsed = Number(base);
     if (parsed >= min && parsed <= max) return;
   }
 
