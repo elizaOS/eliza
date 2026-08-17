@@ -310,6 +310,10 @@ export interface Bindings {
   STEWARD_JWT_SECRET?: string;
   /** HS256 service-account bridge secret; must never equal the staging QA signer. */
   ELIZA_SERVICE_JWT_SECRET?: string;
+  /** Optional issuer pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_ISSUER?: string;
+  /** Optional audience pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_AUDIENCE?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */

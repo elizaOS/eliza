@@ -13,6 +13,7 @@ import type { NewApp } from "@/db/schemas/apps";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { isSafeRegistrationUrl } from "@/lib/security/outbound-url";
 import { appCleanupService } from "@/lib/services/app-cleanup";
 import { buildReviewCandidate } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
@@ -30,10 +31,21 @@ const optionalEmail = z
 const UpdateAppSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
-  app_url: optionalUrl,
+  // Same registration-time screen as POST /apps: callback delivery is confined
+  // to app_url/allowed_origins, so they must never point at localhost/private
+  // targets (fetch-time safeFetch re-validates with DNS).
+  app_url: optionalUrl.refine(isSafeRegistrationUrl, {
+    message: "app_url must be a public http(s) URL",
+  }),
   website_url: optionalUrl,
   contact_email: optionalEmail,
-  allowed_origins: z.array(z.string()).optional(),
+  allowed_origins: z
+    .array(
+      z.string().refine(isSafeRegistrationUrl, {
+        message: "allowed_origins entries must be public http(s) origins",
+      }),
+    )
+    .optional(),
   logo_url: optionalUrl,
   is_active: z.boolean().optional(),
   linked_character_ids: z.array(z.string().uuid()).max(4).optional(),

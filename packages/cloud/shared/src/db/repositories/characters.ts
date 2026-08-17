@@ -9,16 +9,9 @@ import {
   type UserCharacter,
   userCharacters,
 } from "../schemas/user-characters";
+import { escapeLikePattern } from "../utils/like-pattern";
 
 export type { NewUserCharacter, UserCharacter };
-
-/**
- * Escapes special LIKE pattern characters to prevent pattern injection.
- * Characters %, _, and \ have special meaning in SQL LIKE patterns.
- */
-function escapeLikePattern(str: string): string {
-  return str.replace(/[%_\\]/g, "\\$&");
-}
 
 function ilikeEscaped(column: unknown, query: string): SQL {
   return sql`${column as SQL} ILIKE ${`%${escapeLikePattern(query)}%`} ESCAPE '\\'`;

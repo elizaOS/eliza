@@ -1,11 +1,13 @@
 // Coordinates cloud service cors behavior behind route handlers.
 import {
-  APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,
+  CAPACITOR_WEBVIEW_ORIGIN,
   CORS_ALLOW_HEADERS,
   CORS_EXPOSE_HEADER_NAMES,
   CORS_MAX_AGE,
+  isLocalDevLoopbackOrigin,
 } from "../../cors-constants";
+import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 
 /**
  * Shared CORS utilities for proxy services
@@ -40,7 +42,9 @@ import {
  *  - `https://localhost` — android/iosScheme = "https" (see packages/app/capacitor.config.ts)
  *  - `capacitor://localhost` / `capacitor-electron://localhost` — Capacitor defaults
  *  - `http://localhost[:port]` / `http://127.0.0.1[:port]` — local web dev/preview
+ *    (non-production only — see isLocalDevLoopbackOrigin)
  *  - `https://localhost[:port]` / `https://127.0.0.1[:port]` — https local dev
+ *    (non-production only)
  * Mirrors the dedicated-agent LOCAL_ORIGIN_RE + APP_ORIGIN_RE allow-list.
  * Regexes live in cors-constants.ts (single source of truth).
  */
@@ -49,9 +53,19 @@ import {
  * An origin that authenticates with credentials (cookies/native fetch) from the
  * Eliza app/local-dev WebView. These get the origin reflected + credentials, since
  * `*` is invalid for a credentialed cross-origin read (e.g. an SSE chat stream).
+ * Any-port loopback origins are honored only outside production — any local
+ * process can serve one, so in production reflecting them with credentials
+ * would let a hostile local page ride a user's cloud session cookies (matches
+ * isFirstPartyOrigin in lib/cors/cloud-api-hono-cors.ts).
  */
 export function isAppOrigin(origin: string): boolean {
-  return APP_LOCAL_ORIGIN_RE.test(origin) || APP_SCHEME_ORIGIN_RE.test(origin);
+  if (APP_SCHEME_ORIGIN_RE.test(origin) || origin === CAPACITOR_WEBVIEW_ORIGIN) {
+    return true;
+  }
+  if (isLocalDevLoopbackOrigin(origin)) {
+    return getCloudAwareEnv().ENVIRONMENT !== "production";
+  }
+  return false;
 }
 
 export function getCorsHeaders(methods?: string, origin?: string | null): Record<string, string> {

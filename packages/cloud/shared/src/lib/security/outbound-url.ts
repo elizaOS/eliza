@@ -211,6 +211,27 @@ export function assertSafeOutboundUrlSync(rawUrl: string): URL {
 }
 
 /**
+ * zod-refine-friendly predicate form of {@link assertSafeOutboundUrlSync} for
+ * registration-time URL fields (e.g. an app's `app_url` / `allowed_origins`).
+ * Null/empty values pass — presence and shape are the schema's job; this only
+ * screens dangerous targets (non-http(s), embedded credentials, localhost,
+ * private/reserved IP literals). DNS-based screening still runs at fetch time
+ * via safeFetch, so a momentarily unresolvable public host is not rejected
+ * here.
+ */
+export function isSafeRegistrationUrl(value: string | null | undefined): boolean {
+  if (value == null || value === "") return true;
+  try {
+    assertSafeOutboundUrlSync(value);
+    return true;
+  } catch {
+    // error-policy:J3 untrusted registration input — a guard rejection is an
+    // explicit invalid result (false), never a swallowed error.
+    return false;
+  }
+}
+
+/**
  * Resolves `hostname` (or accepts an IP literal) and rejects the whole answer
  * set if any record points at a private/reserved range. Returns every resolved
  * address so callers can both validate and pin a single connection target.
