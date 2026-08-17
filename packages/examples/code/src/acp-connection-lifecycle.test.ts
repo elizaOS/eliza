@@ -1,8 +1,8 @@
+import { afterEach, describe, expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "bun:test";
 
 const tempDirs: string[] = [];
 
