@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
+import { safeFetch } from "../security/safe-fetch";
 import type { DialogueMetadata } from "../types/message-content";
 import { logger } from "../utils/logger";
 import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
@@ -296,7 +297,12 @@ export class AppChargeCallbacksService {
       );
     }
 
-    const response = await fetch(callbackUrl, {
+    // safeFetch re-resolves DNS and pins the connection (on Node) so a
+    // developer-supplied callback host cannot point at private/reserved
+    // addresses; every redirect hop is re-validated. A guard rejection throws
+    // and is recorded as a dispatch error by the caller — the charge leg
+    // itself is already settled, only the notification fails.
+    const response = await safeFetch(callbackUrl, {
       method: "POST",
       headers,
       body,
