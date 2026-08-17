@@ -10,8 +10,17 @@
 import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,
+  redactPushTokenRequestUrl,
   shouldForwardToRemoteTarget,
 } from "./remote-forwarder.ts";
+
+test("legacy push-token URLs are redacted before agent diagnostics", () => {
+  expect(
+    redactPushTokenRequestUrl(
+      "/api/notifications/push-tokens/token%2Fwith%2Bslash?trace=1",
+    ),
+  ).toBe("/api/notifications/push-tokens/[redacted]?trace=1");
+});
 
 describe("shouldForwardToRemoteTarget", () => {
   test("forwards POST /api/cloud/login", () => {
@@ -48,6 +57,12 @@ describe("shouldForwardToRemoteTarget", () => {
     ).toBe(true);
     expect(
       shouldForwardToRemoteTarget("/api/notifications/push-tokens", "DELETE"),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget(
+        "/api/notifications/push-tokens/token%2Fwith%2Bslash",
+        "DELETE",
+      ),
     ).toBe(true);
     expect(
       shouldForwardToRemoteTarget("/api/notifications/push-tokens", "GET"),

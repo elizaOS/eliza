@@ -110,6 +110,7 @@ export function subscribeSharedMobilePush(
       dispatch({
         title: notification.title,
         body: notification.body,
+        collapseKey: notification.id,
         data,
       }),
     );

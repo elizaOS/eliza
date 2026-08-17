@@ -110,6 +110,34 @@ test("unregisters a body token without placing the device identifier in the URL"
   );
 });
 
+test("a shipped path-based client can register and later revoke its token", async () => {
+  const tokens = new Set<string>();
+  coordinateSharedPushRegister.mockImplementation(
+    async (_agentId: string, registration: { token: string }) => {
+      tokens.add(registration.token);
+    },
+  );
+  coordinateSharedPushUnregister.mockImplementation(
+    async (_agentId: string, token: string) => tokens.delete(token),
+  );
+  const token = "legacy/device+token";
+
+  const registration = await request("notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform: "ios", token }),
+  });
+  expect(registration.status).toBe(201);
+  expect(tokens.has(token)).toBe(true);
+
+  const revocation = await request(
+    `notifications/push-tokens/${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
+  expect(revocation.status).toBe(200);
+  await expect(revocation.json()).resolves.toEqual({ ok: true });
+  expect(tokens.has(token)).toBe(false);
+});
+
 test("rejects Android registration until Shared has an FCM sender", async () => {
   const response = await request("notifications/push-tokens", {
     method: "POST",
@@ -134,6 +162,20 @@ test("does not expose agent-wide push registration on ordinary shared agents", a
   expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
 });
 
+test("does not expose legacy token revocation on ordinary shared agents", async () => {
+  resolveSharedAgent.mockResolvedValue({
+    agent: { id: agentId, execution_tier: "shared" },
+    agentId,
+    orgId: "org-1",
+    agentName: "Team Eliza",
+  });
+  const response = await request("notifications/push-tokens/private-token", {
+    method: "DELETE",
+  });
+  expect(response.status).toBe(404);
+  expect(coordinateSharedPushUnregister).not.toHaveBeenCalled();
+});
+
 test("rejects invalid registration before durable mutation", async () => {
   const response = await request("notifications/push-tokens", {
     method: "POST",
@@ -150,4 +192,26 @@ test("rejects an oversized registration body before parsing or mutation", async 
   });
   expect(response.status).toBe(413);
   expect(coordinateSharedPushRegister).not.toHaveBeenCalled();
+});
+
+test("rejects an oversized body revocation before durable mutation", async () => {
+  const response = await request("notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token: "x".repeat(8_192) }),
+  });
+  expect(response.status).toBe(413);
+  expect(coordinateSharedPushUnregister).not.toHaveBeenCalled();
+});
+
+test("rejects a declared oversized body revocation before reading JSON", async () => {
+  const response = await request("notifications/push-tokens", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": "8193",
+    },
+    body: "{}",
+  });
+  expect(response.status).toBe(413);
+  expect(coordinateSharedPushUnregister).not.toHaveBeenCalled();
 });

@@ -198,6 +198,7 @@ export function sharedReminderDispatcher(env: Bindings, agentId?: string): Sched
               {
                 title: "Reminder",
                 body: text,
+                collapseKey: idempotencyKey,
                 data: {
                   notificationId: idempotencyKey,
                   category: "reminder",

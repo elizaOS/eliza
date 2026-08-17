@@ -46,6 +46,7 @@ describe("subscribeSharedMobilePush", () => {
     expect(dispatch).toHaveBeenCalledWith({
       title: "Reminder",
       body: "Leave for the airport",
+      collapseKey: "notification-1",
       data: {
         notificationId: "notification-1",
         category: "reminder",

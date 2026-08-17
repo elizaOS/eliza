@@ -158,6 +158,24 @@ const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
 const RETRY_DELAY_MS = 30_000;
 const MOBILE_PUSH_TOKENS_KEY = "mobile-push-tokens";
 const MAX_MOBILE_PUSH_TOKENS = 32;
+const MOBILE_PUSH_DELIVERY_LEDGER_KEY = "mobile-push-delivery-ledger";
+const MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES = 128;
+const MOBILE_PUSH_PENDING_RETRY_MS = 2 * 60 * 1000;
+
+interface MobilePushDeliveryLedgerEntry {
+  status: "pending" | "retryable" | "accepted";
+  acceptedTokens: string[];
+  updatedAt: number;
+}
+
+async function mobilePushLedgerDigest(value: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+  );
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
 
 /**
  * Retention lifecycle (#17006). The single DO alarm is multiplexed across two
@@ -310,7 +328,12 @@ export class SharedRuntimeConversation {
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
+  private mobilePushLedgerQueue: Promise<void> = Promise.resolve();
   private apnsProvider: CloudApnsProvider | undefined;
+  private readonly activeMobilePushDispatches = new Map<
+    string,
+    Promise<void>
+  >();
   // Instance field rather than a direct constant read so the deterministic
   // unit harness can shorten the stall window without a real two-minute wait.
   private streamStallTimeoutMs = STREAM_STALL_TIMEOUT_MS;
@@ -532,43 +555,146 @@ export class SharedRuntimeConversation {
     else await this.state.storage.delete(MOBILE_PUSH_TOKENS_KEY);
   }
 
-  private async dispatchMobilePush(message: MobilePushMessage): Promise<void> {
+  private async mobilePushDeliveryLedger(): Promise<
+    Record<string, MobilePushDeliveryLedgerEntry>
+  > {
+    return (
+      (await this.state.storage.get<
+        Record<string, MobilePushDeliveryLedgerEntry>
+      >(MOBILE_PUSH_DELIVERY_LEDGER_KEY)) ?? {}
+    );
+  }
+
+  private async saveMobilePushDeliveryLedger(
+    ledger: Record<string, MobilePushDeliveryLedgerEntry>,
+  ): Promise<void> {
+    const bounded = Object.fromEntries(
+      Object.entries(ledger)
+        .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+        .slice(0, MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES),
+    );
+    await this.state.storage.put(MOBILE_PUSH_DELIVERY_LEDGER_KEY, bounded);
+  }
+
+  private async mutateMobilePushDeliveryLedger<T>(
+    operation: (
+      ledger: Record<string, MobilePushDeliveryLedgerEntry>,
+    ) => Promise<T> | T,
+  ): Promise<T> {
+    let release = () => {};
+    const previous = this.mobilePushLedgerQueue;
+    this.mobilePushLedgerQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      const ledger = await this.mobilePushDeliveryLedger();
+      const result = await operation(ledger);
+      await this.saveMobilePushDeliveryLedger(ledger);
+      return result;
+    } finally {
+      release();
+    }
+  }
+
+  private async performMobilePushDispatch(
+    message: MobilePushMessage,
+  ): Promise<void> {
     const config = resolveCloudApnsConfig(this.env);
     if (!config) return;
     this.apnsProvider ??= new CloudApnsProvider(config);
     const provider = this.apnsProvider;
-    const records = (await this.mobilePushTokens()).filter(
+    let records = (await this.mobilePushTokens()).filter(
       (record) => record.platform === "ios",
     );
+    let ledgerId: string | undefined;
+    let acceptedTokenIds = new Set<string>();
+    const recordTokenIds = await Promise.all(
+      records.map((record) => mobilePushLedgerDigest(record.token)),
+    );
+    if (message.collapseKey) {
+      ledgerId = await mobilePushLedgerDigest(message.collapseKey);
+      const claim = await this.mutateMobilePushDeliveryLedger((ledger) => {
+        const existing = ledger[ledgerId!];
+        const now = Date.now();
+        const suppress =
+          existing?.status === "accepted" ||
+          (existing?.status === "pending" &&
+            now - existing.updatedAt < MOBILE_PUSH_PENDING_RETRY_MS);
+        if (suppress) return { suppress: true, acceptedTokenIds: [] };
+        const previouslyAccepted = existing?.acceptedTokens ?? [];
+        ledger[ledgerId!] = {
+          status: "pending",
+          acceptedTokens: previouslyAccepted,
+          updatedAt: now,
+        };
+        return { suppress: false, acceptedTokenIds: previouslyAccepted };
+      });
+      if (claim.suppress) return;
+      acceptedTokenIds = new Set(claim.acceptedTokenIds);
+      records = records.filter(
+        (_record, index) => !acceptedTokenIds.has(recordTokenIds[index]),
+      );
+    }
     const attempts = await Promise.allSettled(
       records.map((record) => provider.send(record.token, message)),
     );
     const staleTokens = new Set<string>();
-    const rejections: string[] = [];
+    const settledTokenIds = new Set(acceptedTokenIds);
+    let transportFailures = 0;
+    let providerRejections = 0;
     for (const [index, attempt] of attempts.entries()) {
       if (attempt.status === "rejected") {
-        rejections.push(
-          attempt.reason instanceof Error
-            ? attempt.reason.message
-            : String(attempt.reason),
-        );
+        transportFailures++;
         continue;
       }
       const result = attempt.value;
       if (result.outcome === "unregistered") {
         staleTokens.add(records[index].token);
+        settledTokenIds.add(await mobilePushLedgerDigest(records[index].token));
+      } else if (result.outcome === "accepted") {
+        settledTokenIds.add(await mobilePushLedgerDigest(records[index].token));
       } else if (result.outcome === "rejected") {
-        rejections.push(
-          `${result.status}${result.reason ? ` ${result.reason}` : ""}`,
-        );
+        providerRejections++;
       }
     }
     await this.unregisterMobilePushTokens(staleTokens);
-    if (rejections.length > 0) {
+    if (ledgerId) {
+      await this.mutateMobilePushDeliveryLedger((ledger) => {
+        const currentAccepted = ledger[ledgerId!]?.acceptedTokens ?? [];
+        ledger[ledgerId!] = {
+          status:
+            transportFailures + providerRejections === 0
+              ? "accepted"
+              : "retryable",
+          acceptedTokens: [
+            ...new Set([...currentAccepted, ...settledTokenIds]),
+          ],
+          updatedAt: Date.now(),
+        };
+      });
+    }
+    if (transportFailures + providerRejections > 0) {
       throw new Error(
-        `[SharedRuntimeConversation] APNs rejected ${rejections.length} notification delivery attempt(s): ${rejections.join(", ")}`,
+        `[SharedRuntimeConversation] APNs delivery failed (${transportFailures} transport, ${providerRejections} provider rejection)`,
       );
     }
+  }
+
+  private async dispatchMobilePush(message: MobilePushMessage): Promise<void> {
+    if (!message.collapseKey)
+      return await this.performMobilePushDispatch(message);
+    const active = this.activeMobilePushDispatches.get(message.collapseKey);
+    if (active) return await active;
+    const dispatch = this.performMobilePushDispatch(message).finally(() => {
+      if (
+        this.activeMobilePushDispatches.get(message.collapseKey!) === dispatch
+      ) {
+        this.activeMobilePushDispatches.delete(message.collapseKey!);
+      }
+    });
+    this.activeMobilePushDispatches.set(message.collapseKey, dispatch);
+    return await dispatch;
   }
 
   private enqueueMobilePush(message: MobilePushMessage): void {

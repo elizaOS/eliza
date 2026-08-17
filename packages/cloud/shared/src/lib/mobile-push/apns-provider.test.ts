@@ -122,6 +122,27 @@ describe("CloudApnsProvider", () => {
     expect(new Set(authorizations).size).toBe(1);
   });
 
+  test("uses one bounded collapse id when an occurrence is replayed", async () => {
+    const { config } = await fixture();
+    const collapseIds: string[] = [];
+    const provider = new CloudApnsProvider(config, async (_url, init) => {
+      collapseIds.push(new Headers(init?.headers).get("apns-collapse-id") ?? "");
+      return new Response(null, { status: 200 });
+    });
+    const replayKey = `reminder:${"x".repeat(256)}:occurrence`;
+
+    await provider.send("device", { title: "Reminder", collapseKey: replayKey });
+    await provider.send("device", { title: "Reminder", collapseKey: replayKey });
+    await provider.send("device", {
+      title: "Reminder",
+      collapseKey: `${replayKey}:next`,
+    });
+
+    expect(collapseIds[0]).toBe(collapseIds[1]);
+    expect(collapseIds[0]?.length).toBeLessThanOrEqual(64);
+    expect(collapseIds[2]).not.toBe(collapseIds[0]);
+  });
+
   test("preserves non-token rejection status and reason", async () => {
     const { config } = await fixture();
     const provider = new CloudApnsProvider(config, async () =>

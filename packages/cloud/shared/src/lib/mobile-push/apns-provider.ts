@@ -123,6 +123,13 @@ export class CloudApnsProvider {
     if (new TextEncoder().encode(body).length > APNS_MAX_PAYLOAD_BYTES) {
       return { outcome: "rejected", status: 413, reason: "PayloadTooLarge" };
     }
+    const collapseId = message.collapseKey
+      ? base64url(
+          new Uint8Array(
+            await crypto.subtle.digest("SHA-256", new TextEncoder().encode(message.collapseKey)),
+          ),
+        )
+      : undefined;
     const response = await this.request(`${origin}/3/device/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: {
@@ -130,6 +137,7 @@ export class CloudApnsProvider {
         "apns-topic": this.config.topic,
         "apns-push-type": "alert",
         "content-type": "application/json",
+        ...(collapseId ? { "apns-collapse-id": collapseId } : {}),
       },
       body,
       signal: AbortSignal.timeout(APNS_REQUEST_TIMEOUT_MS),

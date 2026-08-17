@@ -47,6 +47,7 @@ const apnsOutcomes = new Map<
   string,
   { outcome: string; reason?: string; status?: number } | Error
 >();
+const loggerWarn = mock(() => undefined);
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -254,11 +255,14 @@ mock.module("@/lib/mobile-push/apns-provider", () => ({
   },
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: mock(() => undefined) },
+  logger: { warn: loggerWarn },
 }));
 
 const { SharedRuntimeConversation } = await import(
   "./shared-runtime-conversation"
+);
+const { coordinateSharedPushDispatch } = await import(
+  "@/lib/services/shared-runtime/conversation-coordinator"
 );
 type SharedRuntimeConversationInstance = InstanceType<
   typeof SharedRuntimeConversation
@@ -277,6 +281,7 @@ beforeEach(() => {
   apnsOutcome = { outcome: "accepted" };
   apnsSentTokens.length = 0;
   apnsOutcomes.clear();
+  loggerWarn.mockClear();
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -447,6 +452,46 @@ test("notification dispatch sends iOS tokens and removes APNs-dead records", asy
   expect(data.has("mobile-push-tokens")).toBe(false);
 });
 
+test("real coordinator namespace dispatch reaches the durable APNs provider path", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "coordinated-token",
+    })
+  ).arrayBuffer();
+  const names: string[] = [];
+  const namespace = {
+    getByName(name: string) {
+      names.push(name);
+      return {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          object.fetch(new Request(input, init)),
+      };
+    },
+  };
+
+  await coordinateSharedPushDispatch(
+    AGENT_FIXTURE.id,
+    {
+      title: "Reminder",
+      collapseKey: "scheduled-occurrence",
+      data: { notificationId: "scheduled-occurrence" },
+    },
+    { namespace: namespace as never },
+  );
+  await Promise.all(background.splice(0));
+
+  expect(names).toEqual([`${AGENT_FIXTURE.id}:${AGENT_FIXTURE.id}`]);
+  expect(apnsSentTokens).toEqual(["coordinated-token"]);
+});
+
 test("notification dispatch settles every device when one APNs request fails", async () => {
   const data = new Map<string, unknown>();
   const background: Promise<unknown>[] = [];
@@ -483,6 +528,142 @@ test("notification dispatch settles every device when one APNs request fails", a
   expect(data.get("mobile-push-tokens")).toEqual([
     expect.objectContaining({ token: "live-token" }),
     expect.objectContaining({ token: "network-token" }),
+  ]);
+});
+
+test("accepted occurrence replay is suppressed by the bounded durable ledger", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "live-token",
+    })
+  ).arrayBuffer();
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-1",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  await dispatch();
+
+  expect(apnsSentTokens).toEqual(["live-token"]);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(1);
+  expect(Object.keys(ledger)[0]?.length).toBe(64);
+  expect(Object.values(ledger)[0]?.status).toBe("accepted");
+});
+
+test("concurrent occurrence ledgers merge without storing raw maximum-length tokens", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const token = "sensitive-token-".padEnd(4_096, "x");
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token,
+    })
+  ).arrayBuffer();
+  const enqueue = async (collapseKey: string) =>
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: { title: "Reminder", collapseKey },
+      })
+    ).arrayBuffer();
+
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+
+  expect(apnsSentTokens).toHaveLength(2);
+  const ledgerJson = JSON.stringify(data.get("mobile-push-delivery-ledger"));
+  expect(ledgerJson).not.toContain("sensitive-token-");
+  expect(new TextEncoder().encode(ledgerJson).length).toBeLessThan(1_024);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { acceptedTokens: string[] }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(2);
+  for (const entry of Object.values(ledger)) {
+    expect(entry.acceptedTokens).toHaveLength(1);
+    expect(entry.acceptedTokens[0]?.length).toBe(64);
+  }
+});
+
+test("retry sends only unsettled devices and never logs an APNs token URL", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["accepted-token", "private-device-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set(
+    "private-device-token",
+    new Error(
+      "fetch failed https://api.push.apple.com/3/device/private-device-token",
+    ),
+  );
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-2",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "private-device-token",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "api.push.apple.com",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).toContain("1 transport");
+
+  apnsOutcomes.delete("private-device-token");
+  await dispatch();
+  expect(apnsSentTokens).toEqual([
+    "accepted-token",
+    "private-device-token",
+    "private-device-token",
   ]);
 });
 

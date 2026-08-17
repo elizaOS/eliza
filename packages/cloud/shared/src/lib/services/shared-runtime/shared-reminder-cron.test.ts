@@ -133,6 +133,7 @@ describe("Shared reminder cron", () => {
       {
         title: "Reminder",
         body: "time to stand up and stretch",
+        collapseKey: "reminder-1:2026-08-14T20:00:00.000Z",
         data: {
           notificationId: "reminder-1:2026-08-14T20:00:00.000Z",
           category: "reminder",
@@ -245,24 +246,38 @@ describe("Shared reminder cron", () => {
         providerMessageIds: ["provider-recovered"],
       });
     }) as typeof fetch;
-    const dispatcher = sharedReminderDispatcher(env);
-    await expect(
-      dispatcher.dispatch({
-        taskId: "recovered-reminder",
-        promptInstructions: "recover me",
-        firedAtIso: "2026-08-15T20:05:00.000Z",
-        metadata: {
-          dispatchIdempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
-          delivery: {
-            platform: "telegram",
-            project: "eliza-app",
-            chatId: "123456789",
-          },
+    const dispatcher = sharedReminderDispatcher(
+      env,
+      "personal:00000000-0000-5000-8000-000000000000",
+    );
+    const recoveredRecord = {
+      taskId: "recovered-reminder",
+      promptInstructions: "recover me",
+      firedAtIso: "2026-08-15T20:05:00.000Z",
+      metadata: {
+        dispatchIdempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
         },
-      }),
-    ).resolves.toMatchObject({ ok: true });
+      },
+    };
+    await expect(dispatcher.dispatch(recoveredRecord)).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(dispatcher.dispatch(recoveredRecord)).resolves.toMatchObject({
+      ok: true,
+    });
     await expect(requests[0]?.json()).resolves.toMatchObject({
       idempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+    });
+    expect(coordinateSharedPushDispatch).toHaveBeenCalledTimes(2);
+    expect(coordinateSharedPushDispatch.mock.calls[0]?.[1]).toMatchObject({
+      collapseKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+    });
+    expect(coordinateSharedPushDispatch.mock.calls[1]?.[1]).toMatchObject({
+      collapseKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
     });
 
     await expect(
@@ -284,7 +299,7 @@ describe("Shared reminder cron", () => {
       acceptance: "not_accepted",
       userActionable: true,
     });
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(2);
   });
 
   for (const status of [403, 429]) {

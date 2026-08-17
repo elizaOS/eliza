@@ -11,6 +11,8 @@ export interface MobilePushTokenRecord {
 export interface MobilePushMessage {
   title: string;
   body?: string;
+  /** Stable occurrence key that APNs hashes into its bounded collapse header. */
+  collapseKey?: string;
   data?: Record<string, string | number | boolean | null>;
 }
 

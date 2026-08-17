@@ -89,6 +89,17 @@ function greetingConversationId(path: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+function pushTokenDeleteTarget(path: string): string | null {
+  const prefix = "notifications/push-tokens/";
+  if (!path.startsWith(prefix)) return null;
+  const encoded = path.slice(prefix.length);
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
+}
+
 function isPersonalSharedAgent(
   value: Awaited<ReturnType<typeof resolveSharedAgent>>,
 ): boolean {
@@ -377,20 +388,40 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
   }
   if (c.req.method === "DELETE") {
     const path = shellPath(c);
-    if (path === "notifications/push-tokens" && !isPersonalSharedAgent(r)) {
-      return personalPushUnavailable(c);
-    }
-    let token: string | null = null;
+    let token = pushTokenDeleteTarget(path);
     if (path === "notifications/push-tokens") {
+      const contentLength = Number(c.req.header("content-length") ?? 0);
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > MAX_PUSH_REGISTRATION_BODY_BYTES
+      ) {
+        return json(
+          c,
+          { success: false, error: "Request body too large" },
+          413,
+        );
+      }
+      const rawBody = await c.req.text();
+      if (
+        new TextEncoder().encode(rawBody).length >
+        MAX_PUSH_REGISTRATION_BODY_BYTES
+      ) {
+        return json(
+          c,
+          { success: false, error: "Request body too large" },
+          413,
+        );
+      }
       let body: { token?: unknown } | null = null;
       try {
-        body = (await c.req.json()) as { token?: unknown };
+        body = JSON.parse(rawBody) as { token?: unknown };
       } catch {
         // error-policy:J3 malformed client JSON is an explicit invalid request.
       }
       token = typeof body?.token === "string" ? body.token.trim() : "";
     }
     if (token !== null) {
+      if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
       if (!token)
         return json(
           c,

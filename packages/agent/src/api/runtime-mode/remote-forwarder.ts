@@ -29,9 +29,17 @@ const REMOTE_FORWARDED_MUTATION_PREFIXES = [
   "/api/cloud/billing/",
   "/api/cloud/v1/",
   "/api/notifications/push-tokens",
+  "/api/notifications/push-tokens/",
 ] as const;
 
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+const LEGACY_PUSH_TOKEN_URL = /(\/api\/notifications\/push-tokens\/)[^/?\s]+/g;
+
+/** Removes legacy device identifiers before the agent boundary can log a URL. */
+export function redactPushTokenRequestUrl(value: string): string {
+  return value.replace(LEGACY_PUSH_TOKEN_URL, "$1[redacted]");
+}
 
 export function shouldForwardToRemoteTarget(
   pathname: string,
@@ -127,6 +135,9 @@ export async function forwardRemoteCloudMutation(
     `${url.pathname}${url.search}`,
     snapshot.remoteApiBase,
   );
+  // The raw target URL above remains authoritative for compatibility, but any
+  // later boundary diagnostic observing this request must not see the token.
+  req.url = redactPushTokenRequestUrl(req.url ?? "/");
 
   const rawBody = FORWARDED_METHODS.has(method)
     ? await readRequestBody(req)
