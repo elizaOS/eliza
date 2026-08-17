@@ -38,8 +38,8 @@ import {
   SandboxService,
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
-import { publishParsedReply } from "./acp-response.js";
 import { installAcpConnectionCloseTeardown } from "./acp-connection-lifecycle.js";
+import { publishParsedReply } from "./acp-response.js";
 import {
   AcpSessionAdmission,
   type AcpSessionState,
