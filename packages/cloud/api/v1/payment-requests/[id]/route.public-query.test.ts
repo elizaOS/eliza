@@ -1,8 +1,7 @@
 /**
- * GET /api/v1/payment-requests/:id `public` is checkout-visibility identity,
- * not leftover Life Ops inbox bool tax. Stock develop treated only the exact
- * token `1` as the unauthenticated checkout DTO; `public=true` / `public=yes`
- * silently took the authenticated creator path.
+ * Deterministic route tests for the payment-request detail visibility query.
+ * Mocked authentication and storage boundaries prove selection happens before
+ * either collaborator is invoked.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";

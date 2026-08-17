@@ -31,11 +31,9 @@ app.get("/", async (c) => {
       );
     }
 
-    // Checkout-visibility identity, not leftover inbox-bool tax. Only the
-    // exact token `1` is the allowlisted unauthenticated DTO. `public=true`
-    // / `public=yes` previously fell through to the authenticated creator
-    // path. Missing/empty still means creator view. Garbage 400s before
-    // auth or either lookup.
+    // Only the exact token `1` selects the unauthenticated, redacted checkout
+    // DTO. Missing or empty selects the authenticated creator view; any other
+    // token is ambiguous and must fail before authentication or lookup.
     const requestedPublic = c.req.query("public");
     if (
       requestedPublic !== undefined &&
