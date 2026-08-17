@@ -18,8 +18,9 @@ mock.module("@/lib/api/cloud-worker-errors", () => ({
 mock.module("@/lib/api/errors", () => ({
   ApiError: class ApiError extends Error {},
 }));
+const loggerError = mock(() => undefined);
 mock.module("@/lib/utils/logger", () => ({
-  logger: { debug: mock(() => undefined), error: mock(() => undefined) },
+  logger: { debug: mock(() => undefined), error: loggerError },
 }));
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
@@ -53,6 +54,7 @@ describe("GET /api/v1/oauth/connections catalog platform identity", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
     listConnections.mockClear();
+    loggerError.mockClear();
   });
 
   test.each(["", "?platform="])(
@@ -92,4 +94,25 @@ describe("GET /api/v1/oauth/connections catalog platform identity", () => {
       expect(listConnections).not.toHaveBeenCalled();
     },
   );
+
+  test("translates a connection lookup failure after logging its platform", async () => {
+    listConnections.mockImplementationOnce(async () => {
+      throw new Error("lookup failed");
+    });
+
+    const response = await request("?platform=google");
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "Failed to list OAuth connections",
+    });
+    expect(loggerError).toHaveBeenCalledWith(
+      "[API] GET /api/v1/oauth/connections error",
+      expect.objectContaining({
+        organizationId: "org-1",
+        platform: "google",
+        error: "lookup failed",
+      }),
+    );
+  });
 });

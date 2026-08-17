@@ -37,6 +37,7 @@ app.get("/", async (c) => {
       ? rawConnectionRole
       : undefined;
   let organizationId: string | undefined;
+  let platform: string | undefined;
 
   if (rawConnectionRole && !connectionRole) {
     return c.json(
@@ -52,10 +53,7 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     organizationId = user.organization_id;
 
-    if (
-      requestedPlatform != null &&
-      requestedPlatform !== ""
-    ) {
+    if (requestedPlatform != null && requestedPlatform !== "") {
       const provider = getProvider(requestedPlatform);
       if (!provider || provider.id !== requestedPlatform) {
         return c.json(
@@ -67,7 +65,7 @@ app.get("/", async (c) => {
         );
       }
     }
-    const platform = requestedPlatform || undefined;
+    platform = requestedPlatform || undefined;
 
     logger.debug("[API] GET /api/v1/oauth/connections", {
       organizationId,
