@@ -87,7 +87,8 @@ const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
 
 async function readRouteJsonBody(
   req: http.IncomingMessage,
-): Promise<Record<string, unknown>> {
+  res: http.ServerResponse,
+): Promise<Record<string, unknown> | null> {
   const preParsed = (req as http.IncomingMessage & { body?: unknown }).body;
   if (
     preParsed &&
@@ -107,9 +108,20 @@ async function readRouteJsonBody(
     return {};
   }
 
-  const parsed = JSON.parse(rawBody) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody) as unknown;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed JSON is client
+    // garbage and already answered as 400; null tells persist not to 500.
+    sendJson(res, { ok: false, error: "Invalid JSON body" }, 400);
+    return null;
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Invalid JSON body");
+    // error-policy:J3 untrusted-input sanitizing — a JSON primitive or array
+    // is not a persist object; 400, not a persistence 500.
+    sendJson(res, { ok: false, error: "Invalid JSON body" }, 400);
+    return null;
   }
   return parsed as Record<string, unknown>;
 }
@@ -571,7 +583,10 @@ export async function handleCloudRoute(
   // the API key to the backend so billing/compat routes can authenticate.
   if (method === "POST" && pathname === "/api/cloud/login/persist") {
     try {
-      const body = await readRouteJsonBody(req);
+      const body = await readRouteJsonBody(req, res);
+      if (!body) {
+        return true;
+      }
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
         sendJson(res, { ok: false, error: "apiKey is required" }, 400);
         return true;
