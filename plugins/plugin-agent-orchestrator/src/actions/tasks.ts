@@ -2074,6 +2074,74 @@ async function runSpawnAgent(
       })}`,
     );
 
+    // Durable restart owner for the fire-and-forget spawn path. Without a
+    // task record a runtime restart orphans the live session SILENTLY: the
+    // sub-agent's work may finish on disk, but the "result will arrive as a
+    // follow-up" promise below dies with the process and nothing resumes or
+    // relays (observed live 2026-08-16: the session built its artifact,
+    // a restart killed the relay, and no record existed to recover it).
+    // create-path tasks persist their owner BEFORE the first prompt;
+    // spawn_agent mirrors that contract post-spawn. Only user-originated
+    // top-level spawns mint a record — router respawns and swarm children
+    // are owned by their parent task. Persistence failure degrades (the
+    // session is already running; killing it over bookkeeping would trade
+    // a silent-loss bug for a loud-loss one) but is reported loudly.
+    let durableTaskId: string | null = null;
+    if (userOriginatedSpawn) {
+      const spawnDurableService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      if (
+        spawnDurableService &&
+        typeof spawnDurableService.createTask === "function" &&
+        typeof spawnDurableService.attachSession === "function"
+      ) {
+        try {
+          const detail = await spawnDurableService.createTask({
+            title: label,
+            goal: task,
+            kind: "coding",
+            priority: "normal",
+            originalRequest: requestText(message),
+            ...(session.workdir ? { workdir: session.workdir } : {}),
+            ...(message.roomId ? { roomId: message.roomId } : {}),
+            ...(resolvedTaskRoomId ? { taskRoomId: resolvedTaskRoomId } : {}),
+            metadata: {
+              ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
+              spawnPath: "spawn_agent",
+            },
+          });
+          durableTaskId = detail?.id ?? null;
+          if (durableTaskId) {
+            await spawnDurableService.attachSession(durableTaskId, {
+              sessionId: session.sessionId,
+              agentType: session.agentType,
+              workdir: session.workdir,
+              status: session.status,
+              ...(session.metadata ? { metadata: session.metadata } : {}),
+              label,
+              originalTask: taskWithRouteHints,
+            });
+          }
+        } catch (error) {
+          // error-policy:J7 durable bookkeeping must not kill the already
+          // running session; the gap is surfaced through reportError so the
+          // owner sees the restart-durability exposure instead of silence.
+          durableTaskId = null;
+          runtime.reportError?.(
+            "TASKS:spawn_agent",
+            error instanceof Error ? error : new Error(String(error)),
+            { sessionId: session.sessionId, label },
+          );
+          logger(runtime).error(
+            `[TASKS:spawn_agent] durable task persistence failed for ${session.sessionId}; session runs WITHOUT restart protection: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+    }
+
     // An empty text here left the planner finish with nothing to relay for an
     // async spawn, and it answered the user's question from thin air instead
     // (observed live: fabricated `bun --version` output). State the pending
@@ -2110,6 +2178,7 @@ async function runSpawnAgent(
         workdir: session.workdir,
         status: session.status,
         label,
+        ...(durableTaskId ? { durableTaskId } : {}),
         deferredUserReply: deferUserReply,
         suppressActionResultClipboard: true,
       },
