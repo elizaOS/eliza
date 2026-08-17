@@ -26,9 +26,17 @@ const isNode =
 
 /** Read an environment variable as a string, or `undefined` when unset. */
 export function getEnv(key: string, defaultValue?: string): string | undefined {
-  if (isNode) {
-    return process.env[key] ?? defaultValue;
+  if (!key || typeof key !== "string") {
+    return defaultValue;
   }
-  const value = browserEnvBag()[key];
-  return value !== undefined ? String(value) : defaultValue;
+  if (isNode) {
+    const raw = process.env[key]?.trim();
+    return raw && raw.length > 0 ? raw : defaultValue;
+  }
+  const raw = browserEnvBag()[key];
+  if (raw === undefined || raw === null) {
+    return defaultValue;
+  }
+  const str = String(raw).trim();
+  return str.length > 0 ? str : defaultValue;
 }
