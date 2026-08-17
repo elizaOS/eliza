@@ -245,3 +245,66 @@ describe("showWebNotification", () => {
     ).toBe(false);
   });
 });
+
+describe("showNativeNotification (ios platform)", () => {
+  beforeEach(() => {
+    platform.value = "ios";
+  });
+
+  it("prefers LocalNotifications plugin when available and permitted", async () => {
+    const local = makeLocalNotifications();
+    plugins.LocalNotifications = local;
+    const result = await showNativeNotification({
+      id: "ios-1",
+      title: "Incoming message",
+      priority: "high",
+    });
+    expect(result).toBe("local");
+    expect(local.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notifications: [
+          expect.objectContaining({
+            title: "Incoming message",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("falls back to ElizaIntent with valid timeIso when LocalNotifications is unavailable", async () => {
+    const receiveIntent = vi.fn(async () => ({ accepted: true }));
+    plugins.ElizaIntent = { receiveIntent };
+    const result = await showNativeNotification({
+      id: "ios-2",
+      title: "Timer expired",
+      body: "Check timer",
+      priority: "urgent",
+      deepLink: "eliza://app/timers",
+    });
+    expect(result).toBe("intent");
+    expect(receiveIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "reminder",
+        payload: expect.objectContaining({
+          title: "Timer expired",
+          body: "Check timer",
+          priority: "urgent",
+          timeIso: expect.any(String),
+          deepLinkOnTap: "eliza://app/timers",
+        }),
+        issuedAtIso: expect.any(String),
+      }),
+    );
+  });
+
+  it("returns none when ElizaIntent rejects or returns accepted false", async () => {
+    const receiveIntent = vi.fn(async () => ({ accepted: false }));
+    plugins.ElizaIntent = { receiveIntent };
+    const result = await showNativeNotification({
+      id: "ios-3",
+      title: "Missed alert",
+      priority: "normal",
+    });
+    expect(result).toBe("none");
+  });
+});

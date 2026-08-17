@@ -211,15 +211,17 @@ async function tryElizaIntent(
   if (!hasMethod<ElizaIntentPluginLike>(plugin, "receiveIntent")) {
     return false;
   }
+  const nowIso = new Date().toISOString();
   const result = await plugin.receiveIntent({
     kind: "reminder",
     payload: {
       title: req.title,
       body: req.body ?? "",
       priority: req.priority,
+      timeIso: nowIso,
       ...(req.deepLink ? { deepLinkOnTap: req.deepLink } : {}),
     },
-    issuedAtIso: new Date().toISOString(),
+    issuedAtIso: nowIso,
   });
   return result.accepted === true;
 }
