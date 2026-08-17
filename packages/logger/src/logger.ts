@@ -817,7 +817,7 @@ function writeChatLine(line: string): void {
 export function logChatIn(params: ChatInLogParams): string {
   const preview = escapeChatPreview(
     params.text.length > CHAT_PREVIEW_IN_MAX
-      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
+      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX - 3)}...`
       : params.text,
   );
   const roomShort = params.roomId.slice(0, 8);
@@ -841,7 +841,7 @@ export function logChatOut(params: ChatOutLogParams): string {
   if (params.text !== undefined && params.text !== "") {
     const preview = escapeChatPreview(
       params.text.length > CHAT_PREVIEW_OUT_MAX
-        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
+        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX - 3)}...`
         : params.text,
     );
     part += ` len=${params.text.length} "${preview}"`;
