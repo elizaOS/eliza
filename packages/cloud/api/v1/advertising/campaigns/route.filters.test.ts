@@ -7,6 +7,10 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import {
+  AdPlatformSchema,
+  CampaignStatusSchema,
+} from "@/lib/services/advertising/schemas";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -68,29 +72,31 @@ describe("GET /api/v1/advertising/campaigns list-filter identity", () => {
     },
   );
 
-  test("accepts platform=meta as the Meta campaign catalog", async () => {
-    const response = await request("?platform=meta");
-    expect(response.status).toBe(200);
-    expect(listCampaigns).toHaveBeenCalledTimes(1);
-    expect(listCampaigns).toHaveBeenCalledWith("org-1", {
-      adAccountId: undefined,
-      platform: "meta",
-      status: undefined,
-      appId: undefined,
-    });
-  });
+  test.each([...AdPlatformSchema.options])(
+    "accepts platform=%s as a campaign catalog",
+    async (platform) => {
+      const response = await request(`?platform=${platform}`);
+      expect(response.status).toBe(200);
+      expect(listCampaigns).toHaveBeenCalledTimes(1);
+      expect(listCampaigns).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ platform }),
+      );
+    },
+  );
 
-  test("accepts status=active as the live campaign catalog", async () => {
-    const response = await request("?status=active");
-    expect(response.status).toBe(200);
-    expect(listCampaigns).toHaveBeenCalledTimes(1);
-    expect(listCampaigns).toHaveBeenCalledWith("org-1", {
-      adAccountId: undefined,
-      platform: undefined,
-      status: "active",
-      appId: undefined,
-    });
-  });
+  test.each([...CampaignStatusSchema.options])(
+    "accepts status=%s as a campaign catalog",
+    async (status) => {
+      const response = await request(`?status=${status}`);
+      expect(response.status).toBe(200);
+      expect(listCampaigns).toHaveBeenCalledTimes(1);
+      expect(listCampaigns).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ status }),
+      );
+    },
+  );
 
   test.each(["META", "facebook", "foo", "1e2"])(
     "rejects platform=%s before listCampaigns",

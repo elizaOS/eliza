@@ -6,11 +6,12 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { advertisingService } from "@/lib/services/advertising";
 import {
-  type AdPlatform,
-  advertisingService,
-} from "@/lib/services/advertising";
-import { CreateCampaignSchema } from "@/lib/services/advertising/schemas";
+  AdPlatformSchema,
+  CampaignStatusSchema,
+  CreateCampaignSchema,
+} from "@/lib/services/advertising/schemas";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,61 +40,28 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    // Ad-campaign catalog identity, not leftover tax on promote-assets
-    // platform (Twitter card sizes) or admin redemption status. The
-    // prior `as AdPlatform` cast passed META / facebook / foo into
-    // eq(adCampaigns.platform), so operators asking for Meta received
-    // an empty catalog. Same for status=ACTIVE. Missing / empty still
-    // means unfiltered. Garbage 400s before listCampaigns.
-    const AD_PLATFORMS = [
-      "meta",
-      "google",
-      "tiktok",
-      "snap",
-      "x-twitter",
-      "reddit",
-      "linkedin",
-      "programmatic-dsp",
-    ] as const;
-    const CAMPAIGN_STATUSES = [
-      "draft",
-      "pending",
-      "active",
-      "paused",
-      "completed",
-      "failed",
-      "archived",
-    ] as const;
     const requestedPlatform = c.req.query("platform");
-    if (
-      requestedPlatform != null &&
-      requestedPlatform !== "" &&
-      !AD_PLATFORMS.includes(
-        requestedPlatform as (typeof AD_PLATFORMS)[number],
-      )
-    ) {
+    const parsedPlatform = requestedPlatform
+      ? AdPlatformSchema.safeParse(requestedPlatform)
+      : null;
+    if (parsedPlatform && !parsedPlatform.success) {
       return c.json(
         {
           error: "invalid_platform",
-          message:
-            'platform must be "meta", "google", "tiktok", "snap", "x-twitter", "reddit", "linkedin", or "programmatic-dsp".',
+          message: `platform must be one of: ${AdPlatformSchema.options.join(", ")}.`,
         },
         400,
       );
     }
     const requestedStatus = c.req.query("status");
-    if (
-      requestedStatus != null &&
-      requestedStatus !== "" &&
-      !CAMPAIGN_STATUSES.includes(
-        requestedStatus as (typeof CAMPAIGN_STATUSES)[number],
-      )
-    ) {
+    const parsedStatus = requestedStatus
+      ? CampaignStatusSchema.safeParse(requestedStatus)
+      : null;
+    if (parsedStatus && !parsedStatus.success) {
       return c.json(
         {
           error: "invalid_status",
-          message:
-            'status must be "draft", "pending", "active", "paused", "completed", "failed", or "archived".',
+          message: `status must be one of: ${CampaignStatusSchema.options.join(", ")}.`,
         },
         400,
       );
@@ -106,8 +74,8 @@ app.get("/", async (c) => {
       user.organization_id,
       {
         adAccountId: adAccountId || undefined,
-        platform: (requestedPlatform || undefined) as AdPlatform | undefined,
-        status: requestedStatus || undefined,
+        platform: parsedPlatform?.data,
+        status: parsedStatus?.data,
         appId: appId || undefined,
       },
     );
