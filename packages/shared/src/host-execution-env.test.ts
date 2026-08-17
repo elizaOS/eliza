@@ -89,3 +89,46 @@ describe("host execution boot baseline", () => {
     }
   });
 });
+
+describe("host execution baseline env mirror", () => {
+  it("capture publishes the authority for uncaptured module instances", () => {
+    const fixture = fileURLToPath(
+      new URL("./host-execution-env.bridge.fixture.ts", import.meta.url),
+    );
+    const stdout = execFileSync(process.execPath, [fixture], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZA_HOST_EXECUTION_BASELINE_PATH: "/usr/bin:/bin",
+      },
+    });
+    expect(JSON.parse(stdout)).toEqual({ path: "/usr/bin:/bin" });
+  });
+
+  it("rejects an invalid mirrored value instead of trusting it", () => {
+    const fixture = fileURLToPath(
+      new URL("./host-execution-env.bridge.fixture.ts", import.meta.url),
+    );
+    const stdout = execFileSync(process.execPath, [fixture], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZA_HOST_EXECUTION_BASELINE_PATH: "relative/entry:/bin",
+      },
+    });
+    expect(JSON.parse(stdout)).toEqual({});
+  });
+
+  it("stays empty when no capture ran and no mirror is set", () => {
+    const fixture = fileURLToPath(
+      new URL("./host-execution-env.bridge.fixture.ts", import.meta.url),
+    );
+    const env = { ...process.env };
+    delete env.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+    const stdout = execFileSync(process.execPath, [fixture], {
+      encoding: "utf8",
+      env,
+    });
+    expect(JSON.parse(stdout)).toEqual({});
+  });
+});
