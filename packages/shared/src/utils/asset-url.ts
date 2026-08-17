@@ -94,7 +94,7 @@ export function resolveAppAssetUrl(
   assetPath: string,
   options?: AssetUrlResolveOptions,
 ): string {
-  if (!assetPath) return assetPath;
+  if (typeof assetPath !== "string" || !assetPath) return assetPath || "";
   if (isAlreadyAbsolute(assetPath)) return assetPath;
 
   const normalized = stripLeadingPathMarkers(assetPath);
@@ -153,6 +153,9 @@ function readSessionStorageApiBase(): string | undefined {
  * storage remains a compatibility fallback when no boot config exists yet.
  */
 export function resolveApiUrl(apiPath: string): string {
+  if (typeof apiPath !== "string") {
+    return "";
+  }
   const apiBaseRaw = getElizaApiBase()?.trim();
   const apiBase = apiBaseRaw && apiBaseRaw.length > 0 ? apiBaseRaw : undefined;
   const stored = readSessionStorageApiBase();
