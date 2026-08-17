@@ -92,6 +92,60 @@ function readSidecarEmbedding(payload: unknown): number[] | undefined {
  * `POST <baseUrl>/v1/embeddings` endpoint. Single attempt, 5s abort, typed
  * failures; never returns a partial or fabricated vector.
  */
+/**
+ * Batch variant of {@link embedTextViaSidecar}: one sidecar call for several
+ * texts, vectors returned in input order. Used by the write path so a turn
+ * pair costs a single embedding round-trip. Same 5s abort and typed failures;
+ * a count mismatch is an invalid response, never a partial result.
+ */
+export async function embedTextsViaSidecar(
+  baseUrl: string,
+  apiKey: string | undefined,
+  texts: string[],
+): Promise<number[][]> {
+  const cleaned = texts.map((text) => text.trim());
+  if (cleaned.length === 0 || cleaned.some((text) => !text)) {
+    throw new ElizaError("Embedding sidecar rejected blank input text", {
+      code: "SHARED_RECALL_EMBEDDING_EMPTY_TEXT",
+      severity: "fatal",
+    });
+  }
+  const url = `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({ input: cleaned, model: SHARED_RECALL_EMBEDDING_MODEL }),
+      signal: AbortSignal.timeout(SHARED_RECALL_EMBED_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new ElizaError("Embedding sidecar was unreachable", {
+      code: "SHARED_RECALL_EMBEDDING_UNREACHABLE",
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+  if (!response.ok) {
+    throw new ElizaError(`Embedding sidecar returned HTTP ${response.status}`, {
+      code: "SHARED_RECALL_EMBEDDING_HTTP_ERROR",
+      context: { status: response.status },
+    });
+  }
+  const payload = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  const vectors = data.map((entry) => readSidecarEmbedding({ data: [entry] }));
+  if (vectors.length !== cleaned.length || vectors.some((vector) => vector === undefined)) {
+    throw new ElizaError("Embedding sidecar returned an invalid batch response", {
+      code: "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
+      context: { expected: cleaned.length, received: vectors.length },
+    });
+  }
+  return vectors as number[][];
+}
+
 export async function embedTextViaSidecar(
   baseUrl: string,
   apiKey: string | undefined,
