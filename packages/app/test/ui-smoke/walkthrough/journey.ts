@@ -659,7 +659,7 @@ async function installMockLaneWrites(page: Page): Promise<void> {
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
-        body: `data: ${JSON.stringify({
+        body: `retry: 60000\ndata: ${JSON.stringify({
           type: "status",
           status: {
             connected: false,
@@ -680,21 +680,21 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   await page.route("**/api/local-inference/voice-models**", async (route) => {
     if (route.request().method() === "GET") {
       const pathname = new URL(route.request().url()).pathname;
-      await fulfillJson(
-        route,
-        200,
-        pathname.endsWith("/preferences")
-          ? {
-              preferences: {
-                autoUpdateOnWifi: true,
-                autoUpdateOnCellular: false,
-                autoUpdateOnMetered: false,
-                quietHours: [{ start: "22:00", end: "08:00" }],
-              },
-            }
-          : { installations: [] },
-      );
-      return;
+      if (pathname === "/api/local-inference/voice-models") {
+        await fulfillJson(route, 200, { installations: [] });
+        return;
+      }
+      if (pathname === "/api/local-inference/voice-models/preferences") {
+        await fulfillJson(route, 200, {
+          preferences: {
+            autoUpdateOnWifi: true,
+            autoUpdateOnCellular: false,
+            autoUpdateOnMetered: false,
+            quietHours: [{ start: "22:00", end: "08:00" }],
+          },
+        });
+        return;
+      }
     }
     await route.fallback();
   });
