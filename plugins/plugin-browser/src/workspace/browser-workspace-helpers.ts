@@ -109,7 +109,7 @@ function hashConnectorBrowserWorkspacePartitionKey(
   provider: string,
   accountId: string,
 ): string {
-  const input = `${provider.trim().toLowerCase()}\0${accountId.trim().toLowerCase()}`;
+  const input = `${provider.trim().toLowerCase()}\0${accountId.trim()}`;
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
     hash ^= input.charCodeAt(i);

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserWorkspaceText,
   parseBrowserWorkspaceNumberLike,
+  resolveConnectorBrowserWorkspacePartition,
 } from "./browser-workspace-helpers";
 
 /**
@@ -49,5 +50,20 @@ describe("normalizeBrowserWorkspaceText", () => {
     expect(normalizeBrowserWorkspaceText(null)).toBe("");
     expect(normalizeBrowserWorkspaceText(undefined)).toBe("");
     expect(normalizeBrowserWorkspaceText(42)).toBe("42");
+  });
+});
+
+describe("resolveConnectorBrowserWorkspacePartition", () => {
+  it("keeps case-sensitive connector account ids in separate profiles", () => {
+    const upperCaseAccount = resolveConnectorBrowserWorkspacePartition(
+      "custom",
+      "Account-A",
+    );
+    const lowerCaseAccount = resolveConnectorBrowserWorkspacePartition(
+      "custom",
+      "account-a",
+    );
+
+    expect(upperCaseAccount).not.toBe(lowerCaseAccount);
   });
 });
