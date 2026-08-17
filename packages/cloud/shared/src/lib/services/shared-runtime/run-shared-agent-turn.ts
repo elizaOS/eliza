@@ -271,7 +271,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSystemPrompt(
   character: SharedAgentCharacter,
-  capabilities: { reminders: boolean; todos: boolean; media: boolean },
+  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
 ): string {
   const parts: string[] = [];
@@ -287,8 +287,10 @@ function buildSystemPrompt(
   }
   parts.push(
     "Shared runtime boundaries:\n" +
-      "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-      "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n" +
+      (capabilities.webSearch
+        ? "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
+          "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n"
+        : "- You can converse, reason, draft, and help the user plan; public web search is unavailable for this turn.\n") +
       (capabilities.reminders
         ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
         : "- Reminders are unavailable on this transport.\n") +
@@ -426,8 +428,9 @@ export async function runSharedAgentTurn(
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
 
-  const remindersEnabled = Boolean(input.execution?.reminders);
-  const todosEnabled = Boolean(input.execution?.todos);
+  const actionsEnabled = input.messageRole !== "system";
+  const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
+  const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
@@ -473,9 +476,10 @@ export async function runSharedAgentTurn(
         system: buildSystemPrompt(
           input.character,
           {
+            webSearch: actionsEnabled,
             reminders: remindersEnabled,
             todos: todosEnabled,
-            media: Boolean(input.execution.media),
+            media: actionsEnabled && Boolean(input.execution.media),
           },
           input.recallContext,
         ),
@@ -494,6 +498,7 @@ export async function runSharedAgentTurn(
     const system = buildSystemPrompt(
       input.character,
       {
+        webSearch: actionsEnabled,
         reminders: remindersEnabled,
         todos: todosEnabled,
         media: false,
@@ -564,8 +569,9 @@ export async function runSharedAgentTurnStream(
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
 
-  const remindersEnabled = Boolean(input.execution?.reminders);
-  const todosEnabled = Boolean(input.execution?.todos);
+  const actionsEnabled = input.messageRole !== "system";
+  const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
+  const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
@@ -612,9 +618,10 @@ export async function runSharedAgentTurnStream(
           system: buildSystemPrompt(
             input.character,
             {
+              webSearch: actionsEnabled,
               reminders: remindersEnabled,
               todos: todosEnabled,
-              media: Boolean(input.execution.media),
+              media: actionsEnabled && Boolean(input.execution.media),
             },
             input.recallContext,
           ),
@@ -631,6 +638,7 @@ export async function runSharedAgentTurnStream(
     const system = buildSystemPrompt(
       input.character,
       {
+        webSearch: actionsEnabled,
         reminders: remindersEnabled,
         todos: todosEnabled,
         media: false,

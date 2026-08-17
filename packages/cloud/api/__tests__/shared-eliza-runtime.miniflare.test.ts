@@ -21,6 +21,7 @@ describe("Shared Eliza runtime in Workerd", () => {
   let reminderPlannerRequests = 0;
   let authenticatedImagePlannerRequests = 0;
   let untrustedImagePlannerRequests = 0;
+  let systemLifecyclePlannerRequests = 0;
   const liveModelUrl = process.env.SHARED_ELIZA_LIVE_MODEL_URL?.replace(
     /\/+$/,
     "",
@@ -231,6 +232,93 @@ describe("Shared Eliza runtime in Workerd", () => {
           });
         }
         const serializedBody = JSON.stringify(body);
+        if (
+          serializedBody.includes(
+            "A phone call connected. Greet the caller without taking any action.",
+          )
+        ) {
+          systemLifecyclePlannerRequests += 1;
+          if (systemLifecyclePlannerRequests === 1) {
+            return Response.json({
+              id: "chatcmpl-workerd-system-stage-one",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-system-stage-one",
+                        type: "function",
+                        function: {
+                          name: "HANDLE_RESPONSE",
+                          arguments: JSON.stringify({
+                            shouldRespond: "RESPOND",
+                            thought:
+                              "Try to turn the lifecycle event into a media effect.",
+                            contexts: ["media"],
+                            intents: [],
+                            candidateActionNames: ["GENERATE_MEDIA"],
+                            requiresTool: true,
+                            replyText: "The call is connected and ready.",
+                            replyEffectStatus: "none",
+                            facts: [],
+                            relationships: [],
+                            addressedTo: [],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 30,
+                completion_tokens: 12,
+                total_tokens: 42,
+              },
+            });
+          }
+          return Response.json({
+            id: "chatcmpl-workerd-system-hostile-plan",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "workerd-system-hostile-media-action",
+                      type: "function",
+                      function: {
+                        name: "GENERATE_MEDIA",
+                        arguments: JSON.stringify({
+                          mediaType: "image",
+                          prompt: "This must never execute",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 40,
+              completion_tokens: 10,
+              total_tokens: 50,
+            },
+          });
+        }
         const authenticatedImage = serializedBody.includes(
           "Generate an authenticated image of a tiny orange lighthouse",
         );
@@ -936,6 +1024,81 @@ describe("Shared Eliza runtime in Workerd", () => {
         ),
     ).toBe(true);
     expect(untrustedImagePlannerRequests).toBeGreaterThanOrEqual(3);
+  }, 120_000);
+
+  test("keeps a trusted system lifecycle turn action-free against a hostile planner", async () => {
+    const requestsBefore = modelRequests.length;
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/system-turn",
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: {
+        reply: string;
+        history: Array<{ role: string; content: string }>;
+        actionResults?: Array<Record<string, unknown>>;
+      };
+      mediaRequests: Array<Record<string, unknown>>;
+    };
+
+    expect(payload.result.reply).toBe(
+      "I tried to complete that, but the available runtime step failed before it produced a usable result.",
+    );
+    expect(payload.result.history[0]?.role).toBe("system");
+    expect(payload.result.actionResults).toEqual([
+      expect.objectContaining({
+        success: false,
+        error: "Action not found: GENERATE_MEDIA",
+        data: { actionName: "GENERATE_MEDIA" },
+      }),
+    ]);
+    expect(payload.mediaRequests).toEqual([]);
+
+    const lifecycleRequests = modelRequests.slice(requestsBefore);
+    const toolNames = lifecycleRequests.flatMap((modelRequest) =>
+      (
+        (modelRequest.tools as
+          | Array<{ function?: { name?: string } }>
+          | undefined) ?? []
+      ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : [])),
+    );
+    expect(toolNames).toContain("HANDLE_RESPONSE");
+    expect(toolNames).not.toContain("GENERATE_MEDIA");
+    expect(toolNames).not.toContain("WEB_SEARCH");
+    expect(toolNames).not.toContain("REMINDERS");
+    expect(toolNames).not.toContain("TODO");
+    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
+    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(systemLifecyclePlannerRequests).toBeGreaterThanOrEqual(2);
+  }, 120_000);
+
+  test("still delivers a benign trusted system lifecycle reply without user grants", async () => {
+    const requestsBefore = modelRequests.length;
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/system-turn/benign",
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const result = JSON.parse(body) as {
+      reply: string;
+      history: Array<{ role: string; content: string }>;
+      actionResults?: Array<Record<string, unknown>>;
+    };
+
+    expect(result.reply).toBe("hello through the production Workerd adapter");
+    expect(result.history[0]?.role).toBe("system");
+    expect(result.actionResults).toBeUndefined();
+    const lifecycleRequests = modelRequests.slice(requestsBefore);
+    expect(lifecycleRequests).toHaveLength(1);
+    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
+    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    const toolNames = (
+      (lifecycleRequests[0]?.tools as
+        | Array<{ function?: { name?: string } }>
+        | undefined) ?? []
+    ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
+    expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

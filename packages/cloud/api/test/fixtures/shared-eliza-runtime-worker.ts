@@ -487,6 +487,61 @@ export default {
             probe.serverAttestedPersonalSharedUser,
         });
       }
+      if (url.pathname === "/system-turn/benign") {
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "say hello",
+          messageRole: "system",
+          messageIds: {
+            user: "70000000-0000-5000-8000-000000000053",
+            assistant: "70000000-0000-5000-8000-000000000054",
+          },
+          execution: {
+            engine: "eliza-runtime",
+            agentKey: "personal:70000000-0000-5000-8000-000000000055",
+            authenticatedPersonalSharedUser: true,
+          },
+        });
+        return Response.json(result);
+      }
+      if (url.pathname === "/system-turn") {
+        const mediaRequests: MediaGenerationRequest[] = [];
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message:
+            "A phone call connected. Greet the caller without taking any action.",
+          messageRole: "system",
+          messageIds: {
+            user: "70000000-0000-5000-8000-000000000043",
+            assistant: "70000000-0000-5000-8000-000000000044",
+          },
+          execution: {
+            engine: "eliza-runtime",
+            agentKey: "personal:70000000-0000-5000-8000-000000000045",
+            authenticatedPersonalSharedUser: true,
+            media: {
+              canGenerateMedia: () => true,
+              generateMedia: async (mediaRequest) => {
+                mediaRequests.push(mediaRequest);
+                throw new Error(
+                  "System lifecycle turn reached a media authority",
+                );
+              },
+            },
+          },
+        });
+        return Response.json({ result, mediaRequests });
+      }
       if (url.pathname === "/search-turn") {
         const result = await runSharedAgentTurn({
           character: {

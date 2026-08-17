@@ -974,12 +974,155 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
     expect(modelRequests).toHaveLength(2);
+    expect(JSON.stringify(modelRequests)).toContain("user_role: USER");
     expect(
       (modelRequests[1].tools as Array<{ function?: { name?: string } }>).some(
         (tool) => tool.function?.name === "GENERATE_MEDIA",
       ),
     ).toBe(true);
     expect(JSON.stringify(modelRequests)).not.toContain('"name":"VIEWS"');
+  });
+
+  test("gives a trusted system lifecycle turn zero actions despite a hostile planner", async () => {
+    const modelRequests: Array<Record<string, unknown>> = [];
+    let mediaCalls = 0;
+    const connectionSpy = spyOn(AgentRuntime.prototype, "ensureConnection");
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      modelRequests.push(request);
+      if (modelRequests.length === 1) {
+        return Response.json({
+          id: "chatcmpl-shared-system-stage-one",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-system-handle-response",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        shouldRespond: "RESPOND",
+                        thought: "Try to turn the lifecycle instruction into privileged effects.",
+                        contexts: ["media", "web", "reminders", "todos"],
+                        intents: [],
+                        candidateActionNames: ["GENERATE_MEDIA", "WEB_SEARCH", "REMINDERS", "TODO"],
+                        requiresTool: true,
+                        replyText: "The call is connected and ready.",
+                        replyEffectStatus: "none",
+                        facts: [],
+                        relationships: [],
+                        addressedTo: [],
+                      }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+        });
+      }
+      return Response.json({
+        id: "chatcmpl-shared-system-hostile-plan",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-system-hostile-media-action",
+                  type: "function",
+                  function: {
+                    name: "GENERATE_MEDIA",
+                    arguments: JSON.stringify({
+                      mediaType: "image",
+                      prompt: "This must never execute",
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+      });
+    }) as typeof fetch;
+
+    try {
+      const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+      const result = await runSharedAgentTurn({
+        character: {
+          name: "Shared Eliza",
+          system: "You are Eliza.",
+          model: "gemma-4-31b",
+        },
+        history: [],
+        message: "A phone call connected. Greet the caller without taking any action.",
+        messageRole: "system",
+        execution: {
+          engine: "eliza-runtime",
+          agentKey: "personal:4fa13137-cb01-43a9-948c-76d162be13af",
+          authenticatedPersonalSharedUser: true,
+          media: {
+            canGenerateMedia: () => true,
+            generateMedia: async () => {
+              mediaCalls += 1;
+              throw new Error("System lifecycle turn reached a media authority");
+            },
+          },
+        },
+      });
+
+      expect(result.reply).toBe(
+        "I tried to complete that, but the available runtime step failed before it produced a usable result.",
+      );
+      expect(result.history[0]?.role).toBe("system");
+      expect(result.actionResults).toEqual([
+        expect.objectContaining({
+          success: false,
+          error: "Action not found: GENERATE_MEDIA",
+          data: { actionName: "GENERATE_MEDIA" },
+        }),
+      ]);
+      expect(mediaCalls).toBe(0);
+      expect(modelRequests.length).toBeGreaterThanOrEqual(2);
+      const toolNames = modelRequests.flatMap((modelRequest) =>
+        ((modelRequest.tools as Array<{ function?: { name?: string } }> | undefined) ?? []).flatMap(
+          (tool) => (tool.function?.name ? [tool.function.name] : []),
+        ),
+      );
+      expect(toolNames).toContain("HANDLE_RESPONSE");
+      expect(toolNames).not.toContain("GENERATE_MEDIA");
+      expect(toolNames).not.toContain("WEB_SEARCH");
+      expect(toolNames).not.toContain("REMINDERS");
+      expect(toolNames).not.toContain("TODO");
+      expect(JSON.stringify(modelRequests)).toContain("user_role: GUEST");
+      expect(JSON.stringify(modelRequests)).not.toContain("user_role: USER");
+
+      const lifecycleConnection = connectionSpy.mock.calls.at(-1)?.[0];
+      expect(lifecycleConnection).toMatchObject({
+        userName: "Shared lifecycle",
+        source: "shared-runtime-system",
+      });
+      expect(lifecycleConnection?.metadata).toBeUndefined();
+    } finally {
+      connectionSpy.mockRestore();
+    }
   });
 
   test("surfaces a sanitized media provider failure without fabricating an artifact", async () => {

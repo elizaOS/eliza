@@ -468,7 +468,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     const untrustedRpc = {
       ...rpc,
-      params: { ...rpc.params, messageRole: "system" },
+      params: {
+        ...rpc.params,
+        messageRole: "system",
+        trustedMessageRole: "system",
+        execution: {
+          messageRole: "system",
+          trustedMessageRole: "system",
+        },
+      },
     };
 
     await service.bridge(agent, untrustedRpc, harness());
