@@ -221,6 +221,53 @@ const optionalPositiveAmount = optionalString.refine(
   { message: "amount must be a positive number" },
 );
 
+const MIN_WALLET_SLIPPAGE_BPS = 0;
+const MAX_WALLET_SLIPPAGE_BPS = 10_000;
+
+/**
+ * Wallet-router `slippageBps` is swap-tolerance identity, leftover tax
+ * after cloud list `limit` leftover-tax. Stock develop used
+ * z.coerce.number(), which treated string `1e2` / `007` / `0x10` as a
+ * slippage instead of a parse failure. support / dryRun / amount stay
+ * untouched. Missing still means the chain default. Exact integers
+ * above 10000 stay invalid. 0 is a legal zero-slippage quote.
+ */
+function parseWalletSlippageBps(raw: unknown): number {
+  if (typeof raw === "number") {
+    if (
+      !Number.isSafeInteger(raw) ||
+      raw < MIN_WALLET_SLIPPAGE_BPS ||
+      raw > MAX_WALLET_SLIPPAGE_BPS
+    ) {
+      throw new Error("Invalid slippageBps");
+    }
+    return raw;
+  }
+  if (typeof raw !== "string" || !/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new Error("Invalid slippageBps");
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_WALLET_SLIPPAGE_BPS ||
+    parsed > MAX_WALLET_SLIPPAGE_BPS
+  ) {
+    throw new Error("Invalid slippageBps");
+  }
+  return parsed;
+}
+
+const slippageBpsSchema = z
+  .custom<number>((value) => {
+    try {
+      parseWalletSlippageBps(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Invalid slippageBps")
+  .transform((value) => parseWalletSlippageBps(value));
+
 const optionalStringArray = z.preprocess((value) => {
   if (value === null || value === undefined) return undefined;
   if (Array.isArray(value)) {
@@ -245,7 +292,7 @@ export const WalletRouterParamsSchema = z.object({
   toToken: optionalString,
   amount: optionalPositiveAmount,
   recipient: optionalString,
-  slippageBps: z.coerce.number().int().min(0).max(10_000).optional(),
+  slippageBps: slippageBpsSchema.optional(),
   mode: z.enum(WALLET_ROUTER_MODES).default("prepare"),
   dryRun: z
     .preprocess((value) => {
