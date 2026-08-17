@@ -1808,6 +1808,7 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
+  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
@@ -1897,6 +1898,7 @@ function ShellFoundationMount({
   useEffect(() => {
     if (!hasController) return undefined;
     let cancelled = false;
+    setShellPreviewHostReady(false);
 
     void (async () => {
       if (cancelled) return;
@@ -1909,6 +1911,17 @@ function ShellFoundationMount({
         },
         timeoutMs: 1_000,
       });
+      if (
+        !cancelled &&
+        useWebChatPanel &&
+        shellPreviewHovered &&
+        !shellIsOpen
+      ) {
+        // Paint only after the native host is 600px wide. Before this
+        // acknowledgement, a wide DOM preview is clipped through the resting
+        // 96px WKWebView and appears as a narrow center slice.
+        setShellPreviewHostReady(true);
+      }
     })();
 
     return () => {
@@ -1981,6 +1994,7 @@ function ShellFoundationMount({
         onPreviewHoverChange={
           useWebChatPanel ? setShellPreviewHovered : undefined
         }
+        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
       {!useWebChatPanel ? (
         <AssistantOverlay

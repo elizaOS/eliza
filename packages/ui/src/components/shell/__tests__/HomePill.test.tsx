@@ -74,6 +74,37 @@ describe("HomePill", () => {
     expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("waits for the native hover frame before painting the wide preview", () => {
+    const onPreviewHoverChange = vi.fn();
+    const { rerender } = render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(true);
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+
+    rerender(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady
+      />,
+    );
+    expect(button.className).toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+  });
+
   it("uses the same hover composer while Cloud auth is required", () => {
     render(
       <HomePill phase="needs-auth" onOpen={() => {}} onClose={() => {}} />,

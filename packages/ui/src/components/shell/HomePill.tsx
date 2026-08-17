@@ -45,6 +45,10 @@ export interface HomePillProps {
   /** Reports the idle pill's shallow composer-preview hover state. Desktop
    *  uses this to widen the transparent native hit area before painting it. */
   onPreviewHoverChange?: (hovered: boolean) => void;
+  /** True once the native host has acknowledged its wider hover frame. The
+   *  preview stays compact until then so WKWebView cannot clip the wide
+   *  composer into the resting 96px window. Web callers leave this unset. */
+  previewHostReady?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -117,6 +121,7 @@ export function HomePill({
   speaking = false,
   signingIn = false,
   onPreviewHoverChange,
+  previewHostReady = true,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
@@ -245,9 +250,10 @@ export function HomePill({
   }, [isOpen, onOpen, onClose]);
 
   const signInLabel = `Sign in with ${appName} Cloud`;
+  const previewVisible = previewHovered && previewHostReady;
   const listeningExpanded = phase === "listening";
   const chipExpanded = listeningExpanded || phase === "processing";
-  const composerSized = previewHovered || listeningExpanded;
+  const composerSized = previewVisible || listeningExpanded;
   const label = needsAuth
     ? signingIn
       ? `Signing in to ${appName} Cloud`
@@ -294,18 +300,18 @@ export function HomePill({
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
           // Listening/processing grow the capsule into a dark status chip.
           // Logged-out and idle states share the neutral handle/hover preview.
-          previewHovered
+          previewVisible
             ? "h-14 w-full justify-start overflow-hidden border border-white/55 bg-[linear-gradient(180deg,rgba(38,39,40,0.98),rgba(18,19,21,0.98))] px-5"
             : listeningExpanded
               ? "h-14 w-full justify-between overflow-hidden border border-white/55 bg-neutral-900/95 px-5"
               : chipExpanded
                 ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
                 : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          previewHovered
+          previewVisible
             ? "shadow-[0_14px_36px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.12)]"
             : chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
-            !previewHovered &&
+            !previewVisible &&
             (phase === "responding"
               ? speaking
                 ? // Speaking: stronger, tighter warm glow than thinking — the
@@ -320,7 +326,7 @@ export function HomePill({
             "animate-pulse opacity-90 motion-reduce:animate-none",
         )}
       >
-        {previewHovered && (
+        {previewVisible && (
           <>
             <Plus
               aria-hidden="true"
