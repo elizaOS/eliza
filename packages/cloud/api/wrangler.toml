@@ -421,6 +421,11 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
 #   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
 #   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
+#   ELIZA_APNS_KEY                     Apple APNs provider .p8 key contents
+#   ELIZA_APNS_KEY_ID                  Apple APNs provider key id
+#   ELIZA_APNS_TEAM_ID                 Apple Developer team id
+#   ELIZA_APNS_TOPIC                   Signed iOS bundle id (ai.elizaos.app)
+#   ELIZA_APNS_PRODUCTION              Explicit host selector: 0 sandbox, 1 production
 #   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
 #   WAIFU_BRIDGE_ORG_ID                Required owner org for waifu bridge user provisioning
 # -----------------------------------------------------------------------------

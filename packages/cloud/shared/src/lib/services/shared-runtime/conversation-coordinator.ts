@@ -8,6 +8,7 @@
 
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
+import type { MobilePushPlatform, MobilePushTokenRecord } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
@@ -37,6 +38,64 @@ export interface SharedConversationLifecycleEvent {
   id: string;
   content: string;
   createdAt: number;
+}
+
+export interface SharedMobilePushRegistration {
+  platform: MobilePushPlatform;
+  token: string;
+}
+
+async function coordinateSharedPushOperation<T>(
+  agentId: string,
+  operation: "push-list" | "push-register" | "push-unregister",
+  options: SharedConversationHistoryCoordinatorOptions,
+  value?: SharedMobilePushRegistration | { token: string },
+): Promise<T> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, agentId).fetch(
+    "https://shared-runtime.internal/mobile-push",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation, agentId, ...(value ?? {}) }),
+    },
+  );
+  await requireCoordinatorResponse(response, `mobile ${operation}`);
+  return (await response.json()) as T;
+}
+
+export async function coordinateSharedPushList(
+  agentId: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<MobilePushTokenRecord[]> {
+  const result = await coordinateSharedPushOperation<{ tokens: MobilePushTokenRecord[] }>(
+    agentId,
+    "push-list",
+    options,
+  );
+  return result.tokens;
+}
+
+export async function coordinateSharedPushRegister(
+  agentId: string,
+  registration: SharedMobilePushRegistration,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  await coordinateSharedPushOperation(agentId, "push-register", options, registration);
+}
+
+export async function coordinateSharedPushUnregister(
+  agentId: string,
+  token: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<boolean> {
+  const result = await coordinateSharedPushOperation<{ removed: boolean }>(
+    agentId,
+    "push-unregister",
+    options,
+    { token },
+  );
+  return result.removed;
 }
 
 export interface SharedCutoverSeal {

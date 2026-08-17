@@ -27,7 +27,7 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { client } from "../../api/client";
+import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,
   type PushActionPerformed,
@@ -39,6 +39,7 @@ import {
   type FrontendPlatform,
   getFrontendPlatform,
 } from "../../platform/platform-guards";
+import { loadAgentProfileRegistry } from "../agent-profiles";
 import { navigateDeepLink } from "./navigate-deep-link";
 
 /**
@@ -57,6 +58,27 @@ export interface PushRegistrationDeps {
   ) => Promise<unknown>;
   unregisterToken: (token: string) => Promise<unknown>;
   navigate: (deepLink: string) => void;
+  captureAuthority?: () => PushRegistrationAuthority;
+  sleep?: (delayMs: number) => Promise<void>;
+}
+
+export interface PushRegistrationAuthority {
+  key: string;
+  registerToken: PushRegistrationDeps["registerToken"];
+  unregisterToken: PushRegistrationDeps["unregisterToken"];
+}
+
+function captureClientAuthority(): PushRegistrationAuthority {
+  const baseUrl = client.getBaseUrl();
+  const token = client.getRestAuthToken();
+  const profileId = loadAgentProfileRegistry().activeProfileId ?? "unscoped";
+  const authorityClient = new ElizaClient(baseUrl, token ?? undefined);
+  return {
+    key: `${profileId}\u0000${baseUrl}\u0000${token ?? ""}`,
+    registerToken: (platform, value) =>
+      authorityClient.registerPushToken(platform, value),
+    unregisterToken: (value) => authorityClient.unregisterPushToken(value),
+  };
 }
 
 const defaultDeps: PushRegistrationDeps = {
@@ -66,12 +88,25 @@ const defaultDeps: PushRegistrationDeps = {
   registerToken: (platform, token) => client.registerPushToken(platform, token),
   unregisterToken: (token) => client.unregisterPushToken(token),
   navigate: navigateDeepLink,
+  captureAuthority: captureClientAuthority,
+  sleep: (delayMs) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, delayMs);
+    }),
 };
 
 let startPromise: Promise<void> | null = null;
 let listenerPromise: Promise<void> | null = null;
 /** The most recent token we POSTed, so a re-fired `registration` is a no-op. */
-let registeredToken: string | null = null;
+let activeAuthorityKey: string | null = null;
+let authorityTransition: Promise<void> = Promise.resolve();
+let registeredToken: {
+  value: string;
+  authorityKey: string;
+  unregister: PushRegistrationDeps["unregisterToken"];
+} | null = null;
+
+const TOKEN_POST_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
 
 /** Only the native mobile platforms carry a remote-push transport. */
 function pushPlatform(platform: FrontendPlatform): "ios" | "android" | null {
@@ -106,9 +141,37 @@ async function onRegistration(
   token: PushRegistrationToken,
 ): Promise<void> {
   const value = token.value?.trim();
-  if (!value || value === registeredToken) return;
-  await deps.registerToken(platform, value);
-  registeredToken = value;
+  if (!value) return;
+  const authority = deps.captureAuthority?.() ?? {
+    key: "default",
+    registerToken: deps.registerToken,
+    unregisterToken: deps.unregisterToken,
+  };
+  if (
+    registeredToken?.value === value &&
+    registeredToken.authorityKey === authority.key
+  ) {
+    return;
+  }
+  let lastError: unknown;
+  for (const delayMs of TOKEN_POST_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await (deps.sleep ?? defaultDeps.sleep)?.(delayMs);
+    }
+    try {
+      await authority.registerToken(platform, value);
+      registeredToken = {
+        value,
+        authorityKey: authority.key,
+        unregister: authority.unregisterToken,
+      };
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError !== undefined) throw lastError;
   logger.info(
     { src: "push-registration", platform },
     "[push-registration] registered device push token",
@@ -141,6 +204,8 @@ async function startPushRegistration(
   const platform = pushPlatform(deps.getPlatform());
   if (!platform) return false;
   if (!deps.isRemotePushEnabled(platform)) return false;
+
+  activeAuthorityKey = (deps.captureAuthority?.() ?? { key: "default" }).key;
 
   const plugin = deps.getPlugin();
   if (
@@ -215,17 +280,39 @@ async function addPushListeners(
 
 /** Drop this device's token server-side and locally (logout / revoke). */
 export async function unregisterPushToken(
-  deps: PushRegistrationDeps = defaultDeps,
+  _deps: PushRegistrationDeps = defaultDeps,
 ): Promise<void> {
   const token = registeredToken;
   if (!token) return;
   registeredToken = null;
-  await deps.unregisterToken(token);
+  await token.unregister(token.value);
+}
+
+/** Revoke the prior authority's token, then acquire it for the current target. */
+export function refreshPushRegistrationAuthority(
+  deps: PushRegistrationDeps = defaultDeps,
+  force = false,
+): Promise<void> {
+  const transition = authorityTransition
+    .catch(() => undefined)
+    .then(async () => {
+      const nextAuthorityKey = (deps.captureAuthority?.() ?? { key: "default" })
+        .key;
+      if (!force && nextAuthorityKey === activeAuthorityKey) return;
+      await unregisterPushToken(deps);
+      startPromise = null;
+      activeAuthorityKey = null;
+      await initPushRegistration(deps);
+    });
+  authorityTransition = transition;
+  return transition;
 }
 
 /** Test-only reset of the module-level registration guards. */
 export function __resetPushRegistrationForTests(): void {
   startPromise = null;
   listenerPromise = null;
+  activeAuthorityKey = null;
+  authorityTransition = Promise.resolve();
   registeredToken = null;
 }

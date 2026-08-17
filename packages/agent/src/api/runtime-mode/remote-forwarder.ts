@@ -13,6 +13,8 @@
  *
  * This module does not catch transport errors — a broken target is a
  * 502 surface to the caller, not a silent log-and-continue.
+ * Device push-token mutations follow the same ownership rule: the selected
+ * remote target owns its token registry and sender, never the controller.
  */
 
 import type http from "node:http";
@@ -26,6 +28,8 @@ const REMOTE_FORWARDED_MUTATION_PREFIXES = [
   "/api/cloud/disconnect",
   "/api/cloud/billing/",
   "/api/cloud/v1/",
+  "/api/notifications/push-tokens",
+  "/api/notifications/push-tokens/",
 ] as const;
 
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -35,8 +39,8 @@ export function shouldForwardToRemoteTarget(
   method: string,
 ): boolean {
   if (!FORWARDED_METHODS.has(method.toUpperCase())) return false;
-  return REMOTE_FORWARDED_MUTATION_PREFIXES.some((p) =>
-    p.endsWith("/") ? pathname.startsWith(p) : pathname === p,
+  return REMOTE_FORWARDED_MUTATION_PREFIXES.some((prefix) =>
+    prefix.endsWith("/") ? pathname.startsWith(prefix) : pathname === prefix,
   );
 }
 

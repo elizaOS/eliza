@@ -581,6 +581,14 @@ jobs:
           # activation is a separate protected, live-proven rollout.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          # Personal Shared APNs stays dormant unless the complete protected
+          # environment config is present. Topic/environment are explicit so a
+          # signed development build cannot silently receive production pushes.
+          ELIZA_APNS_KEY: ${{ secrets.ELIZA_APNS_KEY }}
+          ELIZA_APNS_KEY_ID: ${{ secrets.ELIZA_APNS_KEY_ID }}
+          ELIZA_APNS_TEAM_ID: ${{ secrets.ELIZA_APNS_TEAM_ID }}
+          ELIZA_APNS_TOPIC: ${{ vars.ELIZA_APNS_TOPIC }}
+          ELIZA_APNS_PRODUCTION: ${{ vars.ELIZA_APNS_PRODUCTION }}
           # Bearer key for the self-hosted TEI embeddings sidecar (#20627); the
           # Worker's local-embeddings routing sends it when LOCAL_EMBEDDINGS_BASE_URL
           # is configured. The sidecar rejects unauthenticated calls (401).
@@ -900,6 +908,11 @@ jobs:
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET \
             ELIZA_APP_TELEGRAM_BOT_TOKEN \
             ELIZA_APP_TELEGRAM_WEBHOOK_SECRET \
+            ELIZA_APNS_KEY \
+            ELIZA_APNS_KEY_ID \
+            ELIZA_APNS_TEAM_ID \
+            ELIZA_APNS_TOPIC \
+            ELIZA_APNS_PRODUCTION \
             LOCAL_EMBEDDINGS_API_KEY
           do
             queue_secret "$name"

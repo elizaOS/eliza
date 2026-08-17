@@ -6,6 +6,8 @@
  */
 
 import {
+  type AgentEventPayload,
+  type AgentNotification,
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -13,7 +15,9 @@ import {
   type IAgentRuntime,
   InMemoryDatabaseAdapter,
   ModelType,
+  NOTIFICATION_STREAM,
   type Plugin,
+  ServiceType,
   type StreamingContext,
   setStreamingContextManager,
   stringToUuid,
@@ -33,6 +37,7 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import type {
@@ -56,6 +61,60 @@ type NativeTextModelResult = string & {
   usage: SharedAgentTurnUsage;
   providerMetadata: { modelName: string };
 };
+
+interface SharedNotificationEventBus {
+  subscribe(listener: (event: AgentEventPayload) => void): () => void;
+}
+
+type SharedMobilePushDispatch = (message: MobilePushMessage) => Promise<void>;
+
+function isSharedNotificationEventBus(value: unknown): value is SharedNotificationEventBus {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "subscribe" in value &&
+      typeof value.subscribe === "function",
+  );
+}
+
+function notificationFromEvent(event: AgentEventPayload): AgentNotification | null {
+  const notification = event.data?.notification;
+  if (
+    event.stream !== NOTIFICATION_STREAM ||
+    !notification ||
+    typeof notification !== "object" ||
+    typeof (notification as AgentNotification).id !== "string" ||
+    typeof (notification as AgentNotification).title !== "string"
+  ) {
+    return null;
+  }
+  return notification as AgentNotification;
+}
+
+/** Bridges canonical notification events to the hosting authority's push sender. */
+export function subscribeSharedMobilePush(
+  eventBus: SharedNotificationEventBus,
+  dispatch: SharedMobilePushDispatch,
+  pending: Promise<void>[],
+): () => void {
+  return eventBus.subscribe((event) => {
+    const notification = notificationFromEvent(event);
+    if (!notification) return;
+    const data: Record<string, string | number | boolean | null> = {
+      notificationId: notification.id,
+      category: notification.category,
+    };
+    if (notification.deepLink) data.deepLink = notification.deepLink;
+    if (notification.groupKey) data.groupKey = notification.groupKey;
+    pending.push(
+      dispatch({
+        title: notification.title,
+        body: notification.body,
+        data,
+      }),
+    );
+  });
+}
 
 let edgeStreamingContextReady: Promise<void> | undefined;
 let sharedRuntimeKernelReady: Promise<void> | undefined;
@@ -418,6 +477,13 @@ async function executeSharedElizaRuntimeTurn(
 
   try {
     await runtime.initialize({ skipMigrations: true });
+    const pushDispatches: Promise<void>[] = [];
+    const eventBus = runtime.getService(ServiceType.AGENT_EVENT);
+    const mobilePushDispatch = input.execution?.mobilePush?.dispatch;
+    const unsubscribePush =
+      mobilePushDispatch && isSharedNotificationEventBus(eventBus)
+        ? subscribeSharedMobilePush(eventBus, mobilePushDispatch, pushDispatches)
+        : undefined;
     if (runtime.actions.some((action) => action.name === "VIEWS")) {
       throw new Error("Eliza Shared runtime must not register client view-navigation actions");
     }
@@ -508,6 +574,18 @@ async function executeSharedElizaRuntimeTurn(
           }
         : undefined,
     );
+    unsubscribePush?.();
+    const pushResults = await Promise.allSettled(pushDispatches);
+    for (const pushResult of pushResults) {
+      if (pushResult.status === "rejected") {
+        logger.warn("[shared-eliza-runtime] mobile push dispatch failed", {
+          error:
+            pushResult.reason instanceof Error
+              ? pushResult.reason.message
+              : String(pushResult.reason),
+        });
+      }
+    }
     const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model

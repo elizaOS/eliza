@@ -215,6 +215,9 @@ export interface SharedRuntimeChatOptions {
   trustedUserUtterance?: string;
   /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
   executionEngine?: "direct-model" | "eliza-runtime";
+  mobilePushDispatch?: NonNullable<
+    NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
+  >["dispatch"];
 }
 
 export {
@@ -238,6 +241,7 @@ function sharedElizaRuntimeExecution(
   agent: SharedRuntimeAgent,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
+  mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const reminderDelivery = funding === "platform" ? trustedReminderDelivery(params) : undefined;
   return {
@@ -264,6 +268,7 @@ function sharedElizaRuntimeExecution(
           },
         }
       : {}),
+    ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
   };
 }
 
@@ -992,7 +997,12 @@ export class SharedRuntimeChatService {
         ...(memoryStore ? { memory: memoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
-              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
+              execution: sharedElizaRuntimeExecution(
+                agent,
+                params,
+                options.funding,
+                options.mobilePushDispatch,
+              ),
             }
           : {}),
       });
@@ -1186,7 +1196,12 @@ export class SharedRuntimeChatService {
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
-              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
+              execution: sharedElizaRuntimeExecution(
+                agent,
+                params,
+                options.funding,
+                options.mobilePushDispatch,
+              ),
             }
           : {}),
       });

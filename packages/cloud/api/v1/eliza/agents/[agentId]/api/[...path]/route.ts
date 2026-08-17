@@ -17,6 +17,11 @@
 import { type Context, Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
+  coordinateSharedPushList,
+  coordinateSharedPushRegister,
+  coordinateSharedPushUnregister,
+} from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -43,6 +48,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
 
 const app = new Hono<AppEnv>();
 
@@ -81,6 +87,17 @@ function viewNavigateTarget(path: string): string | null {
 function greetingConversationId(path: string): string | null {
   const m = /^conversations\/([^/]+)\/greeting$/.exec(path);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+function pushTokenDeleteTarget(path: string): string | null {
+  const prefix = "notifications/push-tokens/";
+  if (!path.startsWith(prefix)) return null;
+  const encoded = path.slice(prefix.length);
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -196,6 +213,20 @@ app.get("/", async (c) => {
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
+  if (path === "notifications/push-tokens") {
+    const worker = resolveSharedRuntimeWorkerRequestContext(c);
+    if ("error" in worker) return json(c, worker, worker.status);
+    const tokens = await coordinateSharedPushList(r.agentId, {
+      namespace: worker.namespace,
+    });
+    return json(c, {
+      count: tokens.length,
+      platforms: {
+        ios: tokens.filter((token) => token.platform === "ios").length,
+        android: tokens.filter((token) => token.platform === "android").length,
+      },
+    });
+  }
   // The app's workflow clients use the full-runtime compatibility paths. A
   // shared agent cannot serve them, so surface the same typed capability gate
   // as the canonical `/workflows` proxy instead of an unrelated shell 404.
@@ -245,6 +276,45 @@ app.post("/", async (c) => {
     return json(c, { success: false, error: r.error }, r.status);
   }
   const path = shellPath(c);
+  if (path === "notifications/push-tokens") {
+    const worker = resolveSharedRuntimeWorkerRequestContext(c);
+    if ("error" in worker) return json(c, worker, worker.status);
+    const contentLength = Number(c.req.header("content-length") ?? 0);
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_PUSH_REGISTRATION_BODY_BYTES
+    ) {
+      return json(c, { success: false, error: "Request body too large" }, 413);
+    }
+    const rawBody = await c.req.text();
+    if (
+      new TextEncoder().encode(rawBody).length >
+      MAX_PUSH_REGISTRATION_BODY_BYTES
+    ) {
+      return json(c, { success: false, error: "Request body too large" }, 413);
+    }
+    let body: { platform?: unknown; token?: unknown } | null = null;
+    try {
+      body = JSON.parse(rawBody) as { platform?: unknown; token?: unknown };
+    } catch {
+      // error-policy:J3 malformed client JSON is an explicit invalid request.
+    }
+    const platform = body?.platform;
+    const token = typeof body?.token === "string" ? body.token.trim() : "";
+    if ((platform !== "ios" && platform !== "android") || !token) {
+      return json(
+        c,
+        { success: false, error: "Invalid mobile push registration" },
+        400,
+      );
+    }
+    await coordinateSharedPushRegister(
+      r.agentId,
+      { platform, token },
+      { namespace: worker.namespace },
+    );
+    return json(c, { ok: true }, 201);
+  }
   if (isWorkflowApiPath(path)) {
     return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
   }
@@ -291,6 +361,24 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
+  }
+  if (c.req.method === "DELETE") {
+    const token = pushTokenDeleteTarget(shellPath(c));
+    if (token !== null) {
+      if (!token)
+        return json(
+          c,
+          { success: false, error: "Invalid mobile push token" },
+          400,
+        );
+      const worker = resolveSharedRuntimeWorkerRequestContext(c);
+      if ("error" in worker) return json(c, worker, worker.status);
+      return json(c, {
+        ok: await coordinateSharedPushUnregister(r.agentId, token, {
+          namespace: worker.namespace,
+        }),
+      });
+    }
   }
   if (isWorkflowApiPath(shellPath(c))) {
     return workflowUnavailable(c, r.agentId, r.agent.execution_tier);

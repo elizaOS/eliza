@@ -6,6 +6,15 @@
  * and updated asynchronously as a recoverable reporting/backup mirror.
  */
 
+import {
+  CloudApnsProvider,
+  resolveCloudApnsConfig,
+} from "@/lib/mobile-push/apns-provider";
+import type {
+  MobilePushMessage,
+  MobilePushPlatform,
+  MobilePushTokenRecord,
+} from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
@@ -67,6 +76,14 @@ type ConversationRequest =
       roomId: string;
       event: { id: string; content: string; createdAt: number };
     }
+  | { operation: "push-list"; agentId: string }
+  | {
+      operation: "push-register";
+      agentId: string;
+      platform: MobilePushPlatform;
+      token: string;
+    }
+  | { operation: "push-unregister"; agentId: string; token: string }
   | {
       operation: "cutover-seal";
       agentId: string;
@@ -138,6 +155,8 @@ const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
 const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
   "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
+const MOBILE_PUSH_TOKENS_KEY = "mobile-push-tokens";
+const MAX_MOBILE_PUSH_TOKENS = 32;
 
 /**
  * Retention lifecycle (#17006). The single DO alarm is multiplexed across two
@@ -290,6 +309,7 @@ export class SharedRuntimeConversation {
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
+  private apnsProvider: CloudApnsProvider | undefined;
   // Instance field rather than a direct constant read so the deterministic
   // unit harness can shorten the stall window without a real two-minute wait.
   private streamStallTimeoutMs = STREAM_STALL_TIMEOUT_MS;
@@ -461,6 +481,66 @@ export class SharedRuntimeConversation {
         DELETION_TOMBSTONE_KEY,
       )) ?? null
     );
+  }
+
+  private async mobilePushTokens(): Promise<MobilePushTokenRecord[]> {
+    const stored =
+      (await this.state.storage.get<MobilePushTokenRecord[]>(
+        MOBILE_PUSH_TOKENS_KEY,
+      )) ?? [];
+    return stored.filter(
+      (record) =>
+        typeof record?.token === "string" &&
+        (record.platform === "ios" || record.platform === "android") &&
+        typeof record.createdAt === "number",
+    );
+  }
+
+  private async registerMobilePushToken(
+    platform: MobilePushPlatform,
+    token: string,
+  ): Promise<void> {
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => record.token !== token);
+    next.push({ platform, token, createdAt: Date.now() });
+    await this.state.storage.put(
+      MOBILE_PUSH_TOKENS_KEY,
+      next.slice(-MAX_MOBILE_PUSH_TOKENS),
+    );
+  }
+
+  private async unregisterMobilePushToken(token: string): Promise<boolean> {
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => record.token !== token);
+    if (next.length === current.length) return false;
+    if (next.length > 0)
+      await this.state.storage.put(MOBILE_PUSH_TOKENS_KEY, next);
+    else await this.state.storage.delete(MOBILE_PUSH_TOKENS_KEY);
+    return true;
+  }
+
+  private async dispatchMobilePush(message: MobilePushMessage): Promise<void> {
+    const config = resolveCloudApnsConfig(this.env);
+    if (!config) return;
+    this.apnsProvider ??= new CloudApnsProvider(config);
+    const rejections: string[] = [];
+    for (const record of await this.mobilePushTokens()) {
+      if (record.platform !== "ios") continue;
+      const result = await this.apnsProvider.send(record.token, message);
+      if (result.outcome === "unregistered") {
+        await this.unregisterMobilePushToken(record.token);
+      }
+      if (result.outcome === "rejected") {
+        rejections.push(
+          `${result.status}${result.reason ? ` ${result.reason}` : ""}`,
+        );
+      }
+    }
+    if (rejections.length > 0) {
+      throw new Error(
+        `[SharedRuntimeConversation] APNs rejected ${rejections.length} notification delivery attempt(s): ${rejections.join(", ")}`,
+      );
+    }
   }
 
   private async mirrorConversation(
@@ -790,6 +870,36 @@ export class SharedRuntimeConversation {
         },
         { status: 410 },
       );
+    }
+    if (payload.operation === "push-list") {
+      return Response.json({ tokens: await this.mobilePushTokens() });
+    }
+    if (payload.operation === "push-register") {
+      const token = payload.token?.trim();
+      if (
+        (payload.platform !== "ios" && payload.platform !== "android") ||
+        !token ||
+        token.length > 4096
+      ) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push registration" },
+          { status: 400 },
+        );
+      }
+      await this.registerMobilePushToken(payload.platform, token);
+      return Response.json({ success: true }, { status: 201 });
+    }
+    if (payload.operation === "push-unregister") {
+      const token = payload.token?.trim();
+      if (!token) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push token" },
+          { status: 400 },
+        );
+      }
+      return Response.json({
+        removed: await this.unregisterMobilePushToken(token),
+      });
     }
     const personal =
       payload.operation === "personal-bridge" ||
@@ -1334,6 +1444,9 @@ export class SharedRuntimeConversation {
           trustedMessageRole: payload.trustedMessageRole,
           trustedUserUtterance: payload.trustedUserUtterance,
           executionEngine,
+          mobilePushDispatch: async (message: MobilePushMessage) => {
+            await this.dispatchMobilePush(message);
+          },
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
@@ -1344,6 +1457,9 @@ export class SharedRuntimeConversation {
         trustedMessageRole: payload.trustedMessageRole,
         trustedUserUtterance: payload.trustedUserUtterance,
         executionEngine,
+        mobilePushDispatch: async (message: MobilePushMessage) => {
+          await this.dispatchMobilePush(message);
+        },
       });
       return Response.json(result);
     });

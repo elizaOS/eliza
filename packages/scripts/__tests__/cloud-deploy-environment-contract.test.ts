@@ -705,6 +705,21 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of [
+      "ELIZA_APNS_KEY",
+      "ELIZA_APNS_KEY_ID",
+      "ELIZA_APNS_TEAM_ID",
+      "ELIZA_APNS_TOPIC",
+      "ELIZA_APNS_PRODUCTION",
+    ]) {
+      expect(publish.env?.[name]).toBeDefined();
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.ELIZA_APNS_KEY).toContain("secrets.ELIZA_APNS_KEY");
+    expect(publish.env?.ELIZA_APNS_TOPIC).toContain("vars.ELIZA_APNS_TOPIC");
+    expect(publish.env?.ELIZA_APNS_PRODUCTION).toContain(
+      "vars.ELIZA_APNS_PRODUCTION",
+    );
     for (const name of requiredAuthWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name} \\\n`);
