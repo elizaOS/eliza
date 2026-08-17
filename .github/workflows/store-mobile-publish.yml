@@ -1,0 +1,300 @@
+name: Publish Mobile Stores
+
+# This workflow has no independent trigger. The canonical transactional release
+# calls it only after npm, the exact Git tag, and the GitHub Release finalize.
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact canonical release commit
+        required: true
+        type: string
+      version:
+        description: Canonical release semver
+        required: true
+        type: string
+      channel:
+        description: Canonical release channel (beta or latest)
+        required: true
+        type: string
+      tag:
+        description: Finalized Git tag
+        required: true
+        type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      PLAY_STORE_SERVICE_ACCOUNT_JSON:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      ITC_TEAM_ID:
+        required: false
+      APP_STORE_APP_ID:
+        required: false
+      MATCH_PASSWORD:
+        required: false
+      MATCH_GIT_URL:
+        required: false
+      MATCH_GIT_BASIC_AUTHORIZATION:
+        required: false
+      APP_STORE_API_KEY_ID:
+        required: false
+      APP_STORE_API_ISSUER_ID:
+        required: false
+      APP_STORE_API_KEY_P8:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build, audit, and publish Google Play AAB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment:
+      name: production-release
+    env:
+      ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind build to finalized release and derive store plan
+        id: plan
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          test "$EXPECTED_TAG" = "v${{ inputs.version }}"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
+          node packages/scripts/store-release-plan.mjs \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --source-sha "$EXPECTED_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Require Android signing and Play credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=(ANDROID_KEYSTORE_BASE64)
+          [[ -z "$ELIZAOS_KEYSTORE_PASSWORD" ]] && missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [[ -z "$ELIZAOS_KEY_ALIAS" ]] && missing+=(ANDROID_KEY_ALIAS)
+          [[ -z "$ELIZAOS_KEY_PASSWORD" ]] && missing+=(ANDROID_KEY_PASSWORD)
+          [[ -z "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]] && missing+=(PLAY_STORE_SERVICE_ACCOUNT_JSON)
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required Google Play release secrets: ${missing[*]}"
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/eliza-upload.jks"
+          chmod 600 "$RUNNER_TEMP/eliza-upload.jks"
+          test -s "$RUNNER_TEMP/eliza-upload.jks"
+          if [[ "$PLAY_STORE_SERVICE_ACCOUNT_JSON" == \{* ]]; then
+            printf '%s' "$PLAY_STORE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-store-key.json"
+          else
+            printf '%s' "$PLAY_STORE_SERVICE_ACCOUNT_JSON" | base64 --decode > "$RUNNER_TEMP/play-store-key.json"
+          fi
+          node -e 'const fs=require("node:fs"); const p=process.argv[1]; const v=JSON.parse(fs.readFileSync(p,"utf8")); if(v.type!=="service_account"||!v.client_email||!v.private_key) process.exit(1)' "$RUNNER_TEMP/play-store-key.json"
+          chmod 600 "$RUNNER_TEMP/play-store-key.json"
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build and audit signed Play bundle
+        working-directory: packages/app
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
+          ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.android_version_code }}
+          ELIZAOS_KEYSTORE_PATH: ${{ runner.temp }}/eliza-upload.jks
+        run: |
+          bun run preflight:android:store
+          bun run build:android:cloud
+
+      - name: Setup Fastlane
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+        with:
+          ruby-version: "4.0.3"
+          bundler-cache: true
+          working-directory: packages/app-core/platforms/android
+
+      - name: Publish exact AAB to Google Play
+        working-directory: packages/app-core/platforms/android
+        env:
+          PLAY_STORE_TRACK: ${{ steps.plan.outputs.android_track }}
+          PLAY_STORE_AAB_PATH: ${{ github.workspace }}/packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+          PLAY_STORE_JSON_KEY: ${{ runner.temp }}/play-store-key.json
+        run: bundle exec fastlane publish_aab
+
+      - name: Upload Android release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-google-play-${{ inputs.version }}
+          path: packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove Android signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/eliza-upload.jks" "$RUNNER_TEMP/play-store-key.json"
+
+  ios:
+    name: Build and publish Apple iOS app
+    runs-on: macos-15
+    timeout-minutes: 120
+    environment:
+      name: production-release
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      ELIZA_BUILD_VARIANT: store
+      ELIZA_RELEASE_AUTHORITY: apple-app-store
+      ELIZA_IOS_FULL_BUN_ENGINE: "1"
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1"
+      VITE_ELIZA_IOS_RUNTIME_MODE: cloud-hybrid
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
+      APP_STORE_APP_ID: ${{ secrets.APP_STORE_APP_ID }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      APP_STORE_API_KEY_ID: ${{ secrets.APP_STORE_API_KEY_ID }}
+      APP_STORE_API_ISSUER_ID: ${{ secrets.APP_STORE_API_ISSUER_ID }}
+      APP_STORE_API_KEY_P8: ${{ secrets.APP_STORE_API_KEY_P8 }}
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind build to finalized release and derive store plan
+        id: plan
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          test "$EXPECTED_TAG" = "v${{ inputs.version }}"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
+          node packages/scripts/store-release-plan.mjs \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --source-sha "$EXPECTED_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Require Apple signing and API credentials
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in APPLE_ID APPLE_TEAM_ID ITC_TEAM_ID APP_STORE_APP_ID \
+            MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_BASIC_AUTHORIZATION \
+            APP_STORE_API_KEY_ID APP_STORE_API_ISSUER_ID APP_STORE_API_KEY_P8; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required Apple release secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build store web assets
+        working-directory: packages/app
+        run: bun run build
+
+      - name: Prepare and sync native iOS project
+        run: |
+          bash packages/app-core/scripts/prepare-ios-cocoapods.sh
+          bun run --cwd packages/app cap:sync:ios
+          bun run --cwd packages/agent build:ios-bun
+          node packages/app-core/scripts/run-mobile-build.mjs ios-overlay
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
+          ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}
+
+      - name: Install CocoaPods
+        working-directory: packages/app/ios/App
+        run: pod install
+
+      - name: Resolve app identifiers
+        working-directory: packages/app
+        run: |
+          set -euo pipefail
+          identifiers="$(sed -nE 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/\1/p' \
+            ios/App/App.xcodeproj/project.pbxproj | sort -u)"
+          app_id="$(printf '%s\n' "$identifiers" | awk '
+            !/\.AppUITests$/ && (shortest == "" || length($0) < length(shortest)) { shortest = $0 }
+            END { print shortest }
+          ')"
+          test -n "$app_id"
+          extension_ids="$(printf '%s\n' "$identifiers" | awk -v app="$app_id" '
+            $0 != app && index($0, app ".") == 1 && $0 !~ /\.AppUITests$/ { print }
+          ' | paste -sd, -)"
+          test -n "$extension_ids"
+          echo "APP_IDENTIFIER=$app_id" >> "$GITHUB_ENV"
+          echo "APP_IDENTIFIER_EXTRA=$extension_ids" >> "$GITHUB_ENV"
+
+      - name: Run iOS store preflight
+        working-directory: packages/app
+        run: bun run preflight:ios:store
+
+      - name: Setup Fastlane
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+        with:
+          ruby-version: "4.0.3"
+          bundler-cache: true
+          working-directory: packages/app/ios
+
+      - name: Build and publish iOS release
+        working-directory: packages/app/ios
+        env:
+          APPLE_LANE: ${{ steps.plan.outputs.apple_lane }}
+        run: bundle exec fastlane "$APPLE_LANE"
+
+      - name: Upload iOS release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-ios-${{ inputs.version }}
+          path: packages/app/ios/build/Eliza.ipa
+          if-no-files-found: error
+          retention-days: 90

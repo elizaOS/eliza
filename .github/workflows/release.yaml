@@ -547,3 +547,29 @@ jobs:
             echo "- Tag: \`$RELEASE_TAG\`"
             echo "- Registry cohort: verified before Git/GitHub finalization"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-snap:
+    name: Publish Snap Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/snap-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel == 'latest' && 'stable' || 'beta' }}
+    secrets: inherit
+
+  publish-mobile-stores:
+    name: Publish Google Play and Apple App Store releases
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store-mobile-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel }}
+    secrets: inherit
