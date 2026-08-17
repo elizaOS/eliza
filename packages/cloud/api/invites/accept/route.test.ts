@@ -14,9 +14,15 @@ const requireUserOrApiKey = mock(async () => ({
   id: USER_ID,
   organization_id: ORG_ID,
 }));
-const acceptInvite = mock(async () => {
-  throw new Error("acceptInvite must not run");
-});
+const acceptInvite = mock(
+  async (): Promise<{
+    organization_id: string;
+    invited_role: string;
+    accepted_at: string;
+  }> => {
+    throw new Error("acceptInvite must not run");
+  },
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKey,
@@ -63,7 +69,7 @@ describe("POST /api/invites/accept JSON body", () => {
       const res = await post(raw);
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({
+      expect((await res.json()) as Record<string, unknown>).toEqual({
         success: false,
         error: "Invalid JSON body",
       });
