@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { composeVerifyEscalationNotice } from "../services/orchestrator-task-service.js";
 import {
   STALL_GRILL_PROMPT,
   TaskWatchdogService,
@@ -143,5 +144,38 @@ describe("watchdog nag loop (live regression)", () => {
     await watchdog.runOnce();
     await watchdog.runOnce();
     expect(acp.sendToSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The escalation-notice composer lives in the task service but belongs to the
+// same nag-loop family: the silent park was the invisible half of the loop.
+describe("verify-escalation notice", () => {
+  it("names the task, the attempt count, and the resolution path without internal ids", () => {
+    const text = composeVerifyEscalationNotice("canon-clock build", {
+      attempts: 3,
+      summary: "Sub-agent explicitly admitted failure; provided no PATH output",
+      missing: ["verbatim echo $PATH output", "diff of created file"],
+    });
+    expect(text).toContain("canon-clock build");
+    expect(text).toContain("3 attempts");
+    expect(text).toContain("verbatim echo $PATH output");
+    expect(text).toContain("accept it or what to fix");
+    expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+  });
+
+  it("caps the missing list at three and tolerates an empty one", () => {
+    const many = composeVerifyEscalationNotice("t", {
+      attempts: 3,
+      summary: "s",
+      missing: ["a", "b", "c", "d", "e"],
+    });
+    expect(many).toContain("a; b; c");
+    expect(many).not.toContain("; d");
+    const none = composeVerifyEscalationNotice("t", {
+      attempts: 3,
+      summary: "s",
+      missing: [],
+    });
+    expect(none).not.toContain("couldn't confirm:");
   });
 });

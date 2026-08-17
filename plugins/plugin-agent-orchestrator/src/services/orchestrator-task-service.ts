@@ -559,6 +559,29 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * User-facing notice for an auto-verify give-up. Deliberately honest about the
+ * split state: the WORK may be fine (it often is — the live regression was a
+ * served, working page) while VERIFICATION could not confirm it. Never leaks
+ * internal ids; caps the missing list so a long verifier dump stays readable.
+ */
+export function composeVerifyEscalationNotice(
+  title: string,
+  details: { attempts: number; summary: string; missing: string[] },
+): string {
+  const label = title.trim() || "the coding task";
+  const missing = details.missing
+    .filter((item) => item.trim().length > 0)
+    .slice(0, 3);
+  const missingLine =
+    missing.length > 0 ? ` couldn't confirm: ${missing.join("; ")}.` : "";
+  return (
+    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so i've parked it for you. ` +
+    `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}${missingLine} ` +
+    `the work itself may still be fine — check the result, then tell me to accept it or what to fix.`
+  );
+}
+
 /** Parse a positive-integer setting value, falling back to `fallback` when the
  * value is absent, non-numeric, or ≤ 0. Used for the admission-queue tunables. */
 function parsePositiveIntSetting(
@@ -3129,6 +3152,51 @@ export class OrchestratorTaskService extends Service {
    * read from the task record metadata stamped at create time. Returns null when
    * the task has no origin room (e.g. an API-created task with no chat).
    */
+  /**
+   * Post the one-time "verification gave up, task parked for you" notice to
+   * the task's origin room. Best-effort at every step (no origin, no send
+   * handler, or a delivery failure must never break the escalation itself —
+   * the park already happened); the `verifyEscalationNotifiedAt` metadata
+   * stamp makes the notice once-per-task.
+   */
+  private async notifyVerifyEscalation(
+    taskId: string,
+    details: { attempts: number; summary: string; missing: string[] },
+  ): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc || doc.task.metadata?.verifyEscalationNotifiedAt) return;
+      const origin = await this.getTaskOriginTarget(taskId);
+      if (!origin) return;
+      const send = (
+        this.runtime as IAgentRuntime & {
+          sendMessageToTarget?: (
+            target: { source: string; roomId?: UUID },
+            content: { text: string; source: string },
+          ) => Promise<unknown>;
+        }
+      ).sendMessageToTarget;
+      if (typeof send !== "function") return;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          verifyEscalationNotifiedAt: nowIso(),
+        },
+      });
+      const text = composeVerifyEscalationNotice(doc.task.title, details);
+      await send(
+        { source: origin.source, roomId: origin.roomId as UUID },
+        { text, source: origin.source },
+      );
+    } catch (err) {
+      // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
+      this.log("warn", "verify-escalation notice delivery failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async getTaskOriginTarget(
     taskId: string,
   ): Promise<{ roomId: string; source: string; worldId?: string } | null> {
@@ -4173,6 +4241,17 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.advanceTaskStatus(taskId, "awaiting_user");
+      // The park must be VISIBLE: the completion relay already promised the
+      // user "I'll flag if verification fails" — parking silently breaks that
+      // promise and strands the task (live: canon-clock sat waiting_on_user
+      // with a served, working page and the user never heard why). One notice
+      // per task (metadata-stamped) so a redelivered task_complete at the
+      // attempt cap cannot re-spam the room.
+      await this.notifyVerifyEscalation(taskId, {
+        attempts: attempt,
+        summary,
+        missing,
+      });
       this.emitChange(taskId);
       return;
     }
