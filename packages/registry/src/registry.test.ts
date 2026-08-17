@@ -72,6 +72,12 @@ describe("validateRegistryEntry", () => {
     );
   });
 
+  it("rejects package names longer than the npm limit", () => {
+    expect(
+      validateRegistryEntry({ ...VALID, package: "a".repeat(215) }),
+    ).toContain("package must be a valid npm package name");
+  });
+
   it("rejects a non-github repository", () => {
     const errors = validateRegistryEntry({
       ...VALID,

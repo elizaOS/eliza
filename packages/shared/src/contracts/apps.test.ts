@@ -22,8 +22,25 @@ import {
   AppVerifyResultSchema,
   AppViewerAuthMessageSchema,
   AppViewerConfigSchema,
+  isValidAppRouteSlug,
   PostRelaunchAppResponseSchema,
 } from "./apps.js";
+
+describe("isValidAppRouteSlug", () => {
+  it.each(["feed", "example-app", "app_2", "app.v2"])(
+    "accepts canonical slug %s",
+    (slug) => expect(isValidAppRouteSlug(slug)).toBe(true),
+  );
+
+  it.each(["", ".", "..", "a/b", "a\\b", "A", "a b", "a%2Fb"])(
+    "rejects non-canonical slug %s",
+    (slug) => expect(isValidAppRouteSlug(slug)).toBe(false),
+  );
+
+  it("rejects overlong slugs", () => {
+    expect(isValidAppRouteSlug("a".repeat(129))).toBe(false);
+  });
+});
 
 const HEALTHY_FACET = { state: "healthy" as const, message: null };
 const HEALTH_DETAILS = {

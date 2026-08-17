@@ -25,21 +25,6 @@ function createSkillsContext(
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
-  const decodePathComponent = vi.fn(
-    (raw: string, response: http.ServerResponse, fieldName: string) => {
-      try {
-        return decodeURIComponent(raw);
-      } catch {
-        error(
-          response,
-          `Invalid ${fieldName}: malformed URL encoding`,
-          400,
-        );
-        return null;
-      }
-    },
-  );
-
   const ctx: SkillsRouteContext = {
     req,
     res,
@@ -59,7 +44,6 @@ function createSkillsContext(
     error,
     readJsonBody: vi.fn().mockResolvedValue({}),
     readBody: vi.fn().mockResolvedValue(""),
-    decodePathComponent,
     discoverSkills: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
@@ -82,6 +66,27 @@ describe("handleSkillsRoutes path encoding validation", () => {
       "Invalid skill slug: malformed URL encoding",
       400,
     );
+  });
+
+  it.each([
+    "%2F",
+    "%5C",
+    ".",
+    "..",
+    "%00",
+    "%20",
+    "%252F",
+    "UPPER",
+    "a".repeat(65),
+  ])("rejects non-canonical decoded catalog slug %s", async (encodedSlug) => {
+    const { ctx, error } = createSkillsContext(
+      "GET",
+      `/api/skills/catalog/${encodedSlug}`,
+    );
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(ctx.res, "Invalid skill slug", 400);
   });
 
   it("rejects malformed percent-encoding on GET /api/skills/:id/scan with 400", async () => {
@@ -255,7 +260,7 @@ describe("handleSkillsRoutes path encoding validation", () => {
 
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      expect.stringContaining("Invalid skill ID"),
+      "Invalid skill slug",
       400,
     );
   });

@@ -92,4 +92,26 @@ describe("handleRegistryRoutes path encoding validation", () => {
       },
     });
   });
+
+  it.each([
+    "%2F",
+    "%5C",
+    ".",
+    "..",
+    "%00",
+    "%20",
+    "%252F",
+    "UPPER",
+    "a".repeat(215),
+  ])("rejects non-canonical decoded plugin name %s", async (encodedName) => {
+    const { ctx, error, getRegistryPlugin } = createRegistryContext(
+      "GET",
+      `/api/registry/plugins/${encodedName}`,
+    );
+
+    await expect(handleRegistryRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(ctx.res, "Invalid plugin name", 400);
+    expect(getRegistryPlugin).not.toHaveBeenCalled();
+  });
 });

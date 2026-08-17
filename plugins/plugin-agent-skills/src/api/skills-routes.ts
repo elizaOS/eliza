@@ -17,6 +17,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger, readWorkspaceFolderConfig } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  decodeUrlPathComponent,
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,
   PostSkillAcknowledgeRequestSchema,
@@ -33,6 +34,7 @@ import {
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
+import { SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN } from "../types";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
 
 const WORKSPACE_MARKERS = [
@@ -151,11 +153,6 @@ export interface SkillsRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   readBody: (req: http.IncomingMessage) => Promise<string>;
-  decodePathComponent: (
-    raw: string,
-    res: http.ServerResponse,
-    fieldName: string,
-  ) => string | null;
   // Functions from server.ts that skills routes need
   discoverSkills: (
     workspaceDir: string,
@@ -198,12 +195,18 @@ function decodeAndValidateSkillId(
   rawSkillId: string,
   res: http.ServerResponse,
   errorFn: SkillsRouteContext["error"],
-  decodePathComponent: SkillsRouteContext["decodePathComponent"],
-  fieldName = "skill ID",
 ): string | null {
-  const skillId = decodePathComponent(rawSkillId, res, fieldName);
-  if (skillId === null) return null;
-  return validateSkillId(skillId, res, errorFn);
+  const decoded = decodeUrlPathComponent(rawSkillId);
+  if (!decoded.ok) {
+    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input.
+    errorFn(res, "Invalid skill ID: malformed URL encoding", 400);
+    return null;
+  }
+  return validateSkillId(decoded.value, res, errorFn);
+}
+
+function isValidCatalogSkillSlug(slug: string): boolean {
+  return slug.length <= SKILL_NAME_MAX_LENGTH && SKILL_NAME_PATTERN.test(slug);
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +386,6 @@ export async function handleSkillsRoutes(
     error,
     readJsonBody,
     discoverSkills,
-    decodePathComponent,
   } = ctx;
 
   // ── GET /api/skills/catalog ───────────────────────────────────────────
@@ -499,14 +501,19 @@ export async function handleSkillsRoutes(
 
   // ── GET /api/skills/catalog/:slug ──────────────────────────────────────
   if (method === "GET" && pathname.startsWith("/api/skills/catalog/")) {
-    const slug = decodeAndValidateSkillId(
+    const decoded = decodeUrlPathComponent(
       pathname.slice("/api/skills/catalog/".length),
-      res,
-      error,
-      decodePathComponent,
-      "skill slug",
     );
-    if (slug === null) return true;
+    if (!decoded.ok) {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid skill slug: malformed URL encoding", 400);
+      return true;
+    }
+    const slug = decoded.value;
+    if (!isValidCatalogSkillSlug(slug)) {
+      error(res, "Invalid skill slug", 400);
+      return true;
+    }
     // Exclude "search" which is handled above
     if (slug && slug !== "search") {
       if (!shouldExposeBinanceSkillId(slug)) {
@@ -758,7 +765,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -784,7 +790,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const rawAck = await readJsonBody<Record<string, unknown>>(req, res);
@@ -936,7 +941,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -1019,7 +1023,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =
@@ -1103,7 +1106,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
 
@@ -1168,7 +1170,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
 
@@ -1203,7 +1204,6 @@ export async function handleSkillsRoutes(
       pathname.split("/")[3],
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const rawSource = await readJsonBody<Record<string, unknown>>(req, res);
@@ -1303,7 +1303,6 @@ export async function handleSkillsRoutes(
       pathname.slice("/api/skills/".length),
       res,
       error,
-      decodePathComponent,
     );
     if (!skillId) return true;
     const workspaceDir =

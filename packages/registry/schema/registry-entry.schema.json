@@ -20,6 +20,7 @@
     "package": {
       "type": "string",
       "description": "npm package name. The @elizaos/* scope is reserved for first-party.",
+      "maxLength": 214,
       "pattern": "^(?:@[a-z0-9][a-z0-9._-]*\\/)?[a-z0-9][a-z0-9._-]*$",
       "not": { "pattern": "^@elizaos\\/" }
     },
