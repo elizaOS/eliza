@@ -34,6 +34,7 @@ type EmbeddingEndpoint = {
 // OpenAI embedding models support up to 8191 tokens per input; 8000 provides a
 // safe buffer at the conventional ~4 chars/token estimate.
 const MAX_EMBEDDING_CHARS = 8_000 * 4;
+const EMBEDDING_FETCH_TIMEOUT_MS = 30_000;
 
 export function validateEmbeddingDimension(dimension: number): VectorDimension {
   const validDimensions = Object.values(VECTOR_DIMS) as number[];
@@ -198,7 +199,7 @@ async function requestEmbeddingsFromEndpoint(
       input,
       ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
-    ...(signal ? { signal } : {}),
+    signal: signal ?? AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
