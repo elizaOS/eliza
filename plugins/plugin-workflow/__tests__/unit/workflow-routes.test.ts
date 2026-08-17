@@ -55,6 +55,14 @@ describe('native workflow routes', () => {
                 calls.push('getExecutionDetail');
                 return {};
               },
+              decideApproval: async () => {
+                calls.push('decideApproval');
+                return {};
+              },
+              signalExecution: async () => {
+                calls.push('signalExecution');
+                return {};
+              },
               getWorkflowExecutions: async () => {
                 calls.push('getWorkflowExecutions');
                 return [];
@@ -67,19 +75,44 @@ describe('native workflow routes', () => {
           : null,
     } as unknown as AgentRuntime;
 
-    for (const pathname of [
-      '/api/workflow/workflows/%',
-      '/api/workflow/executions/%',
-      '/api/workflow/workflows/%2',
-      '/api/workflow/executions/%ZZ',
+    for (const { method, pathname, body: requestBody } of [
+      { method: 'GET', pathname: '/api/workflow/workflows/%' },
+      { method: 'GET', pathname: '/api/workflow/executions/%' },
+      { method: 'GET', pathname: '/api/workflow/workflows/%2' },
+      { method: 'GET', pathname: '/api/workflow/executions/%ZZ' },
+      {
+        method: 'POST',
+        pathname: '/api/workflow/executions/run%/approvals/node/1',
+        body: { approved: true },
+      },
+      {
+        method: 'POST',
+        pathname: '/api/workflow/executions/run/approvals/node%/1',
+        body: { approved: true },
+      },
+      {
+        method: 'POST',
+        pathname: '/api/workflow/executions/run%/signals/resume',
+        body: {},
+      },
+      {
+        method: 'POST',
+        pathname: '/api/workflow/executions/run/signals/resume%',
+        body: {},
+      },
+      {
+        method: 'POST',
+        pathname: '/api/workflow/workflows/workflow/revisions/revision%/restore',
+        body: {},
+      },
     ]) {
       calls.length = 0;
       let status: number | undefined;
       let body: unknown;
       await handleWorkflowRoutes({
-        req: {} as http.IncomingMessage,
+        req: { body: requestBody } as http.IncomingMessage,
         res: {} as http.ServerResponse,
-        method: 'GET',
+        method,
         pathname,
         runtime,
         principalId: 'owner',

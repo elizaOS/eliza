@@ -66,6 +66,7 @@ function decodePathSegment(raw: string): string {
   try {
     return decodeURIComponent(raw);
   } catch {
+    // error-policy:J3 malformed path segments become an explicit 400 response.
     throw new WorkflowApiError('Path segment is not valid percent-encoding', 400);
   }
 }
