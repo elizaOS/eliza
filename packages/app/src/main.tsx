@@ -197,6 +197,7 @@ import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
+import { resolveInjectedAppApiBase } from "./injected-app-api-base";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
   extractIosLivenessChallengeToken,
@@ -378,10 +379,15 @@ function getInjectedAppApiBase(): string | undefined {
     window,
     BRANDED_WINDOW_KEYS.apiBase,
   );
-  return (
-    window.__ELIZA_APP_API_BASE__ ??
-    (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
-  );
+  // Packaged desktop HTML seeds the canonical boot-config slot before the
+  // renderer bundle executes. Reading that same authority here prevents the
+  // full local app from freezing its module-level branding as cloud-only
+  // during the interval before the embedded runtime finishes binding.
+  return resolveInjectedAppApiBase({
+    legacyApiBase: window.__ELIZA_APP_API_BASE__,
+    brandedApiBase,
+    bootApiBase: getBootConfig().apiBase,
+  });
 }
 
 // Resolve the desktop "cloud-only" runtime-mode signal from whichever path is
