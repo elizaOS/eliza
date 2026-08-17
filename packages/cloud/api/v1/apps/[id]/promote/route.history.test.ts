@@ -71,7 +71,7 @@ describe("GET /api/v1/apps/:id/promote history identity", () => {
     expect(getPromotionSuggestions).not.toHaveBeenCalled();
   });
 
-  test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo"])(
+  test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo", " true", "true "])(
     "rejects history=%s before history and suggestions",
     async (token) => {
       const response = await get(`?history=${encodeURIComponent(token)}`);
@@ -82,4 +82,17 @@ describe("GET /api/v1/apps/:id/promote history identity", () => {
       expect(getPromotionSuggestions).not.toHaveBeenCalled();
     },
   );
+
+  test.each([
+    "?history=true&history=false",
+    "?history=true&history=true",
+    "?history=&history=false",
+  ])("rejects ambiguous repeated history query %s", async (query) => {
+    const response = await get(query);
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("Invalid history");
+    expect(getPromotionHistory).not.toHaveBeenCalled();
+    expect(getPromotionSuggestions).not.toHaveBeenCalled();
+  });
 });

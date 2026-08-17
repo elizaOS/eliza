@@ -133,12 +133,14 @@ async function __hono_GET(
   const url = new URL(request.url);
   // App-promote history identity, not leftover tax on promote-assets
   // platform. history=TRUE used to silently return suggestions.
-  const requestedHistory = url.searchParams.get("history");
+  const requestedHistoryValues = url.searchParams.getAll("history");
+  const requestedHistory = requestedHistoryValues[0];
   if (
-    requestedHistory != null &&
-    requestedHistory !== "" &&
-    requestedHistory !== "true" &&
-    requestedHistory !== "false"
+    requestedHistoryValues.length > 1 ||
+    (requestedHistory != null &&
+      requestedHistory !== "" &&
+      requestedHistory !== "true" &&
+      requestedHistory !== "false")
   ) {
     return Response.json(
       {
