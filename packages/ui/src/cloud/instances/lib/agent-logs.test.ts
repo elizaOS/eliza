@@ -271,6 +271,41 @@ describe("agent log protocol", () => {
   });
 
   it.each([
+    {
+      label: "message-only notice",
+      result: {
+        cloudAgentId: "agent-1",
+        status: "compromised",
+        tail: 200,
+        message: "Agent is compromised — no container assigned yet.",
+      },
+    },
+    {
+      label: "log payload",
+      result: {
+        cloudAgentId: "agent-1",
+        status: "compromised",
+        tail: 200,
+        logs: "untrusted log output",
+      },
+    },
+  ])(
+    "rejects an unknown producer status before accepting $label",
+    ({ result }) => {
+      expect(() =>
+        parseAgentLogsJob({
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result,
+          },
+        }),
+      ).toThrow("invalid agent status");
+    },
+  );
+
+  it.each([
     {},
     { success: true },
     { success: true, data: {} },
