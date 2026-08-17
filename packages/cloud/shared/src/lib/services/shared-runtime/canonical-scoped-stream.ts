@@ -37,6 +37,8 @@ export interface CanonicalScopedStreamRequest {
   agentKind?: "sandbox" | "personal";
   /** Set only by the authenticated in-process voice adapter for lifecycle turns. */
   trustedMessageRole?: "system";
+  /** Keep an authenticated control prompt out of durable conversation history. */
+  transientInput?: true;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -115,6 +117,7 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      transientInput: request.transientInput,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

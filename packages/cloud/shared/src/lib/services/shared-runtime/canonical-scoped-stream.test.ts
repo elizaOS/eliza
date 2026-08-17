@@ -116,6 +116,7 @@ describe("handleCanonicalScopedAgentStream", () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
       trustedMessageRole: "system",
+      transientInput: true,
       body: { text: "call started" },
     });
 
@@ -126,6 +127,7 @@ describe("handleCanonicalScopedAgentStream", () => {
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
     expect(options.trustedMessageRole).toBe("system");
+    expect(options.transientInput).toBe(true);
   });
 
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {

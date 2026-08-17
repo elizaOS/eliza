@@ -462,6 +462,7 @@ async function connectSession(opts: {
   openingGreeting?: string;
   openingPrompt?: string;
   openingClientMessageId?: string;
+  openingFallbackGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
   onClearAudio?: () => void;
   fish?: {
@@ -509,6 +510,9 @@ async function connectSession(opts: {
         ...(opts.openingPrompt ? { openingPrompt: opts.openingPrompt } : {}),
         ...(opts.openingClientMessageId
           ? { openingClientMessageId: opts.openingClientMessageId }
+          : {}),
+        ...(opts.openingFallbackGreeting
+          ? { openingFallbackGreeting: opts.openingFallbackGreeting }
           : {}),
         ...(opts.cacheWarmingRetryDelaysMs
           ? {
@@ -617,10 +621,34 @@ describe("voice-session WS lifecycle", () => {
         text: "The user called. Greet them using existing history.",
         messageRole: "system",
         clientMessageId: "twilio-call:CA123:started",
+        transientInput: true,
       }),
     ]);
     expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
       "Good to hear from you again.",
+    );
+  });
+
+  test("speaks a safe fixed greeting when contextual opener generation fails", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-fallback:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: (async () =>
+        new Response("provider unavailable", {
+          status: 503,
+        })) as unknown as typeof fetch,
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "error", retryable: true }),
     );
   });
 

@@ -843,6 +843,29 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("keeps a trusted transient prompt out of history and long-term memory", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.stream(agent, rpc, {
+      ...h,
+      trustedMessageRole: "system",
+      transientInput: true,
+    });
+    expect(await response.text()).toContain("event: done");
+
+    expect(lastStreamTurnInput).toMatchObject({
+      message: "hello",
+      messageRole: "system",
+    });
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "assistant", content: "hello back" }),
+    ]);
+    expect(memoryPairs).toEqual([]);
+  });
+
   test("no-model degradation remains a complete canonical SSE turn", async () => {
     streamTurn = {
       degraded: true,

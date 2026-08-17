@@ -332,6 +332,13 @@ async function dispatchInternalElizaConversationFetch(
       (body as { messageRole?: unknown }).messageRole === "system"
         ? "system"
         : undefined,
+    transientInput:
+      body &&
+      typeof body === "object" &&
+      (body as { messageRole?: unknown }).messageRole === "system" &&
+      (body as { transientInput?: unknown }).transientInput === true
+        ? true
+        : undefined,
     body,
     origin: headers.get("origin"),
     namespace: runtime.namespace,

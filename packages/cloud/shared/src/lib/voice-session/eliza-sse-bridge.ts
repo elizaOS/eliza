@@ -43,6 +43,8 @@ export interface ElizaSseBridgeRequest {
   messageRole?: "system";
   /** Stable provider lifecycle id used by the room's durable replay ledger. */
   clientMessageId?: string;
+  /** Trusted control input may be modeled without entering durable history. */
+  transientInput?: true;
   /** Agent this session is scoped to (from the verified token claims). */
   agentId: string;
   /** Conversation this session writes into (from the verified token claims). */
@@ -133,6 +135,7 @@ export async function streamElizaConversation(
         text: request.transcript,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
+        ...(request.transientInput ? { transientInput: true } : {}),
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },

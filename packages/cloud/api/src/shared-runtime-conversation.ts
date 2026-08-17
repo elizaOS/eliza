@@ -41,6 +41,7 @@ type ConversationRequest =
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      transientInput?: true;
       trustedUserUtterance?: string;
     }
   | {
@@ -48,6 +49,7 @@ type ConversationRequest =
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      transientInput?: true;
       trustedUserUtterance?: string;
     }
   | {
@@ -55,6 +57,7 @@ type ConversationRequest =
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      transientInput?: true;
       trustedUserUtterance?: string;
     }
   | {
@@ -62,6 +65,7 @@ type ConversationRequest =
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      transientInput?: true;
       trustedUserUtterance?: string;
     }
   | {
@@ -1638,6 +1642,7 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           executionEngine,
           mobilePushDispatch: personal
@@ -1653,6 +1658,7 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         executionEngine,
         mobilePushDispatch: personal

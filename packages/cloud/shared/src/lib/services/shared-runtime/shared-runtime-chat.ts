@@ -211,6 +211,8 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Server-authenticated control input is modeled but omitted from durable user history. */
+  transientInput?: true;
   /** Server-authenticated raw utterance when the model message includes connector context. */
   trustedUserUtterance?: string;
   /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
@@ -979,7 +981,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = sharedTurnMemoryStore(agent);
+    const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent);
     const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
     const turnStartedAtEpochMs = Date.now();
     let turn: RunSharedAgentTurnResult;
@@ -1049,7 +1051,9 @@ export class SharedRuntimeChatService {
           agent.id,
           roomId,
           turn.history.filter(
-            (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+            (message) =>
+              message.id === messageIds.assistant ||
+              (!options.transientInput && message.id === messageIds.user),
           ),
           options.historyStore,
         );
@@ -1178,7 +1182,7 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = sharedTurnMemoryStore(agent);
+    const streamMemoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent);
     const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
     const streamTurnStartedAtEpochMs = Date.now();
     const providerSetupStartedAt = performance.now();
@@ -1259,9 +1263,9 @@ export class SharedRuntimeChatService {
     const encoder = new TextEncoder();
     const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
       const sentAt = Date.now();
-      const messages: SharedTurnMessage[] = [
-        { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
-      ];
+      const messages: SharedTurnMessage[] = options.transientInput
+        ? []
+        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({

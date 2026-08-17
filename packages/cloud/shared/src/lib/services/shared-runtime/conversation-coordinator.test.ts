@@ -151,6 +151,7 @@ describe("shared conversation coordinator", () => {
       agentKind: "personal",
       trustedMessageRole: "system",
       trustedUserUtterance: "email Bob now",
+      transientInput: true,
     });
     await coordinateSharedLifecycleEvent(
       agent.id,
@@ -166,6 +167,7 @@ describe("shared conversation coordinator", () => {
         rpc,
         trustedMessageRole: "system",
         trustedUserUtterance: "email Bob now",
+        transientInput: true,
       },
       {
         operation: "lifecycle",

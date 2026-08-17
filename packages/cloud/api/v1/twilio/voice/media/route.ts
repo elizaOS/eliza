@@ -439,6 +439,7 @@ app.get("/", async (c) => {
         callContextAt,
       ),
       openingClientMessageId: callOpeningClientMessageId(claims.callSid),
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>

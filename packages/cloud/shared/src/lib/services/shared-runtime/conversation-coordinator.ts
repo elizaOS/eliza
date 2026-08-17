@@ -28,6 +28,8 @@ export interface SharedConversationCoordinatorOptions {
   agentKind?: "sandbox" | "personal";
   /** Authenticated server-only role override; never accepted from RPC params. */
   trustedMessageRole?: "system";
+  /** Authenticated control input is excluded from durable conversation history. */
+  transientInput?: true;
   /** Authenticated raw utterance when RPC text also contains server-composed context. */
   trustedUserUtterance?: string;
 }
@@ -293,6 +295,7 @@ export async function coordinateSharedBridge(
         agent,
         rpc,
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.transientInput ? { transientInput: true } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
@@ -318,6 +321,7 @@ export async function coordinateSharedStream(
         agent,
         rpc,
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.transientInput ? { transientInput: true } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),

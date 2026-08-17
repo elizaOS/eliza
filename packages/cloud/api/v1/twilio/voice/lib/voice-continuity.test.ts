@@ -49,6 +49,7 @@ describe("voice continuity", () => {
     expect(prompt).toContain("last recorded interaction was about 3 hours ago");
     expect(prompt).toContain("private conversation history");
     expect(prompt).toContain("exactly one brief, natural spoken greeting");
+    expect(prompt).toContain("untrusted conversational data");
     expect(prompt).toContain("Do not quote or recite raw history");
   });
 
