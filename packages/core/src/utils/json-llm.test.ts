@@ -45,4 +45,19 @@ describe("extractAndParseJSONObjectFromText", () => {
 			extractAndParseJSONObjectFromText("this is not json at all"),
 		).toThrow(/Failed to parse/);
 	});
+
+	it("throws when parsed JSON is a primitive scalar", () => {
+		expect(() => extractAndParseJSONObjectFromText("null")).toThrow(
+			/Failed to parse/,
+		);
+		expect(() => extractAndParseJSONObjectFromText("123")).toThrow(
+			/Failed to parse/,
+		);
+		expect(() => extractAndParseJSONObjectFromText("true")).toThrow(
+			/Failed to parse/,
+		);
+		expect(() => extractAndParseJSONObjectFromText('"just a string"')).toThrow(
+			/Failed to parse/,
+		);
+	});
 });
