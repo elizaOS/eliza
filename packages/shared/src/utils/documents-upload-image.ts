@@ -128,11 +128,17 @@ function cloneUploadFile(
 }
 
 export function isDocumentImageFile(
-  file: Pick<File, "name" | "type">,
+  file: Pick<File, "name" | "type"> | null | undefined,
 ): boolean {
-  if (file.type.startsWith("image/")) return true;
-  const lowerName = file.name.toLowerCase();
-  return IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+  if (!file || typeof file !== "object") return false;
+  if (typeof file.type === "string" && file.type.startsWith("image/")) {
+    return true;
+  }
+  if (typeof file.name === "string") {
+    const lowerName = file.name.toLowerCase();
+    return IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+  }
+  return false;
 }
 
 export async function maybeCompressDocumentUploadImage(
