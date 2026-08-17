@@ -14,7 +14,13 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
-import { decideInterruptionWithModel } from "./interruption-decider.js";
+import {
+  decideInterruptionWithModel,
+  explicitlyAddressesTarget,
+  hasExplicitMultiTargetSyntax,
+  hasExplicitTargetSyntax,
+  type InterruptionTarget,
+} from "./interruption-decider.js";
 import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
@@ -42,6 +48,48 @@ export function isSessionBusy(status: string): boolean {
 }
 
 const SRC = "@elizaos/plugin-agent-orchestrator";
+
+function interruptionTargetForSession(active: SessionInfo): InterruptionTarget {
+  const meta = (active.metadata ?? {}) as Record<string, unknown>;
+  const smithersRun =
+    meta.smithersDurableRun && typeof meta.smithersDurableRun === "object"
+      ? (meta.smithersDurableRun as Record<string, unknown>)
+      : undefined;
+  const taskId = [
+    meta.taskId,
+    meta.orchestratorTaskId,
+    smithersRun?.orchestratorTaskId,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+  const label = typeof meta.label === "string" ? meta.label : active.name;
+  return {
+    sessionId: active.id,
+    ...(label ? { agentLabel: label } : {}),
+    ...(taskId ? { taskId } : {}),
+  };
+}
+
+function sessionUsesSharedChannel(
+  active: SessionInfo,
+  roomId: string,
+  multiParty: boolean,
+): boolean {
+  const meta = (active.metadata ?? {}) as Record<string, unknown>;
+  const originMatch =
+    roomId === meta.originRoomId || roomId === meta.sourceRoomId;
+  const explicitDedicatedMatch =
+    roomId === meta.threadRoomId || roomId === meta.taskRoomId;
+  const legacySoloMatch =
+    !multiParty && meta.taskRoomId === undefined && roomId === meta.roomId;
+  const legacySharedRoomMatch =
+    multiParty && meta.taskRoomId === undefined && roomId === meta.roomId;
+  return (
+    !(explicitDedicatedMatch || legacySoloMatch) &&
+    (originMatch || legacySharedRoomMatch)
+  );
+}
 
 /**
  * Build the MESSAGE_RECEIVED handler that forwards mid-task user messages to
@@ -111,14 +159,73 @@ export function createActiveSessionForwardHandler(
 
       // "Crowded room": more than one live sub-agent bound to this room.
       const multiParty = bound.length > 1;
+      // Resolve an explicit target set once for the whole room. Without this,
+      // independent per-session classifiers can interpret a referenced label
+      // as an address and broadcast `Bob, compare with Ada's result` to Ada.
+      const targetsBySessionId = new Map(
+        bound.map((active) => [
+          active.id,
+          interruptionTargetForSession(active),
+        ]),
+      );
+      const explicitlyTargeted = new Set(
+        bound
+          .filter((active) =>
+            explicitlyAddressesTarget(
+              text,
+              targetsBySessionId.get(active.id) ?? { sessionId: active.id },
+            ),
+          )
+          .map((active) => active.id),
+      );
+      const explicitSyntax = hasExplicitTargetSyntax(text);
+      const anySharedBinding = bound.some((active) =>
+        sessionUsesSharedChannel(active, message.roomId, multiParty),
+      );
+      const targetedLabels = new Set<string>();
+      let duplicateTargetLabel = false;
+      for (const sessionId of explicitlyTargeted) {
+        const label = targetsBySessionId
+          .get(sessionId)
+          ?.agentLabel?.trim()
+          .toLocaleLowerCase();
+        if (!label) continue;
+        if (targetedLabels.has(label)) duplicateTargetLabel = true;
+        targetedLabels.add(label);
+      }
+      const ambiguousMatchedTargets =
+        explicitlyTargeted.size > 1 &&
+        (duplicateTargetLabel || !hasExplicitMultiTargetSyntax(text));
+      if (
+        ambiguousMatchedTargets ||
+        (explicitSyntax && explicitlyTargeted.size === 0 && anySharedBinding)
+      ) {
+        runtime.logger?.debug?.(
+          {
+            src: SRC,
+            explicitSyntax,
+            matchedTargets: explicitlyTargeted.size,
+            duplicateTargetLabel,
+          },
+          "interruption target unresolved; planner owns routing",
+        );
+        return;
+      }
       // Every bound live session gets its own interruption decision and its
       // own delivery/queue — a room with several live sub-agents must not
       // quietly forward the user's text to only the first in list order.
       for (const active of bound) {
-        const label =
-          typeof active.metadata?.label === "string"
-            ? active.metadata.label
-            : active.name;
+        if (explicitlyTargeted.size > 0 && !explicitlyTargeted.has(active.id)) {
+          runtime.logger?.debug?.(
+            { src: SRC, sessionId: active.id },
+            "interruption ignored for non-targeted shared participant",
+          );
+          continue;
+        }
+        const target = targetsBySessionId.get(active.id) ?? {
+          sessionId: active.id,
+        };
+        const label = target.agentLabel;
         const busy = isSessionBusy(active.status);
         // What the sub-agent is working on, for the model classifier's
         // relevance judgement — best-effort from session metadata (all
@@ -132,29 +239,26 @@ export function createActiveSessionForwardHandler(
         ].find(
           (v): v is string => typeof v === "string" && v.trim().length > 0,
         );
+        const taskId = target.taskId;
         // The message reached this session via its ORIGIN connector channel
         // rather than a room dedicated to the task (task room / thread). The
         // origin channel is shared with the orchestrator planner, so the
         // decider must classify task-relevance there instead of
         // blanket-delivering planner-directed messages into the sub-agent.
-        const originMatch =
-          message.roomId === meta.originRoomId ||
-          message.roomId === meta.sourceRoomId;
-        const dedicatedMatch =
-          message.roomId === meta.threadRoomId ||
-          message.roomId === meta.taskRoomId ||
-          // Sessions spawned without a distinct task room bind roomId to the
-          // origin channel itself; only then does roomId count as dedicated,
-          // preserving the pre-task-rooms delivery behavior.
-          (meta.taskRoomId === undefined && message.roomId === meta.roomId);
-        const sharedChannel = originMatch && !dedicatedMatch;
+        const sharedChannel = sessionUsesSharedChannel(
+          active,
+          message.roomId,
+          multiParty,
+        );
         const decision = await decideInterruptionWithModel(runtime, {
           text,
           agentType: active.agentType,
           sessionBusy: busy,
           multiParty,
           sharedChannel,
+          sessionId: active.id,
           ...(label ? { agentLabel: label } : {}),
+          ...(taskId ? { taskId } : {}),
           ...(taskContext ? { taskContext } : {}),
         });
         runtime.logger?.debug?.(

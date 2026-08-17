@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 // SEND_TO_AGENT is `TASKS { action: "send" }`; the action variable imports as
 // `sendToAgentAction` (an alias on the parent).
 import { sendToAgentAction } from "../../src/actions/tasks.js";
+import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import {
   callback,
   memory,
@@ -73,6 +74,53 @@ describe("TASKS:send", () => {
     expect(input).toContain("Get root filesystem usage");
     expect(input).toContain("Parent follow-up:");
     expect(input).toContain("Run any additional commands needed");
+  });
+
+  it("does not revive a one-shot session after its durable task is done", async () => {
+    const svc = serviceMock();
+    const taskService = {
+      getTaskForSession: vi.fn(async () => ({
+        id: "durable-task-1",
+        status: "done",
+      })),
+    };
+    const runtime = runtimeWith(svc);
+    runtime.getService = vi.fn((serviceType: string) =>
+      serviceType === OrchestratorTaskService.serviceType ? taskService : svc,
+    );
+
+    const result = await sendToAgentAction.handler(
+      runtime,
+      memory({
+        source: "sub_agent",
+        text: "[sub-agent: completed task — task_complete]\nAll checks passed.",
+        metadata: {
+          subAgent: true,
+          subAgentEvent: "task_complete",
+          subAgentSessionId: "abcdef123456",
+        },
+      }),
+      state,
+      {
+        parameters: {
+          action: "send",
+          task: "Continue and report again",
+        },
+      },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      continueChain: false,
+      data: {
+        sessionId: "abcdef123456",
+        durableTaskId: "durable-task-1",
+        terminalTaskStatus: "done",
+        suppressedTerminalFollowUp: true,
+      },
+    });
+    expect(svc.sendToSession).not.toHaveBeenCalled();
   });
 
   it("sends keys via action=send", async () => {
