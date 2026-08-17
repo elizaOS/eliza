@@ -3,8 +3,10 @@
  * exercises the real shim module (not a mock) and asserts it accepts the same
  * list/range/step syntax the shipped Triggers form relies on while still
  * rejecting out-of-range, inverted, and garbage fields. The accepted set mirrors
- * the real `cron-parser@5.x` verdict for the five-field expressions the Triggers
- * UI validation path feeds through this shim.
+ * the server scheduler's `parseCronExpression` verdict (in
+ * `packages/core/src/services/triggerScheduling.ts`) for the five-field
+ * expressions the Triggers UI validation path feeds through this shim, so the
+ * form neither blocks a schedule the backend runs nor saves one it never runs.
  */
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +22,13 @@ describe("cron-parser shim field grammar", () => {
     "0 9 * * *",
     "0-59 * * * *",
     "*/60 * * * *",
+    // Value-steps (`N/step`): from N to the field max every step. The server
+    // scheduler accepts these; the shim used to reject them, disabling the
+    // Triggers submit button for the common "every 15 minutes from :00" form.
+    "0/15 * * * *",
+    "5/15 * * * *",
+    "9/2 9-17 * * *",
+    "0 0 * * 7",
   ];
 
   it.each(validExpressions)("accepts valid recurring schedule %s", (expr) => {
@@ -36,6 +45,13 @@ describe("cron-parser shim field grammar", () => {
     ["0, * * * *", "trailing empty list element"],
     ["0 9 * *", "only four fields"],
     ["8 25 * * *", "hour out of range"],
+    ["5/0 * * * *", "zero value-step"],
+    ["60/5 * * * *", "value-step base out of range"],
+    ["5/2/3 * * * *", "double step separator"],
+    // Named tokens are rejected on purpose: the server scheduler
+    // (`parseCronExpression`) rejects them too, so accepting them here would
+    // save a trigger the backend never runs.
+    ["0 0 * * MON", "named day-of-week token"],
   ];
 
   it.each(invalidExpressions)("rejects %s (%s)", (expr) => {
