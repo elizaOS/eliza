@@ -30,17 +30,31 @@ export const MAX_PTY_INPUT_MESSAGE_LENGTH = 4096;
 /** Grace window before a disconnected client's PTY sessions are stopped. */
 export const DEFAULT_PTY_DISCONNECT_GRACE_MS = 30_000;
 
+/** Node timer ceiling. Larger values schedule at ~1ms and reap immediately. */
+export const MAX_PTY_DISCONNECT_GRACE_MS = 2_147_483_647;
+
 /**
- * Parses `ELIZA_PTY_WS_DISCONNECT_GRACE_MS`-style overrides. Empty/absent or
- * unparseable/negative values fall back to the default; `0` is honored as
- * "no grace" (legacy stop-on-close behavior).
+ * Parses a canonical non-negative decimal disconnect-grace override. Invalid
+ * values and values above Node's timer ceiling retain the documented default;
+ * `0` explicitly requests stop-on-close behavior.
  */
 export function resolvePtyDisconnectGraceMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  const trimmed = raw.trim();
+  if (trimmed === "0") {
+    return 0;
+  }
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    return DEFAULT_PTY_DISCONNECT_GRACE_MS;
+  }
+  const parsed = Number(trimmed);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_PTY_DISCONNECT_GRACE_MS
+  ) {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
   return parsed;
