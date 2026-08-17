@@ -2,6 +2,7 @@
  * Exercises the mounted analytics export Hono route with mocked auth, rate
  * limiting, export formatting, and analytics services. Invalid date queries
  * must fail before service lookups instead of reaching filename serialization.
+ * Unknown `type` tokens must 400 instead of silently exporting timeseries.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -122,4 +123,42 @@ describe("GET /api/analytics/export date validation", () => {
     expect(body).toEqual({ error: `Invalid ${field}` });
     expectNoServiceLookups();
   });
+});
+
+describe("GET /api/analytics/export type identity", () => {
+  beforeEach(clearServiceMocks);
+
+  test("omitted type still exports the timeseries slice", async () => {
+    const response = await getExport();
+
+    expect(response.status).toBe(200);
+    expect(getUsageTimeSeries).toHaveBeenCalledTimes(1);
+    expect(getUsageByUser).not.toHaveBeenCalled();
+    expect(getModelBreakdown).not.toHaveBeenCalled();
+    expect(getProviderBreakdown).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["timeseries", getUsageTimeSeries],
+    ["users", getUsageByUser],
+    ["providers", getProviderBreakdown],
+    ["models", getModelBreakdown],
+  ] as const)("type=%s selects that catalog", async (type, service) => {
+    const response = await getExport(`?type=${type}`);
+
+    expect(response.status).toBe(200);
+    expect(service).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["user", "model", "provider", "USERS", "foo", "1e2"])(
+    "rejects type=%s before analytics lookups",
+    async (type) => {
+      const response = await getExport(`?type=${encodeURIComponent(type)}`);
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toContain("Invalid type");
+      expectNoServiceLookups();
+    },
+  );
 });
