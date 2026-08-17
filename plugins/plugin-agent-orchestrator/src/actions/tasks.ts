@@ -1222,12 +1222,49 @@ async function runCreateLegacy(
       // A matching workdir route outranks a planner-guessed workdir; a
       // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
       const {
-        workdir: sessionWorkdir,
+        workdir: resolvedSessionWorkdir,
         route,
-        isolate: isolateWorkdir,
+        isolate: resolvedCreateIsolate,
       } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
         lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
       });
+      let sessionWorkdir = resolvedSessionWorkdir;
+      let isolateWorkdir = resolvedCreateIsolate;
+      // Same repo-provisioning contract as runSpawnAgent: a repo-targeted
+      // create must run in a CLONE, not the cwd fallback (live 2026-08-17:
+      // repo param present on the create path, the sub-agent git-init'd a
+      // fresh repo in scratch and could not push).
+      const createRequestedRepo =
+        typeof (params as Record<string, unknown>).repo === "string"
+          ? normalizeRepositoryInput(
+              (params as Record<string, unknown>).repo as string,
+            )
+          : undefined;
+      if (createRequestedRepo && !route && !explicitWorkdir) {
+        const createWorkspaceService = getCodingWorkspaceService(runtime);
+        if (createWorkspaceService) {
+          try {
+            const workspace = await createWorkspaceService.provisionWorkspace({
+              repo: createRequestedRepo,
+              useWorktree: false,
+            });
+            sessionWorkdir = workspace.path;
+            isolateWorkdir = false;
+            logger(runtime).info(
+              `[TASKS:create] provisioned repo workspace: ${createRequestedRepo} -> ${workspace.path}`,
+            );
+          } catch (error) {
+            // error-policy:J2 a named repo that cannot be provisioned fails this
+            // lane loudly (the settled handler reports rejected lanes) — a
+            // scratch git-init masquerading as the repo is worse.
+            throw new Error(
+              `Could not clone ${createRequestedRepo} for this task: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+      }
       // This path spawns WITHOUT `initialTask` and delivers the task via
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
