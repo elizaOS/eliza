@@ -603,6 +603,7 @@ describe("AgentSandboxesRepository", () => {
   });
 
   test("incremental reconstruction walks only the target chain sequentially", async () => {
+    useWriteSelectMock = true;
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     const { diffBackupState, computeStateHash } = await import(
       "../../lib/services/agent-backup-diff"
