@@ -404,8 +404,17 @@ export async function waitForSpawnSlot(
     let active = 0;
     try {
       const sessions = await listSessionsWithin(service);
+      // Count only sessions doing WORK. An idle kept-alive session ("ready" —
+      // its prompt completed, it is waiting for a possible follow-up) holds no
+      // model/CPU concurrency and must not consume a spawn slot: with the
+      // default limit of 2, two lingering keepAlive sessions blocked every new
+      // coding request for the full 8-minute wait (live 2026-08-17: four
+      // "ready" leftovers made every spawn stall 480s and the turns looked
+      // silent to the user).
       active = sessions.filter(
-        (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
+        (s) =>
+          !TERMINAL_SESSION_STATUSES.has(String(s.status)) &&
+          String(s.status) !== "ready",
       ).length;
     } catch {
       // error-policy:J4 session-state read failed → fail-open (don't block the spawn); no data fabricated
