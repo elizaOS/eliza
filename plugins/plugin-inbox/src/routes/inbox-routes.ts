@@ -45,10 +45,18 @@ function queryBool(value: unknown): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
-function queryInt(value: unknown, fallback: number): number {
+export function queryInt(
+  value: unknown,
+  fallback: number,
+): number | "invalid" {
+  if (value === undefined || value === null || value === "") return fallback;
   if (typeof value !== "string") return fallback;
+  // Canonical positive integers only. Number("1e2") === 100 used to become
+  // a real triage page size.
+  if (!/^[1-9]\d*$/.test(value)) return "invalid";
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return "invalid";
+  return parsed;
 }
 
 function firstQuery(value: string | string[] | undefined): string | undefined {
@@ -124,6 +132,12 @@ async function handleTriageRead(
   const service = new InboxService(ctx.runtime);
   const classification = firstQuery(ctx.query.classification);
   const limit = queryInt(firstQuery(ctx.query.limit), 50);
+  if (limit === "invalid") {
+    return json(400, {
+      ok: false,
+      error: "limit must be a canonical positive integer",
+    });
+  }
   const includeSnoozed = queryBool(firstQuery(ctx.query.includeSnoozed));
   const entries =
     classification &&
