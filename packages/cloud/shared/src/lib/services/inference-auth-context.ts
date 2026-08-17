@@ -241,7 +241,11 @@ export type InferenceAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" }
+  // `hydration` carries the coalesced background hydration so a
+  // latency-tolerant caller (voice) can await it under a bounded budget
+  // instead of round-tripping a retryable 503 through the client; it is set
+  // only when this resolve actually started (or joined) one.
+  | { kind: "warming"; hydration?: Promise<void> }
   | { kind: "slow_path"; reason: "non_api_key" };
 
 /**
@@ -480,7 +484,16 @@ export async function resolveInferenceAuthContext(
       if (session.kind === "warming") {
         trace.cacheRead = cache.isAvailable() ? "miss" : "unavailable";
         trace.result = "warming";
-        return session;
+        // Normalize the session decision promise to the combined void shape;
+        // the swallowed rejection is still observed by the session module's
+        // own waitUntil copy, and an awaiting caller re-resolves instead.
+        return {
+          kind: "warming",
+          hydration: session.hydration?.then(
+            () => undefined,
+            () => undefined,
+          ),
+        };
       }
       if (session.kind === "suspended") {
         trace.cacheRead = "hit";
@@ -552,6 +565,20 @@ export async function resolveInferenceAuthContext(
       if (cacheAvailable && options.executionCtx) {
         const hydration = getOrCreateApiKeyHydration(req, keyHash, options.traceId);
         options.executionCtx.waitUntil(hydration);
+        // Surface the coalesced hydration so a latency-tolerant caller (voice)
+        // can await it under a bounded budget and re-resolve from the cache
+        // the hydration just wrote, instead of a client-side 503 retry. The
+        // single-flight attempt is written to swallow its own failures, but
+        // normalize here too so the caller-facing contract — a hydration
+        // promise settles, never rejects — does not depend on the internals
+        // of that distant catch chain.
+        return {
+          kind: "warming",
+          hydration: hydration.then(
+            () => undefined,
+            () => undefined,
+          ),
+        };
       }
       return { kind: "warming" };
     }

@@ -118,7 +118,7 @@ describe("resolveInferenceSessionAuthContext", () => {
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
 
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
     expect(waited).toHaveLength(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
@@ -185,8 +185,8 @@ describe("resolveInferenceSessionAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(userReads).toBe(1);
     expect(firstWaited).toHaveLength(1);
     expect(secondWaited).toHaveLength(1);
@@ -240,5 +240,54 @@ describe("resolveInferenceSessionAuthContext", () => {
     ).resolves.toEqual({ kind: "rejected", status: 401 });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
+  });
+
+  test("warming resolve surfaces the coalesced hydration for bounded awaiting (#20557)", async () => {
+    const releaseUser = Promise.withResolvers<void>();
+    getUser = async () => {
+      await releaseUser.promise;
+      return {
+        id: "user-1",
+        is_active: true,
+        organization_id: "org-1",
+        organization: { is_active: true },
+      };
+    };
+    const waited: Promise<unknown>[] = [];
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+
+    expect(result.kind).toBe("warming");
+    if (result.kind !== "warming") return;
+    expect(result.hydration).toBeInstanceOf(Promise);
+
+    releaseUser.resolve();
+    const decision = await result.hydration;
+    expect("userId" in decision && decision.userId).toBe("user-1");
+    await Promise.all(waited);
+    expect(moderationReads).toBe(1);
+  });
+
+  test("cache outage warming carries no hydration promise (#20557)", async () => {
+    const { cache } = await import("../cache/client");
+    const { spyOn } = await import("bun:test");
+    const spy = spyOn(cache, "isAvailable").mockReturnValue(false);
+    try {
+      const result = await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+        executionCtx: { waitUntil: () => undefined },
+      });
+      expect(result.kind).toBe("warming");
+      if (result.kind === "warming") {
+        expect(result.hydration).toBeUndefined();
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

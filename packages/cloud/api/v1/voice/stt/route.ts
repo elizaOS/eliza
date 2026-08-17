@@ -469,6 +469,10 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
+        // Voice is user-audible: the first utterance after idle waits once,
+        // bounded, for the coalesced per-user auth hydration instead of
+        // failing fast into a client-retried 503 (#20557).
+        awaitWarmingMs: 1500,
       });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;

@@ -50,7 +50,12 @@ export type InferenceSessionAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" };
+  // `hydration` exposes the already-coalesced single-flight decision so
+  // latency-tolerant callers (voice) can await it under a bounded budget
+  // instead of round-tripping a retryable 503 through the client. It is
+  // present only when this resolve actually started (or joined) a
+  // hydration; a cache outage leaves it unset.
+  | { kind: "warming"; hydration?: Promise<InferenceSessionAuthDecision> };
 
 function looksLikeJwt(token: string): boolean {
   const parts = token.split(".");
@@ -298,16 +303,24 @@ export async function resolveInferenceSessionAuthContext(
           walletChain: claims.walletChain,
         },
         true,
-      )
-        .then(() => undefined)
-        .catch((error) => {
+      );
+      options.executionCtx.waitUntil(
+        hydration.then(
+          () => undefined,
           // error-policy:J7 authoritative hydration is observed by waitUntil;
           // the current request already returned an explicit warming state.
-          logger.warn("[InferenceSessionAuth] Background hydration failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
-      options.executionCtx.waitUntil(hydration);
+          (error) => {
+            logger.warn("[InferenceSessionAuth] Background hydration failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          },
+        ),
+      );
+      // The coalesced decision itself rides on the resolution so a
+      // latency-tolerant caller (voice) can await it under a bounded budget
+      // and re-resolve from the freshly written cache entry instead of
+      // round-tripping a retryable 503 through the client.
+      return { kind: "warming", hydration };
     }
     return { kind: "warming" };
   }

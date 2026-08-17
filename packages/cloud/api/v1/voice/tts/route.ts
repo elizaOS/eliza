@@ -181,6 +181,10 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
+        // Voice is user-audible: the first reply after idle waits once,
+        // bounded, for the coalesced per-user auth hydration instead of
+        // failing fast into a client-retried 503 (#20557).
+        awaitWarmingMs: 1500,
       });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();

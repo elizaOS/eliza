@@ -253,7 +253,8 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
+    expect(typeof result.hydration === "object").toBe(true);
     expect(waited.length).toBeGreaterThan(0);
     await waited[0];
     await Promise.all(waited);
@@ -293,8 +294,8 @@ describe("resolveInferenceAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(waited).toHaveLength(2);
     expect(waited[0]).toBe(waited[1]);
 
@@ -318,7 +319,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
 
@@ -342,7 +343,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(moderationCalls).toBe(1);
 
@@ -530,7 +531,13 @@ describe("resolveInferenceAuthContext", () => {
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       });
 
-      expect(result).toEqual({ kind: "warming" });
+      expect(result).toMatchObject({ kind: "warming" });
+      // Cache outage: no hydration was started, so the bounded-awaits
+      // contract must see NO promise (callers fail fast without burning
+      // the budget).
+      if (result.kind === "warming") {
+        expect(result.hydration).toBeUndefined();
+      }
       expect(chainCalls).toBe(0);
       expect(waited).toHaveLength(0);
     } finally {
@@ -751,5 +758,34 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     });
     expect(escaped.kind).toBe("authorized");
     release?.();
+  });
+
+  test("cache-only warming surfaces the coalesced hydration for bounded awaiting (#20557)", async () => {
+    const gate = Promise.withResolvers<void>();
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      await gate.promise;
+      return {
+        user: { id: "user-1", organization_id: "org-1" },
+        apiKey: { id: "key-1" },
+      };
+    };
+    const waited: Promise<unknown>[] = [];
+
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+
+    expect(result.kind).toBe("warming");
+    if (result.kind !== "warming") return;
+    expect(result.hydration).toBeInstanceOf(Promise);
+    expect(waited).toHaveLength(1);
+
+    gate.resolve();
+    await result.hydration;
+    expect(chainCalls).toBe(1);
+    await Promise.all(waited);
   });
 });

@@ -150,12 +150,22 @@ export async function admitFlatGenerativeOperation(params: {
  * Cache misses fail closed with a retryable response while authoritative
  * hydration runs under the Worker lifetime. Wallet proof remains on the
  * compatibility path because replay-protected signatures cannot be cached.
+ *
+ * `awaitWarmingMs` opts a latency-tolerant caller (voice STT/TTS) into one
+ * bounded inline wait for the coalesced hydration: on a warming resolve the
+ * caller races the hydration against the budget; if the hydration settles in
+ * time the resolver runs exactly once more against the cache entry it just
+ * wrote, so the first utterance after idle no longer degrades to a
+ * client-retried 503. The immediate retryable 503 semantics are preserved
+ * verbatim when the budget expires, the hydration is absent (cache outage),
+ * or the option is unset — every other generative route is unchanged.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
   options: {
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
+    awaitWarmingMs?: number;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const executionCtx = getGenerativeExecutionContext(c);
@@ -183,13 +193,21 @@ export async function requireGenerativeRouteCaller(
   const { resolveInferenceAuthContext } = await import(
     "@/lib/services/inference-auth-context"
   );
-  const resolution = await resolveInferenceAuthContext(c.req.raw, {
-    traceId: c.get("traceId") ?? c.get("requestId"),
-    cacheOnly: Boolean(executionCtx),
-    executionCtx,
-  });
 
-  if (resolution.kind === "authorized") {
+  // Single resolver integration point (a source tripwire pins this file to
+  // exactly one resolver invocation site); the bounded warming retry re-runs
+  // through the same helper.
+  const resolveCallerAuth = () =>
+    resolveInferenceAuthContext(c.req.raw, {
+      traceId: c.get("traceId") ?? c.get("requestId"),
+      cacheOnly: Boolean(executionCtx),
+      executionCtx,
+    });
+
+  function toCallerIfAuthorized(
+    resolution: Awaited<ReturnType<typeof resolveCallerAuth>>,
+  ): Extract<typeof resolution, { kind: "authorized" }> | null {
+    if (resolution.kind !== "authorized") return null;
     const user = {
       id: resolution.ctx.userId,
       organization_id: resolution.ctx.orgId,
@@ -199,47 +217,90 @@ export async function requireGenerativeRouteCaller(
     if (resolution.ctx.apiKeyId) {
       c.set("apiKeyId", resolution.ctx.apiKeyId);
     }
-    if (options.rateLimitEndpoint) {
-      const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-        await Promise.all([
-          import("@/lib/middleware/rate-limit"),
-          import("@/lib/services/inference-admission-snapshot"),
-        ]);
-      const limited = await enforceOrgRateLimit(
-        resolution.ctx.orgId,
-        options.rateLimitEndpoint,
-        {
-          // The combined decision carries the rate policy only when the hot
-          // cache is enabled. Development and integration Workers still have
-          // an execution context, but their authoritative origin decision has
-          // no snapshot and must retain the compatibility limiter path.
-          cacheOnly: Boolean(resolution.ctx.admission),
-          executionCtx,
-          config: inferenceRateLimitConfig(
-            resolution.ctx.admission,
-            options.rateLimitEndpoint,
-          ),
-        },
+    return resolution;
+  }
+
+  async function enforceOrgRateLimitFor(
+    resolution: Extract<
+      Awaited<ReturnType<typeof resolveCallerAuth>>,
+      { kind: "authorized" }
+    >,
+  ): Promise<void> {
+    if (!options.rateLimitEndpoint) return;
+    const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
+      await Promise.all([
+        import("@/lib/middleware/rate-limit"),
+        import("@/lib/services/inference-admission-snapshot"),
+      ]);
+    const limited = await enforceOrgRateLimit(
+      resolution.ctx.orgId,
+      options.rateLimitEndpoint,
+      {
+        // The combined decision carries the rate policy only when the hot
+        // cache is enabled. Development and integration Workers still have
+        // an execution context, but their authoritative origin decision has
+        // no snapshot and must retain the compatibility limiter path.
+        cacheOnly: Boolean(resolution.ctx.admission),
+        executionCtx,
+        config: inferenceRateLimitConfig(
+          resolution.ctx.admission,
+          options.rateLimitEndpoint,
+        ),
+      },
+    );
+    if (limited) {
+      throw new ApiError(
+        limited.status,
+        limited.status === 429 ? "rate_limit_exceeded" : "service_unavailable",
+        limited.status === 429
+          ? "Rate limit exceeded"
+          : "Rate limiter is unavailable",
       );
-      if (limited) {
-        throw new ApiError(
-          limited.status,
-          limited.status === 429
-            ? "rate_limit_exceeded"
-            : "service_unavailable",
-          limited.status === 429
-            ? "Rate limit exceeded"
-            : "Rate limiter is unavailable",
-        );
-      }
     }
+  }
+
+  let resolution = await resolveCallerAuth();
+
+  if (resolution.kind === "warming" && options.awaitWarmingMs !== undefined) {
+    if (resolution.hydration) {
+      // The budget timer must never outlive the race: clear it as soon as
+      // either side settles so a winning hydration does not leave a dangling
+      // timer holding the isolate.
+      let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+      const budget = new Promise<void>((resolve) => {
+        budgetTimer = setTimeout(resolve, options.awaitWarmingMs);
+      });
+      try {
+        await Promise.race([
+          // A rejected hydration is not an auth verdict and must not surface
+          // as an opaque 500: the resolver's single-flight already observed
+          // and logged it (error-policy:J5 — the same rejection is observed
+          // by the resolver's own waitUntil/logging copy). It only means
+          // "stop waiting"; the re-resolve below decides the outcome, which
+          // degrades to the designed retryable 503 when nothing was cached.
+          resolution.hydration.catch(() => undefined),
+          budget,
+        ]);
+      } finally {
+        if (budgetTimer !== undefined) clearTimeout(budgetTimer);
+      }
+      resolution = await resolveCallerAuth();
+    }
+  }
+
+  const authorized = toCallerIfAuthorized(resolution);
+  if (authorized) {
+    await enforceOrgRateLimitFor(authorized);
     return {
-      user,
-      apiKeyId: resolution.ctx.apiKeyId,
+      user: {
+        id: authorized.ctx.userId,
+        organization_id: authorized.ctx.orgId,
+      },
+      apiKeyId: authorized.ctx.apiKeyId,
       authSource: "combined_cache",
-      admissionSnapshot: resolution.ctx.admission,
+      admissionSnapshot: authorized.ctx.admission,
       appScopeId:
-        "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
+        "appScopeId" in authorized.ctx ? authorized.ctx.appScopeId : null,
     };
   }
 
