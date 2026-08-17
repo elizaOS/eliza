@@ -275,7 +275,7 @@ export function readFsVerifiedContents(
       path: relative,
       content:
         content.length > MAX_CONTENT_CHARS
-          ? `${content.slice(0, MAX_CONTENT_CHARS)}\n… [truncated]`
+          ? `${content.slice(0, MAX_CONTENT_CHARS - 14)}\n… [truncated]`
           : content,
     });
   }
