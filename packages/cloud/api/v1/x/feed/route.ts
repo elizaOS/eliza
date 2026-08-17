@@ -27,8 +27,30 @@ app.get("/", async (c) => {
         400,
       );
     }
-    const connectionRole =
-      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    // Role identity leftover after x/status (#20945). The prior ternary
+    // mapped every non-"agent" token — including AGENT, owner-typos, and
+    // 1e2 — onto the personal owner X feed. Missing/empty still defaults
+    // to owner (this route's documented default). Garbage 400s before
+    // getXFeed. maxResults parser stays untouched.
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
+    if (
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const connectionRole = requestedRole === "agent" ? "agent" : "owner";
 
     const result = await getXFeed({
       organizationId: user.organization_id,
