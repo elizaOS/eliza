@@ -440,13 +440,6 @@ export async function handleMemoryRoutes(
     return true;
   }
 
-  // Dispatched before ensureMemoryConnection: a transfer import must not
-  // create the client-chat room, and it manages its own scaffolding rows.
-  if (method === "POST" && pathname === "/api/memories/import") {
-    const { handleMemoryImportRoute } = await import("./memory-import.ts");
-    return handleMemoryImportRoute(ctx);
-  }
-
   const resolvedAgentName = resolveAgentName(runtime, agentName);
   const { roomId, entityId } = await ensureMemoryConnection(
     runtime,
