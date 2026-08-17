@@ -54,7 +54,8 @@ const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
 
 function truncateMcpToolOutput(output: string): string {
   if (output.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return output;
-  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+  const suffix = `\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS - suffix.length)}${suffix}`;
 }
 
 function hasSelectedContext(state: State | undefined): boolean {
