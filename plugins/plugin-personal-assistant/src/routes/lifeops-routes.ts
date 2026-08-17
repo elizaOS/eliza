@@ -110,6 +110,16 @@ import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 
+
+/** Strict positive-int parser — rejects non-canonical `Number()` forms (`1e4`,`0x10`,`5.9`,`5junk`) and clamps to max. */
+function parseStrictLimit(raw: string | null, max: number): number | null {
+  if (raw === null || raw === "") return null;
+  if (!/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  if (!Number.isSafeInteger(n)) return null;
+  return Math.min(n, max);
+}
+
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -2485,11 +2495,11 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/money/dashboard") {
     return runFinancesRoute(ctx, async (service) => {
       const windowDaysRaw = url.searchParams.get("windowDays");
-      const windowDays = windowDaysRaw ? Number(windowDaysRaw) : null;
+      const windowDays = parseStrictLimit(windowDaysRaw, 365);
       json(
         res,
         await service.getPaymentsDashboard({
-          windowDays: Number.isFinite(windowDays) ? windowDays : null,
+          windowDays,
         }),
       );
     });
@@ -2549,12 +2559,12 @@ export async function handleLifeOpsRoutes(
     return runFinancesRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const limitRaw = url.searchParams.get("limit");
-      const limit = limitRaw ? Number(limitRaw) : null;
+      const limit = parseStrictLimit(limitRaw, 500);
       const merchantContains = url.searchParams.get("merchantContains");
       const onlyDebitsRaw = url.searchParams.get("onlyDebits");
       const transactions = await service.listTransactions({
         sourceId: sourceId ?? null,
-        limit: Number.isFinite(limit) ? limit : null,
+        limit,
         merchantContains: merchantContains ?? null,
         onlyDebits: onlyDebitsRaw === "true" ? true : null,
       });
@@ -2566,10 +2576,10 @@ export async function handleLifeOpsRoutes(
     return runFinancesRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const sinceDaysRaw = url.searchParams.get("sinceDays");
-      const sinceDays = sinceDaysRaw ? Number(sinceDaysRaw) : null;
+      const sinceDays = parseStrictLimit(sinceDaysRaw, 365);
       const charges = await service.getRecurringCharges({
         sourceId: sourceId ?? null,
-        sinceDays: Number.isFinite(sinceDays) ? sinceDays : null,
+        sinceDays,
       });
       json(res, { charges });
     });
