@@ -20,9 +20,44 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const MAX_UPLOAD_FILES = 10;
+const DEFAULT_FILES_LIMIT = 50;
+const MAX_FILES_LIMIT = 200;
+
+class CloudFilesLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "CloudFilesLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/files `limit` is files-page size identity, leftover tax
+ * after gallery explore / inbox limits. Stock develop used
+ * z.coerce.number(), which treated `1e2` / `007` / `0x10` as a page
+ * size instead of a 400. offset / source / kind / mimeType / q stay
+ * untouched. Missing / empty still means 50. Exact integers clamp at
+ * 200.
+ */
+function parseFilesLimitQuery(searchParams: URLSearchParams): number {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new CloudFilesLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return DEFAULT_FILES_LIMIT;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new CloudFilesLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new CloudFilesLimitError();
+  }
+  return Math.min(parsed, MAX_FILES_LIMIT);
+}
 
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   source: z.string().trim().min(1).max(32).optional(),
   kind: z.string().trim().min(1).max(32).optional(),
@@ -82,8 +117,16 @@ function toClientFile(file: Awaited<ReturnType<typeof cloudFilesService.get>>) {
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    let limit: number;
+    try {
+      limit = parseFilesLimitQuery(new URL(c.req.url).searchParams);
+    } catch (limitError) {
+      if (limitError instanceof CloudFilesLimitError) {
+        return c.json({ error: limitError.message }, 400);
+      }
+      throw limitError;
+    }
     const parsed = listQuerySchema.parse({
-      limit: c.req.query("limit"),
       offset: c.req.query("offset"),
       source: c.req.query("source"),
       kind: c.req.query("kind"),
@@ -94,6 +137,7 @@ app.get("/", async (c) => {
     const result = await cloudFilesService.list({
       organizationId: user.organization_id,
       ...filters,
+      limit,
       search: q,
     });
     return c.json({
