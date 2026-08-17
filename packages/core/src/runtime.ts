@@ -34,6 +34,7 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
+import { validateQueryEntitiesPagination } from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -11824,6 +11825,7 @@ ${section_end}`;
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
+		validateQueryEntitiesPagination(params);
 		return this.adapter.queryEntities({
 			...params,
 			agentId: params.agentId ?? this.agentId,

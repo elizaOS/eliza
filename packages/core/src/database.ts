@@ -62,6 +62,21 @@ import type {
 	World,
 } from "./types";
 
+/** Enforces the shared pagination contract for entity-query boundaries. */
+export function validateQueryEntitiesPagination(params: {
+	limit?: number;
+	offset?: number;
+}): void {
+	for (const field of ["limit", "offset"] as const) {
+		const value = params[field];
+		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+			throw new RangeError(
+				`queryEntities ${field} must be a non-negative safe integer`,
+			);
+		}
+	}
+}
+
 /**
  * Abstract base class for database adapters.
  *
