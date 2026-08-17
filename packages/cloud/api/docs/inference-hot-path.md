@@ -132,10 +132,13 @@ unless the strong boundary flag is also true. API keys use their immutable row
 ID, Steward logout records the verified token `iat`, user lifecycle changes
 fence the immutable Cloud user ID, and organization suspension fences the
 organization object. Revocation mutations commit the fence before returning;
-reactivation clears only reversible subject or organization fences, while a
-revoked API-key identity can never be reused. Organization moves and local role
-or Steward-identity changes advance the session cutoff before the corresponding
-database mutation reports success.
+reactivation clears only its reason-scoped account, moderation, or membership
+fence, while a revoked API-key identity can never be reused. Organization moves
+and local role or Steward-identity changes advance the session cutoff before the
+corresponding database mutation reports success. Steward-identity changes also
+disable the old `(Cloud user, Steward subject)` binding before mutation and
+enable only the post-commit binding, so a newly issued token cannot authorize
+through a stale pre-change identity projection.
 
 Pricing, affiliate attribution, app/agent policy, and uninitialized Durable
 Objects follow the same fail-closed warming pattern. Route-scope caches add no

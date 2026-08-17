@@ -99,6 +99,7 @@ type CredentialCheckRequest =
       organizationId: string;
       kind: "steward_session";
       userId: string;
+      stewardUserId: string;
       issuedAt: number;
     };
 
@@ -112,12 +113,22 @@ interface SubjectStateRequest {
   organizationId: string;
   userId: string;
   active: boolean;
+  reason: SubjectDisableReason;
 }
+
+type SubjectDisableReason = "account" | "moderation" | "membership";
 
 interface SessionRevokeRequest {
   organizationId: string;
   userId: string;
   issuedAt: number;
+}
+
+interface SessionBindingStateRequest {
+  organizationId: string;
+  userId: string;
+  stewardUserId: string;
+  active: boolean;
 }
 
 interface OrganizationStateRequest {
@@ -148,6 +159,7 @@ const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
 const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
 const RATE_LIMIT_CUTOVERS_KEY = "rate-limit-v2-cutovers";
+const REVOKED_SESSION_BINDING_PREFIX = "revocation:session-binding:";
 const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
@@ -173,6 +185,11 @@ const APP_REVIEW_STATUSES = new Set([
   "approved",
   "rejected",
 ]);
+const SUBJECT_DISABLE_REASONS: readonly SubjectDisableReason[] = [
+  "account",
+  "moderation",
+  "membership",
+];
 
 function nonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -197,6 +214,20 @@ function validTrimmedId(value: unknown): value is string {
 
 function revocationStorageKey(prefix: string, id: string): string {
   return `${prefix}${encodeURIComponent(id)}`;
+}
+
+function subjectRevocationStorageKey(
+  userId: string,
+  reason: SubjectDisableReason,
+): string {
+  return `${revocationStorageKey(DISABLED_SUBJECT_PREFIX, userId)}:${reason}`;
+}
+
+function sessionBindingStorageKey(
+  userId: string,
+  stewardUserId: string,
+): string {
+  return `${revocationStorageKey(REVOKED_SESSION_BINDING_PREFIX, userId)}:${encodeURIComponent(stewardUserId)}`;
 }
 
 function validRecoveryContext(
@@ -1024,32 +1055,47 @@ export class InferenceAdmissionGate {
       !validTrimmedId(request.userId) ||
       (request.kind === "api_key" && !validTrimmedId(request.credentialId)) ||
       (request.kind === "steward_session" &&
-        (!Number.isSafeInteger(request.issuedAt) || request.issuedAt <= 0))
+        (!validTrimmedId(request.stewardUserId) ||
+          !Number.isSafeInteger(request.issuedAt) ||
+          request.issuedAt <= 0))
     ) {
       return jsonError("Invalid inference credential check", 400);
     }
 
-    if (await this.state.storage.get<boolean>(ORGANIZATION_DISABLED_KEY)) {
+    const subjectKeys = SUBJECT_DISABLE_REASONS.map((reason) =>
+      subjectRevocationStorageKey(request.userId, reason),
+    );
+    const credentialKeys =
+      request.kind === "api_key"
+        ? [revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId)]
+        : [
+            sessionBindingStorageKey(request.userId, request.stewardUserId),
+            revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId),
+          ];
+    const revocations = await this.state.storage.get<boolean | number>([
+      ORGANIZATION_DISABLED_KEY,
+      ...subjectKeys,
+      ...credentialKeys,
+    ]);
+
+    if (revocations.get(ORGANIZATION_DISABLED_KEY) === true) {
       return Response.json(
         { allowed: false, reason: "organization_disabled" },
         { status: 403 },
       );
     }
-    if (
-      await this.state.storage.get<boolean>(
-        revocationStorageKey(DISABLED_SUBJECT_PREFIX, request.userId),
-      )
-    ) {
-      return Response.json(
-        { allowed: false, reason: "subject_disabled" },
-        { status: 403 },
-      );
+    for (const [index, reason] of SUBJECT_DISABLE_REASONS.entries()) {
+      const key = subjectKeys[index];
+      if (key && revocations.get(key) === true) {
+        return Response.json(
+          { allowed: false, reason: `subject_${reason}_disabled` },
+          { status: 403 },
+        );
+      }
     }
 
     if (request.kind === "api_key") {
-      const revoked = await this.state.storage.get<boolean>(
-        revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
-      );
+      const revoked = revocations.get(credentialKeys[0] ?? "") === true;
       return revoked
         ? Response.json(
             { allowed: false, reason: "credential_revoked" },
@@ -1058,9 +1104,15 @@ export class InferenceAdmissionGate {
         : Response.json({ allowed: true });
     }
 
-    const cutoff = await this.state.storage.get<number>(
-      revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId),
-    );
+    if (revocations.get(credentialKeys[0] ?? "") === true) {
+      return Response.json(
+        { allowed: false, reason: "session_binding_revoked" },
+        { status: 403 },
+      );
+    }
+
+    const cutoffValue = revocations.get(credentialKeys[1] ?? "");
+    const cutoff = typeof cutoffValue === "number" ? cutoffValue : undefined;
     return cutoff !== undefined && request.issuedAt <= cutoff
       ? Response.json(
           { allowed: false, reason: "session_revoked" },
@@ -1092,11 +1144,12 @@ export class InferenceAdmissionGate {
     if (
       !validTrimmedId(request.organizationId) ||
       !validTrimmedId(request.userId) ||
-      typeof request.active !== "boolean"
+      typeof request.active !== "boolean" ||
+      !SUBJECT_DISABLE_REASONS.includes(request.reason)
     ) {
       return jsonError("Invalid inference subject state", 400);
     }
-    const key = revocationStorageKey(DISABLED_SUBJECT_PREFIX, request.userId);
+    const key = subjectRevocationStorageKey(request.userId, request.reason);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
     return Response.json({ committed: true });
@@ -1116,6 +1169,23 @@ export class InferenceAdmissionGate {
     const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
     const previous = (await this.state.storage.get<number>(key)) ?? 0;
     await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    return Response.json({ committed: true });
+  }
+
+  private async setSessionBindingActive(
+    request: SessionBindingStateRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.organizationId) ||
+      !validTrimmedId(request.userId) ||
+      !validTrimmedId(request.stewardUserId) ||
+      typeof request.active !== "boolean"
+    ) {
+      return jsonError("Invalid inference session binding revocation", 400);
+    }
+    const key = sessionBindingStorageKey(request.userId, request.stewardUserId);
+    if (request.active) await this.state.storage.delete(key);
+    else await this.state.storage.put(key, true);
     return Response.json({ committed: true });
   }
 
@@ -1153,6 +1223,7 @@ export class InferenceAdmissionGate {
       | CredentialRevokeRequest
       | SubjectStateRequest
       | SessionRevokeRequest
+      | SessionBindingStateRequest
       | OrganizationStateRequest
       | RateLimitCutoverRequest;
     try {
@@ -1166,6 +1237,7 @@ export class InferenceAdmissionGate {
         | CredentialRevokeRequest
         | SubjectStateRequest
         | SessionRevokeRequest
+        | SessionBindingStateRequest
         | OrganizationStateRequest
         | RateLimitCutoverRequest;
     } catch {
@@ -1224,6 +1296,11 @@ export class InferenceAdmissionGate {
     if (path === "/session/revoke-through") {
       return await this.serialize(() =>
         this.revokeSessionsThrough(body as SessionRevokeRequest),
+      );
+    }
+    if (path === "/session/set-binding-active") {
+      return await this.serialize(() =>
+        this.setSessionBindingActive(body as SessionBindingStateRequest),
       );
     }
     if (path === "/organization/set-active") {

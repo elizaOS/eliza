@@ -20,6 +20,7 @@ import {
 } from "./inference-auth-cache";
 import {
   revokeInferenceSessionsThrough,
+  setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
 
@@ -299,21 +300,42 @@ export class UsersService {
     const sessionRevocationCutoff =
       movingOrganizations || sessionAuthorityChanged ? Math.floor(Date.now() / 1000) : null;
     if (movingOrganizations && existing?.organization_id) {
-      await setInferenceSubjectActive(existing.organization_id, id, false);
+      await setInferenceSubjectActive(existing.organization_id, id, false, "membership");
+    }
+    if (
+      typeof data.steward_user_id === "string" &&
+      existing?.organization_id &&
+      existing.steward_user_id &&
+      data.steward_user_id !== existing.steward_user_id
+    ) {
+      await setInferenceSessionBindingActive(
+        existing.organization_id,
+        id,
+        existing.steward_user_id,
+        false,
+      );
     }
     if (movingOrganizations && typeof data.organization_id === "string") {
-      await setInferenceSubjectActive(data.organization_id, id, false);
+      await setInferenceSubjectActive(data.organization_id, id, false, "membership");
       if (sessionRevocationCutoff !== null) {
         await revokeInferenceSessionsThrough(data.organization_id, id, sessionRevocationCutoff);
       }
     }
     if (data.is_active === false && existing?.organization_id) {
-      await setInferenceSubjectActive(existing.organization_id, id, false);
+      await setInferenceSubjectActive(existing.organization_id, id, false, "account");
     }
     if (sessionRevocationCutoff !== null && existing?.organization_id) {
       await revokeInferenceSessionsThrough(existing.organization_id, id, sessionRevocationCutoff);
     }
     const result = await usersRepository.update(id, data);
+    if (result?.organization_id && typeof data.steward_user_id === "string") {
+      await setInferenceSessionBindingActive(
+        result.organization_id,
+        id,
+        data.steward_user_id,
+        true,
+      );
+    }
     if (existing) {
       await this.invalidateCache(existing);
     }
@@ -326,10 +348,13 @@ export class UsersService {
       await this.invalidateInferenceAuthForUser(id);
     }
     if (data.is_active === true && result?.organization_id && !movingOrganizations) {
-      await setInferenceSubjectActive(result.organization_id, id, true);
+      await setInferenceSubjectActive(result.organization_id, id, true, "account");
     }
     if (typeof data.organization_id === "string" && result?.organization_id) {
-      await setInferenceSubjectActive(result.organization_id, id, result.is_active);
+      // Establish the account fence before clearing the move fence so an
+      // inactive account is never briefly admitted between serialized writes.
+      await setInferenceSubjectActive(result.organization_id, id, result.is_active, "account");
+      await setInferenceSubjectActive(result.organization_id, id, true, "membership");
     }
     return result;
   }
@@ -347,6 +372,14 @@ export class UsersService {
 
     const user = await usersRepository.findById(userId);
     if (user?.organization_id) {
+      if (existingIdentity?.steward_user_id) {
+        await setInferenceSessionBindingActive(
+          user.organization_id,
+          userId,
+          existingIdentity.steward_user_id,
+          false,
+        );
+      }
       await revokeInferenceSessionsThrough(
         user.organization_id,
         userId,
@@ -355,6 +388,9 @@ export class UsersService {
     }
 
     await usersRepository.upsertStewardIdentity(userId, stewardUserId);
+    if (user?.organization_id) {
+      await setInferenceSessionBindingActive(user.organization_id, userId, stewardUserId, true);
+    }
 
     const cacheDeletes = [
       cache.del(CacheKeys.user.byStewardId(stewardUserId)),
@@ -376,6 +412,14 @@ export class UsersService {
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
     const existing = await usersRepository.findById(userId);
     if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {
+      if (existing.steward_user_id) {
+        await setInferenceSessionBindingActive(
+          existing.organization_id,
+          userId,
+          existing.steward_user_id,
+          false,
+        );
+      }
       await revokeInferenceSessionsThrough(
         existing.organization_id,
         userId,
@@ -383,6 +427,9 @@ export class UsersService {
       );
     }
     const updated = await usersRepository.linkStewardId(userId, stewardUserId);
+    if (updated?.organization_id) {
+      await setInferenceSessionBindingActive(updated.organization_id, userId, stewardUserId, true);
+    }
 
     if (existing) {
       await this.invalidateCache(existing);
@@ -413,7 +460,7 @@ export class UsersService {
       throw new Error(`User ${id} not found`);
     }
     if (user.organization_id) {
-      await setInferenceSubjectActive(user.organization_id, id, false);
+      await setInferenceSubjectActive(user.organization_id, id, false, "membership");
     }
 
     let slug = generatePersonalOrgSlug(user);
@@ -480,7 +527,7 @@ export class UsersService {
     const organizationId = user.organization_id;
 
     if (organizationId) {
-      await setInferenceSubjectActive(organizationId, id, false);
+      await setInferenceSubjectActive(organizationId, id, false, "account");
     }
 
     await this.invalidateCache(user);

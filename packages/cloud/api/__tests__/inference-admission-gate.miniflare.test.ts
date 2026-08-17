@@ -290,6 +290,7 @@ describe("Miniflare Durable Object integration", () => {
       organizationId: "org-miniflare",
       kind: "steward_session",
       userId: "00000000-0000-0000-0000-000000000202",
+      stewardUserId: "steward-user-202",
     };
     expect(
       (
@@ -308,6 +309,43 @@ describe("Miniflare Durable Object integration", () => {
     ).toBe(200);
   });
 
+  test("revoked session bindings reject new tokens using a stale user mapping", async () => {
+    const credential = {
+      organizationId: "org-miniflare-session-binding",
+      kind: "steward_session",
+      userId: "00000000-0000-0000-0000-000000000205",
+      stewardUserId: "steward-user-unlinked",
+      issuedAt: 201,
+    };
+    expect((await post("/credential/check", credential)).status).toBe(200);
+    expect(
+      (
+        await post("/session/set-binding-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          stewardUserId: credential.stewardUserId,
+          active: false,
+        })
+      ).status,
+    ).toBe(200);
+    const denied = await post("/credential/check", {
+      ...credential,
+      issuedAt: credential.issuedAt + 1,
+    });
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(await denied.text())).toEqual({
+      allowed: false,
+      reason: "session_binding_revoked",
+    });
+    await post("/session/set-binding-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      stewardUserId: credential.stewardUserId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
+
   test("subject and organization suspension are reversible durable fences", async () => {
     const credential = {
       organizationId: "org-miniflare",
@@ -321,6 +359,7 @@ describe("Miniflare Durable Object integration", () => {
           organizationId: credential.organizationId,
           userId: credential.userId,
           active: false,
+          reason: "account",
         })
       ).status,
     ).toBe(200);
@@ -329,6 +368,7 @@ describe("Miniflare Durable Object integration", () => {
       organizationId: credential.organizationId,
       userId: credential.userId,
       active: true,
+      reason: "account",
     });
     expect((await post("/credential/check", credential)).status).toBe(200);
 
@@ -400,4 +440,51 @@ describe("Miniflare Durable Object integration", () => {
     expect(body.cutoverAt).toBeGreaterThan(Date.now());
     expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
   }, 120_000);
+
+  test("clearing one subject denial cannot clear an independent denial", async () => {
+    const credential = {
+      organizationId: "org-miniflare-independent-fences",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000103",
+      userId: "00000000-0000-0000-0000-000000000204",
+    };
+    for (const reason of ["account", "moderation"]) {
+      expect(
+        (
+          await post("/subject/set-active", {
+            organizationId: credential.organizationId,
+            userId: credential.userId,
+            active: false,
+            reason,
+          })
+        ).status,
+      ).toBe(200);
+    }
+
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    expect(
+      (
+        await post("/subject/set-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          active: true,
+          reason: "moderation",
+        })
+      ).status,
+    ).toBe(200);
+    const stillDenied = await post("/credential/check", credential);
+    expect(stillDenied.status).toBe(403);
+    expect(JSON.parse(await stillDenied.text())).toEqual({
+      allowed: false,
+      reason: "subject_account_disabled",
+    });
+
+    await post("/subject/set-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      active: true,
+      reason: "account",
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
 });

@@ -35,9 +35,23 @@ class TestStorage {
   failNextSetAlarm = false;
   failNextTransactionCommit = false;
 
-  async get<T>(key: string): Promise<T | undefined> {
+  async get<T>(key: string): Promise<T | undefined>;
+  async get<T>(keys: string[]): Promise<Map<string, T>>;
+  async get<T>(
+    keyOrKeys: string | string[],
+  ): Promise<T | undefined | Map<string, T>> {
     await Promise.resolve();
-    const value = this.values.get(key);
+    if (Array.isArray(keyOrKeys)) {
+      return new Map(
+        keyOrKeys.flatMap((key) => {
+          const value = this.values.get(key);
+          return value === undefined
+            ? []
+            : [[key, structuredClone(value) as T]];
+        }),
+      );
+    }
+    const value = this.values.get(keyOrKeys);
     return value === undefined ? undefined : (structuredClone(value) as T);
   }
 
