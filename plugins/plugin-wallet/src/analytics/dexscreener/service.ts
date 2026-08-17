@@ -12,6 +12,7 @@ import {
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { parseClampedInteger } from "@elizaos/shared";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
   DexScreenerBoostedToken,
@@ -50,13 +51,11 @@ export class DexScreenerService extends Service {
       runtime.getSetting("DEXSCREENER_API_URL") ?? "",
     ).trim();
     const delayRaw = runtime.getSetting("DEXSCREENER_RATE_LIMIT_DELAY");
-    const delayParsed = Number.parseInt(
-      typeof delayRaw === "number"
-        ? String(delayRaw)
-        : String(delayRaw ?? "100"),
-      10,
-    );
-    const rateLimitDelay = Number.isFinite(delayParsed) ? delayParsed : 100;
+    const rateLimitDelay = parseClampedInteger(String(delayRaw ?? "100"), {
+      min: 0,
+      max: 5000,
+      fallback: 100,
+    });
 
     let apiUrl: string;
     const authHeaders: Record<string, string> = {};
