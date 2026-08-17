@@ -794,16 +794,31 @@ export function WorkflowEditor({
                             })}
                           </span>
                           <div className="min-w-0">
-                            <button
-                              type="button"
-                              disabled={!inspectable}
-                              className="flex w-full items-start gap-1 text-left disabled:cursor-default"
-                              aria-label={`Inspect ${event.type} event`}
-                              aria-expanded={inspectable ? selected : undefined}
-                              onClick={() =>
-                                setSelectedEventId(selected ? null : event.id)
-                              }
-                            >
+                            {inspectable ? (
+                              <button
+                                type="button"
+                                className="flex min-h-11 w-full items-start gap-1 text-left"
+                                aria-label={`Inspect ${event.type} event`}
+                                aria-expanded={selected}
+                                onClick={() =>
+                                  setSelectedEventId(selected ? null : event.id)
+                                }
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate font-medium">
+                                    {event.type}
+                                  </span>
+                                  {event.nodeId ? (
+                                    <span className="mt-0.5 block truncate text-muted-foreground">
+                                      {event.nodeId}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <ChevronRight
+                                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
+                                />
+                              </button>
+                            ) : (
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">
                                   {event.type}
@@ -814,12 +829,7 @@ export function WorkflowEditor({
                                   </span>
                                 ) : null}
                               </span>
-                              {inspectable ? (
-                                <ChevronRight
-                                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
-                                />
-                              ) : null}
-                            </button>
+                            )}
                             {selected ? (
                               <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/40 p-2 text-[10px] leading-4">
                                 {pretty(event.payload)}
