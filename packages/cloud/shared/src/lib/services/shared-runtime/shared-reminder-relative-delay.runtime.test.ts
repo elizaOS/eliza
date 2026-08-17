@@ -38,6 +38,9 @@ const reminderRunner = {
   async apply() {
     throw new Error("Reminder mutation is outside this runtime creation proof");
   },
+  async applyWithResult() {
+    throw new Error("Reminder mutation is outside this runtime creation proof");
+  },
   async pipeline() {
     return [];
   },
