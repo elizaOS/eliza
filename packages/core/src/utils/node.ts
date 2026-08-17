@@ -7,7 +7,8 @@ import { getEnv } from "./environment";
 
 export function getLocalServerUrl(path: string): string {
 	const port = getEnv("SERVER_PORT", "3000");
-	return `http://localhost:${port}${path}`;
+	const normalizedPath = path && !path.startsWith("/") ? `/${path}` : path;
+	return `http://localhost:${port}${normalizedPath}`;
 }
 
 // Re-export Node-specific utilities
