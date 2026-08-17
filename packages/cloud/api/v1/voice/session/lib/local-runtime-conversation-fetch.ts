@@ -18,6 +18,26 @@ export class LocalRuntimeConversationFetchError extends Error {
   }
 }
 
+/**
+ * Decode the untrusted conversation-id path segment. Leftover tax after
+ * coding-container sync id decode: stock develop called `decodeURIComponent`
+ * on the cloud voice stream conversation id, so `%` / `%2` / `%ZZ` threw
+ * URIError instead of a typed LocalRuntimeConversationFetchError. Unsupported
+ * paths and POST-method checks stay untouched.
+ */
+function decodeConversationId(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch (error) {
+    // error-policy:J3 untrusted conversation path segments are client input;
+    // malformed percent-encoding is a typed fetch error, not an uncaught URIError.
+    throw new LocalRuntimeConversationFetchError(
+      "conversation id is not valid percent-encoding",
+      { cause: error },
+    );
+  }
+}
+
 export function createLocalRuntimeConversationFetch(
   localRuntimeOrigin: string,
   fetchImpl: typeof fetch = fetch,
@@ -41,7 +61,7 @@ export function createLocalRuntimeConversationFetch(
       );
     }
 
-    const conversationId = decodeURIComponent(match[1]);
+    const conversationId = decodeConversationId(match[1]);
     const target = new URL(
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
       origin,
