@@ -308,7 +308,9 @@ describe("handleAppsRoutes", () => {
       { method: "GET", pathname: "/api/apps/hero/%" },
       { method: "GET", pathname: "/api/apps/info/%2" },
       { method: "GET", pathname: "/api/apps/runs/%ZZ" },
+      { method: "POST", pathname: "/api/apps/runs/%ZZ/stop" },
       { method: "GET", pathname: "/api/apps/permissions/%" },
+      { method: "PUT", pathname: "/api/apps/permissions/%" },
     ]) {
       const result = await callRoute({
         method,

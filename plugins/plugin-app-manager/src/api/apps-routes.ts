@@ -74,6 +74,7 @@ function decodeAppPathSegment(raw: string): string | null {
   try {
     return decodeURIComponent(raw);
   } catch {
+    // error-policy:J3 A malformed URL escape is invalid client input, not a server failure.
     return null;
   }
 }
