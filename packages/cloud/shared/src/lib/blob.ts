@@ -169,7 +169,7 @@ export async function uploadFromUrl(
   sourceUrl: string,
   options: BlobUploadOptions,
 ): Promise<BlobUploadResult> {
-  const response = await fetch(sourceUrl);
+  const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok) {
     throw new Error(`Failed to fetch URL: ${response.statusText}`);
   }
