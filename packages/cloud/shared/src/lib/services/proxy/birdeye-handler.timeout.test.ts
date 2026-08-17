@@ -1,6 +1,6 @@
 /**
- * Timeout and transport refund proof for Birdeye proxy (#20749 P1 fix).
- * Pins that deadline covers fetch+body, and all post-debit transport failures refund exactly once.
+ * Covers Birdeye proxy deadlines and credit refunds with deterministic upstream mocks.
+ * The harness exercises failures during both fetch and response-body consumption.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
@@ -17,7 +17,7 @@ const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
 const COST = 0.0003;
 
 const deductCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
-const refundCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
+const refundCredits = mock<(args: unknown) => Promise<unknown>>();
 const getServiceMethodCost = mock<(service: string, method: string) => Promise<number>>();
 const requireUserOrApiKeyWithOrg = mock<(c: unknown) => Promise<{ organization_id: string }>>();
 
@@ -40,7 +40,7 @@ const originalFetch = globalThis.fetch;
 function makeContext(path: string): Context<AppEnv> {
   const url = `https://api.elizacloud.ai/proxy/${path}`;
   return {
-    env: { BIRDEYE_API_KEY: "key" } as any,
+    env: { BIRDEYE_API_KEY: "key" } as unknown as AppEnv["Bindings"],
     req: {
       param: (key: string) => (key === "*" ? path : undefined),
       url,
@@ -83,17 +83,21 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("timeout");
     expect(refundCredits).toHaveBeenCalledTimes(1);
-    const args = refundCredits.mock.calls[0][0] as any;
+    const args = refundCredits.mock.calls[0]?.[0] as {
+      organizationId: string;
+      amount: number;
+    };
     expect(args.organizationId).toBe(ORG_ID);
     expect(args.amount).toBe(COST);
   });
 
   test("AbortError during body read (stalled body) refunds once and returns 504", async () => {
-    globalThis.fetch = mock(async () =>
-      new Response("{}", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
+    globalThis.fetch = mock(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
     // Make text() throw AbortError to simulate stalled body aborted by timeout
     const originalText = Response.prototype.text;
@@ -101,7 +105,7 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
       const err = new Error("This operation was aborted");
       err.name = "AbortError";
       throw err;
-    }) as any;
+    }) as unknown as typeof Response.prototype.text;
     try {
       const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
       expect(res.status).toBe(504);
@@ -122,7 +126,8 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
 
   test("upstream 5xx refunds once and forwards status", async () => {
     globalThis.fetch = mock(
-      async () => new Response("upstream down", { status: 502, headers: { "Content-Type": "text/plain" } }),
+      async () =>
+        new Response("upstream down", { status: 502, headers: { "Content-Type": "text/plain" } }),
     ) as unknown as typeof fetch;
     const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
     expect(res.status).toBe(502);
@@ -131,14 +136,19 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
 
   test("success 200 and 4xx do not refund", async () => {
     globalThis.fetch = mock(
-      async () => new Response('{"ok":1}', { status: 200, headers: { "Content-Type": "application/json" } }),
+      async () =>
+        new Response('{"ok":1}', { status: 200, headers: { "Content-Type": "application/json" } }),
     ) as unknown as typeof fetch;
     let res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
     expect(res.status).toBe(200);
     expect(refundCredits).not.toHaveBeenCalled();
     refundCredits.mockReset();
     globalThis.fetch = mock(
-      async () => new Response('{"error":"bad"}', { status: 400, headers: { "Content-Type": "application/json" } }),
+      async () =>
+        new Response('{"error":"bad"}', {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
     res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
     expect(res.status).toBe(400);

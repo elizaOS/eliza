@@ -100,6 +100,8 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
       });
       body = await upstreamResponse.text();
     } catch (error) {
+      // error-policy:J1 upstream boundary — transport and deadline failures
+      // become explicit 502/504 responses after the prepaid cost is refunded.
       const isAbort = error instanceof Error && error.name === "AbortError";
       await creditsService
         .refundCredits({
@@ -114,6 +116,8 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
           },
         })
         .catch((refundError) => {
+          // error-policy:J4 the upstream request is already a visible failure;
+          // preserve that response while recording the secondary refund fault.
           logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
             method: pricedMethod,
             error: refundError instanceof Error ? refundError.message : String(refundError),
@@ -147,6 +151,8 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
           },
         })
         .catch((refundError) => {
+          // error-policy:J4 the upstream 5xx remains visible to the caller;
+          // preserve it while recording the secondary refund fault.
           logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
             method: pricedMethod,
             status: upstreamResponse.status,
