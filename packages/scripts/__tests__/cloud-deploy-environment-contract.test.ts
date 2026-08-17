@@ -59,6 +59,7 @@ function step(workflow: Workflow, jobId: string, name: string): WorkflowStep {
 // `cloud-cf-release.yml` it calls, so the mutation contracts are read there.
 const cloudSource = read(".github/workflows/cloud-cf-release.yml");
 const cloud = parse(".github/workflows/cloud-cf-release.yml");
+const cloudDeploy = parse(".github/workflows/cloud-cf-deploy.yml");
 const cloudApiWranglerSource = read("packages/cloud/api/wrangler.toml");
 const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
@@ -96,6 +97,24 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("records the staging certificate with the upload action digest shape", () => {
+    const record = step(
+      cloudDeploy,
+      "certify-staging-release",
+      "Record certification identity",
+    );
+
+    expect(record.env?.ARTIFACT_DIGEST).toContain(
+      "steps.upload.outputs.artifact-digest",
+    );
+    expect(record.run).toContain('[[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]');
+    const digestVariable = "$" + "{ARTIFACT_DIGEST}";
+    expect(record.run).toContain(`(sha256:${digestVariable})`);
+    expect(record.run).not.toContain(
+      '[[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]',
+    );
+  });
+
   test("runs genuine Shared Eliza in staging and production", () => {
     const staging = cloudApiWranglerSource.slice(
       cloudApiWranglerSource.indexOf("[env.staging.vars]"),
