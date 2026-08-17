@@ -16,9 +16,16 @@
  * - Objects become `key: value` fragments
  * - Scalars are stringified
  */
-export function flattenTextValues(value: unknown): string[] {
+export function flattenTextValues(
+	value: unknown,
+	seen: WeakSet<object> = new WeakSet(),
+): string[] {
 	if (Array.isArray(value)) {
-		return value.flatMap((item) => flattenTextValues(item));
+		if (seen.has(value)) {
+			return [];
+		}
+		seen.add(value);
+		return value.flatMap((item) => flattenTextValues(item, seen));
 	}
 
 	if (value == null) {
@@ -31,9 +38,13 @@ export function flattenTextValues(value: unknown): string[] {
 	}
 
 	if (typeof value === "object") {
+		if (seen.has(value)) {
+			return [];
+		}
+		seen.add(value);
 		return Object.entries(value as Record<string, unknown>).flatMap(
 			([key, inner]) => {
-				const innerText = flattenTextValues(inner).join(", ");
+				const innerText = flattenTextValues(inner, seen).join(", ");
 				return innerText ? [`${key}: ${innerText}`] : [];
 			},
 		);
