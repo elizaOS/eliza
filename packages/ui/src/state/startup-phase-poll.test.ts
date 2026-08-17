@@ -281,6 +281,63 @@ describe("runPollingBackend", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
+  it("does not abandon a saved cloud target for localhost when the build has no local runtime", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "http://127.0.0.1:5174",
+        protocol: "http:",
+        port: "5174",
+      },
+    };
+    const cloudBase =
+      "https://api.eliza.app/api/v1/eliza/agents/personal%3Aowner";
+    clientMock.getBaseUrl.mockReturnValue(cloudBase);
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Request timed out after 10000ms"), {
+        kind: "timeout",
+        path: "/api/auth/status",
+      }),
+    );
+
+    const savedCloud = {
+      id: "cloud:personal",
+      kind: "cloud" as const,
+      label: "Personal Eliza",
+      apiBase: cloudBase,
+      accessToken: "cloud-session",
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: false,
+        allowLocalOriginRecovery: false,
+        backendTimeoutMs: 1,
+        agentReadyTimeoutMs: 1,
+        probeForExistingInstall: false,
+        defaultTarget: "cloud-managed",
+      },
+      {
+        persistedActiveServer: savedCloud,
+        restoredActiveServer: savedCloud,
+        shouldPreserveCompletedFirstRun: true,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalledWith(null);
+    expect(clientMock.setToken).not.toHaveBeenCalledWith(null);
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
   it("requests a native local-agent start on every poll iteration for the polled base", async () => {
     // #15189: on a fresh install the native auto-start gate ran before the
     // renderer pre-seeded the local target, so the agent the poll waits for

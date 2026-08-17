@@ -59,7 +59,7 @@ describe("HomePill", () => {
 
     expect(btn.className).toContain("w-[36rem]");
     expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
-      "h-16",
+      "h-14",
     );
     expect(
       screen.getByTestId("shell-home-pill-preview-label").textContent,
@@ -72,6 +72,37 @@ describe("HomePill", () => {
     expect(btn.className).toContain("w-16");
     expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
     expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("waits for the native hover frame before painting the wide preview", () => {
+    const onPreviewHoverChange = vi.fn();
+    const { rerender } = render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(true);
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+
+    rerender(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady
+      />,
+    );
+    expect(button.className).toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
   });
 
   it("uses the same hover composer while Cloud auth is required", () => {
@@ -133,22 +164,23 @@ describe("HomePill", () => {
     );
   });
 
-  it("grows into a dark chip with waveform bars while listening", () => {
+  it("uses the composer-sized microphone activity lane while listening", () => {
     render(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    // Wispr-style listening chip: larger dark capsule, no colored ring — the
-    // live bars alone carry the "mic is hot" signal.
+    // Fn/hold-to-talk uses the same footprint and bar count as the open
+    // composer's microphone activity lane instead of a separate tiny chip.
     expect(mark.className).toContain("bg-neutral-900/95");
-    expect(mark.className).toContain("h-7");
-    expect(mark.className).toContain("w-20");
+    expect(mark.className).toContain("h-14");
+    expect(mark.className).toContain("w-full");
+    expect(screen.getByRole("button").className).toContain("w-[36rem]");
     expect(mark.className).not.toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
-    expect(bars).toHaveLength(9);
+    expect(bars).toHaveLength(15);
     // Center-weighted stagger: symmetric around the middle bar, not monotonic.
     const delays = bars.map((b) => Number.parseInt(b.style.animationDelay, 10));
     expect(delays).toEqual([...delays].reverse());
-    expect(Math.min(...delays)).toBe(delays[4]);
+    expect(Math.min(...delays)).toBe(delays[Math.floor(delays.length / 2)]);
     for (const bar of bars) {
       expect(bar.className).toContain("home-pill-wave-bar");
       expect(bar.className).toContain("motion-reduce:animate-none");

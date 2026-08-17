@@ -1227,6 +1227,7 @@ export async function runPollingBackend(
       }
       if (
         !fellBackToLocal &&
+        policy.allowLocalOriginRecovery !== false &&
         shouldFallBackToLocalOrigin({ error: err, ...recoveryEnv() })
       ) {
         recoverToLocalOrigin("saved server unreachable");

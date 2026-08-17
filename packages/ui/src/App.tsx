@@ -1808,6 +1808,8 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
+  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
+  const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1896,6 +1898,7 @@ function ShellFoundationMount({
   useEffect(() => {
     if (!hasController) return undefined;
     let cancelled = false;
+    setShellPreviewHostReady(false);
 
     void (async () => {
       if (cancelled) return;
@@ -1908,12 +1911,37 @@ function ShellFoundationMount({
         },
         timeoutMs: 1_000,
       });
+      if (
+        !cancelled &&
+        useWebChatPanel &&
+        shellPreviewHovered &&
+        !shellIsOpen
+      ) {
+        // Paint only after the native host is 600px wide. Before this
+        // acknowledgement, a wide DOM preview is clipped through the resting
+        // 96px WKWebView and appears as a narrow center slice.
+        setShellPreviewHostReady(true);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
   }, [hasController, shellIsOpen, shellPreviewHovered, useWebChatPanel]);
+  useEffect(() => {
+    if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
+      return;
+    }
+    focusComposerOnOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-composer-textarea"]',
+        )
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [shellIsOpen, useWebChatPanel]);
   const closeWebChatWhenPilled = useCallback(
     (pilled: boolean) => {
       if (pilled) controller?.close();
@@ -1938,7 +1966,10 @@ function ShellFoundationMount({
         phase={controller.phase}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={controller.open}
+        onOpen={() => {
+          focusComposerOnOpenRef.current = useWebChatPanel;
+          controller.open();
+        }}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
@@ -1963,6 +1994,7 @@ function ShellFoundationMount({
         onPreviewHoverChange={
           useWebChatPanel ? setShellPreviewHovered : undefined
         }
+        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
       {!useWebChatPanel ? (
         <AssistantOverlay
