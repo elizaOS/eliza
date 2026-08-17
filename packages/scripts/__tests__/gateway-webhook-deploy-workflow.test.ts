@@ -19,6 +19,10 @@ const workflowPath = new URL(
   repoRoot,
 );
 const source = readFileSync(workflowPath, "utf8");
+const railwayManifest = readFileSync(
+  new URL("packages/cloud/services/gateway-webhook/railway.toml", repoRoot),
+  "utf8",
+);
 const workflowReadme = readFileSync(
   new URL(".github/workflows/README.md", repoRoot),
   "utf8",
@@ -336,6 +340,8 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(exactSource.run).toContain(
       "cp packages/cloud/services/gateway-webhook/railway.toml railway.toml",
     );
+    expect(railwayManifest).toContain("healthcheckTimeout = 90");
+    expect(railwayManifest).not.toContain("healthcheckTimeout = 30");
     expect(exactSource.run).toContain("cmp --silent");
     expect(exactSource.run).toContain('!= "?? railway.toml"');
     expect(exactSource.run).toContain('--project "$RAILWAY_PROJECT_ID"');
@@ -424,6 +430,18 @@ describe("protected gateway-webhook deployment workflow", () => {
     );
     expect(verify.run).toContain(
       ".meta.fileServiceManifest.deploy.healthcheckPath",
+    );
+    expect(verify.run).toContain(
+      ".meta.fileServiceManifest.deploy.healthcheckTimeout == 90",
+    );
+    expect(verify.run).toContain(
+      ".meta.serviceManifest.deploy.healthcheckTimeout == 90",
+    );
+    expect(verify.run).not.toContain(
+      ".meta.fileServiceManifest.deploy.healthcheckTimeout == 30",
+    );
+    expect(verify.run).not.toContain(
+      ".meta.serviceManifest.deploy.healthcheckTimeout == 30",
     );
     expect(verify.run).toContain("railway service status");
     expect(
