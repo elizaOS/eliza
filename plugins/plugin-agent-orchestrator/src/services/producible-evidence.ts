@@ -15,6 +15,7 @@
  * invented-artifact filter for generated criteria, and a per-criterion
  * deterministic verdict the pipeline consults BEFORE any model judgment.
  */
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 
 /** What kinds of evidence a worker's sandbox/backend can actually produce. */
 export interface EvidenceCapabilities {
@@ -132,6 +133,37 @@ const TEST_CRITERION_RE =
 const BUILD_CRITERION_RE = /\b(build|compile|typecheck|tsc)\b/i;
 const LINT_CRITERION_RE = /\b(lint|biome|eslint|format)\b/i;
 const SCREENSHOT_CRITERION_RE = /\b(screenshot|screen\s*capture)\b/i;
+const EXPLICIT_HTTP_URL_RE = /https?:\/\/[^\s`"'<>]+/gi;
+
+function normalizeExplicitHttpUrl(value: string): string | undefined {
+  const candidate = value.replace(/[),.;!?]+$/, "");
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.href
+      : undefined;
+  } catch {
+    // error-policy:J3 A malformed criterion token is not a concrete URL claim.
+    return undefined;
+  }
+}
+
+function urlCriterionBasis(
+  criterion: string,
+  facts: DeterministicEvidenceFacts,
+): string | undefined {
+  const demandedUrls = [...criterion.matchAll(EXPLICIT_HTTP_URL_RE)]
+    .map((match) => normalizeExplicitHttpUrl(match[0]))
+    .filter((url): url is string => Boolean(url));
+  const verified = facts.verifiedPublicUrls
+    .map(normalizeExplicitHttpUrl)
+    .filter((url): url is string => Boolean(url));
+  const hit =
+    demandedUrls.length > 0
+      ? verified.find((url) => demandedUrls.includes(url))
+      : verified[0];
+  return hit ? `probed URL answered: ${hit}` : undefined;
+}
 
 /** Deterministic facts the orchestrator already holds at completion. */
 export interface DeterministicEvidenceFacts {
@@ -197,9 +229,9 @@ export function deterministicCriterionCheck(
     return { criterion, status: "undetermined" };
   }
   if (URL_CRITERION_RE.test(criterion)) {
-    const url = facts.verifiedPublicUrls[0];
-    return url
-      ? { criterion, status: "met", basis: `probed URL answered: ${url}` }
+    const basis = urlCriterionBasis(criterion, facts);
+    return basis
+      ? { criterion, status: "met", basis }
       : { criterion, status: "undetermined" };
   }
   if (TEST_CRITERION_RE.test(criterion)) {
@@ -266,11 +298,20 @@ export function deterministicLedgerVerdict(
   };
 }
 
-/** Loopback hosts never count as publicly-reachable deploy evidence. */
+/** Only public HTTP(S) targets count as publicly-reachable deploy evidence. */
 export function isPubliclyReachableUrl(value: string): boolean {
   try {
-    const host = new URL(value).hostname.toLowerCase();
-    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    if (parsed.username || parsed.password || parsed.hostname.length === 0) {
+      return false;
+    }
+    return (
+      !isBlockedHostname(parsed.hostname) &&
+      !isPrivateIpAddress(parsed.hostname)
+    );
   } catch {
     // error-policy:J3 an unparseable URL is explicitly not reachable evidence
     return false;
@@ -278,7 +319,7 @@ export function isPubliclyReachableUrl(value: string): boolean {
 }
 
 const GREEN_MARKER_RE = /\bpass(?:ed|ing)?\b|✓|✔|\bPASS\b|\bok\b|0 fail/i;
-const RED_MARKER_RE = /\bfail(?:ed|ing|ure)?\b|✗|✖|\bFAIL\b|\bERRORS?\b/;
+const RED_MARKER_RE = /\bnot\s+ok\b|\bfail(?:ed|ing|ure)?\b|✗|✖|\berrors?\b/i;
 
 /**
  * Whether mined tool output constitutes GREEN evidence for a check class:
@@ -287,7 +328,10 @@ const RED_MARKER_RE = /\bfail(?:ed|ing|ure)?\b|✗|✖|\bFAIL\b|\bERRORS?\b/;
  */
 export function isGreenCheckOutput(output: string | undefined | null): boolean {
   if (typeof output !== "string" || output.trim().length === 0) return false;
-  return GREEN_MARKER_RE.test(output) && !RED_MARKER_RE.test(output);
+  const withoutZeroFailures = output.replace(/\b0\s+fail(?:ed|ures?)?\b/gi, "");
+  return (
+    GREEN_MARKER_RE.test(output) && !RED_MARKER_RE.test(withoutZeroFailures)
+  );
 }
 
 /** Render the deterministic verdict as an evidence section for downstream

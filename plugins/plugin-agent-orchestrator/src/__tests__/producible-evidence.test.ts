@@ -13,6 +13,8 @@ import { generateDefaultAcceptanceCriteria } from "../services/acceptance-criter
 import {
   capabilitiesForBackend,
   deterministicLedgerVerdict,
+  isGreenCheckOutput,
+  isPubliclyReachableUrl,
   renderDeterministicVerdict,
   stripInventedArtifactCriteria,
 } from "../services/producible-evidence.js";
@@ -150,6 +152,14 @@ describe("deterministicLedgerVerdict", () => {
     expect(verdict.allMet).toBe(false);
   });
 
+  test("a criterion naming a specific URL must match the probed URL", () => {
+    const verdict = deterministicLedgerVerdict(
+      ["https://nubilio.org/apps/other/ returns HTTP 200"],
+      quickAppFacts,
+    );
+    expect(verdict.allMet).toBe(false);
+  });
+
   test("empty criteria never auto-pass", () => {
     expect(deterministicLedgerVerdict([], quickAppFacts).allMet).toBe(false);
   });
@@ -163,6 +173,42 @@ describe("deterministicLedgerVerdict", () => {
     );
     expect(rendered).toContain("MET: the live URL returns HTTP 200");
     expect(rendered).toContain("undetermined (needs judgment): tests pass");
+  });
+});
+
+describe("public URL evidence", () => {
+  test.each([
+    "file:///etc/passwd",
+    "ssh://example.com/repo",
+    "http://localhost:3000",
+    "http://app.local",
+    "http://127.9.8.7",
+    "http://10.0.0.1",
+    "http://169.254.169.254/latest/meta-data",
+    "http://[::1]",
+    "http://[fd00::1]",
+  ])("rejects non-public target %s", (url) => {
+    expect(isPubliclyReachableUrl(url)).toBe(false);
+  });
+
+  test("accepts a public HTTP(S) target", () => {
+    expect(isPubliclyReachableUrl("https://nubilio.org/apps/clock/")).toBe(
+      true,
+    );
+  });
+});
+
+describe("green check output", () => {
+  test.each([
+    "Failed: 1, Passed: 10",
+    "not ok 3 - integration",
+    "PASS\nERROR: teardown",
+  ])("rejects red output even when it also has green markers: %s", (output) => {
+    expect(isGreenCheckOutput(output)).toBe(false);
+  });
+
+  test("accepts an explicit zero-failure summary", () => {
+    expect(isGreenCheckOutput("12 passed, 0 failed")).toBe(true);
   });
 });
 
