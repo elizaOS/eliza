@@ -45,6 +45,15 @@ __filename = '"/worker.js"'
 # that don't exist on Workers. Re-export runtime globals + map the
 # Agent/Pool/Dispatcher classes.
 "undici" = "./src/stubs/undici.ts"
+# unpdf/mammoth are core's document parsers. Core loads them via `await
+# import()`, but this bundle resolves @elizaos/core/edge to core SOURCE
+# (tsconfig paths), so the dynamic import is inlined and the PDF/DOCX
+# toolchains (~70 pdfjs modules, jszip/pako/bluebird) ship in the deployed
+# Worker. Document extraction runs on the sidecar and `documents` is false in
+# core's nativeRuntimeFeatureDefaults, so both are stubbed here; an accidental
+# Worker-side call throws instead of returning empty text (#21327).
+"unpdf" = "./src/stubs/unpdf.ts"
+"mammoth" = "./src/stubs/mammoth.ts"
 
 [observability]
 enabled = true
