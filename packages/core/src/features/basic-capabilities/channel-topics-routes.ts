@@ -31,9 +31,15 @@ export const CHANNEL_TOPICS_SEARCH_ROUTE: Route = {
 			res.status(400).json({ error: "query parameter 'q' is required" });
 			return;
 		}
-		const rawLimit = Number(firstQueryValue(req.query?.limit));
-		const limit =
-			Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+		const rawLimitStr = firstQueryValue(req.query?.limit).trim();
+		const limit = (() => {
+			if (!rawLimitStr) return 20;
+			if (!/^\d+$/.test(rawLimitStr)) return 20;
+			const parsed = Number(rawLimitStr);
+			return Number.isSafeInteger(parsed) && parsed > 0
+				? Math.min(parsed, 100)
+				: 20;
+		})();
 		const svc = runtime.getService("channel_topics") as
 			| (TopicSearchService & object)
 			| null;
