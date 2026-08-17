@@ -475,6 +475,15 @@ for (const surface of SURFACES) {
       page,
       managedOrigin,
     );
+    let sessionSyncRequests = 0;
+    await page.route("**/api/auth/steward-session", async (route) => {
+      sessionSyncRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    });
     const documentRequests: string[] = [];
     const failures: string[] = [];
     page.on("request", (request) => {
@@ -492,7 +501,9 @@ for (const surface of SURFACES) {
       );
     });
 
-    await page.goto(`${managedOrigin}/auth/callback/email`);
+    await page.goto(
+      `${managedOrigin}/auth/callback/email?token=playwright-email-token&email=managed-handoff%40test.local`,
+    );
     await page.evaluate(() => {
       document.documentElement.dataset.emailCallbackDocument = "survived";
     });
@@ -506,6 +517,7 @@ for (const surface of SURFACES) {
 
     expect(documentRequests).toHaveLength(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/auth/callback/email");
+    expect(sessionSyncRequests).toBe(1);
     expect(personalRequests()).toBe(1);
     await expect(page.locator("html")).toHaveAttribute(
       "data-email-callback-document",
@@ -528,6 +540,7 @@ for (const surface of SURFACES) {
             entryPath: "/auth/callback/email",
             finalUrl: page.url(),
             documentRequests,
+            sessionSyncRequests,
             personalRequests: personalRequests(),
             failures,
             documentMarker: await page
