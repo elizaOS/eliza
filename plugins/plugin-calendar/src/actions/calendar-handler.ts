@@ -65,6 +65,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
+import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -3621,10 +3622,11 @@ export function formatCalendarSearchResults(
  * noon" → CALENDAR_SERVICE_400 attendees[0].email). Planner output is
  * untrusted, so this normalizer DROPS non-email attendees instead of
  * forwarding them to die at the service; the service validator keeps its
- * strict contract for direct API callers.
+ * strict contract for direct API callers. Shape validation uses the plugin's
+ * linear `basicEmailValid` rather than the equivalent
+ * `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` regex, whose adjacent `[^\s@]+\.[^\s@]+`
+ * quantifiers backtrack O(n²) on adversarial planner output (a ReDoS vector).
  */
-const CALENDAR_ATTENDEE_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
@@ -3636,7 +3638,7 @@ export function normalizeCalendarAttendees(
     attendees.map((attendee) => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return CALENDAR_ATTENDEE_EMAIL_RE.test(email) ? { email } : null;
+        return basicEmailValid(email) ? { email } : null;
       }
       if (
         !attendee ||
@@ -3647,8 +3649,7 @@ export function normalizeCalendarAttendees(
       }
       const record = attendee as Record<string, unknown>;
       const email =
-        typeof record.email === "string" &&
-        CALENDAR_ATTENDEE_EMAIL_RE.test(record.email.trim())
+        typeof record.email === "string" && basicEmailValid(record.email.trim())
           ? record.email.trim()
           : null;
       if (!email) {
