@@ -1173,7 +1173,7 @@ export class DocumentService extends Service {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
-				roomId: roomId || agentId,
+				roomId: roomId ?? agentId,
 				entityId: targetEntityId,
 			};
 			if (fragments !== undefined) {
@@ -1227,9 +1227,9 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
-						roomId: roomId || agentId,
+						roomId: roomId ?? agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1249,9 +1249,9 @@ export class DocumentService extends Service {
 						fullDocumentText: extractedText,
 						agentId,
 						contentType,
-						roomId: roomId || agentId,
+						roomId: roomId ?? agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
