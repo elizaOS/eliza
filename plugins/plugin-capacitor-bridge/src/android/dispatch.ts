@@ -333,6 +333,16 @@ function isAndroidNotifier(
 	);
 }
 
+function decodeAndroidNotificationId(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 untrusted path segment — malformed percent-encoding
+		// is invalid client input, not a notification-store failure.
+		return null;
+	}
+}
+
 /**
  * Serve the `/api/notifications` inbox surface over the Android UDS. These are
  * server-level routes (not plugin `runtime.routes`), so `dispatchRoute` never
@@ -425,7 +435,13 @@ async function directAndroidNotificationRoute(
 
 	const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
 	if (method === "POST" && readMatch) {
-		const ok = await service.markRead(decodeURIComponent(readMatch[1]));
+		const id = decodeAndroidNotificationId(readMatch[1] ?? "");
+		if (id === null) {
+			return jsonResponse(400, {
+				error: "Invalid notification id: malformed URL encoding",
+			});
+		}
+		const ok = await service.markRead(id);
 		return jsonResponse(200, { ok });
 	}
 
@@ -436,7 +452,13 @@ async function directAndroidNotificationRoute(
 
 	const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
 	if (method === "DELETE" && idMatch) {
-		const ok = await service.remove(decodeURIComponent(idMatch[1]));
+		const id = decodeAndroidNotificationId(idMatch[1] ?? "");
+		if (id === null) {
+			return jsonResponse(400, {
+				error: "Invalid notification id: malformed URL encoding",
+			});
+		}
+		const ok = await service.remove(id);
 		return jsonResponse(200, { ok });
 	}
 
