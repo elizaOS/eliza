@@ -294,6 +294,26 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
+  // Agent-create autoProvision identity, not leftover tax on app-delete
+  // GitHub-repo flag or telegram webhook. autoProvision=FALSE used to
+  // still eager-provision (credit gate + container).
+  const requestedAutoProvision = c.req.query("autoProvision");
+  if (
+    requestedAutoProvision != null &&
+    requestedAutoProvision !== "" &&
+    requestedAutoProvision !== "true" &&
+    requestedAutoProvision !== "false"
+  ) {
+    return c.json(
+      {
+        success: false,
+        error: "Invalid autoProvision",
+        message: 'autoProvision must be "true" or "false".',
+      },
+      400,
+    );
+  }
+
   const body = await c.req.json().catch(() => {
     throw ValidationError("Invalid JSON");
   });
@@ -306,7 +326,7 @@ app.post("/", async (c) => {
   }
 
   const autoProvision =
-    c.req.query("autoProvision") !== "false" &&
+    requestedAutoProvision !== "false" &&
     parsed.data.autoProvision !== false;
 
   const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
