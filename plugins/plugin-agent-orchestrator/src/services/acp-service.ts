@@ -753,6 +753,24 @@ const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
 ]);
 const ORPHAN_RESUME_PROMPT =
   "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
+// ACP session/cancel is a notification, so a broken peer can ignore it while
+// the authoritative session/prompt request remains pending forever. Give a
+// cooperative peer a short grace period, then terminate its process.
+const NATIVE_CANCEL_CONFIRM_TIMEOUT_MS = 2_000;
+
+interface PromptAdmission {
+  id: string;
+  cancelRequested: boolean;
+  prevented: boolean;
+  settled: Promise<void>;
+  settle: () => void;
+}
+
+interface NativePromptAttachmentAdmission {
+  settled: Promise<void>;
+  settle: () => void;
+  promptStarted: boolean;
+}
 // Background sub-agent initial tasks are fire-and-forget from the originating
 // chat turn. When no action-level timeout is explicit, do not bind the
 // session/prompt request to the ACP service default (often configured to the
@@ -843,10 +861,39 @@ export class AcpService extends Service {
     string,
     { id: string; sessionSnapshot: SessionInfo }
   >();
+  // Synchronous admission claims bridge the await in requireSession. A cancel
+  // that arrives while a prompt is loading durable state marks this record and
+  // waits for it to either install the active transport marker or fail before
+  // start; it can never miss the turn in the gap between those states.
+  private readonly promptAdmissions = new Map<string, PromptAdmission>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
+  // Installed synchronously by cancelSession before its first store await so
+  // duplicate cancels, new prompts, closeSession, and service stop all observe
+  // one authoritative in-flight teardown operation.
+  private readonly sessionCancellationPromises = new Map<
+    string,
+    Promise<void>
+  >();
+  // Authoritative single-flight native teardown. A caller may impose its own
+  // deadline, but this gate remains until process termination is proven; prompt
+  // admission cannot reattach behind an abandoned close.
+  private readonly sessionStopPromises = new Map<string, Promise<void>>();
+  // A failed stop attempt must remain an admission gate without making the
+  // failure itself permanently single-flight. Durable reapers may retry the
+  // retained native client/process handle; only a proven later close clears
+  // this set.
+  private readonly failedSessionStopIds = new Set<string>();
   private readonly nativePromptSessionIds = new Set<string>();
+  // Claimed before the native prompt path's first await and settled only after
+  // a reconnecting client is registered (or attachment fails). closeSession
+  // waits for this handoff so it cannot resolve in the store-update/attach gap
+  // and let a fresh client start mutating after authoritative close.
+  private readonly nativePromptAttachmentAdmissions = new Map<
+    string,
+    NativePromptAttachmentAdmission
+  >();
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
@@ -887,6 +934,12 @@ export class AcpService extends Service {
   // (the ACP stream is gone by completion) and consumed at task_complete.
   private readonly changedPathsBySession = new Map<string, Set<string>>();
   private started = false;
+  private stopping = false;
+  private stopPromise: Promise<void> | undefined;
+  // Initial native spawn setup can await provider/account/store/ACP handshakes
+  // before registering its client. stop() gates new admissions synchronously
+  // and waits these records so no child can appear after its client snapshot.
+  private readonly initialSpawnAdmissions = new Set<Promise<void>>();
   private healthCheckTimer: NodeJS.Timeout | undefined;
   // Shared across every AcpService + CodingWorkspaceService in the process so a
   // single disk cap spans both scratch and git-workspace consumers (#13773).
@@ -946,6 +999,8 @@ export class AcpService extends Service {
     // shutdownHandler stuck on the process forever (only the latest one
     // ever gets passed to process.off in stop()).
     if (this.started) return;
+    this.stopping = false;
+    this.stopPromise = undefined;
     this.started = true;
     this.log("debug", "AcpService initialized", {
       cliPath: this.cliPath,
@@ -1051,16 +1106,83 @@ export class AcpService extends Service {
   }
 
   async stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    const stop = this.stopInternal();
+    this.stopPromise = stop;
+    try {
+      await stop;
+    } catch (error) {
+      // Keep the service fail-closed (`stopping=true`) but permit an explicit
+      // later stop call to retry retained client/process handles.
+      if (this.stopPromise === stop) this.stopPromise = undefined;
+      throw error;
+    }
+  }
+
+  private async stopInternal(): Promise<void> {
+    // Set before the first await. A concurrent spawn either claimed an
+    // admission already (and is awaited below) or is rejected synchronously.
+    this.stopping = true;
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = undefined;
+    }
+    await Promise.all(Array.from(this.initialSpawnAdmissions));
+    // Prompts admitted before `stopping=true` may still be loading durable state
+    // or attaching a fresh native client. Claim authoritative close gates for
+    // all of them before taking the client/process snapshot. closeSession waits
+    // their admission/attachment boundary; sendNativePrompt observes the gate
+    // before it can call the agent.
+    const admittedPromptSessionIds = new Set([
+      ...this.promptAdmissions.keys(),
+      ...this.nativePromptAttachmentAdmissions.keys(),
+      ...this.nativePromptSessionIds,
+    ]);
+    const admittedPromptStops = [...admittedPromptSessionIds].map((sessionId) =>
+      this.closeSession(sessionId),
+    );
+    const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
+      this.stopTrackedProcess(sessionId),
+    );
+    const nativeStops = Array.from(this.nativeClients.keys()).map((sessionId) =>
+      this.closeSession(sessionId),
+    );
+    const sessionCancellations = Array.from(
+      this.sessionCancellationPromises.values(),
+    );
+    const sessionStops = Array.from(this.sessionStopPromises.values());
+    // Revoke any leases still live on teardown (sessions that never reached a
+    // terminal event — e.g. process shutdown mid-task).
+    const leaseRevokes = Array.from(this.modelLeases.keys()).map((sessionId) =>
+      this.revokeModelLease(sessionId, "service_stop"),
+    );
+    const containmentResults = await Promise.allSettled([
+      ...admittedPromptStops,
+      ...stops,
+      ...nativeStops,
+      ...sessionCancellations,
+      ...sessionStops,
+    ]);
+    await Promise.allSettled(leaseRevokes);
+    const containmentFailures = containmentResults
+      .filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      .map((result) => result.reason);
+    if (containmentFailures.length > 0) {
+      throw new AggregateError(
+        containmentFailures,
+        "ACP service could not prove subprocess teardown",
+      );
     }
     AcpService.liveInstances.delete(this);
     // The shared SIGTERM/SIGINT hook is `process.once` — it self-removes
     // when fired. If nothing fired and the last instance is going away,
     // explicitly off() the hook so a respawned instance subsequent in the
     // process can install a fresh one (otherwise shutdownHookInstalled
-    // stays true but the listener is gone).
+    // stays true but the listener is gone). Keep both registrations intact
+    // when containment fails so the owning service cannot disappear silently.
     if (
       AcpService.liveInstances.size === 0 &&
       AcpService.shutdownHookInstalled
@@ -1069,19 +1191,14 @@ export class AcpService extends Service {
       process.off("SIGINT", AcpService.sharedShutdownHandler);
       AcpService.shutdownHookInstalled = false;
     }
-    const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
-      this.stopTrackedProcess(sessionId),
-    );
-    const nativeStops = Array.from(this.nativeClients.keys()).map((sessionId) =>
-      this.stopNativeClient(sessionId),
-    );
-    // Revoke any leases still live on teardown (sessions that never reached a
-    // terminal event — e.g. process shutdown mid-task).
-    const leaseRevokes = Array.from(this.modelLeases.keys()).map((sessionId) =>
-      this.revokeModelLease(sessionId, "service_stop"),
-    );
-    await Promise.allSettled([...stops, ...nativeStops, ...leaseRevokes]);
     this.started = false;
+  }
+
+  private isSessionStopGated(sessionId: string): boolean {
+    return (
+      this.sessionStopPromises.has(sessionId) ||
+      this.failedSessionStopIds.has(sessionId)
+    );
   }
 
   private acpxStateRoot(): string {
@@ -1624,13 +1741,50 @@ export class AcpService extends Service {
     if (healed > 0) {
       this.log("info", "health-check self-healed sessions", { healed });
     }
+    // A logical terminal status is not process-containment proof. Native
+    // cooperative cancellation and protocol errors may retain a child with
+    // filesystem capability and credentials, so close every such client before
+    // retention can delete the durable row that gives the reaper authority.
+    for (const session of sessions) {
+      if (
+        !TERMINAL_SESSION_STATUSES.has(session.status) ||
+        !this.nativeClients.has(session.id)
+      ) {
+        continue;
+      }
+      try {
+        await this.closeSession(session.id);
+      } catch (err) {
+        // error-policy:J7 containment remains visible and retryable. The
+        // protected-id sweep below preserves both durable and in-memory
+        // authority until a later health check or explicit stop succeeds.
+        this.runtime.reportError?.("AcpService.runHealthCheck", err, {
+          phase: "terminalNativeTeardown",
+          sessionId: session.id,
+        });
+        this.log("warn", "health-check: native teardown remains unproven", {
+          sessionId: session.id,
+          err,
+        });
+      }
+    }
     // Reclaim terminal sessions past the retention window so the durable store
     // and the per-session maps don't grow without bound. sweepStale removes only
-    // stopped/errored sessions older than the window; clear their satellite map
-    // entries (output buffers, changed paths, native clients) in lockstep.
+    // stopped/errored sessions older than the window, excluding every session
+    // whose native process handle is still retained. Clear satellite map entries
+    // only after the durable store confirms that deletion was safe.
     let swept: string[];
     try {
-      swept = await this.store.sweepStale(ACP_SESSION_RETENTION_MS);
+      const protectedSessionIds = new Set([
+        ...this.nativeClients.keys(),
+        ...this.promptAdmissions.keys(),
+        ...this.nativePromptAttachmentAdmissions.keys(),
+        ...this.nativePromptSessionIds,
+      ]);
+      swept = await this.store.sweepStale(
+        ACP_SESSION_RETENTION_MS,
+        protectedSessionIds,
+      );
     } catch (err) {
       // error-policy:J7 retention sweep failed; this must not abort the health
       // loop. Report it (so the missed satellite-map reclaim is observable) and
@@ -1691,6 +1845,23 @@ export class AcpService extends Service {
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
     this.ensureStarted();
+    if (this.stopping) {
+      throw new Error("ACP service is stopping; new sessions are not accepted");
+    }
+    let settleSpawn = (): void => {};
+    const admission = new Promise<void>((resolve) => {
+      settleSpawn = resolve;
+    });
+    this.initialSpawnAdmissions.add(admission);
+    try {
+      return await this.spawnSessionAdmitted(opts);
+    } finally {
+      settleSpawn();
+      this.initialSpawnAdmissions.delete(admission);
+    }
+  }
+
+  private async spawnSessionAdmitted(opts: SpawnOptions): Promise<SpawnResult> {
     const id = randomUUID();
     const name = opts.name?.trim() || id;
     this.assertTransportAvailable(id);
@@ -2012,7 +2183,7 @@ export class AcpService extends Service {
     } catch (err) {
       if (isolate && !sessionCreated) {
         await this.discardOrphanedScratchOnSpawnFailure(workdir);
-      } else if (isolate) {
+      } else if (isolate && !this.failedSessionStopIds.has(id)) {
         const message = errorMessage(err);
         await this.store.updateStatus(id, "errored", message);
         this.workspaceRegistry.markTerminal(workdir);
@@ -2103,22 +2274,87 @@ export class AcpService extends Service {
     opts: SendOptions = {},
   ): Promise<PromptResult> {
     this.ensureStarted();
-    const session = await this.requireSession(sessionId);
-    if (this.promptTurns.has(sessionId)) {
+    if (this.stopping) {
+      throw new Error("ACP service is stopping; prompts are not accepted");
+    }
+    if (this.isSessionStopGated(sessionId)) {
+      throw new Error(`ACP session is being stopped: ${sessionId}`);
+    }
+    if (this.sessionCancellationPromises.has(sessionId)) {
+      throw new Error(`ACP session is being cancelled: ${sessionId}`);
+    }
+    if (
+      this.promptAdmissions.has(sessionId) ||
+      this.promptTurns.has(sessionId)
+    ) {
       throw new Error(`ACP session is already busy: ${sessionId}`);
     }
-    const turn = {
+    let settleAdmission = (): void => {};
+    const admission: PromptAdmission = {
       id: randomUUID(),
-      sessionSnapshot: {
-        ...session,
-        metadata: session.metadata ? { ...session.metadata } : undefined,
-      },
+      cancelRequested: false,
+      prevented: false,
+      settled: new Promise<void>((resolve) => {
+        settleAdmission = resolve;
+      }),
+      settle: () => settleAdmission(),
     };
-    this.promptTurns.set(sessionId, turn);
+    this.promptAdmissions.set(sessionId, admission);
+    let turn: { id: string; sessionSnapshot: SessionInfo } | undefined;
     try {
-      return await this.sendPromptTurn(session, text, opts);
+      const session = await this.requireSession(sessionId);
+      if (TERMINAL_SESSION_STATUSES.has(session.status)) {
+        admission.prevented = true;
+        throw new ElizaError(
+          `ACP session is terminal and cannot accept a new prompt: ${sessionId}`,
+          {
+            code: "ACP_SESSION_TERMINAL",
+            context: { sessionId, status: session.status },
+            severity: "ephemeral",
+          },
+        );
+      }
+      if (
+        this.stopping ||
+        admission.cancelRequested ||
+        this.isSessionStopGated(sessionId) ||
+        this.sessionCancellationPromises.has(sessionId)
+      ) {
+        admission.prevented = true;
+        throw new ElizaError(
+          "ACP prompt was cancelled before transport admission",
+          {
+            code: "ACP_PROMPT_CANCELLED_BEFORE_START",
+            context: { sessionId },
+            severity: "ephemeral",
+          },
+        );
+      }
+      if (this.promptTurns.has(sessionId)) {
+        throw new Error(`ACP session is already busy: ${sessionId}`);
+      }
+      turn = {
+        id: admission.id,
+        sessionSnapshot: {
+          ...session,
+          metadata: session.metadata ? { ...session.metadata } : undefined,
+        },
+      };
+      this.promptTurns.set(sessionId, turn);
+      // Calling an async function executes synchronously through its first
+      // await. sendPromptTurn installs nativePromptSessionIds before that point,
+      // so settling admission here gives cancelSession one of two proven states:
+      // prevented-before-start or an active transport marker.
+      const prompt = this.sendPromptTurn(session, text, opts);
+      admission.settle();
+      this.promptAdmissions.delete(sessionId);
+      return await prompt;
     } finally {
-      if (this.promptTurns.get(sessionId)?.id === turn.id) {
+      admission.settle();
+      if (this.promptAdmissions.get(sessionId) === admission) {
+        this.promptAdmissions.delete(sessionId);
+      }
+      if (turn && this.promptTurns.get(sessionId)?.id === turn.id) {
         this.promptTurns.delete(sessionId);
       }
     }
@@ -2165,6 +2401,15 @@ export class AcpService extends Service {
       // onto the same native session. Teardown on the pre-prompt error paths;
       // sendNativePrompt's own finally clears it on the normal path.
       this.nativePromptSessionIds.add(sessionId);
+      let settleAttachment = (): void => {};
+      const attachment: NativePromptAttachmentAdmission = {
+        settled: new Promise<void>((resolve) => {
+          settleAttachment = resolve;
+        }),
+        settle: () => settleAttachment(),
+        promptStarted: false,
+      };
+      this.nativePromptAttachmentAdmissions.set(sessionId, attachment);
       this.turnOutputBuffers.set(sessionId, []);
       try {
         await this.store.updateStatus(sessionId, "busy");
@@ -2179,6 +2424,16 @@ export class AcpService extends Service {
         // error path, then propagate the original error unchanged.
         this.nativePromptSessionIds.delete(sessionId);
         throw err;
+      } finally {
+        attachment.settle();
+        if (
+          this.nativePromptAttachmentAdmissions.get(sessionId) === attachment
+        ) {
+          this.nativePromptAttachmentAdmissions.delete(sessionId);
+        }
+        this.nativePromptSessionIds.delete(sessionId);
+        this.nativeCancelledPromptSessionIds.delete(sessionId);
+        this.nativeStoppingSessionIds.delete(sessionId);
       }
     }
     this.turnOutputBuffers.set(sessionId, []);
@@ -2274,15 +2529,57 @@ export class AcpService extends Service {
   }
 
   async cancelSession(sessionId: string): Promise<void> {
+    const stopping = this.sessionStopPromises.get(sessionId);
+    if (stopping) return stopping;
+    if (this.failedSessionStopIds.has(sessionId)) {
+      return this.closeSession(sessionId);
+    }
+    const existingCancellation =
+      this.sessionCancellationPromises.get(sessionId);
+    if (existingCancellation) return existingCancellation;
+    const pendingAdmission = this.promptAdmissions.get(sessionId);
+    if (pendingAdmission) pendingAdmission.cancelRequested = true;
+    const cancellation = this.cancelSessionInternal(
+      sessionId,
+      pendingAdmission,
+    );
+    this.sessionCancellationPromises.set(sessionId, cancellation);
+    try {
+      await cancellation;
+    } finally {
+      if (this.sessionCancellationPromises.get(sessionId) === cancellation) {
+        this.sessionCancellationPromises.delete(sessionId);
+      }
+    }
+  }
+
+  private async cancelSessionInternal(
+    sessionId: string,
+    pendingAdmission?: PromptAdmission,
+  ): Promise<void> {
+    if (pendingAdmission) {
+      await pendingAdmission.settled;
+      if (pendingAdmission.prevented) return;
+    }
     const session = await this.requireSession(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
+      const attachment = this.nativePromptAttachmentAdmissions.get(sessionId);
+      if (attachment) await attachment.settled;
       const client = this.nativeClients.get(sessionId);
       if (!client) {
+        // A failed attachment has no remaining process authority to cancel.
+        // The prompt path reports its own attach failure; cancellation must not
+        // manufacture a missing-client race after it waited for that boundary.
+        if (attachment) return;
         throw new ElizaError("ACP native session has no attached client", {
           code: "ACP_NATIVE_CLIENT_MISSING",
           context: { sessionId },
         });
+      }
+      if (attachment && !attachment.promptStarted) {
+        await this.cancelNativeBeforePrompt(session, client);
+        return;
       }
       const hadActivePrompt = this.nativePromptSessionIds.has(sessionId);
       if (!hadActivePrompt) {
@@ -2291,30 +2588,7 @@ export class AcpService extends Service {
           context: { sessionId },
         });
       }
-      const terminal = await client.cancel(
-        session.acpxSessionId ?? session.agentSessionId ?? session.id,
-      );
-      // session/cancel is a notification, so only the terminal response to the
-      // original session/prompt request can prove cancellation. A completion
-      // racing the notification remains a completion; an idle session has no
-      // prompt result to acknowledge and must not be relabelled cancelled.
-      if (terminal?.stopReason !== "cancelled") {
-        throw new ElizaError(
-          "ACP agent did not confirm cancellation on the active prompt",
-          {
-            code: "ACP_CANCEL_NOT_CONFIRMED",
-            context: { sessionId, stopReason: terminal?.stopReason },
-          },
-        );
-      }
-      await this.store.updateStatus(sessionId, "cancelled");
-      // Stop the scratch dir counting against the shared cap the moment the
-      // session is terminal; the actual rm still happens on close/delete via
-      // removeOwnedScratchWorkdir (a cancelled session may be reopened/inspected
-      // before teardown). Accounting-only — the registry never rm's ACP dirs.
-      this.workspaceRegistry.markTerminal(session.workdir);
-      void this.revokeModelLease(sessionId, "cancelSession:native");
-      await this.removeOwnedGitIndex(session);
+      await this.cancelNativeSession(session, client);
       return;
     }
     const active = this.activeProcesses.get(sessionId);
@@ -2340,7 +2614,224 @@ export class AcpService extends Service {
     await this.removeOwnedGitIndex(session);
   }
 
+  private async cancelNativeSession(
+    session: SessionInfo,
+    client: NativeAcpClient,
+  ): Promise<void> {
+    const sessionId = session.id;
+    const protocolSessionId =
+      session.acpxSessionId ?? session.agentSessionId ?? session.id;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let terminal: Awaited<ReturnType<NativeAcpClient["cancel"]>>;
+    try {
+      terminal = await Promise.race([
+        client.cancel(protocolSessionId),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            reject(
+              new ElizaError(
+                "ACP agent did not settle the active prompt after cancellation",
+                {
+                  code: "ACP_CANCEL_CONFIRM_TIMEOUT",
+                  context: {
+                    sessionId,
+                    timeoutMs: NATIVE_CANCEL_CONFIRM_TIMEOUT_MS,
+                  },
+                  severity: "ephemeral",
+                },
+              ),
+            );
+          }, NATIVE_CANCEL_CONFIRM_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (err) {
+      // error-policy:J1 native cancellation boundary — an unconfirmed or
+      // transport-failed cancellation is translated into bounded OS teardown.
+      const forceReason =
+        err instanceof ElizaError && err.code === "ACP_CANCEL_CONFIRM_TIMEOUT"
+          ? "cancel_confirmation_timeout"
+          : "cancel_transport_error";
+
+      // Either the confirmation deadline expired or the cancellation transport
+      // itself failed. In both cases the peer may still be executing. Mark the
+      // turn before forceClose rejects the prompt promise so sendNativePrompt
+      // cannot translate deliberate teardown into an error, and detach the
+      // client before a later send can discover and reuse it.
+      this.nativeCancelledPromptSessionIds.add(sessionId);
+      if (this.nativeClients.get(sessionId) === client) {
+        this.nativeClients.delete(sessionId);
+      }
+      try {
+        await client.forceClose();
+      } catch (closeErr) {
+        // error-policy:J2 context-adding rethrow — a cancellation timeout is
+        // only successful when the OS process actually exits after escalation.
+        const failure = new ElizaError(
+          "ACP agent did not terminate after cancellation escalation",
+          {
+            code: "ACP_CANCEL_FORCE_CLOSE_FAILED",
+            cause: closeErr,
+            context: { sessionId },
+            severity: "fatal",
+          },
+        );
+        this.emitSessionEvent(sessionId, "error", {
+          message: failure.message,
+          failureKind: "cancel_force_close_failed",
+        });
+        // Preserve both the process handle and a fail-closed admission gate so
+        // a later durable close can retry containment rather than reconnecting
+        // behind an unproven cancellation.
+        this.nativeClients.set(sessionId, client);
+        this.failedSessionStopIds.add(sessionId);
+        void this.revokeModelLease(
+          sessionId,
+          "cancelSession:native:containment_failed",
+        );
+        throw failure;
+      }
+
+      await this.store.updateStatus(sessionId, "cancelled");
+      this.workspaceRegistry.markTerminal(session.workdir);
+      void this.revokeModelLease(sessionId, "cancelSession:native:forced");
+      await this.removeOwnedGitIndex(session);
+      this.emitSessionEvent(sessionId, "cancelled", {
+        sessionId,
+        reason: forceReason,
+      });
+      return;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+
+    // session/cancel is a notification, so only the terminal response to the
+    // original session/prompt request can prove cancellation. A completion
+    // racing the notification remains a completion; an idle session has no
+    // prompt result to acknowledge and must not be relabelled cancelled.
+    if (terminal?.stopReason !== "cancelled") {
+      // Preserve the non-cancel terminal response's status semantics, but
+      // retire the transport before reporting NOT_CONFIRMED. An adapter that
+      // says end_turn while a descendant keeps running must not retain mutation
+      // authority; a later prompt may reconnect with a fresh client.
+      if (this.nativeClients.get(sessionId) === client) {
+        this.nativeClients.delete(sessionId);
+      }
+      try {
+        await client.forceClose();
+      } catch (closeErr) {
+        const failure = new ElizaError(
+          "ACP agent did not terminate after unconfirmed cancellation",
+          {
+            code: "ACP_CANCEL_FORCE_CLOSE_FAILED",
+            cause: closeErr,
+            context: { sessionId, stopReason: terminal?.stopReason },
+            severity: "fatal",
+          },
+        );
+        this.emitSessionEvent(sessionId, "error", {
+          message: failure.message,
+          failureKind: "cancel_force_close_failed",
+        });
+        this.nativeClients.set(sessionId, client);
+        this.failedSessionStopIds.add(sessionId);
+        void this.revokeModelLease(
+          sessionId,
+          "cancelSession:native:unconfirmed_containment_failed",
+        );
+        throw failure;
+      }
+      throw new ElizaError(
+        "ACP agent did not confirm cancellation on the active prompt",
+        {
+          code: "ACP_CANCEL_NOT_CONFIRMED",
+          context: { sessionId, stopReason: terminal?.stopReason },
+        },
+      );
+    }
+    await this.store.updateStatus(sessionId, "cancelled");
+    // Stop the scratch dir counting against the shared cap the moment the
+    // session is terminal; the actual rm still happens on close/delete via
+    // removeOwnedScratchWorkdir (a cancelled session may be reopened/inspected
+    // before teardown). Accounting-only — the registry never rm's ACP dirs.
+    this.workspaceRegistry.markTerminal(session.workdir);
+    void this.revokeModelLease(sessionId, "cancelSession:native");
+    await this.removeOwnedGitIndex(session);
+  }
+
+  private async cancelNativeBeforePrompt(
+    session: SessionInfo,
+    client: NativeAcpClient,
+  ): Promise<void> {
+    const sessionId = session.id;
+    try {
+      await client.forceClose();
+    } catch (closeError) {
+      const failure = new ElizaError(
+        "ACP agent did not terminate during pre-prompt cancellation",
+        {
+          code: "ACP_CANCEL_FORCE_CLOSE_FAILED",
+          cause: closeError,
+          context: { sessionId, phase: "attachment" },
+          severity: "fatal",
+        },
+      );
+      this.nativeClients.set(sessionId, client);
+      this.failedSessionStopIds.add(sessionId);
+      void this.revokeModelLease(
+        sessionId,
+        "cancelSession:native:pre_prompt_containment_failed",
+      );
+      this.emitSessionEvent(sessionId, "error", {
+        message: failure.message,
+        failureKind: "cancel_force_close_failed",
+      });
+      throw failure;
+    }
+    if (this.nativeClients.get(sessionId) === client) {
+      this.nativeClients.delete(sessionId);
+    }
+    await this.store.updateStatus(sessionId, "cancelled");
+    this.workspaceRegistry.markTerminal(session.workdir);
+    void this.revokeModelLease(sessionId, "cancelSession:native:pre_prompt");
+    await this.removeOwnedGitIndex(session);
+    this.emitSessionEvent(sessionId, "cancelled", {
+      sessionId,
+      reason: "cancelled_before_prompt",
+    });
+  }
+
   async closeSession(sessionId: string): Promise<void> {
+    const existingStop = this.sessionStopPromises.get(sessionId);
+    if (existingStop) return existingStop;
+    const pendingAdmission = this.promptAdmissions.get(sessionId);
+    if (pendingAdmission) pendingAdmission.cancelRequested = true;
+    const stop = this.closeSessionInternal(sessionId, pendingAdmission);
+    this.sessionStopPromises.set(sessionId, stop);
+    try {
+      await stop;
+      this.failedSessionStopIds.delete(sessionId);
+      if (this.sessionStopPromises.get(sessionId) === stop) {
+        this.sessionStopPromises.delete(sessionId);
+      }
+    } catch (error) {
+      // error-policy:J2 atomically replace the active attempt with a persistent
+      // fail-closed gate. A later close may retry the retained process handle,
+      // but no prompt can reattach between attempts.
+      this.failedSessionStopIds.add(sessionId);
+      if (this.sessionStopPromises.get(sessionId) === stop) {
+        this.sessionStopPromises.delete(sessionId);
+      }
+      void this.revokeModelLease(sessionId, "closeSession:containment_failed");
+      throw error;
+    }
+  }
+
+  private async closeSessionInternal(
+    sessionId: string,
+    pendingAdmission?: PromptAdmission,
+  ): Promise<void> {
+    if (pendingAdmission) await pendingAdmission.settled;
+    await this.sessionCancellationPromises.get(sessionId);
     const session = await this.requireSession(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
@@ -2416,14 +2907,10 @@ export class AcpService extends Service {
 
   async deleteSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    await this.closeSession(sessionId).catch((err: unknown) => {
-      // error-policy:J6 best-effort close before delete; a teardown failure must
-      // not block removing the session record + satellite maps below.
-      this.log("warn", "deleteSession close failed", {
-        sessionId,
-        error: errorMessage(err),
-      });
-    });
+    // Do not erase the durable record or the only remaining process handle
+    // unless hard teardown succeeds. An unproven native close must remain
+    // visible and retryable to the terminal-session reaper.
+    await this.closeSession(sessionId);
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
@@ -2604,7 +3091,16 @@ export class AcpService extends Service {
   }
 
   async reattachSession(sessionId: string): Promise<SpawnResult> {
+    if (this.stopping) {
+      throw new Error("ACP service is stopping; sessions cannot reattach");
+    }
+    if (this.isSessionStopGated(sessionId)) {
+      throw new Error(`ACP session is being stopped: ${sessionId}`);
+    }
     const session = await this.requireSession(sessionId);
+    if (this.isSessionStopGated(sessionId)) {
+      throw new Error(`ACP session is being stopped: ${sessionId}`);
+    }
     if (session.pid && isPidAlive(session.pid)) {
       await this.store.updateStatus(sessionId, "ready");
       return toSpawnResult({ ...session, status: "ready" });
@@ -2639,7 +3135,16 @@ export class AcpService extends Service {
   async prepareSessionForDurableRecovery(
     sessionId: string,
   ): Promise<SpawnResult> {
+    if (this.stopping) {
+      throw new Error("ACP service is stopping; sessions cannot recover");
+    }
+    if (this.isSessionStopGated(sessionId)) {
+      throw new Error(`ACP session is being stopped: ${sessionId}`);
+    }
     const session = await this.requireSession(sessionId);
+    if (this.isSessionStopGated(sessionId)) {
+      throw new Error(`ACP session is being stopped: ${sessionId}`);
+    }
     if (this.transportMode === "native") {
       if (this.nativeClients.has(sessionId)) return toSpawnResult(session);
       return this.reattachSession(sessionId);
@@ -2689,11 +3194,10 @@ export class AcpService extends Service {
   private async closeInitialTaskSession(sessionId: string): Promise<void> {
     const session = await this.store.get(sessionId);
     if (!session) return;
-    if (
-      ["stopped", "errored", "completed", "cancelled"].includes(session.status)
-    ) {
-      return;
-    }
+    // `completed`, `cancelled`, and `errored` describe protocol state, not
+    // process containment. Only AcpService's post-close `stopped` status proves
+    // that the native child and its mutation authority are gone.
+    if (session.status === "stopped") return;
     await this.closeSession(sessionId).catch((err: unknown) => {
       // error-policy:J6 best-effort teardown of the initial-task session; a close
       // failure must not abort the fire-and-forget completion path.
@@ -2935,15 +3439,25 @@ export class AcpService extends Service {
     } catch (err) {
       // error-policy:J2 persist and emit the failed session boundary, then
       // preserve typed failures or wrap unknown failures with session context.
-      // error-policy:J6 best-effort teardown of the failed client; the spawn
-      // failure `err` is rethrown/handled below.
-      await client?.close().catch(() => undefined);
+      if (client) {
+        try {
+          await this.containFailedNativeAttach(id, client, "spawn_finalize");
+        } catch (containmentError) {
+          this.emitSessionEvent(id, "error", {
+            message: errorMessage(containmentError),
+            failureKind: "spawn_containment_failed",
+          });
+          throw containmentError;
+        }
+      }
       // A failed spawn must not leave a closed client registered: the entry is
       // set above before the store writes that can throw here. Idempotent when
       // the failure happened before the set.
-      this.nativeClients.delete(id);
+      if (!this.failedSessionStopIds.has(id)) this.nativeClients.delete(id);
       const message = errorMessage(err);
-      await this.store.updateStatus(id, "errored", message);
+      if (!this.failedSessionStopIds.has(id)) {
+        await this.store.updateStatus(id, "errored", message);
+      }
       this.emitSessionEvent(id, "error", {
         message,
         ...this.authFailureFields(message, session.agentType),
@@ -3048,9 +3562,11 @@ export class AcpService extends Service {
       const nativeSession = await client.createSession(opts.session.workdir);
       return { client, nativeSession, stderr };
     } catch (err) {
-      // error-policy:J6 best-effort teardown of the failed client; the start
-      // or createSession failure is rethrown or retried below.
-      await client.close().catch(() => undefined);
+      await this.containFailedNativeAttach(
+        opts.sessionId,
+        client,
+        "initial_attach",
+      );
       let message = stderr.join("").trim() || errorMessage(err);
       if (
         !this.shouldRetryManagedCodexLandlock(
@@ -3103,12 +3619,41 @@ export class AcpService extends Service {
         const nativeSession = await client.createSession(opts.session.workdir);
         return { client, nativeSession, stderr };
       } catch (retryErr) {
-        // error-policy:J6 best-effort teardown of the failed retry client;
-        // `retryErr` is surfaced as the attach failure below.
-        await client.close().catch(() => undefined);
+        await this.containFailedNativeAttach(
+          opts.sessionId,
+          client,
+          "fallback_attach",
+        );
         message = stderr.join("").trim() || errorMessage(retryErr);
         throw new Error(message);
       }
+    }
+  }
+
+  private async containFailedNativeAttach(
+    sessionId: string,
+    client: NativeAcpClient,
+    phase: string,
+  ): Promise<void> {
+    try {
+      await client.close();
+    } catch (closeError) {
+      const failure = new ElizaError(
+        "ACP native attach failed and process teardown could not be proven",
+        {
+          code: "ACP_NATIVE_ATTACH_CONTAINMENT_FAILED",
+          cause: closeError,
+          context: { sessionId, phase },
+          severity: "fatal",
+        },
+      );
+      this.nativeClients.set(sessionId, client);
+      this.failedSessionStopIds.add(sessionId);
+      void this.revokeModelLease(sessionId, "native_attach:containment_failed");
+      throw failure;
+    }
+    if (this.nativeClients.get(sessionId) === client) {
+      this.nativeClients.delete(sessionId);
     }
   }
 
@@ -3118,10 +3663,70 @@ export class AcpService extends Service {
     opts: SendOptions,
     startedAt: number,
   ): Promise<PromptResult> {
+    if (this.isSessionStopGated(session.id)) {
+      throw new Error(`ACP session is being stopped: ${session.id}`);
+    }
     const { client, protocolSessionId } = await this.ensureNativeClientAttached(
       session,
       opts,
     );
+    const attachment = this.nativePromptAttachmentAdmissions.get(session.id);
+    attachment?.settle();
+    const attachmentStop = this.sessionStopPromises.get(session.id);
+    if (attachmentStop) {
+      await attachmentStop;
+      return {
+        sessionId: session.id,
+        response: "",
+        finalText: "",
+        stopReason: "stopped",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    }
+    if (this.failedSessionStopIds.has(session.id)) {
+      throw new Error(`ACP session teardown remains unproven: ${session.id}`);
+    }
+    if (this.nativeStoppingSessionIds.has(session.id)) {
+      return {
+        sessionId: session.id,
+        response: "",
+        finalText: "",
+        stopReason: "stopped",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    }
+    const attachmentCancellation = this.sessionCancellationPromises.get(
+      session.id,
+    );
+    if (attachmentCancellation) {
+      try {
+        await attachmentCancellation;
+        return {
+          sessionId: session.id,
+          response: "",
+          finalText: "",
+          stopReason: "cancelled",
+          durationMs: Date.now() - startedAt,
+          exitCode: null,
+          signal: null,
+        };
+      } catch (cancelError) {
+        return {
+          sessionId: session.id,
+          response: "",
+          finalText: "",
+          stopReason: "error",
+          durationMs: Date.now() - startedAt,
+          exitCode: 1,
+          signal: null,
+          error: errorMessage(cancelError),
+        };
+      }
+    }
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
@@ -3140,18 +3745,65 @@ export class AcpService extends Service {
     this.nativePromptSessionIds.add(session.id);
     client.setEventHandler(previousOnAcp);
     client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
+    if (attachment) attachment.promptStarted = true;
+    const stoppedResult = (): PromptResult => ({
+      sessionId: session.id,
+      response: finalText,
+      finalText,
+      stopReason: "stopped",
+      durationMs: Date.now() - startedAt,
+      exitCode: null,
+      signal: null,
+    });
+    const failedStopResult = (error: unknown): PromptResult => ({
+      sessionId: session.id,
+      response: finalText,
+      finalText,
+      stopReason: "error",
+      durationMs: Date.now() - startedAt,
+      exitCode: 1,
+      signal: null,
+      error: errorMessage(error),
+    });
+    const awaitAuthoritativeStop = async (): Promise<
+      PromptResult | undefined
+    > => {
+      const stop = this.sessionStopPromises.get(session.id);
+      if (stop) {
+        try {
+          await stop;
+          return stoppedResult();
+        } catch (stopError) {
+          // Keep the existing busy/nonterminal durable status. The terminal
+          // reaper must see this session as retryable; persisting `stopped` or
+          // `errored` here would falsely clear its teardown marker while the
+          // failed-stop admission gate still owns a live process handle.
+          return failedStopResult(stopError);
+        }
+      }
+      if (this.failedSessionStopIds.has(session.id)) {
+        return failedStopResult(
+          new Error("ACP session teardown remains unproven"),
+        );
+      }
+      if (this.nativeStoppingSessionIds.has(session.id)) {
+        // closeSession can resolve and remove its promise in the microtask
+        // between the prompt's two status checks. The retained stopping marker
+        // is only cleared by this prompt's finally block after proven close.
+        await this.store.updateStatus(session.id, "stopped");
+        return stoppedResult();
+      }
+      return undefined;
+    };
     try {
       const result = await client.prompt(protocolSessionId, text);
+      const stoppedBeforeStatus = await awaitAuthoritativeStop();
+      if (stoppedBeforeStatus) return stoppedBeforeStatus;
       const stopReason = result.stopReason;
       const cancelled =
         stopReason === "cancelled" ||
         this.nativeCancelledPromptSessionIds.has(session.id);
-      const stopped = this.nativeStoppingSessionIds.has(session.id);
-      const finalStopReason = stopped
-        ? "stopped"
-        : cancelled
-          ? "cancelled"
-          : stopReason;
+      const finalStopReason = cancelled ? "cancelled" : stopReason;
       const promptResult: PromptResult = {
         sessionId: session.id,
         response: finalText,
@@ -3164,10 +3816,7 @@ export class AcpService extends Service {
           ? { error: "ACP prompt ended with stopReason error" }
           : {}),
       };
-      if (stopped) {
-        await this.store.updateStatus(session.id, "stopped");
-        void this.revokeModelLease(session.id, "native_prompt:stopped");
-      } else if (cancelled) {
+      if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
         void this.revokeModelLease(session.id, "native_prompt:cancelled");
       } else if (finalStopReason === "error" && !finalText?.trim()) {
@@ -3187,26 +3836,103 @@ export class AcpService extends Service {
           lastActivityAt: new Date(),
         });
       }
+      const stoppedAfterStatus = await awaitAuthoritativeStop();
+      if (stoppedAfterStatus) return stoppedAfterStatus;
       return promptResult;
     } catch (err) {
       // error-policy:J1 native-transport boundary — translates a prompt failure
       // into a structured PromptResult (errored store + error event), never a
       // fake success.
       const message = errorMessage(err);
-      if (this.nativeStoppingSessionIds.has(session.id)) {
-        await this.store.updateStatus(session.id, "stopped");
-        void this.revokeModelLease(session.id, "native_prompt:stopped");
+      if (
+        message === "ACP request timed out: session/prompt" &&
+        !this.sessionStopPromises.has(session.id) &&
+        !this.nativeStoppingSessionIds.has(session.id)
+      ) {
+        try {
+          // The request timer only proves that the peer missed its response
+          // deadline. It says nothing about model/tool quiescence, so a timeout
+          // cannot return until the native process-group boundary is contained.
+          await client.forceClose();
+          if (this.nativeClients.get(session.id) === client) {
+            this.nativeClients.delete(session.id);
+          }
+        } catch (closeError) {
+          const failure = new ElizaError(
+            "ACP prompt timed out and process teardown could not be proven",
+            {
+              code: "ACP_PROMPT_TIMEOUT_FORCE_CLOSE_FAILED",
+              cause: closeError,
+              context: { sessionId: session.id },
+              severity: "fatal",
+            },
+          );
+          // Preserve the busy/nonterminal status and process handle. A durable
+          // terminal reaper must retry close; no later prompt may reattach.
+          this.nativeClients.set(session.id, client);
+          this.failedSessionStopIds.add(session.id);
+          void this.revokeModelLease(
+            session.id,
+            "native_prompt:timeout_containment_failed",
+          );
+          this.emitSessionEvent(session.id, "error", {
+            message: failure.message,
+            failureKind: "prompt_timeout_force_close_failed",
+          });
+          return {
+            sessionId: session.id,
+            response: finalText,
+            finalText,
+            stopReason: "error",
+            durationMs: Date.now() - startedAt,
+            exitCode: 1,
+            signal: null,
+            error: failure.message,
+          };
+        }
+        await this.store.updateStatus(session.id, "errored", message);
+        void this.revokeModelLease(session.id, "native_prompt:timeout");
+        this.emitSessionEvent(session.id, "error", {
+          message,
+          failureKind: "prompt_timeout",
+        });
         return {
           sessionId: session.id,
           response: finalText,
           finalText,
-          stopReason: "stopped",
+          stopReason: "error",
           durationMs: Date.now() - startedAt,
-          exitCode: null,
+          exitCode: 1,
           signal: null,
+          error: message,
         };
       }
+      if (!this.nativeCancelledPromptSessionIds.has(session.id)) {
+        const stopped = await awaitAuthoritativeStop();
+        if (stopped) return stopped;
+      }
       if (this.nativeCancelledPromptSessionIds.has(session.id)) {
+        const cancellation = this.sessionCancellationPromises.get(session.id);
+        if (cancellation) {
+          try {
+            await cancellation;
+          } catch (cancelErr) {
+            // error-policy:J1 native cancellation boundary — the hard-close
+            // path already persisted/emitted its typed failure. Preserve that
+            // failure in the prompt result instead of claiming cancellation.
+            const cancelMessage = errorMessage(cancelErr);
+            return {
+              sessionId: session.id,
+              response: finalText,
+              finalText,
+              stopReason: "error",
+              durationMs: Date.now() - startedAt,
+              exitCode: 1,
+              signal: null,
+              error: cancelMessage,
+            };
+          }
+        }
         await this.store.updateStatus(session.id, "cancelled");
         void this.revokeModelLease(session.id, "native_prompt:cancelled");
         return {
@@ -3326,10 +4052,20 @@ export class AcpService extends Service {
     } catch (err) {
       // error-policy:J6 best-effort teardown of a failed restart reattach; the
       // attach failure itself is persisted and thrown below.
-      await client?.close().catch(() => undefined);
-      this.nativeClients.delete(session.id);
+      if (client) {
+        await this.containFailedNativeAttach(
+          session.id,
+          client,
+          "reattach_finalize",
+        );
+      }
+      if (!this.failedSessionStopIds.has(session.id)) {
+        this.nativeClients.delete(session.id);
+      }
       const message = errorMessage(err);
-      await this.store.updateStatus(session.id, "errored", message);
+      if (!this.failedSessionStopIds.has(session.id)) {
+        await this.store.updateStatus(session.id, "errored", message);
+      }
       this.emitSessionEvent(session.id, "error", {
         message,
         ...this.authFailureFields(message, session.agentType),
@@ -3370,16 +4106,35 @@ export class AcpService extends Service {
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
+    await this.nativePromptAttachmentAdmissions.get(sessionId)?.settled;
     const client = this.nativeClients.get(sessionId);
     if (!client) return;
-    this.nativeClients.delete(sessionId);
     const session = await this.store.get(sessionId);
     const protocolSessionId =
       session?.acpxSessionId ?? session?.agentSessionId ?? sessionId;
-    // error-policy:J6 best-effort teardown of a session being deleted; a
-    // close/closeSession failure must not abort the deletion.
-    await client.closeSession(protocolSessionId).catch(() => undefined);
-    await client.close().catch(() => undefined);
+    // Protocol close is advisory; OS process termination is authoritative.
+    // Preserve the protocol diagnostic, but never swallow a failed hard close:
+    // terminal-session reaping may only resolve after containment is proven.
+    let protocolCloseError: unknown;
+    try {
+      await client.closeSession(protocolSessionId);
+    } catch (error) {
+      protocolCloseError = error;
+    }
+    await client.close();
+    if (this.nativeClients.get(sessionId) === client) {
+      this.nativeClients.delete(sessionId);
+    }
+    if (protocolCloseError) {
+      this.runtime.logger?.debug?.(
+        {
+          src: "acp-service",
+          sessionId,
+          error: errorMessage(protocolCloseError),
+        },
+        "Native ACP protocol close failed after process termination",
+      );
+    }
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {

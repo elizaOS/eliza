@@ -458,13 +458,17 @@ export class InMemorySessionStore implements SessionStore {
     });
   }
 
-  async sweepStale(maxAgeMs: number): Promise<string[]> {
+  async sweepStale(
+    maxAgeMs: number,
+    protectedIds?: ReadonlySet<string>,
+  ): Promise<string[]> {
     return this.writes.enqueue(async () => {
       const now = Date.now();
       const staleIds = [...this.sessions.values()]
         .filter(
           (session) =>
             (session.status === "stopped" || session.status === "errored") &&
+            !protectedIds?.has(session.id) &&
             now - session.lastActivityAt.getTime() > maxAgeMs,
         )
         .map((session) => session.id);
@@ -542,9 +546,12 @@ export class FileSessionStore extends InMemorySessionStore {
     await super.delete(id);
   }
 
-  async sweepStale(maxAgeMs: number): Promise<string[]> {
+  async sweepStale(
+    maxAgeMs: number,
+    protectedIds?: ReadonlySet<string>,
+  ): Promise<string[]> {
     await this.load();
-    return super.sweepStale(maxAgeMs);
+    return super.sweepStale(maxAgeMs, protectedIds);
   }
 
   protected override async afterWrite(): Promise<void> {
@@ -799,7 +806,10 @@ export class RuntimeDbSessionStore implements SessionStore {
     });
   }
 
-  async sweepStale(maxAgeMs: number): Promise<string[]> {
+  async sweepStale(
+    maxAgeMs: number,
+    protectedIds?: ReadonlySet<string>,
+  ): Promise<string[]> {
     return this.writes.enqueue(async () => {
       await this.ensureInitialized();
       const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
@@ -808,11 +818,14 @@ export class RuntimeDbSessionStore implements SessionStore {
         ["stopped", "errored", cutoff],
       );
       for (const session of stale) {
+        if (protectedIds?.has(session.id)) continue;
         await this.execute("DELETE FROM acp_sessions WHERE id = ?", [
           session.id,
         ]);
       }
-      return stale.map((session) => session.id);
+      return stale
+        .filter((session) => !protectedIds?.has(session.id))
+        .map((session) => session.id);
     });
   }
 
@@ -963,8 +976,11 @@ export class AcpSessionStore implements SessionStore {
     return this.delegate.delete(id);
   }
 
-  sweepStale(maxAgeMs: number): Promise<string[]> {
-    return this.delegate.sweepStale(maxAgeMs);
+  sweepStale(
+    maxAgeMs: number,
+    protectedIds?: ReadonlySet<string>,
+  ): Promise<string[]> {
+    return this.delegate.sweepStale(maxAgeMs, protectedIds);
   }
 }
 

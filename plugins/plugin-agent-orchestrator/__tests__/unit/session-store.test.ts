@@ -104,6 +104,10 @@ async function expectAllInterfaceMethods(store: SessionStore): Promise<void> {
     status: "stopped",
     lastActivityAt: oldClosed,
   });
+  await expect(
+    store.sweepStale(1_000, new Set(["session-1"])),
+  ).resolves.toEqual([]);
+  await expect(store.get("session-1")).resolves.toBeDefined();
   await expect(store.sweepStale(1_000)).resolves.toEqual(["session-1"]);
   await expect(store.list()).resolves.toEqual([]);
 }

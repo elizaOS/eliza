@@ -4,7 +4,14 @@
  */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
@@ -182,7 +189,10 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
       ["-y", "@agentclientprotocol/codex-acp@1.1.2"],
-      expect.objectContaining({ cwd: "/tmp/native-acp" }),
+      expect.objectContaining({
+        cwd: "/tmp/native-acp",
+        detached: process.platform !== "win32",
+      }),
     );
     expect(writeAt(p, 0)).toMatchObject({
       jsonrpc: "2.0",
@@ -258,6 +268,81 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     });
     await expect(prompted).resolves.toEqual({ stopReason: "cancelled" });
     await expect(cancelled).resolves.toEqual({ stopReason: "cancelled" });
+  });
+
+  it("force-closes an uncooperative prompt and drops late output and writes", async () => {
+    vi.useFakeTimers();
+    const cwd = await mkdtemp(path.join(tmpdir(), "native-acp-cancel-"));
+    const events: unknown[] = [];
+    const { client, p } = await startClient({
+      cwd,
+      onEvent: (event) => events.push(event),
+    });
+    const processGroupId = p.pid;
+    if (!processGroupId) throw new Error("mock ACP process has no pid");
+    const processKill = vi.spyOn(process, "kill").mockImplementation(((
+      _pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0) {
+        if (p.exitCode !== null || p.signalCode !== null) {
+          const error = new Error(
+            "process group is gone",
+          ) as NodeJS.ErrnoException;
+          error.code = "ESRCH";
+          throw error;
+        }
+        return true;
+      }
+      if (signal === "SIGKILL") {
+        closeProc(p, 137, "SIGKILL");
+      }
+      return true;
+    }) as typeof process.kill);
+
+    const prompted = client
+      .prompt("session-1", "ignore cancellation forever")
+      .catch((error: unknown) => error);
+    await waitForWrites(p, 2);
+    const closing = client.forceClose();
+    await Promise.resolve();
+
+    expect(processKill).toHaveBeenCalledWith(-processGroupId, "SIGTERM");
+    // The peer is still inside the TERM grace period here. Even if it ignores
+    // TERM and writes more protocol messages, the closed client must not expose
+    // output or execute another filesystem request while waiting for SIGKILL.
+    const eventCountAfterClose = events.length;
+    emitJson(p, {
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "late output" },
+        },
+      },
+    });
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: "late-write",
+      method: "fs/write_text_file",
+      params: { path: "late.txt", content: "late effect" },
+    });
+    await Promise.resolve();
+
+    expect(events).toHaveLength(eventCountAfterClose);
+    await expect(
+      readFile(path.join(cwd, "late.txt"), "utf8"),
+    ).rejects.toThrow();
+
+    const promptError = await prompted;
+    expect(promptError).toBeInstanceOf(Error);
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(processKill).toHaveBeenCalledWith(-processGroupId, "SIGKILL");
+    await closing;
+    processKill.mockRestore();
+    await rm(cwd, { recursive: true, force: true });
   });
 
   it("triggers cancellation when a prompt request times out", async () => {
