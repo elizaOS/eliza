@@ -30,7 +30,7 @@ function truncateForPreview(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 // Build a "Display Name <email@host>" string when both are available, or
@@ -522,7 +522,7 @@ export function formatEmailRead(result: LifeOpsGmailReadResultLike): string {
   const maxChars = 2_500;
   const truncated = bodyText.length > maxChars;
   const preview = truncated
-    ? `${bodyText.slice(0, maxChars).trimEnd()}\n\n[truncated]`
+    ? `${bodyText.slice(0, maxChars - 13).trimEnd()}\n\n[truncated]`
     : bodyText;
   const lines = [
     `**${result.message.subject}** from ${from} · ${formatRelativeTime(result.message.receivedAt)}`,
