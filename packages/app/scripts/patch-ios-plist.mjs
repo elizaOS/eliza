@@ -25,6 +25,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
 import { readAppIdentity } from "../../app-core/scripts/lib/read-app-identity.mjs";
+import {
+  IOS_APNS_ENABLED_KEY,
+  readIosApnsBuildFlag,
+} from "../../app-core/scripts/mobile/ios-plist.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, "..");
@@ -32,7 +36,7 @@ const APP_DIR = resolve(__dirname, "..");
 const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
 const SPEECH_PURPOSE =
   "Eliza transcribes your speech so you can talk to the agent.";
-const APNS_ENABLED_KEY = "ELIZA_APNS_ENABLED";
+const APNS_ENABLED_KEY = IOS_APNS_ENABLED_KEY;
 
 const KEYS =
   /** @type {Array<{ key: string; value: string | string[] | boolean }>} */ ([
@@ -131,12 +135,7 @@ function ensureStringValue(xml, key, value) {
 }
 
 function readApnsBuildFlag(raw = process.env.VITE_ELIZA_APNS_ENABLED) {
-  const value = raw?.trim() ?? "";
-  if (value === "" || value === "0") return false;
-  if (value === "1") return true;
-  throw new Error(
-    `VITE_ELIZA_APNS_ENABLED must be "0" or "1", received ${JSON.stringify(value)}`,
-  );
+  return readIosApnsBuildFlag(raw);
 }
 
 function patchPlist(xml, urlScheme, { apnsEnabled = false } = {}) {

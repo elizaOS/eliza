@@ -29,6 +29,16 @@ const IOS_BG_TASK_IDENTIFIERS = [
   "ai.eliza.tasks.refresh",
   "ai.eliza.tasks.processing",
 ];
+export const IOS_APNS_ENABLED_KEY = "ELIZA_APNS_ENABLED";
+
+/** Parse the one exact build flag shared by the renderer and native plist. */
+export function readIosApnsBuildFlag(raw) {
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw === "1") return true;
+  throw new Error(
+    `VITE_ELIZA_APNS_ENABLED must be "0" or "1", received ${JSON.stringify(raw)}`,
+  );
+}
 
 export function resolveIosPermissionKeys({ appName }) {
   return [
@@ -85,6 +95,9 @@ export function replaceOrInsertPlistString(content, key, value) {
   if (existingRe.test(content)) {
     return content.replace(existingRe, `$1${escapedValue}$2`);
   }
+  if (new RegExp(`<key>${keyRe}</key>`).test(content)) {
+    throw new Error(`Info.plist: ${key} must be a string`);
+  }
   return content.replace(
     "</dict>",
     `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
@@ -97,10 +110,7 @@ export function ensurePlistTrueBool(content, key) {
   if (new RegExp(`<key>${keyRe}</key>`).test(content)) {
     return content;
   }
-  return content.replace(
-    "</dict>",
-    `\t<key>${key}</key>\n\t<true/>\n</dict>`,
-  );
+  return content.replace("</dict>", `\t<key>${key}</key>\n\t<true/>\n</dict>`);
 }
 
 /** Ensure a plist `<array>` under `key` contains every value in `values`. */
@@ -163,7 +173,12 @@ export function removePbxListEntries(content, ids) {
 
 export function mergeIosInfoPlist(
   content,
-  { appName, urlScheme, displayName = "$(ELIZA_DISPLAY_NAME)" },
+  {
+    appName,
+    urlScheme,
+    displayName = "$(ELIZA_DISPLAY_NAME)",
+    apnsEnabled = false,
+  },
 ) {
   let nextContent = content;
   for (const [key, desc] of resolveIosPermissionKeys({ appName })) {
@@ -197,6 +212,11 @@ export function mergeIosInfoPlist(
   // Live Activities (voice/dictation session on Lock Screen + Dynamic Island,
   // #12185) require this opt-in in the app Info.plist.
   nextContent = ensurePlistTrueBool(nextContent, "NSSupportsLiveActivities");
+  nextContent = replaceOrInsertPlistString(
+    nextContent,
+    IOS_APNS_ENABLED_KEY,
+    apnsEnabled ? "1" : "0",
+  );
   return {
     changed: nextContent !== content,
     content: nextContent,

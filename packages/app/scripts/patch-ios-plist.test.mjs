@@ -64,6 +64,7 @@ describe("patch-ios-plist", () => {
     expect(readApnsBuildFlag("")).toBe(false);
     expect(readApnsBuildFlag("0")).toBe(false);
     expect(readApnsBuildFlag("1")).toBe(true);
+    expect(() => readApnsBuildFlag(" 1 ")).toThrow(/must be "0" or "1"/);
     expect(() => readApnsBuildFlag("true")).toThrow(/must be "0" or "1"/);
   });
 
