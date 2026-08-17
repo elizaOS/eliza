@@ -36,7 +36,7 @@ import workflowPlugin from "@elizaos/plugin-workflow";
 import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
-import { loadAllScenarios } from "../loader";
+import { loadAllScenarios, loadScenarioMetadataFile } from "../loader";
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -985,18 +985,23 @@ async function scenarioActionNames(): Promise<string[]> {
   return sorted(names);
 }
 
-function declaredScenarioId(file: string): string | null {
-  const source = readFileSync(resolve(scenarioDir, file), "utf8");
-  return (
-    source.match(/export\s+default\s+scenario\(\{\s*id:\s*"([^"]+)"/s)?.[1] ??
-    null
-  );
+const declaredScenarioIds = new Map<string, Promise<string>>();
+
+function declaredScenarioId(file: string): Promise<string> {
+  let id = declaredScenarioIds.get(file);
+  if (!id) {
+    id = loadScenarioMetadataFile(resolve(scenarioDir, file)).then(
+      (metadata) => metadata.id,
+    );
+    declaredScenarioIds.set(file, id);
+  }
+  return id;
 }
 
-function scenarioSourceById(id: string): string | null {
+async function scenarioSourceById(id: string): Promise<string | null> {
   for (const file of scenarioFiles()) {
     const base = file.replace(/\.scenario\.ts$/, "");
-    const declared = declaredScenarioId(file);
+    const declared = await declaredScenarioId(file);
     if (declared === id || base === id) {
       return readFileSync(resolve(scenarioDir, file), "utf8");
     }
@@ -1206,7 +1211,7 @@ describe("deterministic action coverage", () => {
 
     for (const [id, spec] of Object.entries(STRICT_LLM_ROUTING_SCENARIOS)) {
       const scenario = await loadedScenarioById(id);
-      const source = scenarioSourceById(id);
+      const source = await scenarioSourceById(id);
 
       if (!scenario) {
         problems.push(`${id}: scenario is not loadable`);
@@ -1251,11 +1256,11 @@ describe("deterministic action coverage", () => {
     expect(problems, problems.join("\n")).toEqual([]);
   });
 
-  it("prose-only deterministic message scenarios do not declare action planner fixtures", () => {
+  it("prose-only deterministic message scenarios do not declare action planner fixtures", async () => {
     const problems: string[] = [];
 
     for (const id of Object.keys(PROSE_ONLY_LLM_SCENARIOS)) {
-      const source = scenarioSourceById(id);
+      const source = await scenarioSourceById(id);
       if (!source) {
         problems.push(`${id}: source file was not found`);
         continue;
@@ -1331,12 +1336,12 @@ describe("deterministic action coverage", () => {
     ).toEqual([]);
   });
 
-  it("every scenario file is wired into the deterministic CI run and named after its id", () => {
+  it("every scenario file is wired into the deterministic CI run and named after its id", async () => {
     const wired = new Set(ciScenarioList());
     const problems: string[] = [];
     for (const file of scenarioFiles()) {
       const base = file.replace(/\.scenario\.ts$/, "");
-      const id = declaredScenarioId(file);
+      const id = await declaredScenarioId(file);
       if (id !== base) {
         problems.push(
           `${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`,
