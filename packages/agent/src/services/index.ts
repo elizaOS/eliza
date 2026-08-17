@@ -9,6 +9,7 @@
  */
 
 export * from "./agent-backup.ts";
+export * from "./agent-backup-v2-capture.ts";
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";
 export * from "./audio-redaction-service.ts";
