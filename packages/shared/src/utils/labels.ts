@@ -29,8 +29,11 @@ export function autoLabel(key: string, pluginId: string): string {
 
   let remainder = key;
   for (const prefix of prefixes) {
-    if (key.startsWith(prefix) && key.length > prefix.length) {
-      remainder = key.slice(prefix.length);
+    if (
+      remainder.toUpperCase().startsWith(prefix) &&
+      remainder.length > prefix.length
+    ) {
+      remainder = remainder.slice(prefix.length);
       break;
     }
   }
@@ -38,10 +41,12 @@ export function autoLabel(key: string, pluginId: string): string {
   return remainder
     .split("_")
     .filter(Boolean)
-    .map((word) =>
-      ENV_KEY_ACRONYMS.has(word)
-        ? word
-        : `${word[0]}${word.slice(1).toLowerCase()}`,
-    )
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (ENV_KEY_ACRONYMS.has(upper)) {
+        return upper;
+      }
+      return `${upper[0]}${word.slice(1).toLowerCase()}`;
+    })
     .join(" ");
 }
