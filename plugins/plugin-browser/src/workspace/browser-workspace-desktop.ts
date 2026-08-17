@@ -971,6 +971,41 @@ export function createDesktopBrowserWorkspaceCommandScript(
 export function createDesktopBrowserWorkspaceUtilityScript(
   command: BrowserWorkspaceCommand,
 ): string {
+  const parsedDeltaX =
+    typeof command.deltaX === "number" && Number.isFinite(command.deltaX)
+      ? command.deltaX
+      : undefined;
+  const parsedDeltaY =
+    typeof command.deltaY === "number" && Number.isFinite(command.deltaY)
+      ? command.deltaY
+      : undefined;
+  const parsedPixels =
+    typeof command.pixels === "number" && Number.isFinite(command.pixels)
+      ? command.pixels
+      : undefined;
+  if (command.deltaX !== undefined && parsedDeltaX === undefined) {
+    throw createBrowserWorkspaceError(
+      "command_failed",
+      "mouse",
+      "Eliza browser workspace mouse deltaX must be a finite number.",
+    );
+  }
+  if (command.deltaY !== undefined && parsedDeltaY === undefined) {
+    throw createBrowserWorkspaceError(
+      "command_failed",
+      "mouse",
+      "Eliza browser workspace mouse deltaY must be a finite number.",
+    );
+  }
+  if (command.pixels !== undefined && parsedPixels === undefined) {
+    throw createBrowserWorkspaceError(
+      "command_failed",
+      "mouse",
+      "Eliza browser workspace mouse pixels must be a finite number.",
+    );
+  }
+  const mouseDeltaX = parsedDeltaX ?? 0;
+  const mouseDeltaY = parsedDeltaY ?? parsedPixels ?? 240;
   return `
 (() => {
   const command = ${JSON.stringify(command)};
@@ -1237,8 +1272,9 @@ export function createDesktopBrowserWorkspaceUtilityScript(
         state.mouse.buttons = (state.mouse.buttons || []).filter((entry) => entry !== button);
         return state.mouse;
       }
-      window.scrollBy(command.deltaX || 0, command.deltaY || command.pixels || 240);
-      return { axis: Math.abs(command.deltaY || 0) >= Math.abs(command.deltaX || 0) ? "y" : "x", value: window.scrollY };
+      window.scrollBy(${JSON.stringify(mouseDeltaX)}, ${JSON.stringify(mouseDeltaY)});
+      const axis = Math.abs(${JSON.stringify(mouseDeltaY)}) >= Math.abs(${JSON.stringify(mouseDeltaX)}) ? "y" : "x";
+      return { axis, value: axis === "y" ? window.scrollY : window.scrollX };
     }
     case "drag": {
       const source = resolveTarget();
