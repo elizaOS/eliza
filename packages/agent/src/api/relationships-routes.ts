@@ -66,13 +66,32 @@ export function parseRelationshipsQueryInteger(
   return parsed;
 }
 
+const RELATIONSHIPS_SCOPE_ERROR = "scope must be one of: all, relevant";
+
+/**
+ * Parse the relationships-graph `scope` query. Omitted/empty keeps the
+ * historical unfiltered graph (same as `all`). Exact `relevant` / `all`
+ * select that slice. Any other token used to fall through to unfiltered,
+ * so `scope=RELEVANT` silently showed everyone.
+ */
+export function parseRelationshipsScope(
+  raw: string | null,
+):
+  | { ok: true; scope: "relevant" | "all" | undefined }
+  | { ok: false; message: string } {
+  if (raw === null || raw === "") return { ok: true, scope: undefined };
+  if (raw === "relevant" || raw === "all") {
+    return { ok: true, scope: raw };
+  }
+  return { ok: false, message: RELATIONSHIPS_SCOPE_ERROR };
+}
+
 export function parseRelationshipsQuery(
   reqUrl: string | undefined,
 ): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
-  const scopeParam = url.searchParams.get("scope");
-  const scope =
-    scopeParam === "relevant" || scopeParam === "all" ? scopeParam : undefined;
+  const parsedScope = parseRelationshipsScope(url.searchParams.get("scope"));
+  const scope = parsedScope.ok ? parsedScope.scope : undefined;
 
   return {
     search: url.searchParams.get("search"),
@@ -170,6 +189,19 @@ export async function handleRelationshipsRoutes(
   // POST-only and handled before the GET-only fast-fail.
   if (method !== "GET" && method !== "POST") {
     return false;
+  }
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/relationships/graph" ||
+      pathname === "/api/relationships/people")
+  ) {
+    const url = new URL(req.url ?? pathname, "http://localhost");
+    const parsedScope = parseRelationshipsScope(url.searchParams.get("scope"));
+    if (!parsedScope.ok) {
+      error(res, parsedScope.message, 400);
+      return true;
+    }
   }
 
   const relationshipsGraph = await getRelationshipsGraphService(runtime);
