@@ -168,7 +168,8 @@ export function canShareFiles(): boolean {
 function isAbortError(err: unknown): boolean {
   return (
     err instanceof Error &&
-    (err.name === "AbortError" || /abort|cancel/i.test(err.message))
+    (err.name === "AbortError" ||
+      (err.name !== "TimeoutError" && /abort|cancel/i.test(err.message)))
   );
 }
 

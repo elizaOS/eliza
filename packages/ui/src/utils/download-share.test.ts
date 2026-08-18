@@ -201,6 +201,28 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(anchor.download).toBe("cat.png");
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("falls through to the anchor when blob prefetch times out", async () => {
+    const picker = vi.fn();
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError",
+        );
+      }),
+    );
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    expect(picker).not.toHaveBeenCalled();
+    expect(anchor.href).toBe("https://example.com/cat.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 /* ── shareAttachment ──────────────────────────────────────────────────── */
@@ -308,4 +330,3 @@ describe("download-share blob prefetch deadline", () => {
     expect(await response.text()).toBe("hello");
   });
 });
-
