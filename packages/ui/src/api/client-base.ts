@@ -1454,7 +1454,7 @@ export class ElizaClient {
         path,
         options?.timeoutMs,
         init,
-      ).catch(() => "");
+      );
       let body: Record<string, unknown> | null = null;
       if (rawText) {
         try {
