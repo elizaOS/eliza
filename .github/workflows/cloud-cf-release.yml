@@ -119,8 +119,9 @@ jobs:
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
           # Explicit activation boundary for #21594. `off` performs no query;
-          # `report` emits only SHA-256 receipts and never blocks; `enforce`
-          # fails closed against both protected nonsecret authority digests.
+          # `report` emits only SHA-256 receipts and never blocks (malformed
+          # prepared receipts stay unreviewed); `enforce` fails closed against
+          # both protected nonsecret authority digests.
           DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
           DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}

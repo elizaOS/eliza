@@ -12,10 +12,10 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const IDENTITY_QUERY = `
 SELECT
   control.system_identifier::text AS system_identifier,
-  current_database()::text AS database_name,
+  pg_catalog.current_database()::text AS database_name,
   current_user::text AS role_name,
-  current_setting('server_version_num')::text AS server_version_num
-FROM pg_control_system() AS control
+  pg_catalog.current_setting('server_version_num')::text AS server_version_num
+FROM pg_catalog.pg_control_system() AS control
 `;
 
 export type DatabaseIdentityGateMode = "off" | "report" | "enforce";
@@ -24,6 +24,7 @@ export interface DatabaseIdentityConfig {
   environment: "staging" | "production";
   expectedAuthoritySha256?: string;
   expectedClusterSha256?: string;
+  ignoredExpectedDigests?: Array<"cluster" | "authority">;
   mode: DatabaseIdentityGateMode;
 }
 
@@ -49,7 +50,7 @@ export interface IdentityQueryClient {
 export interface IdentityPreflightResult {
   mismatches: Array<"cluster" | "authority">;
   receipt?: DatabaseIdentityReceipt;
-  status: "disabled" | "match" | "mismatch" | "reported";
+  status: "disabled" | "match" | "mismatch" | "reported" | "unavailable";
 }
 
 function readMode(value: string | undefined): DatabaseIdentityGateMode {
@@ -69,10 +70,12 @@ function readMode(value: string | undefined): DatabaseIdentityGateMode {
 function readOptionalDigest(
   value: string | undefined,
   name: string,
+  strict: boolean,
 ): string | undefined {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return undefined;
   if (!SHA256_PATTERN.test(normalized)) {
+    if (!strict) return undefined;
     throw new Error(`${name} must be a lowercase SHA-256 digest`);
   }
   return normalized;
@@ -92,16 +95,43 @@ export function readDatabaseIdentityConfig(
   }
   const config: DatabaseIdentityConfig = {
     environment: target,
+    expectedAuthoritySha256: undefined,
+    expectedClusterSha256: undefined,
     mode,
-    expectedClusterSha256: readOptionalDigest(
-      environment.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256,
-      "DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256",
-    ),
-    expectedAuthoritySha256: readOptionalDigest(
-      environment.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256,
-      "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256",
-    ),
   };
+  // Off mode must remain inert even while operators prepare or rotate the
+  // protected expected receipts.
+  if (mode === "off") return config;
+
+  const strict = mode === "enforce";
+  config.expectedClusterSha256 = readOptionalDigest(
+    environment.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256,
+    "DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256",
+    strict,
+  );
+  config.expectedAuthoritySha256 = readOptionalDigest(
+    environment.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256,
+    "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256",
+    strict,
+  );
+  if (mode === "report") {
+    const ignoredExpectedDigests: Array<"cluster" | "authority"> = [];
+    if (
+      environment.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256?.trim() &&
+      !config.expectedClusterSha256
+    ) {
+      ignoredExpectedDigests.push("cluster");
+    }
+    if (
+      environment.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256?.trim() &&
+      !config.expectedAuthoritySha256
+    ) {
+      ignoredExpectedDigests.push("authority");
+    }
+    if (ignoredExpectedDigests.length > 0) {
+      config.ignoredExpectedDigests = ignoredExpectedDigests;
+    }
+  }
   if (
     mode === "enforce" &&
     (!config.expectedClusterSha256 || !config.expectedAuthoritySha256)
@@ -182,7 +212,15 @@ export async function runDatabaseIdentityPreflight(
     throw new Error(
       "database identity client is required when the gate is active",
     );
-  const receipt = await readDatabaseIdentityReceipt(client, config.environment);
+  let receipt: DatabaseIdentityReceipt;
+  try {
+    receipt = await readDatabaseIdentityReceipt(client, config.environment);
+  } catch (error) {
+    if (config.mode === "report") {
+      return { status: "unavailable", mismatches: [] };
+    }
+    throw error;
+  }
   const mismatches: Array<"cluster" | "authority"> = [];
   if (
     config.expectedClusterSha256 &&
@@ -271,8 +309,9 @@ async function main(): Promise<void> {
       "DATABASE_URL is required when database identity enforcement is active",
     );
   }
-  const client = new Client(await clientConfig(databaseUrl));
+  let client: InstanceType<typeof Client> | undefined;
   try {
+    client = new Client(await clientConfig(databaseUrl));
     await client.connect();
     const result = await runDatabaseIdentityPreflight(config, client);
     const output = summary(result);
@@ -283,6 +322,16 @@ async function main(): Promise<void> {
     if (result.status === "mismatch" && config.mode === "report") {
       process.stdout.write(
         "::warning::database identity report differs from the protected authority\n",
+      );
+    }
+    if (result.status === "unavailable") {
+      process.stdout.write(
+        "::warning::database identity report unavailable; inspect protected operator logs\n",
+      );
+    }
+    if (config.ignoredExpectedDigests?.length) {
+      process.stdout.write(
+        "::warning::database identity report ignored malformed protected expected digest(s)\n",
       );
     }
   } catch (error) {
@@ -296,7 +345,7 @@ async function main(): Promise<void> {
     }
     throw error;
   } finally {
-    await client.end().catch(() => {
+    await client?.end().catch(() => {
       // error-policy:J6 teardown failure cannot replace the primary gate result.
       process.stderr.write(
         "[database-identity] warning: database client close failed\n",

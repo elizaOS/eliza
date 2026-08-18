@@ -45,9 +45,12 @@ the environment/cluster/role/database tuple; raw connection strings, hosts,
 roles, and database names are never written to logs. Protected environment
 variables control activation:
 
-- `DATABASE_IDENTITY_GATE_MODE=off` is the default and performs no query.
+- `DATABASE_IDENTITY_GATE_MODE=off` is the default, performs no query, and
+  does not parse any prepared expected receipts.
 - `report` emits nonsecret SHA-256 cluster and authority receipts without
-  blocking a release. Operators use this only to prepare and review a cutover.
+  blocking a release. Malformed prepared receipts are ignored as unreviewed,
+  and connection or query failures produce only a sanitized warning. Operators
+  use this mode only to prepare and review a cutover.
 - `enforce` requires both `DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256` and
   `DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256` and fails before migrations on
   any mismatch.

@@ -14,8 +14,12 @@ const row = {
   server_version_num: "180002",
 };
 
+let observedQuery = "";
 const client = {
-  query: async () => ({ rows: [row] }),
+  query: async (text: string) => {
+    observedQuery = text;
+    return { rows: [row] };
+  },
 };
 
 describe("database identity preflight", () => {
@@ -35,6 +39,9 @@ describe("database identity preflight", () => {
 
   test("emits stable hashes without raw database identity fields", async () => {
     const receipt = await readDatabaseIdentityReceipt(client, "staging");
+    expect(observedQuery).toContain("pg_catalog.pg_control_system()");
+    expect(observedQuery).toContain("pg_catalog.current_database()");
+    expect(observedQuery).toContain("pg_catalog.current_setting(");
     expect(receipt.postgresMajor).toBe(18);
     expect(receipt.clusterSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(receipt.authoritySha256).toMatch(/^[0-9a-f]{64}$/);
@@ -84,6 +91,56 @@ describe("database identity preflight", () => {
     ).resolves.toMatchObject({ status: "reported", mismatches: [] });
   });
 
+  test("off mode ignores prepared digests without touching the database", async () => {
+    const config = readDatabaseIdentityConfig({
+      DATABASE_IDENTITY_ENVIRONMENT: "staging",
+      DATABASE_IDENTITY_GATE_MODE: "off",
+      DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: "not-a-digest",
+      DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: "also-not-a-digest",
+    });
+    expect(config).toEqual({
+      environment: "staging",
+      mode: "off",
+      expectedClusterSha256: undefined,
+      expectedAuthoritySha256: undefined,
+    });
+    let queried = false;
+    await expect(
+      runDatabaseIdentityPreflight(config, {
+        query: async () => {
+          queried = true;
+          throw new Error("query must remain unreachable");
+        },
+      }),
+    ).resolves.toEqual({ status: "disabled", mismatches: [] });
+    expect(queried).toBe(false);
+  });
+
+  test("report mode ignores malformed expectations and sanitizes query failures", async () => {
+    const config = readDatabaseIdentityConfig({
+      DATABASE_IDENTITY_ENVIRONMENT: "staging",
+      DATABASE_IDENTITY_GATE_MODE: "report",
+      DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: "raw-cluster-identity",
+      DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: "raw-authority-identity",
+    });
+    expect(config).toEqual({
+      environment: "staging",
+      mode: "report",
+      expectedClusterSha256: undefined,
+      expectedAuthoritySha256: undefined,
+      ignoredExpectedDigests: ["cluster", "authority"],
+    });
+    const result = await runDatabaseIdentityPreflight(config, {
+      query: async () => {
+        throw new Error(
+          "connection to raw-host as raw-role for raw-database failed",
+        );
+      },
+    });
+    expect(result).toEqual({ status: "unavailable", mismatches: [] });
+    expect(JSON.stringify(result)).not.toContain("raw-");
+  });
+
   test("enforce mode requires both authorities and fails closed on mismatch", async () => {
     expect(() =>
       readDatabaseIdentityConfig({
@@ -130,8 +187,9 @@ describe("database identity preflight", () => {
     expect(() =>
       readDatabaseIdentityConfig({
         DATABASE_IDENTITY_ENVIRONMENT: "staging",
-        DATABASE_IDENTITY_GATE_MODE: "report",
+        DATABASE_IDENTITY_GATE_MODE: "enforce",
         DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: "not-a-digest",
+        DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: "1".repeat(64),
       }),
     ).toThrow("must be a lowercase SHA-256 digest");
   });
