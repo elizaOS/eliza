@@ -16,7 +16,15 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = FailoverRequestSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = FailoverRequestSchema.parse(rawBody);
     if (body.claiming_pod === body.dead_pod) {
       return c.json({ error: "cannot_claim_self" }, 400);
     }
