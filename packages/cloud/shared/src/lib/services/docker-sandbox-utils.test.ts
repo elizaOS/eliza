@@ -608,6 +608,41 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
+  test("rejects raw control bytes before remote mutation and permits later recovery", async () => {
+    const fs = await import("node:fs");
+    const invalidOverrides = [
+      "operator-key\0suffix",
+      "operator-key\x7fsuffix",
+      "operator-key\nsuffix",
+      "operator-key\rsuffix",
+      "operator-key\tsuffix",
+      "operator-key\x01suffix",
+    ];
+
+    for (const invalidOverride of invalidOverrides) {
+      const volume = await makeVolume();
+      let remoteCalls = 0;
+      const trackedExec: typeof shExecStdin = async (...args) => {
+        remoteCalls += 1;
+        return shExecStdin(...args);
+      };
+
+      await expect(
+        ensureVolumeVaultPassphrase(trackedExec, volume, 5_000, invalidOverride),
+      ).rejects.toThrow(/refusing to seed/);
+      expect(remoteCalls).toBe(0);
+      expect(fs.readdirSync(volume)).toEqual([]);
+
+      await expect(
+        ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "valid-operator-key"),
+      ).resolves.toBeUndefined();
+      expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8")).toBe(
+        "valid-operator-key",
+      );
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
+
   test("an empty or whitespace-only override falls through to the volume lifecycle", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
@@ -627,22 +662,25 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
-  test("fails closed without rewriting a persisted key containing a NUL byte", async () => {
+  test("fails closed without rewriting persisted keys containing control bytes", async () => {
     const fs = await import("node:fs");
-    const volume = await makeVolume();
-    const keyPath = getVolumeVaultPassphrasePath(volume);
-    const corruptKey = Buffer.concat([
-      Buffer.from("operator-key"),
-      Buffer.from([0]),
-      Buffer.from("suffix"),
-    ]);
-    fs.writeFileSync(keyPath, corruptKey);
+    for (const controlByte of [0x00, 0x7f, 0x0a, 0x0d, 0x09, 0x01]) {
+      const volume = await makeVolume();
+      const keyPath = getVolumeVaultPassphrasePath(volume);
+      const corruptKey = Buffer.concat([
+        Buffer.from("operator-key"),
+        Buffer.from([controlByte]),
+        Buffer.from("suffix"),
+      ]);
+      fs.writeFileSync(keyPath, corruptKey);
 
-    await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
-      /persisted vault passphrase.*unusable/,
-    );
-    expect(fs.readFileSync(keyPath)).toEqual(corruptKey);
-    fs.rmSync(volume, { recursive: true, force: true });
+      await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
+        /persisted vault passphrase.*unusable/,
+      );
+      expect(fs.readFileSync(keyPath)).toEqual(corruptKey);
+      expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
   });
 
   test("the durable state root lands on the /root/.eliza mount", () => {
