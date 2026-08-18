@@ -10,9 +10,15 @@ export function formatTerminalLink(
   url: string,
   opts?: { fallback?: string; force?: boolean },
 ): string {
-  const safeLabel = label.replaceAll("\u001b", "");
-  const safeUrl = url.replaceAll("\u001b", "");
-  const allow = opts?.force ?? Boolean(process.stdout.isTTY);
+  const safeLabel =
+    typeof label === "string"
+      ? label.replaceAll("\u001b", "")
+      : String(label ?? "");
+  const safeUrl =
+    typeof url === "string" ? url.replaceAll("\u001b", "") : String(url ?? "");
+  const isTty =
+    typeof process !== "undefined" && Boolean(process.stdout?.isTTY);
+  const allow = opts?.force ?? isTty;
   if (!allow) {
     return opts?.fallback ?? `${safeLabel} (${safeUrl})`;
   }
@@ -24,12 +30,13 @@ export function formatDocsLink(
   label?: string,
   opts?: { fallback?: string; force?: boolean },
 ): string {
-  const trimmed = path.trim();
+  const rawPath = typeof path === "string" ? path : String(path ?? "");
+  const trimmed = rawPath.trim();
   const url = trimmed.startsWith("http")
     ? trimmed
     : `${DOCS_ROOT}${trimmed.startsWith("/") ? trimmed : `/${trimmed}`}`;
   return formatTerminalLink(label ?? url, url, {
-    fallback: opts?.fallback ?? url,
+    fallback: opts?.fallback ?? (label ? undefined : url),
     force: opts?.force,
   });
 }
