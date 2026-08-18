@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import {
   compareVoiceModelSemver,
   VOICE_MODEL_VERSIONS,
+  voiceModelAssetUrl,
 } from "../shared/src/local-inference/voice-models.ts";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -48,15 +49,19 @@ export function validateProductAsrRelease(versions = VOICE_MODEL_VERSIONS) {
     errors.push(`ASR ${release.version} has no downloadable GGUF assets.`);
   }
 
-  const hasModel = release.ggufAssets.some(
+  const gemmaAsrAssets = release.ggufAssets.filter((asset) => {
+    const filename = asset.filename.toLowerCase();
+    return filename.startsWith("voice/asr/") && filename.includes("gemma");
+  });
+  const hasModel = gemmaAsrAssets.some(
     (asset) => !asset.filename.toLowerCase().includes("mmproj"),
   );
-  const hasProjector = release.ggufAssets.some((asset) =>
+  const hasProjector = gemmaAsrAssets.some((asset) =>
     asset.filename.toLowerCase().includes("mmproj"),
   );
   if (!hasModel || !hasProjector) {
     errors.push(
-      `ASR ${release.version} must publish both a model and an mmproj projector.`,
+      `ASR ${release.version} must publish both a Gemma ASR model and its mmproj projector under voice/asr/.`,
     );
   }
 
@@ -72,8 +77,83 @@ export function validateProductAsrRelease(versions = VOICE_MODEL_VERSIONS) {
   return { release, errors };
 }
 
-export function main({ githubAnnotations = false } = {}) {
-  const result = validateProductAsrRelease();
+function unquoteHeader(value) {
+  return value?.trim().replace(/^W\//, "").replace(/^"|"$/g, "") ?? null;
+}
+
+/**
+ * Resolve every catalog asset through Hugging Face without following the LFS
+ * redirect. The resolver response is the publication authority: it binds the
+ * requested revision to the repository commit and exposes the linked object's
+ * digest and byte size without downloading multi-gigabyte model weights.
+ */
+export async function verifyProductAsrReleaseAuthority(
+  versions = VOICE_MODEL_VERSIONS,
+  { fetchFn = fetch, timeoutMs = 30_000 } = {},
+) {
+  const result = validateProductAsrRelease(versions);
+  if (!result.release || result.errors.length > 0) return result;
+
+  const release = result.release;
+  const remoteErrors = [];
+  await Promise.all(
+    release.ggufAssets.map(async (asset) => {
+      const url = voiceModelAssetUrl(release, asset);
+      let response;
+      try {
+        response = await fetchFn(url, {
+          method: "HEAD",
+          redirect: "manual",
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        remoteErrors.push(
+          `${asset.filename} could not be resolved at the pinned Hugging Face revision: ${error instanceof Error ? error.message : String(error)}.`,
+        );
+        return;
+      }
+
+      if (response.status < 200 || response.status >= 400) {
+        remoteErrors.push(
+          `${asset.filename} is not downloadable at the pinned Hugging Face revision (HTTP ${response.status}).`,
+        );
+        return;
+      }
+
+      const repositoryCommit = response.headers.get("x-repo-commit");
+      if (repositoryCommit !== release.hfRevision) {
+        remoteErrors.push(
+          `${asset.filename} resolved from revision ${JSON.stringify(repositoryCommit)}, expected ${release.hfRevision}.`,
+        );
+      }
+
+      const linkedDigest = unquoteHeader(response.headers.get("x-linked-etag"));
+      if (linkedDigest !== asset.sha256) {
+        remoteErrors.push(
+          `${asset.filename} resolver sha256 ${JSON.stringify(linkedDigest)} does not match the catalog pin.`,
+        );
+      }
+
+      const linkedSize = Number(response.headers.get("x-linked-size"));
+      if (!Number.isSafeInteger(linkedSize) || linkedSize !== asset.sizeBytes) {
+        remoteErrors.push(
+          `${asset.filename} resolver size ${JSON.stringify(response.headers.get("x-linked-size"))} does not match the catalog pin ${asset.sizeBytes}.`,
+        );
+      }
+
+      if (response.status >= 300 && !response.headers.get("location")) {
+        remoteErrors.push(
+          `${asset.filename} resolver returned HTTP ${response.status} without a download location.`,
+        );
+      }
+    }),
+  );
+
+  return { release, errors: [...result.errors, ...remoteErrors] };
+}
+
+export async function main({ githubAnnotations = false } = {}) {
+  const result = await verifyProductAsrReleaseAuthority();
   if (result.errors.length > 0) {
     for (const message of result.errors) {
       if (githubAnnotations) {
@@ -100,7 +180,7 @@ if (
   process.argv[1] &&
   pathToFileURL(process.argv[1]).href === import.meta.url
 ) {
-  process.exitCode = main({
+  process.exitCode = await main({
     githubAnnotations: process.argv.includes("--github-annotations"),
   });
 }

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   latestDeclaredAsrRelease,
   validateProductAsrRelease,
+  verifyProductAsrReleaseAuthority,
 } from "../verify-voice-product-asr-release.mjs";
 
 const SHA_A = "a".repeat(64);
@@ -74,13 +75,79 @@ describe("product ASR release authority", () => {
         expect.stringContaining("immutable 40-character"),
         expect.stringContaining("still declares missing assets"),
         expect.stringContaining("no downloadable GGUF assets"),
-        expect.stringContaining("both a model and an mmproj projector"),
+        expect.stringContaining("Gemma ASR model and its mmproj projector"),
       ]),
     );
   });
 
   it("accepts an immutable, size- and hash-pinned Gemma model/projector pair", () => {
     expect(validateProductAsrRelease([release()]).errors).toEqual([]);
+  });
+
+  it("rejects plausible catalog pins when Hugging Face does not bind them to real assets", async () => {
+    const result = await verifyProductAsrReleaseAuthority([release()], {
+      fetchFn: async () =>
+        new Response(null, {
+          status: 404,
+          headers: { "x-repo-commit": REVISION },
+        }),
+    });
+
+    expect(result.errors).toHaveLength(2);
+    expect(
+      result.errors.every((error) => error.includes("not downloadable")),
+    ).toBe(true);
+  });
+
+  it("requires resolver commit, digest, size, and download-location authority", async () => {
+    const published = release();
+    const assets = published.ggufAssets as Array<{
+      filename: string;
+      sha256: string;
+      sizeBytes: number;
+    }>;
+    const result = await verifyProductAsrReleaseAuthority([published], {
+      fetchFn: async (url: string | URL | Request) => {
+        const asset = assets.find(({ filename }) =>
+          String(url).endsWith(filename),
+        );
+        if (!asset) throw new Error("unexpected asset URL");
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "https://cdn.example.invalid/immutable-object",
+            "x-linked-etag": `"${asset.sha256}"`,
+            "x-linked-size": String(asset.sizeBytes),
+            "x-repo-commit": REVISION,
+          },
+        });
+      },
+    });
+
+    expect(result.errors).toEqual([]);
+  });
+
+  it("rejects generic model/projector pairs that are not declared as Gemma ASR", () => {
+    const generic = release({
+      ggufAssets: [
+        {
+          filename: "voice/asr/generic-model.gguf",
+          sha256: SHA_A,
+          sizeBytes: 1_000,
+          quant: "q4_0",
+        },
+        {
+          filename: "voice/asr/generic-mmproj.gguf",
+          sha256: SHA_B,
+          sizeBytes: 200,
+          quant: "f16",
+        },
+      ],
+    });
+
+    expect(validateProductAsrRelease([generic]).errors).toContainEqual(
+      expect.stringContaining("Gemma ASR model"),
+    );
   });
 
   it("keeps Voice Live E2E red while explicitly labeling compatibility evidence", () => {
