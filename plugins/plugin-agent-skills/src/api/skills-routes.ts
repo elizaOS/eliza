@@ -212,9 +212,19 @@ export function sanitizeScaffoldDescription(description: string): string {
  * into parsing embedded newlines as extra frontmatter keys. The parser decodes
  * the same literal via `decodeFrontmatterScalarString`, so the stored
  * description round-trips back to `sanitizeScaffoldDescription(input)` exactly.
+ *
+ * `JSON.stringify` leaves U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR
+ * literal, but JavaScript regexes treat both as line terminators — so the
+ * discovery scan's single-line `description:` match (`scanSkillsDir`) would
+ * truncate a scalar containing either character and disagree with the canonical
+ * parser. They are escaped to their `\uXXXX` forms, which remain valid JSON
+ * (and therefore YAML double-quoted) escapes that `decodeFrontmatterScalarString`
+ * decodes back to the exact source character.
  */
 export function serializeScaffoldDescription(description: string): string {
-  return JSON.stringify(sanitizeScaffoldDescription(description));
+  return JSON.stringify(sanitizeScaffoldDescription(description))
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 function validateSkillId(
