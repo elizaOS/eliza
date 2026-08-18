@@ -186,6 +186,22 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 				steps: [
 					{
 						stepId: "s0",
+						semanticStages: [
+							{
+								schemaVersion: 1,
+								stageId: "search-1",
+								kind: "toolSearch",
+								startedAt: 501,
+								endedAt: 503,
+								latencyMs: 2,
+								payload: {
+									toolSearch: {
+										query: { candidateActions: ["REPLY"] },
+										results: [{ name: "REPLY", rank: 1, score: 1 }],
+									},
+								},
+							},
+						],
 						llmCalls: [
 							{
 								callId: "c0",
@@ -237,6 +253,10 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			llmCalls: Array<{ stepType: string }>;
 			providerAccesses: unknown[];
 			toolEvents: Array<{ actionName: string; success: boolean }>;
+			semanticStages: Array<{
+				stageId: string;
+				payload: Record<string, unknown>;
+			}>;
 		};
 		expect(b.trajectory).toMatchObject({
 			id: "abc",
@@ -257,6 +277,17 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			success: true,
 			type: "tool_result",
 		});
+		expect(b.semanticStages).toMatchObject([
+			{
+				stageId: "search-1",
+				payload: {
+					toolSearch: {
+						query: { candidateActions: ["REPLY"] },
+						results: [{ name: "REPLY", rank: 1 }],
+					},
+				},
+			},
+		]);
 	});
 
 	it("returns LLM-only detail without fabricating a tool event", async () => {
