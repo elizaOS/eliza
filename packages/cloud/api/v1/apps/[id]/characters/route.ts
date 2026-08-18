@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 apps id characters route traffic with route-local auth expectations.
+/** Handles character associations for an authenticated cloud application. */
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -163,7 +163,16 @@ async function __hono_PUT(
       );
     }
 
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json(
+        { success: false, error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
     const parsedBody = LinkCharactersBody.safeParse(rawBody);
     if (!parsedBody.success) {
       return Response.json(

@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 reports bug route traffic with route-local auth expectations.
+/** Validates and delivers authenticated client bug reports. */
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
 /**
  * POST /api/v1/reports/bug
@@ -58,7 +58,13 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const validated = bugReportSchema.parse(body);
 
     const reportId = `rpt_${crypto.randomUUID()}`;

@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 apps id monetization route traffic with route-local auth expectations.
+/** Handles monetization settings for an authenticated cloud application. */
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -116,7 +116,16 @@ async function __hono_PUT(
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json(
+        { success: false, error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
     const validationResult = UpdateMonetizationSchema.safeParse(body);
 
     if (!validationResult.success) {
