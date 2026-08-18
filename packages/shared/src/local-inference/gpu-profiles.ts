@@ -242,7 +242,10 @@ export const GPU_PROFILE_IDS: ReadonlyArray<GpuProfileId> = [
  * The patterns are intentionally strict to avoid mis-classifying a 3080
  * as a 3090, or an A100 as a 4090.
  */
-export function matchGpuProfile(gpuName: string): GpuProfileId | null {
+export function matchGpuProfile(
+  gpuName: string | null | undefined,
+): GpuProfileId | null {
+  if (typeof gpuName !== "string") return null;
   const n = gpuName.toLowerCase();
   if (n.includes("h200")) return "h200";
   if (n.includes("rtx 5090") || n.includes("rtx5090")) return "rtx-5090";
@@ -260,7 +263,10 @@ export function matchGpuProfile(gpuName: string): GpuProfileId | null {
  * cards have different driver overheads (Windows display drivers steal
  * ~1 GiB before workloads even start; H200 SXM has none).
  */
-export function reservedHeadroomGb(profile: GpuProfile): number {
+export function reservedHeadroomGb(
+  profile: GpuProfile | null | undefined,
+): number {
+  if (!profile || typeof profile !== "object") return 3;
   switch (profile.id) {
     case "rtx-3090":
       return 3;
@@ -270,5 +276,7 @@ export function reservedHeadroomGb(profile: GpuProfile): number {
       return 4;
     case "h200":
       return 6;
+    default:
+      return 3;
   }
 }
