@@ -618,6 +618,52 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     });
     expect(detent()).toBe("full");
   });
+
+  it("steps full to half from the terminal touch track when WebKit loses the pointer release", () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.touchStart(g, { touches: [{ clientY: 300 }] });
+    fireEvent.touchMove(g, { touches: [{ clientY: 560 }] });
+    fireEvent.touchEnd(g, { changedTouches: [{ clientY: 560 }] });
+
+    expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
+  });
+
+  it("does not double-step when pointer release settles before touchend", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.touchStart(g, { touches: [{ clientY: 300 }] });
+    flick(g, 300, 560); // pointer authority: full → half
+    expect(detent()).toBe("half");
+    fireEvent.touchEnd(g, { changedTouches: [{ clientY: 560 }] });
+
+    expect(detent()).toBe("half");
+  });
+
+  it("ignores terminal touch fallback below the pull floor and outside full", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    const halfGrabber = grabber();
+    fireEvent.touchStart(halfGrabber, { touches: [{ clientY: 300 }] });
+    fireEvent.touchEnd(halfGrabber, { changedTouches: [{ clientY: 560 }] });
+    expect(detent()).toBe("half");
+
+    flick(grabber(), 400, 300); // half → full
+    const fullGrabber = grabber();
+    fireEvent.touchStart(fullGrabber, { touches: [{ clientY: 300 }] });
+    fireEvent.touchEnd(fullGrabber, { changedTouches: [{ clientY: 330 }] });
+    expect(detent()).toBe("full");
+  });
 });
 
 describe("thread-less grabber tap (matrix: INPUT tap row)", () => {

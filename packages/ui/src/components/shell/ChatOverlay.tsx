@@ -356,12 +356,12 @@ const RESTORE_UNMAX_SLOP_PX = 8;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
-// WebKit can end a captured touch track with `pointercancel` after the finger
-// has already driven the sheet (observed through the real XCUITest pipeline).
-// Only the FULL→HALF recovery uses the completed track: a cancellation below
-// the shared pull-distance floor remains a normal snap-back, as do every other
-// detent and direction.
-const CANCELED_FULL_STEP_MIN_TRAVEL_PX = 56;
+// WebKit can interrupt or lose a captured pointer release after the finger has
+// already driven the sheet (observed through the real XCUITest pipeline). Only
+// the FULL→HALF recovery uses the completed touch track: travel below the shared
+// pull-distance floor remains a normal snap-back, as do every other detent and
+// direction.
+const INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX = 56;
 // Over-pull past the FULL detent morphs the inset sheet to edge-to-edge
 // full-bleed across the REAL pixel gap between the two solved heights
 // (`fullPanelMaxH - insetPanelMaxH`, see maxOverPull) — 1:1 with the finger,
@@ -943,6 +943,7 @@ function SheetGrabber({
   open,
   onOpen,
   onClose,
+  onTerminalTouchPullDown,
   binding,
   breathing,
   opacity,
@@ -952,6 +953,7 @@ function SheetGrabber({
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  onTerminalTouchPullDown: () => void;
   binding: PullGestureBinding;
   breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
@@ -965,6 +967,12 @@ function SheetGrabber({
   locked?: boolean;
 }): React.JSX.Element {
   const disabled = pilled || locked;
+  const touchStartYRef = React.useRef<number | null>(null);
+  const touchLastYRef = React.useRef<number | null>(null);
+  const resetTouchTrack = React.useCallback(() => {
+    touchStartYRef.current = null;
+    touchLastYRef.current = null;
+  }, []);
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -998,10 +1006,40 @@ function SheetGrabber({
       // gesture's compatibility click. Without suppressing that native follow-
       // up, the click re-hit-tests onto the composer now underneath the release
       // coordinate and focuses it; the next handle tap then dismisses the
-      // keyboard instead of closing the sheet. Pointer events remain the sole
-      // touch authority, matching PillHandle's moving-target contract below.
+      // keyboard instead of closing the sheet. Pointer events remain the
+      // primary touch authority; the terminal TouchEvent below is only the
+      // guarded recovery when WebKit loses that captured pointer release.
+      onTouchStart={(e) => {
+        if (e.touches.length !== 1) {
+          resetTouchTrack();
+          return;
+        }
+        const y = e.touches[0]?.clientY ?? null;
+        touchStartYRef.current = y;
+        touchLastYRef.current = y;
+      }}
+      onTouchMove={(e) => {
+        if (e.touches.length !== 1) return;
+        touchLastYRef.current = e.touches[0]?.clientY ?? touchLastYRef.current;
+      }}
+      onTouchCancel={resetTouchTrack}
       onTouchEnd={(e) => {
         if (e.cancelable) e.preventDefault();
+        const startY = touchStartYRef.current;
+        const endY =
+          e.changedTouches[0]?.clientY ?? touchLastYRef.current ?? startY;
+        resetTouchTrack();
+        if (
+          startY != null &&
+          endY != null &&
+          endY - startY >= INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX
+        ) {
+          // WKWebView/XCUITest can preserve the terminal TouchEvent after its
+          // captured pointer release was lost. This is a fallback only: the
+          // parent checks the synchronous resting mode, so a normal pointerup
+          // that already stepped FULL→HALF cannot step a second time here.
+          onTerminalTouchPullDown();
+        }
       }}
       {...binding}
       onPointerDown={(event) => {
@@ -5185,6 +5223,19 @@ export function ChatOverlay({
     maximizeFromPull,
   ]);
 
+  const stepFullToHalfFromInterruptedTouch = React.useCallback(() => {
+    if (
+      pinnedOpen ||
+      pilled ||
+      pillCommittedMidDragRef.current ||
+      modeRef.current !== "full"
+    ) {
+      return;
+    }
+    inputRef.current?.blur();
+    goToDetent("half");
+  }, [pinnedOpen, pilled, goToDetent]);
+
   const pullBinding: PullGestureBinding = usePullGesture({
     preventTouchCompatibilityEvents: true,
     onStart: resetPullPeak,
@@ -5299,10 +5350,9 @@ export function ChatOverlay({
         !pilled &&
         !pillCommittedMidDragRef.current &&
         modeRef.current === "full" &&
-        dragLastOffsetRef.current <= -CANCELED_FULL_STEP_MIN_TRAVEL_PX
+        dragLastOffsetRef.current <= -INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX
       ) {
-        inputRef.current?.blur();
-        goToDetent("half");
+        stepFullToHalfFromInterruptedTouch();
       }
     },
     // A tap (no drag) on the handle. A tap on the PILL brings the input back —
@@ -5782,6 +5832,7 @@ export function ChatOverlay({
             open={sheetOpen}
             onOpen={openFromGrabber}
             onClose={collapse}
+            onTerminalTouchPullDown={stepFullToHalfFromInterruptedTouch}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
