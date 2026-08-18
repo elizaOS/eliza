@@ -13,10 +13,10 @@ import { readFile } from "node:fs/promises";
 import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
-import { advertisePort } from "../../scripts/e2e-ports.mjs";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
+import { publishBoundDeviceE2ePort } from "./lib/device-e2e-port-advertisement.ts";
 
 const deviceE2eUploadImageRoute = {
   ...backgroundUploadImageRoute,
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
   });
 
   const portFile = process.env.ELIZA_E2E_PORT_FILE?.trim();
-  if (portFile) advertisePort(portFile, server.port);
+  publishBoundDeviceE2ePort(server.port, portFile);
 
   console.log(
     `[device-e2e-host-agent] real API up on :${server.port} in ${Date.now() - t0}ms`,

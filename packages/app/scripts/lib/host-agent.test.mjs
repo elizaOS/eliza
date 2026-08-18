@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS,
   DEFAULT_READY_ATTEMPTS,
   DEFAULT_READY_DELAY_MS,
   hostAgentApiBase,
@@ -17,6 +18,7 @@ import {
   parseNonNegativeSafeInteger,
   parsePort,
   parsePositiveSafeInteger,
+  resolveAdvertisementWaitOptions,
   resolveReadyOptions,
   startDeviceE2eHostAgent,
 } from "./host-agent.mjs";
@@ -213,6 +215,54 @@ describe("host-agent helper", () => {
     ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 
+  it("derives short and extended advertisement timeouts from readiness", () => {
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: 2,
+        readyDelayMs: 20,
+      }),
+    ).toEqual({ timeoutMs: 40, pollIntervalMs: 40 });
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: DEFAULT_READY_ATTEMPTS,
+        readyDelayMs: DEFAULT_READY_DELAY_MS,
+      }),
+    ).toEqual({
+      timeoutMs: 180_000,
+      pollIntervalMs: DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS,
+    });
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: 3,
+        readyDelayMs: 0,
+      }),
+    ).toEqual({ timeoutMs: 3, pollIntervalMs: 3 });
+    expect(() =>
+      resolveAdvertisementWaitOptions({
+        readyAttempts: Number.MAX_SAFE_INTEGER,
+        readyDelayMs: 2,
+      }),
+    ).toThrow(/readiness budget/);
+  });
+
+  it("uses a short readiness budget when a live child never advertises", async () => {
+    const artifactDir = makeTmpDir();
+    const startedAt = Date.now();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        readyAttempts: 2,
+        readyDelayMs: 20,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1_000)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/timed out after 40ms/);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    fs.rmSync(path.join(artifactDir, "host-agent.log"));
+  });
+
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
     const artifactDir = makeTmpDir();
     await expect(
@@ -299,8 +349,8 @@ describe("host-agent helper", () => {
           repoRoot: process.cwd(),
           artifactDir: makeTmpDir(),
           requestedPort: port,
-          readyAttempts: 5,
-          readyDelayMs: 10,
+          readyAttempts: 50,
+          readyDelayMs: 20,
           command: process.execPath,
           args: ["-e", fakeHostAgentScript()],
           env: {},

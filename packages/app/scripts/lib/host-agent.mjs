@@ -13,6 +13,7 @@ export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
 export const DEFAULT_READY_ATTEMPTS = 90;
 export const DEFAULT_READY_DELAY_MS = 2000;
+export const DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS = 100;
 /** Node clamps setTimeout delays above this value to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -114,6 +115,27 @@ export function resolveReadyOptions(options = {}) {
       "host-agent readyDelayMs",
       { max: MAX_TIMER_DELAY_MS },
     ),
+  };
+}
+
+/**
+ * Give port advertisement the same validated wall-clock budget as readiness.
+ * A zero-delay readiness loop still receives one millisecond per attempt so
+ * process startup is not converted into an immediate timeout.
+ */
+export function resolveAdvertisementWaitOptions({
+  readyAttempts,
+  readyDelayMs,
+}) {
+  const timeoutMs = readyAttempts * Math.max(readyDelayMs, 1);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error(
+      "Invalid host-agent readiness budget: readyAttempts * readyDelayMs must be a positive safe integer duration.",
+    );
+  }
+  return {
+    timeoutMs,
+    pollIntervalMs: Math.min(DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS, timeoutMs),
   };
 }
 
@@ -226,6 +248,7 @@ export async function startDeviceE2eHostAgent({
     readyDelayMs,
     env: process.env,
   });
+  const advertisementWait = resolveAdvertisementWaitOptions(resolvedReady);
 
   const explicitPort =
     requestedPort === null || requestedPort === undefined
@@ -320,7 +343,7 @@ export async function startDeviceE2eHostAgent({
 
   try {
     const port = await Promise.race([
-      waitForAdvertisedPort(portFile, { child }),
+      waitForAdvertisedPort(portFile, { child, ...advertisementWait }),
       new Promise((_, reject) => {
         child.once("error", reject);
       }),
