@@ -368,7 +368,7 @@ function ChatOverlayShell() {
       reportNativeWindowSize(stageSize);
       return;
     }
-    reportNativeWindowSize(
+    const size =
       windowSizeClass === "input"
         ? {
             width: Math.max(
@@ -380,14 +380,12 @@ function ChatOverlayShell() {
         : {
             width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
             height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-          },
-    );
-    if (windowSizeClass === "resting") {
-      reportNativeInteractiveSize({
-        width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-        height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-      });
-    }
+          };
+    // Composer-only presentation fills its fitted native frame just like the
+    // resting pill. Publish both authorities on the same state edge so the
+    // first click cannot race a later ResizeObserver material measurement.
+    reportNativeWindowSize(size);
+    reportNativeInteractiveSize(size);
   }, [
     authSize,
     controller?.authGate.gated,

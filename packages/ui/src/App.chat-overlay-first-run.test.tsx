@@ -414,15 +414,37 @@ describe("App chat-overlay first-run composition", () => {
       expect(overlayHarness.sizeClass).toBeTypeOf("function"),
     );
 
-    act(() => overlayHarness.sizeClass?.("input"));
+    act(() => overlayHarness.sizeClass?.("resting"));
     await waitFor(() =>
       expect(desktopBridgeMock.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          rpcMethod: "desktopSetBottomBarSize",
-          params: expect.objectContaining({ height: 56 }),
+          rpcMethod: "desktopSetBottomBarInteractiveSize",
+          params: { width: 96, height: 56 },
         }),
       ),
     );
+    desktopBridgeMock.request.mockClear();
+    act(() => overlayHarness.sizeClass?.("input"));
+    await waitFor(() => {
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarSize",
+          params: { width: 576, height: 56 },
+        }),
+      );
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarInteractiveSize",
+          params: { width: 576, height: 56 },
+        }),
+      );
+    });
+    const inputSizeRequests = desktopBridgeMock.request.mock.calls.filter(
+      ([request]) =>
+        request.rpcMethod === "desktopSetBottomBarSize" ||
+        request.rpcMethod === "desktopSetBottomBarInteractiveSize",
+    );
+    expect(inputSizeRequests).toHaveLength(2);
     const staleInputMeasurement = overlayHarness.materialSize;
     desktopBridgeMock.request.mockClear();
 
@@ -437,12 +459,12 @@ describe("App chat-overlay first-run composition", () => {
     );
     desktopBridgeMock.request.mockClear();
 
-    act(() => staleInputMeasurement?.({ width: 576, height: 56 }));
+    act(() => staleInputMeasurement?.({ width: 500, height: 56 }));
     await waitFor(() =>
       expect(desktopBridgeMock.request).toHaveBeenCalledWith(
         expect.objectContaining({
           rpcMethod: "desktopSetBottomBarInteractiveSize",
-          params: { width: 576, height: 56 },
+          params: { width: 500, height: 56 },
         }),
       ),
     );
