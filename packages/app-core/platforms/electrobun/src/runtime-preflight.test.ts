@@ -15,6 +15,7 @@ type EndpointResponse = {
   status?: number;
   body: string;
   contentType?: string;
+  requiredBearer?: string;
 };
 
 function sendResponse(res: ServerResponse, response: EndpointResponse): void {
@@ -32,9 +33,17 @@ async function withProbeServer(
   const server = createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
     requests.push(pathname);
+    const endpoint = endpoints[pathname];
+    if (
+      endpoint?.requiredBearer &&
+      req.headers.authorization !== `Bearer ${endpoint.requiredBearer}`
+    ) {
+      sendResponse(res, { status: 401, body: '{"error":"unauthorized"}' });
+      return;
+    }
     sendResponse(
       res,
-      endpoints[pathname] ?? { status: 404, body: '{"error":"not_found"}' },
+      endpoint ?? { status: 404, body: '{"error":"not_found"}' },
     );
   });
 
@@ -73,6 +82,24 @@ describe("probeExternalAgent", () => {
       await expect(probeExternalAgent(`${base}/`)).resolves.toBe(true);
       expect(requests).toEqual(["/api/health", "/api/status"]);
     });
+  });
+
+  it("authenticates the protected status contract for a persisted agent", async () => {
+    await withProbeServer(
+      {
+        ...readyElizaEndpoints,
+        "/api/status": {
+          ...readyElizaEndpoints["/api/status"],
+          requiredBearer: "remote-secret",
+        },
+      },
+      async (base, requests) => {
+        await expect(probeExternalAgent(base, "remote-secret")).resolves.toBe(
+          true,
+        );
+        expect(requests).toEqual(["/api/health", "/api/status"]);
+      },
+    );
   });
 
   it.each([
@@ -135,6 +162,24 @@ describe("resolveDesktopRuntimeForBoot", () => {
     expect(result.mode).toBe("external");
     expect(result.externalApi.base).toBe("http://127.0.0.1:2250");
     expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it("passes only the persisted target token to the readiness probe", async () => {
+    const probe = vi.fn(async () => true);
+    const result = await resolveDesktopRuntimeForBoot({
+      env: {},
+      deployment: {
+        ...remoteDeployment,
+        remoteAccessToken: " remote-secret ",
+      },
+      probe,
+    });
+
+    expect(result.mode).toBe("external");
+    expect(probe).toHaveBeenCalledWith(
+      "http://127.0.0.1:2250",
+      "remote-secret",
+    );
   });
 
   it("recovers an unreachable persisted remote target to embedded local", async () => {

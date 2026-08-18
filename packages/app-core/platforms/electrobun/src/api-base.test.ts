@@ -203,12 +203,14 @@ describe("readPersistedDeployment — eliza.json reader", () => {
           runtime: "cloud",
           provider: "elizacloud",
           remoteApiBase: CLOUD_AGENT_URL,
+          remoteAccessToken: " remote-secret ",
         },
       }),
     );
     expect(readPersistedDeployment({ ELIZA_CONFIG_PATH: file })).toEqual({
       runtime: "cloud",
       remoteApiBase: CLOUD_AGENT_URL,
+      remoteAccessToken: "remote-secret",
     });
   });
 
@@ -221,6 +223,7 @@ describe("readPersistedDeployment — eliza.json reader", () => {
     expect(readPersistedDeployment({ ELIZA_CONFIG_PATH: file })).toEqual({
       runtime: "local",
       remoteApiBase: null,
+      remoteAccessToken: null,
     });
   });
 
