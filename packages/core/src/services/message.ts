@@ -9223,11 +9223,32 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
-		) =>
-			timeInferenceSpan("message:planner", () =>
+		) => {
+			// Multi-intent turns list Stage 1's declared legs as an explicit
+			// context instruction. Small planner models complete leg one and
+			// finish ("delete and recreate my reminder" deleted, never
+			// recreated — live 2026-08-18, twice); naming every declared leg in
+			// the context makes an early FINISH a visible contract break for
+			// the planner AND the evaluator instead of a judgment call.
+			const declaredIntents = messageHandler.plan.intents ?? [];
+			const contextWithIntents =
+				declaredIntents.length >= 2
+					? appendContextEvent(loopContext, {
+							id: "stage1-declared-intents",
+							type: "instruction",
+							source: "message-service",
+							createdAt: Date.now(),
+							content: [
+								"stage1_declared_intents:",
+								...declaredIntents.map((intent) => `- ${intent}`),
+								"Serve EVERY declared intent above before finishing, or state plainly in the final reply which ones were not done and why. Finishing after only the first is a broken promise.",
+							].join("\n"),
+						})
+					: loopContext;
+			return timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
 					runtime: plannerRuntime,
-					context: loopContext,
+					context: contextWithIntents,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -9339,6 +9360,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						),
 				}),
 			);
+		};
 
 		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
