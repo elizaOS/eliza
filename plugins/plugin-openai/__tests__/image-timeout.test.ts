@@ -4,10 +4,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  handleImageDescriptionWithFetch,
-  handleImageGenerationWithFetch,
-} from "../models/image";
+import { handleImageDescriptionWithFetch, handleImageGenerationWithFetch } from "../models/image";
 
 function createRuntime(): IAgentRuntime {
   return {
@@ -39,8 +36,8 @@ describe("OpenAI image request deadlines", () => {
         createRuntime(),
         { prompt: "draw a bounded request" },
         stallUntilAborted(),
-        10,
-      ),
+        10
+      )
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -53,8 +50,8 @@ describe("OpenAI image request deadlines", () => {
         createRuntime(),
         { prompt: "draw a bounded request" },
         fetchImpl,
-        1_000,
-      ),
+        1_000
+      )
     ).rejects.toThrow("quota exceeded");
   });
 
@@ -71,7 +68,7 @@ describe("OpenAI image request deadlines", () => {
       createRuntime(),
       { prompt: "draw a bounded request" },
       fetchImpl,
-      1_000,
+      1_000
     );
 
     expect(signals).toHaveLength(1);
@@ -87,8 +84,8 @@ describe("OpenAI image request deadlines", () => {
         createRuntime(),
         "https://images.invalid/prove.png",
         stallUntilAborted(),
-        10,
-      ),
+        10
+      )
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -101,8 +98,8 @@ describe("OpenAI image request deadlines", () => {
         createRuntime(),
         "https://images.invalid/prove.png",
         fetchImpl,
-        1_000,
-      ),
+        1_000
+      )
     ).rejects.toThrow("vision quota exceeded");
   });
 
@@ -119,7 +116,7 @@ describe("OpenAI image request deadlines", () => {
       createRuntime(),
       "https://images.invalid/prove.png",
       fetchImpl,
-      1_000,
+      1_000
     );
 
     expect(signals).toHaveLength(1);
