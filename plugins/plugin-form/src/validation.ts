@@ -275,6 +275,35 @@ function validateEmail(
 }
 
 /**
+ * Strictly parse a string as a number, rejecting trailing garbage.
+ *
+ * WHY strict full-match instead of parseFloat: parseFloat stops at the
+ * first non-numeric character, so "50abc" silently becomes 50, "0x10"
+ * becomes 0, and "1.2.3" becomes 1.2. Those values pass validation and
+ * get stored as validated answers derived from dropped garbage, which
+ * violates the boundary-validation contract (validate untrusted input
+ * once). Requiring the whole comma/currency-stripped string to match a
+ * numeric shape forces the input to be a number or nothing.
+ *
+ * Commas and currency symbols are still stripped so "1,234" and "$50"
+ * keep working. A trailing decimal point with no fractional digits ("5.",
+ * "1.e3") is accepted because Number("5.") is a complete finite number and
+ * develop's parseFloat accepted it; only genuinely non-numeric shapes are
+ * rejected. Overflow inputs like "1e309" match the shape and become
+ * Infinity; callers reject them with a finite check. Any non-numeric
+ * input returns NaN so callers treat it as an invalid number.
+ */
+const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+
+function parseStrictNumber(input: string): number {
+  const cleaned = input.replace(/[,$]/g, "").trim();
+  if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
+    return Number.NaN;
+  }
+  return Number(cleaned);
+}
+
+/**
  * Validate number field.
  *
  * Applies: min, max (as numeric values, not length)
@@ -284,11 +313,10 @@ function validateNumber(
   control: FormControl,
 ): ValidationResult {
   // Parse number, handling commas and currency symbols
-  // WHY: Users type "1,234" or "$50" and expect it to work
+  // WHY: Users type "1,234" or "$50" and expect it to work, but
+  // trailing garbage ("50abc", "0x10") must be rejected, not coerced.
   const numValue =
-    typeof value === "number"
-      ? value
-      : parseFloat(String(value).replace(/[,$]/g, ""));
+    typeof value === "number" ? value : parseStrictNumber(String(value));
 
   if (!Number.isFinite(numValue)) {
     return {
@@ -546,10 +574,22 @@ export function parseValue(value: string, control: FormControl): JsonValue {
   }
 
   switch (control.type) {
-    case "number":
-      // Remove formatting characters
-      // WHY: Users type "1,234.56" or "$50.00"
-      return parseFloat(value.replace(/[,$]/g, ""));
+    case "number": {
+      // Strict parse so garbage-suffixed input is not coerced to a
+      // partial number. WHY: parseValue runs before validateField in the
+      // extraction path, so a lenient parseFloat here would hand a
+      // fake-valid number to validation.
+      const parsed = parseStrictNumber(value);
+      // On rejection, preserve the ORIGINAL string instead of a non-finite
+      // sentinel. WHY: session persistence round-trips through
+      // JSON.parse(JSON.stringify(session)), and JSON.stringify(NaN) and
+      // JSON.stringify(Infinity) both serialize to "null". A persisted null
+      // then passes the empty-optional rule at submit-time revalidation, so
+      // a rejected optional answer would ride through as a healthy-looking
+      // null. The original string survives persistence unchanged and stays
+      // invalid when validateNumber re-parses it, forcing the re-ask.
+      return Number.isFinite(parsed) ? parsed : value;
+    }
 
     case "boolean": {
       const lower = value.toLowerCase();
