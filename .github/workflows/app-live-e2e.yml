@@ -392,13 +392,15 @@ jobs:
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
       - name: Build app renderer bundle
-        # The renderer resolves its Cloud origin at BUILD time from
-        # VITE_ELIZA_CLOUD_BASE and otherwise falls back to production
-        # (ui/src/platform/ios-runtime.ts resolveCloudApiBase). Onboarding
-        # provisions straight from the browser, so without this the bundle
-        # carries a production origin while the lane hands it a staging key,
-        # and every provision 401s. The job-level ELIZAOS_CLOUD_BASE_URL only
-        # pins the spawned runtime's proxy -- Vite never sees it (#18076).
+        # The renderer resolves its Cloud base at BUILD time from
+        # VITE_ELIZA_CLOUD_BASE and otherwise defaults to production
+        # (ui/src/platform/ios-runtime.ts resolveCloudApiBase). The job-level
+        # ELIZAOS_CLOUD_BASE_URL pins the spawned runtime's proxy, which
+        # carries create/provision; it does NOT reach Vite. The chat leg is
+        # what breaks: selectOrProvisionCloudAgent derives the shared-agent
+        # base from the boot value, so a production-defaulted bundle sends a
+        # staging agent id and this lane's staging bearer to api.eliza.app
+        # (#18076).
         env:
           VITE_ELIZA_CLOUD_BASE: ${{ env.ELIZAOS_CLOUD_BASE_URL }}
         run: bun run --cwd packages/app build:web
