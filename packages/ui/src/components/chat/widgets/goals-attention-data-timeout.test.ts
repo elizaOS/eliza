@@ -1,71 +1,55 @@
-/**
- * Behavioral goals-attention JSON deadline. Executes
- * getGoalsAttentionJsonWithFetch under abort — not a source-grep of
- * goals-attention-data.ts.
- */
-import { describe, expect, it, vi } from "vitest";
+/** Verifies goals-attention reads use the bounded canonical UI client. */
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("../../../api", () => ({
-	client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 vi.mock("../../../api/app-shell-capabilities", () => ({
-	supportsFullAppShellRoutes: () => true,
+  supportsFullAppShellRoutes: () => true,
 }));
 
 import {
-	GOALS_ATTENTION_JSON_TIMEOUT_MS,
-	getGoalsAttentionJsonWithFetch,
+  fetchGoals,
+  GOALS_ATTENTION_JSON_TIMEOUT_MS,
 } from "./goals-attention-data";
 
-const URL = "http://test.local/api/lifeops/goals";
-
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected goals-attention abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
-}
-
 describe("Goals-attention JSON deadline", () => {
-	it("keeps a documented UI JSON budget", () => {
-		expect(GOALS_ATTENTION_JSON_TIMEOUT_MS).toBe(15_000);
-	});
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-	it("aborts a stalled goals GET at the injected deadline", async () => {
-		await expect(
-			getGoalsAttentionJsonWithFetch(URL, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
+  it("keeps a documented UI JSON budget", () => {
+    expect(GOALS_ATTENTION_JSON_TIMEOUT_MS).toBe(15_000);
+  });
 
-	it("surfaces a provider error from a completed goals GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
 
-		await expect(
-			getGoalsAttentionJsonWithFetch(URL, fetchImpl, 1_000),
-		).rejects.toThrow("503");
-	});
+    await expect(fetchGoals()).rejects.toMatchObject({ name: "TimeoutError" });
+  });
 
-	it("uses the injected fetch for a successful goals GET", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({ goals: [] });
-		};
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(new Error("Goals request failed (503)"));
 
-		const body = await getGoalsAttentionJsonWithFetch<{ goals: unknown[] }>(
-			URL,
-			fetchImpl,
-			1_000,
-		);
+    await expect(fetchGoals()).rejects.toThrow("503");
+  });
 
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(body.goals).toEqual([]);
-	});
+  it("uses the bounded client path for a successful goals GET", async () => {
+    clientFetch.mockResolvedValueOnce({ goals: [] });
+
+    await expect(fetchGoals()).resolves.toEqual([]);
+    expect(clientFetch).toHaveBeenCalledWith("/api/lifeops/goals", undefined, {
+      timeoutMs: GOALS_ATTENTION_JSON_TIMEOUT_MS,
+    });
+  });
 });

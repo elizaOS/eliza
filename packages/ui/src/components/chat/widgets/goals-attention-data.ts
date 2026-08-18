@@ -96,29 +96,13 @@ export function parseGoals(payload: unknown): AttentionGoal[] {
   return goals;
 }
 
-/** Goals-attention GET is a short UI read — same 15s family as GoalsView. */
+/** Goals-attention GET is a short UI read. */
 export const GOALS_ATTENTION_JSON_TIMEOUT_MS = 15_000;
 
-export async function getGoalsAttentionJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = GOALS_ATTENTION_JSON_TIMEOUT_MS,
-): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Goals request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
 export async function fetchGoals(): Promise<AttentionGoal[]> {
-  const body = await getGoalsAttentionJsonWithFetch<unknown>(
-    `${client.getBaseUrl()}/api/lifeops/goals`,
-    globalThis.fetch,
-  );
+  const body = await client.fetch<unknown>("/api/lifeops/goals", undefined, {
+    timeoutMs: GOALS_ATTENTION_JSON_TIMEOUT_MS,
+  });
   return parseGoals(body);
 }
 
