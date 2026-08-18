@@ -7,6 +7,9 @@
 import { openEventSource } from "../utils/event-source";
 import { ElizaClient } from "./client-base";
 
+/** Orchestrator widgets GET — existing 10s REST budget, independent hop. */
+export const ORCHESTRATOR_WIDGETS_FETCH_TIMEOUT_MS = 10_000;
+
 export type OrchestratorWidgetStatus =
   | "queued"
   | "running"
@@ -52,6 +55,7 @@ declare module "./client-base" {
   interface ElizaClient {
     getOrchestratorWidgets(
       options?: OrchestratorWidgetOptions,
+      timeoutMs?: number,
     ): Promise<OrchestratorWidgetSnapshot>;
     streamOrchestratorWidgets(
       options: OrchestratorWidgetOptions | undefined,
@@ -75,9 +79,12 @@ function widgetQuery(options?: OrchestratorWidgetOptions): string {
 ElizaClient.prototype.getOrchestratorWidgets = function (
   this: ElizaClient,
   options,
+  timeoutMs: number = ORCHESTRATOR_WIDGETS_FETCH_TIMEOUT_MS,
 ) {
   return this.fetch<OrchestratorWidgetSnapshot>(
     `/api/orchestrator/widgets${widgetQuery(options)}`,
+    undefined,
+    { timeoutMs },
   );
 };
 

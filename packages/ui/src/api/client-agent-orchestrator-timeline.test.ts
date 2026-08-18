@@ -4,6 +4,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
+import {
+  ORCHESTRATOR_WIDGETS_FETCH_TIMEOUT_MS,
+} from "./client-orchestrator-widgets";
 import "./client-orchestrator-widgets";
 import { ElizaClient } from "./client-base";
 
@@ -68,6 +71,8 @@ describe("ElizaClient.getOrchestratorWidgets", () => {
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/orchestrator/widgets?includeArchived=true&projectId=project+%2F+alpha&limit=8",
+      undefined,
+      { timeoutMs: ORCHESTRATOR_WIDGETS_FETCH_TIMEOUT_MS },
     );
     expect(snapshot.totalTaskCount).toBe(0);
   });
