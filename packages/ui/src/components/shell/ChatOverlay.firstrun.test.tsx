@@ -21,6 +21,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
   client: {
+    getBaseUrl: vi.fn().mockReturnValue("http://localhost:3000"),
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
     createTranscript: vi
       .fn()
