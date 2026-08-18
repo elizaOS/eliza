@@ -45,7 +45,7 @@ import {
 	Service,
 	type UUID,
 } from "../../types";
-import { splitChunks } from "../../utils";
+import { splitChunks, validateUuid } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
@@ -317,6 +317,23 @@ function normalizeDocumentScope(
 		code: "DOCUMENT_SCOPE_INVALID",
 		context: { scope },
 	});
+}
+
+/**
+ * worldId/roomId/entityId are UUID-typed Postgres columns (see
+ * plugins/plugin-sql/src/schema/memory.ts); an explicit "" is not a
+ * representable scope value, only an omitted (undefined) one defaults to
+ * agentId. Reject invalid input at this boundary instead of letting it reach
+ * createMemory, where a real adapter fails opaquely and the in-memory test
+ * adapter accepts an unqueryable row.
+ */
+function requireDocumentScopeUuid(value: UUID, field: string): void {
+	if (validateUuid(value) === null) {
+		throw new ElizaError(`Document ${field} must be a valid UUID`, {
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			context: { field, value },
+		});
+	}
 }
 
 function resolveWriteDocumentScope({
@@ -894,6 +911,9 @@ export class DocumentService extends Service {
 		fragmentCount: number;
 	}> {
 		const agentId = options.agentId || (this.runtime.agentId as UUID);
+		requireDocumentScopeUuid(options.worldId, "worldId");
+		requireDocumentScopeUuid(options.roomId, "roomId");
+		requireDocumentScopeUuid(options.entityId, "entityId");
 
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
@@ -1173,6 +1193,8 @@ export class DocumentService extends Service {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
+				// requireDocumentScopeUuid above already rejected an explicit "",
+				// so roomId here is always a real UUID or omitted; || vs ?? is moot.
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
@@ -1227,9 +1249,11 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
+						// requireDocumentScopeUuid above already validated roomId, so
+						// it's always a real UUID here; || vs ?? is moot.
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1251,7 +1275,7 @@ export class DocumentService extends Service {
 						contentType,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
