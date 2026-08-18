@@ -13,7 +13,7 @@
  * `shared-agent-memories`.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import {
   type SharedTransferEpochRow,
@@ -28,6 +28,40 @@ export const SHARED_TRANSFER_EPOCH_INVALID_STATE = "SHARED_TRANSFER_EPOCH_INVALI
 export const SHARED_TRANSFER_SCOPE_FENCED = "SHARED_TRANSFER_SCOPE_FENCED";
 
 const ACTIVE_STATES = ["open", "fenced"] as const;
+
+/** Stable advisory-lock key for the transfer scope. */
+function scopeLockKey(scope: SharedAgentMemoryScope): string {
+  return `shared-transfer:${scope.organizationId}:${scope.userId}:${scope.agentId}`;
+}
+
+/**
+ * Shared half of the fence lock. Taken inside the caller's WRITE transaction
+ * before any memory insert: it coexists with other writers but conflicts with
+ * the exclusive lock `fenceEpoch` takes, so a fence cannot commit while any
+ * guarded write is in flight — and once the fence holds, this call observes
+ * `fenced` under the lock and fails closed. Transaction-scoped: released
+ * automatically at commit/rollback.
+ */
+export async function acquireSharedWriteGuard(
+  tx: { execute: (q: unknown) => Promise<unknown> },
+  scope: SharedAgentMemoryScope,
+): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${scopeLockKey(scope)}))`);
+  const fenced = (await tx.execute(sql`
+		SELECT 1 FROM shared_transfer_epochs
+		WHERE organization_id = ${scope.organizationId}
+			AND user_id = ${scope.userId}
+			AND agent_id = ${scope.agentId}
+			AND state = 'fenced'
+		LIMIT 1
+	`)) as { rows?: unknown[] } | unknown[];
+  const rows = Array.isArray(fenced) ? fenced : (fenced.rows ?? []);
+  if (rows.length > 0) {
+    throw new ElizaError("Memory writes are fenced during Shared→Dedicated promotion", {
+      code: SHARED_TRANSFER_SCOPE_FENCED,
+    });
+  }
+}
 
 function scopePredicate(scope: SharedAgentMemoryScope) {
   return and(

@@ -17,6 +17,7 @@ import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import { type SharedAgentMemoryRow, sharedAgentMemories } from "../schemas/shared-agent-memories";
 import { jsonbParam } from "../utils/jsonb";
+import { acquireSharedWriteGuard } from "./shared-transfer-epochs";
 
 export const SHARED_AGENT_MEMORY_INVALID_INPUT = "SHARED_AGENT_MEMORY_INVALID_INPUT";
 export const SHARED_AGENT_MEMORY_ID_CONFLICT = "SHARED_AGENT_MEMORY_ID_CONFLICT";
@@ -127,24 +128,30 @@ export class SharedAgentMemoriesWriter {
       });
     }
     if (input.embedding != null) assertEmbedding(input.embedding);
-    const inserted = await dbWrite
-      .insert(sharedAgentMemories)
-      .values({
-        ...(input.id ? { id: input.id } : {}),
-        organization_id: scope.organizationId,
-        user_id: scope.userId,
-        agent_id: scope.agentId,
-        entity_id: input.entityId ?? null,
-        room_id: input.roomId ?? null,
-        world_id: input.worldId ?? null,
-        type: input.type,
-        content: jsonbParam(input.content),
-        embedding: input.embedding ?? null,
-        embedding_model: input.embeddingModel ?? null,
-        ...(input.createdAt ? { created_at: input.createdAt } : {}),
-      })
-      .onConflictDoNothing({ target: [sharedAgentMemories.id] })
-      .returning({ id: sharedAgentMemories.id });
+    // Fence coordination (round-3 #21090 review): the shared advisory lock +
+    // fenced-state check and the insert share ONE transaction, so a fence can
+    // neither commit under an in-flight write nor miss a later one.
+    const inserted = await dbWrite.transaction(async (tx) => {
+      await acquireSharedWriteGuard(tx, scope);
+      return tx
+        .insert(sharedAgentMemories)
+        .values({
+          ...(input.id ? { id: input.id } : {}),
+          organization_id: scope.organizationId,
+          user_id: scope.userId,
+          agent_id: scope.agentId,
+          entity_id: input.entityId ?? null,
+          room_id: input.roomId ?? null,
+          world_id: input.worldId ?? null,
+          type: input.type,
+          content: jsonbParam(input.content),
+          embedding: input.embedding ?? null,
+          embedding_model: input.embeddingModel ?? null,
+          ...(input.createdAt ? { created_at: input.createdAt } : {}),
+        })
+        .onConflictDoNothing({ target: [sharedAgentMemories.id] })
+        .returning({ id: sharedAgentMemories.id });
+    });
     const row = inserted.at(0);
     if (row) return { id: row.id, inserted: true };
     if (!input.id) {
@@ -195,26 +202,28 @@ export class SharedAgentMemoriesWriter {
     delete content.interrupted;
     if (input.interrupted) content.interrupted = true;
 
-    const [merged] = await dbWrite
-      .insert(sharedAgentMemories)
-      .values({
-        id: input.id,
-        organization_id: scope.organizationId,
-        user_id: scope.userId,
-        agent_id: scope.agentId,
-        entity_id: input.entityId ?? null,
-        room_id: input.roomId ?? null,
-        world_id: input.worldId ?? null,
-        type: input.type,
-        content: jsonbParam(content),
-        embedding: input.embedding ?? null,
-        embedding_model: input.embeddingModel ?? null,
-        ...(input.createdAt ? { created_at: input.createdAt } : {}),
-      })
-      .onConflictDoUpdate({
-        target: [sharedAgentMemories.id],
-        set: { content: jsonbParam(content) },
-        setWhere: sql`
+    const [merged] = await dbWrite.transaction(async (tx) => {
+      await acquireSharedWriteGuard(tx, scope);
+      return tx
+        .insert(sharedAgentMemories)
+        .values({
+          id: input.id,
+          organization_id: scope.organizationId,
+          user_id: scope.userId,
+          agent_id: scope.agentId,
+          entity_id: input.entityId ?? null,
+          room_id: input.roomId ?? null,
+          world_id: input.worldId ?? null,
+          type: input.type,
+          content: jsonbParam(content),
+          embedding: input.embedding ?? null,
+          embedding_model: input.embeddingModel ?? null,
+          ...(input.createdAt ? { created_at: input.createdAt } : {}),
+        })
+        .onConflictDoUpdate({
+          target: [sharedAgentMemories.id],
+          set: { content: jsonbParam(content) },
+          setWhere: sql`
           ${sharedAgentMemories.organization_id} = ${scope.organizationId}
           AND ${sharedAgentMemories.user_id} = ${scope.userId}
           AND ${sharedAgentMemories.agent_id} = ${scope.agentId}
@@ -227,11 +236,12 @@ export class SharedAgentMemoriesWriter {
             )
           )
         `,
-      })
-      .returning({
-        id: sharedAgentMemories.id,
-        inserted: sql<boolean>`xmax = 0`,
-      });
+        })
+        .returning({
+          id: sharedAgentMemories.id,
+          inserted: sql<boolean>`xmax = 0`,
+        });
+    });
     if (merged) return merged;
 
     const [existing] = await dbRead

@@ -21,6 +21,7 @@ const SCOPE = { organizationId: ORG, userId: USER, agentId: AGENT };
 const KEY = "pglite-test-seal-key";
 
 let epochs: typeof import("./shared-transfer-epochs");
+let memories: typeof import("./shared-agent-memories");
 let sealedExport: typeof import("../../lib/services/shared-runtime/shared-memory-sealed-export");
 let contract: typeof import("@elizaos/shared/contracts/shared-memory-transfer");
 let dbWrite: typeof import("../client").dbWrite;
@@ -31,6 +32,7 @@ beforeAll(async () => {
   dbWrite = client.dbWrite;
   closeForTests = client.closeDatabaseConnectionsForTests;
   epochs = await import("./shared-transfer-epochs");
+  memories = await import("./shared-agent-memories");
   sealedExport = await import("../../lib/services/shared-runtime/shared-memory-sealed-export");
   contract = await import("@elizaos/shared/contracts/shared-memory-transfer");
   await client.getPgliteClientForTests().exec(`
@@ -202,6 +204,70 @@ describe("fenced sealed export (pglite)", () => {
       expect(await contract.verifySealSignature(out.seal, KEY)).toBe(true);
       expect(await contract.verifySealSignature(out.seal, "wrong")).toBe(false);
       expect(await contract.computeSharedMemoryTransferDigest(out.rows)).toBe(out.seal.digest);
+      await epochs.promoteEpoch(SCOPE, opened.epoch, out.seal.digest);
+    },
+    TIMEOUT,
+  );
+});
+
+describe("writer-level fence coordination (pglite)", () => {
+  test(
+    "a fenced scope refuses insertMemory with a typed error — no read-then-write window",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await expect(
+        memories.sharedAgentMemoriesWriter.insertMemory({
+          scope: SCOPE,
+          type: "messages",
+          content: { text: "should not land" },
+        }),
+      ).rejects.toMatchObject({ code: epochs.SHARED_TRANSFER_SCOPE_FENCED });
+      await epochs.abortEpoch(SCOPE, opened.epoch);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "an in-flight guarded write delays the fence; the export contains it — no lost writes",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      const opened = await epochs.openEpoch(SCOPE);
+      const order: string[] = [];
+      let releaseWriter: () => void = () => {};
+      const writerHold = new Promise<void>((r) => {
+        releaseWriter = r;
+      });
+      // Writer transaction: shared guard, then hold the transaction open.
+      const writer = dbWrite.transaction(async (tx) => {
+        await epochs.acquireSharedWriteGuard(tx, SCOPE);
+        await tx.execute(sql`
+					INSERT INTO shared_agent_memories
+						(id, organization_id, user_id, agent_id, type, content, created_at)
+					VALUES ('62000000-0000-4000-8000-000000000001', ${SCOPE.organizationId},
+						${SCOPE.userId}, ${SCOPE.agentId}, 'messages',
+						${JSON.stringify({ text: "in-flight" })}::jsonb, now())
+				`);
+        await writerHold;
+        order.push("writer-committed");
+      });
+      // Give the writer time to take the shared lock, then fence.
+      await new Promise((r) => setTimeout(r, 300));
+      const fence = epochs.fenceEpoch(SCOPE, opened.epoch).then((row) => {
+        order.push("fence-committed");
+        return row;
+      });
+      // The fence must NOT resolve while the writer holds the shared lock.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(order).toEqual([]);
+      releaseWriter();
+      await writer;
+      await fence;
+      expect(order).toEqual(["writer-committed", "fence-committed"]);
+      const out = await sealedExport.exportSealedSharedMemories(SCOPE, KEY);
+      expect(out.rows.map((r) => r.id)).toContain("62000000-0000-4000-8000-000000000001");
       await epochs.promoteEpoch(SCOPE, opened.epoch, out.seal.digest);
     },
     TIMEOUT,

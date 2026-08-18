@@ -17,7 +17,6 @@ import {
   sharedAgentMemoriesReader,
   sharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
-import { assertScopeWritable } from "../../../db/repositories/shared-transfer-epochs";
 import { logger } from "../../utils/logger";
 import {
   type SharedTodoStorageScope,
@@ -76,10 +75,6 @@ export class SharedMemoryStore {
     private readonly writer: SharedAgentMemoriesWriter = sharedAgentMemoriesWriter,
     private readonly reader: SharedAgentMemoriesReader = sharedAgentMemoriesReader,
     private readonly embed?: SharedMemoryEmbedConfig,
-    /** Injectable for deterministic tests; production uses the real fence. */
-    private readonly fence: (
-      scope: Parameters<typeof assertScopeWritable>[0],
-    ) => Promise<void> = assertScopeWritable,
   ) {}
 
   /**
@@ -118,10 +113,9 @@ export class SharedMemoryStore {
       userId: this.scope.userId,
       agentId,
     };
-    // Round-3 transfer fence: while this scope's promotion epoch is fenced,
-    // the turn commit fails closed instead of racing the sealed export
-    // (#21090 review). One indexed point read; open epochs do not block.
-    await this.fence(scope);
+    // Round-3 transfer fence lives INSIDE the writer's insert transaction
+    // (shared advisory lock + fenced-state check, see shared-transfer-epochs
+    // acquireSharedWriteGuard) — no separate read-then-write window here.
     const landedAt = Date.now();
     // One batched sidecar round-trip for both texts; an embedding failure
     // degrades to vector-less rows (recall coverage shrinks) but never loses
