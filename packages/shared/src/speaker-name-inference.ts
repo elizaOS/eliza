@@ -129,8 +129,18 @@ export interface SpeakerNameAttribution {
 
 /** Drop identity-graph mutation instructions before transporting attribution. */
 export function toSpeakerNameAttribution(
-  inference: SpeakerNameInference,
+  inference: SpeakerNameInference | null | undefined,
 ): SpeakerNameAttribution {
+  if (!inference || typeof inference !== "object") {
+    return {
+      resolution: "unknown",
+      confidence: 0,
+      candidateNames: [],
+      provenance: [],
+      reasonCodes: ["no_name_evidence"],
+      requiresReview: true,
+    };
+  }
   return {
     resolution: inference.resolution,
     ...(inference.displayName ? { displayName: inference.displayName } : {}),
@@ -197,8 +207,9 @@ function uniqueReasonCodes(
 }
 
 function groupCandidates(
-  evidence: readonly SpeakerNameEvidence[],
+  evidence: readonly SpeakerNameEvidence[] | null | undefined,
 ): MutableCandidate[] {
+  if (!Array.isArray(evidence)) return [];
   const candidates = new Map<string, MutableCandidate>();
   for (const item of evidence) {
     assertRatio(`${item.source}.confidence`, item.confidence);
@@ -217,10 +228,14 @@ function groupCandidates(
         provenance: [],
         score: 0,
       } satisfies MutableCandidate);
+    const sourcePriority =
+      item.source in SOURCE_PRIORITY
+        ? SOURCE_PRIORITY[item.source as SpeakerNameEvidenceSource]
+        : 0.5;
     candidate.confidence = Math.max(candidate.confidence, item.confidence);
     candidate.score = Math.max(
       candidate.score,
-      item.confidence * SOURCE_PRIORITY[item.source],
+      item.confidence * sourcePriority,
     );
     if (!candidate.sources.includes(item.source)) {
       candidate.sources.push(item.source);
@@ -240,7 +255,9 @@ function groupCandidates(
       ...candidate,
       sources: [...candidate.sources].sort(),
       provenance: [...candidate.provenance].sort(
-        (a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source],
+        (a, b) =>
+          (SOURCE_PRIORITY[b.source as SpeakerNameEvidenceSource] ?? 0.5) -
+          (SOURCE_PRIORITY[a.source as SpeakerNameEvidenceSource] ?? 0.5),
       ),
     }))
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence);
@@ -445,6 +462,7 @@ export function inferSpeakerName(
     (hasStrongSource(chosen) || chosen.sources.length > 1) &&
     !sameFirstNameAmbiguity &&
     !unresolvedConflict &&
+    !borrowedDeviceConflict &&
     input.sensitiveAttributeGuardrail !== true;
   if (canConfirm) reasonCodes.push("high_confidence_name");
   if (chosen && !canConfirm) reasonCodes.push("low_confidence_name");
