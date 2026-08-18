@@ -23,7 +23,10 @@ import {
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import {
+  parseCanonicalInteger,
+  type ReadJsonBodyOptions,
+} from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import { resolveDirectRequestOrigin } from "./request-origin.ts";
@@ -557,11 +560,14 @@ function sqlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function parseAuditLimit(value: string | undefined): number {
+export function parseAuditLimit(value: string | undefined): number | "invalid" {
   if (!value) return 50;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 50;
-  return Math.max(1, Math.min(100, Math.trunc(parsed)));
+  const parsed = parseCanonicalInteger(value, {
+    min: 1,
+    max: 100,
+    clamp: true,
+  });
+  return parsed === undefined ? 50 : parsed;
 }
 
 function toEpochMillis(value: unknown): number | undefined {
@@ -902,13 +908,18 @@ export async function handleConnectorAccountRoutes(
         error(res, "outcome must be success or failure", 400);
         return true;
       }
+      const limit = parseAuditLimit(query.limit);
+      if (limit === "invalid") {
+        error(res, "limit must be a canonical positive integer", 400);
+        return true;
+      }
       const events = await listConnectorAuditEvents({
         runtime: ctx.state.runtime,
         provider,
         accountId: accountId || undefined,
         action: action || undefined,
         outcome: outcome || undefined,
-        limit: parseAuditLimit(query.limit),
+        limit,
       });
       json(res, {
         provider,

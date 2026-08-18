@@ -26,7 +26,7 @@
 
 import net from "node:net";
 
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;
@@ -37,6 +37,25 @@ function formatErr(err: unknown): string {
 
 function isTcpRedisUrl(url: string): boolean {
   return /^rediss?:\/\//i.test(url);
+}
+
+export class SandboxRegistryRedisUrlError extends ElizaError {
+  constructor(cause: unknown) {
+    super("Sandbox registry Redis URL has malformed userinfo encoding", {
+      code: "SANDBOX_REGISTRY_REDIS_USERINFO_INVALID",
+      cause,
+    });
+  }
+}
+
+/** Percent-decode Redis URL userinfo or reject malformed credentials. */
+export function decodeRedisUrlUserinfo(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch (cause) {
+    // error-policy:J2 preserve the URIError while adding the registry boundary.
+    throw new SandboxRegistryRedisUrlError(cause);
+  }
 }
 
 export interface SandboxRegistryConfig {
@@ -212,8 +231,8 @@ export class SandboxRegistry {
     const secure = url.protocol === "rediss:";
     const host = url.hostname;
     const port = url.port ? Number(url.port) : 6379;
-    const username = decodeURIComponent(url.username || "");
-    const password = decodeURIComponent(url.password || "");
+    const username = decodeRedisUrlUserinfo(url.username || "");
+    const password = decodeRedisUrlUserinfo(url.password || "");
     const db = url.pathname.length > 1 ? url.pathname.slice(1) : "";
 
     const preamble: string[][] = [];

@@ -20,6 +20,14 @@ export interface ParseClampedIntegerOptions {
   fallback?: number;
 }
 
+export interface ParseCanonicalIntegerOptions {
+  min?: number;
+  max?: number;
+  clamp?: boolean;
+}
+
+export type CanonicalIntegerResult = number | undefined | "invalid";
+
 function sanitizeNumericText(value: string | null | undefined): string {
   return value == null ? "" : value.trim();
 }
@@ -72,6 +80,33 @@ export function parseNonNegativeInteger(
   return Number.isSafeInteger(parsed) && parsed >= 0
     ? parsed
     : normalizeFallback(fallback);
+}
+
+/**
+ * Parse an optional canonical unsigned decimal integer from an untrusted text
+ * boundary. Empty input remains absent, while malformed or unsafe input is
+ * distinguishable from omission so HTTP callers can return a 400 response.
+ */
+export function parseCanonicalInteger(
+  value: string | null | undefined,
+  options: ParseCanonicalIntegerOptions = {},
+): CanonicalIntegerResult {
+  const raw = sanitizeNumericText(value);
+  if (!raw) return undefined;
+  if (!/^(0|[1-9]\d*)$/.test(raw)) return "invalid";
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return "invalid";
+
+  const min = options.min ?? 0;
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min > max) {
+    throw new RangeError(
+      "canonical integer bounds must be ordered safe integers",
+    );
+  }
+  if (options.clamp) return Math.max(min, Math.min(max, parsed));
+  return parsed < min || parsed > max ? "invalid" : parsed;
 }
 
 export function parsePositiveFloat(
