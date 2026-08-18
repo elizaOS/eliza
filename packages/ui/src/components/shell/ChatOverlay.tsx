@@ -2,6 +2,7 @@
  * Renders the chat overlay that keeps the composer and transcript
  * available across views.
  */
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
@@ -1923,8 +1924,17 @@ export function ChatOverlay({
       filterRenderableShellMessages(
         messages,
         responding ? "responding" : phase,
+        // The native iOS overlay is an always-available utility surface, not a
+        // social feed. The greeting endpoint currently picks a random
+        // `character.postExamples` entry, so a brand-new conversation could
+        // open with unrelated copy such as "close 40 tabs." Suppress that
+        // source on this surface: first-run choice turns are separate messages,
+        // and real user/assistant conversation remains untouched.
+        isNative && isIOS && !firstRunOpen
+          ? { excludeSources: [MESSAGE_SOURCE_AGENT_GREETING] }
+          : undefined,
       ),
-    [messages, phase, responding],
+    [firstRunOpen, messages, phase, responding],
   );
   // Mirror the active id so an async older-page result is dropped after a
   // mid-flight conversation switch: a page fetched for the previous thread must

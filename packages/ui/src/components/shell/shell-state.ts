@@ -118,14 +118,17 @@ export const SHELL_RENDER_WINDOW_STEP = 50;
 export function filterRenderableShellMessages(
   messages: readonly ShellMessage[],
   phase: ShellPhase,
+  options?: { excludeSources?: readonly string[] },
 ): ShellMessage[] {
+  const excludedSources = options?.excludeSources;
   return messages.filter(
     (m) =>
-      m.content.trim() ||
-      (m.attachments?.length ?? 0) > 0 ||
-      m.secretRequest !== undefined ||
-      m.failureKind !== undefined ||
-      (m.role === "assistant" && phase === "responding"),
+      !(m.source && excludedSources?.includes(m.source)) &&
+      (m.content.trim() ||
+        (m.attachments?.length ?? 0) > 0 ||
+        m.secretRequest !== undefined ||
+        m.failureKind !== undefined ||
+        (m.role === "assistant" && phase === "responding")),
   );
 }
 

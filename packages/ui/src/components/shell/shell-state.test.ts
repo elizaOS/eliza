@@ -203,6 +203,21 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
 });
 
 describe("filterRenderableShellMessages", () => {
+  it("can suppress unsolicited agent-greeting copy for the native iOS overlay", () => {
+    const greeting: ShellMessage = {
+      ...msg("greeting", "assistant", "You need to close 40 tabs."),
+      source: "agent_greeting",
+    };
+    const user = msg("user", "user", "hello");
+    const reply = msg("reply", "assistant", "Hi.");
+
+    expect(
+      filterRenderableShellMessages([greeting, user, reply], "idle", {
+        excludeSources: ["agent_greeting"],
+      }).map((message) => message.id),
+    ).toEqual(["user", "reply"]);
+  });
+
   it("returns the same renderable set selectVisibleShellMessages keeps, uncapped", () => {
     const thread = Array.from({ length: 300 }, (_, i) =>
       i % 5 === 0
