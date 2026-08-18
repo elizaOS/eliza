@@ -84,8 +84,9 @@ corresponding portal — do NOT add a raw `--device=` or `--socket=` rule.
 ## Local testing
 
 ```bash
-# Install build tooling.
-sudo apt install flatpak flatpak-builder        # Debian / Ubuntu
+# Install build tooling. Headless hosts also need dbus-run-session because
+# user-scoped Flatpak operations communicate over the session bus.
+sudo apt install dbus-daemon flatpak flatpak-builder  # Debian / Ubuntu
 sudo dnf install flatpak flatpak-builder        # Fedora
 
 # Install the runtime + SDK once.
@@ -98,10 +99,11 @@ ELIZA_BUILD_VARIANT=store bun run build:flatpak
 # For the Flathub-equivalent build, install org.flatpak.Builder once and use
 # its flathub-build wrapper. This also mirrors AppStream media into the local
 # repository exactly as Flathub's repository linter requires.
-flatpak install --user flathub org.flatpak.Builder
+dbus-run-session -- flatpak install --user flathub org.flatpak.Builder
 cd packages/app-core/packaging/flatpak
-flatpak run --command=flathub-build org.flatpak.Builder \
-  --install ai.elizaos.App.yml
+dbus-run-session -- \
+  flatpak run --command=flathub-build org.flatpak.Builder \
+    --install ai.elizaos.App.yml
 
 # Run both the package entrypoint and its normal desktop command.
 flatpak run ai.elizaos.App --version

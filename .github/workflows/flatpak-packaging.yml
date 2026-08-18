@@ -36,10 +36,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Install Flatpak tooling
+      - name: Install Flatpak and D-Bus tooling
         run: |
           sudo apt-get update
-          sudo apt-get install --yes flatpak
+          sudo apt-get install --yes dbus-daemon flatpak
+
+      - name: Install Flathub builder
+        shell: dbus-run-session -- bash --noprofile --norc -euo pipefail {0}
+        run: |
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive --or-update flathub \
@@ -50,6 +54,7 @@ jobs:
 
       - name: Run Flathub manifest and AppStream linters
         working-directory: packages/app-core/packaging/flatpak
+        shell: dbus-run-session -- bash --noprofile --norc -euo pipefail {0}
         run: |
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
             manifest ai.elizaos.App.yml
@@ -58,11 +63,13 @@ jobs:
 
       - name: Build Flathub manifest without network
         working-directory: packages/app-core/packaging/flatpak
+        shell: dbus-run-session -- bash --noprofile --norc -euo pipefail {0}
         run: >-
           flatpak run --command=flathub-build org.flatpak.Builder
           --install ai.elizaos.App.yml
 
       - name: Exercise installed entrypoint
+        shell: dbus-run-session -- bash --noprofile --norc -euo pipefail {0}
         run: |
           set -euo pipefail
           flatpak run ai.elizaos.App --help
@@ -88,4 +95,5 @@ jobs:
 
       - name: Lint repository
         working-directory: packages/app-core/packaging/flatpak
+        shell: dbus-run-session -- bash --noprofile --norc -euo pipefail {0}
         run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo

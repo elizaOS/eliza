@@ -126,6 +126,27 @@ test("vendored npm closure and generator target the exact CLI release", () => {
 });
 
 test("Linux acceptance lints and launches the installed Flatpak", () => {
+  assert.match(workflow, /sudo apt-get install --yes dbus-daemon flatpak/);
+  for (const stepName of [
+    "Install Flathub builder",
+    "Run Flathub manifest and AppStream linters",
+    "Build Flathub manifest without network",
+    "Exercise installed entrypoint",
+    "Lint repository",
+  ]) {
+    const stepStart = workflow.indexOf(`- name: ${stepName}`);
+    assert.notEqual(stepStart, -1, `missing workflow step: ${stepName}`);
+    const nextStep = workflow.indexOf("\n      - name:", stepStart + 1);
+    const step = workflow.slice(
+      stepStart,
+      nextStep === -1 ? undefined : nextStep,
+    );
+    assert.match(
+      step,
+      /shell: dbus-run-session -- bash --noprofile --norc -euo pipefail \{0\}/,
+      `${stepName} must run with a D-Bus session`,
+    );
+  }
   assert.match(workflow, /flatpak-builder-lint[\s\S]*manifest/);
   assert.match(workflow, /flatpak-builder-lint[\s\S]*appstream/);
   assert.match(workflow, /flatpak-builder-lint[\s\S]*repo repo/);
