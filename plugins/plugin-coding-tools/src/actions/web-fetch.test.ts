@@ -284,9 +284,9 @@ describe("coding-tools WEB_FETCH", () => {
     expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
   });
 
-  it("degrades out-of-range numeric entities without throwing and keeps surrounding text", () => {
-    // String.fromCodePoint throws RangeError above 0x10FFFF; the decoder must
-    // leave the malformed reference literal instead of hard-failing the fetch.
+  it("degrades invalid numeric entities without throwing and keeps surrounding text", () => {
+    // Invalid scalar values must remain literal instead of hard-failing the
+    // fetch or introducing an unpaired UTF-16 surrogate into readable text.
     const hex = htmlToReadableText("<p>hello &#x110000; world</p>");
     expect(hex).toContain("hello");
     expect(hex).toContain("world");
@@ -296,6 +296,13 @@ describe("coding-tools WEB_FETCH", () => {
     expect(dec).toContain("hi");
     expect(dec).toContain("there");
     expect(dec).toContain("&#1114112;");
+
+    expect(htmlToReadableText("<p>&#xD800; &#55296;</p>")).toBe(
+      "&#xD800; &#55296;",
+    );
+    expect(htmlToReadableText("<p>&#xDFFF; &#57343;</p>")).toBe(
+      "&#xDFFF; &#57343;",
+    );
   });
 
   it("degrades a malformed numeric entity to readable text through the handler instead of io_error", async () => {
