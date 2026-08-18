@@ -4,9 +4,9 @@
  * mention-policy check (`isIMessageMentionRequired`) that decides whether a
  * group inbound message is handled. DM access is gated live by
  * `IMessageService.checkDmAccess`, which routes the `pairing` policy through
- * the core PairingService — there is intentionally no exported DM allow
- * helper, because a synchronous policy check cannot honor the pairing
- * handshake and would mislead importers into default-open behavior.
+ * the core PairingService. The deprecated synchronous DM helper remains for
+ * source compatibility but fails closed for `pairing`, because it cannot
+ * perform that stateful handshake.
  * Config is read from `character.settings.imessage`. In practice one macOS host
  * runs a single Messages account (`DEFAULT_ACCOUNT_ID`); these helpers still model
  * the general inventory so the connector-account provider and service share one
@@ -300,6 +300,42 @@ export function resolveIMessageGroupConfig(
 
   // Fall back to base-level groups
   return multiConfig.groups?.[groupId];
+}
+
+/**
+ * Synchronous compatibility helper for legacy callers that only need static
+ * allowlist/group-policy evaluation.
+ *
+ * @deprecated Pairing is stateful; use `IMessageService.checkDmAccess` for
+ * inbound authorization. This helper deliberately fails closed for the
+ * `pairing` policy instead of pretending an unknown sender is authorized.
+ */
+export function isIMessageUserAllowed(params: {
+  identifier: string;
+  accountConfig: IMessageAccountConfig;
+  isGroup: boolean;
+  groupId?: string;
+  groupConfig?: IMessageGroupConfig;
+}): boolean {
+  const { identifier, accountConfig, isGroup, groupConfig } = params;
+
+  if (isGroup) {
+    const policy = accountConfig.groupPolicy ?? "allowlist";
+    if (policy === "disabled") return false;
+    if (policy === "open") return true;
+    if (groupConfig?.allowFrom?.length) {
+      return groupConfig.allowFrom.some((allowed) => String(allowed) === identifier);
+    }
+    if (accountConfig.groupAllowFrom?.length) {
+      return accountConfig.groupAllowFrom.some((allowed) => String(allowed) === identifier);
+    }
+    return false;
+  }
+
+  const policy = accountConfig.dmPolicy ?? "pairing";
+  if (policy === "disabled" || policy === "pairing") return false;
+  if (policy === "open") return true;
+  return Boolean(accountConfig.allowFrom?.some((allowed) => String(allowed) === identifier));
 }
 
 /**

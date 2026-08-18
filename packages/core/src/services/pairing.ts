@@ -70,6 +70,13 @@ export class PairingService extends Service {
 	 */
 	private readonly pairingReplyClaims = new Map<string, number>();
 
+	/**
+	 * Serializes the read-check-create portion of request admission in this
+	 * runtime. Without this queue, concurrent first messages can all observe a
+	 * free slot and overrun `maxPendingRequests` before any create is visible.
+	 */
+	private pairingRequestAdmissionTail: Promise<void> = Promise.resolve();
+
 	/** Bound on retained reply claims before expired entries are swept. */
 	private static readonly MAX_PAIRING_REPLY_CLAIMS = 4096;
 
@@ -341,6 +348,21 @@ export class PairingService extends Service {
 	 * If too many pending requests exist, returns empty code.
 	 */
 	async upsertRequest(
+		params: UpsertPairingRequestParams,
+	): Promise<UpsertPairingRequestResult> {
+		const admitted = this.pairingRequestAdmissionTail.then(() =>
+			this.upsertRequestSerial(params),
+		);
+		// Keep the queue usable after a persistence or CSPRNG failure; the caller
+		// still observes the original rejection through `admitted`.
+		this.pairingRequestAdmissionTail = admitted.then(
+			() => undefined,
+			() => undefined,
+		);
+		return admitted;
+	}
+
+	private async upsertRequestSerial(
 		params: UpsertPairingRequestParams,
 	): Promise<UpsertPairingRequestResult> {
 		const { channel, senderId, metadata } = params;
