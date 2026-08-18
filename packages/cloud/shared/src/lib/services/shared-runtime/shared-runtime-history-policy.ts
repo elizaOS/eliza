@@ -153,7 +153,7 @@ export function sharedPublicWebGrounding(
   for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as { success?: unknown; data?: unknown };
+    const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
     if (record.success !== true || !record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
@@ -161,7 +161,7 @@ export function sharedPublicWebGrounding(
       kind: "web_search",
       query: data.query,
       provider: data.provider,
-      text: data.value,
+      text: record.text,
       observedAt: Date.now(),
       truncated: data.truncated === true,
     });

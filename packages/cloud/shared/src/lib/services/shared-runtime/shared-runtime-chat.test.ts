@@ -1080,7 +1080,7 @@ describe("SharedRuntimeChatService", () => {
                 actionName: "WEB_SEARCH",
                 query: "NubsCarson Tessera GitHub",
                 provider: "parallel",
-                value: "Tessera validates ARC resources through an origin guard.",
+                answer: "Tessera validates ARC resources through an origin guard.",
               },
             },
           ],

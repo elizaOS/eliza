@@ -104,11 +104,12 @@ describe("shared runtime long-term transcript context", () => {
     const grounding = sharedPublicWebGrounding([
       {
         success: true,
+        text: `  ${"界".repeat(10_000)}  `,
         data: {
           actionName: "WEB_SEARCH",
           query: `  ${"🔎".repeat(1_000)}  `,
           provider: "parallel",
-          value: `  ${"界".repeat(10_000)}  `,
+          answer: "The production action keeps its structured answer in data.",
         },
       },
     ]);
@@ -124,7 +125,21 @@ describe("shared runtime long-term transcript context", () => {
       sharedPublicWebGrounding([
         {
           success: true,
-          data: { actionName: "WEB_SEARCH", query: "x", provider: "forged", value: "y" },
+          text: "y",
+          data: { actionName: "WEB_SEARCH", query: "x", provider: "forged" },
+        },
+      ]),
+    ).toBeUndefined();
+    expect(
+      sharedPublicWebGrounding([
+        {
+          success: true,
+          data: {
+            actionName: "WEB_SEARCH",
+            query: "missing action result text",
+            provider: "parallel",
+            answer: "Structured metadata is not the user-visible grounding text.",
+          },
         },
       ]),
     ).toBeUndefined();
