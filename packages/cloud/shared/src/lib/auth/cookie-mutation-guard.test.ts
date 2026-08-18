@@ -12,9 +12,7 @@ import {
 } from "./cookie-mutation-guard";
 
 function req(headers: Record<string, string>) {
-  const lower = Object.fromEntries(
-    Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
-  );
+  const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
   return { header: (name: string) => lower[name.toLowerCase()] };
 }
 
@@ -43,19 +41,17 @@ describe("hasAmbientSessionCookie", () => {
     expect(hasAmbientSessionCookie(req(COOKIE), "production")).toBe(true);
     // A production-named cookie is not the staging environment's credential.
     expect(hasAmbientSessionCookie(req(COOKIE), "staging")).toBe(false);
-    expect(
-      hasAmbientSessionCookie(req({ cookie: "steward-token-staging=s" }), "staging"),
-    ).toBe(true);
-    expect(
-      hasAmbientSessionCookie(req({ cookie: "steward-refresh-token=s" }), undefined),
-    ).toBe(false);
+    expect(hasAmbientSessionCookie(req({ cookie: "steward-token-staging=s" }), "staging")).toBe(
+      true,
+    );
+    expect(hasAmbientSessionCookie(req({ cookie: "steward-refresh-token=s" }), undefined)).toBe(
+      false,
+    );
     expect(hasAmbientSessionCookie(req({ cookie: "unrelated=1" }), undefined)).toBe(false);
   });
 
   test("the Playwright test-session cookie counts as ambient", () => {
-    expect(
-      hasAmbientSessionCookie(req({ cookie: "eliza-test-session=t" }), undefined),
-    ).toBe(true);
+    expect(hasAmbientSessionCookie(req({ cookie: "eliza-test-session=t" }), undefined)).toBe(true);
   });
 });
 
@@ -63,9 +59,9 @@ describe("checkCookieMutationGuard", () => {
   test("passes requests with nothing ambient to protect", () => {
     expect(checkCookieMutationGuard(req({}), undefined, true)).toEqual({ ok: true });
     // Programmatic credentials skip the lane even alongside a cookie.
-    expect(
-      checkCookieMutationGuard(req({ ...COOKIE, "x-api-key": "k" }), undefined, true),
-    ).toEqual({ ok: true });
+    expect(checkCookieMutationGuard(req({ ...COOKIE, "x-api-key": "k" }), undefined, true)).toEqual(
+      { ok: true },
+    );
     expect(
       checkCookieMutationGuard(
         req({ ...COOKIE, authorization: "Bearer eliza_k" }),
@@ -107,7 +103,11 @@ describe("checkCookieMutationGuard", () => {
     ).toEqual({ ok: true });
     // First-party origin + explicit CSRF header marker passes.
     expect(
-      checkCookieMutationGuard(req({ ...COOKIE, ...FIRST_PARTY, "x-eliza-csrf": "1" }), undefined, true),
+      checkCookieMutationGuard(
+        req({ ...COOKIE, ...FIRST_PARTY, "x-eliza-csrf": "1" }),
+        undefined,
+        true,
+      ),
     ).toEqual({ ok: true });
   });
 });
