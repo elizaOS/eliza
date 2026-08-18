@@ -155,6 +155,12 @@ export interface OnboardingChatResult {
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 const MAX_HISTORY_MESSAGES = 200;
 /**
+ * Claim authority is intentionally a separate session purpose from ordinary
+ * Telegram onboarding. There is no legacy fallback: callers with an older or
+ * generic session must mint a fresh claim through the trusted /connect path.
+ */
+const TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN = /^platform:telegram-claim:[0-9a-f]{64}$/;
+/**
  * Hard byte bound on a stored user message. The public route already caps
  * message length, but gateway services call runOnboardingChat directly with
  * raw connector payloads, so the session store enforces its own bound.
@@ -457,7 +463,10 @@ export async function inspectTelegramPersonalAccountContinuation(
   continuationToken: string,
 ): Promise<TelegramPersonalAccountContinuation> {
   const sessionId = await resolveContinuationToken(continuationToken);
-  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  const session =
+    sessionId && TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN.test(sessionId)
+      ? await loadOnboardingSessionForValidation(sessionId)
+      : null;
   if (
     !session ||
     session.platform !== "telegram" ||

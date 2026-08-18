@@ -663,7 +663,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
     await dataOf(
       await post({
-        sessionId: "platform:telegram-claim:test-claim-1",
+        sessionId: `platform:telegram-claim:${"a".repeat(64)}`,
         platform: "telegram",
         platformUserId: "9911",
         platformDisplayName: "Ada",
@@ -671,7 +671,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       }),
     );
     const stored = sessionCache.get(
-      "eliza-app:onboarding:platform:telegram-claim:test-claim-1",
+      `eliza-app:onboarding:platform:telegram-claim:${"a".repeat(64)}`,
     ) as { continuationToken?: string };
     const continuation = stored?.continuationToken;
     if (!continuation) throw new Error("Expected a claim continuation token");
@@ -697,6 +697,34 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       success: false,
       code: "access_denied",
     });
+  });
+
+  test("does not treat an account-bound ordinary Telegram session as claim authority", async () => {
+    resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
+    await dataOf(
+      await post({
+        sessionId: "platform:telegram:9911",
+        platform: "telegram",
+        platformUserId: "9911",
+        platformDisplayName: "Ada",
+        statusOnly: true,
+      }),
+    );
+    const stored = sessionCache.get(
+      "eliza-app:onboarding:platform:telegram:9911",
+    ) as { continuationToken?: string };
+    const continuation = stored?.continuationToken;
+    if (!continuation)
+      throw new Error("Expected an onboarding continuation token");
+
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+    const preview = await get(continuation, STEWARD_JWT);
+    expect(preview.status).toBe(403);
+    expect(await preview.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("a Steward caller can never mint a platform-scoped session or act as a trusted transport", async () => {

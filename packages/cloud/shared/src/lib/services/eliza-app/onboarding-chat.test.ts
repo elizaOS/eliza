@@ -210,7 +210,7 @@ describe("runOnboardingChat", () => {
       platform: "telegram",
       platformUserId: "123456789",
       platformDisplayName: "Nubs",
-      sessionId: "platform:telegram:123456789",
+      sessionId: `platform:telegram-claim:${"b".repeat(64)}`,
       trustedPlatformIdentity: true,
       authenticatedUser: {
         userId: "telegram-user-1",
@@ -242,7 +242,7 @@ describe("runOnboardingChat", () => {
       platform: "telegram",
       platformUserId: "123456789",
       platformDisplayName: "Nubs",
-      sessionId: "platform:telegram:123456789",
+      sessionId: `platform:telegram-claim:${"c".repeat(64)}`,
       trustedPlatformIdentity: true,
       authenticatedUser: {
         userId: "telegram-user-1",
@@ -284,6 +284,39 @@ describe("runOnboardingChat", () => {
 
     await expect(
       inspectTelegramPersonalAccountContinuation(continuationToken(unbound)),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("rejects an account-bound ordinary Telegram session as claim authority", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const ordinarySession = await runOnboardingChat({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+      authenticatedUser: {
+        userId: "telegram-user-1",
+        organizationId: "telegram-org-1",
+        telegramId: "123456789",
+      },
+      statusOnly: true,
+    });
+
+    await expect(
+      inspectTelegramPersonalAccountContinuation(continuationToken(ordinarySession)),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    await expect(
+      previewTelegramPersonalAccountClaimContinuation(continuationToken(ordinarySession)),
     ).rejects.toMatchObject({
       code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
     });

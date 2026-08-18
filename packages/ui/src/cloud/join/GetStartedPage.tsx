@@ -9,8 +9,9 @@
  * through the same confirm phase: the page shows the attested Telegram
  * identity and only the explicit confirmation gesture fires the claim, which
  * Steward sync consumes so the DM-created user and organization are adopted
- * before generic signup can create duplicates. A signed-out visit still
- * redirects to login, where session creation consumes the pending claim.
+ * before generic signup can create duplicates. A signed-out visit redirects
+ * to login, which establishes auth without consuming the pending claim; the
+ * returning visitor still sees this preview and confirmation.
  *
  * Signed-out visitors bounce to `/login?returnTo=/get-started`; the token
  * survives in storage, not the URL. A visit with no pending token just
@@ -23,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import { isSafeNavigationUrl } from "../lib/navigation-url";
-import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
+import { confirmTelegramAccountClaim } from "../public-pages/lib/steward-session";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   completePendingOnboardingContinuation,
@@ -137,9 +138,7 @@ export default function GetStartedPage(): React.JSX.Element {
       if (!stewardToken) {
         throw new Error("Sign in again to connect this Telegram chat.");
       }
-      await syncStewardSessionCookie(stewardToken, undefined, {
-        telegramContinuation: continuation,
-      });
+      await confirmTelegramAccountClaim(stewardToken, continuation);
       setPhase("done");
     } catch (err) {
       // error-policy:J4 claim failures remain visible and retryable; the

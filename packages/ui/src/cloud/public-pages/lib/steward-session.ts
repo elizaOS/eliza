@@ -15,12 +15,13 @@ import {
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
   StewardSessionError,
+  type StewardSessionRequest,
+  type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import {
-  clearPendingOnboardingSession,
-  peekPendingOnboardingSession,
+  clearPendingOnboardingSessionIfMatches,
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../../lib/jwt";
@@ -38,7 +39,7 @@ export function resolveStewardAuthEndpoint(
 
 async function postAuthJson(
   path: string,
-  body?: Record<string, unknown>,
+  body?: object,
   method: "POST" | "DELETE" = "POST",
   signal?: AbortSignal,
 ): Promise<Response> {
@@ -68,41 +69,23 @@ async function readSessionError(response: Response): Promise<{
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
  * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
  *
- * A pending Telegram account claim rides this sync only on an explicit
- * gesture: an explicit `telegramContinuation`, or the pending continuation
- * peeked for a sign-in ceremony. Passive page-load callers (session recovery)
- * must pass `skipPendingTelegramClaim` so a stored claim can never fire
- * without the /get-started confirmation (W9-001).
+ * Authentication establishment never discovers account-link authority from
+ * browser storage. A Telegram claim rides this request only when the
+ * /get-started confirmation passes it explicitly after showing the preview.
  */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
   options?: {
     verifiedPhone?: string;
-    telegramContinuation?: string;
-    skipPendingTelegramClaim?: boolean;
   },
 ): Promise<void> {
-  const explicitTelegramContinuation = sanitizeTelegramAccountClaimContinuation(
-    options?.telegramContinuation,
-  );
-  if (
-    options?.telegramContinuation !== undefined &&
-    !explicitTelegramContinuation
-  ) {
-    throw new Error("Invalid Telegram account claim.");
-  }
-  const telegramContinuation =
-    explicitTelegramContinuation ??
-    (options?.skipPendingTelegramClaim
-      ? null
-      : peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE));
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
+  const request: StewardSessionRequest = {
     token,
     ...(refreshToken ? { refreshToken } : {}),
     ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
-    ...(telegramContinuation ? { telegramContinuation } : {}),
-  });
+  };
+  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
 
   if (!response.ok) {
     const body = await readSessionError(response);
@@ -111,12 +94,46 @@ export async function syncStewardSessionCookie(
     );
   }
 
-  if (telegramContinuation) clearPendingOnboardingSession();
-
   if (typeof window !== "undefined") {
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.
+    writeStoredStewardToken(token);
+    window.dispatchEvent(
+      new CustomEvent("steward-token-sync", { detail: { token } }),
+    );
+  }
+}
+
+/**
+ * Confirms the exact Telegram identity previewed by /get-started. This is a
+ * separate API from session establishment so login, recovery, and SSO cannot
+ * acquire claim semantics by discovering browser storage.
+ */
+export async function confirmTelegramAccountClaim(
+  token: string,
+  continuation: string,
+): Promise<void> {
+  const telegramContinuation =
+    sanitizeTelegramAccountClaimContinuation(continuation);
+  if (!telegramContinuation) {
+    throw new Error("Invalid Telegram account claim.");
+  }
+  const request: StewardTelegramClaimConfirmationRequest = {
+    token,
+    telegramContinuation,
+    telegramClaimConfirmation: "explicit",
+  };
+  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
+  if (!response.ok) {
+    const body = await readSessionError(response);
+    throw new Error(body.error || "Could not connect this Telegram account.");
+  }
+  clearPendingOnboardingSessionIfMatches(
+    telegramContinuation,
+    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+  );
+  if (typeof window !== "undefined") {
     writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
@@ -234,15 +251,11 @@ export async function exchangeStewardCodeViaApi(
   code: string,
   opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
 ): Promise<StewardNonceExchangeResponse> {
-  const telegramContinuation = peekPendingOnboardingSession(
-    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-  );
   const response = await postAuthJson(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
     ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
-    ...(telegramContinuation ? { telegramContinuation } : {}),
   });
 
   if (!response.ok) {
@@ -253,7 +266,6 @@ export async function exchangeStewardCodeViaApi(
       body.code ?? null,
     );
   }
-  if (telegramContinuation) clearPendingOnboardingSession();
   return (await response.json()) as StewardNonceExchangeResponse;
 }
 

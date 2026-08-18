@@ -1,4 +1,4 @@
-/** Verifies OAuth code exchange carries Telegram claim authority into Cloud sync. */
+/** Verifies OAuth code exchange cannot carry Telegram claim authority. */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -21,8 +21,6 @@ const syncUserFromSteward = mock(async () => ({
   organization_id: "telegram-org-1",
 }));
 
-class MockStewardTelegramAccountClaimError extends Error {}
-
 mock.module("@/lib/auth/steward-client", () => ({
   STEWARD_AUTH_UPSTREAM_TIMEOUT_MS: 5_000,
   verifyStewardTokenCached,
@@ -31,7 +29,6 @@ mock.module("@/lib/auth/steward-client", () => ({
 mock.module("@/lib/steward-sync", () => ({
   describeSyncError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
-  StewardTelegramAccountClaimError: MockStewardTelegramAccountClaimError,
   syncUserFromSteward,
 }));
 
@@ -96,32 +93,7 @@ afterAll(() => {
 });
 
 describe("POST /api/auth/steward-nonce-exchange Telegram convergence", () => {
-  test("passes the opaque claim into sync before planting cookies", async () => {
-    const response = await post({
-      code: "one-time-code",
-      redirectUri: "https://cloud.eliza.app/login",
-      codeVerifier: "pkce-verifier",
-      telegramContinuation: "opaque-telegram-claim-token",
-    });
-
-    expect(response.status).toBe(200);
-    expect(syncUserFromSteward).toHaveBeenCalledWith({
-      stewardUserId: "steward-user-1",
-      email: undefined,
-      walletAddress: undefined,
-      walletChainType: undefined,
-      telegramContinuation: "opaque-telegram-claim-token",
-    });
-    expect(response.headers.get("set-cookie") ?? "").toContain(
-      "steward-token-staging=steward-access-token",
-    );
-  });
-
-  test("returns a conflict without cookies when the account cannot be claimed", async () => {
-    syncUserFromSteward.mockRejectedValueOnce(
-      new MockStewardTelegramAccountClaimError("ownership conflict"),
-    );
-
+  test("rejects an opaque claim before consuming the OAuth code", async () => {
     const response = await post({
       code: "one-time-code",
       redirectUri: "https://cloud.eliza.app/login",
@@ -134,6 +106,8 @@ describe("POST /api/auth/steward-nonce-exchange Telegram convergence", () => {
       code: "telegram_claim_conflict",
     });
     expect(response.headers.get("set-cookie")).toBeNull();
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
   });
 
   test("rejects a guessable platform session before consuming the OAuth code", async () => {

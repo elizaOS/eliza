@@ -120,10 +120,9 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
       // A pending Telegram account claim is deliberately NOT attached to this
       // passive mirror. The claim merges the DM-created account, so it must
-      // fire only on an explicit gesture: the /get-started confirmation, or a
-      // sign-in ceremony (nonce exchange, session sync, SSO exchange), each of
-      // which attaches the pending continuation itself. A clicked claim link
-      // landing on an authenticated session must never execute on page load.
+      // fire only when /get-started attaches the continuation after rendering
+      // its identity preview and receiving explicit confirmation. Login,
+      // nonce exchange, and SSO establish authentication only.
       fetch(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",

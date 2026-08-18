@@ -148,6 +148,35 @@ export function clearPendingOnboardingSession(): void {
   }
 }
 
+/**
+ * Drop only the exact continuation that just succeeded. A different claim may
+ * have been stored while the request was in flight (another tab or link); that
+ * newer authority must not be consumed by an older response.
+ */
+export function clearPendingOnboardingSessionIfMatches(
+  token: string,
+  purpose: PendingOnboardingPurpose,
+): boolean {
+  const sanitized = sanitizeOnboardingSessionToken(token);
+  if (!sanitized) return false;
+  let cleared = false;
+  for (const storage of eachStorage()) {
+    try {
+      const pending = parseStored(
+        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
+      );
+      if (pending?.token === sanitized && pending.purpose === purpose) {
+        storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
+        cleared = true;
+      }
+    } catch {
+      // error-policy:J6 best-effort post-success cleanup; the server remains
+      // authoritative and the leftover expires without granting new access.
+    }
+  }
+  return cleared;
+}
+
 /** The transport seam, injectable for tests. */
 export interface OnboardingContinuationTransport {
   post(path: string, body: Record<string, unknown>): Promise<unknown>;

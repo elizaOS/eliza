@@ -98,8 +98,14 @@ export interface StewardSessionRequest {
   refreshToken?: string | null;
   /** Phone independently re-verified by the Cloud API against this bearer. */
   verifiedPhone?: string;
+}
+
+export interface StewardTelegramClaimConfirmationRequest
+  extends StewardSessionRequest {
   /** Opaque Telegram DM continuation that names an existing rowless account. */
-  telegramContinuation?: string;
+  telegramContinuation: string;
+  /** Explicit confirmation ceremony marker; ordinary login sync never sends it. */
+  telegramClaimConfirmation: "explicit";
 }
 
 const TELEGRAM_ACCOUNT_CLAIM_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
