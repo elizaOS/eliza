@@ -52,10 +52,11 @@ export function isSelfEditEnabled(
     | NodeJS.ProcessEnv
     | Record<string, string | undefined> = readProcessEnv(),
 ): boolean {
-  if (!isTruthyEnvValue(env[SELF_EDIT_ENABLE_ENV])) return false;
+  const currentEnv = env && typeof env === "object" ? env : readProcessEnv();
+  if (!isTruthyEnvValue(currentEnv[SELF_EDIT_ENABLE_ENV])) return false;
 
-  const nodeEnv = env.NODE_ENV;
-  const devModeFlag = isTruthyEnvValue(env[DEV_MODE_ENV]);
+  const nodeEnv = currentEnv.NODE_ENV;
+  const devModeFlag = isTruthyEnvValue(currentEnv[DEV_MODE_ENV]);
   const isProduction = nodeEnv === "production";
 
   // In production builds, the dev-mode flag must be explicitly set to override.
@@ -127,8 +128,8 @@ function readProcessEnv():
 }
 
 function normalizePathSeparators(p: string): string {
-  // Convert Windows-style separators to POSIX for uniform suffix matching.
-  return p.replace(/\\/g, "/");
+  // Convert Windows-style separators to POSIX and collapse multiple slashes.
+  return p.replace(/\\/g, "/").replace(/\/+/g, "/");
 }
 
 function containsGitDirSegment(normalized: string): boolean {
