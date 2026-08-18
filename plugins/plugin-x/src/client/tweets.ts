@@ -1267,6 +1267,11 @@ export async function fetchRetweetersPage(
   };
 }
 
+// Bounds `getAllRetweeters` against a provider that never stops paginating
+// (repeated or perpetually-novel cursors) — 1,000 pages * 40/page covers even
+// a very viral tweet while keeping worst-case requests/memory finite.
+const MAX_RETWEETER_PAGES = 1000;
+
 /**
  * Retrieves *all* retweeters by chaining requests until no next cursor is found.
  * @param tweetId The ID of the tweet.
@@ -1279,8 +1284,21 @@ export async function getAllRetweeters(
 ): Promise<Retweeter[]> {
   let allRetweeters: Retweeter[] = [];
   let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  let pageCount = 0;
 
   while (true) {
+    pageCount += 1;
+    if (pageCount > MAX_RETWEETER_PAGES) {
+      throw new ElizaError(
+        `Retweeter pagination for tweet ${tweetId} exceeded ${MAX_RETWEETER_PAGES} pages`,
+        {
+          code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED",
+          context: { tweetId, pageCount },
+        },
+      );
+    }
+
     // Destructure bottomCursor / topCursor
     const { retweeters, bottomCursor, topCursor } = await fetchRetweetersPage(
       tweetId,
@@ -1292,11 +1310,24 @@ export async function getAllRetweeters(
 
     const newCursor = bottomCursor || topCursor;
 
-    // Stop if there is no new cursor or if it's the same as the old one
-    if (!newCursor || newCursor === cursor) {
+    // Stop if there is no new cursor
+    if (!newCursor) {
       break;
     }
 
+    // A cursor the API already returned means it stopped advancing (an
+    // immediate repeat or a longer cycle) — treat it as a fault rather than
+    // looping forever on it.
+    if (seenCursors.has(newCursor)) {
+      throw new ElizaError(
+        `Retweeter pagination for tweet ${tweetId} repeated a page cursor`,
+        {
+          code: "X_RETWEETERS_PAGINATION_CURSOR_REPEATED",
+          context: { tweetId, pageCount },
+        },
+      );
+    }
+    seenCursors.add(newCursor);
     cursor = newCursor;
   }
 
