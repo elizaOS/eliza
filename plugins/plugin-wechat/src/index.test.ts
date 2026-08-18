@@ -358,4 +358,72 @@ describe("@elizaos/plugin-wechat", () => {
     expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "hello");
     expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
   });
+
+  it("keeps surrogate pairs intact when chunking text through the proxy client", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 6 });
+
+    await dispatcher.sendText("wxid_alice", "aaaaa\u{1F98A}bbbbb");
+
+    const sent = vi.mocked(client.sendText).mock.calls.map((c) => c[1]);
+    expect(sent.length).toBeGreaterThan(1);
+    for (const chunk of sent) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it.each([0, -1, Number.NaN, 1.5])(
+    "rejects invalid reply chunk size %s",
+    (chunkSize) => {
+      const client = {
+        sendText: vi.fn(async () => undefined),
+      } as unknown as ProxyClient;
+
+      expect(() => new ReplyDispatcher({ client, chunkSize })).toThrow(
+        expect.objectContaining({ code: "WECHAT_REPLY_CHUNK_SIZE_INVALID" }),
+      );
+    },
+  );
+
+  it("fails before sending when the chunk cap cannot fit an emoji", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 1 });
+
+    await expect(dispatcher.sendText("wxid_alice", "🦊abc")).rejects.toEqual(
+      expect.objectContaining({ code: "WECHAT_REPLY_CHUNK_SIZE_TOO_SMALL" }),
+    );
+    expect(client.sendText).not.toHaveBeenCalled();
+  });
+
+  it("keeps the established whitespace-boundary policy explicit", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 6 });
+
+    await dispatcher.sendText("wxid_alice", "hello  world");
+
+    expect(
+      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
+    ).toEqual(["hello ", "world"]);
+  });
+
+  it("sanitizes pre-existing lone surrogates before sending", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 3 });
+
+    await dispatcher.sendText("wxid_alice", "a\ud800bc");
+
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["a�b", "c"]);
+    expect(sent.every((chunk) => chunk.isWellFormed())).toBe(true);
+    expect(sent.every((chunk) => chunk.length <= 3)).toBe(true);
+  });
 });
