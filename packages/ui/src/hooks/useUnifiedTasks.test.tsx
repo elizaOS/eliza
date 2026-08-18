@@ -11,21 +11,28 @@ import type {
   ScheduledTaskView,
 } from "../api/client-types-core";
 
-// The hook reads the two list endpoints via the typed client — mock both. Each
-// is a spy so we can assert the parallel fetch, the per-source degrade, and the
-// ownerVisibleOnly default.
-const { listAutomationsMock, listScheduledTasksMock } = vi.hoisted(() => ({
-  listAutomationsMock: vi.fn(),
-  listScheduledTasksMock: vi.fn(),
+// Native-complete seam: automations go through workflowSurfaceClient.fetch,
+// scheduled tasks through the active client.fetch — each with its own timeoutMs.
+const { automationsFetchMock, scheduledFetchMock } = vi.hoisted(() => ({
+  automationsFetchMock: vi.fn(),
+  scheduledFetchMock: vi.fn(),
 }));
 vi.mock("../api", () => ({
   client: {
-    listAutomations: listAutomationsMock,
-    listScheduledTasks: listScheduledTasksMock,
+    fetch: scheduledFetchMock,
   },
 }));
+vi.mock("../api/workflow-surface-routing", () => ({
+  workflowSurfaceClient: () => ({ fetch: automationsFetchMock }),
+}));
 
-import { useUnifiedTasks } from "./useUnifiedTasks";
+import {
+  fetchUnifiedAutomations,
+  fetchUnifiedScheduledTasks,
+  UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS,
+  UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS,
+  useUnifiedTasks,
+} from "./useUnifiedTasks";
 
 const automation: AutomationItem = {
   id: "workflow:w-1",
@@ -85,18 +92,16 @@ function scheduledResponse(
 
 describe("useUnifiedTasks", () => {
   beforeEach(() => {
-    listAutomationsMock.mockReset();
-    listScheduledTasksMock.mockReset();
+    automationsFetchMock.mockReset();
+    scheduledFetchMock.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
   it("merges automations + scheduled tasks into one list and settles loading", async () => {
-    listAutomationsMock.mockResolvedValue(automationsResponse([automation]));
-    listScheduledTasksMock.mockResolvedValue(
-      scheduledResponse([scheduledTask()]),
-    );
+    automationsFetchMock.mockResolvedValue(automationsResponse([automation]));
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([scheduledTask()]));
 
     const { result } = renderHook(() => useUnifiedTasks());
     await waitFor(() => expect(result.current.state.loading).toBe(false));
@@ -105,21 +110,27 @@ describe("useUnifiedTasks", () => {
     expect(ids).toContain("workflow:w-1");
     expect(ids).toContain("scheduled:t-1");
     expect(result.current.state.error).toBeNull();
-    // Both sources fetched in parallel.
-    expect(listAutomationsMock).toHaveBeenCalledTimes(1);
-    expect(listScheduledTasksMock).toHaveBeenCalledTimes(1);
+    expect(automationsFetchMock).toHaveBeenCalledTimes(1);
+    expect(scheduledFetchMock).toHaveBeenCalledTimes(1);
+    expect(automationsFetchMock).toHaveBeenCalledWith(
+      "/api/automations",
+      undefined,
+      { timeoutMs: UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS },
+    );
+    expect(scheduledFetchMock).toHaveBeenCalledWith(
+      "/api/lifeops/scheduled-tasks?ownerVisibleOnly=1",
+      undefined,
+      { timeoutMs: UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS },
+    );
   });
 
   it("degrades each source independently — one source failing yields empty for it, not an error", async () => {
-    listAutomationsMock.mockRejectedValue(new Error("automations not hosted"));
-    listScheduledTasksMock.mockResolvedValue(
-      scheduledResponse([scheduledTask()]),
-    );
+    automationsFetchMock.mockRejectedValue(new Error("automations not hosted"));
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([scheduledTask()]));
 
     const { result } = renderHook(() => useUnifiedTasks());
     await waitFor(() => expect(result.current.state.loading).toBe(false));
 
-    // The whole hook still resolves; only the failed source is empty.
     expect(result.current.state.error).toBeNull();
     expect(result.current.state.items.map((i) => i.id)).toEqual([
       "scheduled:t-1",
@@ -127,8 +138,8 @@ describe("useUnifiedTasks", () => {
   });
 
   it("settles to empty (never throws) when BOTH sources fail", async () => {
-    listAutomationsMock.mockRejectedValue(new Error("down"));
-    listScheduledTasksMock.mockRejectedValue(new Error("down"));
+    automationsFetchMock.mockRejectedValue(new Error("down"));
+    scheduledFetchMock.mockRejectedValue(new Error("down"));
 
     const { result } = renderHook(() => useUnifiedTasks());
     await waitFor(() => expect(result.current.state.loading).toBe(false));
@@ -138,38 +149,107 @@ describe("useUnifiedTasks", () => {
   });
 
   it("requests owner-visible scheduled tasks by default", async () => {
-    listAutomationsMock.mockResolvedValue(automationsResponse([]));
-    listScheduledTasksMock.mockResolvedValue(scheduledResponse([]));
+    automationsFetchMock.mockResolvedValue(automationsResponse([]));
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([]));
 
     renderHook(() => useUnifiedTasks());
     await waitFor(() =>
-      expect(listScheduledTasksMock).toHaveBeenCalledWith({
-        ownerVisibleOnly: true,
-      }),
+      expect(scheduledFetchMock).toHaveBeenCalledWith(
+        "/api/lifeops/scheduled-tasks?ownerVisibleOnly=1",
+        undefined,
+        { timeoutMs: UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS },
+      ),
     );
   });
 
   it("honors ownerVisibleOnly: false override", async () => {
-    listAutomationsMock.mockResolvedValue(automationsResponse([]));
-    listScheduledTasksMock.mockResolvedValue(scheduledResponse([]));
+    automationsFetchMock.mockResolvedValue(automationsResponse([]));
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([]));
 
     renderHook(() => useUnifiedTasks({ ownerVisibleOnly: false }));
     await waitFor(() =>
-      expect(listScheduledTasksMock).toHaveBeenCalledWith({
-        ownerVisibleOnly: false,
-      }),
+      expect(scheduledFetchMock).toHaveBeenCalledWith(
+        "/api/lifeops/scheduled-tasks",
+        undefined,
+        { timeoutMs: UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS },
+      ),
     );
   });
 
   it("refresh() re-fetches both sources", async () => {
-    listAutomationsMock.mockResolvedValue(automationsResponse([]));
-    listScheduledTasksMock.mockResolvedValue(scheduledResponse([]));
+    automationsFetchMock.mockResolvedValue(automationsResponse([]));
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([]));
 
     const { result } = renderHook(() => useUnifiedTasks());
     await waitFor(() => expect(result.current.state.loading).toBe(false));
 
-    const before = listAutomationsMock.mock.calls.length;
+    const before = automationsFetchMock.mock.calls.length;
     await result.current.refresh();
-    expect(listAutomationsMock.mock.calls.length).toBeGreaterThan(before);
+    expect(automationsFetchMock.mock.calls.length).toBeGreaterThan(before);
+  });
+});
+
+describe("unified-tasks native-complete deadlines", () => {
+  beforeEach(() => {
+    automationsFetchMock.mockReset();
+    scheduledFetchMock.mockReset();
+  });
+
+  it("keeps a documented budget per hop", () => {
+    expect(UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS).toBe(6_000);
+    expect(UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS).toBe(6_000);
+  });
+
+  it("passes automations timeoutMs through client.fetch", async () => {
+    automationsFetchMock.mockResolvedValue(automationsResponse([]));
+    await fetchUnifiedAutomations({ fetch: automationsFetchMock });
+    expect(automationsFetchMock).toHaveBeenCalledWith(
+      "/api/automations",
+      undefined,
+      { timeoutMs: UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS },
+    );
+  });
+
+  it("passes scheduled timeoutMs through client.fetch", async () => {
+    scheduledFetchMock.mockResolvedValue(scheduledResponse([scheduledTask()]));
+    const listed = await fetchUnifiedScheduledTasks(
+      { fetch: scheduledFetchMock },
+      true,
+    );
+    expect(listed.tasks).toHaveLength(1);
+    expect(scheduledFetchMock).toHaveBeenCalledWith(
+      "/api/lifeops/scheduled-tasks?ownerVisibleOnly=1",
+      undefined,
+      { timeoutMs: UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS },
+    );
+  });
+
+  it("aborts a stalled automations hop as TimeoutError", async () => {
+    const timeout = Object.assign(new Error("Request timed out after 10ms"), {
+      name: "ApiError",
+      kind: "timeout",
+    });
+    automationsFetchMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          setTimeout(() => reject(timeout), 10);
+        }),
+    );
+    await expect(
+      fetchUnifiedAutomations({ fetch: automationsFetchMock }, 10),
+    ).rejects.toMatchObject({ name: "ApiError", kind: "timeout" });
+  });
+
+  it("surfaces a provider error from a completed scheduled GET", async () => {
+    scheduledFetchMock.mockRejectedValue(
+      Object.assign(new Error("Scheduled tasks request failed (503)"), {
+        name: "ApiError",
+        kind: "http",
+        status: 503,
+      }),
+    );
+    await expect(
+      fetchUnifiedScheduledTasks({ fetch: scheduledFetchMock }, true),
+    ).rejects.toMatchObject({ status: 503 });
   });
 });

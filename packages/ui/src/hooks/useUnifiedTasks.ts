@@ -7,14 +7,22 @@
  * second scheduler is introduced. Either source degrading (404 where the
  * runtime/runner isn't hosted, e.g. mobile) is treated as empty, mirroring the
  * existing self-hide behaviour of the automations surfaces.
+ *
+ * Each hop goes through ElizaClient `fetch` with its own `{ timeoutMs }` so
+ * Android/iOS `client.fetch` is actually bounded. Automations stay on
+ * `workflowSurfaceClient` (mobile Cloud routing). Scheduled tasks stay on the
+ * active client (plugin-scheduling is on-device).
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 import type { AutomationListResponse } from "../api/client-types-config";
-import type { ScheduledTaskListResponse } from "../api/client-types-core";
+import type {
+  ScheduledTaskListResponse,
+  ScheduledTaskView,
+} from "../api/client-types-core";
+import { workflowSurfaceClient } from "../api/workflow-surface-routing";
 import { mergeUnifiedTasks } from "../utils/merge-unified-tasks";
-import { withTimeout } from "../utils/with-timeout";
 
 export interface UnifiedTasksState {
   items: ReturnType<typeof mergeUnifiedTasks>;
@@ -55,7 +63,43 @@ export interface UseUnifiedTasksOptions {
   ownerVisibleOnly?: boolean;
 }
 
-const DEFAULT_TIMEOUT_MS = 6_000;
+/** Automations list hop — existing 6s glance budget, independent of scheduled. */
+export const UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS = 6_000;
+/** Scheduled-tasks list hop — existing 6s glance budget, independent of automations. */
+export const UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS = 6_000;
+
+type UnifiedFetchClient = Pick<typeof client, "fetch">;
+
+function scheduledTasksPath(ownerVisibleOnly: boolean): string {
+  const params = new URLSearchParams();
+  if (ownerVisibleOnly) params.set("ownerVisibleOnly", "1");
+  const query = params.toString();
+  return `/api/lifeops/scheduled-tasks${query ? `?${query}` : ""}`;
+}
+
+export async function fetchUnifiedAutomations(
+  api: UnifiedFetchClient,
+  timeoutMs: number = UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS,
+): Promise<AutomationListResponse> {
+  return api.fetch<AutomationListResponse>(
+    "/api/automations",
+    undefined,
+    { timeoutMs },
+  );
+}
+
+export async function fetchUnifiedScheduledTasks(
+  api: UnifiedFetchClient,
+  ownerVisibleOnly: boolean,
+  timeoutMs: number = UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS,
+): Promise<ScheduledTaskListResponse> {
+  const res = await api.fetch<{ tasks?: ScheduledTaskView[] }>(
+    scheduledTasksPath(ownerVisibleOnly),
+    undefined,
+    { timeoutMs },
+  );
+  return { tasks: Array.isArray(res?.tasks) ? res.tasks : [] };
+}
 
 async function settle<T>(promise: Promise<T>, fallback: T): Promise<T> {
   try {
@@ -71,21 +115,26 @@ export function useUnifiedTasks(options?: UseUnifiedTasksOptions): {
   state: UnifiedTasksState;
   refresh: () => Promise<void>;
 } {
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const automationsTimeoutMs =
+    options?.timeoutMs ?? UNIFIED_AUTOMATIONS_FETCH_TIMEOUT_MS;
+  const scheduledTimeoutMs =
+    options?.timeoutMs ?? UNIFIED_SCHEDULED_TASKS_FETCH_TIMEOUT_MS;
   const ownerVisibleOnly = options?.ownerVisibleOnly ?? true;
   const [state, setState] = useState<UnifiedTasksState>(INITIAL_STATE);
 
   const load = useCallback(
     async (signal: { cancelled: boolean }) => {
+      const automationsClient = workflowSurfaceClient(client);
       const [automations, scheduled] = await Promise.all([
         settle(
-          withTimeout(client.listAutomations(), timeoutMs),
+          fetchUnifiedAutomations(automationsClient, automationsTimeoutMs),
           EMPTY_AUTOMATIONS,
         ),
         settle(
-          withTimeout(
-            client.listScheduledTasks({ ownerVisibleOnly }),
-            timeoutMs,
+          fetchUnifiedScheduledTasks(
+            client,
+            ownerVisibleOnly,
+            scheduledTimeoutMs,
           ),
           EMPTY_SCHEDULED,
         ),
@@ -97,7 +146,7 @@ export function useUnifiedTasks(options?: UseUnifiedTasksOptions): {
       );
       setState({ items, automations, loading: false, error: null });
     },
-    [timeoutMs, ownerVisibleOnly],
+    [automationsTimeoutMs, scheduledTimeoutMs, ownerVisibleOnly],
   );
 
   useEffect(() => {
