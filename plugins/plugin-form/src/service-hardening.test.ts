@@ -249,7 +249,9 @@ describe("form extraction hardening", () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({ field: "age", confidence: 0.3 });
-    expect(Number.isNaN(result[0]?.value)).toBe(true);
+    // Rejected input keeps its original string rather than a NaN sentinel,
+    // so the invalid status survives JSON session persistence.
+    expect(result[0]?.value).toBe("nope");
     expect(result[1]).toMatchObject({
       field: "age",
       value: 42,
@@ -307,14 +309,49 @@ describe("field validation edge cases", () => {
 
     // The extraction path runs parseValue before validateField, so a
     // rejected input must not be silently coerced to a partial number.
+    // parseValue keeps the ORIGINAL string (not a NaN/Infinity sentinel)
+    // so the rejection survives session persistence, which round-trips
+    // through JSON.parse(JSON.stringify(session)): JSON.stringify(NaN) is
+    // "null", and a persisted null would pass the empty-optional rule at
+    // submit-time revalidation and ride through as a healthy value.
     for (const garbage of ["50abc", "0x10", "1.2.3", "12 apples", "5e3xyz"]) {
       const parsed = parseValue(garbage, control);
-      expect(Number.isNaN(parsed)).toBe(true);
-      expect(validateField(parsed, control).valid).toBe(false);
+      expect(parsed).toBe(garbage);
+      const persisted = JSON.parse(JSON.stringify(parsed));
+      expect(persisted).toBe(garbage);
+      expect(validateField(persisted, control).valid).toBe(false);
     }
+
+    // Overflow inputs match the numeric shape but become Infinity, which
+    // also serializes to "null"; parseValue must keep the original string
+    // for the same persistence reason.
+    const overflow = parseValue("1e309", control);
+    expect(overflow).toBe("1e309");
+    expect(JSON.parse(JSON.stringify(overflow))).toBe("1e309");
+    expect(validateField(overflow, control).valid).toBe(false);
 
     // A required number field rejects empty input as before.
     expect(validateField("", { ...control, required: true }).valid).toBe(false);
+  });
+
+  it("accepts a trailing decimal point without fractional digits", () => {
+    const control = { key: "amount", label: "Amount", type: "number" };
+
+    // Number("5.") is a complete finite number and develop's parseFloat
+    // accepted it, so the strict shape must not narrow these to invalid.
+    const accepted: Array<[string, number]> = [
+      ["5.", 5],
+      ["1.", 1],
+      ["1.e3", 1000],
+    ];
+    for (const [input, expected] of accepted) {
+      expect(validateField(input, control).valid).toBe(true);
+      expect(parseValue(input, control)).toBe(expected);
+    }
+
+    // A bare dot is still not a number.
+    expect(validateField(".", control).valid).toBe(false);
+    expect(parseValue(".", control)).toBe(".");
   });
 
   it("still accepts legitimate numeric formats", () => {

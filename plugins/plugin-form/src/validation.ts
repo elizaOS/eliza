@@ -286,11 +286,14 @@ function validateEmail(
  * numeric shape forces the input to be a number or nothing.
  *
  * Commas and currency symbols are still stripped so "1,234" and "$50"
- * keep working. Overflow inputs like "1e309" match the shape and become
+ * keep working. A trailing decimal point with no fractional digits ("5.",
+ * "1.e3") is accepted because Number("5.") is a complete finite number and
+ * develop's parseFloat accepted it; only genuinely non-numeric shapes are
+ * rejected. Overflow inputs like "1e309" match the shape and become
  * Infinity; callers reject them with a finite check. Any non-numeric
  * input returns NaN so callers treat it as an invalid number.
  */
-const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d+)?|\.\d+)(e[+-]?\d+)?$/i;
+const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 
 function parseStrictNumber(input: string): number {
   const cleaned = input.replace(/[,$]/g, "").trim();
@@ -571,13 +574,22 @@ export function parseValue(value: string, control: FormControl): JsonValue {
   }
 
   switch (control.type) {
-    case "number":
+    case "number": {
       // Strict parse so garbage-suffixed input is not coerced to a
       // partial number. WHY: parseValue runs before validateField in the
       // extraction path, so a lenient parseFloat here would hand a
-      // fake-valid number to validation. Returns NaN for invalid input,
-      // which validateNumber then rejects.
-      return parseStrictNumber(value);
+      // fake-valid number to validation.
+      const parsed = parseStrictNumber(value);
+      // On rejection, preserve the ORIGINAL string instead of a non-finite
+      // sentinel. WHY: session persistence round-trips through
+      // JSON.parse(JSON.stringify(session)), and JSON.stringify(NaN) and
+      // JSON.stringify(Infinity) both serialize to "null". A persisted null
+      // then passes the empty-optional rule at submit-time revalidation, so
+      // a rejected optional answer would ride through as a healthy-looking
+      // null. The original string survives persistence unchanged and stays
+      // invalid when validateNumber re-parses it, forcing the re-ask.
+      return Number.isFinite(parsed) ? parsed : value;
+    }
 
     case "boolean": {
       const lower = value.toLowerCase();
