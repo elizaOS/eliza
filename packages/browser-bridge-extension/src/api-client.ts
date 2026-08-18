@@ -164,10 +164,9 @@ function readSyncResponse(
     if (
       typeof session.id !== "string" ||
       session.id.length === 0 ||
-      (session.companionId !== null &&
-        session.companionId !== config.companionId) ||
-      (session.browser !== null && session.browser !== config.browser) ||
-      (session.profileId !== null && session.profileId !== config.profileId) ||
+      session.companionId !== config.companionId ||
+      session.browser !== config.browser ||
+      session.profileId !== config.profileId ||
       !Array.isArray(session.actions) ||
       !Number.isInteger(session.currentActionIndex) ||
       Number(session.currentActionIndex) < 0 ||
@@ -209,8 +208,7 @@ function readSyncResponse(
       !isRecord(tab) ||
       tab.browser !== config.browser ||
       tab.profileId !== config.profileId ||
-      (Object.hasOwn(tab, "companionId") &&
-        tab.companionId !== config.companionId)
+      tab.companionId !== config.companionId
     ) {
       invalidSyncResponse("tab identity does not match the pairing");
     }

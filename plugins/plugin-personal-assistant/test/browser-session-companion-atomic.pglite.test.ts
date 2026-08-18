@@ -148,11 +148,25 @@ describe("browser companion atomic persistence", () => {
     );
     expect(claimed?.id).toBe(session.id);
 
+    const firstStep =
+      await repository.updateBrowserSessionProgressFromCompanion({
+        agentId: runtime.agentId,
+        sessionId: session.id,
+        companion: owner,
+        expectedActionIndex: 0,
+        currentActionIndex: 1,
+        resultPatch: { first: true },
+        metadataPatch: {},
+        updatedAt: new Date().toISOString(),
+      });
+    expect(firstStep?.currentActionIndex).toBe(1);
+
     const terminal = await repository.updateBrowserSessionProgressFromCompanion(
       {
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: owner,
+        expectedActionIndex: 1,
         currentActionIndex: session.actions.length,
         resultPatch: { terminal: true },
         metadataPatch: {},
@@ -166,6 +180,7 @@ describe("browser companion atomic persistence", () => {
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: owner,
+        expectedActionIndex: session.actions.length,
         currentActionIndex: session.actions.length,
         resultPatch: { retried: true },
         metadataPatch: {},
@@ -175,6 +190,7 @@ describe("browser companion atomic persistence", () => {
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: owner,
+        expectedActionIndex: session.actions.length,
         currentActionIndex: 1,
         resultPatch: { rewound: true },
         metadataPatch: {},
@@ -184,13 +200,14 @@ describe("browser companion atomic persistence", () => {
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: foreign,
+        expectedActionIndex: session.actions.length,
         currentActionIndex: session.actions.length,
         resultPatch: { stolen: true },
         metadataPatch: {},
         updatedAt: new Date().toISOString(),
       }),
     ]);
-    expect(retry?.result).toMatchObject({ terminal: true, retried: true });
+    expect(retry).toBeNull();
     expect(rewind).toBeNull();
     expect(intrusion).toBeNull();
 

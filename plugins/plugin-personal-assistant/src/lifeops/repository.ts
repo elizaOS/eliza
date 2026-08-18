@@ -6559,11 +6559,15 @@ export class LifeOpsRepository {
     agentId: string;
     sessionId: string;
     companion: BrowserBridgeCompanionStatus;
+    expectedActionIndex: number;
     currentActionIndex: number;
     resultPatch: Record<string, unknown>;
     metadataPatch: Record<string, unknown>;
     updatedAt: string;
   }): Promise<LifeOpsBrowserSession | null> {
+    if (args.currentActionIndex !== args.expectedActionIndex + 1) {
+      return null;
+    }
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_workflow_browser_sessions
@@ -6577,7 +6581,7 @@ export class LifeOpsRepository {
           AND companion_id = ${sqlQuote(args.companion.id)}
           AND browser = ${sqlQuote(args.companion.browser)}
           AND profile_id = ${sqlQuote(args.companion.profileId)}
-          AND current_action_index <= ${sqlInteger(args.currentActionIndex)}
+          AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
           AND ${sqlInteger(args.currentActionIndex)} <= jsonb_array_length(actions_json::jsonb)
         RETURNING *`,
     );
@@ -6607,6 +6611,10 @@ export class LifeOpsRepository {
           AND companion_id = ${sqlQuote(args.companion.id)}
           AND browser = ${sqlQuote(args.companion.browser)}
           AND profile_id = ${sqlQuote(args.companion.profileId)}
+          AND (
+            ${sqlQuote(args.status)} = 'failed'
+            OR current_action_index = jsonb_array_length(actions_json::jsonb)
+          )
         RETURNING *`,
     );
     return rows[0] ? parseBrowserSession(rows[0]) : null;

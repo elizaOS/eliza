@@ -104,6 +104,25 @@ function canonicalizeSettingsValue(value: unknown): unknown {
   return value;
 }
 
+function sameCanonicalValue(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(canonicalizeSettingsValue(left)) ===
+    JSON.stringify(canonicalizeSettingsValue(right))
+  );
+}
+
+function recordPatchMatches(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown> | undefined,
+): boolean {
+  return (
+    patch === undefined ||
+    Object.entries(patch).every(([key, value]) =>
+      sameCanonicalValue(current[key], value),
+    )
+  );
+}
+
 export function browserBridgeSettingsVersion(
   settings: BrowserBridgeSettings,
 ): string {
@@ -669,21 +688,24 @@ export class BrowserDomain {
     const allTabs = await this.ctx.repository.listBrowserTabs(
       this.ctx.agentId(),
     );
-    const keptTabs = selectRememberedBrowserTabs(
-      allTabs.filter((tab) => browserUrlAllowedBySettings(tab.url, settings)),
-      settings.maxRememberedTabs,
-    );
-    const keptTabIds = new Set(keptTabs.map((tab) => tab.id));
-    await this.ctx.repository.deleteBrowserTabsByIds(
-      this.ctx.agentId(),
-      allTabs.filter((tab) => !keptTabIds.has(tab.id)).map((tab) => tab.id),
-    );
-
-    const companionTabs = keptTabs.filter(
+    const currentCompanionTabs = allTabs.filter(
       (tab) =>
         tab.companionId === companion.id &&
         tab.browser === browser &&
         tab.profileId === profileId,
+    );
+    const companionTabs = selectRememberedBrowserTabs(
+      currentCompanionTabs.filter((tab) =>
+        browserUrlAllowedBySettings(tab.url, settings),
+      ),
+      settings.maxRememberedTabs,
+    );
+    const keptTabIds = new Set(companionTabs.map((tab) => tab.id));
+    await this.ctx.repository.deleteBrowserTabsByIds(
+      this.ctx.agentId(),
+      currentCompanionTabs
+        .filter((tab) => !keptTabIds.has(tab.id))
+        .map((tab) => tab.id),
     );
     const focusedTab =
       companionTabs.find((tab) => tab.focusedActive) ??
@@ -816,21 +838,21 @@ export class BrowserDomain {
       syncedContextIds.add(nextContext.id);
     }
 
-    const keptKeys = new Set(keptTabs.map((tab) => browserTabIdentityKey(tab)));
+    const keptKeys = new Set(
+      companionTabs.map((tab) => browserTabIdentityKey(tab)),
+    );
     await this.ctx.repository.deleteBrowserPageContextsByIds(
       this.ctx.agentId(),
       existingContexts
         .filter((context) => {
+          if (context.browser !== browser || context.profileId !== profileId) {
+            return false;
+          }
           const key = browserPageContextIdentityKey(context);
           if (!keptKeys.has(key)) {
             return true;
           }
-          if (
-            context.browser === browser &&
-            context.profileId === profileId &&
-            !syncedContextIds.has(context.id) &&
-            key !== focusedKey
-          ) {
+          if (!syncedContextIds.has(context.id) && key !== focusedKey) {
             return true;
           }
           return false;
@@ -1069,14 +1091,11 @@ export class BrowserDomain {
       typeof request.settingsVersion !== "string" ||
       request.settingsVersion !== settingsVersion
     ) {
-      const error = new Error(
+      fail(
+        409,
         "browser companion settings changed; preflight again",
+        "browser_bridge_settings_stale",
       );
-      Object.assign(error, {
-        status: 409,
-        code: "browser_bridge_settings_stale",
-      });
-      throw error;
     }
     const state = await this.syncBrowserState(request);
     const session =
@@ -1302,7 +1321,7 @@ export class BrowserDomain {
               "done",
               "failed",
             ] as const),
-      currentActionIndex: Math.max(0, session.actions.length - 1),
+      currentActionIndex: session.actions.length,
       result: lifecycle.result,
       metadata: lifecycle.metadata,
       finishedAt: new Date().toISOString(),
@@ -1355,17 +1374,31 @@ export class BrowserDomain {
     if (currentActionIndex < session.currentActionIndex) {
       fail(409, "browser session checkpoint cannot move backwards");
     }
+    const resultPatch =
+      request.result === undefined
+        ? undefined
+        : requireRecord(request.result, "result");
+    const metadataPatch =
+      request.metadata === undefined
+        ? undefined
+        : requireRecord(request.metadata, "metadata");
+    if (currentActionIndex === session.currentActionIndex) {
+      if (
+        recordPatchMatches(session.result, resultPatch) &&
+        recordPatchMatches(session.metadata, metadataPatch)
+      ) {
+        return session;
+      }
+      fail(409, "browser session checkpoint replay conflicts with its receipt");
+    }
+    if (currentActionIndex !== session.currentActionIndex + 1) {
+      fail(409, "browser session checkpoint must advance exactly one action");
+    }
     const updatedAt = new Date().toISOString();
     const lifecycle = mergeBrowserTaskLifecycle({
       session,
-      resultPatch:
-        request.result === undefined
-          ? undefined
-          : requireRecord(request.result, "result"),
-      metadataPatch:
-        request.metadata === undefined
-          ? undefined
-          : requireRecord(request.metadata, "metadata"),
+      resultPatch,
+      metadataPatch,
       now: updatedAt,
     });
     const updated =
@@ -1373,6 +1406,7 @@ export class BrowserDomain {
         agentId: this.ctx.agentId(),
         sessionId: session.id,
         companion,
+        expectedActionIndex: session.currentActionIndex,
         currentActionIndex,
         resultPatch: lifecycle.result,
         metadataPatch: lifecycle.metadata,
@@ -1408,8 +1442,15 @@ export class BrowserDomain {
       companion,
       sessionId,
     );
+    const requestedResult =
+      request.result === undefined
+        ? undefined
+        : requireRecord(request.result, "result");
     if (session.status !== "running") {
-      if (session.status === (request.status ?? "done")) {
+      if (
+        session.status === (request.status ?? "done") &&
+        recordPatchMatches(session.result, requestedResult)
+      ) {
         return session;
       }
       fail(
@@ -1419,12 +1460,18 @@ export class BrowserDomain {
     }
     const updatedAt = new Date().toISOString();
     const status = request.status ?? "done";
+    if (
+      status === "done" &&
+      session.currentActionIndex !== session.actions.length
+    ) {
+      fail(
+        409,
+        "browser session cannot complete before every action is acknowledged",
+      );
+    }
     const lifecycle = mergeBrowserTaskLifecycle({
       session,
-      resultPatch:
-        request.result === undefined
-          ? undefined
-          : requireRecord(request.result, "result"),
+      resultPatch: requestedResult,
       now: updatedAt,
       completed: status === "done",
     });
