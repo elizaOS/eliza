@@ -42,6 +42,7 @@ import {
   TRACE_ENV,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
+import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -3329,10 +3330,25 @@ export class AcpService extends Service {
 
   private trustedSessionExecutionPath(session: SessionInfo): string {
     const wrapperDir = session.metadata?.[ACP_METADATA_GIT_WRAPPER_DIR];
-    const basePath = process.env.PATH ?? "";
-    return typeof wrapperDir === "string" && wrapperDir.trim()
-      ? [wrapperDir, basePath].filter(Boolean).join(delimiter)
-      : basePath;
+    const basePath = getHostExecutionBaseline().path;
+    if (!basePath) {
+      throw new ElizaError("Host executable-search authority is unavailable", {
+        code: "ACP_HOST_EXECUTION_PATH_UNAVAILABLE",
+        context: { sessionId: session.id },
+        severity: "fatal",
+      });
+    }
+    if (typeof wrapperDir !== "string" || !wrapperDir.trim()) return basePath;
+
+    const expectedWrapperDir = resolve(this.acpGitIndexRoot(session.id), "bin");
+    if (resolve(wrapperDir) !== expectedWrapperDir) {
+      throw new ElizaError("Session git wrapper is outside its owned root", {
+        code: "ACP_GIT_WRAPPER_AUTHORITY_INVALID",
+        context: { sessionId: session.id },
+        severity: "fatal",
+      });
+    }
+    return [expectedWrapperDir, basePath].join(delimiter);
   }
 
   private async sendNativePrompt(

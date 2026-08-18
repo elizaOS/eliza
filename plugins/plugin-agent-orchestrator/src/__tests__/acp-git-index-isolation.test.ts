@@ -18,10 +18,19 @@ import {
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpWarmSessionClaim } from "../../../../packages/examples/code/src/acp-session-claim.js";
 import { AcpService } from "../services/acp-service.js";
 import { InMemorySessionStore } from "../services/session-store.js";
+
+const originalTestPath = process.env.PATH;
+process.env.PATH = originalTestPath
+  ?.split(path.delimiter)
+  .filter((entry) => path.isAbsolute(entry))
+  .join(path.delimiter);
+const bootExecutionPath = captureHostExecutionBaseline().path;
+process.env.PATH = originalTestPath;
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -63,6 +72,13 @@ type GitIndexPreparer = {
   >;
 };
 
+type TrustedExecutionPathResolver = {
+  trustedSessionExecutionPath(session: {
+    id: string;
+    metadata?: Record<string, string>;
+  }): string;
+};
+
 function claimWarmSessionEnv(
   prepared:
     | { env: Record<string, string>; metadata: Record<string, string> }
@@ -79,7 +95,7 @@ function claimWarmSessionEnv(
       elizaSessionClaim: {
         token,
         env: prepared.env,
-        executionPath: [wrapperDir, process.env.PATH]
+        executionPath: [wrapperDir, bootExecutionPath]
           .filter(Boolean)
           .join(path.delimiter),
       },
@@ -199,5 +215,42 @@ describe("ACP per-session git index isolation (#13773)", () => {
     expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
       ["README.md", "warm-a.txt", "warm-b.txt"].join("\n"),
     );
+  });
+
+  it("builds the warm claim PATH from boot authority and the owned wrapper only", async () => {
+    expect(bootExecutionPath).toBeTruthy();
+    const sessionId = `${sessionPrefix}trusted-path`;
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+    const resolveTrustedPath = (
+      service as unknown as TrustedExecutionPathResolver
+    ).trustedSessionExecutionPath.bind(service);
+    const prepared = await prepare(repo, sessionId);
+    if (!prepared) throw new Error("session git index was not prepared");
+
+    const previousPath = process.env.PATH;
+    process.env.PATH = "/tmp/untrusted-runtime-path";
+    try {
+      expect(
+        resolveTrustedPath({ id: sessionId, metadata: prepared.metadata }),
+      ).toBe(
+        [prepared.metadata.gitWrapperDir, bootExecutionPath].join(
+          path.delimiter,
+        ),
+      );
+    } finally {
+      process.env.PATH = previousPath;
+    }
+
+    expect(() =>
+      resolveTrustedPath({
+        id: sessionId,
+        metadata: { gitWrapperDir: path.join(tmpRoot, "forged", "bin") },
+      }),
+    ).toThrow("Session git wrapper is outside its owned root");
   });
 });

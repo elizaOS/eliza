@@ -5,15 +5,21 @@
  * Deterministic; no live runtime.
  */
 import { readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { describe, expect, it } from "vitest";
 
 describe("eliza-code host execution baseline", () => {
   it("captures a non-empty PATH baseline via the side-effect module", async () => {
-    await import("./host-baseline.js");
-    const baseline = getHostExecutionBaseline();
-    expect(baseline.path).toBeDefined();
-    expect(baseline.path?.length).toBeGreaterThan(0);
+    const previousPath = process.env.PATH;
+    const executableDirectory = dirname(process.execPath);
+    process.env.PATH = executableDirectory;
+    try {
+      await import("./host-baseline.js");
+      expect(getHostExecutionBaseline().path).toBe(executableDirectory);
+    } finally {
+      process.env.PATH = previousPath;
+    }
   });
 
   it.each([

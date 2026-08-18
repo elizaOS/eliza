@@ -11,6 +11,7 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
+import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -827,7 +828,7 @@ describe("AcpService", () => {
       expect(
         firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
       ).toBeUndefined();
-      expect(firstClaim?.executionPath).toBe(process.env.PATH);
+      expect(firstClaim?.executionPath).toBe(getHostExecutionBaseline().path);
 
       await waitForNativeClients(2);
       const secondWarm = nativeClientMock.instances[1];
