@@ -12,9 +12,14 @@ import type {
 } from "./browser-contracts";
 import { ElizaClient } from "./client-base";
 
+/** Browser workspace GET — existing 10s REST budget, independent HTTP hop. */
+export const BROWSER_WORKSPACE_GET_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
-    getBrowserWorkspace(): Promise<BrowserWorkspaceSnapshot>;
+    getBrowserWorkspace(
+      timeoutMs?: number,
+    ): Promise<BrowserWorkspaceSnapshot>;
     openBrowserWorkspaceTab(request: OpenBrowserWorkspaceTabRequest): Promise<{
       tab: BrowserWorkspaceTab;
     }>;
@@ -41,7 +46,10 @@ async function requestDesktopBrowserWorkspace<T>(options: {
   return invokeDesktopBridgeRequest<T>(options);
 }
 
-ElizaClient.prototype.getBrowserWorkspace = async function (this: ElizaClient) {
+ElizaClient.prototype.getBrowserWorkspace = async function (
+  this: ElizaClient,
+  timeoutMs: number = BROWSER_WORKSPACE_GET_FETCH_TIMEOUT_MS,
+) {
   const bridged =
     await requestDesktopBrowserWorkspace<BrowserWorkspaceSnapshot>({
       rpcMethod: "browserWorkspaceGetSnapshot",
@@ -51,7 +59,7 @@ ElizaClient.prototype.getBrowserWorkspace = async function (this: ElizaClient) {
     return bridged;
   }
 
-  return this.fetch("/api/browser-workspace");
+  return this.fetch("/api/browser-workspace", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.openBrowserWorkspaceTab = async function (
