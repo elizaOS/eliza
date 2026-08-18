@@ -11,9 +11,11 @@ const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([
 export function isCloudStatusReasonApiKeyOnly(
   reason: string | null | undefined,
 ): boolean {
-  return (
-    typeof reason === "string" && CLOUD_STATUS_API_KEY_ONLY_REASONS.has(reason)
-  );
+  if (typeof reason !== "string") {
+    return false;
+  }
+  const trimmed = reason.trim();
+  return CLOUD_STATUS_API_KEY_ONLY_REASONS.has(trimmed);
 }
 
 export function isCloudStatusAuthenticated(

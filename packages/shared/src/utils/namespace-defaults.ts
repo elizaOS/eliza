@@ -23,8 +23,11 @@ export function ensureNamespaceDefaults(
 ): void {
   if (!env) return;
 
-  if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
+  const trimmed = trimEnvValue(env.ELIZA_NAMESPACE);
+  if (!trimmed) {
     env.ELIZA_NAMESPACE = "eliza";
+  } else if (trimmed !== env.ELIZA_NAMESPACE) {
+    env.ELIZA_NAMESPACE = trimmed;
   }
 }
 
