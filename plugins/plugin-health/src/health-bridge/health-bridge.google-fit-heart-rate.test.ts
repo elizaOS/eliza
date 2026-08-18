@@ -42,21 +42,28 @@ beforeAll(async () => {
         bucket = { dataset: [{ point: [] }] };
       } else if (types.length === 1) {
         // getDataPoints path: one hourly bucket for the requested metric.
-        const point =
+        const points =
           types[0] === "com.google.heart_rate.bpm"
-            ? hrPoint
-            : { value: [{ intVal: 8000 }] };
+            ? [hrPoint]
+            : [{ value: [{ intVal: 3000 }] }, { value: [{ intVal: 5000 }] }];
         bucket = {
           startTimeMillis: String(parsed.startTimeMillis),
           endTimeMillis: String(Number(parsed.startTimeMillis) + 3_600_000),
-          dataset: [{ point: [point] }],
+          dataset: [{ point: points }],
         };
       } else {
         // daily summary: steps, active_minutes, calories, distance, heart_rate
         bucket = {
           dataset: [
-            { point: [{ value: [{ intVal: 8000 }] }] },
-            { point: [{ value: [{ intVal: 30 }] }] },
+            {
+              point: [
+                { value: [{ intVal: 3000 }] },
+                { value: [{ intVal: 5000 }] },
+              ],
+            },
+            {
+              point: [{ value: [{ intVal: 10 }] }, { value: [{ intVal: 20 }] }],
+            },
             { point: [] },
             { point: [] },
             { point: [hrPoint] },
