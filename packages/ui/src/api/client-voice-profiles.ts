@@ -114,6 +114,19 @@ export interface FamilyMemberCaptureResult {
  * Single failure context used by every adapter call so the UI can render a
  * stable empty state instead of a generic toast/spinner.
  */
+/** List GET — existing 10s REST budget, independent hop. */
+export const VOICE_PROFILES_LIST_FETCH_TIMEOUT_MS = 10_000;
+/** First-run start POST — existing 10s REST budget, independent hop. */
+export const VOICE_PROFILES_START_FETCH_TIMEOUT_MS = 10_000;
+/** First-run append POST — existing 10s REST budget, independent hop. */
+export const VOICE_PROFILES_APPEND_FETCH_TIMEOUT_MS = 10_000;
+/** First-run finalize POST — existing 10s REST budget, independent hop. */
+export const VOICE_PROFILES_FINALIZE_FETCH_TIMEOUT_MS = 10_000;
+/** First-run family-member POST — existing 10s REST budget, independent hop. */
+export const VOICE_PROFILES_FAMILY_FETCH_TIMEOUT_MS = 10_000;
+/** Profile mutation hops — existing 10s REST budget, independent per call. */
+export const VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS = 10_000;
+
 export class VoiceProfilesUnavailableError extends Error {
   constructor(
     readonly endpoint: string,
@@ -130,7 +143,11 @@ export class VoiceProfilesUnavailableError extends Error {
 }
 
 interface VoiceProfilesClientLike {
-  fetch<T>(path: string, init?: RequestInit): Promise<T>;
+  fetch<T>(
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ): Promise<T>;
 }
 
 /**
@@ -141,10 +158,14 @@ export class VoiceProfilesClient {
   constructor(private readonly client: VoiceProfilesClientLike) {}
 
   /** List all known profiles. */
-  async list(): Promise<VoiceProfile[]> {
+  async list(
+    timeoutMs: number = VOICE_PROFILES_LIST_FETCH_TIMEOUT_MS,
+  ): Promise<VoiceProfile[]> {
     try {
       const raw = await this.client.fetch<{ profiles?: unknown[] } | unknown[]>(
         "/api/voice/profiles",
+        undefined,
+        { timeoutMs },
       );
       const items = Array.isArray(raw)
         ? raw
@@ -158,11 +179,14 @@ export class VoiceProfilesClient {
   }
 
   /** Start first-run capture for the OWNER profile. */
-  async startOwnerCapture(): Promise<VoiceCaptureSession> {
+  async startOwnerCapture(
+    timeoutMs: number = VOICE_PROFILES_START_FETCH_TIMEOUT_MS,
+  ): Promise<VoiceCaptureSession> {
     try {
       const raw = await this.client.fetch<unknown>(
         "/api/voice/first-run/profile/start",
         { method: "POST" },
+        { timeoutMs },
       );
       return normaliseCaptureSession(raw);
     } catch (err) {
@@ -177,11 +201,13 @@ export class VoiceProfilesClient {
   async appendOwnerCapture(
     sessionId: string,
     payload: { promptId: string; audioBase64: string; durationMs: number },
+    timeoutMs: number = VOICE_PROFILES_APPEND_FETCH_TIMEOUT_MS,
   ): Promise<void> {
     try {
       await this.client.fetch(
         `/api/voice/first-run/profile/append?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
+        { timeoutMs },
       );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
@@ -195,11 +221,13 @@ export class VoiceProfilesClient {
   async finalizeOwnerCapture(
     sessionId: string,
     payload: { displayName: string },
+    timeoutMs: number = VOICE_PROFILES_FINALIZE_FETCH_TIMEOUT_MS,
   ): Promise<VoiceCaptureSubmitResult> {
     try {
       return await this.client.fetch<VoiceCaptureSubmitResult>(
         `/api/voice/first-run/profile/finalize?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
+        { timeoutMs },
       );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
@@ -217,6 +245,7 @@ export class VoiceProfilesClient {
    */
   async captureFamilyMember(
     payload: FamilyMemberCapturePayload,
+    timeoutMs: number = VOICE_PROFILES_FAMILY_FETCH_TIMEOUT_MS,
   ): Promise<FamilyMemberCaptureResult> {
     try {
       return await this.client.fetch<FamilyMemberCaptureResult>(
@@ -226,6 +255,7 @@ export class VoiceProfilesClient {
           body: JSON.stringify(payload),
           headers: { "content-type": "application/json" },
         },
+        { timeoutMs },
       );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
@@ -236,12 +266,20 @@ export class VoiceProfilesClient {
   }
 
   /** Patch profile metadata (rename / relationship / retention). */
-  async patch(id: string, patch: VoiceProfilePatch): Promise<void> {
+  async patch(
+    id: string,
+    patch: VoiceProfilePatch,
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
+  ): Promise<void> {
     try {
-      await this.client.fetch(`/api/voice/profiles/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
+      await this.client.fetch(
+        `/api/voice/profiles/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+        { timeoutMs },
+      );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
@@ -251,11 +289,13 @@ export class VoiceProfilesClient {
   async merge(
     id: string,
     into: VoiceProfileMergeRequest,
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
   ): Promise<VoiceProfile> {
     try {
       const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/merge`,
         { method: "POST", body: JSON.stringify(into) },
+        { timeoutMs },
       );
       const profile = normaliseProfile(raw);
       if (!profile)
@@ -273,11 +313,13 @@ export class VoiceProfilesClient {
   async split(
     id: string,
     payload: VoiceProfileSplitRequest,
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
   ): Promise<{ original: VoiceProfile; split: VoiceProfile }> {
     try {
       const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/split`,
         { method: "POST", body: JSON.stringify(payload) },
+        { timeoutMs },
       );
       if (!raw || typeof raw !== "object") {
         throw new Error("Voice profile split returned an invalid response.");
@@ -301,11 +343,13 @@ export class VoiceProfilesClient {
   async bind(
     id: string,
     payload: { entityId: string; label?: string },
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
   ): Promise<VoiceProfile> {
     try {
       const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/bind`,
         { method: "POST", body: JSON.stringify(payload) },
+        { timeoutMs },
       );
       const profile = normaliseProfile(raw);
       if (!profile)
@@ -320,11 +364,15 @@ export class VoiceProfilesClient {
   }
 
   /** Remove a non-owner profile's entity binding. */
-  async unbind(id: string): Promise<VoiceProfile> {
+  async unbind(
+    id: string,
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
+  ): Promise<VoiceProfile> {
     try {
       const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/unbind`,
         { method: "POST" },
+        { timeoutMs },
       );
       const profile = normaliseProfile(raw);
       if (!profile)
@@ -339,22 +387,32 @@ export class VoiceProfilesClient {
   }
 
   /** Delete a profile (OWNER cannot be deleted via UI). */
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
+  ): Promise<void> {
     try {
-      await this.client.fetch(`/api/voice/profiles/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      await this.client.fetch(
+        `/api/voice/profiles/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+        { timeoutMs },
+      );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
   }
 
   /** Bulk export (metadata only). Returns a server-signed download URL. */
-  async exportAll(): Promise<{ downloadUrl: string | null }> {
+  async exportAll(
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
+  ): Promise<{ downloadUrl: string | null }> {
     try {
       return await this.client.fetch<{ downloadUrl: string | null }>(
         "/api/voice/profiles/export",
         { method: "POST" },
+        { timeoutMs },
       );
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
@@ -365,12 +423,19 @@ export class VoiceProfilesClient {
   }
 
   /** Delete all profiles. `includeOwner` is opt-in; default keeps OWNER. */
-  async deleteAll(options?: { includeOwner?: boolean }): Promise<void> {
+  async deleteAll(
+    options?: { includeOwner?: boolean },
+    timeoutMs: number = VOICE_PROFILES_MUTATION_FETCH_TIMEOUT_MS,
+  ): Promise<void> {
     const query = options?.includeOwner ? "?includeOwner=true" : "";
     try {
-      await this.client.fetch(`/api/voice/profiles${query}`, {
-        method: "DELETE",
-      });
+      await this.client.fetch(
+        `/api/voice/profiles${query}`,
+        {
+          method: "DELETE",
+        },
+        { timeoutMs },
+      );
     } catch (err) {
       throw new VoiceProfilesUnavailableError("/api/voice/profiles", err);
     }
