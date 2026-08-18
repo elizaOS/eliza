@@ -239,16 +239,32 @@ async function resolveCoords(): Promise<ResolvedCoords> {
   return fetchApproximateCoords();
 }
 
+/** Open-Meteo current-conditions GET is a short UI read — same 15s family. */
+export const WEATHER_JSON_TIMEOUT_MS = 15_000;
+
+export async function getWeatherJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = WEATHER_JSON_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`open-meteo ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
 async function fetchWeatherAt(
   coords: Coords,
   approximate: boolean,
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`);
-  const data = (await res.json()) as {
+  const data = await getWeatherJsonWithFetch<{
     current?: { temperature_2m?: number; weather_code?: number };
-  };
+  }>(url, globalThis.fetch);
   const tempRaw = data.current?.temperature_2m;
   const code = data.current?.weather_code ?? 3;
   if (typeof tempRaw !== "number") throw new Error("open-meteo: no temp");
