@@ -5,6 +5,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
+import {
+  NOTIFICATIONS_LIST_FETCH_TIMEOUT_MS,
+} from "./client-notifications";
 import "./client-notifications";
 
 describe("ElizaClient push-token verbs", () => {
@@ -21,7 +24,11 @@ describe("ElizaClient push-token verbs", () => {
     await expect(client.listNotifications({ limit: 100 })).resolves.toEqual(
       response,
     );
-    expect(fetch).toHaveBeenCalledWith("/api/notifications?limit=100");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/notifications?limit=100",
+      undefined,
+      { timeoutMs: NOTIFICATIONS_LIST_FETCH_TIMEOUT_MS },
+    );
   });
 
   it("POSTs the platform + token to /api/notifications/push-tokens", async () => {

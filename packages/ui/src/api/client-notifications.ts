@@ -27,10 +27,14 @@ export interface ListNotificationsOptions {
 /** Remote-push transport a device token belongs to (matches the server enum). */
 export type PushTokenPlatform = "ios" | "android";
 
+/** Notifications list GET — existing 10s REST budget, independent hop. */
+export const NOTIFICATIONS_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
     listNotifications(
       opts?: ListNotificationsOptions,
+      timeoutMs?: number,
     ): Promise<NotificationListResponse>;
     createNotification(
       input: NotificationInput,
@@ -54,6 +58,7 @@ declare module "./client-base" {
 ElizaClient.prototype.listNotifications = async function (
   this: ElizaClient,
   opts?: ListNotificationsOptions,
+  timeoutMs: number = NOTIFICATIONS_LIST_FETCH_TIMEOUT_MS,
 ): Promise<NotificationListResponse> {
   const params = new URLSearchParams();
   if (opts?.unreadOnly) params.set("unreadOnly", "true");
@@ -62,6 +67,8 @@ ElizaClient.prototype.listNotifications = async function (
   const query = params.toString();
   return this.fetch<NotificationListResponse>(
     `/api/notifications${query ? `?${query}` : ""}`,
+    undefined,
+    { timeoutMs },
   );
 };
 
