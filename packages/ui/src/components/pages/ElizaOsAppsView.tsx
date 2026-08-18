@@ -7,6 +7,7 @@
  * placeholders rather than failing.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   Clock3,
   ContactRound,
@@ -1543,7 +1544,98 @@ function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   };
 }
 
-async function forwardAndroidSmsGateway(
+/**
+ * Decodes a non-2xx Android SMS gateway response into a human-readable detail.
+ * Reads the body once as text, prefers a structured diagnostic field when the
+ * payload is JSON, and returns an empty string when the gateway sent no usable
+ * detail so the caller falls back to the bare HTTP status.
+ */
+export const ANDROID_SMS_GATEWAY_ERROR_BODY_MAX_BYTES = 4_096;
+export const ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH = 512;
+
+async function readBoundedAndroidSmsGatewayErrorBody(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!response.body) return { text: "", truncated: false };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        text += decoder.decode();
+        return { text, truncated: false };
+      }
+      const remaining = ANDROID_SMS_GATEWAY_ERROR_BODY_MAX_BYTES - bytesRead;
+      if (value.byteLength > remaining) {
+        text += decoder.decode(value.subarray(0, remaining));
+        await reader.cancel();
+        return { text, truncated: true };
+      }
+      bytesRead += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function boundAndroidSmsGatewayErrorDetail(
+  value: string,
+  truncated: boolean,
+): string {
+  const cleaned = toWellFormedUnicode(value).trim();
+  if (!cleaned) return "";
+  if (
+    !truncated &&
+    cleaned.length <= ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH
+  ) {
+    return cleaned;
+  }
+  const prefix = truncateWellFormed(
+    cleaned,
+    ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH - 1,
+  );
+  return `${prefix}…`;
+}
+
+export async function readAndroidSmsGatewayErrorDetail(
+  response: Response,
+): Promise<string> {
+  let raw: string;
+  let bodyTruncated: boolean;
+  try {
+    ({ text: raw, truncated: bodyTruncated } =
+      await readBoundedAndroidSmsGatewayErrorBody(response));
+  } catch {
+    // error-policy:J4 an unreadable error body degrades to the bare HTTP status
+    return "";
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      for (const field of ["reason", "message", "error", "detail"]) {
+        const value = record[field];
+        if (typeof value === "string" && value.trim()) {
+          return boundAndroidSmsGatewayErrorDetail(value, false);
+        }
+      }
+    }
+    if (typeof parsed === "string" && parsed.trim()) {
+      return boundAndroidSmsGatewayErrorDetail(parsed, false);
+    }
+  } catch {
+    // error-policy:J3 a non-JSON error body is surfaced verbatim as the detail
+  }
+  return boundAndroidSmsGatewayErrorDetail(trimmed, bodyTruncated);
+}
+
+export async function forwardAndroidSmsGateway(
   incoming: IncomingSmsContext,
   signal: AbortSignal,
 ): Promise<AndroidSmsGatewayReply> {
@@ -1560,7 +1652,12 @@ async function forwardAndroidSmsGateway(
     },
     async (response) => {
       if (!response.ok) {
-        throw new Error(`Cloud gateway failed (${response.status})`);
+        const detail = await readAndroidSmsGatewayErrorDetail(response);
+        throw new Error(
+          detail
+            ? `Cloud gateway failed (${response.status}): ${detail}`
+            : `Cloud gateway failed (${response.status})`,
+        );
       }
       const body: unknown = await response.json();
       if (body === null || typeof body !== "object" || Array.isArray(body)) {
