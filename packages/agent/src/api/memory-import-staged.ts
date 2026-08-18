@@ -16,19 +16,21 @@ import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   computeSharedMemoryTransferDigest,
   type SealedExportSeal,
+  type SealedMemoryExportRow,
   SealedMemoryFinalizeRequestSchema,
   type SealedMemoryStageRequest,
   SealedMemoryStageRequestSchema,
-  type SealedMemoryExportRow,
   verifySealSignature,
 } from "@elizaos/shared/contracts/shared-memory-transfer";
 import { sql } from "drizzle-orm";
 
 export const MEMORY_IMPORT_SEAL_INVALID = "MEMORY_IMPORT_SEAL_INVALID";
 export const MEMORY_IMPORT_BATCH_INVALID = "MEMORY_IMPORT_BATCH_INVALID";
-export const MEMORY_IMPORT_STAGING_INCOMPLETE = "MEMORY_IMPORT_STAGING_INCOMPLETE";
+export const MEMORY_IMPORT_STAGING_INCOMPLETE =
+  "MEMORY_IMPORT_STAGING_INCOMPLETE";
 export const MEMORY_IMPORT_DIGEST_MISMATCH = "MEMORY_IMPORT_DIGEST_MISMATCH";
-export const MEMORY_IMPORT_DIMENSION_UNSUPPORTED = "MEMORY_IMPORT_DIMENSION_UNSUPPORTED";
+export const MEMORY_IMPORT_DIMENSION_UNSUPPORTED =
+  "MEMORY_IMPORT_DIMENSION_UNSUPPORTED";
 export const MEMORY_IMPORT_ID_CONFLICT = "MEMORY_IMPORT_ID_CONFLICT";
 export const MEMORY_IMPORT_DB_UNAVAILABLE = "MEMORY_IMPORT_DB_UNAVAILABLE";
 
@@ -42,8 +44,12 @@ const SUPPORTED_DIMENSION_COLUMNS: Record<number, string> = {
   3072: "dim_3072",
 };
 
-type Db = { transaction: <T>(fn: (tx: DbTx) => Promise<T>) => Promise<T> } & DbTx;
-type DbTx = { execute: (q: unknown) => Promise<{ rows?: unknown[] } | unknown[]> };
+type Db = {
+  transaction: <T>(fn: (tx: DbTx) => Promise<T>) => Promise<T>;
+} & DbTx;
+type DbTx = {
+  execute: (q: unknown) => Promise<{ rows?: unknown[] } | unknown[]>;
+};
 
 function requireDb(runtime: IAgentRuntime): Db {
   const db = (runtime as { db?: unknown }).db;
@@ -99,14 +105,25 @@ export async function stageSealedBatch(
   runtime: IAgentRuntime,
   request: unknown,
 ): Promise<{ staged: number; total_staged: number }> {
-  const parsed: SealedMemoryStageRequest = SealedMemoryStageRequestSchema.parse(request);
+  const parsed: SealedMemoryStageRequest =
+    SealedMemoryStageRequestSchema.parse(request);
   await assertSealTrusted(runtime, parsed.seal);
   const expectedBatches = Math.max(1, Math.ceil(parsed.seal.row_count / 500));
-  if (parsed.batch_count !== expectedBatches || parsed.batch_index >= parsed.batch_count) {
-    throw new ElizaError("Stage request batch geometry does not match the seal", {
-      code: MEMORY_IMPORT_BATCH_INVALID,
-      context: { batch_index: parsed.batch_index, batch_count: parsed.batch_count, expectedBatches },
-    });
+  if (
+    parsed.batch_count !== expectedBatches ||
+    parsed.batch_index >= parsed.batch_count
+  ) {
+    throw new ElizaError(
+      "Stage request batch geometry does not match the seal",
+      {
+        code: MEMORY_IMPORT_BATCH_INVALID,
+        context: {
+          batch_index: parsed.batch_index,
+          batch_count: parsed.batch_count,
+          expectedBatches,
+        },
+      },
+    );
   }
   const db = requireDb(runtime);
   await ensureStagingTable(db);
@@ -174,9 +191,12 @@ export async function finalizeSealedImport(
     }
     const digest = await computeSharedMemoryTransferDigest(rows);
     if (digest !== seal.digest) {
-      throw new ElizaError("Recomputed digest does not match the original seal", {
-        code: MEMORY_IMPORT_DIGEST_MISMATCH,
-      });
+      throw new ElizaError(
+        "Recomputed digest does not match the original seal",
+        {
+          code: MEMORY_IMPORT_DIGEST_MISMATCH,
+        },
+      );
     }
 
     // Conflict pre-check inside the same transaction: identical ids are
@@ -213,7 +233,9 @@ export async function finalizeSealedImport(
 
     // Scaffolding: create-if-absent only, never overwrite target-native rows.
     const agentId = runtime.agentId;
-    const worldIds = [...new Set(toPublish.map((r) => r.world_id).filter(Boolean))] as string[];
+    const worldIds = [
+      ...new Set(toPublish.map((r) => r.world_id).filter(Boolean)),
+    ] as string[];
     for (const worldId of worldIds) {
       await tx.execute(sql`
         INSERT INTO worlds (id, agent_id, name, server_id)
@@ -223,7 +245,9 @@ export async function finalizeSealedImport(
     }
     const roomPairs = [
       ...new Map(
-        toPublish.filter((r) => r.room_id).map((r) => [r.room_id as string, r.world_id]),
+        toPublish
+          .filter((r) => r.room_id)
+          .map((r) => [r.room_id as string, r.world_id]),
       ).entries(),
     ];
     for (const [roomId, worldId] of roomPairs) {
@@ -233,7 +257,9 @@ export async function finalizeSealedImport(
         ON CONFLICT (id) DO NOTHING
       `);
     }
-    const entityIds = [...new Set(toPublish.map((r) => r.entity_id).filter(Boolean))] as string[];
+    const entityIds = [
+      ...new Set(toPublish.map((r) => r.entity_id).filter(Boolean)),
+    ] as string[];
     for (const entityId of entityIds) {
       await tx.execute(sql`
         INSERT INTO entities (id, agent_id, names)

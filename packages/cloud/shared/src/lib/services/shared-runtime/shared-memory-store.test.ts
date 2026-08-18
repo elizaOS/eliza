@@ -26,6 +26,7 @@ import {
 const ORG = "5a5c62c4-51b6-4e94-8c4e-a41d62b85e2f";
 const USER = "9a3d9f2e-97ab-46be-a687-3a4f2f6bfa53";
 const AGENT_KEY = "agent-shared-42";
+const NOOP_FENCE = async () => {};
 
 function scriptedWriter(behavior?: { failOn?: number }): {
   writer: SharedAgentMemoriesWriter;
@@ -88,6 +89,9 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const store = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY, storage },
       writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     const messageIds = {
       user: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -134,6 +138,9 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const store = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     await store.recordTurnPair({
       userMessage: "hello",
@@ -155,6 +162,9 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const store = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       interrupted.writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     await store.recordTurnPair({
       userMessage: "tell me slowly",
@@ -172,6 +182,9 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const emptyStore = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       empty.writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     await emptyStore.recordTurnPair({
       userMessage: "cancelled before output",
@@ -187,6 +200,9 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const store = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       unkeyed.writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     await store.recordTurnPair({ userMessage: "no ids", assistantReply: "still lands" });
     expect(unkeyed.inserts[0]?.id).toBeUndefined();
@@ -196,11 +212,36 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const failingStore = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       failing.writer,
+      undefined,
+      undefined,
+      NOOP_FENCE,
     );
     await expect(
       failingStore.recordTurnPair({ userMessage: "user landed", assistantReply: "lost" }),
     ).rejects.toThrow("scripted storage failure");
     // Sequential writes: the user row landed before the failure surfaced.
     expect(failing.inserts).toHaveLength(2);
+  });
+});
+
+describe("SharedMemoryStore write fence", () => {
+  test("a fenced scope rejects the turn pair before any writer insert", async () => {
+    const { writer, inserts } = scriptedWriter();
+    const fencedError = Object.assign(new Error("fenced"), {
+      code: "SHARED_TRANSFER_SCOPE_FENCED",
+    });
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      undefined,
+      undefined,
+      async () => {
+        throw fencedError;
+      },
+    );
+    await expect(store.recordTurnPair({ userMessage: "hi", assistantReply: "yo" })).rejects.toBe(
+      fencedError,
+    );
+    expect(inserts).toHaveLength(0);
   });
 });

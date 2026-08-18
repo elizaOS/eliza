@@ -44,9 +44,7 @@ export async function getActiveEpoch(
   const rows = await dbRead
     .select()
     .from(sharedTransferEpochs)
-    .where(
-      and(scopePredicate(scope), inArray(sharedTransferEpochs.state, [...ACTIVE_STATES])),
-    )
+    .where(and(scopePredicate(scope), inArray(sharedTransferEpochs.state, [...ACTIVE_STATES])))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -56,9 +54,7 @@ export async function getActiveEpoch(
  * max(existing)+1. Fails with SHARED_TRANSFER_EPOCH_CONFLICT if an active
  * epoch already exists (unique-index race included).
  */
-export async function openEpoch(
-  scope: SharedAgentMemoryScope,
-): Promise<SharedTransferEpochRow> {
+export async function openEpoch(scope: SharedAgentMemoryScope): Promise<SharedTransferEpochRow> {
   const existing = await dbRead
     .select({ epoch: sharedTransferEpochs.epoch })
     .from(sharedTransferEpochs)
@@ -117,11 +113,7 @@ export function fenceEpoch(scope: SharedAgentMemoryScope, epoch: number) {
 }
 
 /** fenced → promoted: terminal; records the whole-export seal digest. */
-export function promoteEpoch(
-  scope: SharedAgentMemoryScope,
-  epoch: number,
-  sealDigest: string,
-) {
+export function promoteEpoch(scope: SharedAgentMemoryScope, epoch: number, sealDigest: string) {
   return transition(scope, epoch, ["fenced"], "promoted", {
     seal_digest: sealDigest,
     resolved_at: new Date(),
@@ -140,9 +132,7 @@ export function abortEpoch(scope: SharedAgentMemoryScope, epoch: number) {
  * SHARED_TRANSFER_SCOPE_FENCED while the scope's active epoch is fenced.
  * One indexed point read on the scope-state index; open epochs do not block.
  */
-export async function assertScopeWritable(
-  scope: SharedAgentMemoryScope,
-): Promise<void> {
+export async function assertScopeWritable(scope: SharedAgentMemoryScope): Promise<void> {
   const active = await getActiveEpoch(scope);
   if (active?.state === "fenced") {
     throw new ElizaError("Memory writes are fenced during Shared→Dedicated promotion", {

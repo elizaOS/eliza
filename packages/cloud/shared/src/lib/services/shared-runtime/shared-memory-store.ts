@@ -76,6 +76,10 @@ export class SharedMemoryStore {
     private readonly writer: SharedAgentMemoriesWriter = sharedAgentMemoriesWriter,
     private readonly reader: SharedAgentMemoriesReader = sharedAgentMemoriesReader,
     private readonly embed?: SharedMemoryEmbedConfig,
+    /** Injectable for deterministic tests; production uses the real fence. */
+    private readonly fence: (
+      scope: Parameters<typeof assertScopeWritable>[0],
+    ) => Promise<void> = assertScopeWritable,
   ) {}
 
   /**
@@ -117,7 +121,7 @@ export class SharedMemoryStore {
     // Round-3 transfer fence: while this scope's promotion epoch is fenced,
     // the turn commit fails closed instead of racing the sealed export
     // (#21090 review). One indexed point read; open epochs do not block.
-    await assertScopeWritable(scope);
+    await this.fence(scope);
     const landedAt = Date.now();
     // One batched sidecar round-trip for both texts; an embedding failure
     // degrades to vector-less rows (recall coverage shrinks) but never loses

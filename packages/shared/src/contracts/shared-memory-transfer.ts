@@ -75,7 +75,9 @@ export const SealedMemoryStageRequestSchema = z.object({
   seal: SealedExportSealSchema,
   batch_index: z.number().int().nonnegative(),
   batch_count: z.number().int().positive(),
-  rows: z.array(SealedMemoryExportRowSchema).max(SHARED_MEMORY_TRANSFER_MAX_ROWS),
+  rows: z
+    .array(SealedMemoryExportRowSchema)
+    .max(SHARED_MEMORY_TRANSFER_MAX_ROWS),
 });
 export type SealedMemoryStageRequest = z.infer<
   typeof SealedMemoryStageRequestSchema
@@ -137,7 +139,7 @@ export function sharedMemoryRowLine(row: SealedMemoryExportRow): string {
 export async function computeSharedMemoryTransferDigest(
   rows: readonly SealedMemoryExportRow[],
 ): Promise<string> {
-  const body = rows.map(sharedMemoryRowLine).join("\n") + `\ncount:${rows.length}`;
+  const body = `${rows.map(sharedMemoryRowLine).join("\n")}\ncount:${rows.length}`;
   return toHex(await crypto.subtle.digest("SHA-256", encoder.encode(body)));
 }
 

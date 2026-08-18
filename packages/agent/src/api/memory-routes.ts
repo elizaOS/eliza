@@ -35,12 +35,12 @@ import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "./documents-service-loader.ts";
-import { decodePathComponent } from "./server-helpers.ts";
 import {
   finalizeSealedImport,
   MEMORY_IMPORT_ID_CONFLICT,
   stageSealedBatch,
 } from "./memory-import-staged.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
@@ -426,9 +426,7 @@ export function parseMemoryTableFilter(
   };
 }
 
-const SEALED_TRANSFER_CONFLICTS = new Set([
-  MEMORY_IMPORT_ID_CONFLICT,
-]);
+const SEALED_TRANSFER_CONFLICTS = new Set([MEMORY_IMPORT_ID_CONFLICT]);
 
 /** 409 for conflicts, 400 for everything typed, 500 only for the unknown. */
 function respondSealedTransferError(
@@ -441,9 +439,15 @@ function respondSealedTransferError(
       ? String((err as { code: unknown }).code)
       : undefined;
   const message = err instanceof Error ? err.message : "sealed transfer failed";
-  if (code && SEALED_TRANSFER_CONFLICTS.has(code)) return error(res, message, 409);
-  if (code) return error(res, message, 400);
-  return error(res, message, 500);
+  if (code && SEALED_TRANSFER_CONFLICTS.has(code)) {
+    error(res, message, 409);
+    return;
+  }
+  if (code) {
+    error(res, message, 400);
+    return;
+  }
+  error(res, message, 500);
 }
 
 export async function handleMemoryRoutes(

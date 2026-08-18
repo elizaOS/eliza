@@ -10,18 +10,17 @@
  * digest, vector dimension}; the destination re-derives everything and binds
  * finalization to this exact seal.
  */
+
+import { ElizaError } from "@elizaos/core";
 import {
   computeSharedMemoryTransferDigest,
   type SealedExportSeal,
   type SealedMemoryExportRow,
   signSeal,
 } from "@elizaos/shared/contracts/shared-memory-transfer";
-import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, or } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
-import {
-  type SharedAgentMemoryScope,
-} from "../../../db/repositories/shared-agent-memories";
+import { type SharedAgentMemoryScope } from "../../../db/repositories/shared-agent-memories";
 import { getActiveEpoch } from "../../../db/repositories/shared-transfer-epochs";
 import { sharedAgentMemories } from "../../../db/schemas/shared-agent-memories";
 
