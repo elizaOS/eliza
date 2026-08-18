@@ -1,4 +1,7 @@
-// Exercises safe fetch behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises safe-fetch DNS, redirect, cancellation, and socket-pinning behavior
+ * with deterministic cloud-shared fixtures.
+ */
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
 

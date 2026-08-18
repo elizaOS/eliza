@@ -1,4 +1,7 @@
-// Defines cloud shared safe fetch behavior for backend service consumers.
+/**
+ * Performs SSRF-safe outbound fetches with per-hop DNS validation and pinned
+ * sockets for cloud backend consumers.
+ */
 import type { LookupAddress } from "node:dns";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import type { RequestOptions } from "node:https";
