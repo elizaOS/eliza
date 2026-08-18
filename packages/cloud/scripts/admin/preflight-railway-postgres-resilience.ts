@@ -13,6 +13,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const POSTGRES_MOUNT = "/var/lib/postgresql/data";
+const OFFICIAL_POSTGRES_18_IMAGES = new Set([
+  "ghcr.io/railwayapp-templates/postgres-ssl:18",
+  "ghcr.io/railwayapp-templates/postgres-ha/postgres-patroni:18",
+]);
 
 export type GateMode = "report" | "enforce";
 export type TargetEnvironment = "staging" | "production";
@@ -162,10 +166,12 @@ function hasResource(
   id: string,
   expectedName?: string,
 ): boolean {
-  return (edges ?? []).some(
-    ({ node }) =>
-      node?.id === id &&
-      (expectedName === undefined || node?.name === expectedName),
+  return (
+    (edges ?? []).filter(
+      ({ node }) =>
+        node?.id === id &&
+        (expectedName === undefined || node?.name === expectedName),
+    ).length === 1
   );
 }
 
@@ -188,6 +194,18 @@ function scheduledBackupTime(backup: BackupDocument): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
+function validScheduleIds(
+  schedules: ScheduleDocument[],
+  kind: string,
+): Set<string> {
+  return new Set(
+    schedules
+      .filter((schedule) => validSchedule(schedule, kind))
+      .map((schedule) => canonicalString(schedule.id))
+      .filter((id): id is string => id !== null),
+  );
+}
+
 export function verifyRailwayPostgresResilience(
   evidence: ResilienceEvidence,
   expected: ResilienceExpectation,
@@ -208,6 +226,15 @@ export function verifyRailwayPostgresResilience(
   );
   const service = matching.length === 1 ? matching[0] : undefined;
   const projectBound = evidence.status.id === expected.projectId;
+  const environmentBound = hasResource(
+    evidence.status.environments?.edges,
+    expected.environmentId,
+    expected.environment,
+  );
+  const serviceBound = hasResource(
+    evidence.status.services?.edges,
+    expected.serviceId,
+  );
   const volumes = (service?.volumes ?? []).filter(
     (volume) =>
       volume.mountPath === POSTGRES_MOUNT &&
@@ -217,7 +244,10 @@ export function verifyRailwayPostgresResilience(
       volume.sizeMb > 0 &&
       canonicalString(volume.name),
   );
-  const serviceReceipt = service ? sha256(String(service.id)) : null;
+  const serviceReceipt =
+    projectBound && environmentBound && serviceBound && service
+      ? sha256(String(service.id))
+      : null;
   const immutableVolumes = (
     evidence.volumes.data?.environment?.volumeInstances?.edges ?? []
   )
@@ -242,19 +272,30 @@ export function verifyRailwayPostgresResilience(
   const immutableVolumeId = canonicalString(immutableVolume?.id);
   const immutableVolumeBound =
     projectBound &&
+    environmentBound &&
+    serviceBound &&
     evidence.volumes.errors === undefined &&
     evidence.volumes.data?.environment?.id === expected.environmentId &&
-    immutableVolumes.length === 1;
+    immutableVolumes.length === 1 &&
+    volumes.length === 1 &&
+    immutableVolume?.sizeMB === volumes[0]?.sizeMb;
   const volumeReceipt =
     immutableVolumeBound && immutableVolumeId
       ? sha256(immutableVolumeId)
       : null;
 
+  const dailyScheduleIds = validScheduleIds(evidence.schedules, "DAILY");
+  const weeklyScheduleIds = validScheduleIds(evidence.schedules, "WEEKLY");
+  const activeScheduleIds = new Set([
+    ...dailyScheduleIds,
+    ...weeklyScheduleIds,
+  ]);
   const backupCandidates = evidence.backups
     .map((backup) => ({ backup, time: scheduledBackupTime(backup) }))
     .filter(
       (entry): entry is { backup: BackupDocument; time: number } =>
-        entry.time !== null,
+        entry.time !== null &&
+        activeScheduleIds.has(String(entry.backup.scheduleId)),
     )
     .sort((a, b) => b.time - a.time);
   const latestBackup = backupCandidates[0];
@@ -266,25 +307,24 @@ export function verifyRailwayPostgresResilience(
   const backupFresh =
     ageMs >= -5 * 60 * 1000 &&
     ageMs <= expected.maxBackupAgeHours * 60 * 60 * 1000;
+  const blockersValid =
+    evidence.pitr.blockers === undefined ||
+    (Array.isArray(evidence.pitr.blockers) &&
+      evidence.pitr.blockers.every(
+        (blocker) => canonicalString(blocker) !== null,
+      ));
   const blockers = Array.isArray(evidence.pitr.blockers)
     ? evidence.pitr.blockers
-    : [];
+    : null;
 
   const checks: Record<string, boolean> = {
     projectBound,
-    environmentBound: hasResource(
-      evidence.status.environments?.edges,
-      expected.environmentId,
-      expected.environment,
-    ),
-    serviceBound: hasResource(
-      evidence.status.services?.edges,
-      expected.serviceId,
-    ),
+    environmentBound,
+    serviceBound,
     exactPostgres18Service:
       matching.length === 1 &&
       typeof service?.source?.image === "string" &&
-      /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(service.source.image),
+      OFFICIAL_POSTGRES_18_IMAGES.has(service.source.image),
     exactReadyVolume: volumes.length === 1,
     immutableVolumeBound,
     pitrTargetBound:
@@ -294,13 +334,10 @@ export function verifyRailwayPostgresResilience(
     pitrEnabled:
       evidence.pitr.enabled === true &&
       evidence.pitr.bucketWired === true &&
-      blockers.length === 0,
-    dailyBackupScheduled: evidence.schedules.some((schedule) =>
-      validSchedule(schedule, "DAILY"),
-    ),
-    weeklyBackupScheduled: evidence.schedules.some((schedule) =>
-      validSchedule(schedule, "WEEKLY"),
-    ),
+      blockersValid &&
+      (blockers === null || blockers.length === 0),
+    dailyBackupScheduled: dailyScheduleIds.size > 0,
+    weeklyBackupScheduled: weeklyScheduleIds.size > 0,
     recentScheduledBackup: backupFresh,
   };
 
@@ -317,6 +354,22 @@ export function verifyRailwayPostgresResilience(
       serviceReceipt !== null && serviceReceipt !== productionServiceReceipt;
     checks.physicallyDistinctVolume =
       volumeReceipt !== null && volumeReceipt !== productionVolumeReceipt;
+  } else if (
+    expected.productionServiceReceipt !== undefined ||
+    expected.productionVolumeReceipt !== undefined
+  ) {
+    const productionServiceReceipt = requireReceipt(
+      expected.productionServiceReceipt,
+      "productionServiceReceipt",
+    );
+    const productionVolumeReceipt = requireReceipt(
+      expected.productionVolumeReceipt,
+      "productionVolumeReceipt",
+    );
+    checks.productionServicePinned =
+      serviceReceipt !== null && serviceReceipt === productionServiceReceipt;
+    checks.productionVolumePinned =
+      volumeReceipt !== null && volumeReceipt === productionVolumeReceipt;
   }
 
   return {
@@ -373,14 +426,33 @@ export function parseCliArgs(argv: string[]): CliArgs {
     throw new TypeError("--environment must be staging or production");
   }
   const maxBackupAgeHours = Number(value("max-backup-age-hours"));
+  const productionServiceReceipt = parsed.values["production-service-receipt"];
+  const productionVolumeReceipt = parsed.values["production-volume-receipt"];
+  if (mode === "enforce" || environment === "staging") {
+    requireReceipt(productionServiceReceipt, "productionServiceReceipt");
+    requireReceipt(productionVolumeReceipt, "productionVolumeReceipt");
+  } else {
+    if (productionServiceReceipt !== undefined)
+      requireReceipt(productionServiceReceipt, "productionServiceReceipt");
+    if (productionVolumeReceipt !== undefined)
+      requireReceipt(productionVolumeReceipt, "productionVolumeReceipt");
+    if (
+      (productionServiceReceipt === undefined) !==
+      (productionVolumeReceipt === undefined)
+    ) {
+      throw new TypeError(
+        "production service and volume receipts must be supplied together",
+      );
+    }
+  }
   return {
     mode,
     environment,
     projectId: requireUuid(value("project-id"), "projectId"),
     environmentId: requireUuid(value("environment-id"), "environmentId"),
     serviceId: requireUuid(value("service-id"), "serviceId"),
-    productionServiceReceipt: parsed.values["production-service-receipt"],
-    productionVolumeReceipt: parsed.values["production-volume-receipt"],
+    productionServiceReceipt,
+    productionVolumeReceipt,
     maxBackupAgeHours,
     statusPath: value("status-json"),
     servicesPath: value("services-json"),

@@ -70,38 +70,44 @@ resilience preflight before schema mutation. It is inert by default:
 
 - `DATABASE_RESILIENCE_GATE_MODE=off` performs no Railway query.
 - `report` queries only project/service, immutable volume-instance, PITR,
-  schedule, and backup metadata; unmet checks are recorded without blocking
-  migrations.
+  schedule, and backup metadata. Missing configuration, unavailable tooling,
+  query failures, malformed evidence, and unmet checks are sanitized to
+  warnings without blocking migrations.
 - `enforce` fails before migrations unless the selected Postgres 18 service has
   exactly one ready data volume, PITR storage is wired, daily and weekly backup
   schedules exist, and a scheduled backup is within
   `DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS` (36 by default).
-- Staging enforcement also requires protected SHA-256 receipts for the
-  production Postgres service and immutable volume-instance ID and proves the
-  selected staging service and volume differ. Mutable volume labels are never
-  isolation evidence. A volume receipt is emitted only after that instance is
-  bound to the selected project, environment, service, and Postgres data mount.
+- Enforcement requires the same protected production service and immutable
+  volume-instance receipts in both environments. Production proves its current
+  target still equals those receipts, while staging proves its selected service
+  and volume differ. This prevents an infrastructure replacement from leaving
+  staging to compare against stale production identities. Mutable volume labels
+  are never isolation evidence. A volume receipt is emitted only after that
+  instance is bound to the selected project, environment, service, and Postgres
+  data mount and agrees with the service inventory.
   The gate emits receipts and booleans only; it does
   not print connection strings, Railway inventory, raw service IDs, or volume
   names.
 
 The protected environment supplies `RAILWAY_PROJECT_ID`,
 `RAILWAY_ENVIRONMENT_ID`, `RAILWAY_POSTGRES_SERVICE_ID`, and `RAILWAY_TOKEN`.
-Staging additionally supplies `RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT`
-and `RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT`. Generate those receipts from
-a successful production `report` run; never copy a production credential into
-staging.
+Both environments supply the same
+`RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT` and
+`RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT` before enforcement. Generate the
+pair from a successful production `report` run and update the protected values
+as one coordinated change; never copy a production credential into staging.
 
 Activation order is fail-closed:
 
 1. Enable PITR plus daily and weekly schedules on the existing production
    service through a separately reviewed protected operator change. Capture a
    successful scheduled backup and restore drill before enforcement.
-2. Run production in `report`, retain its nonsecret service/volume receipts,
-   then set production to `enforce` only after the restore evidence is reviewed.
+2. Run production in `report`, record its nonsecret service/volume receipts in
+   both protected environments as one coordinated change, then set production
+   to `enforce` only after the restore evidence is reviewed.
 3. Provision a separate staging Postgres 18 service, role, and volume. Enable
    and prove the same recovery policy before copying staging data.
-4. Record the production receipts in the protected staging variables, run
+4. Verify the coordinated production receipts remain present in staging, run
    staging in `report`, and require every physical-isolation and recovery check
    to pass before the bounded write quiesce and final sync.
 5. Set staging to `enforce` before changing either the protected migration

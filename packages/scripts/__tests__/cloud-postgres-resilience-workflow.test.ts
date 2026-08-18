@@ -50,6 +50,9 @@ describe("Cloud PostgreSQL resilience release gate", () => {
       "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e",
     );
     expect(workflow).toContain("sha256sum --check --status");
+    expect(workflow).toContain("--connect-timeout 10");
+    expect(workflow).toContain("--max-time 120");
+    expect(workflow).toContain("timeout --signal=TERM --kill-after=5s 45s");
   });
 
   test("captures only read-only status, service, PITR, schedule, and backup lists", () => {
@@ -92,6 +95,15 @@ describe("Cloud PostgreSQL resilience release gate", () => {
     expect(workflow).not.toContain(
       "continue-on-error: true\n        env:\n          TARGET_ENVIRONMENT",
     );
+    expect(workflow).toContain(
+      'if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then',
+    );
+    expect(workflow).toContain("report mode does not block migrations");
+    expect(workflow).toContain('echo "available=false" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain('echo "captured=false" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain(
+      "steps.database_resilience_capture.outputs.captured == 'true'",
+    );
   });
 
   test("requires production service and volume receipts for staging", () => {
@@ -104,5 +116,8 @@ describe("Cloud PostgreSQL resilience release gate", () => {
       '--production-volume-receipt "$RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT"',
     );
     expect(workflow).toContain('--volumes-json "$evidence_dir/volumes.json"');
+    expect(workflow).toContain(
+      'if [ "$TARGET_ENVIRONMENT" = "staging" ] || [ "$DATABASE_RESILIENCE_GATE_MODE" = "enforce" ]; then',
+    );
   });
 });

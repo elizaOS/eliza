@@ -1,3 +1,7 @@
+/**
+ * Exercises the Railway PostgreSQL resilience verifier with deterministic JSON
+ * fixtures, including adversarial identity, schedule, and target bindings.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   parseCliArgs,
@@ -115,6 +119,21 @@ describe("Railway PostgreSQL resilience preflight", () => {
   test.each([
     ["PITR disabled", { pitr: { ...evidence().pitr, enabled: false } }],
     ["bucket missing", { pitr: { ...evidence().pitr, bucketWired: false } }],
+    [
+      "PITR blockers are malformed",
+      { pitr: { ...evidence().pitr, blockers: null } },
+    ],
+    [
+      "image merely resembles an official Postgres 18 image",
+      {
+        services: [
+          {
+            ...evidence().services[0],
+            source: { image: "ghcr.io/untrusted/postgres-ssl:18" },
+          },
+        ],
+      },
+    ],
     ["daily schedule missing", { schedules: evidence().schedules.slice(1) }],
     [
       "weekly schedule missing",
@@ -137,6 +156,18 @@ describe("Railway PostgreSQL resilience preflight", () => {
       {
         backups: [
           { id: "manual", createdAt: NOW.toISOString(), scheduleId: null },
+        ],
+      },
+    ],
+    [
+      "backup belongs to a stale or foreign schedule",
+      {
+        backups: [
+          {
+            id: "foreign-schedule-backup",
+            createdAt: NOW.toISOString(),
+            scheduleId: "removed-daily-schedule",
+          },
         ],
       },
     ],
@@ -309,6 +340,39 @@ describe("Railway PostgreSQL resilience preflight", () => {
     );
     expect(foreignProjectResult.checks.immutableVolumeBound).toBe(false);
     expect(foreignProjectResult.receipts.volume).toBeNull();
+    expect(foreignProjectResult.receipts.service).toBeNull();
+  });
+
+  test("requires consistent service and immutable volume observations", () => {
+    const result = verifyRailwayPostgresResilience(
+      evidence({
+        volumes: {
+          data: {
+            environment: {
+              id: STAGING_ENV,
+              volumeInstances: {
+                edges: [
+                  {
+                    node: {
+                      ...evidence().volumes.data?.environment?.volumeInstances
+                        ?.edges?.[0].node,
+                      sizeMB: 40_000,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+      expectation(),
+      NOW,
+    );
+
+    expect(result.checks.exactReadyVolume).toBe(true);
+    expect(result.checks.immutableVolumeBound).toBe(false);
+    expect(result.receipts.volume).toBeNull();
+    expect(result.verdict).toBe("fail");
   });
 
   test("requires exact project, environment, service, image, and volume bindings", () => {
@@ -379,6 +443,67 @@ describe("Railway PostgreSQL resilience preflight", () => {
     expect(result.checks.physicallyDistinctService).toBeUndefined();
   });
 
+  test("production enforcement can pin the receipts copied to staging", () => {
+    const production = evidence({
+      status: {
+        id: PROJECT,
+        environments: {
+          edges: [{ node: { id: STAGING_ENV, name: "production" } }],
+        },
+        services: { edges: [{ node: { id: SERVICE, name: "Postgres" } }] },
+      },
+      pitr: {
+        ...evidence().pitr,
+        environment: { id: STAGING_ENV, name: "production" },
+      },
+    });
+    const baseline = verifyRailwayPostgresResilience(
+      production,
+      {
+        environment: "production",
+        projectId: PROJECT,
+        environmentId: STAGING_ENV,
+        serviceId: SERVICE,
+        maxBackupAgeHours: 36,
+      },
+      NOW,
+    );
+    const pinned = verifyRailwayPostgresResilience(
+      production,
+      {
+        environment: "production",
+        projectId: PROJECT,
+        environmentId: STAGING_ENV,
+        serviceId: SERVICE,
+        productionServiceReceipt: baseline.receipts.service ?? "",
+        productionVolumeReceipt: baseline.receipts.volume ?? "",
+        maxBackupAgeHours: 36,
+      },
+      NOW,
+    );
+
+    expect(pinned.checks.productionServicePinned).toBe(true);
+    expect(pinned.checks.productionVolumePinned).toBe(true);
+    expect(pinned.verdict).toBe("pass");
+
+    const stale = verifyRailwayPostgresResilience(
+      production,
+      {
+        environment: "production",
+        projectId: PROJECT,
+        environmentId: STAGING_ENV,
+        serviceId: SERVICE,
+        productionServiceReceipt: "a".repeat(64),
+        productionVolumeReceipt: "b".repeat(64),
+        maxBackupAgeHours: 36,
+      },
+      NOW,
+    );
+    expect(stale.checks.productionServicePinned).toBe(false);
+    expect(stale.checks.productionVolumePinned).toBe(false);
+    expect(stale.verdict).toBe("fail");
+  });
+
   test("CLI parsing rejects report/enforce ambiguity and malformed receipts", () => {
     const common = [
       "--mode",
@@ -413,7 +538,22 @@ describe("Railway PostgreSQL resilience preflight", () => {
         "b".repeat(64),
       ]).mode,
     ).toBe("enforce");
-    expect(() => parseCliArgs(common)).not.toThrow();
+    expect(() => parseCliArgs(common)).toThrow(
+      "productionServiceReceipt must be a lowercase SHA-256 receipt",
+    );
+    const productionReport = [...common];
+    productionReport[1] = "report";
+    productionReport[3] = "production";
+    expect(() => parseCliArgs(productionReport)).not.toThrow();
+    expect(() =>
+      parseCliArgs([
+        ...productionReport,
+        "--production-service-receipt",
+        "a".repeat(64),
+      ]),
+    ).toThrow(
+      "production service and volume receipts must be supplied together",
+    );
     expect(() => parseCliArgs(["--mode", "off", ...common.slice(2)])).toThrow(
       "--mode must be report or enforce",
     );

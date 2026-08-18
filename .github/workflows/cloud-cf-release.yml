@@ -129,15 +129,23 @@ jobs:
           HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
         run: |
           set -euo pipefail
+          configuration_failure() {
+            local message="$1"
+            if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::$message; report mode does not block migrations"
+              exit 0
+            fi
+            echo "::error::$message"
+            exit 1
+          }
           case "$DATABASE_RESILIENCE_GATE_MODE" in
             off)
               echo "enabled=false" >> "$GITHUB_OUTPUT"
               echo "Railway PostgreSQL resilience gate is disabled; no Railway query performed."
               exit 0
               ;;
-            report|enforce)
-              echo "enabled=true" >> "$GITHUB_OUTPUT"
-              ;;
+            report|enforce) ;;
             *)
               echo "::error::DATABASE_RESILIENCE_GATE_MODE must be off, report, or enforce"
               exit 1
@@ -149,7 +157,10 @@ jobs:
             RAILWAY_ENVIRONMENT_ID
             RAILWAY_POSTGRES_SERVICE_ID
           )
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+          if [ "$TARGET_ENVIRONMENT" != "staging" ] && [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            configuration_failure "target_environment must be staging or production"
+          fi
+          if [ "$TARGET_ENVIRONMENT" = "staging" ] || [ "$DATABASE_RESILIENCE_GATE_MODE" = "enforce" ]; then
             required+=(
               RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT
               RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT
@@ -166,56 +177,79 @@ jobs:
             missing+=("RAILWAY_TOKEN")
           fi
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::Missing required protected PostgreSQL resilience setting name(s): ${missing[*]}"
-            exit 1
+            configuration_failure "Missing required protected PostgreSQL resilience setting name(s): ${missing[*]}"
           fi
           for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_POSTGRES_SERVICE_ID; do
             value="${!name}"
             if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-              echo "::error::$name must be a lowercase Railway UUID"
-              exit 1
+              configuration_failure "$name must be a lowercase Railway UUID"
             fi
           done
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+          if [ "$TARGET_ENVIRONMENT" = "staging" ] || [ "$DATABASE_RESILIENCE_GATE_MODE" = "enforce" ]; then
             for name in RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT; do
               value="${!name}"
               if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
-                echo "::error::$name must be a lowercase SHA-256 receipt"
-                exit 1
+                configuration_failure "$name must be a lowercase SHA-256 receipt"
               fi
             done
           fi
           if [[ ! "$DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS must be a positive integer"
-            exit 1
+            configuration_failure "DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS must be a positive integer"
           fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "Protected PostgreSQL resilience setting names and formats are valid; values were not printed."
 
       - name: Install pinned Railway CLI for resilience proof
+        id: railway_cli
         if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
         run: |
           set -euo pipefail
+          install_failure() {
+            if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Pinned Railway CLI could not be installed; report mode does not block migrations"
+              exit 0
+            fi
+            echo "::error::Pinned Railway CLI could not be installed; enforcement failed before migrations"
+            exit 1
+          }
           cli_root="$RUNNER_TEMP/railway-cli"
           archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
           mkdir -p "$cli_root"
-          curl \
+          if ! curl \
             --fail \
             --location \
             --silent \
             --show-error \
+            --connect-timeout 10 \
+            --max-time 120 \
             --retry 3 \
+            --retry-all-errors \
             --output "$archive" \
-            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
-          printf '%s  %s\n' \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"; then
+            install_failure
+          fi
+          if ! printf '%s  %s\n' \
             "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
-            "$archive" | sha256sum --check --status
-          tar -xzf "$archive" -C "$cli_root" railway
-          chmod 0755 "$cli_root/railway"
+            "$archive" | sha256sum --check --status; then
+            install_failure
+          fi
+          if ! tar -xzf "$archive" -C "$cli_root" railway; then
+            install_failure
+          fi
+          if ! chmod 0755 "$cli_root/railway"; then
+            install_failure
+          fi
           echo "$cli_root" >> "$GITHUB_PATH"
-          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+          if ! timeout --signal=TERM --kill-after=5s 10s \
+            "$cli_root/railway" --version | grep -F "railway 5.38.0"; then
+            install_failure
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Capture read-only Railway PostgreSQL evidence
-        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        id: database_resilience_capture
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' && steps.railway_cli.outputs.available == 'true' }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
@@ -226,8 +260,14 @@ jobs:
             local label="$1"
             local output="$2"
             shift 2
-            if ! "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
-              echo "::error::Railway $label query failed; raw output was not printed"
+            if ! timeout --signal=TERM --kill-after=5s 45s \
+              "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
+              if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then
+                echo "captured=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::Railway $label query failed; raw output was not printed and report mode does not block migrations"
+                exit 0
+              fi
+              echo "::error::Railway $label query failed; raw output was not printed and enforcement failed before migrations"
               exit 1
             fi
           }
@@ -255,10 +295,11 @@ jobs:
             railway postgres pitr schedule list "${postgres[@]}"
           capture backups "$evidence_dir/backups.json" \
             railway postgres pitr backup list "${postgres[@]}"
+          echo "captured=true" >> "$GITHUB_OUTPUT"
           echo "Read-only Railway PostgreSQL evidence captured without printing resource inventory."
 
       - name: Verify backup, PITR, and physical-isolation evidence
-        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' && steps.railway_cli.outputs.available == 'true' && steps.database_resilience_capture.outputs.captured == 'true' }}
         env:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
@@ -278,7 +319,7 @@ jobs:
             --schedules-json "$evidence_dir/schedules.json"
             --backups-json "$evidence_dir/backups.json"
           )
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+          if [ -n "$RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT" ] || [ -n "$RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT" ]; then
             args+=(
               --production-service-receipt "$RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT"
               --production-volume-receipt "$RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT"
@@ -287,9 +328,19 @@ jobs:
           receipt="$evidence_dir/receipt.json"
           set +e
           bun packages/cloud/scripts/admin/preflight-railway-postgres-resilience.ts \
-            "${args[@]}" > "$receipt"
+            "${args[@]}" > "$receipt" 2>"$evidence_dir/validation.stderr"
           gate_status="$?"
           set -e
+          if ! jq -e \
+            '.schemaVersion == 1 and (.verdict == "pass" or .verdict == "fail") and (.checks | type == "object") and (.receipts | type == "object")' \
+            "$receipt" >/dev/null; then
+            if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then
+              echo "::warning::Railway PostgreSQL resilience evidence could not be validated; raw output was not printed and report mode does not block migrations"
+              exit 0
+            fi
+            echo "::error::Railway PostgreSQL resilience evidence could not be validated; raw output was not printed and enforcement failed before migrations"
+            exit 1
+          fi
           verdict="$(jq -er '.verdict' "$receipt")"
           jq -r '.checks | to_entries[] | "- \(.key): \(.value)"' "$receipt" \
             >> "$GITHUB_STEP_SUMMARY"
@@ -301,6 +352,10 @@ jobs:
             echo "::warning::Railway PostgreSQL resilience report found unmet checks; report mode does not block migrations"
           fi
           if [ "$gate_status" -ne 0 ]; then
+            if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ]; then
+              echo "::warning::Railway PostgreSQL resilience report could not complete; report mode does not block migrations"
+              exit 0
+            fi
             echo "::error::Railway PostgreSQL resilience enforcement failed before migrations"
             exit "$gate_status"
           fi
