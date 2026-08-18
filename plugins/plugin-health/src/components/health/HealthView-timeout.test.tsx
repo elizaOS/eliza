@@ -11,8 +11,8 @@ vi.mock("@elizaos/ui/api", () => ({
 }));
 
 import {
-  HEALTH_VIEW_JSON_TIMEOUT_MS,
   getHealthJsonWithFetch,
+  HEALTH_VIEW_JSON_TIMEOUT_MS,
 } from "./HealthView.js";
 
 const URL = "http://test.local/api/lifeops/sleep/history?windowDays=14";
