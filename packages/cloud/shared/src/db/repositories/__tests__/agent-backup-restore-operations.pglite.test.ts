@@ -17,6 +17,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
 import {
   agentBackupCatalogAuthorities,
   agentBackupRestoreLeases,
@@ -32,7 +33,6 @@ import {
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
-import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "../agent-backup-restore-lease";
 import {
   advanceAgentBackupRestoreOperation,
@@ -385,6 +385,22 @@ describe("restore operation spine", () => {
           toPhase: "reserved",
         }),
       ).rejects.toThrow("cannot advance from restoring to reserved");
+
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          fromPhase: "reserved",
+          toPhase: "finalized",
+          receiptDigest: SHA,
+        }),
+      ).rejects.toThrow("cannot advance from reserved to finalized");
     },
     TIMEOUT,
   );
