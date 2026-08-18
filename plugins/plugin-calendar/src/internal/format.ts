@@ -10,10 +10,15 @@ import type {
 } from "@elizaos/shared";
 
 function truncateForPreview(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
+  const limit = Number.isFinite(maxLength)
+    ? Math.max(0, Math.floor(maxLength))
+    : 0;
+  if (value.length <= limit) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  if (limit === 0) return "";
+  if (limit === 1) return "…";
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function formatCalendarDatePart(

@@ -64,13 +64,32 @@ function isFullRedactKey(normalizedKey: string): boolean {
 }
 
 function shortenSubject(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}…`;
+  const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0;
+  if (value.length <= limit) return value;
+  if (limit === 0) return "";
+  if (limit === 1) return "…";
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function shortenBody(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}… [+${value.length - max} chars]`;
+  const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0;
+  if (value.length <= limit) return value;
+  if (limit === 0) return "";
+
+  // The omitted count must describe the actual retained prefix, not the
+  // nominal limit. Its digit width changes the space available to that prefix,
+  // so choose the longest prefix whose complete diagnostic still fits.
+  for (let prefixLimit = limit - 1; prefixLimit >= 0; prefixLimit -= 1) {
+    const prefix = value.slice(0, prefixLimit).trimEnd();
+    const suffix = `… [+${value.length - prefix.length} chars]`;
+    if (prefix.length + suffix.length <= limit) {
+      return `${prefix}${suffix}`;
+    }
+  }
+
+  // A chopped diagnostic is misleading. For very small caps, retain only the
+  // truthful truncation marker.
+  return "…";
 }
 
 function redactEmailAddresses(value: string): string {
