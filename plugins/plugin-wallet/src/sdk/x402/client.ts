@@ -176,6 +176,8 @@ export class X402Client {
         const decoded = JSON.parse(atob(headerValue));
         return decoded as X402PaymentRequired;
       } catch {
+        // error-policy:J3 an invalid untrusted payment header falls through to
+        // the response body; it is never treated as an accepted requirement.
         // Fall through to body parsing
       }
     }
@@ -186,8 +188,15 @@ export class X402Client {
       if (body.x402Version && body.accepts) {
         return body as X402PaymentRequired;
       }
-    } catch {
-      // Not parseable
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
+        throw error;
+      }
+      // error-policy:J3 an invalid untrusted payment body is an explicit
+      // unparseable result, distinct from a request cancellation or timeout.
     }
 
     return null;
