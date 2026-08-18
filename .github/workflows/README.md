@@ -6,12 +6,18 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the canonical required pull-request workflow for both `develop` and
-`main`. It classifies changed paths, runs repository quality checks, affected
-tests, deterministic smoke tests, a path-scoped Android release AAB audit, and a
-diff-scoped secret scan. The stable `CI / Required` job is the only status
-intended for branch protection. Individual jobs remain visible for diagnosis
-but are not separately wired into protection rules.
+`merge-candidate-biome.yml` is the pre-merge admission gate. GitHub's merge
+queue synthesizes its checkout SHA from the current `develop` tip and the
+queued pull requests, then the workflow runs the repository-pinned full lint
+and format contracts on that exact tree. Branch rules must require the stable
+`Merge Candidate Biome / Candidate tree` check for the queue to block a bad
+candidate; post-merge workflows remain health checks rather than admission.
+
+`ci.yml` is the canonical post-merge branch-health workflow for `develop`. It
+classifies changed paths, runs repository quality checks, affected tests,
+deterministic smoke tests, a path-scoped Android release AAB audit, and a
+diff-scoped secret scan. Its stable `CI / Required` job diagnoses the integrated
+branch; it does not replace the merge-candidate admission check above.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
