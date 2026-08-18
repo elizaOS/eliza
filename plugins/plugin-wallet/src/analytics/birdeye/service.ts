@@ -21,7 +21,11 @@ import {
   type ServiceTypeName,
 } from "@elizaos/core";
 import Birdeye from "./birdeye-task";
-import { BIRDEYE_ENDPOINTS, BIRDEYE_SERVICE_NAME } from "./constants";
+import {
+  BIRDEYE_ENDPOINTS,
+  BIRDEYE_SERVICE_NAME,
+  DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS,
+} from "./constants";
 import { searchBirdeyeTokens } from "./search-category";
 import type { DefiMultiPriceResponse } from "./types/api/defi";
 import type {
@@ -141,6 +145,7 @@ export class BirdeyeService extends Service {
 
   private getBirdeyeFetchOptions(chain = "solana"): RequestInit {
     return {
+      signal: AbortSignal.timeout(DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS),
       headers: {
         accept: "application/json",
         "x-chain": chain,
