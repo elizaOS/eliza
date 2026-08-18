@@ -184,7 +184,6 @@ class FakeTodosService {
       await this.list({
         entityId: args.entityId,
         agentId: args.agentId,
-        roomId: args.roomId,
       })
     ).map((todo) => ({ ...todo }));
     const beforeById = new Map(before.map((t) => [t.id, t]));
@@ -218,7 +217,6 @@ class FakeTodosService {
     this.rows = this.rows.filter((r) => {
       if (r.entityId !== args.entityId) return true;
       if (r.agentId !== args.agentId) return true;
-      if (r.roomId !== args.roomId) return true;
       return keep.has(r.id);
     });
     return { before, after };
@@ -622,6 +620,37 @@ describe("TODO action", () => {
       expect(service.rows.length).toBe(2);
       const stored = service.rows.find((r) => r.id === originalId);
       expect(stored?.status).toBe("completed");
+    });
+
+    it("reconciles the entity-scoped list across rooms", async () => {
+      const otherRoom = "11111111-2222-4333-8444-555555555555";
+      const existing = await service.create({
+        entityId: ENTITY,
+        agentId: AGENT,
+        roomId: otherRoom,
+        worldId: null,
+        content: "cross-room task",
+        status: "pending",
+      });
+
+      const result = await invoke(runtime, {
+        action: "write",
+        todos: [
+          {
+            id: existing.id,
+            content: existing.content,
+            status: "completed",
+          },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      expect(service.rows).toHaveLength(1);
+      expect(service.rows[0]).toMatchObject({
+        id: existing.id,
+        roomId: otherRoom,
+        status: "completed",
+      });
     });
 
     it("rejects invalid status", async () => {
