@@ -82,9 +82,11 @@ describe("validateEnvKey / validateEnvValue", () => {
 });
 
 describe("secret container environment transport (#22060)", () => {
-  test("classifies every current credential family conservatively", () => {
+  test("fails unknown and credential-like names closed to stdin", () => {
     for (const key of [
       "AGENT_SERVER_SHARED_SECRET",
+      "AWS_ACCESS_ID",
+      "CUSTOM_CREDENTIALS",
       "DATABASE_URL",
       "DISCORD_API_TOKEN",
       "ELIZAOS_CLOUD_API_KEY",
@@ -106,8 +108,6 @@ describe("secret container environment transport (#22060)", () => {
       "AGENT_DISABLE_AUTO_API_TOKEN",
       "ELIZA_ALLOW_WS_QUERY_TOKEN",
       "ELIZA_DISABLE_AUTO_API_TOKEN",
-      "ELIZA_STATE_DIR",
-      "PORT",
     ]) {
       expect(isSecretContainerEnvKey(key)).toBe(false);
     }
@@ -162,13 +162,14 @@ describe("secret container environment transport (#22060)", () => {
       vaultPassphrasePath: "/data/agents/agent-a/.vault-passphrase",
     });
 
-    expect(command).toContain("-e 'PORT=3000'");
     expect(command).toContain("-e 'AGENT_DISABLE_AUTO_API_TOKEN=1'");
     expect(command).toContain("--env-file");
     expect(command).toContain("umask 077");
     expect(command).toContain("chmod 600");
     expect(command).toContain("trap");
     expect(command).not.toContain("ELIZA_VAULT_PASSPHRASE");
+    expect(command).not.toContain("PORT=3000");
+    expect(transport.secretInput).toContain("PORT=3000");
     for (const [key, value] of Object.entries(secretValues)) {
       expect(command).not.toContain(key);
       expect(command).not.toContain(value);

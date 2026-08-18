@@ -267,24 +267,20 @@ export function validateEnvValue(key: string, value: string): void {
   }
 }
 
-const NON_SECRET_ENV_KEY_EXCEPTIONS = new Set([
+const PUBLIC_CONTAINER_ENV_KEY_ALLOWLIST = new Set([
   "AGENT_DISABLE_AUTO_API_TOKEN",
   "ELIZA_ALLOW_WS_QUERY_TOKEN",
   "ELIZA_DISABLE_AUTO_API_TOKEN",
 ]);
 
 /**
- * Classify container environment values that must travel over SSH stdin rather
- * than in the remotely logged `docker create` command. URL-shaped values are
- * included because provider and database URLs commonly carry credentials.
+ * Keep only fixed, non-secret feature flags on the Docker command line.
+ * Caller-provided environment keys are arbitrary BYO-secret material, so an
+ * unknown name must fail closed to the stdin-backed env file rather than rely
+ * on a credential-name heuristic.
  */
 export function isSecretContainerEnvKey(key: string): boolean {
-  if (NON_SECRET_ENV_KEY_EXCEPTIONS.has(key)) return false;
-  return (
-    /(?:^|_)(?:AUTH|CERT|COOKIE|CREDENTIAL|JWT|KEY|MNEMONIC|PASS(?:WORD|WD|PHRASE)?|PEM|PRIVATE|SEED|SECRET|SESSION|SIGNING|TOKEN|URI|URL)(?:_|$)/i.test(
-      key,
-    ) || /(?:AUTH|JWT|KEY|PASS(?:WORD|WD|PHRASE)?|SECRET|TOKEN)$/i.test(key)
-  );
+  return !PUBLIC_CONTAINER_ENV_KEY_ALLOWLIST.has(key);
 }
 
 export interface DockerContainerEnvTransport {
