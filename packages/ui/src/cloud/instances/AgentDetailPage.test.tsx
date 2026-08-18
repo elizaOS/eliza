@@ -172,4 +172,22 @@ describe("AgentDetailPage date formatting", () => {
     expect(screen.queryByText("—")).toBeNull();
     expect(screen.queryByText("Never")).toBeNull();
   });
+
+  it("replaces a duplicate old heartbeat date with its exact time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
+    const lastHeartbeatAt = "2026-08-13T18:42:00.000Z";
+
+    renderPage({ ...baseAgent, lastHeartbeatAt });
+
+    expect(screen.getAllByText(formatDate(lastHeartbeatAt))).toHaveLength(1);
+    expect(
+      screen.getByText(
+        new Date(lastHeartbeatAt).toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      ),
+    ).toBeTruthy();
+  });
 });

@@ -135,6 +135,14 @@ export default function AgentDetailPage() {
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
   const showConnect = !!agent.webUiUrl && agent.status === "running";
+  const heartbeatPrimary = formatRelativeShort(agent.lastHeartbeatAt, t);
+  const heartbeatDate = formatDate(agent.lastHeartbeatAt);
+  // Once the relative formatter falls back to an absolute date, repeat-free
+  // secondary context is the exact heartbeat time instead of the same date.
+  const heartbeatSecondary =
+    agent.lastHeartbeatAt && heartbeatPrimary === heartbeatDate
+      ? formatTime(agent.lastHeartbeatAt)
+      : heartbeatDate;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -271,11 +279,11 @@ export default function AgentDetailPage() {
             })}
           </p>
           <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {formatRelativeShort(agent.lastHeartbeatAt, t)}
+            {heartbeatPrimary}
           </p>
           {agent.lastHeartbeatAt && (
             <p className="text-2xs text-muted tabular-nums">
-              {formatDate(agent.lastHeartbeatAt)}
+              {heartbeatSecondary}
             </p>
           )}
         </div>
