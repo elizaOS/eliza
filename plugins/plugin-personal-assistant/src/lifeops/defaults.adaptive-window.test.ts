@@ -61,52 +61,81 @@ describe("computeAdaptiveWindowPolicy", () => {
   });
 
   it.each([
-    { wakeTime: "14:30", typicalWakeHour: 14.5 },
-    { wakeTime: "15:00", typicalWakeHour: 15 },
+    {
+      expectedEndMinute: 900,
+      expectedStartMinute: 840,
+      typicalWakeHour: 14.5,
+    },
+    {
+      expectedEndMinute: 930,
+      expectedStartMinute: 870,
+      typicalWakeHour: 15,
+    },
+    {
+      expectedEndMinute: 1410,
+      expectedStartMinute: 1350,
+      typicalWakeHour: 23,
+    },
+    {
+      expectedEndMinute: 1650,
+      expectedStartMinute: 1590,
+      typicalWakeHour: 27,
+    },
   ])(
-    "keeps the morning window non-empty for a $wakeTime wake rhythm",
-    ({ typicalWakeHour }) => {
+    "keeps a $typicalWakeHour wake inside its wake-relative morning window",
+    ({ expectedEndMinute, expectedStartMinute, typicalWakeHour }) => {
       const policy = computeAdaptiveWindowPolicy(
         {
           typicalWakeHour,
           typicalFirstActiveHour: null,
           typicalLastActiveHour: null,
-          typicalSleepHour: null,
+          typicalSleepHour: 28,
         },
         "UTC",
       );
 
       expect(policy.windows[0]).toMatchObject({
         name: "morning",
-        startMinute: 780,
-        endMinute: 840,
+        startMinute: expectedStartMinute,
+        endMinute: expectedEndMinute,
       });
-      expect(policy.windows[1]?.startMinute).toBe(840);
+      const wakeMinute = typicalWakeHour * 60;
+      expect(policy.windows[0]?.startMinute).toBeLessThanOrEqual(wakeMinute);
+      expect(policy.windows[0]?.endMinute).toBeGreaterThan(wakeMinute);
+      expect(policy.windows[1]?.startMinute).toBe(expectedEndMinute);
     },
   );
 
   it("keeps every adaptive daypart contiguous and non-empty across wake rhythms", () => {
     for (
-      let typicalWakeHour = 0;
-      typicalWakeHour < 24;
-      typicalWakeHour += 0.5
+      let typicalWakeHour = 4;
+      typicalWakeHour <= 27;
+      typicalWakeHour += 0.25
     ) {
       const policy = computeAdaptiveWindowPolicy(
         {
           typicalWakeHour,
           typicalFirstActiveHour: null,
           typicalLastActiveHour: null,
-          typicalSleepHour: null,
+          typicalSleepHour: 28,
         },
         "UTC",
       );
 
       for (const [index, window] of policy.windows.entries()) {
-        expect(window.endMinute).toBeGreaterThan(window.startMinute);
+        expect(window.endMinute - window.startMinute).toBeGreaterThanOrEqual(
+          60,
+        );
         if (index > 0) {
           expect(window.startMinute).toBe(policy.windows[index - 1]?.endMinute);
         }
       }
+      const morning = policy.windows[0];
+      expect(morning?.startMinute).toBe(
+        Math.max(Math.round((typicalWakeHour - 0.5) * 60), 4 * 60),
+      );
+      expect(morning?.startMinute).toBeLessThanOrEqual(typicalWakeHour * 60);
+      expect(morning?.endMinute).toBeGreaterThan(typicalWakeHour * 60);
     }
   });
 
@@ -136,7 +165,7 @@ describe("computeAdaptiveWindowPolicy", () => {
     ).toBe(true);
     expect(
       occurrences.every(
-        ({ scheduledAt }) => scheduledAt?.slice(11, 16) === "13:00",
+        ({ scheduledAt }) => scheduledAt?.slice(11, 16) === "14:30",
       ),
     ).toBe(true);
   });
