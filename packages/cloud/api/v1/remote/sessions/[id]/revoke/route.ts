@@ -25,9 +25,10 @@ async function __hono_POST(
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const existing = await remoteSessionsRepository.findByIdAndOrg(
+    const existing = await remoteSessionsRepository.findByIdAndOwner(
       id,
       user.organization_id,
+      user.id,
     );
     if (!existing) {
       return applyCorsHeaders(
@@ -56,6 +57,7 @@ async function __hono_POST(
     const revoked = await remoteSessionsRepository.revoke(
       id,
       user.organization_id,
+      user.id,
     );
     if (!revoked) {
       return applyCorsHeaders(

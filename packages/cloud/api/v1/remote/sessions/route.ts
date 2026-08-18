@@ -30,13 +30,14 @@ app.get("/", async (c) => {
       agentId,
       user.organization_id,
     );
-    if (!sandbox) {
+    if (!sandbox || sandbox.user_id !== user.id) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
     const sessions = await remoteSessionsRepository.listActiveByAgent(
       agentId,
       user.organization_id,
+      user.id,
     );
 
     return c.json({

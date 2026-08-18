@@ -328,6 +328,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
 #   STEWARD_SESSION_SECRET             Deprecated compatibility alias for STEWARD_JWT_SECRET
+#   REMOTE_PAIRING_HMAC_SECRET          Dedicated 32+ byte HMAC key for short-lived remote pairing verifiers
 #   STEWARD_MASTER_PASSWORD            Steward vault encryption master password; required for wallet/key ops
 #   STEWARD_TENANT_ID                  Default tenant scope; verifier rejects other tenants
 #   STEWARD_DEFAULT_TENANT_ID          Embedded Steward default tenant id (optional; defaults to elizacloud)
