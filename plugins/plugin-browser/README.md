@@ -60,7 +60,8 @@ the upload action, the exact semantic action digest, and an atomically
 consume-once confirmation. A target must separately opt in through
 `executeAuthorizedUpload` and return an applied effect receipt for the exact
 surface, generation, operation, and action idempotency key. The receipt records
-only opaque account and resource identities; file handles are excluded.
+only opaque session, account-grant, and resource identities; raw owner/profile
+handles and file handles are excluded.
 
 The built-in `workspace`, `bridge`, and `stagehand` targets do not yet expose a
 proof-producing upload hook, so they reject uploads before consuming a

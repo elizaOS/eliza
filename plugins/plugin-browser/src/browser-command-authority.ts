@@ -27,6 +27,7 @@ import type {
 
 export const BROWSER_UPLOAD_CAPABILITY_ID = "browser.upload";
 export const BROWSER_UPLOAD_OPERATION = "browser.upload";
+const BROWSER_EFFECT_CLOCK_SKEW_MS = 5 * 60 * 1_000;
 
 export interface BrowserUploadActionRequest {
   actionId: string;
@@ -42,12 +43,11 @@ export interface BrowserUploadAuthorizationRequest
   capabilities: InteractionCapabilitySet;
   confirmationGrantConsumer: InteractionConfirmationGrantConsumer;
   profileGrantVerifier?: InteractionProfileGrantVerifier;
-  now?: number;
 }
 
 export interface BrowserAuthorizedCommandBinding {
-  ownerId: string;
-  accountId: string;
+  sessionId: string;
+  accountGrantId: string;
   adapterId: string;
   capabilityId: typeof BROWSER_UPLOAD_CAPABILITY_ID;
   operation: typeof BROWSER_UPLOAD_OPERATION;
@@ -80,8 +80,12 @@ function invalid(
   });
 }
 
-function nonEmpty(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+function nonEmpty(value: unknown, field: string, maxChars = 512): string {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.trim().length > maxChars
+  ) {
     return invalid(
       `Browser authorization field '${field}' must be a non-empty string.`,
       {
@@ -100,14 +104,14 @@ function stale(message: string, sessionId: string): never {
   });
 }
 
-function accountIdForSession(session: InteractionSession): string {
+function accountGrantForSession(session: InteractionSession) {
   if (session.profileMode !== "existing_explicit" || !session.profileGrant) {
     return invalid(
       "Bound browser upload requires an explicitly granted account profile.",
       { sessionId: session.sessionId },
     );
   }
-  return session.profileGrant.profileHandle;
+  return session.profileGrant;
 }
 
 export function createBrowserUploadInteractionAction(
@@ -121,14 +125,29 @@ export function createBrowserUploadInteractionAction(
       },
     );
   }
-  const elementId = nonEmpty(request.command.selector, "command.selector");
+  const elementId = nonEmpty(
+    request.command.selector,
+    "command.selector",
+    4_096,
+  );
   const fileHandles = request.command.files?.map((file, index) =>
-    nonEmpty(file, `command.files[${index}]`),
+    nonEmpty(file, `command.files[${index}]`, 4_096),
   );
   if (!fileHandles || fileHandles.length === 0) {
     return invalid(
       "Bound browser upload requires at least one opaque file handle.",
     );
+  }
+  if (
+    fileHandles.length > 32 ||
+    new Set(fileHandles).size !== fileHandles.length
+  ) {
+    return invalid(
+      "Bound browser upload file handles must be unique and limited to 32 entries.",
+    );
+  }
+  if (request.command.id !== undefined && !request.command.id.trim()) {
+    return invalid("Bound browser upload surface id cannot be blank.");
   }
   const requestedSurfaceId = request.command.id?.trim();
   const surface = requestedSurfaceId
@@ -174,6 +193,11 @@ export async function authorizeBrowserUpload(
       },
     );
   }
+  if (!request.capabilities.controlPlanes.includes("browser")) {
+    return invalid("Selected adapter does not advertise browser control.", {
+      adapterId: request.capabilities.adapterId,
+    });
+  }
   if (!request.capabilities.actionKinds.includes("upload")) {
     return invalid(
       "Selected browser adapter does not advertise upload capability.",
@@ -182,9 +206,19 @@ export async function authorizeBrowserUpload(
       },
     );
   }
-  const accountId = accountIdForSession(request.session);
-  const profileGrantId = request.session.profileGrant?.grantId;
   const action = createBrowserUploadInteractionAction(request);
+  const accountGrant = accountGrantForSession(request.session);
+  if (
+    Date.parse(request.session.updatedAt) > Date.parse(action.requestedAt) ||
+    Date.parse(accountGrant.issuedAt) > Date.parse(action.requestedAt)
+  ) {
+    return stale(
+      "Browser session or account grant changed after the upload was requested.",
+      request.session.sessionId,
+    );
+  }
+  const accountProfileHandle = accountGrant.profileHandle;
+  const accountGrantId = accountGrant.grantId;
   const authorized = await authorizeInteractionDispatch(action, {
     session: request.session,
     capabilities: request.capabilities,
@@ -193,11 +227,11 @@ export async function authorizeBrowserUpload(
       ? { profileGrantVerifier: request.profileGrantVerifier }
       : {}),
     leaseRequirements: [],
-    ...(request.now === undefined ? {} : { now: request.now }),
   });
   if (
-    accountIdForSession(request.session) !== accountId ||
-    request.session.profileGrant?.grantId !== profileGrantId
+    accountGrantForSession(request.session).profileHandle !==
+      accountProfileHandle ||
+    request.session.profileGrant?.grantId !== accountGrantId
   ) {
     return stale(
       "Browser account grant changed while dispatch authorization was pending.",
@@ -209,8 +243,8 @@ export async function authorizeBrowserUpload(
     fileHandles: string[];
   };
   const binding = Object.freeze({
-    ownerId: request.session.ownerId,
-    accountId,
+    sessionId: request.session.sessionId,
+    accountGrantId,
     adapterId: request.session.adapterId,
     capabilityId: BROWSER_UPLOAD_CAPABILITY_ID,
     operation: BROWSER_UPLOAD_OPERATION,
@@ -239,7 +273,17 @@ export function createBrowserUploadReceipt(
       actionId: authorized.action.actionId,
     });
   }
+  if (result.subaction !== "upload") {
+    return invalid("Browser upload result reports a different operation.", {
+      actionId: authorized.action.actionId,
+      subaction: result.subaction,
+    });
+  }
   const effect = normalizeEffectReceipt(effectValue);
+  const requestedAt = Date.parse(authorized.action.requestedAt);
+  const observedAt = Date.parse(effect.observedAt);
+  const committedAt =
+    effect.outcome === "applied" ? Date.parse(effect.commit.committedAt) : NaN;
   if (
     effect.operation !== BROWSER_UPLOAD_OPERATION ||
     effect.resource.kind !== "browser.surface" ||
@@ -247,7 +291,10 @@ export function createBrowserUploadReceipt(
     effect.resource.version !== String(authorized.action.surface.generation) ||
     effect.idempotency.key !== authorized.action.actionId ||
     effect.idempotency.replayed ||
-    effect.outcome !== "applied"
+    effect.outcome !== "applied" ||
+    committedAt < requestedAt ||
+    observedAt < committedAt ||
+    observedAt > Date.now() + BROWSER_EFFECT_CLOCK_SKEW_MS
   ) {
     return invalid(
       "Browser target did not return effect proof for the exact authorized upload.",
@@ -296,8 +343,8 @@ export function normalizeBrowserUploadReceipt(
   }
   const binding = bindingRaw as Record<string, unknown>;
   const expectedBinding = {
-    ownerId: expected.session.ownerId,
-    accountId: accountIdForSession(expected.session),
+    sessionId: expected.session.sessionId,
+    accountGrantId: accountGrantForSession(expected.session).grantId,
     adapterId: expected.session.adapterId,
     capabilityId: BROWSER_UPLOAD_CAPABILITY_ID,
     operation: BROWSER_UPLOAD_OPERATION,
@@ -328,6 +375,10 @@ export function normalizeBrowserUploadReceipt(
     );
   }
   const effect = normalizeEffectReceipt(raw.effect);
+  const requestedAt = Date.parse(expected.action.requestedAt);
+  const observedEffectAt = Date.parse(effect.observedAt);
+  const committedAt =
+    effect.outcome === "applied" ? Date.parse(effect.commit.committedAt) : NaN;
   if (
     effect.operation !== BROWSER_UPLOAD_OPERATION ||
     effect.resource.kind !== "browser.surface" ||
@@ -335,7 +386,10 @@ export function normalizeBrowserUploadReceipt(
     effect.resource.version !== String(expected.action.surface.generation) ||
     effect.idempotency.key !== expected.action.actionId ||
     effect.idempotency.replayed ||
-    effect.outcome !== "applied"
+    effect.outcome !== "applied" ||
+    committedAt < requestedAt ||
+    observedEffectAt < committedAt ||
+    observedEffectAt > Date.now() + BROWSER_EFFECT_CLOCK_SKEW_MS
   ) {
     return invalid(
       "Browser upload effect receipt cannot be relabeled onto this action.",

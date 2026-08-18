@@ -10,19 +10,25 @@ import {
   InteractionConfirmationCoordinator,
   type InteractionSession,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createBrowserUploadInteractionAction,
   normalizeBrowserUploadReceipt,
 } from "../browser-command-authority.js";
 import { BrowserService } from "../browser-service.js";
 import { executeBrowserWorkspaceCommand } from "../workspace/browser-workspace.js";
-import { executeDesktopBrowserWorkspaceUtilityCommand } from "../workspace/browser-workspace-desktop.js";
+import {
+  createDesktopBrowserWorkspaceCommandScript,
+  executeDesktopBrowserWorkspaceDomCommand,
+  executeDesktopBrowserWorkspaceUtilityCommand,
+} from "../workspace/browser-workspace-desktop.js";
 import { executeWebBrowserWorkspaceUtilityCommand } from "../workspace/browser-workspace-web.js";
 
 const now = Date.parse("2026-08-18T22:00:00.000Z");
 const requestedAt = "2026-08-18T21:59:00.000Z";
 const expiresAt = "2026-08-18T22:05:00.000Z";
+beforeAll(() => vi.spyOn(Date, "now").mockReturnValue(now));
+afterAll(() => vi.restoreAllMocks());
 const profileGrantVerifier = {
   verify: (
     grant: { profileHandle: string },
@@ -155,13 +161,13 @@ function serviceWithTarget() {
         outcome: "applied",
         commit: {
           kind: "provider_accepted",
-          id: action.actionId,
+          id: "provider-acceptance-1",
           committedAt: new Date(now).toISOString(),
         },
       },
     }),
   );
-  service.registerTarget({
+  const target = {
     id: capabilities.adapterId,
     name: "Bound workspace account",
     description: "Deterministic browser target",
@@ -169,8 +175,9 @@ function serviceWithTarget() {
     supports: (candidate) => candidate.subaction === "upload",
     execute: genericExecute,
     executeAuthorizedUpload: execute,
-  });
-  return { execute, genericExecute, service };
+  };
+  service.registerTarget(target);
+  return { execute, genericExecute, service, target };
 }
 
 describe("bound browser command authorization", () => {
@@ -236,7 +243,6 @@ describe("bound browser command authorization", () => {
         profileGrantVerifier,
         session: activeSession,
         capabilities,
-        now,
       }),
     ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
     expect(consume).not.toHaveBeenCalled();
@@ -255,7 +261,6 @@ describe("bound browser command authorization", () => {
       profileGrantVerifier,
       session: activeSession,
       capabilities,
-      now,
     });
 
     expect(execute).toHaveBeenCalledWith(
@@ -268,8 +273,8 @@ describe("bound browser command authorization", () => {
       }),
     );
     expect(output.receipt.binding).toMatchObject({
-      ownerId: "owner-1",
-      accountId: "account-opaque-1",
+      sessionId: "session-1",
+      accountGrantId: "profile-grant-1",
       adapterId: capabilities.adapterId,
       capabilityId: "browser.upload",
       operation: "browser.upload",
@@ -281,6 +286,8 @@ describe("bound browser command authorization", () => {
     expect(JSON.stringify(output.receipt)).not.toContain(
       "opaque-file-handle-1",
     );
+    expect(JSON.stringify(output.receipt)).not.toContain("account-opaque-1");
+    expect(JSON.stringify(output.receipt)).not.toContain("owner-1");
     expect(
       normalizeBrowserUploadReceipt(output.receipt, {
         action: { ...draft, confirmationGrant: grant },
@@ -301,7 +308,6 @@ describe("bound browser command authorization", () => {
       profileGrantVerifier,
       session: activeSession,
       capabilities,
-      now,
     };
 
     const attempts = await Promise.allSettled([
@@ -349,7 +355,6 @@ describe("bound browser command authorization", () => {
         },
         session: activeSession,
         capabilities,
-        now,
       }),
     ).rejects.toMatchObject({ code: "STALE_INTERACTION_REFERENCE" });
     expect(execute).not.toHaveBeenCalled();
@@ -392,7 +397,6 @@ describe("bound browser command authorization", () => {
       profileGrantVerifier,
       session: activeSession,
       capabilities,
-      now,
     };
 
     await expect(
@@ -416,7 +420,6 @@ describe("bound browser command authorization", () => {
       profileGrantVerifier,
       session: activeSession,
       capabilities,
-      now,
     });
     const confirmedAction = { ...draft, confirmationGrant: grant };
 
@@ -424,7 +427,10 @@ describe("bound browser command authorization", () => {
       normalizeBrowserUploadReceipt(
         {
           ...output.receipt,
-          binding: { ...output.receipt.binding, accountId: "account-opaque-2" },
+          binding: {
+            ...output.receipt.binding,
+            accountGrantId: "profile-grant-2",
+          },
         },
         { action: confirmedAction, session: activeSession },
       ),
@@ -472,8 +478,186 @@ describe("bound browser command authorization", () => {
         profileGrantVerifier,
         session: substitutedSession,
         capabilities,
-        now,
       }),
     ).rejects.toThrow("not current and host-verified");
+  });
+
+  it("blocks normalized aliases and direct desktop upload helpers", async () => {
+    const { genericExecute, service } = serviceWithTarget();
+    await expect(
+      service.execute({
+        subaction: "state",
+        operation: "UPLOAD" as "upload",
+        selector: "#attachment",
+        files: ["opaque-file-handle-1"],
+      }),
+    ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    await expect(
+      service.execute({ subaction: " EVAL" as "eval", script: "1" }),
+    ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    await expect(
+      service.execute({ subaction: "REALISTIC_UPLOAD" as "realistic-upload" }),
+    ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    await expect(
+      executeBrowserWorkspaceCommand(
+        { subaction: "eval", script: "1" },
+        { ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT: "1" },
+      ),
+    ).rejects.toThrow(/script execution is disabled|Generic browser eval/);
+    expect(() =>
+      createDesktopBrowserWorkspaceCommandScript({
+        subaction: "realistic-upload",
+        selector: "#attachment",
+        files: ["opaque-file-handle-1"],
+      }),
+    ).toThrow("proof-producing target");
+    await expect(
+      executeDesktopBrowserWorkspaceDomCommand(
+        {
+          subaction: "realistic-upload",
+          selector: "#attachment",
+          files: ["opaque-file-handle-1"],
+        },
+        {},
+      ),
+    ).rejects.toThrow("proof-producing target");
+    expect(genericExecute).not.toHaveBeenCalled();
+  });
+
+  it("binds authorization to a browser capability and pre-request account grant", async () => {
+    const changedSession = session();
+    changedSession.updatedAt = "2026-08-18T22:00:00.000Z";
+    if (!changedSession.profileGrant) throw new Error("missing profile grant");
+    changedSession.profileGrant = {
+      ...changedSession.profileGrant,
+      grantId: "profile-grant-2",
+      profileHandle: "account-opaque-2",
+      issuedAt: "2026-08-18T22:00:00.000Z",
+    };
+    const { coordinator, draft, grant } = confirmedUpload(changedSession);
+    const consume = vi.fn(coordinator.consume.bind(coordinator));
+    const { execute, service } = serviceWithTarget();
+
+    await expect(
+      service.executeConfirmedUpload(command, {
+        actionId: draft.actionId,
+        requestedAt,
+        confirmationGrant: grant,
+        confirmationGrantConsumer: { consume },
+        profileGrantVerifier: { verify: () => true },
+        session: changedSession,
+        capabilities,
+      }),
+    ).rejects.toMatchObject({ code: "STALE_INTERACTION_REFERENCE" });
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+
+    const activeSession = session();
+    const confirmed = confirmedUpload(activeSession);
+    await expect(
+      service.executeConfirmedUpload(command, {
+        actionId: confirmed.draft.actionId,
+        requestedAt,
+        confirmationGrant: confirmed.grant,
+        confirmationGrantConsumer: confirmed.coordinator,
+        profileGrantVerifier,
+        session: activeSession,
+        capabilities: { ...capabilities, controlPlanes: [] },
+      }),
+    ).rejects.toThrow("does not advertise browser control");
+  });
+
+  it("treats a mismatched result operation as uncertain", async () => {
+    const activeSession = session();
+    const confirmed = confirmedUpload(activeSession);
+    const { execute, service } = serviceWithTarget();
+    execute.mockImplementationOnce(async (action) => ({
+      result: { mode: "desktop", subaction: "navigate" },
+      effectReceipt: {
+        receiptId: `browser-upload:${action.actionId}`,
+        operation: "browser.upload",
+        resource: {
+          kind: "browser.surface",
+          id: action.surface.surfaceId,
+          version: String(action.surface.generation),
+        },
+        artifacts: [],
+        idempotency: { key: action.actionId, replayed: false },
+        observedAt: new Date(now).toISOString(),
+        outcome: "applied",
+        commit: {
+          kind: "provider_accepted",
+          id: "provider-receipt-1",
+          committedAt: new Date(now).toISOString(),
+        },
+      },
+    }));
+    await expect(
+      service.executeConfirmedUpload(command, {
+        actionId: confirmed.draft.actionId,
+        requestedAt,
+        confirmationGrant: confirmed.grant,
+        confirmationGrantConsumer: confirmed.coordinator,
+        profileGrantVerifier,
+        session: activeSession,
+        capabilities,
+      }),
+    ).rejects.toMatchObject({ kind: "UNCERTAIN_OUTCOME" });
+  });
+
+  it("rejects stale effect chronology and mutable target identity", async () => {
+    const activeSession = session();
+    const staleProof = confirmedUpload(activeSession);
+    const { execute, service } = serviceWithTarget();
+    const defaultExecution = execute.getMockImplementation();
+    if (!defaultExecution) throw new Error("missing target implementation");
+    execute.mockImplementationOnce(async (action) => {
+      const output = await defaultExecution(action);
+      return {
+        ...output,
+        effectReceipt: {
+          ...output.effectReceipt,
+          commit: {
+            kind: "provider_accepted" as const,
+            id: "provider-acceptance-stale",
+            committedAt: "2026-08-18T21:58:59.000Z",
+          },
+        },
+      };
+    });
+    await expect(
+      service.executeConfirmedUpload(command, {
+        actionId: staleProof.draft.actionId,
+        requestedAt,
+        confirmationGrant: staleProof.grant,
+        confirmationGrantConsumer: staleProof.coordinator,
+        profileGrantVerifier,
+        session: activeSession,
+        capabilities,
+      }),
+    ).rejects.toMatchObject({ kind: "UNCERTAIN_OUTCOME" });
+
+    const changedTarget = serviceWithTarget();
+    changedTarget.target.available = async () => {
+      changedTarget.target.id = "substituted-adapter";
+      return true;
+    };
+    const targetProof = confirmedUpload(activeSession);
+    const consume = vi.fn(
+      targetProof.coordinator.consume.bind(targetProof.coordinator),
+    );
+    await expect(
+      changedTarget.service.executeConfirmedUpload(command, {
+        actionId: targetProof.draft.actionId,
+        requestedAt,
+        confirmationGrant: targetProof.grant,
+        confirmationGrantConsumer: { consume },
+        profileGrantVerifier,
+        session: activeSession,
+        capabilities,
+      }),
+    ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
+    expect(consume).not.toHaveBeenCalled();
+    expect(changedTarget.execute).not.toHaveBeenCalled();
   });
 });

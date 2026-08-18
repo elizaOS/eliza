@@ -105,6 +105,7 @@ import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
   assertBrowserWorkspaceUserScriptAllowed,
+  createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
@@ -750,7 +751,7 @@ export async function executeBrowserWorkspaceCommand(
 ): Promise<BrowserWorkspaceCommandResult> {
   command = normalizeBrowserWorkspaceCommand(command);
   const pending = [command];
-  let blockedUpload = false;
+  let blockedCommand: "eval" | "upload" | "realistic-upload" | null = null;
   while (pending.length > 0) {
     const candidate = pending.pop();
     if (!candidate) break;
@@ -758,16 +759,25 @@ export async function executeBrowserWorkspaceCommand(
       candidate.subaction === "upload" ||
       candidate.subaction === "realistic-upload"
     ) {
-      blockedUpload = true;
+      blockedCommand = candidate.subaction;
+      break;
+    }
+    if (candidate.subaction === "eval") {
+      blockedCommand = "eval";
       break;
     }
     if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
       pending.push(...candidate.steps);
     }
   }
-  if (blockedUpload) {
+  if (blockedCommand) {
+    if (blockedCommand === "eval" && !isBrowserWorkspaceBridgeConfigured(env)) {
+      throw createBrowserWorkspaceJsdomScriptExecutionError("eval");
+    }
     throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+      blockedCommand === "eval"
+        ? "Generic browser eval is disabled. Use typed browser commands instead."
+        : "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
     );
   }
   switch (command.subaction) {

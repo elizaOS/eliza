@@ -189,6 +189,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  if (
+    command.subaction === "upload" ||
+    command.subaction === "realistic-upload"
+  ) {
+    throw new Error(
+      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   const waitScriptBranch = desktopBrowserWorkspaceWaitScriptBranch(env);
   return `
 (() => {
@@ -1623,6 +1631,14 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
+  if (
+    command.subaction === "upload" ||
+    command.subaction === "realistic-upload"
+  ) {
+    throw new Error(
+      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   assertBrowserWorkspaceUserScriptAllowed(
     command.script,
     "wait",

@@ -59,6 +59,7 @@ import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
 } from "./workspace/browser-workspace.js";
+import { normalizeBrowserWorkspaceCommand } from "./workspace/browser-workspace-helpers.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -155,12 +156,18 @@ function findBlockedGenericCommand(
     const candidate = pending.pop();
     if (!candidate || visited.has(candidate)) continue;
     visited.add(candidate);
-    if (
-      candidate.subaction === "eval" ||
-      candidate.subaction === "upload" ||
-      candidate.subaction === "realistic-upload"
-    ) {
-      return candidate.subaction;
+    for (const value of [candidate.subaction, candidate.operation]) {
+      const normalized =
+        typeof value === "string"
+          ? value.trim().toLowerCase().replaceAll("_", "-")
+          : "";
+      if (
+        normalized === "eval" ||
+        normalized === "upload" ||
+        normalized === "realistic-upload"
+      ) {
+        return normalized;
+      }
     }
     if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
       pending.push(...candidate.steps);
@@ -375,6 +382,7 @@ export class BrowserService extends Service {
     command: BrowserWorkspaceCommand,
     targetId?: string,
   ): Promise<BrowserWorkspaceCommandResult> {
+    command = normalizeBrowserWorkspaceCommand(command);
     const blockedCommand = findBlockedGenericCommand(command);
     if (blockedCommand) {
       throw new BrowserDispatchFailure(
@@ -403,13 +411,19 @@ export class BrowserService extends Service {
       profileGrantVerifier?: InteractionProfileGrantVerifier;
       session: InteractionSession;
       capabilities: InteractionCapabilitySet;
-      now?: number;
     },
   ): Promise<BrowserAuthorizedUploadExecution> {
     const [target] = await this.resolveTargets(
       authorization.session.adapterId,
       command,
     );
+    if (target && target.id !== authorization.session.adapterId) {
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "Resolved browser target identity changed before authorization.",
+        { targetId: authorization.session.adapterId },
+      );
+    }
     const executeAuthorizedUpload =
       target?.executeAuthorizedUpload?.bind(target);
     if (!target || !executeAuthorizedUpload) {
