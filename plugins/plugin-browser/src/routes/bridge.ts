@@ -134,6 +134,7 @@ function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
   }
   return (
     originHeader.startsWith("chrome-extension://") ||
+    originHeader.startsWith("moz-extension://") ||
     originHeader.startsWith("safari-web-extension://")
   );
 }
@@ -748,8 +749,8 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (browser !== "chrome" && browser !== "firefox" && browser !== "safari") {
+      ctx.error(res, "browser must be chrome, firefox, or safari", 400);
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -779,8 +780,8 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (browser !== "chrome" && browser !== "firefox" && browser !== "safari") {
+      ctx.error(res, "browser must be chrome, firefox, or safari", 400);
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -800,8 +801,8 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (browser !== "chrome" && browser !== "firefox" && browser !== "safari") {
+      ctx.error(res, "browser must be chrome, firefox, or safari", 400);
       return true;
     }
     return runStatelessRoute(ctx, async () => {

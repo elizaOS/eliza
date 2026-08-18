@@ -356,6 +356,7 @@ function buildGitHubReleaseAssetDownloadUrl(
 
 function resolveBrowserBridgeStoreUrls(env = process.env): {
   chromeWebStoreUrl: string | null;
+  firefoxAddonsUrl: string | null;
   safariAppStoreUrl: string | null;
 } {
   const chromeWebStoreUrl =
@@ -368,8 +369,14 @@ function resolveBrowserBridgeStoreUrls(env = process.env): {
     env.ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL.trim()
       ? env.ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL.trim()
       : null;
+  const firefoxAddonsUrl =
+    typeof env.ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL === "string" &&
+    env.ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL.trim()
+      ? env.ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL.trim()
+      : null;
   return {
     chromeWebStoreUrl,
+    firefoxAddonsUrl,
     safariAppStoreUrl,
   };
 }
@@ -391,6 +398,11 @@ export function buildBrowserBridgeReleaseManifestForVersion(
   );
   const safariAssetName = versionedArtifactName(
     "browser-bridge-safari",
+    "zip",
+    release,
+  );
+  const firefoxAssetName = versionedArtifactName(
+    "browser-bridge-firefox",
     "zip",
     release,
   );
@@ -423,6 +435,27 @@ export function buildBrowserBridgeReleaseManifestForVersion(
           repository,
           release,
           chromeAssetName,
+        ),
+      },
+    },
+    firefox: {
+      installKind: storeUrls.firefoxAddonsUrl
+        ? "firefox_addons"
+        : "github_release",
+      installUrl:
+        storeUrls.firefoxAddonsUrl ??
+        buildGitHubReleaseAssetDownloadUrl(
+          repository,
+          release,
+          firefoxAssetName,
+        ),
+      storeListingUrl: storeUrls.firefoxAddonsUrl,
+      asset: {
+        fileName: firefoxAssetName,
+        downloadUrl: buildGitHubReleaseAssetDownloadUrl(
+          repository,
+          release,
+          firefoxAssetName,
         ),
       },
     },
@@ -498,7 +531,8 @@ function resolveBrowserBridgeExtensionRoot(): string | null {
 }
 
 function packageScriptName(browser: BrowserBridgeKind): string {
-  return browser === "safari" ? "package-safari.mjs" : "package-chrome.mjs";
+  if (browser === "safari") return "package-safari.mjs";
+  return browser === "firefox" ? "package-firefox.mjs" : "package-chrome.mjs";
 }
 
 function runCommand(
@@ -547,6 +581,10 @@ export function resolveBrowserBridgeCompanionPackagePath(
       return status.chromeBuildPath;
     case "chrome_package":
       return status.chromePackagePath;
+    case "firefox_build":
+      return status.firefoxBuildPath;
+    case "firefox_package":
+      return status.firefoxPackagePath;
     case "safari_web_extension":
       return status.safariWebExtensionPath;
     case "safari_app":
@@ -625,6 +663,26 @@ async function openChromeExtensionsManager(): Promise<void> {
   }
 }
 
+async function openFirefoxExtensionsManager(): Promise<void> {
+  const managerUrl = "about:debugging#/runtime/this-firefox";
+  const cwd = outerRepoRoot;
+  switch (process.platform) {
+    case "darwin":
+      await runCommand("open", ["-a", "Firefox", managerUrl], cwd);
+      return;
+    case "win32":
+      await runCommand("cmd", ["/c", "start", "", "firefox", managerUrl], cwd);
+      return;
+    case "linux":
+      await runCommand("firefox", [managerUrl], cwd);
+      return;
+    default:
+      throw new Error(
+        `Opening the Firefox extensions manager is not supported on ${process.platform}`,
+      );
+  }
+}
+
 export function getBrowserBridgeCompanionPackageStatus(): BrowserBridgeCompanionPackageStatus {
   const resolvedExtensionPath = resolveBrowserBridgeExtensionPath();
   if (!resolvedExtensionPath) {
@@ -632,6 +690,8 @@ export function getBrowserBridgeCompanionPackageStatus(): BrowserBridgeCompanion
       extensionPath: null,
       chromeBuildPath: null,
       chromePackagePath: null,
+      firefoxBuildPath: null,
+      firefoxPackagePath: null,
       safariWebExtensionPath: null,
       safariAppPath: null,
       safariPackagePath: null,
@@ -649,6 +709,10 @@ export function getBrowserBridgeCompanionPackageStatus(): BrowserBridgeCompanion
     chromeBuildPath: existingPath(path.join(distDir, "chrome")),
     chromePackagePath: existingPath(
       path.join(artifactsDir, "browser-bridge-chrome.zip"),
+    ),
+    firefoxBuildPath: existingPath(path.join(distDir, "firefox")),
+    firefoxPackagePath: existingPath(
+      path.join(artifactsDir, "browser-bridge-firefox.zip"),
     ),
     safariWebExtensionPath: existingPath(path.join(distDir, "safari")),
     safariAppPath: existingPath(
@@ -668,10 +732,14 @@ export function getBrowserBridgeCompanionDownloadFile(
 ): { path: string; filename: string; contentType: string } {
   const status = getBrowserBridgeCompanionPackageStatus();
   const filePath =
-    browser === "safari" ? status.safariPackagePath : status.chromePackagePath;
+    browser === "safari"
+      ? status.safariPackagePath
+      : browser === "firefox"
+        ? status.firefoxPackagePath
+        : status.chromePackagePath;
   if (!filePath) {
     throw new Error(
-      `${browser === "safari" ? "Safari" : "Chrome"} package has not been built yet`,
+      `${browser[0]?.toUpperCase()}${browser.slice(1)} package has not been built yet`,
     );
   }
   return {
@@ -706,12 +774,13 @@ export async function openBrowserBridgeCompanionPackagePath(
 export async function openBrowserBridgeCompanionManager(
   browser: BrowserBridgeKind,
 ): Promise<{ browser: BrowserBridgeKind }> {
-  if (browser !== "chrome") {
+  if (browser === "safari") {
     throw new Error(
-      "Only Chrome exposes a local extensions manager for unpacked install",
+      "Safari extension management is handled by the packaged Safari app",
     );
   }
-  await openChromeExtensionsManager();
+  if (browser === "firefox") await openFirefoxExtensionsManager();
+  else await openChromeExtensionsManager();
   return { browser };
 }
 

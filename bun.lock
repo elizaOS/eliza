@@ -457,6 +457,19 @@
         "vitest": "^4.0.0",
       },
     },
+    "packages/browser-bridge-extension": {
+      "name": "@elizaos/browser-bridge-extension",
+      "version": "2.0.0-beta.2",
+      "dependencies": {
+        "@elizaos/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.3",
+        "jsdom": "^29.1.1",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.17",
+      },
+    },
     "packages/cloud/api": {
       "name": "@elizaos/cloud-api",
       "version": "2.0.3-beta.0",
@@ -3894,6 +3907,8 @@
     "@elizaos/app-core": ["@elizaos/app-core@workspace:packages/app-core"],
 
     "@elizaos/auth": ["@elizaos/auth@workspace:packages/auth"],
+
+    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge-extension"],
 
     "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:packages/native/bun-runtime"],
 
@@ -9902,6 +9917,8 @@
     "@ecies/ciphers/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
     "@elizaos/app/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/browser-bridge-extension/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@elizaos/capacitor-agent/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 

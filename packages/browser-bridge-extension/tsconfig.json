@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": false,
+    "types": ["bun-types"]
+  },
+  "include": ["entrypoints/**/*.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/test-dom-setup.ts"]
+}
