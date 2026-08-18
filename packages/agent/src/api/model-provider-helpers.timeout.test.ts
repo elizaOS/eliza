@@ -30,7 +30,7 @@ describe("model catalog fetch deadlines", () => {
     expect(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS).toBe(10_000);
   });
 
-  it("installs a fresh deadline on every provider request", async () => {
+  it("installs a fresh deadline on every provider request and retry", async () => {
     const signals: AbortSignal[] = [];
     const timeoutSpy = vi
       .spyOn(AbortSignal, "timeout")
@@ -51,10 +51,12 @@ describe("model catalog fetch deadlines", () => {
     await fetchGoogleModels("key");
     await fetchOpenRouterModels("key");
     await fetchNearAIModels("key", "https://cloud-api.near.test/v1");
+    await fetchModelsREST("openai", "key", "https://api.openai.test/v1");
 
-    expect(timeoutSpy).toHaveBeenCalledTimes(6);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    expect(new Set(signals).size).toBe(6);
+    expect(timeoutSpy).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(new Set(signals).size).toBe(7);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
     for (const [, init] of fetchMock.mock.calls) {
       expect(init).toEqual(
         expect.objectContaining({ signal: expect.any(AbortSignal) }),

@@ -375,6 +375,7 @@ export async function fetchModelsREST(
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch models for ${providerId}: ${e instanceof Error ? e.message : e}`,
     );
@@ -417,6 +418,7 @@ export async function fetchAnthropicModels(
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch Anthropic models: ${e instanceof Error ? e.message : e}`,
     );
@@ -447,6 +449,7 @@ export async function fetchGoogleModels(
       };
     });
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch Google models: ${e instanceof Error ? e.message : e}`,
     );
@@ -639,6 +642,7 @@ export async function fetchNearAIModels(
       .filter((model): model is CachedModel => model !== null)
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch NEAR AI models: ${e instanceof Error ? e.message : e}`,
     );
