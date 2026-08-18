@@ -264,6 +264,8 @@ export function createCartesiaInkRealtimeSession(
     });
   };
 
+  const inertErrorHandler = () => {};
+
   const cleanup = () => {
     if (cleanedUp) return;
     cleanedUp = true;
@@ -272,6 +274,7 @@ export function createCartesiaInkRealtimeSession(
     socket.removeEventListener("error", onError);
     socket.removeEventListener("close", onClose);
     options.signal?.removeEventListener("abort", onAbort);
+    socket.addEventListener("error", inertErrorHandler);
   };
 
   const onClose = (event: CloseEvent) => {
