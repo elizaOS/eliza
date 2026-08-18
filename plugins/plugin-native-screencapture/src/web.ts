@@ -156,6 +156,19 @@ export class ScreenCaptureWeb extends WebPlugin {
     };
   }
 
+  /**
+   * Stop and drop the currently held display/microphone stream. Used both on
+   * startRecording failure paths and after stopRecording so a leaked stream can
+   * never keep the OS screen-sharing indicator on or be orphaned by a later
+   * startRecording() call.
+   */
+  private releaseMediaStream(): void {
+    this.mediaStream?.getTracks().forEach((t) => {
+      t.stop();
+    });
+    this.mediaStream = null;
+  }
+
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
     if (this.isRecording) throw new Error("Recording already in progress");
     if (options?.fps !== undefined) {
@@ -181,28 +194,38 @@ export class ScreenCaptureWeb extends WebPlugin {
       audio: options?.captureSystemAudio !== false,
     });
 
-    if (options?.captureMicrophone) {
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      micStream.getAudioTracks().forEach((t) => {
-        this.mediaStream?.addTrack(t);
-      });
+    // Once the display stream is live the OS "sharing your screen" indicator is
+    // on. Any failure while adding the microphone track or constructing the
+    // recorder must release that stream, otherwise the indicator stays on and a
+    // later startRecording() reassigns this.mediaStream and orphans these live
+    // tracks with no reference left to stop them.
+    try {
+      if (options?.captureMicrophone) {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        micStream.getAudioTracks().forEach((t) => {
+          this.mediaStream?.addTrack(t);
+        });
+      }
+
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) {
+        throw new Error("No supported video mime type found");
+      }
+
+      const recorderOptions: MediaRecorderOptions = { mimeType };
+      if (options?.bitrate)
+        recorderOptions.videoBitsPerSecond = options.bitrate;
+
+      this.recordedChunks = [];
+      this.mediaRecorder = new MediaRecorder(this.mediaStream, recorderOptions);
+    } catch (err) {
+      // error-policy:J2 release the acquired display stream, then rethrow so the
+      // caller still sees the original failure (mic denial, unsupported codec).
+      this.releaseMediaStream();
+      throw err;
     }
-
-    const mimeType = getSupportedMimeType();
-    if (!mimeType) {
-      this.mediaStream.getTracks().forEach((t) => {
-        t.stop();
-      });
-      throw new Error("No supported video mime type found");
-    }
-
-    const recorderOptions: MediaRecorderOptions = { mimeType };
-    if (options?.bitrate) recorderOptions.videoBitsPerSecond = options.bitrate;
-
-    this.recordedChunks = [];
-    this.mediaRecorder = new MediaRecorder(this.mediaStream, recorderOptions);
 
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
