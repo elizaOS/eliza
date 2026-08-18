@@ -222,7 +222,13 @@ describe("GetStartedPage", () => {
     expect(await screen.findByText("You're connected")).toBeTruthy();
   });
 
-  it("claims through Steward sync without entering the generic preview flow", async () => {
+  it("gates the Telegram account claim behind the explicit confirmation", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "attested-telegram-user",
+      returnUrl: null,
+    });
     const entry = `/get-started?onboardingSession=${TOKEN}&accountClaim=telegram`;
     window.history.replaceState(null, "", entry);
 
@@ -235,20 +241,35 @@ describe("GetStartedPage", () => {
       </MemoryRouter>,
     );
 
+    // Load runs the read-only preview only: the identity being linked is
+    // named, and no claim fires without a gesture.
+    expect(await screen.findByText("attested-telegram-user")).toBeTruthy();
+    expect(screen.getByText(/Telegram ID/)).toBeTruthy();
+    expect(screen.getByText(/123456789/)).toBeTruthy();
+    expect(syncStewardSessionCookie).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Telegram account/ }),
+    );
     expect(await screen.findByText("join")).toBeTruthy();
     expect(syncStewardSessionCookie).toHaveBeenCalledWith(
       "existing-steward-token",
       undefined,
       { telegramContinuation: TOKEN },
     );
-    expect(previewPendingOnboardingContinuation).not.toHaveBeenCalled();
     expect(
       peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
     ).toBeNull();
     expect(window.location.search).not.toContain("accountClaim");
   });
 
-  it("retries Telegram convergence without falling into generic identity linking", async () => {
+  it("retries a failed Telegram claim without re-running the preview", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "attested-telegram-user",
+      returnUrl: null,
+    });
     syncStewardSessionCookie.mockRejectedValueOnce(
       new Error("claim temporarily unavailable"),
     );
@@ -264,13 +285,60 @@ describe("GetStartedPage", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Connect this Telegram account/,
+      }),
+    );
     expect(
       await screen.findByText("claim temporarily unavailable"),
     ).toBeTruthy();
     fireEvent.click(screen.getByText("Try again"));
     expect(await screen.findByText("join")).toBeTruthy();
     expect(syncStewardSessionCookie).toHaveBeenCalledTimes(2);
-    expect(previewPendingOnboardingContinuation).not.toHaveBeenCalled();
+    expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed Telegram claim preview without ever firing the claim", async () => {
+    vi.mocked(previewPendingOnboardingContinuation)
+      .mockRejectedValueOnce(new Error("preview temporarily unavailable"))
+      .mockResolvedValue({
+        platform: "telegram",
+        platformUserId: "123456789",
+        platformDisplayName: "attested-telegram-user",
+        returnUrl: null,
+      });
+    const entry = `/get-started?onboardingSession=${TOKEN}&accountClaim=telegram`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+          <Route path="/join" element={<div>join</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("preview temporarily unavailable"),
+    ).toBeTruthy();
+    expect(syncStewardSessionCookie).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Try again"));
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Connect this Telegram account/,
+      }),
+    );
+    expect(await screen.findByText("join")).toBeTruthy();
+    expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(2);
+    expect(syncStewardSessionCookie).toHaveBeenCalledTimes(1);
+    expect(syncStewardSessionCookie).toHaveBeenCalledWith(
+      "existing-steward-token",
+      undefined,
+      { telegramContinuation: TOKEN },
+    );
   });
 
   it("offers a deep link back to the originating iMessage conversation", async () => {

@@ -192,7 +192,11 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith("existing-session-token"),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        "existing-session-token",
+        null,
+        { skipPendingTelegramClaim: true },
+      ),
     );
     expect(authSpies.refreshSession).not.toHaveBeenCalled();
   });
