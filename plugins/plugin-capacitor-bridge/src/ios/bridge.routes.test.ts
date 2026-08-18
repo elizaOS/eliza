@@ -186,6 +186,34 @@ describe("iOS bridge — memories view routes", () => {
 			(m) => m.text,
 		);
 		expect(beforeTexts).toEqual(["m1", "m0"]);
+
+		const epoch = await call(backend, "GET", "/api/memories/feed?before=0");
+		expect(epoch.status).toBe(200);
+		expect(epoch.json.memories).toEqual([]);
+
+		const blank = await call(backend, "GET", "/api/memories/feed?before=%20");
+		expect(blank.status).toBe(200);
+		expect((blank.json.memories as unknown[]).length).toBe(5);
+
+		for (const cursor of [
+			"abc",
+			"0x10",
+			"1e3",
+			"-5",
+			"1.5",
+			"012",
+			"9007199254740993",
+		]) {
+			const invalid = await call(
+				backend,
+				"GET",
+				`/api/memories/feed?before=${cursor}`,
+			);
+			expect(invalid).toEqual({
+				status: 400,
+				json: { error: "before must be a Unix timestamp in milliseconds" },
+			});
+		}
 	});
 
 	it("feed type filter scopes to a single table", async () => {

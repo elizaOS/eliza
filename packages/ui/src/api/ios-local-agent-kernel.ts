@@ -11,6 +11,7 @@ import {
   COINGECKO_MARKET_PROVIDER,
   POLYMARKET_MARKET_PROVIDER,
   type ProviderStatus,
+  parseCanonicalInteger,
   parseCoinGeckoMarkets,
 } from "@elizaos/shared";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
@@ -778,8 +779,13 @@ function handleLocalMemoriesRoute(
       ),
       MEMORY_FEED_MAX_LIMIT,
     );
-    const beforeParam = url.searchParams.get("before");
-    const before = beforeParam ? Number(beforeParam) : undefined;
+    const before = parseCanonicalInteger(url.searchParams.get("before"));
+    if (before === "invalid") {
+      return json(
+        { error: "before must be a Unix timestamp in milliseconds" },
+        400,
+      );
+    }
     let items = localMemoryTypeHasRows(url.searchParams.get("type"))
       ? localMemoryFeedItems()
       : [];
