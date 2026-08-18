@@ -5,7 +5,9 @@
  * `success`/`progress` levels. Redacts sensitive fields with a deep-walk
  * redactor that deep-clones log context objects (callers keep their live
  * objects unmutated) and masks every value under a credential-named key at any
- * nesting depth, matched case-insensitively. String values — object properties,
+ * nesting depth, matched case-insensitively. Binary payloads (Buffer, typed
+ * arrays, DataView, ArrayBuffer) collapse to a size-only marker so raw bytes
+ * never reach a sink under a neutral key. String values — object properties,
  * headline messages, and Error message/stack — are additionally scrubbed for
  * credential shapes (API keys, Bearer tokens, URI userinfo, PEM blocks) with
  * the pattern library mirrored from `@elizaos/core`'s security/redact.ts,
@@ -571,7 +573,10 @@ function redactSensitiveLogText(text: string): string {
  * nested credentials in place, corrupting e.g. a provider config mid-use).
  * String values are pattern-scrubbed for credential shapes at every depth.
  * Cycles and over-depth payloads collapse to a marker instead of recursing
- * forever. Error instances keep their name/message/stack shape (Adze renders
+ * forever. Buffer/TypedArray/DataView/ArrayBuffer values collapse to a
+ * size-only marker — JSON would otherwise serialize the raw bytes verbatim
+ * (`{"type":"Buffer","data":[...]}`) under an innocent-looking key. Error
+ * instances keep their name/message/stack shape (Adze renders
  * it) with message and stack scrubbed — thrown errors routinely interpolate
  * the offending secret — and their own enumerable properties (axios-style
  * `err.config.headers`) are walked and masked.
@@ -603,6 +608,14 @@ function redactLogValue(
     return value.map((item) => redactLogValue(item, seen, depth + 1));
   }
 
+  // Binary payloads carry raw bytes that JSON serializes verbatim
+  // ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
+  // secret material into every sink, so mask with a size-only marker. Both
+  // the node and browser log paths funnel through this walker.
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return `[BUFFER REDACTED ${value.byteLength} bytes]`;
+  }
+
   // Opaque built-ins have no enumerable credential keys to mask and are never
   // mutated by the walker, so returning them by reference is safe.
   if (
@@ -612,9 +625,7 @@ function redactLogValue(
     value instanceof Set ||
     value instanceof WeakMap ||
     value instanceof WeakSet ||
-    value instanceof Promise ||
-    ArrayBuffer.isView(value) ||
-    value instanceof ArrayBuffer
+    value instanceof Promise
   ) {
     return value;
   }
