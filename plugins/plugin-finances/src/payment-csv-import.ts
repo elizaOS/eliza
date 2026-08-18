@@ -300,13 +300,32 @@ export function parseTransactionsCsv(
     options.dateColumn,
     DATE_COLUMN_HINTS,
   );
-  const amountIndex = resolveColumnIndex(
+  let amountIndex = resolveColumnIndex(
     header,
     options.amountColumn,
     AMOUNT_COLUMN_HINTS,
   );
   const debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
   const creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
+  // The AMOUNT substring fallback in findColumn matches a separate
+  // "Amount Debit"/"Amount Credit" bank header (both contain "amount").
+  // Left alone, that single-amount branch reads the debit column as a signed
+  // amount — flipping debit rows to credit and dropping credit-only rows.
+  // Drop an inferred amount index that actually points at the debit/credit
+  // column so the intended separate-column path runs. An explicit
+  // options.amountColumn match is honored and never collapsed here.
+  const amountExplicit =
+    options.amountColumn !== undefined &&
+    amountIndex >= 0 &&
+    header[amountIndex]?.trim().toLowerCase() ===
+      options.amountColumn.trim().toLowerCase();
+  if (
+    !amountExplicit &&
+    amountIndex >= 0 &&
+    (amountIndex === debitIndex || amountIndex === creditIndex)
+  ) {
+    amountIndex = -1;
+  }
   const merchantIndex = resolveColumnIndex(
     header,
     options.merchantColumn,
