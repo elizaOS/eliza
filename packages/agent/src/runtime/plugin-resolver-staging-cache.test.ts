@@ -11,6 +11,7 @@ import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -102,6 +103,20 @@ function coldStageParams(installPath: string, packageName: string) {
   };
 }
 
+async function canonicalPath(filePath: string): Promise<string> {
+  return fsp.realpath(filePath);
+}
+
+function isWithinPath(parent: string, candidate: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return (
+    relative === "" ||
+    (!path.isAbsolute(relative) &&
+      relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`))
+  );
+}
+
 describe("workspace in-place fast-path", () => {
   it("dist-less workspace plugin imports in place with NO staging", async () => {
     // A workspace tree: root node_modules farm + plugins/<pkg> source package.
@@ -125,7 +140,9 @@ describe("workspace in-place fast-path", () => {
 
     expect(mod.marker).toBe("ws-inplace");
     // Loaded from the real workspace location, not a staged copy.
-    expect(mod.moduleUrl).toContain(installPath);
+    await expect(canonicalPath(fileURLToPath(mod.moduleUrl))).resolves.toBe(
+      await canonicalPath(path.join(installPath, "index.mjs")),
+    );
     expect(await listStagingEntries(name)).toEqual([]);
   });
 
@@ -149,7 +166,11 @@ describe("workspace in-place fast-path", () => {
     };
 
     expect(mod.marker).toBe("ws-bare");
-    expect(mod.moduleUrl).not.toContain(installPath);
+    const canonicalInstallPath = await canonicalPath(installPath);
+    const canonicalModulePath = await canonicalPath(
+      fileURLToPath(mod.moduleUrl),
+    );
+    expect(isWithinPath(canonicalInstallPath, canonicalModulePath)).toBe(false);
     const entries = await listStagingEntries(name);
     expect(entries.filter((e) => e.startsWith("content-"))).toHaveLength(1);
   });

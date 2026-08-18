@@ -140,17 +140,11 @@ describe("permission probers", () => {
   });
 
   it("resolves the native bridge sealed into an Electrobun app", () => {
-    const execPath = path.join(
-      "/Applications",
-      "Eliza.app",
-      "Contents",
-      "MacOS",
-      "bun",
-    );
+    const appRoot = path.resolve(path.sep, "Applications", "Eliza.app");
+    const execPath = path.join(appRoot, "Contents", "MacOS", "bun");
     expect(resolvePackagedNativePermissionsDylib(execPath)).toBe(
       path.join(
-        "/Applications",
-        "Eliza.app",
+        appRoot,
         "Contents",
         "Resources",
         "app",

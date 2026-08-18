@@ -36,24 +36,34 @@ afterEach(async () => {
 
 describe("applyLocalWorkspaceApps", () => {
   it("does not treat an implicit hidden worktree container as a workspace", () => {
+    const repoRoot = path.resolve(path.sep, "repo");
+    const worktreeRoot = path.join(repoRoot, ".worktrees", "feature");
     const roots = resolveWorkspaceRootsForDiscovery({
-      moduleDir: "/repo/.worktrees/feature/packages/agent/src/services",
-      cwd: "/repo/.worktrees/feature",
+      moduleDir: path.join(
+        worktreeRoot,
+        "packages",
+        "agent",
+        "src",
+        "services",
+      ),
+      cwd: worktreeRoot,
     });
 
-    expect(roots).toContain("/repo/.worktrees/feature");
-    expect(roots).not.toContain("/repo/.worktrees");
-    expect(roots).toContain("/repo");
+    expect(roots).toContain(worktreeRoot);
+    expect(roots).not.toContain(path.join(repoRoot, ".worktrees"));
+    expect(roots).toContain(repoRoot);
   });
 
   it("honors an explicitly configured hidden workspace root", () => {
+    const repoRoot = path.resolve(path.sep, "repo");
+    const hiddenRoot = path.join(repoRoot, ".workspaces");
     expect(
       resolveWorkspaceRootsForDiscovery({
-        moduleDir: "/repo/packages/agent/src/services",
-        cwd: "/repo",
-        envRoot: "/repo/.workspaces",
+        moduleDir: path.join(repoRoot, "packages", "agent", "src", "services"),
+        cwd: repoRoot,
+        envRoot: hiddenRoot,
       }),
-    ).toEqual(["/repo/.workspaces"]);
+    ).toEqual([hiddenRoot]);
   });
 
   it("reports and rejects one malformed candidate while preserving valid peers", async () => {
