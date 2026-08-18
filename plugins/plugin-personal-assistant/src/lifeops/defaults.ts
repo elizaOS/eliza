@@ -135,9 +135,17 @@ export function computeAdaptiveWindowPolicy(
     };
   }
 
-  const morningStartMinute = Math.max(
-    Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
-    ADAPTIVE_MORNING_FLOOR_MINUTES,
+  // The start must clamp below the end cap (mirroring the evening inversion
+  // guard): the wake source is the owner's real wake instant, and a wake at or
+  // after 14:30 would otherwise produce an inverted/empty morning window that
+  // normalizeWindowPolicy silently discards — materializing zero occurrences
+  // for every morning-routine definition. Keep at least one real hour.
+  const morningStartMinute = Math.min(
+    Math.max(
+      Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
+      ADAPTIVE_MORNING_FLOOR_MINUTES,
+    ),
+    ADAPTIVE_MORNING_END_CAP_MINUTES - 60,
   );
 
   const morningEndMinute = Math.min(
