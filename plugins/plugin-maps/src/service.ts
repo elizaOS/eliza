@@ -10,9 +10,11 @@ import {
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
+  placePageSchema,
   placeRefSchema,
   type RoutePlan,
   type RoutePlanRequest,
+  routePlanSchema,
   type SavedPlace,
   type SavePlaceRequest,
   type SavePlaceResult,
@@ -92,6 +94,29 @@ function validatedSearchRequest(
   };
 }
 
+function assertProviderPlace(
+  place: PlaceRef,
+  adapter: MapsProviderAdapter,
+  surface: string,
+): PlaceRef {
+  const normalized = validated(
+    placeRefSchema,
+    place,
+    `Maps provider returned an invalid ${surface}.`,
+  );
+  if (normalized.provider !== adapter.id) {
+    throw new MapsError("Maps provider response spoofed another provider.", {
+      code: "MAPS_MALFORMED_RESPONSE",
+      context: {
+        adapterId: adapter.id,
+        responseProvider: normalized.provider,
+        surface,
+      },
+    });
+  }
+  return normalized;
+}
+
 export class MapsService extends Service {
   static override readonly serviceType = MAPS_SERVICE_TYPE;
   override capabilityDescription =
@@ -136,20 +161,34 @@ export class MapsService extends Service {
     request: PlaceSearchRequest,
     provider?: string,
   ): Promise<PlacePage> {
-    return this.adapter(provider).searchPlaces(validatedSearchRequest(request));
+    const adapter = this.adapter(provider);
+    const page = validated(
+      placePageSchema,
+      await adapter.searchPlaces(validatedSearchRequest(request)),
+      "Maps provider returned an invalid place page.",
+    );
+    return {
+      ...page,
+      places: page.places.map((place) =>
+        assertProviderPlace(place, adapter, "place search result"),
+      ),
+    };
   }
 
   async getPlace(
     providerPlaceId: string,
     provider?: string,
   ): Promise<PlaceRef | null> {
-    return this.adapter(provider).getPlace(providerPlaceId.trim());
+    const adapter = this.adapter(provider);
+    const place = await adapter.getPlace(providerPlaceId.trim());
+    return place ? assertProviderPlace(place, adapter, "place detail") : null;
   }
 
   async planRoute(
     request: RoutePlanRequest,
     provider?: string,
   ): Promise<RoutePlan> {
+    const adapter = this.adapter(provider);
     const normalized = {
       origin: validated(
         placeRefSchema,
@@ -167,7 +206,44 @@ export class MapsService extends Service {
         "Route travel mode is invalid.",
       ),
     };
-    return this.adapter(provider).planRoute(normalized);
+    if (!adapter.supportsCrossProviderRoutes) {
+      for (const [endpoint, place] of [
+        ["origin", normalized.origin],
+        ["destination", normalized.destination],
+      ] as const) {
+        if (place.provider !== adapter.id && place.provider !== "coordinates") {
+          throw new MapsError(
+            "Route endpoints must belong to the selected maps provider.",
+            {
+              code: "MAPS_INVALID_INPUT",
+              context: {
+                adapterId: adapter.id,
+                endpoint,
+                endpointProvider: place.provider,
+              },
+            },
+          );
+        }
+      }
+    }
+    const route = validated(
+      routePlanSchema,
+      await adapter.planRoute(normalized),
+      "Maps provider returned an invalid route.",
+    );
+    if (route.provider !== adapter.id) {
+      throw new MapsError("Maps provider response spoofed another provider.", {
+        code: "MAPS_MALFORMED_RESPONSE",
+        context: {
+          adapterId: adapter.id,
+          responseProvider: route.provider,
+          surface: "route",
+        },
+      });
+    }
+    assertProviderPlace(route.origin, adapter, "route origin");
+    assertProviderPlace(route.destination, adapter, "route destination");
+    return route;
   }
 
   async savePlace(request: SavePlaceRequest): Promise<SavePlaceResult> {

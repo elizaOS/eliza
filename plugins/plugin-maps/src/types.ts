@@ -46,7 +46,6 @@ export const savedPlaceSchema = z
     label: boundedText(120),
     createdAt: z.string().datetime({ offset: true }),
     updatedAt: z.string().datetime({ offset: true }),
-    idempotencyKey: boundedText(200).nullable(),
   })
   .strict();
 
@@ -89,4 +88,6 @@ export interface SavePlaceResult {
   savedPlace: SavedPlace;
   replayed: boolean;
   commitId: string;
+  committedAt: string;
+  idempotencyKey: string;
 }

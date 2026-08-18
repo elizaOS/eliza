@@ -313,38 +313,34 @@ async function execute(
             ? await service.getPlace(destinationPlaceId, text(params.provider))
             : null);
         if (!origin || !destination) {
+          const unresolvedFields: FormInteraction["fields"] = [];
+          if (!origin) {
+            unresolvedFields.push({
+              name: "originPlaceId",
+              type: "text",
+              label: "Starting place ID",
+              required: true,
+            });
+          }
+          if (!destination) {
+            unresolvedFields.push({
+              name: "destinationPlaceId",
+              type: "text",
+              label: "Destination place ID",
+              required: true,
+            });
+          }
           return result(
             action,
             missingInput(
               action,
               message,
-              [
-                {
-                  name: "originPlaceId",
-                  type: "text",
-                  label: "Starting place ID",
-                  required: true,
-                },
-                {
-                  name: "destinationPlaceId",
-                  type: "text",
-                  label: "Destination place ID",
-                  required: true,
-                },
-                {
-                  name: "travelMode",
-                  type: "select",
-                  label: "Travel mode",
-                  required: true,
-                  options: [
-                    { value: "drive", label: "Drive" },
-                    { value: "walk", label: "Walk" },
-                    { value: "bicycle", label: "Bicycle" },
-                    { value: "transit", label: "Transit" },
-                  ],
-                },
-              ],
-              "I need both a starting place and a destination.",
+              unresolvedFields,
+              !origin && !destination
+                ? "I need both a starting place and a destination."
+                : !origin
+                  ? "I still need a starting place."
+                  : "I still need a destination.",
             ),
             callback,
           );
@@ -408,10 +404,11 @@ async function execute(
           label: text(params.label),
           idempotencyKey: text(params.idempotencyKey),
         });
-        const observedAt = saved.savedPlace.updatedAt;
-        const receiptId = `maps:save:${saved.commitId}`;
-        const idempotencyKey =
-          saved.savedPlace.idempotencyKey ?? `maps-save:${saved.savedPlace.id}`;
+        const observedAt = saved.committedAt;
+        const receiptId = saved.replayed
+          ? `maps:save:${saved.commitId}:replay`
+          : `maps:save:${saved.commitId}`;
+        const idempotencyKey = saved.idempotencyKey;
         const effect: EffectReceipt = saved.replayed
           ? {
               receiptId,
@@ -530,12 +527,9 @@ export const mapsAction: Action = {
   contexts: ["location", "travel", "productivity"],
   routingHint:
     "Use MAPS_PLACE for place/address lookup, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SHARE for a geo share link, and MAPS_NAVIGATE for a navigation handoff.",
-  tags: [
-    "domain:maps",
-    "capability:read",
-    "capability:write",
-    "effect:idempotent",
-  ],
+  // The umbrella spans both reads and writes, so effect capability tags live
+  // on operation-specific promoted actions in plugin.ts.
+  tags: ["domain:maps"],
   parameters: [
     {
       name: "action",

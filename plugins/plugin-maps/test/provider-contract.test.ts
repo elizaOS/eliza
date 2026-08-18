@@ -7,7 +7,7 @@ import {
   runProviderAdapterConformance,
   startFakeProvider,
 } from "@elizaos/cloud-test-mocks/provider-contract";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { JsonMapsHttpAdapter } from "../src/adapter.js";
 import { MapsError } from "../src/errors.js";
 
@@ -91,7 +91,9 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       connectionId: upstream.createConnectionId(),
       baseUrl: upstream.url,
       credential: "maps_contract_secret",
-      timeoutMs: 30,
+      timeoutMs: 100,
+      testTransport: { fetchImpl: globalThis.fetch },
+      allowPrivateNetworkForTests: true,
     });
   });
 
@@ -193,7 +195,7 @@ describe("JsonMapsHttpAdapter provider contract", () => {
         timeout: async () => {
           upstream.enqueueFault("GET", "/places/search", {
             type: "delay",
-            durationMs: 100,
+            durationMs: 250,
           });
           await expectCode(
             adapter.searchPlaces({ query: "park" }),
@@ -207,6 +209,8 @@ describe("JsonMapsHttpAdapter provider contract", () => {
             id: "reset-maps",
             connectionId: resetUpstream.createConnectionId(),
             baseUrl: resetUpstream.url,
+            testTransport: { fetchImpl: globalThis.fetch },
+            allowPrivateNetworkForTests: true,
           });
           await resetUpstream.resetConnections();
           await expectCode(
@@ -309,5 +313,172 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       travelMode: "walk",
     });
     expect(route).toMatchObject({ routeId: "route-1", durationSeconds: 900 });
+  });
+
+  it("classifies empty or non-JSON error bodies from status before parsing", async () => {
+    const responses = [
+      new Response(null, { status: 429, headers: { "retry-after": "2" } }),
+      new Response("<html>unavailable</html>", { status: 503 }),
+      new Response(null, { status: 401 }),
+    ];
+    const statusAdapter = new JsonMapsHttpAdapter({
+      id: "status-maps",
+      connectionId: "conn_status_semantics_1234",
+      baseUrl: "https://maps-status.example.test",
+      testTransport: {
+        fetchImpl: vi.fn(async () => {
+          const response = responses.shift();
+          if (!response) throw new Error("No queued status response");
+          return response;
+        }),
+      },
+    });
+    const rateLimit = await expectCode(
+      statusAdapter.searchPlaces({ query: "park" }),
+      "MAPS_RATE_LIMITED",
+    );
+    expect(rateLimit.retryAfterMs).toBe(2_000);
+    await expectCode(
+      statusAdapter.searchPlaces({ query: "park" }),
+      "MAPS_PROVIDER_FAILURE",
+    );
+    await expectCode(
+      statusAdapter.searchPlaces({ query: "park" }),
+      "MAPS_AUTH_EXPIRED",
+    );
+  });
+
+  it("blocks unsafe endpoints, DNS rebinding, redirects, and oversized bodies", async () => {
+    for (const baseUrl of [
+      "http://169.254.169.254/",
+      "https://127.0.0.1/",
+      "https://user:pass@maps.example.test/",
+      "https://maps.example.test/?token=secret",
+      "https://maps.example.test/#fragment",
+    ]) {
+      expect(
+        () =>
+          new JsonMapsHttpAdapter({
+            id: "blocked-maps",
+            connectionId: "conn_blocked_endpoint_123",
+            baseUrl,
+          }),
+      ).toThrow(MapsError);
+    }
+
+    const pinnedFetch = vi.fn(async () => new Response("{}"));
+    const rebinding = new JsonMapsHttpAdapter({
+      id: "rebind-maps",
+      connectionId: "conn_rebinding_guard_123",
+      baseUrl: "https://maps-rebind.example.test",
+      testTransport: {
+        lookupFn: async () => [{ address: "169.254.169.254", family: 4 }],
+        pinnedFetchImpl: pinnedFetch,
+      },
+    });
+    await expectCode(
+      rebinding.searchPlaces({ query: "park" }),
+      "MAPS_ENDPOINT_BLOCKED",
+    );
+    expect(pinnedFetch).not.toHaveBeenCalled();
+
+    for (const location of [
+      "http://169.254.169.254/latest/meta-data",
+      "https://other-origin.example.test/steal",
+    ]) {
+      const requests: Array<{ url: string; authorization: string | null }> = [];
+      const redirects = new JsonMapsHttpAdapter({
+        id: "redirect-maps",
+        connectionId: "conn_redirect_guard_1234",
+        baseUrl: "https://maps-redirect.example.test",
+        credential: "must_not_cross_origin",
+        testTransport: {
+          fetchImpl: vi.fn(async (input, init) => {
+            requests.push({
+              url: String(input),
+              authorization: new Headers(init?.headers).get("authorization"),
+            });
+            return new Response(null, {
+              status: 302,
+              headers: { location },
+            });
+          }),
+        },
+      });
+      await expectCode(
+        redirects.searchPlaces({ query: "park" }),
+        "MAPS_PROVIDER_NETWORK",
+      );
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toContain("maps-redirect.example.test");
+    }
+
+    const oversized = new JsonMapsHttpAdapter({
+      id: "bounded-maps",
+      connectionId: "conn_response_bound_1234",
+      baseUrl: "https://maps-bounded.example.test",
+      responseByteLimit: 8,
+      testTransport: {
+        fetchImpl: vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('{"places":'));
+                  controller.enqueue(new TextEncoder().encode("[]}"));
+                  controller.close();
+                },
+              }),
+              { status: 200 },
+            ),
+        ),
+      },
+    });
+    await expectCode(
+      oversized.searchPlaces({ query: "park" }),
+      "MAPS_RESPONSE_TOO_LARGE",
+    );
+  });
+
+  it("rejects non-finite, zero, and excessive timeout configuration", () => {
+    for (const timeoutMs of [0, Number.NaN, Number.POSITIVE_INFINITY, 60_001]) {
+      expect(
+        () =>
+          new JsonMapsHttpAdapter({
+            id: "timeout-maps",
+            connectionId: "conn_timeout_config_1234",
+            baseUrl: "https://maps-timeout.example.test",
+            timeoutMs,
+          }),
+      ).toThrow(MapsError);
+    }
+  });
+
+  it("rejects provider-semantic spoofing and mixed-provider routes", async () => {
+    const spoofed = new JsonMapsHttpAdapter({
+      id: "provider-a",
+      connectionId: "conn_provider_binding_123",
+      baseUrl: "https://maps-provider.example.test",
+      testTransport: {
+        fetchImpl: vi.fn(async () =>
+          Response.json({
+            places: [{ ...place, provider: "provider-b" }],
+            nextCursor: null,
+          }),
+        ),
+      },
+    });
+    await expectCode(
+      spoofed.searchPlaces({ query: "park" }),
+      "MAPS_MALFORMED_RESPONSE",
+    );
+    await expectCode(
+      spoofed.planRoute({
+        origin: { ...place, provider: "provider-a" },
+        destination: { ...place, provider: "provider-b" },
+        travelMode: "drive",
+      }),
+      "MAPS_INVALID_INPUT",
+    );
   });
 });

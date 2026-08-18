@@ -8,7 +8,9 @@ saved places, safe sharing, and navigation handoffs.
 - `MapsService` owns normalized maps behavior and adapter registration.
 - Provider packages implement `MapsProviderAdapter`; this package never embeds
   provider credentials or provider-specific response shapes.
-- Saved places use the runtime memory store, scoped by agent and owner entity.
+- Saved places use one agent-private canonical document per owner. Mutations
+  must use the adapter's durable document CAS contract and preserve immutable
+  operation-key history; never replace this with process-local locking alone.
   Do not add another file store, scheduler, or identity graph.
 - Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
   package does not request device permissions or read device location itself.
@@ -37,8 +39,10 @@ bun run --cwd plugins/plugin-maps build
 The provider-contract test drives a real HTTP adapter against the repository's
 protocol-faithful fake upstream. Keep success, empty, validation, pagination,
 rate-limit metadata, malformed/schema-drift responses, auth failures, network
-failures, provider 4xx/5xx, opaque connection IDs, redaction, and read-policy
-coverage intact. Saved-place tests must cover persistence, owner scoping,
-idempotent replay, and concurrent calls.
+failures, SSRF/DNS rebinding, redirects, response bounds, provider identity,
+provider 4xx/5xx, opaque connection IDs, redaction, and read-policy coverage
+intact. Saved-place tests must cover PGlite CAS persistence, owner scoping,
+durable key history, receipt identity, replay, and independent concurrent
+service instances.
 
 Follow the root `AGENTS.md` and `CONTRIBUTING.md` evidence requirements.

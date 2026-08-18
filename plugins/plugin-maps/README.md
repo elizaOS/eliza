@@ -17,17 +17,21 @@ handoffs without selecting a commercial maps provider.
 
 ## Persistence and privacy
 
-Saved places are stored through `AgentRuntime.createMemory` in the
-`maps_saved_places` table and are scoped to both agent and owner entity. Stable
-resource IDs and serialized writes make retries and concurrent duplicate saves
-idempotent. Provider credentials are never placed in URLs, action results,
-logs, diagnostics, or saved-place records.
+Saved places are stored in one deterministic, agent-private canonical document
+per owner. The document uses the runtime adapter's compare-and-swap contract to
+atomically bind current resources to an immutable operation-key ledger. Each
+committed mutation receives a unique commit ID and timestamp; retries replay the
+original result, while reuse of a key for different input is permanently
+rejected. Provider credentials are never placed in URLs, action results, logs,
+diagnostics, or saved-place records.
 
 ## Adapter contract
 
 Adapters return normalized values only. Untrusted provider responses are
-validated before reaching the service. Provider failures use `MapsProviderError`
-with typed codes and optional retry metadata. A 429 response retains
+validated and bound to the selected adapter identity before reaching callers.
+The HTTP adapter accepts one public HTTPS origin, uses core's DNS-pinned SSRF
+guard, rejects redirects, bounds timeout and response bytes, and classifies HTTP
+status before optionally parsing an error envelope. A 429 retains
 `retryAfterMs`; expired and revoked credentials remain distinct auth failures.
 
 The generic HTTP protocol is:

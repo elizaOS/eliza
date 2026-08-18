@@ -2104,7 +2104,9 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@electric-sql/pglite": "^0.4.5",
         "@elizaos/cloud-test-mocks": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
         "@types/node": "^25.0.6",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",

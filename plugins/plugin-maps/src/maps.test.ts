@@ -6,6 +6,8 @@ import {
   createCharacter,
   InMemoryDatabaseAdapter,
   type Memory,
+  normalizeEffectReceipts,
+  tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -119,6 +121,29 @@ describe("MapsService and MAPS action", () => {
       "MAPS_SHARE",
       "MAPS_NAVIGATE",
     ]);
+    const actions = new Map(
+      mapsPlugin.actions?.map((action) => [action.name, action]) ?? [],
+    );
+    expect(actions.get("MAPS_SAVE")?.tags).toEqual(
+      expect.arrayContaining([
+        "capability:write",
+        "effect:idempotent",
+        "effect:receipt-required",
+      ]),
+    );
+    expect(tagsRequireEffectReceipts(actions.get("MAPS_SAVE")?.tags)).toBe(
+      true,
+    );
+    for (const name of [
+      "MAPS_PLACE",
+      "MAPS_ROUTE",
+      "MAPS_SHARE",
+      "MAPS_NAVIGATE",
+    ]) {
+      expect(actions.get(name)?.tags).toContain("capability:read");
+      expect(actions.get(name)?.tags).not.toContain("capability:write");
+      expect(actions.get(name)?.tags).not.toContain("effect:idempotent");
+    }
   });
 
   it("validates action selection without rejecting unresolved planner calls", async () => {
@@ -180,9 +205,11 @@ describe("MapsService and MAPS action", () => {
       label: "My place",
       idempotencyKey: "save-home-once",
     };
+    const secondService = new MapsService(runtime);
+    secondService.registerAdapter(adapter, true);
     const [first, second] = await Promise.all([
       service.savePlace(request),
-      service.savePlace(request),
+      secondService.savePlace(request),
     ]);
     expect([first.replayed, second.replayed].sort()).toEqual([false, true]);
     expect(first.savedPlace.id).toBe(second.savedPlace.id);
@@ -216,6 +243,12 @@ describe("MapsService and MAPS action", () => {
     expect(first.userFacingEffectReceiptIds).toEqual([
       first.effectReceipts?.[0]?.receiptId,
     ]);
+    expect(() =>
+      normalizeEffectReceipts([
+        ...(first.effectReceipts ?? []),
+        ...(replay.effectReceipts ?? []),
+      ]),
+    ).not.toThrow();
   });
 
   it("rejects reuse of one idempotency key for a different place", async () => {
@@ -234,6 +267,120 @@ describe("MapsService and MAPS action", () => {
       }),
     ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
     expect(await service.listSavedPlaces(OWNER_ID)).toHaveLength(1);
+  });
+
+  it("preserves key history and unique commit receipts across label updates", async () => {
+    const first = await service.savePlace({
+      ownerEntityId: OWNER_ID,
+      roomId: ROOM_ID,
+      place: home,
+      label: "Home A",
+      idempotencyKey: "key-a",
+    });
+    const second = await service.savePlace({
+      ownerEntityId: OWNER_ID,
+      roomId: ROOM_ID,
+      place: home,
+      label: "Home B",
+      idempotencyKey: "key-b",
+    });
+    const restarted = new MapsService(runtime);
+    restarted.registerAdapter(adapter, true);
+    const replayA = await restarted.savePlace({
+      ownerEntityId: OWNER_ID,
+      roomId: ROOM_ID,
+      place: home,
+      label: "Home A",
+      idempotencyKey: "key-a",
+    });
+    expect(first.replayed).toBe(false);
+    expect(second.replayed).toBe(false);
+    expect(replayA).toMatchObject({
+      replayed: true,
+      commitId: first.commitId,
+      committedAt: first.committedAt,
+      savedPlace: { label: "Home A" },
+    });
+    expect(second.commitId).not.toBe(first.commitId);
+    expect(second.committedAt).not.toBe(first.committedAt);
+    expect(await service.listSavedPlaces(OWNER_ID)).toMatchObject([
+      { label: "Home B" },
+    ]);
+
+    const actionA = await invoke(runtime, {
+      action: "save",
+      placeId: "home-1",
+      label: "Action A",
+      idempotencyKey: "receipt-a",
+    });
+    const actionB = await invoke(runtime, {
+      action: "save",
+      placeId: "home-1",
+      label: "Action B",
+      idempotencyKey: "receipt-b",
+    });
+    const normalized = normalizeEffectReceipts([
+      ...(actionA.effectReceipts ?? []),
+      ...(actionB.effectReceipts ?? []),
+    ]);
+    expect(normalized).toHaveLength(2);
+    expect(new Set(normalized.map((receipt) => receipt.receiptId)).size).toBe(
+      2,
+    );
+    expect(
+      new Set(
+        normalized.map((receipt) =>
+          receipt.outcome === "applied" ? receipt.commit.id : "",
+        ),
+      ).size,
+    ).toBe(2);
+  });
+
+  it("requests only unresolved route endpoints and keeps drive optional", async () => {
+    const missingDestination = await invoke(runtime, {
+      action: "route",
+      originPlaceId: "home-1",
+    });
+    expect(missingDestination.data).toMatchObject({
+      missingFields: ["destinationPlaceId"],
+      uiRequest: { fields: [{ name: "destinationPlaceId", required: true }] },
+    });
+    const missingOrigin = await invoke(runtime, {
+      action: "route",
+      destinationPlaceId: "office-1",
+    });
+    expect(missingOrigin.data).toMatchObject({
+      missingFields: ["originPlaceId"],
+      uiRequest: { fields: [{ name: "originPlaceId", required: true }] },
+    });
+  });
+
+  it("rejects provider spoofing and mixed-provider route endpoints", async () => {
+    const spoofingAdapter: MapsProviderAdapter = {
+      ...adapter,
+      id: "provider-a",
+      async searchPlaces() {
+        return {
+          places: [{ ...home, provider: "provider-b" }],
+          nextCursor: null,
+        };
+      },
+    };
+    const spoofService = new MapsService(runtime);
+    spoofService.registerAdapter(spoofingAdapter, true);
+    await expect(
+      spoofService.searchPlaces({ query: "park" }),
+    ).rejects.toMatchObject({
+      code: "MAPS_MALFORMED_RESPONSE",
+    });
+
+    await expect(
+      service.planRoute({
+        origin: home,
+        destination: { ...office, provider: "other-provider" },
+        travelMode: "drive",
+      }),
+    ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
   });
 
   it("plans routes and produces non-effectful geo share/navigation handoffs", async () => {
