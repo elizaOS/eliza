@@ -8,10 +8,12 @@
  * Both implement the same interface for seamless switching.
  *
  * Zip packages are untrusted input (registry downloads). Extraction rejects
- * entries with backslashes, absolute paths, or `..` segments, refuses archives
- * whose central directory declares an uncompressed total over
- * MAX_ZIP_UNCOMPRESSED_SIZE, and asserts every filesystem write and delete
- * resolves inside the target skill directory.
+ * entries with backslashes, absolute paths, `..` segments, or names Windows
+ * would canonicalize at write time (trailing dots/spaces per component,
+ * colons, reserved device names), refuses archives whose central directory
+ * declares an uncompressed total over MAX_ZIP_UNCOMPRESSED_SIZE, and asserts
+ * every filesystem write and delete resolves inside the target skill
+ * directory.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -540,19 +542,37 @@ function assertZipUncompressedSizeWithinLimit(zipBuffer: Uint8Array): void {
 }
 
 /**
+ * Reserved Windows device name stems. Win32 resolves these as the stem of any
+ * path component — with or without an extension (`NUL`, `nul.txt`) — to a
+ * device rather than a regular file, so a skill entry using one would never
+ * land where the validated relative path says it should.
+ */
+const WINDOWS_RESERVED_STEMS = new Set([
+	"CON",
+	"PRN",
+	"AUX",
+	"NUL",
+	...Array.from({ length: 10 }, (_, i) => `COM${i}`),
+	...Array.from({ length: 10 }, (_, i) => `LPT${i}`),
+]);
+
+/**
  * Normalize a zip entry name to a safe relative path, or return null for
  * entries that carry no file (e.g. bare `.` segments). Throws on any entry
- * that could escape the skill directory: backslashes (path separators on
- * Windows, invisible to a `/`-split filter), absolute paths (POSIX root or
- * drive letter), and `..` segments. Rejecting the whole archive rather than
- * silently filtering keeps a malicious package from installing in a
- * half-sanitized shape.
+ * whose name could resolve to a different file than the one validated here:
+ * backslashes (path separators on Windows, invisible to a `/`-split filter),
+ * absolute paths, colons (drive designators and NTFS alternate-data-stream
+ * separators), `..` segments, segments ending in a dot or space (Win32
+ * strips those per component, so `.. ` becomes `..` and `...` collapses to
+ * nothing at write time), and reserved Windows device names. Rejecting the
+ * whole archive rather than silently filtering keeps a malicious package
+ * from installing in a half-sanitized shape.
  */
 function sanitizeZipEntryPath(fileName: string): string | null {
 	if (
 		fileName.includes("\\") ||
 		fileName.startsWith("/") ||
-		/^[A-Za-z]:/.test(fileName)
+		fileName.includes(":")
 	) {
 		throw new ElizaError("Skill zip entry has an unsafe path", {
 			code: "SKILL_ZIP_ENTRY_UNSAFE",
@@ -560,16 +580,42 @@ function sanitizeZipEntryPath(fileName: string): string | null {
 		});
 	}
 
-	const parts = fileName.split("/");
-	if (parts.some((p) => p === "..")) {
+	const kept: string[] = [];
+	for (const part of fileName.split("/")) {
+		// Conventional no-op segments (`a//b`, `a/./b`) stay silently skipped.
+		if (part === "" || part === ".") continue;
+		assertSafeZipEntrySegment(part, fileName);
+		kept.push(part);
+	}
+	return kept.length === 0 ? null : kept.join("/");
+}
+
+/**
+ * Validate one zip entry path segment against Windows canonicalization
+ * tricks. Win32 strips trailing dots and spaces from every component before
+ * writing, so `.. ` becomes a parent traversal, `...` collapses to nothing,
+ * and `dir ` silently renames to `dir`; reserved stems resolve to devices
+ * rather than files. Rejecting the whole class guarantees the name validated
+ * here is the name the filesystem actually writes, on every platform.
+ */
+function assertSafeZipEntrySegment(segment: string, entryName: string): void {
+	const reject = (reason: string): never => {
 		throw new ElizaError("Skill zip entry has an unsafe path", {
 			code: "SKILL_ZIP_ENTRY_UNSAFE",
-			context: { entry: fileName },
+			context: { entry: entryName, reason },
 		});
-	}
+	};
 
-	const kept = parts.filter((p) => p && p !== ".");
-	return kept.length === 0 ? null : kept.join("/");
+	if (segment === "..") {
+		reject("parent traversal segment");
+	}
+	if (/[. ]$/.test(segment)) {
+		reject("segment ends with a dot or space, which Windows strips");
+	}
+	const stem = segment.split(".", 1)[0].toUpperCase();
+	if (WINDOWS_RESERVED_STEMS.has(stem)) {
+		reject("reserved Windows device name");
+	}
 }
 
 /**
