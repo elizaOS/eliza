@@ -133,14 +133,12 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let shouldRequestScreenTime = target != "health"
         if let unavailableReason = healthUnavailableReason {
             resolvePermissionResult(
                 call,
                 status: "not-applicable",
                 canRequest: false,
-                reason: unavailableReason,
-                requestScreenTime: shouldRequestScreenTime
+                reason: unavailableReason
             )
             return
         }
