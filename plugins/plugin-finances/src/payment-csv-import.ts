@@ -196,11 +196,15 @@ function normalizeDate(raw: string): string | null {
   if (!Number.isFinite(native)) {
     return null;
   }
-  // Strings with a time-of-day (e.g. "2024-01-02T10:00:00Z" or offset-bearing
-  // datetimes) keep native semantics. Remaining date-only spellings such as
-  // "Jan 2, 2024" parse as local midnight, so rebase the local calendar date
-  // onto UTC midnight to stay deterministic across timezones.
-  if (/\d:\d/.test(trimmed)) {
+  // Strings with a time-of-day or an explicit timezone keep native semantics.
+  // The timezone guard also covers date-only RFC spellings such as
+  // "02 Jan 2024 GMT": rebasing that already-UTC instant through local calendar
+  // fields would move it to the prior day west of UTC. Remaining date-only
+  // spellings such as "Jan 2, 2024" parse as local midnight, so rebase their
+  // local calendar date onto UTC midnight for cross-machine determinism.
+  const hasExplicitTimezone =
+    /(?:\b(?:UTC|GMT|[ECMP][SD]T)|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  if (/\d:\d/.test(trimmed) || hasExplicitTimezone) {
     return new Date(native).toISOString();
   }
   const local = new Date(native);

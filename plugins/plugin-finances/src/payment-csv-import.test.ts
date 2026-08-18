@@ -112,6 +112,14 @@ describe("parseTransactionsCsv", () => {
       expect(r.transactions[1].postedAt).toBe("2024-01-02T15:00:00.000Z");
     });
 
+    it("preserves explicit zones on date-only RFC spellings", () => {
+      const r = parseTransactionsCsv(
+        'Date,Amount,Merchant\n"02 Jan 2024 GMT",-1,Zone\n',
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions[0].postedAt).toBe("2024-01-02T00:00:00.000Z");
+    });
+
     it("still rejects unparseable dates", () => {
       const r = parseTransactionsCsv(
         "Date,Amount,Merchant\nnot-a-date,-1,Bad\n2024-99,-1,AlsoBad\n",
