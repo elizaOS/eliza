@@ -24,6 +24,12 @@ describe("wantsPullRequest (auto-submit intent gate)", () => {
       "fix the failing test in my sandbox repo",
       "clone the repo and summarize the readme",
       "improve the prompt wording",
+      // Negated PR mentions are declines, not asks (live 2026-08-18: the
+      // bare \bpr\b token in "no pr needed" opened the declined PR).
+      "fix the typo in the readme, just commit it locally no pr needed",
+      "commit the change but don't open a pr",
+      "update the docs, skip the pull request",
+      "push nothing and never open a pr for this",
     ]) {
       expect(OrchestratorTaskService.wantsPullRequest(text)).toBe(false);
     }
