@@ -6,6 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
+import { resolve as nodePathResolve } from "node:path";
 import type {
   Action,
   ActionResult,
@@ -1100,15 +1101,33 @@ async function runCreateLegacy(
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
       let createProvisionedWorkspaceId: string | undefined;
-      const createRequestedRepo =
-        typeof (params as Record<string, unknown>).repo === "string"
-          ? normalizeRepositoryInput(
-              (params as Record<string, unknown>).repo as string,
-            )
-          : undefined;
-      if (createRequestedRepo && !route && !explicitWorkdir) {
+      const createRequestedRepo = await resolveRequestedRepo(
+        runtime,
+        params as Record<string, unknown>,
+        [task, requestText(message)],
+      );
+      if (createRequestedRepo && !route) {
         const createWorkspaceService = getCodingWorkspaceService(runtime);
-        if (createWorkspaceService) {
+        // A planner-supplied workdir binds a repo ask ONLY when the registry
+        // tracks it (live 2026-08-18: the planner copied a stale workspace
+        // path out of room context onto a fresh repo ask, skipping
+        // provisioning entirely). A registered match reuses that workspace —
+        // and carries its id so auto-submit still works; anything else is
+        // ignored and the repo provisions a real clone.
+        const registeredCreateWorkspace = registeredWorkspaceForPath(
+          createWorkspaceService,
+          explicitWorkdir,
+        );
+        if (registeredCreateWorkspace) {
+          sessionWorkdir = registeredCreateWorkspace.path;
+          isolateWorkdir = false;
+          createProvisionedWorkspaceId = registeredCreateWorkspace.id;
+        } else if (createWorkspaceService) {
+          if (explicitWorkdir) {
+            logger(runtime).info(
+              `[TASKS:create] ignoring unregistered workdir ${explicitWorkdir} on repo-targeted create; provisioning ${createRequestedRepo}`,
+            );
+          }
           try {
             const workspace = await createWorkspaceService.provisionWorkspace({
               repo: createRequestedRepo,
@@ -1132,6 +1151,7 @@ async function runCreateLegacy(
           }
         }
       }
+
       // This path spawns WITHOUT `initialTask` and delivers the task via
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
@@ -1839,6 +1859,51 @@ async function githubTokenOwner(
   return cachedTokenOwner;
 }
 
+const PLACEHOLDER_REPO_OWNERS = new Set([
+  "yourusername",
+  "your-username",
+  "your_username",
+  "username",
+  "youruser",
+  "your-user",
+  "user",
+  "yourorg",
+  "your-org",
+  "your_org",
+  "org",
+  "owner",
+  "yourname",
+  "your-name",
+  "example",
+  "examples",
+  "myusername",
+  "my-username",
+  "acme",
+  "yourhandle",
+  "your-handle",
+  "placeholder",
+]);
+
+/** The registered workspace whose path is `workdir`, if any. Planner-supplied
+ *  workdirs on repo-targeted asks are usually context junk (a stale workspace
+ *  path copied from room history — live 2026-08-18); only a path the registry
+ *  actually tracks is a trustworthy binding. */
+function registeredWorkspaceForPath(
+  service: { listWorkspaces(): Array<{ id: string; path: string }> } | null,
+  workdir: string | undefined,
+): { id: string; path: string } | undefined {
+  if (!service || !workdir || !workdir.trim()) return undefined;
+  try {
+    const resolved = nodePathResolve(workdir);
+    return service
+      .listWorkspaces()
+      .find((workspace) => nodePathResolve(workspace.path) === resolved);
+  } catch {
+    // error-policy:J3 an unresolvable path is simply not a registered workspace.
+    return undefined;
+  }
+}
+
 /**
  * Resolve the repo a spawn/create should provision, tolerant of how humans
  * actually ask: an explicit `repo` param, a URL anywhere in the request, an
@@ -1867,6 +1932,25 @@ async function resolveRequestedRepo(
     const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^\/]|$)/);
     if (slug && /\brepo(?:sitory)?\b/i.test(text)) {
       candidate = `${slug[1]}/${slug[2]}`;
+    }
+  }
+  // Planner models emit placeholder owners when they only know the bare name
+  // (live 2026-08-18: repo="https://github.com/yourusername/eliza-code-sandbox"
+  // for a "my eliza-code-sandbox repo" ask — the clone then fails, or worse).
+  // A placeholder owner is not identity; strip it so the bare name resolves
+  // through the configured token owner like any possessive ask.
+  if (candidate) {
+    const slugForm = candidate
+      .replace(/^https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\//i, "")
+      .replace(/\.git$/i, "");
+    const parts = slugForm.split("/");
+    if (
+      parts.length >= 2 &&
+      parts[0] !== undefined &&
+      parts[1] !== undefined &&
+      PLACEHOLDER_REPO_OWNERS.has(parts[0].toLowerCase())
+    ) {
+      candidate = parts[1];
     }
   }
   // Possessive bare name: "my <name> repo" / "<name> repo" + a param repo
@@ -2081,15 +2165,29 @@ async function runSpawnAgent(
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
     let provisionedWorkspaceId: string | undefined;
-    const requestedRepo =
-      typeof (params as Record<string, unknown>).repo === "string"
-        ? normalizeRepositoryInput(
-            (params as Record<string, unknown>).repo as string,
-          )
-        : undefined;
-    if (requestedRepo && !effectiveRoute && !explicitWorkdir) {
+    const requestedRepo = await resolveRequestedRepo(
+      runtime,
+      params as Record<string, unknown>,
+      [task, requestText(message)],
+    );
+    if (requestedRepo && !effectiveRoute) {
       const workspaceService = getCodingWorkspaceService(runtime);
-      if (workspaceService) {
+      // Same registered-workdir contract as the create path: a planner
+      // workdir only binds a repo ask when the registry tracks it.
+      const registeredSpawnWorkspace = registeredWorkspaceForPath(
+        workspaceService,
+        explicitWorkdir,
+      );
+      if (registeredSpawnWorkspace) {
+        effectiveWorkdir = registeredSpawnWorkspace.path;
+        isolateWorkdir = false;
+        provisionedWorkspaceId = registeredSpawnWorkspace.id;
+      } else if (workspaceService) {
+        if (explicitWorkdir) {
+          logger(runtime).info(
+            `[TASKS:spawn_agent] ignoring unregistered workdir ${explicitWorkdir} on repo-targeted spawn; provisioning ${requestedRepo}`,
+          );
+        }
         try {
           const workspace = await workspaceService.provisionWorkspace({
             repo: requestedRepo,
