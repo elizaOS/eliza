@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import { get as httpGet } from "node:http";
 import type { ClientRequest, RequestOptions } from "node:https";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProxyServer } from "../src/proxy/server.js";
 
 const httpsMock = vi.hoisted(() => ({
   request: vi.fn(),
@@ -75,7 +76,6 @@ afterEach(() => {
 describe("ProxyServer routing", () => {
   it("does not synthesize JSON for empty-body proxied GET requests", async () => {
     installUpstream(200, '{"ok":true}');
-    const { ProxyServer } = await import("../src/proxy/server.js");
     const server = new ProxyServer({
       port: 0,
       bindHost: "127.0.0.1",
