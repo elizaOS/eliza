@@ -1,6 +1,7 @@
 /**
  * Pins CodeQL to an off-PR scheduled/manual lane and verifies its extraction,
- * permissions, runner, and immutable-action contracts without executing a scan.
+ * permissions, provisionable runner, and immutable-action contracts without
+ * executing a scan.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
@@ -26,7 +27,7 @@ type Workflow = {
   jobs?: Record<
     string,
     {
-      "runs-on"?: string[];
+      "runs-on"?: string | string[];
       "timeout-minutes"?: number;
       permissions?: Record<string, string>;
       steps?: WorkflowStep[];
@@ -53,13 +54,8 @@ describe("scheduled CodeQL workflow", () => {
     expect(workflowText).not.toMatch(/^\s+push:/m);
   });
 
-  test("uses the bounded large-runner analysis contract", () => {
-    expect(analyze?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "hetzner-robot",
-    ]);
+  test("uses the bounded hosted-runner analysis contract", () => {
+    expect(analyze?.["runs-on"]).toBe("ubuntu-24.04");
     expect(analyze?.["timeout-minutes"]).toBe(360);
     expect(analyze?.permissions?.["security-events"]).toBe("write");
     expect(workflow.permissions).toEqual({ contents: "read" });
@@ -75,6 +71,8 @@ describe("scheduled CodeQL workflow", () => {
     expect(init.with?.["config-file"]).toBe(
       "./.github/codeql/codeql-config.yml",
     );
+    expect(init.with).not.toHaveProperty("ram");
+    expect(init.with).not.toHaveProperty("threads");
   });
 
   test("excludes generated dependency and build trees at extraction time", () => {
