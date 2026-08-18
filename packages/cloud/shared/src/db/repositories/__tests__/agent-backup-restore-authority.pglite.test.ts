@@ -76,6 +76,10 @@ const CIPHERTEXT_SHA = "d".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x42).toString("base64");
 let schemaFailure = "";
 
+function isZeroized(value: Uint8Array | null): boolean {
+  return value !== null && value.every((byte) => byte === 0);
+}
+
 function sha256Hex(value: Uint8Array | string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -624,7 +628,7 @@ describe("strict restore catalogue authority", () => {
       copiedPassphrase = Buffer.from(passphrase);
     });
     expect(copiedPassphrase.toString("ascii")).toBe("01".repeat(32));
-    expect(borrowedPassphrase?.every((byte) => byte === 0)).toBe(true);
+    expect(isZeroized(borrowedPassphrase)).toBe(true);
     const borrowedRawKey = (first.secret as unknown as { rawKey: Uint8Array | null }).rawKey;
     expect(borrowedRawKey).not.toBeNull();
     first.secret.release();
@@ -715,7 +719,7 @@ describe("strict restore catalogue authority", () => {
         ),
       ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_CREATE_FAILED" });
       expect(borrowedPlaintext).not.toBeNull();
-      expect(borrowedPlaintext?.every((byte) => byte === 0)).toBe(true);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
       expect(await dbWrite.select().from(agentVaultKeyGenerations)).toHaveLength(0);
     } finally {
       encryptSpy.mockRestore();

@@ -104,7 +104,7 @@ describe("migrations/meta/_journal.json registration", () => {
     const firstIndex = entries.findIndex(({ tag }) => tag === BACKUP_CATALOGUE_MIGRATION_TAGS[0]);
     const stack = entries.slice(firstIndex, firstIndex + BACKUP_CATALOGUE_MIGRATION_TAGS.length);
 
-    expect(stack.map(({ tag }) => tag)).toEqual(BACKUP_CATALOGUE_MIGRATION_TAGS);
+    expect(stack.map(({ tag }) => tag)).toEqual([...BACKUP_CATALOGUE_MIGRATION_TAGS]);
     expect(stack.map(({ idx }) => idx)).toEqual(
       BACKUP_CATALOGUE_MIGRATION_TAGS.map((_, offset) => 217 + offset),
     );
