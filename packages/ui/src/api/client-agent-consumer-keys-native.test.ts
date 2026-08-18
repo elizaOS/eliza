@@ -4,11 +4,11 @@
  * Create / update / rotate hops stay untouched.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ElizaClient } from "./client-base";
 import { CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS } from "./client-agent-consumer-keys";
+import { ElizaClient } from "./client-base";
 import "./client-agent-consumer-keys";
-import type { AgentRequestTransport } from "./transport";
 import { setBootConfig } from "../config/boot-config";
+import type { AgentRequestTransport } from "./transport";
 
 function makeClient(request: AgentRequestTransport["request"]) {
   const client = new ElizaClient("http://agent.example:2138", "token");
@@ -55,7 +55,7 @@ describe("ElizaClient consumer-keys native-complete deadlines", () => {
     const request = vi.fn<AgentRequestTransport["request"]>(
       async (_url, init, ctx) => {
         const ms = ctx?.timeoutMs ?? 10;
-        await new Promise<never>((_, reject) => {
+        return new Promise<never>((_, reject) => {
           const timer = setTimeout(() => {
             reject(
               Object.assign(new Error(`Request timed out after ${ms}ms`), {
