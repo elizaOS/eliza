@@ -132,16 +132,21 @@ export function classifyDeviceTierFromProbe(
   return { tier, reason, cpuOnly, mobile };
 }
 
+/** Hardware GET — existing 10s REST budget, independent hop. */
+export const LOCAL_INFERENCE_HARDWARE_FETCH_TIMEOUT_MS = 10_000;
+/** Device-tier GET — existing 10s REST budget, independent hop. */
+export const LOCAL_INFERENCE_DEVICE_TIER_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
-    getLocalInferenceHardware(): Promise<HardwareProbe>;
+    getLocalInferenceHardware(timeoutMs?: number): Promise<HardwareProbe>;
     /**
      * Resolve the live device tier by probing hardware and classifying it.
      * Backs the Settings → Voice tier banner and the per-slot "Auto"
      * resolution in the routing matrix.
      */
-    getLocalInferenceDeviceTier(): Promise<DeviceTierResult>;
+    getLocalInferenceDeviceTier(timeoutMs?: number): Promise<DeviceTierResult>;
     getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
     getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
     startLocalInferenceDownload(modelId: string): Promise<{ job: DownloadJob }>;
@@ -201,19 +206,23 @@ ElizaClient.prototype.getLocalInferenceHub = async function (
 
 ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
+  timeoutMs: number = LOCAL_INFERENCE_HARDWARE_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/local-inference/hardware");
+  return this.fetch("/api/local-inference/hardware", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   this: ElizaClient,
+  timeoutMs: number = LOCAL_INFERENCE_DEVICE_TIER_FETCH_TIMEOUT_MS,
 ) {
   // Prefer the authoritative server assessment (same one the router's AUTO policy
   // consumes) so the UI's tier/recommendedMode/recommendedFit cannot disagree with
   // the actual routing decision. Fall back to the coarse client estimate only when
   // the endpoint is unavailable (older agent, transient error).
   try {
-    const res = (await this.fetch("/api/local-inference/device-tier")) as {
+    const res = (await this.fetch("/api/local-inference/device-tier", undefined, {
+      timeoutMs,
+    })) as {
       tier?: {
         tier?: DeviceTier;
         reasons?: string[];
