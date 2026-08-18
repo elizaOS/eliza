@@ -48,6 +48,8 @@ jobs:
           HAS_APPS_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY != '' }}
           HAS_PROJECT_HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
           HAS_APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN != '' }}
+          HAS_DATA_PLANE_SERVER_IDS: ${{ secrets.ELIZA_OPERATOR_DATA_PLANE_SERVER_IDS != '' }}
+          HAS_APPS_SERVER_IDS: ${{ secrets.ELIZA_OPERATOR_APPS_SERVER_IDS != '' }}
         run: |
           set -euo pipefail
           expected_ref="refs/heads/$([ "$TARGET_ENVIRONMENT" = production ] && echo main || echo develop)"
@@ -66,8 +68,8 @@ jobs:
           required=(HAS_OPERATOR_KNOWN_HOSTS)
           case "$TARGET_CLASS" in
             control-plane) required+=(HAS_PROVISIONING_HOST HAS_PROVISIONING_SSH_KEY) ;;
-            data-plane) required+=(HAS_PROVISIONING_HOST HAS_CONTAINERS_SSH_KEY HAS_PROJECT_HCLOUD_TOKEN) ;;
-            apps) required+=(HAS_APPS_CONTROL_HOST HAS_APPS_SSH_KEY HAS_APPS_HCLOUD_TOKEN) ;;
+            data-plane) required+=(HAS_PROVISIONING_HOST HAS_CONTAINERS_SSH_KEY HAS_PROJECT_HCLOUD_TOKEN HAS_DATA_PLANE_SERVER_IDS) ;;
+            apps) required+=(HAS_APPS_CONTROL_HOST HAS_APPS_SSH_KEY HAS_APPS_HCLOUD_TOKEN HAS_APPS_SERVER_IDS) ;;
           esac
           missing=()
           for name in "${required[@]}"; do
@@ -151,12 +153,11 @@ jobs:
         env:
           CONTROL_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           PROJECT_HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          APPROVED_SERVER_IDS: ${{ secrets.ELIZA_OPERATOR_DATA_PLANE_SERVER_IDS }}
+          OUTPUT_PATH: ${{ runner.temp }}/operator-backfill-targets
         run: |
           set -euo pipefail
-          response="$({ curl --fail --silent --show-error -H "Authorization: Bearer $PROJECT_HCLOUD_TOKEN" 'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
-          jq -r --arg control_host "$CONTROL_HOST" \
-            '.servers[] | select(.status == "running") | select(.public_net.ipv4.ip != $control_host) | [.public_net.ipv4.ip, "direct"] | @tsv' \
-            <<<"$response" > "$RUNNER_TEMP/operator-backfill-targets"
+          packages/cloud/scripts/admin/resolve-operator-ssh-targets.sh
 
       - name: Resolve exact apps inventory
         if: inputs.target_class == 'apps'
@@ -164,12 +165,14 @@ jobs:
         env:
           APPS_CONTROL_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST }}
           APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+          APPROVED_SERVER_IDS: ${{ secrets.ELIZA_OPERATOR_APPS_SERVER_IDS }}
+          OUTPUT_PATH: ${{ runner.temp }}/operator-backfill-targets
         run: |
           set -euo pipefail
-          response="$({ curl --fail --silent --show-error -H "Authorization: Bearer $APPS_HCLOUD_TOKEN" 'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
-          jq -r --arg control_host "$APPS_CONTROL_HOST" \
-            '.servers[] | select(.status == "running") | . as $server | select(["app-node", "apps-control", "apps-worker", "tenant-db"] | index($server.labels.role)) | if $server.public_net.ipv4.ip == $control_host then [$server.public_net.ipv4.ip, "direct"] else [($server.private_net | map(.ip) | first), "proxy"] end | @tsv' \
-            <<<"$response" > "$RUNNER_TEMP/operator-backfill-targets"
+          TARGET_CLASS=apps \
+            CONTROL_HOST="$APPS_CONTROL_HOST" \
+            PROJECT_HCLOUD_TOKEN="$APPS_HCLOUD_TOKEN" \
+            packages/cloud/scripts/admin/resolve-operator-ssh-targets.sh
 
       - name: Validate exact target inventory and host pins
         shell: bash

@@ -22,6 +22,25 @@ else
 fi
 chmod 0700 "$ssh_dir"
 
+lock_dir="$ssh_dir/.authorized_keys.lock"
+lock_acquired=false
+for _ in $(seq 1 100); do
+  if mkdir "$lock_dir" 2>/dev/null; then
+    lock_acquired=true
+    break
+  fi
+  sleep 0.1
+done
+[ "$lock_acquired" = true ] || fail
+temporary=""
+cleanup() {
+  if [ -n "$temporary" ] && [ -e "$temporary" ]; then
+    rm -f -- "$temporary"
+  fi
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+trap cleanup EXIT HUP INT TERM
+
 if [ -e "$authorized_keys" ] || [ -L "$authorized_keys" ]; then
   [ -f "$authorized_keys" ] && [ ! -L "$authorized_keys" ] || fail
   authorized_keys_owner="$(stat -c '%u' "$authorized_keys" 2>/dev/null || stat -f '%u' "$authorized_keys" 2>/dev/null)" || fail
@@ -34,10 +53,6 @@ fi
 
 umask 077
 temporary="$(mktemp "$ssh_dir/.authorized_keys.XXXXXX")" || fail
-cleanup() {
-  [ ! -e "$temporary" ] || rm -f -- "$temporary"
-}
-trap cleanup EXIT HUP INT TERM
 if [ -f "$authorized_keys" ]; then
   cat -- "$authorized_keys" > "$temporary"
 fi
@@ -48,5 +63,7 @@ printf '%s\n' "$operator_key" >> "$temporary"
 chmod 0600 "$temporary"
 grep -qxF -- "$operator_key" "$temporary" || fail
 mv -f -- "$temporary" "$authorized_keys"
+temporary=""
+rmdir "$lock_dir" || fail
 trap - EXIT HUP INT TERM
 grep -qxF -- "$operator_key" "$authorized_keys" || fail

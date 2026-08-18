@@ -1,3 +1,12 @@
+/**
+ * Exercises the protected operator-SSH backfill workflow and its checked-in
+ * target resolver, public-key validator, and concurrency-safe installer.
+ *
+ * Functional fixtures execute the real shell boundaries against an isolated
+ * fake Hetzner API so target authorization and adversarial file behavior are
+ * tested without any cloud or host mutation.
+ */
+
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,16 +17,21 @@ const workflow = readFileSync(
   "utf8",
 );
 const installerPath = new URL("./admin/install-operator-public-key.sh", import.meta.url).pathname;
+const resolverPath = new URL("./admin/resolve-operator-ssh-targets.sh", import.meta.url).pathname;
 const validatorPath = new URL("./admin/validate-operator-public-key.sh", import.meta.url).pathname;
 const operatorKey = "ssh-ed25519 AAAATESTONLYOPERATORKEY operator@test";
 
-function runInstaller(home) {
+function installerEnvironment(home, key = operatorKey) {
+  return {
+    HOME: home,
+    PATH: process.env.PATH,
+    OPERATOR_KEY_BASE64: Buffer.from(key).toString("base64"),
+  };
+}
+
+function runInstaller(home, key = operatorKey) {
   return Bun.spawnSync(["bash", installerPath], {
-    env: {
-      HOME: home,
-      PATH: process.env.PATH,
-      OPERATOR_KEY_BASE64: Buffer.from(operatorKey).toString("base64"),
-    },
+    env: installerEnvironment(home, key),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -39,7 +53,10 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain('expected_ref="refs/heads/');
     expect(workflow).toContain('actual_count" != "$EXPECTED_HOST_COUNT"');
     expect(workflow).toContain("Unsupported environment and target-class combination");
-    expect(workflow).toContain('select(.public_net.ipv4.ip != $control_host)');
+    expect(workflow).toContain("ELIZA_OPERATOR_DATA_PLANE_SERVER_IDS");
+    expect(workflow).toContain("ELIZA_OPERATOR_APPS_SERVER_IDS");
+    expect(workflow).toContain("packages/cloud/scripts/admin/resolve-operator-ssh-targets.sh");
+    expect(workflow).not.toContain("per_page=");
   });
 
   test("requires pre-established pins and has no trust-on-first-use path", () => {
@@ -78,6 +95,121 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain('2>"$ssh_error_path"');
     expect(workflow).toContain("ProxyCommand=$proxy_command");
     expect(workflow).not.toContain('echo "$host"');
+  });
+});
+
+describe("immutable operator target resolver", () => {
+  test("resolves only approved IDs and rejects malformed or role-mismatched inventories", () => {
+    withTempHome((home) => {
+      const mockBin = join(home, "bin");
+      const fixtures = join(home, "servers");
+      mkdirSync(mockBin);
+      mkdirSync(fixtures);
+      const mockCurl = join(mockBin, "curl");
+      writeFileSync(
+        mockCurl,
+        '#!/bin/sh\nfor argument do url="$argument"; done\nid="${url##*/}"\ncase "$id" in *[!0-9]*|"") exit 2 ;; esac\ncat "$MOCK_SERVER_DIR/$id.json"\n',
+        { mode: 0o700 },
+      );
+      const fixture = (id, name, role, publicIp, privateIp = null) =>
+        writeFileSync(
+          join(fixtures, `${id}.json`),
+          JSON.stringify({
+            server: {
+              id,
+              name,
+              status: "running",
+              labels: role ? { role } : {},
+              public_net: { ipv4: { ip: publicIp } },
+              private_net: privateIp ? [{ ip: privateIp }] : [],
+            },
+          }),
+        );
+      fixture(101, "eliza-core-1a2b3c4d", null, "192.0.2.101");
+      fixture(102, "eliza-core-5e6f7a8b", null, "192.0.2.102");
+      fixture(999, "unrelated", null, "192.0.2.199");
+
+      const output = join(home, "targets");
+      const environment = {
+        PATH: `${mockBin}:${process.env.PATH}`,
+        MOCK_SERVER_DIR: fixtures,
+        TARGET_CLASS: "data-plane",
+        EXPECTED_HOST_COUNT: "2",
+        CONTROL_HOST: "192.0.2.10",
+        APPROVED_SERVER_IDS: "101\n102",
+        PROJECT_HCLOUD_TOKEN: "test-token",
+        OUTPUT_PATH: output,
+      };
+      expect(Bun.spawnSync(["bash", resolverPath], { env: environment }).exitCode).toBe(0);
+      expect(readFileSync(output, "utf8")).toBe("192.0.2.101\tdirect\n192.0.2.102\tdirect\n");
+
+      expect(
+        Bun.spawnSync(["bash", resolverPath], {
+          env: { ...environment, APPROVED_SERVER_IDS: "101\nnot-an-id" },
+        }).exitCode,
+      ).not.toBe(0);
+      expect(
+        Bun.spawnSync(["bash", resolverPath], {
+          env: { ...environment, APPROVED_SERVER_IDS: "101\n999" },
+        }).exitCode,
+      ).not.toBe(0);
+    });
+  });
+
+  test("requires every approved apps ID and derives exactly one direct route", () => {
+    withTempHome((home) => {
+      const mockBin = join(home, "bin");
+      const fixtures = join(home, "servers");
+      mkdirSync(mockBin);
+      mkdirSync(fixtures);
+      const mockCurl = join(mockBin, "curl");
+      writeFileSync(
+        mockCurl,
+        '#!/bin/sh\nfor argument do url="$argument"; done\nid="${url##*/}"\ncat "$MOCK_SERVER_DIR/$id.json"\n',
+        { mode: 0o700 },
+      );
+      writeFileSync(
+        join(fixtures, "201.json"),
+        JSON.stringify({
+          server: {
+            id: 201,
+            name: "control",
+            status: "running",
+            labels: { role: "apps-control" },
+            public_net: { ipv4: { ip: "192.0.2.201" } },
+            private_net: [{ ip: "10.0.0.1" }],
+          },
+        }),
+      );
+      writeFileSync(
+        join(fixtures, "202.json"),
+        JSON.stringify({
+          server: {
+            id: 202,
+            name: "worker",
+            status: "running",
+            labels: { role: "apps-worker" },
+            public_net: { ipv4: { ip: "192.0.2.202" } },
+            private_net: [{ ip: "10.0.0.2" }],
+          },
+        }),
+      );
+      const output = join(home, "targets");
+      const result = Bun.spawnSync(["bash", resolverPath], {
+        env: {
+          PATH: `${mockBin}:${process.env.PATH}`,
+          MOCK_SERVER_DIR: fixtures,
+          TARGET_CLASS: "apps",
+          EXPECTED_HOST_COUNT: "2",
+          CONTROL_HOST: "192.0.2.201",
+          APPROVED_SERVER_IDS: "201\n202",
+          PROJECT_HCLOUD_TOKEN: "test-token",
+          OUTPUT_PATH: output,
+        },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(readFileSync(output, "utf8")).toBe("10.0.0.2\tproxy\n192.0.2.201\tdirect\n");
+    });
   });
 });
 
@@ -162,5 +294,38 @@ describe("atomic operator public-key installer", () => {
       expect(result.exitCode).not.toBe(0);
       expect(lstatSync(join(sshDir, "authorized_keys")).isDirectory()).toBe(true);
     });
+  });
+
+  test("serializes concurrent additive writers without losing either key", async () => {
+    const home = mkdtempSync(join(tmpdir(), "eliza-operator-key-test-"));
+    try {
+      const sshDir = join(home, ".ssh");
+      mkdirSync(sshDir, { mode: 0o700 });
+      const path = join(sshDir, "authorized_keys");
+      const existing = "ssh-ed25519 AAAAEXISTING existing@test";
+      const firstKey = "ssh-ed25519 AAAAFIRST first@test";
+      const secondKey = "ssh-ed25519 AAAASECOND second@test";
+      writeFileSync(path, existing, { mode: 0o600 });
+
+      const first = Bun.spawn(["bash", installerPath], {
+        env: installerEnvironment(home, firstKey),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const second = Bun.spawn(["bash", installerPath], {
+        env: installerEnvironment(home, secondKey),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(await first.exited).toBe(0);
+      expect(await second.exited).toBe(0);
+
+      const lines = readFileSync(path, "utf8").trimEnd().split("\n");
+      expect(lines[0]).toBe(existing);
+      expect(new Set(lines.slice(1))).toEqual(new Set([firstKey, secondKey]));
+      expect(lstatSync(path).mode & 0o777).toBe(0o600);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
