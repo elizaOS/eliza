@@ -23,6 +23,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -1017,9 +1018,13 @@ export function splitMessage(content: string, maxLength: number): string[] {
             }
 
             if (word.length > maxLength) {
-              // Split by characters
-              for (let i = 0; i < word.length; i += maxLength) {
-                parts.push(word.slice(i, i + maxLength));
+              // Split by characters (surrogate-safe)
+              let remainingWord = word;
+              while (remainingWord.length > 0) {
+                const chunk = truncateWellFormed(remainingWord, maxLength);
+                const cutPoint = chunk.length > 0 ? chunk.length : maxLength;
+                parts.push(remainingWord.slice(0, cutPoint));
+                remainingWord = remainingWord.slice(cutPoint);
               }
             } else {
               current = word;
