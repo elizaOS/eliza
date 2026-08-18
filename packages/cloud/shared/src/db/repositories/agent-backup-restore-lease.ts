@@ -158,7 +158,6 @@ export async function acquireAgentBackupRestoreLease(params: {
       backup.agentId,
     );
     if (
-      !backup.state ||
       !hasAgentBackupRestoreAuthority(backup.state) ||
       backup.manifestVersion !== 3 ||
       !backup.vaultKeyGenerationId ||
