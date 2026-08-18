@@ -160,7 +160,13 @@ describe("agent-tokens route — human-leg tenant binding", () => {
     requireAdminBehavior = async () => {
       throw new MockApiError(403, "Admin access required");
     };
-    currentUser = { id: "user-1", role: "admin", organization_id: "org-1" };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      organization: { id: "org-1", is_active: true },
+      is_active: true,
+    };
     sandboxForOrg = { id: "agent-xyz", organization_id: "org-1" };
 
     const res = await post({});
@@ -173,7 +179,13 @@ describe("agent-tokens route — human-leg tenant binding", () => {
     requireAdminBehavior = async () => {
       throw new MockApiError(403, "Admin access required");
     };
-    currentUser = { id: "user-1", role: "admin", organization_id: "org-1" };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      organization: { id: "org-1", is_active: true },
+      is_active: true,
+    };
     sandboxForOrg = undefined;
 
     const res = await post({});
@@ -246,6 +258,30 @@ describe("agent-tokens route — human-leg tenant binding", () => {
 
     const res = await post({});
     expect(res.status).toBe(403);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(mintAgentToken).not.toHaveBeenCalled();
+  });
+
+  test("an org admin without a hydrated matching organization is denied", async () => {
+    requireAdminBehavior = async () => {
+      throw new MockApiError(403, "Admin access required");
+    };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      is_active: true,
+    };
+    sandboxForOrg = { id: "agent-xyz", organization_id: "org-1" };
+
+    const missingOrg = await post({});
+    expect(missingOrg.status).toBe(403);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(mintAgentToken).not.toHaveBeenCalled();
+
+    currentUser.organization = { id: "org-2", is_active: true };
+    const mismatchedOrg = await post({});
+    expect(mismatchedOrg.status).toBe(403);
     expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(mintAgentToken).not.toHaveBeenCalled();
   });

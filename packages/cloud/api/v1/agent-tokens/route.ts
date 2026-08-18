@@ -98,7 +98,12 @@ async function authorizeHumanMint(
   // is_active screening (that lives in requireUser/requireUserWithOrg, which
   // the swallowed platform-admin denial above may have failed on), so reject
   // deactivated users/orgs explicitly before the org-admin leg.
-  if (user.is_active === false || user.organization?.is_active === false) {
+  if (
+    user.is_active !== true ||
+    !user.organization ||
+    user.organization.is_active !== true ||
+    user.organization.id !== user.organization_id
+  ) {
     return {
       ok: false,
       status: 403,
