@@ -1122,6 +1122,104 @@ describe("Shared Eliza Workerd runtime", () => {
       completionTokens: 36,
       totalTokens: 156,
     });
+    expect(result.history.at(-1)?.grounding).toEqual({
+      kind: "web_search",
+      query: "latest ElizaOS news",
+      provider: "parallel",
+      text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+      observedAt: expect.any(Number),
+      truncated: false,
+    });
+  });
+
+  test("hydrates a contradicted follow-up with the latest successful public result", async () => {
+    const modelRequests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      modelRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({
+        id: "chatcmpl-shared-search-follow-up",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-search-follow-up-response",
+                  type: "function",
+                  function: {
+                    name: "HANDLE_RESPONSE",
+                    arguments: JSON.stringify({
+                      shouldRespond: "RESPOND",
+                      thought: "The persisted public result supersedes the contradicted claim.",
+                      contexts: ["simple"],
+                      intents: [],
+                      candidateActionNames: [],
+                      requiresTool: false,
+                      replyText:
+                        "Tessera validates ARC resources through an origin guard and credential relay.",
+                      replyEffectStatus: "none",
+                      facts: [],
+                      relationships: [],
+                      addressedTo: [],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+      history: [
+        {
+          id: "6c5f17a6-d83c-4489-8742-a0309cac2f0b",
+          role: "assistant",
+          content: "Tessera is a generic scraper.",
+          createdAt: 1,
+        },
+        {
+          id: "456b9f08-2e34-48db-bd92-5410c9464895",
+          role: "assistant",
+          content: "That was wrong. The repository is an ARC resource proxy.",
+          createdAt: 2,
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson Tessera GitHub",
+            provider: "parallel",
+            text: "Tessera validates ARC resources through an origin guard and credential relay.",
+            observedAt: 2,
+            truncated: false,
+          },
+        },
+      ],
+      message: "How does the corrected project work?",
+      messageIds: {
+        user: "c2cf8621-4373-4e58-869c-72e21075924d",
+        assistant: "0ba49b19-1d86-471f-9fbe-f4a67e6f07ec",
+      },
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+      },
+    });
+
+    expect(result.reply).toContain("origin guard and credential relay");
+    expect(modelRequests).toHaveLength(1);
+    const encodedRequest = JSON.stringify(modelRequests[0]);
+    expect(encodedRequest).toContain("untrusted_public_web_search_result");
+    expect(encodedRequest).toContain("origin guard and credential relay");
+    expect(encodedRequest).toContain('"role":"tool"');
   });
 
   test("plans GENERATE_MEDIA through the genuine runtime and lands a channel-safe artifact", async () => {

@@ -415,6 +415,14 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  grounding?: {
+    kind: "web_search";
+    query: string;
+    provider: "parallel" | "exa";
+    text: string;
+    observedAt: number;
+    truncated: boolean;
+  };
 };
 
 function harness() {
@@ -1056,11 +1064,42 @@ describe("SharedRuntimeChatService", () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield {
+          type: "finish",
+          text: "hello back",
+          usage: { inputTokens: 12, outputTokens: 4 },
+          actionResults: [
+            {
+              success: true,
+              text: "Tessera validates ARC resources through an origin guard.",
+              data: {
+                actionName: "WEB_SEARCH",
+                query: "NubsCarson Tessera GitHub",
+                provider: "parallel",
+                value: "Tessera validates ARC resources through an origin guard.",
+              },
+            },
+          ],
+        };
+      })(),
+    };
     const response = await service.stream(agent, rpc, h);
     const body = await response.text();
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
     expect(h.history()).toHaveLength(3);
+    expect(h.history().at(-1)?.grounding).toEqual({
+      kind: "web_search",
+      query: "NubsCarson Tessera GitHub",
+      provider: "parallel",
+      text: "Tessera validates ARC resources through an origin guard.",
+      observedAt: expect.any(Number),
+      truncated: false,
+    });
     expect(memoryPairs).toEqual([
       expect.objectContaining({
         userMessage: "hello",
