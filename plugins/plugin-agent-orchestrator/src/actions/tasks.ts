@@ -2248,11 +2248,63 @@ async function resolveRequestedRepo(
     else return undefined;
   }
   if (!candidate) return undefined;
+  let normalized: string | undefined;
   try {
-    return normalizeRepositoryInput(candidate);
+    normalized = normalizeRepositoryInput(candidate);
   } catch {
     // error-policy:J3 an unparseable candidate is not a repo request.
     return undefined;
+  }
+  // Planner models also GUESS plausible-but-wrong owners the placeholder list
+  // cannot catch (live 2026-08-18: "github.com/nubs/eliza-code-sandbox" for a
+  // "my eliza-code-sandbox repo" ask — the token owner is NubsCarson). When a
+  // possessive bare name is in the request, verify the candidate exists and
+  // fall back to <token-owner>/<name> when it does not. Verification is
+  // best-effort: no token or an API failure keeps the candidate untouched,
+  // and the clone failure stays the loud backstop.
+  const possessiveName = text.match(/\bmy\s+([\w.-]+)\s+repo\b/i)?.[1];
+  if (possessiveName) {
+    const exists = await repositoryExists(runtime, normalized);
+    if (exists === false) {
+      const owner = await githubTokenOwner(runtime);
+      if (owner) {
+        const fallback = `${owner}/${possessiveName}`;
+        if ((await repositoryExists(runtime, fallback)) === true) {
+          return normalizeRepositoryInput(fallback);
+        }
+      }
+    }
+  }
+  return normalized;
+}
+
+/** true / false when the GitHub API answered, null when unverifiable (no
+ *  token, non-github host, network failure). */
+async function repositoryExists(
+  runtime: IAgentRuntime,
+  repoInput: string,
+): Promise<boolean | null> {
+  try {
+    const token = runtime.getSetting("GITHUB_TOKEN");
+    if (typeof token !== "string" || !token.trim()) return null;
+    const slug = repoInput
+      .replace(/^https?:\/\/github\.com\//i, "")
+      .replace(/\.git$/i, "");
+    if (/^https?:\/\//i.test(slug) || slug.split("/").length !== 2) {
+      return null;
+    }
+    const res = await fetch(`https://api.github.com/repos/${slug}`, {
+      headers: {
+        Authorization: `token ${token.trim()}`,
+        "User-Agent": "eliza-orchestrator",
+      },
+    });
+    if (res.status === 404) return false;
+    if (res.ok) return true;
+    return null;
+  } catch {
+    // error-policy:J4 existence probing is best-effort routing sugar.
+    return null;
   }
 }
 
