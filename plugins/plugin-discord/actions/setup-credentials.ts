@@ -7,6 +7,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+export const DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS = 10_000;
+
 export interface CredentialPreset {
 	name: string;
 	displayName: string;
@@ -74,6 +76,7 @@ registerPreset({
 					Authorization: `Bearer ${credentials.token}`,
 					Accept: "application/vnd.github+json",
 				},
+				signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				return {
@@ -105,6 +108,7 @@ registerPreset({
 		try {
 			const response = await fetch("https://api.vercel.com/v9/projects", {
 				headers: { Authorization: `Bearer ${credentials.token}` },
+				signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				return {
@@ -147,6 +151,7 @@ registerPreset({
 						"X-Auth-Key": credentials.apiKey,
 						"X-Auth-Email": credentials.email,
 					},
+					signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 				},
 			);
 			if (!response.ok) {
@@ -195,6 +200,7 @@ registerPreset({
 					max_tokens: 1,
 					messages: [{ role: "user", content: "hi" }],
 				}),
+				signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 			});
 			if (response.ok || response.status === 429) {
 				return { valid: true, identity: "key verified" };
@@ -222,6 +228,7 @@ registerPreset({
 		try {
 			const response = await fetch("https://api.openai.com/v1/models", {
 				headers: { Authorization: `Bearer ${credentials.apiKey}` },
+				signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 			});
 			if (response.ok || response.status === 429) {
 				return { valid: true, identity: "key verified" };
@@ -258,6 +265,7 @@ registerPreset({
 					image_size: { width: 64, height: 64 },
 					num_images: 1,
 				}),
+				signal: AbortSignal.timeout(DEFAULT_CREDENTIAL_VALIDATION_TIMEOUT_MS),
 			});
 			if (response.ok || response.status === 422 || response.status === 429) {
 				return { valid: true, identity: "key verified" };
