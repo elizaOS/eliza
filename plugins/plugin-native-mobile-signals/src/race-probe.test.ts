@@ -202,6 +202,30 @@ describe("MobileSignalsWeb teardown race", () => {
     expect(result.enabled).toBe(false);
   });
 
+  it("delivers a fresh initial pair after a stop->restart (no over-suppression)", async () => {
+    setNavigator({
+      userAgent: "Mozilla/5.0",
+      getBattery: vi.fn(async () => ({ charging: true, level: 0.5 })),
+    } as Partial<Navigator>);
+    setCapturingDocument();
+
+    const plugin = new MobileSignalsWeb();
+    const listener = vi.fn();
+    await plugin.addListener("signal", listener);
+
+    // Session 1 bumps the generation to 1, then tears down.
+    await plugin.startMonitoring({ emitInitial: false });
+    await plugin.stopMonitoring();
+    expect(listener).not.toHaveBeenCalled();
+
+    // Session 2 runs under generation 2. The per-session token must reject a
+    // stale session's emit but must NOT suppress the current session, so the
+    // fresh initial pair still delivers exactly two signals.
+    const result = await plugin.startMonitoring({ emitInitial: true });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(result.enabled).toBe(true);
+  });
+
   it("still delivers exactly the two initial signals on the normal path", async () => {
     setNavigator({
       userAgent: "Mozilla/5.0",
