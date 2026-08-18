@@ -69,7 +69,14 @@ app.put("/", async (c) => {
       );
     }
 
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not the outer catch → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const validation = ShareSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
