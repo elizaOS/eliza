@@ -7,11 +7,15 @@
  * staging-session binding module names dbRead at module scope).
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "crypto";
 import { SignJWT } from "jose";
 
 const SECRET = "steward-client-test-secret-0123456789abcdef";
 const ENV = { STEWARD_JWT_SECRET: SECRET };
+const memoryCache = new Map<string, unknown>();
+let distributedCacheValue: unknown = null;
+let tokenSequence = 0;
 
 mock.module("../../db/helpers", () => ({
   dbRead: {},
@@ -23,9 +27,26 @@ mock.module("../../db/helpers", () => ({
 
 mock.module("../cache/client", () => ({
   cache: {
-    get: async () => null,
+    get: async () => distributedCacheValue,
     set: async () => undefined,
     del: async () => undefined,
+  },
+}));
+
+mock.module("../cache/in-memory-lru-cache", () => ({
+  InMemoryLRUCache: class {
+    get(key: string) {
+      return memoryCache.get(key) ?? null;
+    }
+    set(key: string, value: unknown) {
+      memoryCache.set(key, value);
+    }
+    delete(key: string) {
+      memoryCache.delete(key);
+    }
+    clear() {
+      memoryCache.clear();
+    }
   },
 }));
 
@@ -42,9 +63,14 @@ function secretKey(): Uint8Array {
 }
 
 async function mint(claims: Record<string, unknown> = {}): Promise<string> {
-  return await new SignJWT({ sub: "steward-user-1", ...claims })
+  tokenSequence += 1;
+  return await new SignJWT({
+    sub: "steward-user-1",
+    jti: `test-${tokenSequence}`,
+    iat: Math.floor(Date.now() / 1000),
+    ...claims,
+  })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-    .setIssuedAt()
     .sign(secretKey());
 }
 
@@ -53,6 +79,16 @@ async function verify(token: string) {
 }
 
 describe("verifyStewardTokenCached — token lifecycle claims", () => {
+  beforeEach(() => {
+    memoryCache.clear();
+    distributedCacheValue = null;
+  });
+
+  afterEach(() => {
+    memoryCache.clear();
+    distributedCacheValue = null;
+  });
+
   test("accepts a token minted at the standard Steward access-token TTL", async () => {
     const minted = await mintStewardTokenFromClaims(ENV, {
       userId: "steward-user-standard",
@@ -82,23 +118,130 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     expect(await verify(token)).toBeNull();
   });
 
-  test("accepts a token just inside the issuer clock-skew allowance", async () => {
-    const expiresAt = Math.floor(Date.now() / 1000) + STEWARD_ACCESS_TOKEN_TTL_SECONDS + 240;
+  test("accepts a one-hour token whose issuer clock is just ahead", async () => {
+    const issuedAt = Math.floor(Date.now() / 1000) + 240;
     const token = await new SignJWT({ sub: "steward-user-skew" })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt()
-      .setExpirationTime(expiresAt)
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + STEWARD_ACCESS_TOKEN_TTL_SECONDS)
       .sign(secretKey());
     const claims = await verify(token);
     expect(claims?.userId).toBe("steward-user-skew");
+  });
+
+  test("rejects a 24-hour token presented during its final hour", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new SignJWT({ sub: "steward-user-old-longttl" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuedAt(now - 23 * 60 * 60)
+      .setExpirationTime(now + 60 * 60)
+      .sign(secretKey());
+    expect(await verify(token)).toBeNull();
+  });
+
+  test("rejects a token with exp but no iat", async () => {
+    const token = await new SignJWT({ sub: "steward-user-noiat" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setExpirationTime("5m")
+      .sign(secretKey());
+    expect(await verify(token)).toBeNull();
+  });
+
+  test("rejects inverted, fractional, and too-far-future NumericDates", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const invalidClaims = [
+      { iat: now, exp: now },
+      { iat: now + 0.5, exp: now + 60 },
+      { iat: now, exp: now + 60.5 },
+      { iat: now + 301, exp: now + 601 },
+      { iat: now, exp: now + 60, nbf: now + 61 },
+    ];
+    for (const claims of invalidClaims) {
+      const token = await mint(claims);
+      expect(await verify(token)).toBeNull();
+    }
+  });
+
+  test("requires the ordinary Steward JWT token class and sub claim", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const wrongType = await new SignJWT({ sub: "steward-user", iat: now, exp: now + 60 })
+      .setProtectedHeader({ alg: "HS256", typ: "not-a-steward-session" })
+      .sign(secretKey());
+    const userIdOnly = await new SignJWT({ userId: "legacy-user", iat: now, exp: now + 60 })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .sign(secretKey());
+    expect(await verify(wrongType)).toBeNull();
+    expect(await verify(userIdOnly)).toBeNull();
+  });
+
+  test("revalidates lifetime on distributed cache hits", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const signingKeyFingerprint = createHash("sha256")
+      .update(secretKey())
+      .digest("hex")
+      .substring(0, 16);
+    distributedCacheValue = {
+      userId: "cached-user",
+      tenantId: "expected-tenant",
+      issuedAt: now - 23 * 60 * 60,
+      expiration: now + 60 * 60,
+      cachedAt: Date.now(),
+      signingKeyFingerprint,
+    };
+    const token = await mint({ tenantId: "expected-tenant", exp: now + 60 });
+    expect(
+      await verifyStewardTokenCached({ ...ENV, STEWARD_TENANT_ID: "expected-tenant" }, token),
+    ).toBeNull();
+  });
+
+  test("revalidates tenant policy on distributed cache hits", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const signingKeyFingerprint = createHash("sha256")
+      .update(secretKey())
+      .digest("hex")
+      .substring(0, 16);
+    distributedCacheValue = {
+      userId: "cached-user",
+      tenantId: "wrong-tenant",
+      issuedAt: now,
+      expiration: now + 60,
+      cachedAt: Date.now(),
+      signingKeyFingerprint,
+    };
+    const token = await mint({ tenantId: "expected-tenant", exp: now + 60 });
+    expect(
+      await verifyStewardTokenCached({ ...ENV, STEWARD_TENANT_ID: "expected-tenant" }, token),
+    ).toBeNull();
+  });
+
+  test("revalidates lifecycle on an in-memory cache hit", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await mint({ iat: now, exp: now + 60 });
+    expect(await verify(token)).not.toBeNull();
+    const cached = [...memoryCache.values()][0] as { issuedAt: number; expiration: number };
+    cached.issuedAt = now - 23 * 60 * 60;
+    cached.expiration = now + 60 * 60;
+    expect(await verify(token)).toBeNull();
+  });
+
+  test("does not reuse a verification memo after signing-key rotation", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await mint({ iat: now, exp: now + 60 });
+    expect(await verify(token)).not.toBeNull();
+    expect(
+      await verifyStewardTokenCached(
+        { STEWARD_JWT_SECRET: "rotated-steward-secret-0123456789abcdef" },
+        token,
+      ),
+    ).toBeNull();
   });
 
   test("rejects an already-expired token", async () => {
     const now = Math.floor(Date.now() / 1000);
     const token = await new SignJWT({ sub: "steward-user-expired" })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt(now - 120)
-      .setExpirationTime(now - 60)
+      .setIssuedAt(now - 420)
+      .setExpirationTime(now - 301)
       .sign(secretKey());
     expect(await verify(token)).toBeNull();
   });
