@@ -29,6 +29,7 @@ import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
+  parseCanonicalInteger,
   parsePositiveInteger,
 } from "@elizaos/shared";
 import {
@@ -574,14 +575,15 @@ export async function handleMemoryRoutes(
       MEMORY_FEED_DEFAULT_LIMIT,
     );
     const limit = Math.min(Math.max(requestedLimit, 1), MEMORY_FEED_MAX_LIMIT);
-    const beforeParam = url.searchParams.get("before");
-    const before = beforeParam ? Number(beforeParam) : undefined;
-    // Number("abc") is NaN, which is a `number` and so survives the
-    // `beforeTs !== undefined` cursor gate below — but every `< NaN`
-    // comparison is false, so a malformed cursor would silently empty the
-    // feed with a 200. Reject it here instead, mirroring the `type` guard.
-    if (before !== undefined && !Number.isFinite(before)) {
-      error(res, "before must be a finite Unix timestamp in milliseconds", 400);
+    // A cursor is a createdAt millisecond timestamp, so only its canonical
+    // decimal form is a valid value. Bare Number() coercion admitted
+    // whitespace (" " -> 0, silently emptying the feed as an epoch cursor)
+    // and hex/exponent forms; parseCanonicalInteger distinguishes an absent
+    // cursor (undefined) from junk ("invalid"), which 400s like the `type`
+    // guard below.
+    const before = parseCanonicalInteger(url.searchParams.get("before"));
+    if (before === "invalid") {
+      error(res, "before must be a Unix timestamp in milliseconds", 400);
       return true;
     }
     const tableFilter = parseMemoryTableFilter(url.searchParams.get("type"));
