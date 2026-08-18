@@ -3,6 +3,7 @@
  * length limit, escaping Discord markdown, and extracting user mentions from
  * message content.
  */
+import { truncateWellFormed } from "@elizaos/core";
 import type { Guild, MessageReaction } from "discord.js";
 
 /**
@@ -86,12 +87,17 @@ function splitLongLine(
 
 	while (remaining.length > limit) {
 		if (opts.preserveWhitespace) {
-			out.push(remaining.slice(0, limit));
-			remaining = remaining.slice(limit);
+			// A plain `.slice(0, limit)` can land inside a surrogate pair (e.g. an
+			// emoji), splitting one character across two chunks as a lone high
+			// surrogate + lone low surrogate. truncateWellFormed backs the cut off
+			// by one unit instead.
+			const chunk = truncateWellFormed(remaining, limit);
+			out.push(chunk);
+			remaining = remaining.slice(chunk.length);
 			continue;
 		}
 
-		const window = remaining.slice(0, limit);
+		const window = truncateWellFormed(remaining, limit);
 		let breakIdx = -1;
 		for (let i = window.length - 1; i >= 0; i--) {
 			if (/\s/.test(window[i])) {
@@ -101,7 +107,7 @@ function splitLongLine(
 		}
 
 		if (breakIdx <= 0) {
-			breakIdx = limit;
+			breakIdx = window.length;
 		}
 
 		out.push(remaining.slice(0, breakIdx));
