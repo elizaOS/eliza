@@ -40,6 +40,7 @@ import {
   parseArgs,
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
+  recordMissingRuntimeDependency,
   recursiveRemoveErrorDetail,
   selectCopyTargetNodeModules,
   selectResolvedCandidate,
@@ -57,6 +58,27 @@ import {
 } from "./runtime-package-manifest";
 
 let tmpDir: string;
+
+describe("recordMissingRuntimeDependency", () => {
+  it("routes missing hard and optional queue entries to distinct result sets", () => {
+    const required = new Set<string>();
+    const optional = new Set<string>();
+
+    recordMissingRuntimeDependency(
+      { name: "hard-dependency", required: true },
+      required,
+      optional,
+    );
+    recordMissingRuntimeDependency(
+      { name: "optional-peer", required: false },
+      required,
+      optional,
+    );
+
+    expect([...required]).toEqual(["hard-dependency"]);
+    expect([...optional]).toEqual(["optional-peer"]);
+  });
+});
 
 function writeManifest(
   name: string,

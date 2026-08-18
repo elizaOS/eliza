@@ -10,9 +10,11 @@ export function normalizeContinuousChatMode(
 export function resolveContinuousChatMode(
   stored: string | null,
   search = "",
+  trustedApplianceHost = false,
 ): ContinuousChatModeValue {
   if (stored !== null) return normalizeContinuousChatMode(stored);
-  return new URLSearchParams(search).get("elizaOSAlwaysOnVoice") === "1"
+  return trustedApplianceHost &&
+    new URLSearchParams(search).get("elizaOSAlwaysOnVoice") === "1"
     ? "always-on"
     : "off";
 }

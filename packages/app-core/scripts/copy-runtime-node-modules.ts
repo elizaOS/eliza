@@ -42,6 +42,14 @@ type QueueEntry = DependencyEntry & {
   requesterDestDir: string;
 };
 
+export function recordMissingRuntimeDependency(
+  entry: Pick<DependencyEntry, "name" | "required">,
+  missingRequired: Set<string>,
+  missingOptional: Set<string>,
+): void {
+  (entry.required ? missingRequired : missingOptional).add(entry.name);
+}
+
 export type ResolvedPackage = {
   packageJsonPath: string;
   sourceDir: string;
@@ -2610,7 +2618,7 @@ function main(): void {
       const request = queue.shift();
       if (!request) continue;
 
-      const { name, spec, optional, requesterDir, requesterDestDir } = request;
+      const { name, spec, required, requesterDir, requesterDestDir } = request;
       if (
         !name ||
         DEP_SKIP.has(name) ||
@@ -2621,7 +2629,11 @@ function main(): void {
 
       const resolved = resolvePackage(name, spec, requesterDir);
       if (!resolved) {
-        (optional ? missingOptional : missingRequired).add(name);
+        recordMissingRuntimeDependency(
+          { name, required },
+          missingRequired,
+          missingOptional,
+        );
         continue;
       }
 
@@ -2663,7 +2675,7 @@ function main(): void {
       // before copying them; otherwise a clean desktop checkout can package
       // source-only exports (for example plugin-wallet/diagnostic) and crash
       // the embedded agent at boot.
-      ensureWorkspaceRuntimeEntriesBuilt([name]);
+      ensureWorkspaceRuntimeEntriesBuilt([name], builtWorkspaceRuntimeEntries);
 
       if (
         !copyPackageDir(
@@ -2673,7 +2685,11 @@ function main(): void {
           targetDist,
         )
       ) {
-        (optional ? missingOptional : missingRequired).add(name);
+        recordMissingRuntimeDependency(
+          { name, required },
+          missingRequired,
+          missingOptional,
+        );
         continue;
       }
 
