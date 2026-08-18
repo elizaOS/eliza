@@ -1,46 +1,36 @@
 /**
  * SSE response transformation.
  *
- * Tail-buffer reverseMap to handle patterns split across TCP chunk boundaries.
- * Without this, "ocplatform" can split as "ocp"+"latform" and leak through.
- * TAIL_SIZE >= longest reverseMap pattern.
- *
- * The reverse map is applied to the WHOLE accumulated buffer before any bytes
- * leave, then only the mapped output beyond the retained tail is emitted. This
- * matters because a token can straddle the internal tail cut: it starts in the
- * flushable prefix and ends inside the retained tail. Transforming the prefix
- * in isolation would emit its head un-mapped and map its tail separately next
- * round, so the full token would never reverse-map and would leak verbatim
- * (e.g. `"Write"` reaching the framework instead of `"write_file"`). Mapping
- * the whole buffer first resolves any such straddling token before its head is
- * committed.
- *
- * The retained tail is the already-mapped suffix, not raw bytes. reverseFn must
- * be idempotent — its eliza-side output tokens (snake_case tool names, identity
- * replacements) do not re-trigger the quoted-PascalCase reverse keys — so a
- * settled tail is never double-transformed on the next round, while an
- * incomplete key at a real chunk boundary (kept literal because it did not
- * match) still completes and maps once its continuation arrives. TAIL_SIZE >=
- * longest quoted/escaped reverse key guarantees such an incomplete key is
- * always fully within the retained tail.
+ * Buffers complete SSE events before applying the reverse map. An SSE consumer
+ * cannot dispatch an event before its blank-line terminator, so this preserves
+ * streaming behavior while ensuring every event is transformed exactly once.
+ * It also allows custom dictionaries to contain length-changing, non-idempotent,
+ * or longer-than-fixed-tail replacements without leaking or double-mapping
+ * tokens split across TCP chunks.
  *
  * Also uses StringDecoder to buffer partial UTF-8 sequences across TCP
  * chunks. chunk.toString() would emit U+FFFD whenever a multi-byte char
  * (中文, emoji, etc.) lands on a chunk boundary.
  *
- * Defends against splitting a UTF-16 surrogate pair (4-byte UTF-8 chars like
- * emoji).
+ * Event boundaries accept CRLF, LF, and CR line endings as required by the SSE
+ * wire format. A replacement spanning separate SSE events is intentionally not
+ * supported because events are independent protocol messages.
  */
 
 import { StringDecoder } from "node:string_decoder";
-
-const SSE_TAIL_SIZE = 64;
 
 export type ReverseFn = (text: string) => string;
 
 export interface SseStream {
   write: (chunk: Buffer) => void;
   end: () => void;
+}
+
+function firstCompletedEventEnd(text: string): number {
+  // Spell out the pairs so one CRLF line ending cannot backtrack into a
+  // separate CR + LF blank line.
+  const match = /\r\n(?:\r\n|\r|\n)|\n(?:\r\n|\r|\n)|\r\r/.exec(text);
+  return match ? match.index + match[0].length : 0;
 }
 
 export function createSseStream(
@@ -54,19 +44,11 @@ export function createSseStream(
   return {
     write(chunk: Buffer): void {
       pending += decoder.write(chunk);
-      // Map the whole buffer so a token straddling the internal tail cut is
-      // resolved before its head is emitted; retain the mapped tail (not raw)
-      // for the next round.
-      const mapped = reverseFn(pending);
-      if (mapped.length > SSE_TAIL_SIZE) {
-        let sliceIdx = mapped.length - SSE_TAIL_SIZE;
-        // Don't cut between a UTF-16 surrogate pair
-        const prev = mapped.charCodeAt(sliceIdx - 1);
-        if (prev >= 0xd800 && prev <= 0xdbff) sliceIdx -= 1;
-        emit(mapped.slice(0, sliceIdx));
-        pending = mapped.slice(sliceIdx);
-      } else {
-        pending = mapped;
+      for (let eventEnd = firstCompletedEventEnd(pending); eventEnd > 0; ) {
+        const completeEvent = pending.slice(0, eventEnd);
+        pending = pending.slice(eventEnd);
+        emit(reverseFn(completeEvent));
+        eventEnd = firstCompletedEventEnd(pending);
       }
     },
     end(): void {
