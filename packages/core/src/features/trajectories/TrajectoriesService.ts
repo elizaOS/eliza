@@ -1041,7 +1041,7 @@ export class TrajectoriesService extends Service {
 	private stepToTrajectory: Map<string, string> = new Map();
 	private writeQueues: Map<string, Promise<void>> = new Map();
 	private inflightOperations: Set<Promise<unknown>> = new Set();
-	private closedStepIds: Map<string, true> = new Map();
+	private closedStepIds: Map<string, number> = new Map();
 
 	private acceptsNewCapture(): boolean {
 		return this.enabled && !this.stopping;
@@ -1049,12 +1049,42 @@ export class TrajectoriesService extends Service {
 
 	private rememberClosedStep(stepId: string): void {
 		this.closedStepIds.delete(stepId);
-		this.closedStepIds.set(stepId, true);
+		this.closedStepIds.set(stepId, Date.now());
 		while (this.closedStepIds.size > 10_000) {
 			const oldest = this.closedStepIds.keys().next().value;
 			if (typeof oldest !== "string") break;
 			this.closedStepIds.delete(oldest);
 		}
+	}
+
+	/** Accept a capture that arrived shortly after terminalization instead of
+	 *  dropping it. The async step-resolution branch of logLlmCall/logProviderCall
+	 *  takes the write lock only after resolving its trajectory id, so a turn
+	 *  ending right after its last planner leg raced that write and the stored
+	 *  trajectory lost exactly the tool-call legs it exists to show (live all
+	 *  week). Appending within a bounded grace window records the leg without
+	 *  touching finalStatus/endTime; genuinely stale writes (crash leftovers,
+	 *  replays) still reject past the window. */
+	private static readonly LATE_CAPTURE_GRACE_MS = 30_000;
+
+	/** Entry-gate twin of {@link withinLateCaptureGrace}: a step closed at
+	 *  terminalization still admits captures for the same grace window. */
+	private stepClosedBeyondGrace(stepId: string): boolean {
+		const closedAt = this.closedStepIds.get(stepId);
+		return (
+			closedAt !== undefined &&
+			Date.now() - closedAt > TrajectoriesService.LATE_CAPTURE_GRACE_MS
+		);
+	}
+
+	private withinLateCaptureGrace(trajectory: {
+		endTime?: number;
+	}): boolean {
+		return (
+			typeof trajectory.endTime === "number" &&
+			Date.now() - trajectory.endTime <=
+				TrajectoriesService.LATE_CAPTURE_GRACE_MS
+		);
 	}
 
 	private reportLateCapture(
@@ -1905,7 +1935,7 @@ export class TrajectoriesService extends Service {
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (!this.acceptsNewCapture()) return;
 		if (isEmbeddingLlmCall(params)) return;
-		if (this.closedStepIds.has(params.stepId)) {
+		if (this.stepClosedBeyondGrace(params.stepId)) {
 			this.reportLateCapture(params.stepId, "llm");
 			return;
 		}
@@ -1989,7 +2019,10 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
-			if (trajectory.metrics.finalStatus !== "active") {
+			if (
+				trajectory.metrics.finalStatus !== "active" &&
+				!this.withinLateCaptureGrace(trajectory)
+			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
 				this.reportLateCapture(params.stepId, "llm");
@@ -2219,7 +2252,7 @@ export class TrajectoriesService extends Service {
 						query: arg2?.query,
 					}
 				: arg1;
-		if (this.closedStepIds.has(params.stepId)) {
+		if (this.stepClosedBeyondGrace(params.stepId)) {
 			this.reportLateCapture(params.stepId, "provider");
 			return;
 		}
@@ -2291,7 +2324,10 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
-			if (trajectory.metrics.finalStatus !== "active") {
+			if (
+				trajectory.metrics.finalStatus !== "active" &&
+				!this.withinLateCaptureGrace(trajectory)
+			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
 				this.reportLateCapture(params.stepId, "provider");
