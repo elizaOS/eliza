@@ -80,6 +80,7 @@ import {
 } from "../../os-intent/host";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
+  getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   shouldInstallStandaloneBottomReclaim,
@@ -2687,10 +2688,7 @@ export function ChatOverlay({
       );
       let screenKeyboard = 0;
       if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {
-        const screenHeight =
-          typeof window.screen?.height === "number" && window.screen.height > 0
-            ? window.screen.height
-            : 0;
+        const screenHeight = getPhysicalScreenVerticalExtent();
         const insetFromScreen =
           screenHeight > 0
             ? Math.max(0, screenHeight - vv.height - vv.offsetTop)
@@ -5460,7 +5458,7 @@ export function ChatOverlay({
     <motion.div
       ref={overlayRef}
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col",
+        "pointer-events-none fixed inset-x-0 bottom-0 isolate flex w-full min-w-0 flex-col",
         // Resting on a landscape phone, the compact composer hugs the trailing
         // (inline-end) bottom corner — the conventional compose slot views leave
         // free — instead of centering a wide band over their controls (#14173).
@@ -5699,9 +5697,12 @@ export function ChatOverlay({
         >
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
               corner radius. Crossfades in by openProgress (compositor opacity).
-              On the native tier the fill + blur drop and the OS material shows
-              through from below the WebView; border, bevel, and sheen stay —
-              they are the branded edge on every tier (GlassSurface contract). */}
+              An open native-tier conversation keeps an opaque DOM fill above
+              the OS material. Native glass used to replace that fill with
+              transparency, which allowed launcher/view controls to remain
+              visibly legible through the chat on iPad. The overlay already owns
+              the shell's highest application layer; the opaque fill makes that
+              paint-order contract visually true as well. */}
           <motion.div
             ref={glassSurfaceRef}
             aria-hidden="true"
@@ -5726,9 +5727,10 @@ export function ChatOverlay({
               // the orange app theme behind. Full-bleed stays fully opaque (it
               // covers the whole screen — there is nothing to see through, and
               // the blur would be wasted battery).
-              backgroundColor:
-                firstRunOpen || nativeInsetSheet
-                  ? "transparent"
+              backgroundColor: firstRunOpen
+                ? "transparent"
+                : nativeInsetSheet
+                  ? "var(--bg)"
                   : surfaceBackgroundColor,
               backdropFilter: cssSheetBackdropActive
                 ? GLASS_SHEET_BACKDROP_FILTER
