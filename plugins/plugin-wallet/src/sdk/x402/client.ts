@@ -39,6 +39,8 @@ import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
  * 4. Executes USDC payment via AgentWallet contract
  * 5. Retries original request with payment proof
  */
+export const DEFAULT_X402_FETCH_TIMEOUT_MS = 10_000;
+
 export class X402Client {
   private wallet: AgentWallet;
   private config: X402ClientConfig;
@@ -62,7 +64,11 @@ export class X402Client {
    */
   async fetch(url: string | URL, init?: RequestInit): Promise<Response> {
     const urlStr = url.toString();
-    const response = await globalThis.fetch(url, init);
+    const timeoutSignal = AbortSignal.timeout(DEFAULT_X402_FETCH_TIMEOUT_MS);
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
+    const response = await globalThis.fetch(url, { ...init, signal });
 
     if (response.status !== 402) {
       return response;
@@ -139,8 +145,13 @@ export class X402Client {
     const payloadB64 = btoa(JSON.stringify(paymentPayload));
     retryHeaders.set("X-PAYMENT", payloadB64);
 
+    const retryTimeout = AbortSignal.timeout(DEFAULT_X402_FETCH_TIMEOUT_MS);
+    const retrySignal = init?.signal
+      ? AbortSignal.any([init.signal, retryTimeout])
+      : retryTimeout;
     const retryResponse = await globalThis.fetch(url, {
       ...init,
+      signal: retrySignal,
       headers: retryHeaders,
     });
 
