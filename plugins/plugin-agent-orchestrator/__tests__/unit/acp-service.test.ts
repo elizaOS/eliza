@@ -11,6 +11,7 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
+import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -37,6 +38,7 @@ type NativeOptions = {
   timeoutMs?: number;
   terminal?: boolean;
   env?: NodeJS.ProcessEnv;
+  mcpServers?: unknown[];
   onEvent?: NativeEventHandler;
   onStderr?: (chunk: string) => void;
 };
@@ -52,6 +54,7 @@ type MockNativeClient = {
   approvesPermissionRequest: ReturnType<typeof vi.fn>;
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
+  configureClaimedSession: (opts: NativeOptions) => void;
   emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
 };
 type NativeMockState = {
@@ -84,7 +87,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
     start = vi.fn(async () => {
       await getNativeMockState().startImplementation?.(this);
     });
-    createSession = vi.fn(async (workdir: string) =>
+    createSession = vi.fn(async (workdir: string, _claim?: unknown) =>
       getNativeMockState().createSessionImplementation
         ? await getNativeMockState().createSessionImplementation(this, workdir)
         : {
@@ -114,6 +117,11 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 
     setTimeoutMs(timeoutMs: number | undefined) {
       this.opts.timeoutMs = timeoutMs;
+    }
+
+    configureClaimedSession(opts: NativeOptions) {
+      this.opts = { ...this.opts, ...opts };
+      this.eventHandler = opts.onEvent;
     }
 
     emit(event: AcpJsonRpcMessage, sessionId?: string) {
@@ -306,6 +314,17 @@ async function waitForSessionStatus(
   const session = await service.getSession(sessionId);
   throw new Error(
     `expected session ${sessionId} to reach ${status}, got ${session?.status}`,
+  );
+}
+
+async function waitForNativeClients(count: number): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    if (nativeClientMock.instances.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(
+    `expected ${count} native clients, got ${nativeClientMock.instances.length}`,
   );
 }
 
@@ -761,6 +780,77 @@ describe("AcpService", () => {
     expect(
       nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
     ).toBe(spawned.sessionId);
+  });
+
+  it("single-claims warm elizaos children without credentials at process spawn", async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "host-credential-must-not-reach-warm-child";
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_ACP_DEFAULT_AGENT: "elizaos",
+        ELIZA_ACP_WARM_SPAWN: "1",
+      }),
+    );
+    try {
+      await service.start();
+      await waitForNativeClients(1);
+      const firstWarm = nativeClientMock.instances[0];
+      const firstToken = firstWarm?.opts.env?.ELIZA_ACP_WARM_CLAIM_TOKEN;
+      expect(firstToken).toMatch(/^[a-f0-9]{64}$/);
+      expect(firstWarm?.opts.env?.OPENAI_API_KEY).toBeUndefined();
+      expect(firstWarm?.opts.env?.ORCHESTRATOR_SESSION_ID).toBeUndefined();
+
+      const first = await service.spawnSession({
+        name: "warm-a",
+        agentType: "elizaos",
+        workdir: "/tmp/acp-test",
+        env: {
+          OPENAI_API_KEY: "lease-a",
+          ELIZA_ACP_WARM_CLAIM_TOKEN: "caller-injected-token",
+          PATH: "/caller-controlled/bin",
+        },
+      });
+      expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
+      expect(firstWarm?.createSession).toHaveBeenCalledWith(
+        RESOLVED_ACP_WORKDIR,
+        expect.objectContaining({
+          token: firstToken,
+          env: expect.objectContaining({
+            ORCHESTRATOR_SESSION_ID: first.sessionId,
+            OPENAI_API_KEY: "lease-a",
+          }),
+        }),
+      );
+      const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
+      expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
+      expect(firstClaim?.env?.PATH).toBeUndefined();
+      expect(
+        firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
+      ).toBeUndefined();
+      expect(firstClaim?.executionPath).toBe(getHostExecutionBaseline().path);
+
+      await waitForNativeClients(2);
+      const secondWarm = nativeClientMock.instances[1];
+      await service.spawnSession({
+        name: "warm-b",
+        agentType: "elizaos",
+        workdir: "/tmp/acp-test",
+        env: { OPENAI_API_KEY: "lease-b" },
+      });
+      expect(secondWarm).not.toBe(firstWarm);
+      expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
+      expect(secondWarm?.createSession).toHaveBeenCalledWith(
+        RESOLVED_ACP_WORKDIR,
+        expect.objectContaining({
+          env: expect.objectContaining({ OPENAI_API_KEY: "lease-b" }),
+        }),
+      );
+    } finally {
+      await service.stop();
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
+    }
   });
 
   it("pins the default coding git identity over inherited GIT env on native spawns", async () => {

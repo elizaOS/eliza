@@ -89,6 +89,13 @@ export type NativeAcpSession = {
   agentSessionId?: string;
 };
 
+/** Single-use bootstrap material for a session-less warm ACP child. */
+export type NativeAcpSessionClaim = {
+  token: string;
+  env: Record<string, string>;
+  executionPath: string;
+};
+
 export type NativeAcpPromptResult = {
   stopReason: string;
 };
@@ -156,6 +163,24 @@ export class NativeAcpClient {
     this.opts.timeoutMs = timeoutMs;
   }
 
+  configureClaimedSession(opts: {
+    cwd: string;
+    approvalPreset: ApprovalPreset;
+    env: NodeJS.ProcessEnv;
+    mcpServers?: AcpMcpServerConfig[];
+    timeoutMs?: number;
+    onEvent?: NativeAcpEventCallback;
+    onStderr?: (chunk: string) => void;
+  }): void {
+    this.opts.cwd = opts.cwd;
+    this.opts.approvalPreset = opts.approvalPreset;
+    this.opts.env = opts.env;
+    this.opts.mcpServers = opts.mcpServers;
+    this.opts.timeoutMs = opts.timeoutMs;
+    this.opts.onEvent = opts.onEvent;
+    this.opts.onStderr = opts.onStderr;
+  }
+
   async start(): Promise<void> {
     if (this.proc) return;
     const { command, args } = splitCommandLine(this.opts.command);
@@ -213,15 +238,43 @@ export class NativeAcpClient {
     );
   }
 
-  async createSession(cwd = this.opts.cwd): Promise<NativeAcpSession> {
+  async createSession(
+    cwd = this.opts.cwd,
+    claim?: NativeAcpSessionClaim,
+  ): Promise<NativeAcpSession> {
+    const params = {
+      cwd,
+      ...(claim
+        ? {
+            _meta: {
+              elizaSessionClaim: claim,
+            },
+          }
+        : {}),
+      // Forward the parent's MCP servers so the sub-agent has the same tools
+      // (Codex / Claude-Code parity). Opt-in via ELIZA_ACP_MCP_SERVERS;
+      // defaults to [] (prior behavior) so spawning never regresses.
+      mcpServers: this.opts.mcpServers ?? parseAcpMcpServersEnv(),
+    };
     const result = asRecord(
-      await this.request("session/new", {
-        cwd,
-        // Forward the parent's MCP servers so the sub-agent has the same tools
-        // (Codex / Claude-Code parity). Opt-in via ELIZA_ACP_MCP_SERVERS;
-        // defaults to [] (prior behavior) so spawning never regresses.
-        mcpServers: this.opts.mcpServers ?? parseAcpMcpServersEnv(),
-      }),
+      await this.request(
+        "session/new",
+        params,
+        DEFAULT_TIMEOUT_MS,
+        undefined,
+        claim
+          ? {
+              ...params,
+              _meta: {
+                elizaSessionClaim: {
+                  token: "[REDACTED]",
+                  envKeys: Object.keys(claim.env).sort(),
+                  executionPath: "[REDACTED]",
+                },
+              },
+            }
+          : params,
+      ),
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
@@ -309,12 +362,13 @@ export class NativeAcpClient {
     params: unknown,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     onTimeout?: () => void,
+    emittedParams: unknown = params,
   ): Promise<unknown> {
     if (this.closed) throw new Error("ACP client is closed");
     const id = this.nextId++;
     const proc = this.requireProcess();
     const payload = { jsonrpc: "2.0", id, method, params };
-    this.emitEvent(payload as AcpJsonRpcMessage);
+    this.emitEvent({ ...payload, params: emittedParams } as AcpJsonRpcMessage);
     proc.stdin.write(`${JSON.stringify(payload)}\n`);
     return new Promise((resolve, reject) => {
       const timer =
