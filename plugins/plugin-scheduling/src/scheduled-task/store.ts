@@ -354,6 +354,107 @@ export function createSchedulingSqlScheduledTaskStore(
       if (!row) return { kind: "raced" };
       return { kind: "fired", task: parseScheduledTaskRow(row) };
     },
+    async commitApply({ task, receiptKey, commit, nextFireAtIso }) {
+      const now = isoNow();
+      const nextFireAtSql =
+        nextFireAtIso === null || nextFireAtIso.length === 0
+          ? "NULL"
+          : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+      // PostgreSQL re-evaluates this expression against the current row after
+      // a concurrent updater releases its lock. The proposed metadata remains
+      // authoritative for lifecycle changes, while the receipt map is merged
+      // from that current row so distinct committed keys cannot erase one
+      // another.
+      const mergedMetadataSql = `jsonb_set(
+        ${sqlJson(task.metadata ?? {})}::jsonb,
+        '{schedulingApplyReceipts}',
+        COALESCE(
+          metadata_json::jsonb -> 'schedulingApplyReceipts',
+          '{}'::jsonb
+        ) || jsonb_build_object(${sqlQuote(receiptKey)}, TRUE),
+        true
+      )::text`;
+      const rows = await executeSql(
+        `WITH updated_task AS (
+          UPDATE ${TASK_TABLE}
+             SET state_json = ${sqlJson(task.state)},
+                 metadata_json = ${mergedMetadataSql},
+                 next_fire_at = ${nextFireAtSql},
+                 updated_at = ${sqlQuote(now)},
+                 version = version + 1
+           WHERE agent_id = ${sqlQuote(agentId)}
+             AND id = ${sqlQuote(task.taskId)}
+             AND transfer_status IS NULL
+             AND NOT (
+               COALESCE(
+                 metadata_json::jsonb -> 'schedulingApplyReceipts',
+                 '{}'::jsonb
+               ) ? ${sqlQuote(receiptKey)}
+             )
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM ${LOG_TABLE}
+                WHERE id = ${sqlQuote(commit.logId)}
+             )
+          RETURNING *
+        ), inserted_log AS (
+          INSERT INTO ${LOG_TABLE} (
+            id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+          )
+          SELECT
+            ${sqlQuote(commit.logId)},
+            ${sqlQuote(commit.agentId)},
+            ${sqlQuote(commit.taskId)},
+            ${sqlQuote(commit.occurredAtIso)},
+            ${sqlQuote(commit.transition)},
+            ${sqlText(commit.reason ?? null)},
+            ${sqlBoolean(false)},
+            ${sqlText(commit.detail ? JSON.stringify(commit.detail) : null)}
+          FROM updated_task
+          RETURNING *
+        )
+        SELECT to_jsonb(updated_task) AS task_row,
+               to_jsonb(inserted_log) AS log_row
+          FROM updated_task
+          JOIN inserted_log ON TRUE`,
+      );
+      const applied = rows[0];
+      if (applied) {
+        return {
+          kind: "applied",
+          task: parseScheduledTaskRow(parseJsonRecord(applied.task_row)),
+          commit: parseScheduledTaskLogRow(parseJsonRecord(applied.log_row)),
+        };
+      }
+
+      const replayRows = await executeSql(
+        `SELECT to_jsonb(task_row) AS task_row,
+                to_jsonb(log_row) AS log_row
+           FROM ${TASK_TABLE} AS task_row
+           JOIN ${LOG_TABLE} AS log_row
+             ON log_row.id = ${sqlQuote(commit.logId)}
+            AND log_row.agent_id = task_row.agent_id
+            AND log_row.task_id = task_row.id
+          WHERE task_row.agent_id = ${sqlQuote(agentId)}
+            AND task_row.id = ${sqlQuote(task.taskId)}
+            AND COALESCE(
+              task_row.metadata_json::jsonb -> 'schedulingApplyReceipts',
+              '{}'::jsonb
+            ) ? ${sqlQuote(receiptKey)}
+          LIMIT 1`,
+      );
+      const replayRow = replayRows[0];
+      if (replayRow) {
+        return {
+          kind: "replayed",
+          task: parseScheduledTaskRow(parseJsonRecord(replayRow.task_row)),
+          commit: parseScheduledTaskLogRow(parseJsonRecord(replayRow.log_row)),
+        };
+      }
+      throw new Error(
+        `commitApply: task ${task.taskId} could not commit receipt ${receiptKey}`,
+      );
+    },
     async get(taskId: string) {
       const rows = await executeSql(
         `SELECT *
@@ -480,6 +581,9 @@ export function createSchedulingSqlScheduledTaskLogStore(
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
+            AND NOT (
+              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
+            )
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
@@ -515,6 +619,9 @@ export function createSchedulingSqlScheduledTaskLogStore(
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
+            AND NOT (
+              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
+            )
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       let counter = 0;

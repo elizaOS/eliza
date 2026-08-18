@@ -49,8 +49,10 @@ import {
   type GlobalPauseView,
   type OwnerFactsView,
   type ScheduledTask,
+  type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
   type ScheduledTaskLogEntry,
+  type ScheduledTaskReceiptVerb,
   type ScheduledTaskRef,
   type ScheduledTaskRunner,
   type ScheduledTaskScheduleResult,
@@ -130,6 +132,18 @@ export interface ScheduledTaskClaimExpectation {
   firedAtIso: string | null;
 }
 
+export type ScheduledTaskApplyCommitResult =
+  | {
+      kind: "applied";
+      task: ScheduledTask;
+      commit: ScheduledTaskLogEntry;
+    }
+  | {
+      kind: "replayed";
+      task: ScheduledTask;
+      commit: ScheduledTaskLogEntry;
+    };
+
 export interface ScheduledTaskStore {
   upsert(
     task: ScheduledTask,
@@ -156,6 +170,18 @@ export interface ScheduledTaskStore {
     firedAtIso: string;
     expected?: ScheduledTaskClaimExpectation;
   }): Promise<ScheduledTaskClaimResult>;
+  /**
+   * Persist one receipt-anchored mutation only when this task does not already
+   * carry the same receipt key. The store atomically persists both the task
+   * mutation and its state-log receipt so a user acknowledgement can never be
+   * built from task state alone.
+   */
+  commitApply(args: {
+    task: ScheduledTask;
+    receiptKey: string;
+    commit: ScheduledTaskLogEntry;
+    nextFireAtIso: string | null;
+  }): Promise<ScheduledTaskApplyCommitResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
@@ -164,6 +190,7 @@ export interface ScheduledTaskStore {
 
 export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
   const map = new Map<string, ScheduledTask>();
+  const applyCommits = new Map<string, ScheduledTaskLogEntry>();
   return {
     async upsert(task) {
       map.set(task.taskId, structuredClone(task));
@@ -192,6 +219,50 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       next.state.firedAt = firedAtIso;
       map.set(taskId, next);
       return { kind: "fired", task: structuredClone(next) };
+    },
+    async commitApply({ task, receiptKey, commit }) {
+      const existing = map.get(task.taskId);
+      if (!existing) {
+        throw new Error(`commitApply: task ${task.taskId} not found`);
+      }
+      const storedReceipts = existing.metadata?.schedulingApplyReceipts;
+      const receiptMarkers =
+        storedReceipts !== null &&
+        typeof storedReceipts === "object" &&
+        !Array.isArray(storedReceipts)
+          ? (storedReceipts as Record<string, unknown>)
+          : {};
+      if (Object.hasOwn(receiptMarkers, receiptKey)) {
+        const replayedCommit = applyCommits.get(commit.logId);
+        if (!replayedCommit) {
+          throw new Error(
+            `commitApply: task ${task.taskId} has receipt ${receiptKey} without commit ${commit.logId}`,
+          );
+        }
+        return {
+          kind: "replayed",
+          task: structuredClone(existing),
+          commit: structuredClone(replayedCommit),
+        };
+      }
+      // The caller proposal may predate another distinct-key commit. Its task
+      // mutation remains authoritative, but receipt identity is monotonic and
+      // must merge from the current stored row just like the SQL adapter does.
+      const committedTask = structuredClone(task);
+      committedTask.metadata = {
+        ...(committedTask.metadata ?? {}),
+        schedulingApplyReceipts: {
+          ...receiptMarkers,
+          [receiptKey]: true,
+        },
+      };
+      map.set(task.taskId, committedTask);
+      applyCommits.set(commit.logId, structuredClone(commit));
+      return {
+        kind: "applied",
+        task: structuredClone(committedTask),
+        commit: structuredClone(commit),
+      };
     },
     async get(taskId) {
       const found = map.get(taskId);
@@ -346,6 +417,8 @@ function defaultTaskIdGenerator(): string {
 }
 
 const CREATION_RECEIPT_METADATA_KEY = "schedulingCreationReceipt";
+const APPLY_RECEIPTS_METADATA_KEY = "schedulingApplyReceipts";
+const APPLY_IDEMPOTENCY_KEY_MAX_LENGTH = 512;
 
 interface SchedulingCreationReceiptAnchor {
   logId: string;
@@ -372,14 +445,65 @@ async function creationReceiptLogId(
   agentId: string,
   taskId: string,
 ): Promise<string> {
+  return `stl_create_${await sha256Hex(`${agentId}\0${taskId}`)}`;
+}
+
+async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`${agentId}\0${taskId}`),
+    new TextEncoder().encode(value),
   );
-  const hex = Array.from(new Uint8Array(digest), (byte) =>
+  return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-  return `stl_create_${hex}`;
+}
+
+function normalizeApplyIdempotencyKey(value: string): string {
+  const key = value.trim();
+  if (key.length === 0 || key.length > APPLY_IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new Error(
+      `applyWithResult: idempotencyKey must contain 1-${APPLY_IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
+    );
+  }
+  return key;
+}
+
+async function applyReceiptKey(
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<string> {
+  return sha256Hex(`${verb}\0${idempotencyKey}`);
+}
+
+async function applyReceiptLogId(args: {
+  agentId: string;
+  taskId: string;
+  verb: ScheduledTaskReceiptVerb;
+  idempotencyKey: string;
+}): Promise<string> {
+  return `stl_apply_${await sha256Hex(
+    `${args.agentId}\0${args.taskId}\0${args.verb}\0${args.idempotencyKey}`,
+  )}`;
+}
+
+function writeApplyReceiptMarker(
+  task: ScheduledTask,
+  receiptKey: string,
+): void {
+  const existing = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  const receipts =
+    existing !== null &&
+    typeof existing === "object" &&
+    !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  task.metadata = {
+    ...(task.metadata ?? {}),
+    [APPLY_RECEIPTS_METADATA_KEY]: {
+      ...receipts,
+      [receiptKey]: true,
+    },
+  };
 }
 
 function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
@@ -942,11 +1066,13 @@ export function createScheduledTaskRunner(
       logId: await creationReceiptLogId(deps.agentId, taskId),
       occurredAtIso: now().toISOString(),
     };
+    const inputMetadata = { ...(withApprovalDefaults.metadata ?? {}) };
+    delete inputMetadata[APPLY_RECEIPTS_METADATA_KEY];
     const task: ScheduledTask = {
       taskId,
       ...withApprovalDefaults,
       metadata: {
-        ...(withApprovalDefaults.metadata ?? {}),
+        ...inputMetadata,
         [CREATION_RECEIPT_METADATA_KEY]: creationReceipt,
       },
       state: initialState,
@@ -1083,10 +1209,17 @@ export function createScheduledTaskRunner(
   // Verb dispatch
   // -------------------------------------------------------------------------
 
-  async function applySnooze(
+  interface LifecycleMutation {
+    task: ScheduledTask;
+    transition: "snoozed" | "completed" | "dismissed";
+    reason?: string;
+    detail?: Record<string, unknown>;
+  }
+
+  function mutateSnooze(
     task: ScheduledTask,
     payload: { minutes?: number; untilIso?: string } | undefined,
-  ): Promise<ScheduledTask> {
+  ): LifecycleMutation {
     const minutes = payload?.minutes;
     const untilIso = payload?.untilIso;
     let newFireAtIso: string;
@@ -1097,20 +1230,59 @@ export function createScheduledTaskRunner(
     } else {
       throw new Error("snooze: provide minutes or untilIso");
     }
-    const reopenStatus: ScheduledTask["state"]["status"] = "scheduled";
-    task.state.status = reopenStatus;
+    task.state.status = "scheduled";
     task.state.firedAt = newFireAtIso;
     task.state.lastDecisionLog = `snoozed until ${newFireAtIso} (ladder reset)`;
     setEscalationCursor(task, resetLadderForSnooze(newFireAtIso));
-    // Snooze resets the ladder — any pending dispatch retry/advance
-    // continuation resets with it.
+    // Snooze starts a new occurrence, so no retry from the prior occurrence
+    // may survive into the new ladder.
     clearPendingDispatch(task);
-    await persist(task);
-    await logger.log(task.taskId, "snoozed", {
+    return {
+      task,
+      transition: "snoozed",
       reason: `until ${newFireAtIso}`,
       detail: { newFireAtIso },
+    };
+  }
+
+  function mutateComplete(
+    task: ScheduledTask,
+    payload: { reason?: string } | undefined,
+  ): LifecycleMutation {
+    task.state.status = "completed";
+    task.state.completedAt = now().toISOString();
+    task.state.lastDecisionLog = payload?.reason ?? "completed";
+    return {
+      task,
+      transition: "completed",
+      reason: payload?.reason,
+    };
+  }
+
+  function mutateDismiss(
+    task: ScheduledTask,
+    payload: { reason?: string } | undefined,
+  ): LifecycleMutation {
+    task.state.status = "dismissed";
+    task.state.lastDecisionLog = payload?.reason ?? "dismissed";
+    return {
+      task,
+      transition: "dismissed",
+      reason: payload?.reason,
+    };
+  }
+
+  async function applySnooze(
+    task: ScheduledTask,
+    payload: { minutes?: number; untilIso?: string } | undefined,
+  ): Promise<ScheduledTask> {
+    const mutation = mutateSnooze(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+      detail: mutation.detail,
     });
-    return task;
+    return mutation.task;
   }
 
   async function applySkip(
@@ -1131,27 +1303,26 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
-    task.state.status = "completed";
-    task.state.completedAt = now().toISOString();
-    task.state.lastDecisionLog = payload?.reason ?? "completed";
-    await persist(task);
-    await logger.log(task.taskId, "completed", { reason: payload?.reason });
-    await settleTerminal(task, "completed");
-    return task;
+    const mutation = mutateComplete(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+    });
+    await settleTerminal(mutation.task, "completed");
+    return mutation.task;
   }
 
   async function applyDismiss(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
-    task.state.status = "dismissed";
-    task.state.lastDecisionLog = payload?.reason ?? "dismissed";
-    await persist(task);
-    await logger.log(task.taskId, "dismissed", { reason: payload?.reason });
-    // `pipeline.on*` deliberately does not propagate `dismissed`; `after_task`
-    // children DO cover it (the trigger union records all five outcomes).
-    await fireAfterTaskChildren(task, "dismissed");
-    return task;
+    const mutation = mutateDismiss(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+    });
+    await settleTerminal(mutation.task, "dismissed");
+    return mutation.task;
   }
 
   async function applyEscalate(
@@ -1237,6 +1408,182 @@ export function createScheduledTaskRunner(
     return task;
   }
 
+  function lifecycleMutation(
+    task: ScheduledTask,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+  ): LifecycleMutation {
+    switch (verb) {
+      case "snooze":
+        return mutateSnooze(
+          task,
+          payload as { minutes?: number; untilIso?: string },
+        );
+      case "complete":
+        return mutateComplete(task, payload as { reason?: string });
+      case "dismiss":
+        return mutateDismiss(task, payload as { reason?: string });
+    }
+  }
+
+  function isApplyReceiptMarkerPresent(
+    task: ScheduledTask,
+    receiptKey: string,
+  ): boolean {
+    const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+    return (
+      receipts !== null &&
+      typeof receipts === "object" &&
+      !Array.isArray(receipts) &&
+      Object.hasOwn(receipts, receiptKey)
+    );
+  }
+
+  function transitionForReceiptVerb(
+    verb: ScheduledTaskReceiptVerb,
+  ): LifecycleMutation["transition"] {
+    switch (verb) {
+      case "snooze":
+        return "snoozed";
+      case "complete":
+        return "completed";
+      case "dismiss":
+        return "dismissed";
+    }
+  }
+
+  function sameApplyCommit(
+    left: ScheduledTaskLogEntry,
+    right: ScheduledTaskLogEntry,
+  ): boolean {
+    return (
+      left.logId === right.logId &&
+      left.agentId === right.agentId &&
+      left.taskId === right.taskId &&
+      left.transition === right.transition &&
+      left.occurredAtIso === right.occurredAtIso &&
+      left.detail?.receiptKey === right.detail?.receiptKey &&
+      left.detail?.verb === right.detail?.verb
+    );
+  }
+
+  async function reconcileApplyCommit(
+    commit: ScheduledTaskLogEntry,
+  ): Promise<ScheduledTaskLogEntry> {
+    const entries = await deps.logStore.list({
+      agentId: deps.agentId,
+      taskId: commit.taskId,
+      excludeRollups: true,
+    });
+    const existing = entries.find((entry) => entry.logId === commit.logId);
+    if (existing) {
+      if (!sameApplyCommit(existing, commit)) {
+        throw new Error(
+          `Scheduled task apply receipt ${commit.logId} does not match its committed row`,
+        );
+      }
+      return existing;
+    }
+
+    try {
+      await deps.logStore.append(commit);
+      return commit;
+    } catch (error) {
+      // error-policy:J1 The durable-store boundary resolves a concurrent
+      // append by reading the receipt row back before surfacing it.
+      const raced = (
+        await deps.logStore.list({
+          agentId: deps.agentId,
+          taskId: commit.taskId,
+          excludeRollups: true,
+        })
+      ).find((entry) => entry.logId === commit.logId);
+      if (raced && sameApplyCommit(raced, commit)) return raced;
+      throw error;
+    }
+  }
+
+  async function applyWithResult(
+    taskId: string,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+    options: { idempotencyKey: string },
+  ): Promise<ScheduledTaskApplyResult> {
+    const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
+    const receiptKey = await applyReceiptKey(verb, idempotencyKey);
+    const existingTask = await deps.store.get(taskId);
+    if (!existingTask) {
+      throw new Error(`applyWithResult: task ${taskId} not found`);
+    }
+
+    const replayCandidate = isApplyReceiptMarkerPresent(
+      existingTask,
+      receiptKey,
+    );
+    const mutation: LifecycleMutation = replayCandidate
+      ? {
+          task: structuredClone(existingTask),
+          transition: transitionForReceiptVerb(verb),
+        }
+      : lifecycleMutation(structuredClone(existingTask), verb, payload);
+    if (!replayCandidate) {
+      writeApplyReceiptMarker(mutation.task, receiptKey);
+    }
+    const proposedCommit: ScheduledTaskLogEntry = {
+      logId: await applyReceiptLogId({
+        agentId: deps.agentId,
+        taskId,
+        verb,
+        idempotencyKey,
+      }),
+      taskId,
+      agentId: deps.agentId,
+      occurredAtIso: now().toISOString(),
+      transition: mutation.transition,
+      reason: mutation.reason,
+      rolledUp: false,
+      detail: {
+        ...(mutation.detail ?? {}),
+        receiptKey,
+        verb,
+      },
+    };
+    const committed = await deps.store.commitApply({
+      task: mutation.task,
+      receiptKey,
+      commit: proposedCommit,
+      nextFireAtIso: await resolveNextFireAt(mutation.task),
+    });
+    if (
+      committed.commit.logId !== proposedCommit.logId ||
+      committed.commit.agentId !== deps.agentId ||
+      committed.commit.taskId !== taskId ||
+      committed.commit.transition !== transitionForReceiptVerb(verb) ||
+      committed.commit.detail?.receiptKey !== receiptKey ||
+      committed.commit.detail?.verb !== verb
+    ) {
+      throw new Error(
+        `applyWithResult: store returned an invalid receipt for ${verb} ${taskId}`,
+      );
+    }
+    const commit = await reconcileApplyCommit(committed.commit);
+    if (commit.transition === "completed") {
+      await settleTerminal(committed.task, "completed", commit.logId);
+    } else if (commit.transition === "dismissed") {
+      await settleTerminal(committed.task, "dismissed", commit.logId);
+    } else if (commit.transition !== "snoozed") {
+      throw new Error(
+        `applyWithResult: receipt ${commit.logId} has unsupported transition ${commit.transition}`,
+      );
+    }
+    return {
+      task: committed.task,
+      commit,
+      idempotencyKey,
+      replayed: committed.kind === "replayed",
+    };
+  }
+
   async function apply(
     taskId: string,
     verb: ScheduledTaskVerb,
@@ -1317,8 +1664,9 @@ export function createScheduledTaskRunner(
   async function settleTerminal(
     parent: ScheduledTask,
     outcome: TerminalState,
+    settlementKey?: string,
   ): Promise<ScheduledTask[]> {
-    const created = await runPipeline(parent, outcome);
+    const created = await runPipeline(parent, outcome, settlementKey);
     await fireAfterTaskChildren(parent, outcome);
     return created;
   }
@@ -1326,6 +1674,7 @@ export function createScheduledTaskRunner(
   async function runPipeline(
     parent: ScheduledTask,
     outcome: TerminalState,
+    settlementKey?: string,
   ): Promise<ScheduledTask[]> {
     const refs: ScheduledTaskRef[] | undefined = (() => {
       switch (outcome) {
@@ -1343,10 +1692,10 @@ export function createScheduledTaskRunner(
     })();
     if (!refs || refs.length === 0) return [];
     const created: ScheduledTask[] = [];
-    for (const ref of refs) {
+    for (const [index, ref] of refs.entries()) {
       if (typeof ref === "string") {
         const child = await deps.store.get(ref);
-        if (child) {
+        if (child && child.state.pipelineParentId !== parent.taskId) {
           // Mark the parent linkage on the child for observability.
           child.state.pipelineParentId = parent.taskId;
           await persist(child);
@@ -1361,6 +1710,15 @@ export function createScheduledTaskRunner(
       // Strip server-managed fields if the caller passed a fully-shaped
       // `ScheduledTask`. `schedule()` regenerates them.
       const childInput = stripServerManaged(cloned);
+      if (settlementKey && !childInput.idempotencyKey) {
+        childInput.idempotencyKey = [
+          "scheduled-pipeline",
+          parent.taskId,
+          outcome,
+          settlementKey,
+          index,
+        ].join(":");
+      }
       const fresh = await schedule(childInput);
       fresh.state.pipelineParentId = parent.taskId;
       await persist(fresh);
@@ -2114,6 +2472,7 @@ export function createScheduledTaskRunner(
     activateImportedTask,
     list,
     apply,
+    applyWithResult,
     pipeline,
     fire,
     fireWithResult,

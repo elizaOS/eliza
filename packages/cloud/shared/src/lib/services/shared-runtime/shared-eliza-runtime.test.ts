@@ -164,6 +164,9 @@ const reminderRunner = {
   async apply() {
     throw new Error("Reminder mutation is outside this runtime planning test");
   },
+  async applyWithResult() {
+    throw new Error("Reminder mutation is outside this runtime planning test");
+  },
   async pipeline() {
     return [];
   },
@@ -1535,6 +1538,31 @@ describe("Shared Eliza Workerd runtime", () => {
       parameters: { operation: "list" },
       expected: "Your reminders:\n• Stretch — on Aug 14, 2026 at 8:02 PM UTC",
     },
+    {
+      operation: "snooze",
+      parameters: {
+        operation: "snooze",
+        taskId: "shared-reminder-sensitive-1",
+        snoozeMinutes: 5,
+      },
+      expected: "Reminder snoozed for 5 minutes: Stretch",
+    },
+    {
+      operation: "complete",
+      parameters: {
+        operation: "complete",
+        taskId: "shared-reminder-sensitive-1",
+      },
+      expected: "Reminder completed: Stretch",
+    },
+    {
+      operation: "dismiss",
+      parameters: {
+        operation: "dismiss",
+        taskId: "shared-reminder-sensitive-1",
+      },
+      expected: "Reminder dismissed: Stretch",
+    },
   ])(
     "keeps the verified $operation result authoritative over a hostile evaluator",
     async ({ operation, parameters, expected }) => {
@@ -1571,23 +1599,50 @@ describe("Shared Eliza Workerd runtime", () => {
           throw new Error("Scheduling is outside this lifecycle test");
         },
         async list(filter) {
-          expect(filter).toEqual({
-            kind: "reminder",
-            ownerVisibleOnly: true,
-            status: ["scheduled", "fired", "acknowledged"],
-          });
+          if (operation === "list") {
+            expect(filter).toEqual({
+              kind: "reminder",
+              ownerVisibleOnly: true,
+              status: ["scheduled", "fired", "acknowledged"],
+            });
+          }
           return [task];
         },
-        async apply(taskId, verb) {
+        async apply() {
+          throw new Error("Lifecycle proof must use applyWithResult");
+        },
+        async applyWithResult(taskId, verb, _payload, options) {
           expect(taskId).toBe("shared-reminder-sensitive-1");
           expect(verb).toBe(operation);
+          const transition =
+            verb === "snooze"
+              ? ("snoozed" as const)
+              : verb === "complete"
+                ? ("completed" as const)
+                : ("dismissed" as const);
           return {
-            ...task,
-            state: {
-              status:
-                verb === "complete" ? "completed" : verb === "dismiss" ? "dismissed" : "scheduled",
-              followupCount: 0,
+            task: {
+              ...task,
+              state: {
+                status:
+                  verb === "complete"
+                    ? "completed"
+                    : verb === "dismiss"
+                      ? "dismissed"
+                      : "scheduled",
+                followupCount: 0,
+              },
             },
+            commit: {
+              logId: `shared-reminder-${verb}-log-1`,
+              taskId,
+              agentId: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+              occurredAtIso: "2026-08-15T00:00:00.000Z",
+              transition,
+              rolledUp: false,
+            },
+            idempotencyKey: options.idempotencyKey,
+            replayed: false,
           };
         },
         async pipeline() {
@@ -1728,6 +1783,19 @@ describe("Shared Eliza Workerd runtime", () => {
         userFacingText: expected,
         turnComplete: true,
       });
+      if (operation !== "list") {
+        expect(result.actionResults?.[0]).toMatchObject({
+          effectReceipts: [
+            {
+              receiptId: `shared-reminder:${operation}:shared-reminder-${operation}-log-1`,
+              outcome: "applied",
+            },
+          ],
+          userFacingEffectReceiptIds: [
+            `shared-reminder:${operation}:shared-reminder-${operation}-log-1`,
+          ],
+        });
+      }
     },
   );
 
