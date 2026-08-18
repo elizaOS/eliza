@@ -1,13 +1,11 @@
-/** Verifies extForMime through the package's configured test harness. */
+/** Verifies attachment naming, download fallbacks, cancellation, and platform sharing with mocked browser bridges. */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   canShareFiles,
-  DOWNLOAD_SHARE_FETCH_TIMEOUT_MS,
   downloadAttachment,
   extForMime,
   filenameForMime,
-  getDownloadShareResponseWithFetch,
   shareAttachment,
 } from "./download-share";
 
@@ -32,6 +30,7 @@ function withGlobal<T>(key: string, value: unknown, fn: () => T): T {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -202,33 +201,133 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the raw url when the picker prefetch times out", async () => {
-    const timeout = new DOMException(
-      "The operation was aborted due to timeout",
-      "TimeoutError",
+  it("falls back after a stalled fetch reaches the prefetch deadline", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
     );
-    const fetchMock = vi.fn(async () => {
-      throw timeout;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("window", {
-      showSaveFilePicker: vi.fn(),
-    });
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/stalled.png", "stalled.png"),
+    );
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(clickSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await download;
+
+    expect(requestSignal?.reason).toMatchObject({ name: "TimeoutError" });
+    expect(anchor.href).toBe("https://example.com/stalled.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps the deadline active while the response body is being read", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const blob = vi.fn(
+      () =>
+        new Promise<Blob>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return { ok: true, blob } as unknown as Response;
+      }),
+    );
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/stream.png", "stream.png"),
+    );
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(clickSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await download;
+
+    expect(blob).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.reason).toMatchObject({ name: "TimeoutError" });
+    expect(anchor.href).toBe("https://example.com/stream.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("propagates caller cancellation without clicking the fallback anchor", async () => {
+    const caller = new AbortController();
+    const reason = new DOMException("View closed", "AbortError");
+    const removeAbortListener = vi.spyOn(caller.signal, "removeEventListener");
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment(
+        "https://example.com/cancelled.png",
+        "cancelled.png",
+        caller.signal,
+      ),
+    );
+    caller.abort(reason);
+
+    await expect(download).rejects.toBe(reason);
+    expect(requestSignal?.reason).toBe(reason);
+    expect(removeAbortListener).toHaveBeenCalledWith(
+      "abort",
+      expect.any(Function),
+    );
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back when a prefetch aborts before the picker opens", async () => {
+    const picker = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The request was aborted", "AbortError");
+      }),
+    );
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
 
     await withGlobal("Capacitor", undefined, () =>
       downloadAttachment("https://example.com/cat.png", "cat.png"),
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(picker).not.toHaveBeenCalled();
     expect(anchor.href).toBe("https://example.com/cat.png");
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
   it("does not start an anchor download when the user cancels the picker", async () => {
-    const blob = new Blob(["hello"], { type: "image/png" });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(blob)),
+      vi.fn(async () => new Response(new Blob(["hello"]))),
     );
     vi.stubGlobal("window", {
       showSaveFilePicker: vi.fn(async () => {
@@ -292,86 +391,5 @@ describe("shareAttachment", () => {
       title: "A",
     });
     expect(result).toBe(true);
-  });
-});
-
-/* ── Blob prefetch deadline ─────────────────────────────────────────── */
-
-const PREFETCH_URL = "https://example.com/cat.png";
-
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected download-share abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
-}
-
-describe("download-share blob prefetch deadline", () => {
-  it("keeps a documented UI fetch budget", () => {
-    expect(DOWNLOAD_SHARE_FETCH_TIMEOUT_MS).toBe(15_000);
-  });
-
-  it("aborts a stalled prefetch GET at the injected deadline", async () => {
-    await expect(
-      getDownloadShareResponseWithFetch(PREFETCH_URL, stallUntilAborted(), 10),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-  });
-
-  it("keeps the deadline active while the response body is read", async () => {
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected download-share abort signal");
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          signal.addEventListener(
-            "abort",
-            () => controller.error(signal.reason),
-            { once: true },
-          );
-        },
-      });
-      return new Response(body, { status: 200 });
-    };
-
-    const response = await getDownloadShareResponseWithFetch(
-      PREFETCH_URL,
-      fetchImpl,
-      10,
-    );
-    await expect(response.blob()).rejects.toMatchObject({
-      name: "TimeoutError",
-    });
-  });
-
-  it("surfaces a provider error from a completed prefetch GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-
-    await expect(
-      getDownloadShareResponseWithFetch(PREFETCH_URL, fetchImpl, 1_000),
-    ).rejects.toThrow("503");
-  });
-
-  it("uses the injected fetch for a successful prefetch GET", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return new Response("hello", { status: 200 });
-    };
-
-    const response = await getDownloadShareResponseWithFetch(
-      PREFETCH_URL,
-      fetchImpl,
-      1_000,
-    );
-
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(response.ok).toBe(true);
-    expect(await response.text()).toBe("hello");
   });
 });
