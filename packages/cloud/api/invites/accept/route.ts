@@ -12,6 +12,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invitesService } from "@/lib/services/invites";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const acceptInviteSchema = z.object({
@@ -25,15 +26,12 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKey(c);
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
-      // bare JSON.parse. SyntaxError must be a caller 400, not the
-      // failureResponse 500 that treats it as an unexpected server fault.
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const validated = acceptInviteSchema.parse(body);
 
     const acceptedInvite = await invitesService.acceptInvite(

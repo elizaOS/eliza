@@ -92,6 +92,7 @@ import {
 } from "@/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
@@ -731,12 +732,12 @@ app.post("/", async (c) => {
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
   }
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
     return anthropicError("invalid_request_error", "Invalid JSON body", 400);
   }
+  const body = decodedBody.value;
 
   if (!body || typeof body !== "object") {
     return anthropicError("invalid_request_error", "Invalid JSON body", 400);

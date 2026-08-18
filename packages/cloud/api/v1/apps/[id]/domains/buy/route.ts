@@ -42,6 +42,7 @@ import { creditsService } from "@/lib/services/credits";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { domainBodySchema as BuySchema } from "../schemas";
@@ -77,16 +78,12 @@ app.post("/", domainBuyRateLimit, async (c) => {
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch (error) {
-      // error-policy:J3 Only JSON syntax failures are invalid client input.
-      if (error instanceof SyntaxError) {
-        return c.json({ success: false, error: "Invalid JSON body" }, 400);
-      }
-      throw error;
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedBody.value;
     const parsed = BuySchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
