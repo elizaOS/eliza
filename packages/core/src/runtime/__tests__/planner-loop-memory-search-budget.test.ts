@@ -159,6 +159,90 @@ describe("partitionMemorySearchBudget", () => {
 		expect(out.skippedNearDuplicate).toEqual([]);
 	});
 
+	it("allows the same query when recall scope or window parameters change", () => {
+		const completed = (params: Record<string, unknown>) => ({
+			...emptyTrajectory(),
+			steps: [
+				{
+					toolCall: { name: "MEMORY_SEARCH", params },
+					result: { success: true, text: "1 match" },
+				},
+			],
+		});
+		const roomScoped = {
+			name: "MEMORY_SEARCH",
+			params: { query: "budget", roomId: "room-b" },
+		};
+		const widened = {
+			name: "MEMORY_SEARCH",
+			params: { query: "budget", limit: 200 },
+		};
+		const faceted = {
+			name: "SEARCH_KNOWLEDGE",
+			params: { query: "budget", tags: ["finance"] },
+		};
+
+		expect(
+			partitionMemorySearchBudget(
+				[roomScoped],
+				completed({ query: "budget", roomId: "room-a" }),
+				5,
+			).allowed,
+		).toEqual([roomScoped]);
+		expect(
+			partitionMemorySearchBudget([widened], completed({ query: "budget" }), 5)
+				.allowed,
+		).toEqual([widened]);
+		expect(
+			partitionMemorySearchBudget(
+				[faceted],
+				{
+					...emptyTrajectory(),
+					steps: [
+						{
+							toolCall: {
+								name: "SEARCH_KNOWLEDGE",
+								params: { query: "budget", tags: ["legal"] },
+							},
+							result: { success: true, text: "1 match" },
+						},
+					],
+				},
+				5,
+			).allowed,
+		).toEqual([faceted]);
+	});
+
+	it("deduplicates MEMORY aliases with stable scope serialization", () => {
+		const trajectory = {
+			...emptyTrajectory(),
+			steps: [
+				{
+					toolCall: {
+						name: "MEMORY",
+						params: {
+							action: "search",
+							query: "alexis gym signup",
+							filters: { type: "fact", owner: "alexis" },
+						},
+					},
+					result: { success: true, text: "1 match" },
+				},
+			],
+		};
+		const sameLookup = {
+			name: "MEMORY_SEARCH",
+			params: {
+				q: "signup gym alexis",
+				filters: { owner: "alexis", type: "fact" },
+			},
+		};
+
+		const out = partitionMemorySearchBudget([sameLookup], trajectory, 5);
+		expect(out.allowed).toEqual([]);
+		expect(out.skippedNearDuplicate).toEqual([sameLookup]);
+	});
+
 	it("counts executed rounds from archived (compacted) steps too", () => {
 		const trajectory = {
 			...emptyTrajectory(),

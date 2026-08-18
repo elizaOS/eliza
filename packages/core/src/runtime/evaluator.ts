@@ -26,7 +26,10 @@ import {
 	ModelType,
 	type PromptSegment,
 } from "../types/model";
-import { modelProviderErrorDetail } from "../utils/model-errors";
+import {
+	isModelProviderError,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
 import { computePrefixHashes } from "./context-hash";
@@ -574,6 +577,7 @@ export async function runEvaluator(
 				},
 			);
 		raw = await callEvaluatorModel(DEFAULT_EVALUATOR_MAX_TOKENS);
+		reportEvaluatorUsage(raw, params.onUsage);
 		// Truncation guard: a completion cut off at the cap yields an unparseable
 		// envelope, and each unparseable evaluation costs the planner a full extra
 		// replan round (live sol-dev 2026-08-17: 1024-cap truncations chained into
@@ -593,12 +597,37 @@ export async function runEvaluator(
 				},
 				"[evaluator] completion truncated at token cap and unparseable; retrying once with a doubled cap",
 			);
-			raw = await callEvaluatorModel(retryMaxTokens);
-			if (evaluatorHitCompletionLimit(raw, retryMaxTokens)) {
+			try {
+				const retryRaw = await callEvaluatorModel(retryMaxTokens);
+				reportEvaluatorUsage(retryRaw, params.onUsage);
+				raw = retryRaw;
+				if (evaluatorHitCompletionLimit(raw, retryMaxTokens)) {
+					params.runtime.logger?.warn?.(
+						{ modelType: String(modelType), retryMaxTokens },
+						"[evaluator] retry completion still truncated; proceeding with parse-recovery (no further retries)",
+					);
+				}
+			} catch (retryError) {
+				// error-policy:J4 The retry is an optional recovery attempt. Preserve
+				// the original truncated response so the established protocol-failure
+				// path can request another planner round for expected provider errors;
+				// programmer and budget failures still propagate.
+				if (!isModelProviderError(retryError)) throw retryError;
 				params.runtime.logger?.warn?.(
-					{ modelType: String(modelType), retryMaxTokens },
-					"[evaluator] retry completion still truncated; proceeding with parse-recovery (no further retries)",
+					{
+						err:
+							retryError instanceof Error
+								? retryError.message
+								: String(retryError),
+						modelType: String(modelType),
+						retryMaxTokens,
+					},
+					"[evaluator] truncation retry failed; using the original response for parse-recovery",
 				);
+				params.runtime.reportError?.("Evaluator.truncationRetry", retryError, {
+					modelType: String(modelType),
+					retryMaxTokens,
+				});
 			}
 		}
 	} catch (error) {
@@ -659,16 +688,6 @@ export async function runEvaluator(
 		throw error;
 	}
 	const endedAt = Date.now();
-	const usage = extractEvaluatorUsage(raw);
-	if (
-		usage?.promptTokens !== undefined &&
-		usage.completionTokens !== undefined
-	) {
-		params.onUsage?.({
-			promptTokens: usage.promptTokens,
-			completionTokens: usage.completionTokens,
-		});
-	}
 	const output = sanitizeOutputMessage(
 		repairFinishWithProgressPromise(
 			repairFinishedToolTurnWithoutUserMessage(
@@ -860,6 +879,22 @@ function extractEvaluatorUsage(
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function reportEvaluatorUsage(
+	raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>,
+	onUsage: RunEvaluatorParams["onUsage"],
+): void {
+	const usage = extractEvaluatorUsage(raw);
+	if (
+		usage?.promptTokens !== undefined &&
+		usage.completionTokens !== undefined
+	) {
+		onUsage?.({
+			promptTokens: usage.promptTokens,
+			completionTokens: usage.completionTokens,
+		});
+	}
 }
 
 function renderEvaluatorModelInput(params: {

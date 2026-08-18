@@ -1445,6 +1445,84 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		expect(result.protocolFailure).toBeUndefined();
 	});
 
+	it("reports usage for both the truncated attempt and its successful retry", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+		const onUsage = vi.fn();
+
+		await runEvaluator({ ...baseParams(useModel), onUsage });
+
+		expect(onUsage).toHaveBeenCalledTimes(2);
+		expect(onUsage).toHaveBeenNthCalledWith(1, {
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+		expect(onUsage).toHaveBeenNthCalledWith(2, {
+			promptTokens: 100,
+			completionTokens: 40,
+		});
+	});
+
+	it("falls back to parse-recovery when the bounded retry throws", async () => {
+		const providerError = Object.assign(new Error("retry rate limited"), {
+			status: 429,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(providerError);
+		const warn = vi.fn();
+		const reportError = vi.fn();
+		const onUsage = vi.fn();
+
+		const result = await runEvaluator({
+			...baseParams(useModel),
+			runtime: { useModel, logger: { warn }, reportError },
+			onUsage,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result).toMatchObject({
+			decision: "CONTINUE",
+			success: false,
+			protocolFailure: true,
+		});
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ retryMaxTokens: 4096 }),
+			"[evaluator] truncation retry failed; using the original response for parse-recovery",
+		);
+		expect(reportError).toHaveBeenCalledWith(
+			"Evaluator.truncationRetry",
+			providerError,
+			expect.objectContaining({ retryMaxTokens: 4096 }),
+		);
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("propagates non-provider failures from the bounded retry", async () => {
+		const programmerError = new TypeError("retry result adapter is broken");
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(programmerError);
+		const onUsage = vi.fn();
+
+		await expect(
+			runEvaluator({ ...baseParams(useModel), onUsage }),
+		).rejects.toBe(programmerError);
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
 	it("does NOT retry when the completion hit the cap but still parsed", async () => {
 		const parseableAtCap = {
 			text: '{"success": true, "decision": "FINISH", "thought": "Fits exactly."}',

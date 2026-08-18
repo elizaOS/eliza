@@ -10,7 +10,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
-import { readSubaction } from "../actions/subaction-dispatch";
+import {
+	DEFAULT_SUBACTION_KEYS,
+	readSubaction,
+} from "../actions/subaction-dispatch";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
@@ -4222,6 +4225,33 @@ export function normalizedRecallQueryKey(
 	return tokens.join(" ");
 }
 
+const RECALL_QUERY_PARAMETER_KEYS = new Set(["query", "q", "text", "search"]);
+const RECALL_IDENTITY_IGNORED_KEYS = new Set([
+	...RECALL_QUERY_PARAMETER_KEYS,
+	...DEFAULT_SUBACTION_KEYS,
+]);
+
+/**
+ * Identity for a recall search after its query wording has been normalized.
+ * Scope and window arguments remain part of the identity so a retry against a
+ * different room/entity/type or with a wider limit is never mislabeled as a
+ * mere reformulation. Umbrella discriminator aliases are omitted because they
+ * all select the same already-classified MEMORY search operation.
+ */
+function recallSearchDedupeKey(
+	toolCall: PlannerToolCall,
+	queryKey: string,
+): string {
+	const name = toolCall.name.trim().toUpperCase();
+	const family = name === "MEMORY" ? "MEMORY_SEARCH" : name;
+	const scopeParameters = Object.fromEntries(
+		Object.entries(toolCall.params ?? {}).filter(
+			([key]) => !RECALL_IDENTITY_IGNORED_KEYS.has(key),
+		),
+	);
+	return `${family} ${queryKey} ${stableJsonStringify(scopeParameters)}`;
+}
+
 /**
  * Per-turn budget for memory/knowledge-recall searches. Two failure modes
  * escaped the byte-identical redundant-call breaker (live sol-dev 2026-08-17,
@@ -4265,8 +4295,7 @@ export function partitionMemorySearchBudget(
 			continue;
 		}
 		const key = normalizedRecallQueryKey(step.toolCall);
-		if (key)
-			executedQueryKeys.add(`${step.toolCall.name.toUpperCase()} ${key}`);
+		if (key) executedQueryKeys.add(recallSearchDedupeKey(step.toolCall, key));
 	}
 	const allowed: PlannerToolCall[] = [];
 	const skippedOverBudget: PlannerToolCall[] = [];
@@ -4278,7 +4307,7 @@ export function partitionMemorySearchBudget(
 			continue;
 		}
 		const key = normalizedRecallQueryKey(call);
-		const scopedKey = key ? `${call.name.toUpperCase()} ${key}` : null;
+		const scopedKey = key ? recallSearchDedupeKey(call, key) : null;
 		if (scopedKey && executedQueryKeys.has(scopedKey)) {
 			skippedNearDuplicate.push(call);
 			continue;
