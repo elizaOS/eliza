@@ -1738,9 +1738,10 @@ export function TaskInspector({
 
 function compactText(value: string, max = 6000): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}\n\n… ${(
+  const suffix = `\n\n… ${(
     value.length - max
   ).toLocaleString()} characters truncated`;
+  return `${value.slice(0, max - suffix.length).trimEnd()}${suffix}`;
 }
 
 function hasRecordEntries(value: Record<string, unknown> | null | undefined) {
