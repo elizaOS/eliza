@@ -201,6 +201,47 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(anchor.download).toBe("cat.png");
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("falls back to the raw url when the picker prefetch times out", async () => {
+    const timeout = new DOMException(
+      "The operation was aborted due to timeout",
+      "TimeoutError",
+    );
+    const fetchMock = vi.fn(async () => {
+      throw timeout;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      showSaveFilePicker: vi.fn(),
+    });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(anchor.href).toBe("https://example.com/cat.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start an anchor download when the user cancels the picker", async () => {
+    const blob = new Blob(["hello"], { type: "image/png" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(blob)),
+    );
+    vi.stubGlobal("window", {
+      showSaveFilePicker: vi.fn(async () => {
+        throw new DOMException("The user aborted a request", "AbortError");
+      }),
+    });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
 });
 
 /* ── shareAttachment ──────────────────────────────────────────────────── */
@@ -254,7 +295,7 @@ describe("shareAttachment", () => {
   });
 });
 
-/* ── blob prefetch deadline (Fal #21205) ─────────────────────────────── */
+/* ── Blob prefetch deadline ─────────────────────────────────────────── */
 
 const PREFETCH_URL = "https://example.com/cat.png";
 
@@ -278,6 +319,32 @@ describe("download-share blob prefetch deadline", () => {
     await expect(
       getDownloadShareResponseWithFetch(PREFETCH_URL, stallUntilAborted(), 10),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("keeps the deadline active while the response body is read", async () => {
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected download-share abort signal");
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          signal.addEventListener(
+            "abort",
+            () => controller.error(signal.reason),
+            { once: true },
+          );
+        },
+      });
+      return new Response(body, { status: 200 });
+    };
+
+    const response = await getDownloadShareResponseWithFetch(
+      PREFETCH_URL,
+      fetchImpl,
+      10,
+    );
+    await expect(response.blob()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
   });
 
   it("surfaces a provider error from a completed prefetch GET", async () => {
@@ -308,4 +375,3 @@ describe("download-share blob prefetch deadline", () => {
     expect(await response.text()).toBe("hello");
   });
 });
-

@@ -166,13 +166,16 @@ export function canShareFiles(): boolean {
 /* ── Internal helpers ─────────────────────────────────────────────────── */
 
 function isAbortError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { name, message } = err as { name?: unknown; message?: unknown };
+  if (name === "TimeoutError") return false;
   return (
-    err instanceof Error &&
-    (err.name === "AbortError" || /abort|cancel/i.test(err.message))
+    name === "AbortError" ||
+    (typeof message === "string" && /abort|cancel/i.test(message))
   );
 }
 
-/** Attachment blob prefetch is a short UI GET — same 15s family as BuildBadge. */
+/** Attachment blob prefetch has a 15-second UI deadline. */
 export const DOWNLOAD_SHARE_FETCH_TIMEOUT_MS = 15_000;
 
 export async function getDownloadShareResponseWithFetch(
@@ -202,7 +205,10 @@ async function downloadViaAnchor(url: string, filename: string): Promise<void> {
     // Same-origin / fetchable assets: pull to a blob so the download attribute
     // is honored cross-origin and so blob:/data: sources work uniformly.
     if (typeof fetch === "function" && !url.startsWith("data:")) {
-      const res = await getDownloadShareResponseWithFetch(url, globalThis.fetch);
+      const res = await getDownloadShareResponseWithFetch(
+        url,
+        globalThis.fetch,
+      );
       const blob = await res.blob();
       if (typeof URL !== "undefined" && URL.createObjectURL) {
         objectUrl = URL.createObjectURL(blob);
@@ -320,9 +326,14 @@ export async function downloadAttachment(
     typeof fetch === "function" &&
     !url.startsWith("data:")
   ) {
+    let pickerOpened = false;
     try {
-      const res = await getDownloadShareResponseWithFetch(url, globalThis.fetch);
+      const res = await getDownloadShareResponseWithFetch(
+        url,
+        globalThis.fetch,
+      );
       const blob = await res.blob();
+      pickerOpened = true;
       const handle = await picker({ suggestedName: filename });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -330,8 +341,9 @@ export async function downloadAttachment(
       return;
     } catch (err) {
       // error-policy:J4 user cancelled the picker → done (don't
-      // double-download); any other failure falls through to the anchor path.
-      if (isAbortError(err)) return;
+      // double-download). A prefetch abort/timeout happens before the picker is
+      // opened and must still fall through to the raw-url anchor path.
+      if (pickerOpened && isAbortError(err)) return;
     }
   }
 
