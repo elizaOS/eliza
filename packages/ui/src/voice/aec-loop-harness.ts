@@ -29,7 +29,7 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
-import { resolveApiUrl } from "../utils/asset-url";
+import { client } from "../api";
 
 declare global {
   interface Window {
@@ -49,7 +49,6 @@ export const AEC_LOOP_AEC_CAPTURE_POST_TIMEOUT_MS = 15_000;
 export const AEC_LOOP_PLAYBACK_FRAMES_POST_TIMEOUT_MS = 15_000;
 export const AEC_LOOP_AUDIO_FRAMES_POST_TIMEOUT_MS = 15_000;
 export const AEC_LOOP_AUDIO_URL_GET_TIMEOUT_MS = 15_000;
-export const AEC_LOOP_TTS_POST_TIMEOUT_MS = 15_000;
 export const AEC_LOOP_NEAR_END_AUDIO_GET_TIMEOUT_MS = 15_000;
 
 export interface AecLoopRunOptions {
@@ -242,49 +241,38 @@ class WireFramer {
   }
 }
 
-export async function getAecLoopJsonWithFetch(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number,
-  failPath: string,
-): Promise<unknown> {
-  const res = await fetchImpl(url, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  // error-policy:J3 body parse is best-effort context for the thrown error;
-  // non-2xx always throws below with the status either way
-  // error-policy:J3 parse-sanitize — an empty/non-JSON body becomes null; the
-  // HTTP status is the real signal (thrown below), the body is only diagnostic.
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`${failPath} -> ${res.status} ${JSON.stringify(json)}`);
-  }
-  return json;
+interface AecLoopApiClient {
+  fetch<T>(
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ): Promise<T>;
+  rawRequest(
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ): Promise<Response>;
 }
 
-export async function postAecLoopJsonWithFetch(
-  url: string,
-  body: unknown,
-  fetchImpl: typeof fetch,
+export async function getAecLoopJsonWithClient(
+  path: string,
+  apiClient: AecLoopApiClient,
   timeoutMs: number,
-  failPath: string,
 ): Promise<unknown> {
-  const res = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  // error-policy:J3 body parse is best-effort context for the thrown error;
-  // non-2xx always throws below with the status either way
-  // error-policy:J3 parse-sanitize — an empty/non-JSON body becomes null; the
-  // HTTP status is the real signal (thrown below), the body is only diagnostic.
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`${failPath} -> ${res.status} ${JSON.stringify(json)}`);
-  }
-  return json;
+  return apiClient.fetch<unknown>(path, undefined, { timeoutMs });
+}
+
+export async function postAecLoopJsonWithClient(
+  path: string,
+  body: unknown,
+  apiClient: AecLoopApiClient,
+  timeoutMs: number,
+): Promise<unknown> {
+  return apiClient.fetch<unknown>(
+    path,
+    { method: "POST", body: JSON.stringify(body) },
+    { timeoutMs },
+  );
 }
 
 export async function getAecLoopAudioUrlWithFetch(
@@ -299,19 +287,18 @@ export async function getAecLoopAudioUrlWithFetch(
   return res.arrayBuffer();
 }
 
-export async function postAecLoopTtsWithFetch(
-  url: string,
+export async function postAecLoopTtsWithClient(
+  path: string,
   body: { text: string },
-  fetchImpl: typeof fetch,
-  timeoutMs: number = AEC_LOOP_TTS_POST_TIMEOUT_MS,
+  apiClient: AecLoopApiClient,
 ): Promise<ArrayBuffer> {
-  const res = await fetchImpl(url, {
+  // Do not override the canonical local-TTS budget: valid mobile CPU inference
+  // routinely exceeds ordinary request deadlines, especially on a cold load.
+  const res = await apiClient.rawRequest(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`tts -> ${res.status}`);
   return res.arrayBuffer();
 }
 
@@ -332,22 +319,11 @@ async function postJson(
   body: unknown,
   timeoutMs: number,
 ): Promise<unknown> {
-  return postAecLoopJsonWithFetch(
-    resolveApiUrl(path),
-    body,
-    globalThis.fetch,
-    timeoutMs,
-    path,
-  );
+  return postAecLoopJsonWithClient(path, body, client, timeoutMs);
 }
 
 async function getJson(path: string, timeoutMs: number): Promise<unknown> {
-  return getAecLoopJsonWithFetch(
-    resolveApiUrl(path),
-    globalThis.fetch,
-    timeoutMs,
-    path,
-  );
+  return getAecLoopJsonWithClient(path, client, timeoutMs);
 }
 
 /** Best-effort native Documents sink (Capacitor Filesystem when present). */
@@ -481,10 +457,10 @@ async function runAecLoop(
       );
     } else {
       log("fetch TTS");
-      ttsBytes = await postAecLoopTtsWithFetch(
-        resolveApiUrl("/api/tts/local-inference"),
+      ttsBytes = await postAecLoopTtsWithClient(
+        "/api/tts/local-inference",
         { text: ttsText },
-        globalThis.fetch,
+        client,
       );
     }
     const ttsBuffer = await ctx.decodeAudioData(ttsBytes.slice(0));
