@@ -2715,24 +2715,12 @@ export class TrajectoriesService extends Service {
 		finalMetrics?: Record<string, JsonValue>,
 	): Promise<void> {
 		if (!this.acceptsNewCapture()) return;
-		// Drain captures already in flight BEFORE terminalizing. The async
-		// step-resolution branch of logLlmCall/logProviderCall takes the write
-		// lock only after resolving its trajectory id, so a turn that ended
-		// right after its last planner leg raced that write — the leg was then
-		// rejected as "arrived after terminalization" and the stored trajectory
-		// lost its planner tool calls (live all week: multi-step turns recorded
-		// only stage-1). The snapshot is taken before tracking this operation,
-		// so it never awaits itself.
-		const pendingCaptures = [...this.inflightOperations];
 		return this.trackInflightOperation(
-			(async () => {
-				await Promise.allSettled(pendingCaptures);
-				await this.endTrajectoryAfterResolution(
-					stepIdOrTrajectoryId,
-					status,
-					finalMetrics,
-				);
-			})(),
+			this.endTrajectoryAfterResolution(
+				stepIdOrTrajectoryId,
+				status,
+				finalMetrics,
+			),
 		);
 	}
 
