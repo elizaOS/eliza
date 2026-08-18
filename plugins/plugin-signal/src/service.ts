@@ -46,6 +46,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -2356,8 +2357,13 @@ export class SignalService extends Service implements ISignalService {
         }
       }
 
-      messages.push(remaining.slice(0, splitIndex));
-      remaining = remaining.slice(splitIndex);
+      // A raw slice() can land between the two UTF-16 code units of a
+      // surrogate pair (most emoji), leaving a lone surrogate at the
+      // chunk boundary that corrupts the character on the wire.
+      // truncateWellFormed backs the cut off by one unit instead.
+      const head = truncateWellFormed(remaining, splitIndex);
+      messages.push(head);
+      remaining = remaining.slice(head.length);
     }
 
     return messages;
