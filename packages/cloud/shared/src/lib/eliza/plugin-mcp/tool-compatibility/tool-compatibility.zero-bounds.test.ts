@@ -1,7 +1,9 @@
 /**
  * Pins constraint re-expression in the cloud-vendored MCP tool-compatibility
  * formatters, which strip keywords from the schema and must therefore restate
- * every stripped bound in the description the hosted model reads (#22068).
+ * every stripped bound in the description the hosted model reads. It also
+ * rejects misleading prose for malformed third-party values and preserves the
+ * closed-object constraint (#22068, #22115, #22118).
  * Deterministic: the compat objects come from the real
  * `createMcpToolCompatibilitySync` factory over a literal runtime shape, and
  * assertions run against the real `transformToolSchema` output.
@@ -22,7 +24,7 @@ function compatFor(model: string) {
 const describeOf = (compat: ReturnType<typeof compatFor>, schema: JSONSchema7): string =>
   String(compat.transformToolSchema(schema).description ?? "");
 
-describe("cloud MCP tool-compatibility zero-valued bounds (#22068)", () => {
+describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22118)", () => {
   describe("google formatter", () => {
     const google = () => compatFor("gemini-2.0-flash");
 
@@ -41,6 +43,33 @@ describe("cloud MCP tool-compatibility zero-valued bounds (#22068)", () => {
     it("renders positive bounds unchanged", () => {
       const text = describeOf(google(), { type: "string", minLength: 2, maxLength: 8 });
       expect(text).toBe("Constraints: at least 2 chars; at most 8 chars");
+    });
+
+    it("does not throw or invent prose for malformed optional constraints", () => {
+      const schema = {
+        type: "string",
+        enum: null,
+        pattern: null,
+        minLength: "2",
+      } as unknown as JSONSchema7;
+      const text = describeOf(google(), schema);
+
+      expect(text).toContain('"enum":null');
+      expect(text).toContain('"pattern":null');
+      expect(text).toContain('"minLength":"2"');
+      expect(text).not.toContain("one of:");
+      expect(text).not.toContain("matches null");
+      expect(text).not.toContain("at least 2 chars");
+    });
+
+    it("preserves a stripped closed-object constraint", () => {
+      const out = google().transformToolSchema({
+        type: "object",
+        additionalProperties: false,
+      });
+
+      expect(out.additionalProperties).toBeUndefined();
+      expect(out.description).toContain("no additional properties");
     });
   });
 
@@ -88,6 +117,56 @@ describe("cloud MCP tool-compatibility zero-valued bounds (#22068)", () => {
       expect(out.uniqueItems).toBeUndefined();
       expect(out.description).toContain('"uniqueItems":false');
       expect(out.description).not.toContain("items must be unique");
+    });
+
+    it("does not throw or invent prose for malformed optional constraints", () => {
+      const schema = {
+        type: "number",
+        enum: null,
+        pattern: null,
+        exclusiveMinimum: true,
+        multipleOf: "2",
+      } as unknown as JSONSchema7;
+      const text = describeOf(reasoning(), schema);
+
+      expect(text).toContain('"enum":null');
+      expect(text).toContain('"pattern":null');
+      expect(text).toContain('"exclusiveMinimum":true');
+      expect(text).toContain('"multipleOf":"2"');
+      expect(text).not.toContain("must be one of:");
+      expect(text).not.toContain("must match: null");
+      expect(text).not.toContain("must be > true");
+      expect(text).not.toContain("multiple of 2");
+    });
+
+    it("keeps empty enums in the unrendered tail and renders non-empty enums exactly", () => {
+      const empty = describeOf(reasoning(), { type: "string", enum: [] });
+      expect(empty).toContain('"enum":[]');
+      expect(empty).not.toContain("must be one of:");
+
+      const populated = describeOf(reasoning(), {
+        type: "string",
+        enum: ["alpha", "beta"],
+      });
+      expect(populated).toContain('must be one of: "alpha", "beta"');
+      expect(populated).not.toContain('{"enum"');
+    });
+
+    it("preserves false additionalProperties without inverting true", () => {
+      const closed = reasoning().transformToolSchema({
+        type: "object",
+        additionalProperties: false,
+      });
+      expect(closed.additionalProperties).toBeUndefined();
+      expect(closed.description).toContain("must not contain additional properties");
+
+      const open = reasoning().transformToolSchema({
+        type: "object",
+        additionalProperties: true,
+      });
+      expect(open.additionalProperties).toBeUndefined();
+      expect(open.description).toContain('"additionalProperties":true');
+      expect(open.description).not.toContain("must not contain additional properties");
     });
 
     it("surfaces a collected keyword that has no rule instead of dropping it", () => {
