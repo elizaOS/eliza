@@ -324,6 +324,10 @@ jobs:
           # Resolve only from the already-selected protected environment. The
           # value is passed directly to the migrator and is never printed.
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
         run: |
           set -euo pipefail
           [ -n "${DATABASE_URL//[[:space:]]/}" ] || {

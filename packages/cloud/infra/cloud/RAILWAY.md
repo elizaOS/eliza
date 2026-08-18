@@ -64,6 +64,11 @@ activation, prove that the protected migration role can execute
 `pg_catalog.pg_control_system()` through `pg_monitor` membership or a narrower
 explicit function grant.
 
+Every protected workflow that invokes the remote migrator forwards this same
+environment-scoped gate configuration: the canonical Cloudflare release, the
+manual legacy migration, and the exact-SHA provisioning-worker predeploy. None
+uses the standalone receipt tool as mutation admission.
+
 This gate proves only the GitHub migration authority. Do not enable `enforce`
 until an operator has provisioned an independent staging Railway PostgreSQL
 service, role, volume, backup/PITR policy, and restore drill, and has separately
