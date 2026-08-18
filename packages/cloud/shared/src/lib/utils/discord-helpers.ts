@@ -1,3 +1,6 @@
+import { truncateWellFormed } from "@elizaos/core";
+import { assertValidMessageChunkLength } from "./message-chunking";
+
 /**
  * Discord Utility Functions
  *
@@ -81,6 +84,7 @@ export function isTextChannel(type: number): boolean {
  * Split long messages for Discord's 2000 char limit
  */
 export function splitMessage(text: string, maxLength = 2000): string[] {
+  assertValidMessageChunkLength(maxLength);
   if (!text) return [];
   if (text.length <= maxLength) return [text];
 
@@ -102,8 +106,9 @@ export function splitMessage(text: string, maxLength = 2000): string[] {
       breakPoint = maxLength;
     }
 
-    messages.push(remaining.substring(0, breakPoint));
-    remaining = remaining.substring(breakPoint).trimStart();
+    const head = truncateWellFormed(remaining, breakPoint);
+    messages.push(head);
+    remaining = remaining.slice(head.length).trimStart();
   }
 
   return messages;
@@ -178,7 +183,7 @@ export function hyperlink(text: string, url: string): string {
  */
 export function truncate(text: string, maxLength: number): string {
   if (!text || text.length <= maxLength) return text;
-  return text.substring(0, maxLength - 3) + "...";
+  return `${truncateWellFormed(text, maxLength - 3)}...`;
 }
 
 /**
