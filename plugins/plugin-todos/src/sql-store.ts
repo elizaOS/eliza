@@ -1176,10 +1176,18 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
   }
 
   /**
-   * Bulk-replace the user's todo list for a given (entityId, roomId) scope.
-   * Mirrors Claude Code's TodoWrite contract: the caller passes the full
-   * desired list, and the store reconciles. Existing rows are matched by id;
-   * absent rows are deleted; new rows are inserted.
+   * Bulk-replace the user's entire todo list for a given (agentId, entityId)
+   * scope. Mirrors Claude Code's TodoWrite contract: the caller passes the
+   * full desired list, and the store reconciles. Existing rows are matched by
+   * id; absent rows are deleted; new rows are inserted.
+   *
+   * The reconciled `before` set is keyed only on (agentId, entityId) — the same
+   * cross-room scope every read path uses (the CURRENT_TODOS provider,
+   * actionList, and list()), because todos persist across rooms for one user.
+   * Narrowing `before` by roomId here would reconcile the planner's write
+   * against a different set than it observed, re-creating todos it marked
+   * complete in another room (duplicate) and resurrecting ones it omitted
+   * (lost update). roomId/worldId are used only to seed newly created rows.
    */
   private async writeListInTransaction(
     tx: TodoTransaction<TSchema>,
@@ -1195,17 +1203,15 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         },
       );
     }
-    const conditions = [
-      eq(todosTable.agentId, args.agentId as UUID),
-      eq(todosTable.entityId, args.entityId as UUID),
-    ];
-    if (args.roomId !== null) {
-      conditions.push(eq(todosTable.roomId, args.roomId as UUID));
-    }
     const beforeRows = await tx
       .select()
       .from(todosTable)
-      .where(and(...conditions))
+      .where(
+        and(
+          eq(todosTable.agentId, args.agentId as UUID),
+          eq(todosTable.entityId, args.entityId as UUID),
+        ),
+      )
       .orderBy(desc(todosTable.updatedAt));
     const before = beforeRows.map(rowToTodo);
     const beforeById = new Map(before.map((todo) => [todo.id, todo]));
