@@ -90,6 +90,9 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type)!.add(l as (e: unknown) => void);
   }
+  removeEventListener(type: string, l: (e: never) => void) {
+    this.listeners.get(type)?.delete(l as (e: unknown) => void);
+  }
   private fire(t: string, p: unknown) {
     for (const l of this.listeners.get(t) ?? []) l(p);
   }

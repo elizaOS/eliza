@@ -153,6 +153,9 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type)!.add(listener as (e: unknown) => void);
   }
+  removeEventListener(type: string, listener: (e: never) => void) {
+    this.listeners.get(type)?.delete(listener as (e: unknown) => void);
+  }
   emitDone() {
     this.fire("message", {
       data: JSON.stringify({ type: "done", done: true }),
@@ -591,6 +594,32 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("reuses the opening greeting socket for the first caller response", async () => {
+    const beforeSockets = FakeCartesiaSocket.instances.length;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingGreeting: "hey, what's up?",
+      fetchImpl: makeSseFetch(["Not much. Good to hear from you."]),
+    });
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitDone();
+    await flush();
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "not much");
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances).toHaveLength(beforeSockets + 1);
+    expect(cartesia.sentText()).toContain("hey, what's up?");
+    expect(cartesia.sentText().replaceAll(" ", "")).toContain(
+      "Notmuch.Goodtohearfromyou.",
+    );
   });
 
   test("generates the call opener as a stable canonical system turn", async () => {
@@ -1092,11 +1121,14 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     await flush();
 
-    // The socket was opened speculatively at turn start; with no speakable
-    // output it must be cancelled (closed) rather than leaked, and the turn
-    // still closes out with a usage frame.
+    // The context was opened speculatively at turn start; with no speakable
+    // output it must be cancelled without closing the call-scoped transport,
+    // and the turn still closes out with a usage frame.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
+    expect(cartesia.sent.map((frame) => JSON.parse(frame))).toContainEqual(
+      expect.objectContaining({ cancel: true }),
+    );
     expect(client.controlTypes()).toContain("usage");
     expect(client.controlTypes()).not.toContain("speaking_start");
   });

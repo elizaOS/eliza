@@ -81,6 +81,34 @@ class FakeCartesiaWebSocket implements CartesiaWebSocketLike {
     }
   }
 
+  removeEventListener(
+    type: "open" | "message" | "error" | "close",
+    listener:
+      | (() => void)
+      | ((event: { readonly data: unknown }) => void)
+      | ((event: { readonly message?: string; readonly error?: unknown }) => void)
+      | ((event: { readonly code?: number; readonly reason?: string }) => void),
+  ): void {
+    if (type === "open") this.listeners.open.delete(listener as () => void);
+    if (type === "message") {
+      this.listeners.message.delete(listener as (event: { readonly data: unknown }) => void);
+    }
+    if (type === "error") {
+      this.listeners.error.delete(
+        listener as (event: { readonly message?: string; readonly error?: unknown }) => void,
+      );
+    }
+    if (type === "close") {
+      this.listeners.close.delete(
+        listener as (event: { readonly code?: number; readonly reason?: string }) => void,
+      );
+    }
+  }
+
+  listenerCount(type: "open" | "message" | "error" | "close"): number {
+    return this.listeners[type].size;
+  }
+
   emitOpen(): void {
     this.readyState = FakeCartesiaWebSocket.OPEN;
     for (const listener of this.listeners.open) listener();
@@ -118,7 +146,7 @@ function makeHarness() {
     websocketFactory: factory,
     metrics: (event) => metrics.push(event.name),
   });
-  return { adapter, calls, metrics, socket: () => sockets[0] };
+  return { adapter, calls, metrics, socket: () => sockets[0], sockets };
 }
 
 function chunk(data: Uint8Array, sequenceExtras?: Record<string, unknown>) {
@@ -184,10 +212,7 @@ describe("CartesiaSonicTtsAdapter", () => {
     expect(openError).toBeInstanceOf(Error);
     expect(openError.message).toBe("Cartesia WebSocket closed during cancellation");
     expect(socket().sent).toEqual([]);
-    expect(socket().closes.at(-1)).toEqual({
-      code: 1000,
-      reason: "barge-in-before-open",
-    });
+    expect(socket().closes).toEqual([]);
   });
 
   test("discards queued synthesis when the provider fails before open", async () => {
@@ -366,7 +391,7 @@ describe("CartesiaSonicTtsAdapter", () => {
     expect(metrics.filter((name) => name === "cartesia_tts_provider_error")).toHaveLength(1);
   });
 
-  test("emits completion after done and closes the provider socket", () => {
+  test("emits completion after done and keeps the call-scoped socket warm", () => {
     const { adapter, socket } = makeHarness();
     const completions: number[] = [];
     adapter
@@ -388,10 +413,57 @@ describe("CartesiaSonicTtsAdapter", () => {
     );
 
     expect(completions).toEqual([1]);
-    expect(socket().closes.at(-1)).toEqual({
-      code: 1000,
-      reason: "Cartesia context complete",
-    });
+    expect(socket().closes).toEqual([]);
+  });
+
+  test("reuses one socket across contexts and routes frames only to their owner", () => {
+    const { adapter, calls, metrics, socket, sockets } = makeHarness();
+    const firstFrames: number[] = [];
+    const secondFrames: number[] = [];
+    const secondErrors: string[] = [];
+    const first = adapter.createStream(
+      { contextId: "ctx-1" },
+      { onAudioFrame: (event) => firstFrames.push(event.sequence) },
+    );
+    socket().emitOpen();
+    first.sendPhrase({ text: "first", continueContext: false });
+    socket().emitMessage(JSON.stringify({ type: "done", done: true, context_id: "ctx-1" }));
+
+    expect(socket().listenerCount("open")).toBe(0);
+    expect(socket().listenerCount("message")).toBe(0);
+    expect(socket().listenerCount("error")).toBe(0);
+    // The adapter retains one close listener so it can discard a dead shared socket.
+    expect(socket().listenerCount("close")).toBe(1);
+
+    const second = adapter.createStream(
+      { contextId: "ctx-2" },
+      {
+        onAudioFrame: (event) => secondFrames.push(event.sequence),
+        onProviderError: (event) => secondErrors.push(event.code ?? "unknown"),
+      },
+    );
+    second.sendPhrase({ text: "second", continueContext: false });
+    socket().emitMessage(
+      JSON.stringify({ type: "chunk", data: "stale-invalid-audio", context_id: "ctx-1" }),
+    );
+    socket().emitMessage(
+      JSON.stringify({
+        type: "chunk",
+        data: encodeBase64(new Uint8Array([2])),
+        context_id: "ctx-2",
+      }),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(sockets).toHaveLength(1);
+    expect(firstFrames).toEqual([]);
+    expect(secondFrames).toEqual([1]);
+    expect(secondErrors).toEqual([]);
+    expect(socket().closes).toEqual([]);
+    expect(metrics.filter((name) => name === "cartesia_tts_ws_open")).toHaveLength(1);
+    expect(metrics.filter((name) => name === "cartesia_tts_ws_reused")).toHaveLength(1);
+    adapter.close("call ended");
+    expect(socket().closes.at(-1)).toEqual({ code: 1000, reason: "call ended" });
   });
 
   test("emits provider errors without fabricating completion", () => {
@@ -423,10 +495,7 @@ describe("CartesiaSonicTtsAdapter", () => {
     expect(errors).toEqual(["voice_not_found:Voice not found"]);
     expect(completions).toEqual([]);
     expect(metrics).toContain("cartesia_tts_provider_error");
-    expect(socket().closes.at(-1)).toEqual({
-      code: 1011,
-      reason: "Cartesia provider error",
-    });
+    expect(socket().closes).toEqual([]);
   });
 
   test("rejects malformed chunk frames inside message handling and closes the socket", () => {
@@ -488,7 +557,7 @@ describe("CartesiaSonicTtsAdapter", () => {
     expect(cancellations).toEqual(["barge-in"]);
     expect(frames).toEqual([]);
     expect(metrics).toContain("cartesia_tts_cancelled");
-    expect(socket().closes.at(-1)).toEqual({ code: 1000, reason: "barge-in" });
+    expect(socket().closes).toEqual([]);
   });
 
   test("rejects missing server key and invalid Cartesia voice IDs", () => {
