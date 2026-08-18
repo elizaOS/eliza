@@ -8,12 +8,14 @@
  * Under MV3 the worker can be evicted between events, so durable state lives in
  * chrome.storage.local via src/storage.ts rather than in module scope.
  */
+import { browserActionAuthorizationError } from "../src/action-authorization";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BrowserBridgeAction,
   BrowserBridgeSettings,
   LifeOpsBrowserSession,
 } from "../src/browser-bridge-contracts";
+import { sendWithContentScriptRecovery } from "../src/content-script-messaging";
 import type {
   BackgroundState,
   CompanionAutoPairRequest,
@@ -33,6 +35,7 @@ import {
   isValidApiBaseUrl,
   loadBackgroundState,
   loadCompanionConfig,
+  normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
   saveBackgroundState,
   saveCompanionConfig,
@@ -53,6 +56,7 @@ import {
   addWindowFocusListener,
   createAlarm,
   createTab,
+  executeContentScriptFiles,
   executeScriptInMainWorld,
   focusWindow,
   getAllWindows,
@@ -204,6 +208,7 @@ function companionAuthErrorMessage(error: RelayApiError): string {
 
 function readAutoPairResponsePayload(
   payload: unknown,
+  expectedApiBaseUrl: string,
 ): CompanionAutoPairResponse | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -215,7 +220,17 @@ function readAutoPairResponsePayload(
   if (!record.companion || typeof record.companion !== "object") {
     return null;
   }
-  const config = normalizeCompanionConfig(record.config);
+  const companion = record.companion as Record<string, unknown>;
+  const companionId =
+    typeof companion.id === "string" ? companion.id.trim() : "";
+  if (companion.browser !== __BROWSER_BRIDGE_KIND__ || !companionId) {
+    return null;
+  }
+  const config = normalizeAutoPairCompanionConfig(record.config, {
+    apiBaseUrl: expectedApiBaseUrl,
+    browser: __BROWSER_BRIDGE_KIND__,
+    companionId,
+  });
   if (!config) {
     return null;
   }
@@ -254,7 +269,7 @@ async function requestAutoPairFromBackground(
           `${response.status} ${response.statusText}`,
       };
     }
-    const data = readAutoPairResponsePayload(payload);
+    const data = readAutoPairResponsePayload(payload, apiBaseUrl);
     if (!data) {
       return {
         ok: false,
@@ -330,7 +345,7 @@ async function requestAutoPairFromTab(
       [apiBaseUrl, request],
     );
     if (result.ok && result.data) {
-      const data = readAutoPairResponsePayload(result.data);
+      const data = readAutoPairResponsePayload(result.data, apiBaseUrl);
       if (!data) {
         return {
           ok: false,
@@ -523,6 +538,7 @@ async function collectSnapshotTabs(
     previous: rememberedTabs,
     snapshot,
     settings,
+    grantedOrigins: await getGrantedOrigins(),
     fallbackMaxRememberedTabs: MAX_REMEMBERED_TABS,
   });
   await saveState();
@@ -541,7 +557,7 @@ async function captureFocusedPageContext(
     return [];
   }
   try {
-    const response = await sendTabMessage<ContentScriptResponse>(tabId, {
+    const response = await sendContentScriptMessage(tabId, {
       type: "browser-bridge:capture-page",
     });
     if (!response.ok || !response.page) {
@@ -566,6 +582,16 @@ async function captureFocusedPageContext(
   } catch {
     return [];
   }
+}
+
+async function sendContentScriptMessage(
+  tabId: number,
+  message: unknown,
+): Promise<ContentScriptResponse> {
+  return await sendWithContentScriptRecovery({
+    send: () => sendTabMessage<ContentScriptResponse>(tabId, message),
+    inject: () => executeContentScriptFiles(tabId, ["content.js"]),
+  });
 }
 
 async function buildSyncRequest(
@@ -609,21 +635,62 @@ async function runContentAction(
   tabId: number,
   action: DomActionRequest,
 ): Promise<Record<string, unknown>> {
-  const response = await sendTabMessage<ContentScriptResponse>(tabId, {
+  const response = await sendContentScriptMessage(tabId, {
     type: "browser-bridge:execute-dom-action",
     action,
   });
-  if (!response.ok) {
+  if (response.ok === false) {
     throw new Error(response.error);
   }
   return response.actionResult ?? {};
 }
 
 async function executeAction(
+  client: BrowserBridgeRelayClient,
+  config: CompanionConfig,
   session: CompanionSession,
   action: BrowserBridgeAction,
   currentTabId: number | null,
 ): Promise<{ currentTabId: number | null; result: Record<string, unknown> }> {
+  const freshSync = await client.sync(await buildSyncRequest(config));
+  backgroundState.settings = freshSync.settings;
+  const resolvedTabId = await resolveTargetTab(action, session, currentTabId);
+  const openTabs = await queryTabs({});
+  const focusedTab =
+    (await queryTabs({ active: true, lastFocusedWindow: true }))[0] ?? null;
+  const existingTarget =
+    resolvedTabId === null
+      ? null
+      : (openTabs.find((tab) => tab.id === resolvedTabId) ?? null);
+  const targetUrl =
+    action.kind === "open" || action.kind === "navigate"
+      ? action.url
+      : existingTarget?.url;
+  if (!targetUrl) {
+    throw new Error(`${action.kind} requires an authorized target URL`);
+  }
+  const authorizationError = browserActionAuthorizationError({
+    settings: freshSync.settings,
+    target: {
+      url: targetUrl,
+      incognito: existingTarget?.incognito === true,
+      focusedActive:
+        existingTarget !== null &&
+        existingTarget.id === focusedTab?.id &&
+        existingTarget.active === true,
+    },
+    grantedOrigins: await getGrantedOrigins(),
+    currentFocusedUrl: focusedTab?.url ?? null,
+  });
+  if (authorizationError) {
+    throw new Error(authorizationError);
+  }
+  if (freshSync.session?.id !== session.id) {
+    throw new Error(
+      "The browser session is no longer the active session for this companion.",
+    );
+  }
+
   switch (action.kind) {
     case "open": {
       if (!action.url) {
@@ -643,7 +710,7 @@ async function executeAction(
       if (!action.url) {
         throw new Error("navigate requires url");
       }
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         const tab = await createTab({ url: action.url, active: true });
         return {
@@ -668,7 +735,7 @@ async function executeAction(
       };
     }
     case "focus_tab": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("focus_tab requires a target tab");
       }
@@ -684,7 +751,7 @@ async function executeAction(
       };
     }
     case "reload": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("reload requires a target tab");
       }
@@ -697,7 +764,7 @@ async function executeAction(
       };
     }
     case "back": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("back requires a target tab");
       }
@@ -707,7 +774,7 @@ async function executeAction(
       };
     }
     case "forward": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("forward requires a target tab");
       }
@@ -719,7 +786,7 @@ async function executeAction(
     case "click":
     case "type":
     case "submit": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error(`${action.kind} requires a target tab`);
       }
@@ -735,15 +802,17 @@ async function executeAction(
     case "read_page":
     case "extract_links":
     case "extract_forms": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error(`${action.kind} requires a target tab`);
       }
-      const response = await sendTabMessage<ContentScriptResponse>(tabId, {
+      const response = await sendContentScriptMessage(tabId, {
         type: "browser-bridge:capture-page",
       });
-      if (!response.ok || !response.page) {
-        throw new Error(response.ok ? "page capture failed" : response.error);
+      if (response.ok === false || !response.page) {
+        throw new Error(
+          "error" in response ? response.error : "page capture failed",
+        );
       }
       const result =
         action.kind === "read_page"
@@ -790,7 +859,17 @@ async function executeSession(
       index += 1
     ) {
       const action = session.actions[index];
-      const outcome = await executeAction(session, action, currentTabId);
+      const config = await readConfig();
+      if (!config) {
+        throw new Error("Browser companion configuration is unavailable.");
+      }
+      const outcome = await executeAction(
+        client,
+        config,
+        session,
+        action,
+        currentTabId,
+      );
       currentTabId = outcome.currentTabId;
       actionResults[action.id] = outcome.result;
       await client.updateSessionProgress(session.id, {

@@ -136,12 +136,18 @@ type RawScriptingExecutionResult = {
 
 type RawScripting = {
   executeScript?: (
-    injection: {
-      target: { tabId: number };
-      world?: "ISOLATED" | "MAIN";
-      func: (...args: unknown[]) => unknown;
-      args?: unknown[];
-    },
+    injection:
+      | {
+          target: { tabId: number };
+          world?: "ISOLATED" | "MAIN";
+          func: (...args: unknown[]) => unknown;
+          args?: unknown[];
+        }
+      | {
+          target: { tabId: number };
+          world?: "ISOLATED";
+          files: string[];
+        },
     callback?: Callback<RawScriptingExecutionResult[]>,
   ) => Promise<RawScriptingExecutionResult[]> | undefined;
 };
@@ -396,6 +402,26 @@ export async function executeScriptInMainWorld<T>(
     ),
   );
   return results[0]?.result as T | undefined as T;
+}
+
+export async function executeContentScriptFiles(
+  tabId: number,
+  files: string[],
+): Promise<void> {
+  const scripting = getRawApi().scripting;
+  if (!scripting?.executeScript) {
+    throw new Error("scripting.executeScript is unavailable");
+  }
+  await invokeAsync<RawScriptingExecutionResult[]>((callback) =>
+    scripting.executeScript?.(
+      {
+        target: { tabId },
+        world: "ISOLATED",
+        files,
+      },
+      callback,
+    ),
+  );
 }
 
 export function addRuntimeMessageListener(

@@ -1,7 +1,8 @@
 /**
- * Content script injected into allowlisted pages: routes capture-page and
- * DOM-action messages from the background worker to page-extract / dom-actions
- * and returns the result. Thin adapter — all logic lives in src/.
+ * Content script injected into allowlisted or owner-granted pages: routes
+ * capture-page and DOM-action messages from the background worker to
+ * page-extract / dom-actions and returns the result. Thin adapter — all logic
+ * lives in src/.
  */
 import { runDomAction } from "../src/dom-actions";
 import { capturePageContext } from "../src/page-extract";
@@ -11,37 +12,45 @@ import type {
 } from "../src/protocol";
 import { addRuntimeMessageListener } from "../src/webextension";
 
-addRuntimeMessageListener((message, _sender, sendResponse) => {
-  const request = message as ContentScriptMessage | undefined;
-  if (!request || typeof request !== "object" || !("type" in request)) {
-    return false;
-  }
+const contentGlobal = globalThis as typeof globalThis & {
+  __elizaBrowserBridgeContentRegistered?: boolean;
+};
 
-  try {
-    if (request.type === "browser-bridge:capture-page") {
-      const response: ContentScriptResponse = {
-        ok: true,
-        page: capturePageContext(),
-      };
-      sendResponse(response);
+if (!contentGlobal.__elizaBrowserBridgeContentRegistered) {
+  contentGlobal.__elizaBrowserBridgeContentRegistered = true;
+  addRuntimeMessageListener((message, _sender, sendResponse) => {
+    const request = message as ContentScriptMessage | undefined;
+    if (!request || typeof request !== "object" || !("type" in request)) {
       return false;
     }
 
-    if (request.type === "browser-bridge:execute-dom-action") {
-      const response: ContentScriptResponse = {
-        ok: true,
-        actionResult: runDomAction(request.action),
-      };
-      sendResponse(response);
+    try {
+      if (request.type === "browser-bridge:capture-page") {
+        const response: ContentScriptResponse = {
+          ok: true,
+          page: capturePageContext(),
+        };
+        sendResponse(response);
+        return false;
+      }
+
+      if (request.type === "browser-bridge:execute-dom-action") {
+        const response: ContentScriptResponse = {
+          ok: true,
+          actionResult: runDomAction(request.action),
+        };
+        sendResponse(response);
+        return false;
+      }
+    } catch (error) {
+      // error-policy:J1 Translate page extraction/action errors into the extension message protocol.
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      } satisfies ContentScriptResponse);
       return false;
     }
-  } catch (error) {
-    sendResponse({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    } satisfies ContentScriptResponse);
-    return false;
-  }
 
-  return false;
-});
+    return false;
+  });
+}

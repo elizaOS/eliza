@@ -10,7 +10,7 @@ Once installed and paired, the extension:
 
 - Syncs open tabs and the current page's text/links/forms to the Eliza agent every 30 seconds and on every tab change.
 - Executes agent-directed browser actions: open a URL, navigate, click an element, type into a field, submit a form, scroll history, or focus a tab.
-- Injects a wallet shim into allowlisted pages so dapp interactions can be routed through the agent's wallet.
+- Builds the wallet shim artifact for an explicit, origin-scoped injection flow. It is not registered as a static content script.
 - Enforces an agent-configured website blocklist using the browser's `declarativeNetRequest` API.
 
 ## Supported browsers
@@ -27,16 +27,21 @@ Once installed and paired, the extension:
 
 The extension ships with a scoped host allowlist instead of a blanket `<all_urls>` grant. The default-install hosts are:
 
+- `http://127.0.0.1/*` and `http://localhost/*` for the local agent API
 - `https://eliza.how/*` and subdomains
 - `https://eliza.dev/*` and subdomains
 
-Content scripts and the wallet shim auto-inject only on these origins.
+The page-capture content script auto-injects only on these origins. The wallet
+shim is deliberately absent from `content_scripts`: a signing token must never
+be injected into every allowlisted origin or child frame. Wallet injection
+remains disabled until an explicit top-frame origin grant is wired end to end.
 
 **Optional hosts**
 
 If a user wants the agent to read or act on an additional site, the extension
-requests permission at runtime via `chrome.permissions.request`. An in-product
-approval prompt confirms the exact origin before any script is injected.
+uses the browser's extension site-access controls to grant the exact origin.
+The sync and action paths independently check the browser's effective grants
+before sharing tab metadata or executing a browser action.
 
 **Content Security Policy**
 
@@ -47,7 +52,7 @@ scripts are forbidden; only first-party bundle code may execute. No
 **Threat model boundaries**
 
 - Out of scope: keylogging, password harvesting, generic content extraction beyond allowlisted hosts.
-- In scope: agent-directed `click`, `type`, `submit`, `history_back`, `history_forward` actions on allowlisted pages; wallet-shim isolation for crypto requests.
+- In scope: agent-directed `click`, `type`, `submit`, `history_back`, `history_forward` actions on allowlisted pages; keeping the dormant wallet shim out of broad automatic injection.
 
 ## Pairing
 

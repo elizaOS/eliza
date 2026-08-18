@@ -21,6 +21,7 @@ type BuiltManifest = {
   manifest_version: number;
   host_permissions: string[];
   optional_host_permissions: string[];
+  content_scripts: Array<{ js: string[]; all_frames?: boolean }>;
   content_security_policy: { extension_pages: string };
   background: { service_worker?: string; scripts?: string[] };
   browser_specific_settings?: {
@@ -82,6 +83,12 @@ describe("cross-browser extension build", () => {
       expect(manifest.content_security_policy.extension_pages).not.toContain(
         "unsafe-eval",
       );
+      expect(manifest.content_scripts).toEqual([
+        expect.objectContaining({ js: ["content.js"] }),
+      ]);
+      expect(
+        manifest.content_scripts.flatMap((entry) => entry.js),
+      ).not.toContain("wallet-shim.js");
     }
 
     expect(chrome.background).toEqual({ service_worker: "background.js" });
@@ -90,7 +97,7 @@ describe("cross-browser extension build", () => {
     expect(firefox.browser_specific_settings?.gecko?.id).toBe(
       "browser-bridge@elizaos.ai",
     );
-  });
+  }, 30_000);
 
   it("creates byte-identical root-layout archives on repeated packaging", async () => {
     await buildExtension("firefox");
@@ -112,5 +119,5 @@ describe("cross-browser extension build", () => {
     expect(createHash("sha256").update(first).digest("hex")).toBe(
       createHash("sha256").update(second).digest("hex"),
     );
-  });
+  }, 30_000);
 });

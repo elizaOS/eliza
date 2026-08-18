@@ -7,6 +7,7 @@ import {
   candidateApiBaseUrlsFromTabs,
   DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
   isValidApiBaseUrl,
+  normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
 } from "./storage";
 
@@ -80,5 +81,48 @@ describe("normalizeCompanionConfig", () => {
       normalizeCompanionConfig({ ...baseConfig, apiBaseUrl: "   " })
         ?.apiBaseUrl,
     ).toBe(DEFAULT_BROWSER_BRIDGE_API_BASE_URL);
+  });
+});
+
+describe("normalizeAutoPairCompanionConfig", () => {
+  const config = {
+    apiBaseUrl: "https://agent.example.com",
+    companionId: "companion-1",
+    pairingToken: "token-1",
+    browser: "chrome" as const,
+    profileId: "default",
+    profileLabel: "Default",
+  };
+  const expected = {
+    apiBaseUrl: "https://agent.example.com",
+    companionId: "companion-1",
+    browser: "chrome" as const,
+  };
+
+  it("accepts a response bound to the request API, browser, and companion", () => {
+    expect(normalizeAutoPairCompanionConfig(config, expected)).toMatchObject(
+      expected,
+    );
+  });
+
+  it("rejects a response that redirects credentials across trust boundaries", () => {
+    expect(
+      normalizeAutoPairCompanionConfig(
+        { ...config, apiBaseUrl: "https://attacker.example" },
+        expected,
+      ),
+    ).toBeNull();
+    expect(
+      normalizeAutoPairCompanionConfig(
+        { ...config, browser: "firefox" },
+        expected,
+      ),
+    ).toBeNull();
+    expect(
+      normalizeAutoPairCompanionConfig(
+        { ...config, companionId: "companion-attacker" },
+        expected,
+      ),
+    ).toBeNull();
   });
 });

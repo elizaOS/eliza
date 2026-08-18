@@ -16,8 +16,8 @@ import {
 import { run } from "./script-utils.mjs";
 
 // SOC2 L-4: explicit host allowlist instead of a blanket `<all_urls>` grant.
-// Documented in README.md. Hosts beyond this list require runtime opt-in
-// through chrome.permissions.request against `optional_host_permissions`.
+// Documented in README.md. Hosts beyond this list require an explicit grant
+// through the browser's extension site-access controls.
 export const BROWSER_BRIDGE_HOST_ALLOWLIST = [
   // Local Eliza agent API. Chrome match patterns do not encode the port,
   // so these cover 127.0.0.1:31337 plus smoke-test/random dev ports.
@@ -147,9 +147,8 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
     ],
     // SOC2 L-4: scoped host permissions. The default-install allowlist is
     // the minimum set the extension needs to function with first-party
-    // Eliza surfaces. Additional hosts must be requested at runtime via
-    // chrome.permissions.request against `optional_host_permissions` and
-    // gated by an in-product approval prompt.
+    // Eliza surfaces. Additional hosts require an explicit browser-managed
+    // site-access grant and are rechecked before data sharing or action use.
     host_permissions: BROWSER_BRIDGE_HOST_ALLOWLIST,
     optional_host_permissions: ["https://*/*", "http://*/*"],
     background:
@@ -170,12 +169,6 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
         matches: BROWSER_BRIDGE_HOST_ALLOWLIST,
         js: ["content.js"],
         run_at: "document_idle",
-      },
-      {
-        matches: BROWSER_BRIDGE_HOST_ALLOWLIST,
-        js: ["wallet-shim.js"],
-        run_at: "document_start",
-        all_frames: true,
       },
     ],
     icons: {

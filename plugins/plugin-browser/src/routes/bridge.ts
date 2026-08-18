@@ -127,20 +127,26 @@ function getBrowserCompanionAuth(
   };
 }
 
+export function isBrowserAutoPairOriginAllowed(
+  originHeader: string,
+  requestOrigin: string,
+  isLoopback: boolean,
+): boolean {
+  if (!originHeader) {
+    return isLoopback;
+  }
+  return originHeader === requestOrigin;
+}
+
 function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
   const originHeader =
     typeof ctx.req.headers.origin === "string"
       ? ctx.req.headers.origin.trim()
       : "";
-  if (!originHeader) {
-    return requestIsLoopback(ctx);
-  }
-  if (originHeader === ctx.url.origin) {
-    return true;
-  }
-  return (
-    originHeader.startsWith("chrome-extension://") ||
-    originHeader.startsWith("safari-web-extension://")
+  return isBrowserAutoPairOriginAllowed(
+    originHeader,
+    ctx.url.origin,
+    requestIsLoopback(ctx),
   );
 }
 
@@ -576,7 +582,7 @@ export async function handleBrowserBridgeRoutes(
     if (!browserAutoPairOriginAllowed(ctx)) {
       ctx.error(
         res,
-        "browser auto-pair must come from the agent app or a browser extension",
+        "browser auto-pair must come from the agent app or an origin-less loopback request",
         403,
       );
       return true;

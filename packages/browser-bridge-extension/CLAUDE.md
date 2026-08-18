@@ -15,7 +15,7 @@ packages/browser-bridge-extension/
     content.ts        Content script injected into allowlisted pages: page capture + DOM actions
     popup.ts          Extension popup UI controller
     blocked.ts        Redirect target page shown when a site is blocked
-    wallet-shim.ts    Content script (document_start): injects EVM/Solana wallet shim into page JS context
+    wallet-shim.ts    Dormant EVM/Solana shim bundle for a future explicitly scoped injection flow
   src/
     protocol.ts               Internal message types (PopupRequest/Response, ContentScriptMessage, BackgroundState, etc.)
     browser-bridge-contracts.ts  Public data contracts: BrowserBridgeSettings, BrowserBridgeAction, SyncBrowserBridgeStateRequest, etc.
@@ -71,12 +71,12 @@ The build script (`scripts/build.mjs`) injects two define constants into each bu
 `scripts/build.mjs` produces `dist/<kind>/manifest.json` at build time. Key manifest fields:
 
 - `permissions`: `tabs`, `storage`, `scripting`, `alarms`, `activeTab`, `declarativeNetRequest`, `declarativeNetRequestWithHostAccess`
-- `host_permissions` (default install): `https://eliza.how/*`, `https://*.eliza.how/*`, `https://eliza.dev/*`, `https://*.eliza.dev/*`
-- `optional_host_permissions`: `https://*/*`, `http://*/*` — granted at runtime per user confirmation
+- `host_permissions` (default install): loopback agent origins plus `https://eliza.how/*`, `https://*.eliza.how/*`, `https://eliza.dev/*`, `https://*.eliza.dev/*`
+- `optional_host_permissions`: `https://*/*`, `http://*/*` — granted explicitly through browser extension site-access controls
 - `content_security_policy`: `script-src 'self'; object-src 'self'` — no inline scripts, no `unsafe-eval`
 - Background entrypoint: MV3 service worker on Chrome/Safari and a background script on Firefox
 - Content scripts at `document_idle`: `content.js` (page capture + DOM actions), injected only on allowlisted hosts
-- Content scripts at `document_start`: `wallet-shim.js`, all frames on allowlisted hosts
+- `wallet-shim.js` is emitted but is not a manifest content script. It must remain disabled until an explicit top-frame origin grant controls injection.
 
 ## Commands
 
@@ -158,7 +158,7 @@ Edit `BROWSER_BRIDGE_HOST_ALLOWLIST` in `scripts/build.mjs`. The array is mirror
 
 - The extension has no npm exports and is `"private": true`. Nothing imports from it via package resolution.
 - `src/webextension.ts` normalizes `chrome.*` / `browser.*` differences. All extension API calls must go through this module — never call `chrome.*` or `browser.*` directly from other src files.
-- The wallet shim is injected at `document_start` and runs before page JS. Its template is baked into the bundle at build time from `plugins/plugin-wallet/src/browser-shim/shim.template.js`. Missing that file will cause the build to fail.
+- The wallet shim template is baked into a dormant bundle from `plugins/plugin-wallet/src/browser-shim/shim.template.js`. Never register it across the broad manifest patterns or in child frames; injection requires a separately reviewed explicit top-frame origin grant.
 - Sync runs on a 30-second alarm (`SYNC_INTERVAL_MINUTES = 0.5`) and is debounced 750ms after tab events. Do not remove the debounce — rapid tab events would otherwise flood the agent API.
 - `isCompanionAuthError()` in the background detects expired/revoked pairing tokens and clears stored config so the next sync triggers auto-pair automatically.
 - Unit tests in `src/storage.test.ts` use `jsdom` via `vitest.extension.config.ts`. Do not run `bun test` from the repo root for this package — it uses its own vitest config.
