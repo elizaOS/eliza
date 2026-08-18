@@ -427,6 +427,23 @@ export async function recordAgentVaultKeySeedReceipt(
     ) {
       conflict("Vault seed source is absent or lacks restorable manifest-v3 authority");
     }
+    // Locked between the backup and the lease so both writers take the same
+    // order (commitAgentBackupRestore does backup -> authority -> lease ->
+    // sandbox); any other position deadlocks the two against each other.
+    const [authority] = await tx
+      .select()
+      .from(agentBackupCatalogAuthorities)
+      .where(
+        and(
+          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
+          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!authority) {
+      conflict("Vault seed catalogue authority is absent");
+    }
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -451,7 +468,8 @@ export async function recordAgentVaultKeySeedReceipt(
       lease.operation_id !== backup.backup_operation_id ||
       lease.activation_generation !== backup.lifecycle_generation ||
       lease.lifecycle_revision !== backup.lifecycle_revision ||
-      lease.expected_manifest_sha256 !== backup.manifest_digest
+      lease.expected_manifest_sha256 !== backup.manifest_digest ||
+      lease.catalog_epoch !== authority.catalog_revision
     ) {
       conflict("Vault seed lost its exact live restore lease");
     }
@@ -752,6 +770,20 @@ export async function commitAgentBackupRestore(
       sandbox.activation_lifecycle_revision !== publication.lifecycle_revision
     ) {
       conflict("Final restore lost exact current sandbox activation authority");
+    }
+    // The permanent receipt attests a restore onto a specific boot. Row-lock the
+    // node and re-prove that boot is still the live one, exactly as the seed
+    // writer does before its own append-only write: a target that reboots
+    // between publication and commit otherwise earns a receipt naming an
+    // incarnation that no longer exists, which authorizeAgentActivationDispatch
+    // already refuses to dispatch onto.
+    const history = await lockCurrentNodeHistory(tx, {
+      nodeRecordId: publication.docker_node_record_id,
+      nodeId: publication.node_id,
+      nodeIncarnation: publication.node_incarnation,
+    });
+    if (history.id !== seed.node_history_id) {
+      conflict("Final restore target node incarnation changed since the vault seed");
     }
     const verifiedAt = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= verifiedAt.getTime()) {
