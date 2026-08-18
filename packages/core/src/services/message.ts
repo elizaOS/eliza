@@ -9761,17 +9761,36 @@ export async function runV5MessageRuntimeStage1(args: {
 		// visible-TEXT set, and deliberate silence (suppressPlannerReply
 		// terminals, ambient IGNORE after tool work) is a contract this
 		// invariant must honor, not a failure for it to "fix" into filler.
+		// An early ack ("on it.") is a PROMISE of work. When the planner then
+		// dies toolless with nothing else delivered, leaving only the ack turns
+		// the promise into a lie by omission — the recovery below must still
+		// fire and own up (live 2026-08-17: "on it." then silence on a repo
+		// ask). Tool-ful turns keep the stricter early-reply exclusion: their
+		// ack was followed by real result delivery paths.
+		const earlyAckBrokenPromise =
+			earlyReplySent && actionResults.length === 0 && !ambientTurn;
 		if (
 			!shouldSendPlannedText &&
-			!earlyReplySent &&
+			(!earlyReplySent || earlyAckBrokenPromise) &&
 			!suppressesPlannerReply &&
-			deliveredVisibleTexts.size === 0 &&
+			(deliveredVisibleTexts.size === 0 || earlyAckBrokenPromise) &&
 			deliveredMediaUrls.length === 0 &&
-			actionResults.length > 0
+			// Toolless planner deaths on an ADDRESSED turn are the same
+			// recoverable silence: the planner exhausted its retries with no
+			// tool call and no usable terminal text, every fallback above
+			// rejected the ack-shaped Stage-1 reply, and the user saw nothing
+			// (live 2026-08-17: casual-phrased coding asks after the
+			// gpt-oss-120b cutover ended [messageHandler, toolSearch, planner]
+			// with zero deliveries). Ambient turns keep their silence contract.
+			(actionResults.length > 0 || !ambientTurn)
 		) {
+			// On a toolless recovery the Stage-1 ack is a false promise of work
+			// that never happened ("On it." then nothing) — skip straight to
+			// the honest line instead.
+			const recoverableAck = actionResults.length > 0 ? stageOneAck : "";
 			const recoveredText =
 				effectiveDeliveredReplyText ||
-				stageOneAck ||
+				recoverableAck ||
 				actionResults
 					.map((result) =>
 						typeof result.userFacingText === "string"
@@ -10659,7 +10678,7 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 		return false;
 	}
 	if (
-		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		)
 	) {
@@ -10778,10 +10797,10 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 function looksLikeExplicitDelegationRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	return (
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		)
 	);
