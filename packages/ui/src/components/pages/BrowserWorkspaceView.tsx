@@ -76,6 +76,84 @@ import {
 } from "./browser-workspace-wallet";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
+/** Companions GET — existing 10s REST budget, independent hop. */
+export const BROWSER_BRIDGE_COMPANIONS_FETCH_TIMEOUT_MS = 10_000;
+/** Packages status GET — existing 10s REST budget, independent hop. */
+export const BROWSER_BRIDGE_PACKAGES_FETCH_TIMEOUT_MS = 10_000;
+/** Chrome build POST — existing 10s REST budget, independent hop. */
+export const BROWSER_BRIDGE_CHROME_BUILD_FETCH_TIMEOUT_MS = 10_000;
+/** Open-path POST — existing 10s REST budget, independent hop. */
+export const BROWSER_BRIDGE_OPEN_PATH_FETCH_TIMEOUT_MS = 10_000;
+/** Chrome extensions manager POST — existing 10s REST budget, independent hop. */
+export const BROWSER_BRIDGE_OPEN_MANAGER_FETCH_TIMEOUT_MS = 10_000;
+
+type BrowserFetchClient = Pick<typeof client, "fetch">;
+
+export async function fetchBrowserBridgeCompanions(
+  api: BrowserFetchClient,
+  timeoutMs: number = BROWSER_BRIDGE_COMPANIONS_FETCH_TIMEOUT_MS,
+) {
+  return api.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
+    "/api/browser-bridge/companions",
+    undefined,
+    { timeoutMs },
+  );
+}
+
+export async function fetchBrowserBridgePackages(
+  api: BrowserFetchClient,
+  timeoutMs: number = BROWSER_BRIDGE_PACKAGES_FETCH_TIMEOUT_MS,
+) {
+  return api.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
+    "/api/browser-bridge/packages",
+    undefined,
+    { timeoutMs },
+  );
+}
+
+export async function buildBrowserBridgeChromePackage(
+  api: BrowserFetchClient,
+  timeoutMs: number = BROWSER_BRIDGE_CHROME_BUILD_FETCH_TIMEOUT_MS,
+) {
+  return api.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
+    "/api/browser-bridge/packages/chrome/build",
+    { method: "POST" },
+    { timeoutMs },
+  );
+}
+
+export async function revealBrowserBridgeOpenPath(
+  api: BrowserFetchClient,
+  timeoutMs: number = BROWSER_BRIDGE_OPEN_PATH_FETCH_TIMEOUT_MS,
+) {
+  return api.fetch<{
+    path: string;
+    target: string;
+    revealOnly: boolean;
+  }>(
+    "/api/browser-bridge/packages/open-path",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        target: "chrome_build",
+        revealOnly: true,
+      }),
+    },
+    { timeoutMs },
+  );
+}
+
+export async function openBrowserBridgeChromeManager(
+  api: BrowserFetchClient,
+  timeoutMs: number = BROWSER_BRIDGE_OPEN_MANAGER_FETCH_TIMEOUT_MS,
+) {
+  return api.fetch(
+    "/api/browser-bridge/packages/chrome/open-manager",
+    { method: "POST" },
+    { timeoutMs },
+  );
+}
+
 const POLL_INTERVAL_MS = 2_500;
 const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
@@ -820,12 +898,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         setBrowserBridgeLoading(true);
       }
       const [companionsResult, packageResult] = await Promise.allSettled([
-        client.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
-          "/api/browser-bridge/companions",
-        ),
-        client.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
-          "/api/browser-bridge/packages",
-        ),
+        fetchBrowserBridgeCompanions(client),
+        fetchBrowserBridgePackages(client),
       ]);
       if (companionsResult.status === "fulfilled") {
         setBrowserBridgeCompanions(companionsResult.value.companions);
@@ -2391,35 +2465,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       async () => {
         let nextPackageStatus = browserBridgePackageStatus;
         if (!nextPackageStatus?.chromeBuildPath) {
-          const buildResponse = await client.fetch<{
-            status: BrowserBridgeCompanionPackageStatus;
-          }>("/api/browser-bridge/packages/chrome/build", {
-            method: "POST",
-          });
+          const buildResponse = await buildBrowserBridgeChromePackage(client);
           nextPackageStatus = buildResponse.status;
           setBrowserBridgePackageStatus(buildResponse.status);
         }
 
-        const revealResponse = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
+        const revealResponse = await revealBrowserBridgeOpenPath(client);
 
         let openedManager = true;
         try {
-          await client.fetch(
-            "/api/browser-bridge/packages/chrome/open-manager",
-            {
-              method: "POST",
-            },
-          );
+          await openBrowserBridgeChromeManager(client);
         } catch {
           openedManager = false;
         }
@@ -2456,17 +2511,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     await runBrowserWorkspaceAction(
       "browser-bridge:reveal-folder",
       async () => {
-        const response = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
+        const response = await revealBrowserBridgeOpenPath(client);
         setActionNoticeRef.current(
           t("browserworkspace.BrowserBridgeFolderRevealed", {
             defaultValue:
@@ -2488,9 +2533,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     await runBrowserWorkspaceAction(
       "browser-bridge:open-manager",
       async () => {
-        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
-          method: "POST",
-        });
+        await openBrowserBridgeChromeManager(client);
         setActionNoticeRef.current(
           t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
             defaultValue:
