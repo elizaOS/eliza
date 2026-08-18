@@ -18,8 +18,25 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const connectionRole =
-      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
+    if (
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const connectionRole = requestedRole === "agent" ? "agent" : "owner";
     const hasMaxResults = Boolean(rawMaxResults?.trim());
     const maxResults = hasMaxResults
       ? parsePositiveInteger(rawMaxResults)

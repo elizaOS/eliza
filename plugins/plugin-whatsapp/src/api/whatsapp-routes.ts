@@ -146,8 +146,37 @@ function shouldConfigurePlugin(body: WhatsAppAccountBody | null): boolean {
   return body?.configurePlugin !== false;
 }
 
+class WhatsAppAuthScopeError extends Error {
+  constructor(message = "Invalid authScope") {
+    super(message);
+    this.name = "WhatsAppAuthScopeError";
+  }
+}
+
 function resolveAuthScope(value: unknown): WhatsAppAuthScope {
-  return value === "lifeops" ? "lifeops" : "platform";
+  if (value == null || value === "") {
+    return "platform";
+  }
+  if (value === "lifeops") {
+    return "lifeops";
+  }
+  if (value === "platform") {
+    return "platform";
+  }
+  throw new WhatsAppAuthScopeError();
+}
+
+function parseAuthScopeOrReject(res: ServerResponse, value: unknown): WhatsAppAuthScope | null {
+  // error-policy:J1 invalid request values become an HTTP 400 response.
+  try {
+    return resolveAuthScope(value);
+  } catch (error) {
+    if (error instanceof WhatsAppAuthScopeError) {
+      json(res, { error: error.message }, 400);
+      return null;
+    }
+    throw error;
+  }
 }
 
 function resolveSessionKey(authScope: WhatsAppAuthScope, accountId: string): string {
@@ -248,7 +277,10 @@ export async function handleWhatsAppRoute(
 
   if (method === "POST" && pathname === "/api/whatsapp/pair") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
-    const authScope = resolveAuthScope(body?.authScope);
+    const authScope = parseAuthScopeOrReject(res, body?.authScope);
+    if (authScope == null) {
+      return true;
+    }
     const configurePlugin = authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
@@ -341,7 +373,15 @@ export async function handleWhatsAppRoute(
       json(res, { error: (err as Error).message }, 400);
       return true;
     }
-    const authScope = resolveAuthScope(url.searchParams.get("authScope"));
+    const requested = url.searchParams.getAll("authScope");
+    if (requested.length > 1) {
+      json(res, { error: "Invalid authScope" }, 400);
+      return true;
+    }
+    const authScope = parseAuthScopeOrReject(res, requested[0] ?? null);
+    if (authScope == null) {
+      return true;
+    }
     const sessionKey = resolveSessionKey(authScope, accountId);
 
     const session = state.whatsappPairingSessions.get(sessionKey);
@@ -373,7 +413,10 @@ export async function handleWhatsAppRoute(
 
   if (method === "POST" && pathname === "/api/whatsapp/pair/stop") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
-    const authScope = resolveAuthScope(body?.authScope);
+    const authScope = parseAuthScopeOrReject(res, body?.authScope);
+    if (authScope == null) {
+      return true;
+    }
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
@@ -399,7 +442,10 @@ export async function handleWhatsAppRoute(
 
   if (method === "POST" && pathname === "/api/whatsapp/disconnect") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
-    const authScope = resolveAuthScope(body?.authScope);
+    const authScope = parseAuthScopeOrReject(res, body?.authScope);
+    if (authScope == null) {
+      return true;
+    }
     const configurePlugin = authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
