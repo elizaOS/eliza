@@ -59,25 +59,65 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     return ["minProperties", "maxProperties", "additionalProperties"];
   }
 
+  /**
+   * Reasoning models reject the constraint keywords stripped above, so every
+   * stripped bound has to survive as prose or the model is never told about a
+   * rule it must still satisfy. Two failure modes are guarded here: a bound of
+   * zero is a legitimate constraint and must not be dropped by a truthy test,
+   * and a collected keyword with no rule of its own must still reach the
+   * description rather than vanishing because some *other* keyword happened to
+   * render (the previous all-or-nothing fallback only fired when zero rules
+   * matched, which silently lost `multipleOf` from `{minimum, multipleOf}`).
+   */
   protected mergeDescription(
     original: string | undefined,
     constraints: Record<string, unknown>,
   ): string {
     const rules: string[] = [];
-    if (constraints.minLength) rules.push(`minimum ${constraints.minLength} characters`);
-    if (constraints.maxLength) rules.push(`maximum ${constraints.maxLength} characters`);
-    if (constraints.minimum !== undefined) rules.push(`must be >= ${constraints.minimum}`);
-    if (constraints.maximum !== undefined) rules.push(`must be <= ${constraints.maximum}`);
-    if (constraints.format === "email") rules.push(`must be a valid email`);
-    if (constraints.format === "uri" || constraints.format === "url")
-      rules.push(`must be a valid URL`);
-    if (constraints.pattern) rules.push(`must match: ${constraints.pattern}`);
-    if (constraints.enum)
-      rules.push(`must be one of: ${(constraints.enum as string[]).join(", ")}`);
-    if (constraints.minItems) rules.push(`at least ${constraints.minItems} items`);
-    if (constraints.maxItems) rules.push(`at most ${constraints.maxItems} items`);
+    const rendered = new Set<string>();
+    const rule = (key: string, text: string): void => {
+      rules.push(text);
+      rendered.add(key);
+    };
 
-    const text = rules.length > 0 ? `IMPORTANT: ${rules.join(", ")}` : JSON.stringify(constraints);
+    if (constraints.minLength !== undefined)
+      rule("minLength", `minimum ${constraints.minLength} characters`);
+    if (constraints.maxLength !== undefined)
+      rule("maxLength", `maximum ${constraints.maxLength} characters`);
+    if (constraints.minimum !== undefined) rule("minimum", `must be >= ${constraints.minimum}`);
+    if (constraints.maximum !== undefined) rule("maximum", `must be <= ${constraints.maximum}`);
+    if (constraints.exclusiveMinimum !== undefined)
+      rule("exclusiveMinimum", `must be > ${constraints.exclusiveMinimum}`);
+    if (constraints.exclusiveMaximum !== undefined)
+      rule("exclusiveMaximum", `must be < ${constraints.exclusiveMaximum}`);
+    if (constraints.multipleOf !== undefined)
+      rule("multipleOf", `must be a multiple of ${constraints.multipleOf}`);
+    if (constraints.format === "email") rule("format", `must be a valid email`);
+    if (constraints.format === "uri" || constraints.format === "url")
+      rule("format", `must be a valid URL`);
+    if (constraints.pattern !== undefined) rule("pattern", `must match: ${constraints.pattern}`);
+    if (constraints.enum !== undefined)
+      rule("enum", `must be one of: ${(constraints.enum as string[]).join(", ")}`);
+    if (constraints.minItems !== undefined)
+      rule("minItems", `at least ${constraints.minItems} items`);
+    if (constraints.maxItems !== undefined)
+      rule("maxItems", `at most ${constraints.maxItems} items`);
+    if (constraints.uniqueItems === true) rule("uniqueItems", `items must be unique`);
+    if (constraints.minProperties !== undefined)
+      rule("minProperties", `at least ${constraints.minProperties} properties`);
+    if (constraints.maxProperties !== undefined)
+      rule("maxProperties", `at most ${constraints.maxProperties} properties`);
+
+    const unrendered = Object.keys(constraints).filter((key) => !rendered.has(key));
+    const parts: string[] = [];
+    if (rules.length > 0) parts.push(`IMPORTANT: ${rules.join(", ")}`);
+    if (unrendered.length > 0) {
+      parts.push(
+        JSON.stringify(Object.fromEntries(unrendered.map((key) => [key, constraints[key]]))),
+      );
+    }
+
+    const text = parts.join(" ");
     return original ? `${original}\n\n${text}` : text;
   }
 }
