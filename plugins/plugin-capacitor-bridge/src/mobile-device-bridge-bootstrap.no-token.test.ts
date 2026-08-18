@@ -31,7 +31,9 @@ describe("mobile device bridge with no pairing token (W1-011)", () => {
 		const bridge = await import("./mobile-device-bridge-bootstrap");
 		const server = http.createServer((_req, res) => res.end("ok"));
 		try {
-			await bridge.attachMobileDeviceBridgeToServer(server);
+			await expect(
+				bridge.attachMobileDeviceBridgeToServer(server),
+			).resolves.toBe(false);
 			expect(bridge.mobileDeviceBridge.status().enabled).toBe(false);
 			expect(bridge.mobileDeviceBridge.status().connected).toBe(false);
 		} finally {
