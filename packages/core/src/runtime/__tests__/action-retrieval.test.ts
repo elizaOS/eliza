@@ -801,6 +801,31 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	// Coding/repo-shaped invented names route to the TASKS coding umbrella —
+	// both the explicit spellings stage-1 emits live (tj-79876bf0f950e8) and
+	// the heuristic git-surface family, which must win before the view
+	// heuristic (CODE_PR_CREATE's CREATE token otherwise reads as a generated
+	// view capability and repo work misroutes to VIEWS).
+	it("routes coding candidates to TASKS ahead of the view heuristic", () => {
+		for (const candidate of [
+			"CODE_EDIT",
+			"CODE_PR_CREATE",
+			"CREATE_PR",
+			"OPEN_PULL_REQUEST",
+			"FIX_BUG",
+			"UPDATE_REPO_README",
+			"GITHUB_ISSUE_FIX",
+			"COMMIT_CHANGES",
+			"CREATE_BRANCH",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["TASKS"]);
+		}
+		// QR guard: scan/generate-a-code names are not repo work.
+		expect(parentAliasesForCandidateAction("SCAN_QR_CODE")).not.toEqual([
+			"TASKS",
+		]);
+	});
+
 	// Habit/reminder-shaped invented names must hint the owner-life umbrella AND
 	// the TRIGGER scheduler, so deployments without plugin-personal-assistant
 	// keep the only real scheduled-work capability on the planner surface.
