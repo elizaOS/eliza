@@ -17,6 +17,7 @@ import {
   archiveFromPlan,
   buildMigrationPlan,
   emitSovereignArtifacts,
+  MIN_PASSWORD_LENGTH,
   type MigratePlan,
 } from "../migrate/index.js";
 
@@ -160,9 +161,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   // ---- portable encrypted archive ----
   if (opts.out) {
     const password = opts.password?.trim();
-    if (!password || password.length < 8) {
+    if (!password || password.length < MIN_PASSWORD_LENGTH) {
       fail(
-        "--password (min 8 chars) is required to write an encrypted --out archive.",
+        `--password (min ${MIN_PASSWORD_LENGTH} chars) is required to write an encrypted --out archive.`,
       );
     }
     const archivePassword = password;

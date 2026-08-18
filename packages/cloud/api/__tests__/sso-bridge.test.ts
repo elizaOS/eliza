@@ -88,7 +88,9 @@ async function mintToken(
   opts: { iatOffsetSec?: number; expOffsetSec?: number } = {},
 ): Promise<string> {
   const iatOffset = opts.iatOffsetSec ?? 0;
-  const ttl = (opts.expOffsetSec ?? 3600) - iatOffset;
+  // Keep the signed issued lifetime at the production one-hour contract: the
+  // verifier caps exp-iat, so the clock shift may not inflate the TTL.
+  const ttl = opts.expOffsetSec ?? 3600;
   const realNow = Date.now();
   try {
     if (iatOffset !== 0) setSystemTime(new Date(realNow + iatOffset * 1000));
@@ -392,7 +394,9 @@ describe("code lifecycle", () => {
   });
 
   test("an expired code fails", async () => {
-    const token = await mintToken("user-expiry", { expOffsetSec: 7200 });
+    // The standard one-hour token outlives the 61s clock jump below; a longer
+    // issued lifetime would no longer verify at /mint.
+    const token = await mintToken("user-expiry");
     const { verifier, challenge } = await makeVerifierPair();
     const code = await mintCode(token, challenge);
     const realNow = Date.now();
