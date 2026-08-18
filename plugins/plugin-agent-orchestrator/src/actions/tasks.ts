@@ -333,9 +333,20 @@ function parseAgentPrefix(
   return { agentType: candidate, task: match[2] ?? part };
 }
 
+/** Clamp display text at a word boundary with an ellipsis. A bare
+ *  `slice(0, 80)` cut labels mid-word in user-visible acks ("Edit file l",
+ *  "Commit loca" — live 2026-08-18). */
+function clampLabel(text: string, max = 80): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  const cut = cleaned.slice(0, max - 1);
+  const boundary = cut.lastIndexOf(" ");
+  return `${boundary > max - 24 ? cut.slice(0, boundary) : cut}…`;
+}
+
 function labelFrom(task: string, index: number): string {
-  const cleaned = task.replace(/\s+/g, " ").trim();
-  return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+  const cleaned = clampLabel(task);
+  return cleaned || `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -2460,7 +2471,7 @@ async function runSpawnAgent(
     const labelParam = pickString(params, content, "label");
     const label = labelParam
       ? userReferenceLogView(labelParam)
-      : task.slice(0, 80);
+      : clampLabel(task);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,

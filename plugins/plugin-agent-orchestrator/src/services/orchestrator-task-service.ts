@@ -640,8 +640,14 @@ export function composeVerifyEscalationNotice(
   details: { attempts: number; summary: string; missing: string[] },
 ): string {
   const label = title.trim() || "the coding task";
+  const summaryText = details.summary.trim().toLowerCase();
   const missing = details.missing
     .filter((item) => item.trim().length > 0)
+    // The caller often passes the same residual line as both summary and
+    // missing; repeating it verbatim read like a stutter (live 2026-08-18:
+    // "Completion residuals found: 6 uncommitted path(s)… Couldn't confirm:
+    // 6 uncommitted path(s)…").
+    .filter((item) => !summaryText.includes(item.trim().toLowerCase()))
     .slice(0, 3);
   const missingLine =
     missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "";

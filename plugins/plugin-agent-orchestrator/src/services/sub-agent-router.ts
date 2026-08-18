@@ -3935,6 +3935,56 @@ function routingKindFromPayloadBanner(data: unknown): string | undefined {
  * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
  * their intended form.
  */
+/** Authenticated liveness recheck for github.com URLs that probed non-2xx:
+ *  a PRIVATE repo's web URL 404s for anonymous GETs, and the completion
+ *  verifier then branded a real, just-opened PR "dead" and relabeled the
+ *  success a failure (live 2026-08-18: "Couldn't finish … → HTTP 404" one
+ *  minute after the PR link was delivered). The recheck translates the web
+ *  URL to its api.github.com resource and probes THAT with the configured
+ *  token — the token never leaves api.github.com and nothing is sent for
+ *  non-github hosts. Returns true only on a 2xx API answer. */
+async function githubAuthenticatedRecheck(
+  url: string,
+  runtime: IAgentRuntime | undefined,
+): Promise<boolean> {
+  if (!runtime) return false;
+  const m = url.match(
+    /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(pull|issues|commit|tree|blob)\/([^\/?#]+))?(?:[\/?#]|$)/,
+  );
+  if (!m) return false;
+  const token = runtime.getSetting?.("GITHUB_TOKEN");
+  if (typeof token !== "string" || !token.trim()) return false;
+  const [, owner, repo, kind, ref] = m;
+  const resource =
+    kind === "pull"
+      ? `repos/${owner}/${repo}/pulls/${ref}`
+      : kind === "issues"
+        ? `repos/${owner}/${repo}/issues/${ref}`
+        : kind === "commit"
+          ? `repos/${owner}/${repo}/commits/${ref}`
+          : `repos/${owner}/${repo}`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(`https://api.github.com/${resource}`, {
+        headers: {
+          Authorization: `token ${token.trim()}`,
+          "User-Agent": "eliza-orchestrator",
+        },
+        signal: controller.signal,
+      });
+      return res.status >= 200 && res.status < 300;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // error-policy:J3 recheck is a liveness upgrade only; failure keeps the
+    // anonymous probe's explicit dead status.
+    return false;
+  }
+}
+
 export async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
@@ -3998,6 +4048,12 @@ export async function annotateUnverifiedUrls(
             status: `HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status})`,
             servedLive: false,
           };
+        }
+        if (await githubAuthenticatedRecheck(url, runtime)) {
+          log?.(
+            `[verify] probe ${url} → HTTP ${res.status} anonymously, but the authenticated GitHub API recheck is live (private repo) @ ${new Date().toISOString()}`,
+          );
+          return { status: null, servedLive: true };
         }
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
