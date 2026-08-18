@@ -1530,9 +1530,6 @@ export async function postAndroidSmsGatewayWithFetch(
     body,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) {
-    throw new Error(`Cloud gateway failed (${response.status})`);
-  }
   return response;
 }
 
