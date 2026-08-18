@@ -1235,10 +1235,22 @@ export async function handleViewsRoutes(
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
       if (originatingClientId) {
-        const delivered = ctx.broadcastWsToClientId?.(
-          originatingClientId,
-          frame,
-        );
+        let delivered: number | undefined;
+        if (shouldTargetCompletedAction) {
+          try {
+            delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+          } catch (err) {
+            // error-policy:J4 the terminal completed-action result remains the
+            // visible, caller-scoped navigation fallback when this optional
+            // early WebSocket optimization fails unexpectedly.
+            logger.warn(
+              { src: "ViewsRoutes", err, viewId: id },
+              "[ViewsRoutes] Early completed-action navigation delivery failed",
+            );
+          }
+        } else {
+          delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+        }
         completedActionDelivered =
           shouldTargetCompletedAction &&
           typeof delivered === "number" &&

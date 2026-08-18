@@ -221,6 +221,30 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
+  it("keeps the completed-action fallback when targeted delivery throws", async () => {
+    const { ctx, json, error, broadcastWs, broadcastWsToClientId } =
+      makeNavigateCtx("notes", {
+        clientId: "closing-rest-client",
+        delivery: "completed-action",
+      });
+    broadcastWsToClientId.mockImplementation(() => {
+      throw new Error("socket closed during targeted send");
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "notes",
+        completedActionDelivered: false,
+      }),
+    );
+  });
+
   it("delivers app-chat navigation only to its originating client", async () => {
     const { ctx, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
       "browser",
