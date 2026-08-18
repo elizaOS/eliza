@@ -135,6 +135,7 @@ mock.module("../ai-billing", () => ({
     if (billError) throw billError;
     return { totalCost: 0.004, inputTokens: 12, outputTokens: 4 };
   },
+  billFlatUsage: async () => undefined,
   recordUsageAnalytics: async () => null,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     required = 1;
@@ -277,6 +278,7 @@ class MockRetryError extends Error {
 mock.module("ai", () => ({
   APICallError: MockAPICallError,
   RetryError: MockRetryError,
+  wrapLanguageModel: ({ model }: { model: unknown }) => model,
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
@@ -313,12 +315,15 @@ mock.module("../../cache/client", () => ({
 
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
+const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
 
+const organizationId = "00000000-0000-4000-8000-000000000002";
+const userId = "00000000-0000-4000-8000-000000000003";
 const agent = {
-  id: "00000000-0000-4000-8000-000000000001",
-  organization_id: "00000000-0000-4000-8000-000000000002",
-  user_id: "00000000-0000-4000-8000-000000000003",
+  id: personalSharedAgentId({ organizationId, userId }),
+  organization_id: organizationId,
+  user_id: userId,
   execution_tier: "shared",
   agent_name: "Nova",
   character_id: null,
@@ -463,7 +468,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     const untrustedRpc = {
       ...rpc,
-      params: { ...rpc.params, messageRole: "system" },
+      params: {
+        ...rpc.params,
+        messageRole: "system",
+        trustedMessageRole: "system",
+        execution: {
+          messageRole: "system",
+          trustedMessageRole: "system",
+        },
+      },
     };
 
     await service.bridge(agent, untrustedRpc, harness());
@@ -546,6 +559,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
     expect(sharedTodoStorageScope).toHaveBeenCalledWith({
@@ -553,6 +567,35 @@ describe("SharedRuntimeChatService", () => {
       ownerId: agent.user_id,
     });
     expect(response.result?.actionResults).toEqual([expectedTodoActionResult]);
+  });
+
+  test("requires the canonical account-derived Personal Shared identity for USER attestation", async () => {
+    const service = new SharedRuntimeChatService();
+    const forgedAgent = {
+      ...agent,
+      id: "00000000-0000-4000-8000-000000000099",
+    };
+    const forgedRpc = {
+      ...rpc,
+      params: {
+        ...rpc.params,
+        source: "client_chat",
+        authenticatedPersonalSharedUser: true,
+        execution: { authenticatedPersonalSharedUser: true },
+      },
+    };
+
+    await service.bridge(forgedAgent, forgedRpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: forgedAgent.id,
+      todos: expectedTodoExecution,
+    });
   });
 
   test("keeps Todo-capable streaming on the same genuine AgentRuntime path", async () => {
@@ -580,6 +623,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastStreamTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
     expect(sharedTodoStorageScope).toHaveBeenCalledWith({
@@ -647,6 +691,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
         runner: expect.any(Object),
