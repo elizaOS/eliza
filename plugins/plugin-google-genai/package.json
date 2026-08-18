@@ -102,7 +102,7 @@
         "type": "string",
         "description": "Overrides the default text embedding model used by Google Generative AI.",
         "required": false,
-        "default": "text-embedding-004",
+        "default": "gemini-embedding-001",
         "sensitive": false
       },
       "GOOGLE_IMAGE_MODEL": {
