@@ -26,7 +26,14 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  const body = await c.req.json();
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    // error-policy:J3 untrusted request body — malformed JSON is caller
+    // error (400), not an uncaught SyntaxError → 500.
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const { name, email, comment } = feedbackSchema.parse(body);
   const timestamp = new Date().toISOString();
   const displayName = name || "Anonymous";
