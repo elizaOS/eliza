@@ -79,37 +79,54 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
       rules.push(text);
       rendered.add(key);
     };
-    const numericRule = (key: string, text: (value: number) => string): void => {
-      const value = constraints[key];
-      if (typeof value === "number") rule(key, text(value));
-    };
+    const finiteNumber = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value);
+    const nonNegativeInteger = (value: unknown): value is number =>
+      finiteNumber(value) && Number.isInteger(value) && value >= 0;
+    const positiveNumber = (value: unknown): value is number => finiteNumber(value) && value > 0;
 
-    numericRule("minLength", (value) => `minimum ${value} characters`);
-    numericRule("maxLength", (value) => `maximum ${value} characters`);
-    numericRule("minimum", (value) => `must be >= ${value}`);
-    numericRule("maximum", (value) => `must be <= ${value}`);
-    numericRule("exclusiveMinimum", (value) => `must be > ${value}`);
-    numericRule("exclusiveMaximum", (value) => `must be < ${value}`);
-    numericRule("multipleOf", (value) => `must be a multiple of ${value}`);
+    if (nonNegativeInteger(constraints.minLength))
+      rule("minLength", `minimum ${constraints.minLength} characters`);
+    if (nonNegativeInteger(constraints.maxLength))
+      rule("maxLength", `maximum ${constraints.maxLength} characters`);
+    if (finiteNumber(constraints.minimum)) rule("minimum", `must be >= ${constraints.minimum}`);
+    if (finiteNumber(constraints.maximum)) rule("maximum", `must be <= ${constraints.maximum}`);
+    if (finiteNumber(constraints.exclusiveMinimum))
+      rule("exclusiveMinimum", `must be > ${constraints.exclusiveMinimum}`);
+    if (finiteNumber(constraints.exclusiveMaximum))
+      rule("exclusiveMaximum", `must be < ${constraints.exclusiveMaximum}`);
+    if (positiveNumber(constraints.multipleOf))
+      rule("multipleOf", `must be a multiple of ${constraints.multipleOf}`);
     if (constraints.format === "email") rule("format", `must be a valid email`);
     if (constraints.format === "uri" || constraints.format === "url")
       rule("format", `must be a valid URL`);
     if (typeof constraints.pattern === "string")
       rule("pattern", `must match: ${constraints.pattern}`);
-    if (Array.isArray(constraints.enum))
-      rule("enum", `must be one of: ${(constraints.enum as string[]).join(", ")}`);
-    numericRule("minItems", (value) => `at least ${value} items`);
-    numericRule("maxItems", (value) => `at most ${value} items`);
+    if (Array.isArray(constraints.enum) && constraints.enum.length > 0)
+      rule(
+        "enum",
+        `must be one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`,
+      );
+    if (nonNegativeInteger(constraints.minItems))
+      rule("minItems", `at least ${constraints.minItems} items`);
+    if (nonNegativeInteger(constraints.maxItems))
+      rule("maxItems", `at most ${constraints.maxItems} items`);
     if (constraints.uniqueItems === true) rule("uniqueItems", `items must be unique`);
-    numericRule("minProperties", (value) => `at least ${value} properties`);
-    numericRule("maxProperties", (value) => `at most ${value} properties`);
+    if (nonNegativeInteger(constraints.minProperties))
+      rule("minProperties", `at least ${constraints.minProperties} properties`);
+    if (nonNegativeInteger(constraints.maxProperties))
+      rule("maxProperties", `at most ${constraints.maxProperties} properties`);
+    if (constraints.additionalProperties === false)
+      rule("additionalProperties", "must not contain additional properties");
 
     const unrendered = Object.keys(constraints).filter((key) => !rendered.has(key));
     const parts: string[] = [];
     if (rules.length > 0) parts.push(`IMPORTANT: ${rules.join(", ")}`);
     if (unrendered.length > 0) {
       parts.push(
-        JSON.stringify(Object.fromEntries(unrendered.map((key) => [key, constraints[key]]))),
+        this.stringifyConstraints(
+          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
+        ),
       );
     }
 

@@ -68,6 +68,13 @@ export abstract class McpToolCompatibility {
       }
     }
 
+    // `additionalProperties` is useful diagnostic input only when this
+    // provider strips it. Collecting it for providers that preserve the
+    // keyword duplicates every closed-object schema in model-facing prose.
+    if (unsupported.includes("additionalProperties") && schema.additionalProperties !== undefined) {
+      constraints.additionalProperties = schema.additionalProperties;
+    }
+
     for (const prop of unsupported) {
       delete (processed as Record<string, unknown>)[prop];
     }
@@ -124,8 +131,17 @@ export abstract class McpToolCompatibility {
     original: string | undefined,
     constraints: Record<string, unknown>,
   ): string {
-    const json = JSON.stringify(constraints);
+    const json = this.stringifyConstraints(constraints);
     return original ? `${original}\n${json}` : json;
+  }
+
+  /** Preserve invalid JavaScript-only numbers instead of JSON-coercing them to null. */
+  protected stringifyConstraints(constraints: Record<string, unknown>): string {
+    return JSON.stringify(constraints, (_key, value) =>
+      typeof value === "number" && !Number.isFinite(value)
+        ? `[non-finite number: ${String(value)}]`
+        : value,
+    );
   }
 
   protected abstract getUnsupportedStringProperties(): string[];
