@@ -34,6 +34,12 @@ const appState = vi.hoisted(() => ({
 
 const notificationMock = vi.hoisted(() => ({
   init: vi.fn(async () => undefined),
+  initNativeTap: vi.fn(async () => undefined),
+}));
+
+vi.mock("./bridge/native-notifications", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./bridge/native-notifications")>()),
+  initLocalNotificationTapRouting: notificationMock.initNativeTap,
 }));
 
 vi.mock("./state/notifications/notification-store", () => ({
@@ -346,6 +352,7 @@ describe("App chat-overlay first-run composition", () => {
     shellControllerMock.generation = 0;
     overlayMock.handledReleases = 0;
     notificationMock.init.mockClear();
+    notificationMock.initNativeTap.mockClear();
   });
 
   afterEach(() => {
@@ -389,7 +396,7 @@ describe("App chat-overlay first-run composition", () => {
     ).toBeNull();
   });
 
-  it("boots WebSocket notification ingress outside startup and auth early returns", async () => {
+  it("boots notification ingress and native tap routing outside startup and auth early returns", async () => {
     window.history.replaceState(null, "", "/");
     appState.firstRunComplete = true;
     appState.startupPhase = "polling-backend";
@@ -398,6 +405,7 @@ describe("App chat-overlay first-run composition", () => {
     const startupGate = render(<App />);
     expect(startupGate.getByTestId("startup-screen")).toBeTruthy();
     await waitFor(() => expect(notificationMock.init).toHaveBeenCalledOnce());
+    expect(notificationMock.initNativeTap).toHaveBeenCalledOnce();
     startupGate.unmount();
   });
 

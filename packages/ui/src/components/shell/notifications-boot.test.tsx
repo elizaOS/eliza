@@ -59,16 +59,17 @@ afterEach(() => {
 mocks.onBaseUrlChange.mockReturnValue(mocks.unsubscribeBase);
 
 describe("notification boot boundaries", () => {
-  it("starts WebSocket ingress from the headless data boot", () => {
+  it("starts ingress and native tap routing above startup/auth gates", async () => {
     const { container } = render(<NotificationsDataBoot />);
     expect(container.innerHTML).toBe("");
     expect(mocks.init).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mocks.localTap).toHaveBeenCalledOnce());
   });
 
-  it("boots native push and local-tap routing, then routes notification-center ingress to chat", async () => {
+  it("boots native push, then routes notification-center ingress to chat", async () => {
     render(<NotificationsShellBoot />);
     await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
-    expect(mocks.localTap).toHaveBeenCalledOnce();
+    expect(mocks.localTap).not.toHaveBeenCalled();
 
     mocks.goHome.mockImplementationOnce(() => {
       expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
@@ -82,7 +83,7 @@ describe("notification boot boundaries", () => {
     );
   });
 
-  it("routes a retained cold-launch tap replayed during native listener attachment", async () => {
+  it("retains a cold-launch tap replayed before the signed-in shell mounts", async () => {
     mocks.goHome.mockImplementationOnce(() => {
       expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
     });
@@ -90,9 +91,15 @@ describe("notification boot boundaries", () => {
       dispatchOpenNotificationCenter();
     });
 
-    render(<NotificationsShellBoot />);
+    render(<NotificationsDataBoot />);
 
     await waitFor(() => expect(mocks.localTap).toHaveBeenCalledOnce());
+    expect(mocks.goHome).not.toHaveBeenCalled();
+    expect(mocks.setTab).not.toHaveBeenCalled();
+
+    render(<NotificationsShellBoot />);
+
+    await waitFor(() => expect(mocks.goHome).toHaveBeenCalledTimes(1));
     expect(mocks.goHome).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledWith("chat");

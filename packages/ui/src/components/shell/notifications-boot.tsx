@@ -34,6 +34,19 @@ import { goHome } from "../../state/shell-surface-store";
 export function NotificationsDataBoot(): null {
   useEffect(() => {
     initNotifications();
+    // Capacitor retains a notification action only until the first listener is
+    // attached. This boot lives above AppContent's startup/auth early returns,
+    // so install the listener here: a tap that launches into LoginView must be
+    // retained by the canonical navigator instead of waiting for the signed-in
+    // shell (which may never mount during this process lifetime).
+    void initLocalNotificationTapRouting().catch((error: unknown) => {
+      // error-policy:J1 native notification tap registration is a transport
+      // boundary; a later top-level remount may retry after the bridge recovers.
+      logger.error(
+        { src: "local-notification-tap", error },
+        "[local-notification-tap] failed to register native tap routing",
+      );
+    });
   }, []);
   return null;
 }
@@ -57,14 +70,6 @@ export function NotificationsShellBoot(): null {
       onOpen();
     }
 
-    void initLocalNotificationTapRouting().catch((error: unknown) => {
-      // error-policy:J1 native notification tap registration is a transport
-      // boundary; a later shell mount may retry after the bridge recovers.
-      logger.error(
-        { src: "local-notification-tap", error },
-        "[local-notification-tap] failed to register native tap routing",
-      );
-    });
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     void initPushRegistration();
