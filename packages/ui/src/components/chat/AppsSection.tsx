@@ -26,6 +26,43 @@ import {
 } from "../ui/dropdown-menu";
 import { WidgetSection } from "./widgets/shared";
 
+/** Relaunch POST — existing 10s REST budget, independent of create/edit. */
+export const APPS_RELAUNCH_FETCH_TIMEOUT_MS = 10_000;
+/** Create/edit POST — existing 10s REST budget, independent of relaunch. */
+export const APPS_CREATE_EDIT_FETCH_TIMEOUT_MS = 10_000;
+
+type AppsFetchClient = Pick<typeof client, "fetch">;
+
+export async function relaunchAppViaClient(
+  api: AppsFetchClient,
+  name: string,
+  timeoutMs: number = APPS_RELAUNCH_FETCH_TIMEOUT_MS,
+): Promise<unknown> {
+  return api.fetch(
+    "/api/apps/relaunch",
+    {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    },
+    { timeoutMs },
+  );
+}
+
+export async function startAppEditViaClient(
+  api: AppsFetchClient,
+  name: string,
+  timeoutMs: number = APPS_CREATE_EDIT_FETCH_TIMEOUT_MS,
+): Promise<unknown> {
+  return api.fetch(
+    "/api/apps/create",
+    {
+      method: "POST",
+      body: JSON.stringify({ intent: "edit", editTarget: name }),
+    },
+    { timeoutMs },
+  );
+}
+
 function getRunRingClass(_run: AppRunSummary): string {
   return "";
 }
@@ -124,10 +161,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   const handleRelaunch = useCallback(
     async (app: RegistryAppInfo) => {
       try {
-        await client.fetch("/api/apps/relaunch", {
-          method: "POST",
-          body: JSON.stringify({ name: app.name }),
-        });
+        await relaunchAppViaClient(client, app.name);
         setActionNotice(
           `${app.displayName ?? app.name} relaunched.`,
           "success",
@@ -153,10 +187,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   const handleEdit = useCallback(
     async (app: RegistryAppInfo) => {
       try {
-        await client.fetch("/api/apps/create", {
-          method: "POST",
-          body: JSON.stringify({ intent: "edit", editTarget: app.name }),
-        });
+        await startAppEditViaClient(client, app.name);
         setActionNotice(
           `Editing ${app.displayName ?? app.name}…`,
           "info",
