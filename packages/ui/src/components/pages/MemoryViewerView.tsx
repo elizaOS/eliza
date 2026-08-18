@@ -638,12 +638,19 @@ function MemoryBrowserPanel({
         <>
           <div className="flex items-center justify-between gap-3 text-xs-tight text-muted">
             <span className="tabular-nums">
-              {t("memoryviewer.pageRange", {
-                start: offset + 1,
-                end: offset + result.memories.length,
-                total: result.total,
-                defaultValue: "{{start}}–{{end}} of {{total}}",
-              })}
+              {result.totalIsExact === false
+                ? t("memoryviewer.pageRangeIncomplete", {
+                    start: offset + 1,
+                    end: offset + result.memories.length,
+                    total: result.total,
+                    defaultValue: "{{start}}–{{end}} of at least {{total}}",
+                  })
+                : t("memoryviewer.pageRange", {
+                    start: offset + 1,
+                    end: offset + result.memories.length,
+                    total: result.total,
+                    defaultValue: "{{start}}–{{end}} of {{total}}",
+                  })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -664,7 +671,11 @@ function MemoryBrowserPanel({
                 size="sm"
                 variant="ghost"
                 className={MEMORY_FOCUS_CLASS}
-                disabled={offset + BROWSE_PAGE_SIZE >= result.total}
+                disabled={
+                  result.hasMore === undefined
+                    ? offset + BROWSE_PAGE_SIZE >= result.total
+                    : !result.hasMore
+                }
                 onClick={() => handlePage("next")}
                 {...nextControl.agentProps}
               >

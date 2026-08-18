@@ -820,48 +820,83 @@ async function fetchMemoriesFromTables(
     entityIds?: UUID[];
     roomId?: UUID;
     tables?: readonly string[];
-    limit?: number;
+    /** Stop after this many eligible rows per table. */
+    target: number;
     before?: number;
+    searchQuery?: string;
   },
 ): Promise<TaggedMemory[]> {
   const tables = params.tables ?? MEMORY_TABLE_NAMES;
-  const perTableLimit = Math.max(
-    Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
-    200,
-  );
-  // Read every table concurrently — they are independent queries, and a
-  // sequential loop would make the feed's first paint wait on N round-trips.
-  // Promise.all preserves input order, so the flattened result is order-stable.
-  const perTableMemories = await Promise.all(
+  const entityIds = params.entityIds?.length
+    ? new Set<string>(params.entityIds)
+    : undefined;
+  const searchQuery = params.searchQuery?.trim() ?? "";
+  const searchTerms = searchQuery.split(/\s+/).filter(Boolean);
+  // matchesKeyword has OR semantics for multi-token queries, so only a
+  // single token can be pushed into the adapter without excluding valid rows.
+  const textContains = searchTerms.length === 1 ? searchTerms[0] : undefined;
+
+  // Tables are independent and remain concurrent, but each table advances an
+  // offset cursor instead of repeatedly reading a larger prefix. Requiring the
+  // target from every non-exhausted table makes a bounded final cross-table
+  // merge safe without draining an unbounded store merely to compute a total.
+  const tableResults = await Promise.all(
     tables.map(async (tableName) => {
-      const memories = await runtime.getMemories({
-        agentId: runtime.agentId as UUID,
-        roomId: params.roomId,
-        tableName,
-        limit: perTableLimit,
-        includeEmbedding: false, // browse feed discards embeddings (memoryToBrowseItem)
-      });
-      return memories.map((m) => Object.assign(m, { _table: tableName }));
+      const eligible: TaggedMemory[] = [];
+      let offset = 0;
+      let batchSize = 200;
+
+      for (;;) {
+        const memories = await runtime.getMemories({
+          agentId: runtime.agentId as UUID,
+          roomId: params.roomId,
+          tableName,
+          limit: batchSize,
+          offset,
+          end: params.before,
+          textContains,
+          includeEmbedding: false, // browse feed discards embeddings
+        });
+        offset += memories.length;
+
+        for (const memory of memories) {
+          const tagged = { ...memory, _table: tableName };
+          if (!hasBrowsableContent(tagged)) continue;
+          if (
+            entityIds &&
+            (!tagged.entityId || !entityIds.has(tagged.entityId))
+          ) {
+            continue;
+          }
+          if (
+            params.before !== undefined &&
+            memoryCreatedAt(tagged) >= params.before
+          ) {
+            continue;
+          }
+          if (
+            searchQuery &&
+            !matchesKeyword(
+              (tagged.content as { text?: string } | undefined)?.text ?? "",
+              searchQuery,
+            )
+          ) {
+            continue;
+          }
+          eligible.push(tagged);
+        }
+
+        if (memories.length < batchSize) {
+          return eligible;
+        }
+        if (eligible.length >= params.target) {
+          return eligible;
+        }
+        batchSize = Math.min(batchSize * 2, 5_000);
+      }
     }),
   );
-  const allMemories: TaggedMemory[] = perTableMemories.flat();
-
-  // The DB adapter ignores entityId in getMemories (used only for RLS
-  // context). Post-filter here so person-centric views actually work.
-  const entitySet = params.entityIds;
-  let filtered = allMemories;
-  if (entitySet && entitySet.length > 0) {
-    const ids = new Set<string>(entitySet);
-    filtered = allMemories.filter((m) => m.entityId && ids.has(m.entityId));
-  }
-
-  filtered = filtered.filter(hasBrowsableContent);
-
-  const beforeTs = params.before;
-  if (beforeTs !== undefined) {
-    return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
-  }
-  return filtered;
+  return tableResults.flat();
 }
 
 /**
@@ -1058,7 +1093,7 @@ export async function handleMemoryRoutes(
 
     const allMemories = await fetchMemoriesFromTables(runtime, {
       tables,
-      limit: limit * 2,
+      target: limit + 1,
       before,
     });
 
@@ -1108,25 +1143,23 @@ export async function handleMemoryRoutes(
       tables,
       entityIds,
       roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
-      limit: limit + offset + 100,
+      searchQuery,
+      target: offset + limit + 1,
     });
 
     allMemories.sort(byNewestFirst);
-
-    let filtered = allMemories;
-    if (searchQuery) {
-      filtered = allMemories.filter((m) => {
-        const text = (m.content as { text?: string } | undefined)?.text ?? "";
-        return matchesKeyword(text, searchQuery);
-      });
-    }
-
-    const total = filtered.length;
-    const page = filtered.slice(offset, offset + limit).map(memoryToBrowseItem);
+    const total = allMemories.length;
+    const page = allMemories
+      .slice(offset, offset + limit)
+      .map(memoryToBrowseItem);
 
     json(res, {
       memories: page,
       total,
+      // Adapter calls do not share a transactional snapshot, so even an
+      // exhausted offset scan cannot promise an exact total under mutation.
+      totalIsExact: false,
+      hasMore: allMemories.length > offset + limit,
       limit,
       offset,
     });
@@ -1174,7 +1207,7 @@ export async function handleMemoryRoutes(
     const allMemories = await fetchMemoriesFromTables(runtime, {
       entityIds,
       tables,
-      limit: limit + offset + 100,
+      target: offset + limit + 1,
     });
 
     allMemories.sort(byNewestFirst);
@@ -1187,6 +1220,8 @@ export async function handleMemoryRoutes(
       entityId: primaryEntityId,
       memories: page,
       total,
+      totalIsExact: false,
+      hasMore: allMemories.length > offset + limit,
       limit,
       offset,
     });

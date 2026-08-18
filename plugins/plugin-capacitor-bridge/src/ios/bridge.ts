@@ -1224,43 +1224,69 @@ async function fetchMemoriesFromTables(
 		entityIds?: UUID[];
 		roomId?: UUID;
 		tables?: readonly string[];
-		limit?: number;
+		target: number;
 		before?: number;
+		searchQuery?: string;
 	},
 ): Promise<TaggedMemory[]> {
 	const tables = params.tables ?? MEMORY_TABLE_NAMES;
-	const perTableLimit = Math.max(
-		Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
-		200,
-	);
+	const entityIds = params.entityIds?.length
+		? new Set<string>(params.entityIds)
+		: undefined;
+	const searchQuery = params.searchQuery?.trim() ?? "";
+	const searchTerms = searchQuery.split(/\s+/).filter(Boolean);
+	const textContains = searchTerms.length === 1 ? searchTerms[0] : undefined;
 	const perTableMemories = await Promise.all(
 		tables.map(async (tableName) => {
-			const memories = await runtime.getMemories({
-				agentId: runtime.agentId as UUID,
-				roomId: params.roomId,
-				tableName,
-				limit: perTableLimit,
-				includeEmbedding: false,
-			});
-			return memories.map((m) => Object.assign(m, { _table: tableName }));
+			const eligible: TaggedMemory[] = [];
+			let offset = 0;
+			let batchSize = 200;
+			for (;;) {
+				const memories = await runtime.getMemories({
+					agentId: runtime.agentId as UUID,
+					roomId: params.roomId,
+					tableName,
+					limit: batchSize,
+					offset,
+					end: params.before,
+					textContains,
+					includeEmbedding: false,
+				});
+				offset += memories.length;
+				for (const memory of memories) {
+					const tagged = { ...memory, _table: tableName };
+					if (!hasBrowsableContent(tagged)) continue;
+					if (
+						entityIds &&
+						(!tagged.entityId || !entityIds.has(tagged.entityId))
+					) {
+						continue;
+					}
+					if (
+						params.before !== undefined &&
+						memoryCreatedAt(tagged) >= params.before
+					) {
+						continue;
+					}
+					if (
+						searchQuery &&
+						!matchesMemoryKeyword(
+							(tagged.content as { text?: string } | undefined)?.text ?? "",
+							searchQuery,
+						)
+					) {
+						continue;
+					}
+					eligible.push(tagged);
+				}
+				if (memories.length < batchSize || eligible.length >= params.target) {
+					return eligible;
+				}
+				batchSize = Math.min(batchSize * 2, 5_000);
+			}
 		}),
 	);
-	const allMemories: TaggedMemory[] = perTableMemories.flat();
-
-	let filtered = allMemories;
-	const entitySet = params.entityIds;
-	if (entitySet && entitySet.length > 0) {
-		const ids = new Set<string>(entitySet);
-		filtered = allMemories.filter((m) => m.entityId && ids.has(m.entityId));
-	}
-
-	filtered = filtered.filter(hasBrowsableContent);
-
-	const beforeTs = params.before;
-	if (beforeTs !== undefined) {
-		return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
-	}
-	return filtered;
+	return perTableMemories.flat();
 }
 
 async function handleMemoriesFeedRoute(
@@ -1282,7 +1308,7 @@ async function handleMemoriesFeedRoute(
 
 	const allMemories = await fetchMemoriesFromTables(runtime, {
 		tables,
-		limit: limit * 2,
+		target: limit + 1,
 		before,
 	});
 
@@ -1326,25 +1352,22 @@ async function handleMemoriesBrowseRoute(
 		tables,
 		entityIds,
 		roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
-		limit: limit + offset + 100,
+		target: limit + offset + 1,
+		searchQuery,
 	});
 
 	allMemories.sort(byNewestFirst);
 
-	let filtered = allMemories;
-	if (searchQuery) {
-		filtered = allMemories.filter((m) => {
-			const text = (m.content as { text?: string } | undefined)?.text ?? "";
-			return matchesMemoryKeyword(text, searchQuery);
-		});
-	}
-
-	const total = filtered.length;
-	const page = filtered.slice(offset, offset + limit).map(memoryToBrowseItem);
+	const total = allMemories.length;
+	const page = allMemories
+		.slice(offset, offset + limit)
+		.map(memoryToBrowseItem);
 
 	return jsonResponse(200, {
 		memories: page,
 		total,
+		totalIsExact: false,
+		hasMore: allMemories.length > offset + limit,
 		limit,
 		offset,
 	});

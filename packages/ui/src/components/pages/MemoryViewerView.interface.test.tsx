@@ -154,4 +154,36 @@ describe("MemoryViewerView interface contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask Eliza" }));
     expect(dispatchChatOpen).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps pagination enabled while presenting an incomplete total honestly", async () => {
+    clientMock.browseMemories.mockResolvedValue({
+      memories: [
+        {
+          id: "mem-browse-1",
+          type: "messages",
+          text: "bounded browse result",
+          source: "client_chat",
+          createdAt: Date.now(),
+          entityId: "entity-1",
+          roomId: "room-1",
+        },
+      ],
+      total: 51,
+      totalIsExact: false,
+      hasMore: true,
+      limit: 50,
+      offset: 0,
+    });
+
+    const user = userEvent.setup();
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByTestId("memory-view-browse"));
+
+    expect(await screen.findByText("bounded browse result")).not.toBeNull();
+    expect(screen.getByText("1–1 of at least 51")).not.toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
 });

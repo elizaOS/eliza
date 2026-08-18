@@ -36,17 +36,35 @@ function createFakeRuntime(): IAgentRuntime {
 			count?: number;
 			orderBy?: "createdAt";
 			orderDirection?: "asc" | "desc";
+			offset?: number;
+			end?: number;
+			textContains?: string;
 		}): Promise<Memory[]> {
 			let rows = [...(tables.get(params.tableName) ?? [])];
 			if (params.roomId) {
 				rows = rows.filter((m) => m.roomId === params.roomId);
+			}
+			if (params.end !== undefined) {
+				const end = params.end;
+				rows = rows.filter((m) => (m.createdAt ?? 0) <= end);
+			}
+			if (params.textContains) {
+				const needle = params.textContains.toLowerCase();
+				rows = rows.filter((m) =>
+					((m.content as { text?: string }).text ?? "")
+						.toLowerCase()
+						.includes(needle),
+				);
 			}
 			if (params.orderBy === "createdAt") {
 				const dir = params.orderDirection === "asc" ? 1 : -1;
 				rows.sort((a, b) => dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0)));
 			}
 			const cap = params.count ?? params.limit;
-			return typeof cap === "number" ? rows.slice(0, cap) : rows;
+			const offset = params.offset ?? 0;
+			return typeof cap === "number"
+				? rows.slice(offset, offset + cap)
+				: rows.slice(offset);
 		},
 		async getMemoryById(id: UUID): Promise<Memory | null> {
 			for (const rows of tables.values()) {
@@ -234,7 +252,13 @@ describe("iOS bridge — memories view routes", () => {
 		await seedMemory("facts", "alpha echo", 3_000);
 
 		const all = await call(backend, "GET", "/api/memories/browse");
-		expect(all.json).toMatchObject({ total: 3, limit: 50, offset: 0 });
+		expect(all.json).toMatchObject({
+			total: 3,
+			totalIsExact: false,
+			hasMore: false,
+			limit: 50,
+			offset: 0,
+		});
 
 		const search = await call(backend, "GET", "/api/memories/browse?q=alpha");
 		const texts = (search.json.memories as Array<{ text: string }>).map(
@@ -250,6 +274,22 @@ describe("iOS bridge — memories view routes", () => {
 		);
 		expect((page.json.memories as unknown[]).length).toBe(1);
 		expect(page.json).toMatchObject({ total: 3, limit: 1, offset: 1 });
+	});
+
+	it("finds sparse matches beyond the first adapter window", async () => {
+		for (let i = 0; i < 450; i++) {
+			await seedMemory("messages", i >= 420 ? `needle ${i}` : `hay ${i}`, i);
+		}
+		const result = await call(
+			backend,
+			"GET",
+			"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+		);
+		expect((result.json.memories as unknown[]).length).toBe(20);
+		expect(result.json).toMatchObject({
+			totalIsExact: false,
+			hasMore: true,
+		});
 	});
 
 	it("stats totals per table", async () => {
