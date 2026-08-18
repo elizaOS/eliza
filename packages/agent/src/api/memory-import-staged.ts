@@ -66,17 +66,52 @@ function rowsOf(result: { rows?: unknown[] } | unknown[]): unknown[] {
   return Array.isArray(result) ? result : (result.rows ?? []);
 }
 
-async function ensureStagingTable(db: DbTx): Promise<void> {
+/** Staged rows older than this are abandoned transfers; swept opportunistically. */
+const STAGING_TTL_HOURS = 24;
+/** Hard ceiling on a single sealed export accepted by this destination. */
+export const MEMORY_IMPORT_MAX_ROWS = 50_000;
+/** Distinct in-flight seals allowed at once (bounded storage). */
+const MAX_CONCURRENT_SEALS = 8;
+export const MEMORY_IMPORT_BOUNDS_EXCEEDED = "MEMORY_IMPORT_BOUNDS_EXCEEDED";
+
+/**
+ * The `memory_import_staging` table is MANAGED schema — defined in
+ * plugin-sql (`schema/memoryImportStaging.ts`) and created by the runtime
+ * migrator at startup, never by this request path. This sweep enforces the
+ * bounded lifecycle: expired seals are dropped before new work is accepted.
+ */
+async function sweepExpiredStaging(db: DbTx): Promise<void> {
   await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS memory_import_staging (
-      seal_digest text NOT NULL,
-      row_id uuid NOT NULL,
-      row_index integer NOT NULL,
-      payload jsonb NOT NULL,
-      staged_at timestamp NOT NULL DEFAULT now(),
-      PRIMARY KEY (seal_digest, row_id)
-    )
+    DELETE FROM memory_import_staging
+    WHERE staged_at < now() - make_interval(hours => ${STAGING_TTL_HOURS})
   `);
+}
+
+async function assertStagingBounds(
+  db: DbTx,
+  sealDigest: string,
+  rowCount: number,
+): Promise<void> {
+  if (rowCount > MEMORY_IMPORT_MAX_ROWS) {
+    throw new ElizaError(
+      "Sealed export exceeds this destination's row ceiling",
+      {
+        code: MEMORY_IMPORT_BOUNDS_EXCEEDED,
+        context: { rowCount, max: MEMORY_IMPORT_MAX_ROWS },
+      },
+    );
+  }
+  const seals = rowsOf(
+    await db.execute(
+      sql`SELECT count(DISTINCT seal_digest)::int AS n FROM memory_import_staging WHERE seal_digest <> ${sealDigest}`,
+    ),
+  ) as Array<{ n: number }>;
+  if ((seals[0]?.n ?? 0) >= MAX_CONCURRENT_SEALS) {
+    throw new ElizaError("Too many in-flight sealed transfers are staged", {
+      code: MEMORY_IMPORT_BOUNDS_EXCEEDED,
+      context: { inFlight: seals[0]?.n, max: MAX_CONCURRENT_SEALS },
+    });
+  }
 }
 
 function sealKeyFromEnv(runtime: IAgentRuntime): string {
@@ -127,7 +162,8 @@ export async function stageSealedBatch(
     );
   }
   const db = requireDb(runtime);
-  await ensureStagingTable(db);
+  await sweepExpiredStaging(db);
+  await assertStagingBounds(db, parsed.seal.digest, parsed.seal.row_count);
   const base = parsed.batch_index * 500;
   for (const [i, row] of parsed.rows.entries()) {
     // Replays are idempotent ONLY for byte-identical payloads: a conflicting
@@ -154,10 +190,13 @@ export async function stageSealedBatch(
           ? canonicalJson(JSON.parse(kept[0].payload as string))
           : canonicalJson(kept[0]?.payload);
       if (keptCanonical !== canonical) {
-        throw new ElizaError("A staged row replay conflicts with the kept payload", {
-          code: MEMORY_IMPORT_BATCH_INVALID,
-          context: { row_id: row.id },
-        });
+        throw new ElizaError(
+          "A staged row replay conflicts with the kept payload",
+          {
+            code: MEMORY_IMPORT_BATCH_INVALID,
+            context: { row_id: row.id },
+          },
+        );
       }
     }
   }
@@ -194,7 +233,7 @@ export async function finalizeSealedImport(
   }
 
   const db = requireDb(runtime);
-  await ensureStagingTable(db);
+  await sweepExpiredStaging(db);
 
   return db.transaction(async (tx) => {
     const staged = rowsOf(
@@ -262,7 +301,10 @@ export async function finalizeSealedImport(
       // content — a same-content row in a different room/entity is a conflict.
       const foundMeta =
         found.metadata && typeof found.metadata === "object"
-          ? ({ ...(found.metadata as Record<string, unknown>) } as Record<string, unknown>)
+          ? ({ ...(found.metadata as Record<string, unknown>) } as Record<
+              string,
+              unknown
+            >)
           : {};
       delete foundMeta.source;
       delete foundMeta.transfer_epoch;
