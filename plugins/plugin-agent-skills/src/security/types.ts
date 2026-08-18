@@ -49,8 +49,11 @@ export interface SkillScanOptions {
 }
 
 export function truncateEvidence(evidence: string, maxLen = 120): string {
-	if (evidence.length <= maxLen) return evidence;
-	return `${evidence.slice(0, maxLen)}…`;
+	const limit = Number.isFinite(maxLen) ? Math.max(0, Math.floor(maxLen)) : 0;
+	if (evidence.length <= limit) return evidence;
+	if (limit === 0) return "";
+	if (limit === 1) return "…";
+	return `${evidence.slice(0, limit - 1).trimEnd()}…`;
 }
 
 /** Line-level rule: matches per-line, fires at most once per file. */
