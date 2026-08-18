@@ -34,7 +34,11 @@ import {
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
-import { SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN } from "../types";
+import {
+  SKILL_DESCRIPTION_MAX_LENGTH,
+  SKILL_NAME_MAX_LENGTH,
+  SKILL_NAME_PATTERN,
+} from "../types";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
 
 const WORKSPACE_MARKERS = [
@@ -205,8 +209,10 @@ export function sanitizeScaffoldDescription(description: string): string {
  * the scaffold's `description:` field.
  *
  * `JSON.stringify` emits a JSON string literal — a valid YAML double-quoted flow
- * scalar — with every quote, backslash, control character, and non-ASCII code
- * point escaped. Because the value is quoted, `parseFrontmatter` never coerces
+ * scalar — with quotes, backslashes, C0 controls, and lone surrogates escaped.
+ * JavaScript line/paragraph separators are escaped explicitly because JSON
+ * permits them literally while the filesystem discovery regex treats them as
+ * line boundaries. Because the value is quoted, `parseFrontmatter` never coerces
  * it to a boolean/number/null/object/array (which would make `toSkillFrontmatter`
  * reject the skill for having a non-string description) and cannot be tricked
  * into parsing embedded newlines as extra frontmatter keys. The parser decodes
@@ -955,6 +961,17 @@ export async function handleSkillsRoutes(
       return true;
     }
 
+    const description = body.description ?? SCAFFOLD_FALLBACK_DESCRIPTION;
+    const safeDescription = sanitizeScaffoldDescription(description);
+    if (safeDescription.length > SKILL_DESCRIPTION_MAX_LENGTH) {
+      error(
+        res,
+        `Skill description must be ${SKILL_DESCRIPTION_MAX_LENGTH} characters or less`,
+        400,
+      );
+      return true;
+    }
+
     const workspaceDir =
       state.config.agents?.defaults?.workspace ??
       resolveDefaultAgentWorkspaceDir();
@@ -965,9 +982,7 @@ export async function handleSkillsRoutes(
       return true;
     }
 
-    const description = body.description ?? SCAFFOLD_FALLBACK_DESCRIPTION;
-    const safeDescription = sanitizeScaffoldDescription(description);
-    const descriptionScalar = serializeScaffoldDescription(description);
+    const descriptionScalar = serializeScaffoldDescription(safeDescription);
     const template = skillScaffoldMarkdown
       .replace(/__SLUG__/g, slug)
       // Use a function replacer so any `$`-sequence produced by JSON string
