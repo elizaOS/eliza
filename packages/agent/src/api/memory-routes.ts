@@ -219,6 +219,8 @@ type MemorySearchCacheSlot = {
   generation: number;
   corpus?: MemorySearchCorpus;
   inFlight?: Promise<MemorySearchCorpusBuild>;
+  builds: Set<Promise<MemorySearchCorpusBuild>>;
+  leases: number;
 };
 
 type MemorySearchCorpusBuild = {
@@ -226,6 +228,10 @@ type MemorySearchCorpusBuild = {
   disposition: "cacheable" | "uncached" | "obsolete";
   countBefore: number | null;
   countAfter: number | null;
+};
+
+type MemorySearchBuildRetryBudget = {
+  unstableAttempts: number;
 };
 
 /**
@@ -249,6 +255,17 @@ let memorySearchCorpusCaches = new WeakMap<
   Map<string, MemorySearchCacheSlot>
 >();
 
+type MemorySearchBuildAdmission = {
+  active: number;
+  waiters: Array<() => void>;
+};
+
+let memorySearchBuildAdmissions = new WeakMap<
+  AgentRuntime,
+  MemorySearchBuildAdmission
+>();
+let memorySearchSlotWaiters = new WeakMap<AgentRuntime, Set<() => void>>();
+
 function invalidateMemorySearchCacheSlot(slot: MemorySearchCacheSlot): void {
   slot.generation++;
   slot.corpus = undefined;
@@ -265,6 +282,8 @@ export function invalidateMemorySearchCache(
     // Test/process reset only. Runtime-owned maps otherwise disappear when the
     // runtime is collected, without keeping tenant state alive module-wide.
     memorySearchCorpusCaches = new WeakMap();
+    memorySearchBuildAdmissions = new WeakMap();
+    memorySearchSlotWaiters = new WeakMap();
     return;
   }
   const cache = memorySearchCorpusCaches.get(runtime);
@@ -313,15 +332,103 @@ function retainMemorySearchCacheSlot(
   roomId: string,
   slot: MemorySearchCacheSlot,
 ): void {
-  // Map insertion order is the LRU order. Bound slots themselves, not only
-  // populated corpora: uncached, failed, invalidated, and in-flight rooms must
-  // not let an attacker grow the per-runtime map without limit.
+  // Map insertion order is the LRU order.
   cache.delete(roomId);
   cache.set(roomId, slot);
-  while (cache.size > MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
-    const oldestRoomId = cache.keys().next().value;
-    if (typeof oldestRoomId !== "string") break;
-    cache.delete(oldestRoomId);
+}
+
+async function acquireMemorySearchCacheSlot(
+  runtime: AgentRuntime,
+  roomId: string,
+): Promise<{
+  cache: Map<string, MemorySearchCacheSlot>;
+  slot: MemorySearchCacheSlot;
+}> {
+  const cache = runtimeMemorySearchCache(runtime);
+  while (true) {
+    const existing = cache.get(roomId);
+    if (existing) {
+      retainMemorySearchCacheSlot(cache, roomId, existing);
+      existing.leases++;
+      return { cache, slot: existing };
+    }
+
+    if (cache.size < MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
+      const slot: MemorySearchCacheSlot = {
+        generation: 0,
+        builds: new Set(),
+        leases: 1,
+      };
+      retainMemorySearchCacheSlot(cache, roomId, slot);
+      return { cache, slot };
+    }
+
+    // Never evict a slot while one of its current or invalidated builds still
+    // owns work. Otherwise the caller retains an orphaned slot, a later request
+    // starts a replacement scan, and the Map bound says nothing about live work.
+    const evictable = [...cache].find(
+      ([, candidate]) => candidate.builds.size === 0 && candidate.leases === 0,
+    );
+    if (evictable) {
+      cache.delete(evictable[0]);
+      continue;
+    }
+
+    // All bounded slots are busy. Wait for one to become evictable before
+    // allocating another slot; concurrent callers remain ordinary request
+    // promises rather than cache-owned room state.
+    await new Promise<void>((resolve) => {
+      let waiters = memorySearchSlotWaiters.get(runtime);
+      if (!waiters) {
+        waiters = new Set();
+        memorySearchSlotWaiters.set(runtime, waiters);
+      }
+      waiters.add(resolve);
+    });
+  }
+}
+
+function signalMemorySearchSlotAvailability(runtime: AgentRuntime): void {
+  const waiters = memorySearchSlotWaiters.get(runtime);
+  if (!waiters) return;
+  memorySearchSlotWaiters.delete(runtime);
+  for (const resolve of waiters) resolve();
+}
+
+async function withMemorySearchBuildPermit<T>(
+  runtime: AgentRuntime,
+  task: () => Promise<T>,
+): Promise<T> {
+  let admission = memorySearchBuildAdmissions.get(runtime);
+  if (!admission) {
+    admission = { active: 0, waiters: [] };
+    memorySearchBuildAdmissions.set(runtime, admission);
+  }
+
+  if (admission.active < MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
+    admission.active++;
+  } else {
+    await new Promise<void>((resolve) => {
+      admission.waiters.push(() => {
+        admission.active++;
+        resolve();
+      });
+    });
+  }
+
+  try {
+    return await task();
+  } finally {
+    admission.active--;
+    const next = admission.waiters.shift();
+    if (next) {
+      next();
+    } else if (
+      admission.active === 0 &&
+      memorySearchBuildAdmissions.get(runtime) === admission
+    ) {
+      memorySearchBuildAdmissions.delete(runtime);
+    }
   }
 }
 
@@ -392,7 +499,9 @@ function startMemorySearchCorpusBuild(
 ): Promise<MemorySearchCorpusBuild> {
   if (slot.inFlight) return slot.inFlight;
   const generation = slot.generation;
-  const build = buildMemorySearchCorpus(runtime, roomId).then((result) => {
+  const build = withMemorySearchBuildPermit(runtime, async () =>
+    buildMemorySearchCorpus(runtime, roomId),
+  ).then((result) => {
     if (slot.generation === generation) {
       slot.corpus =
         result.disposition === "cacheable" ? result.corpus : undefined;
@@ -400,14 +509,19 @@ function startMemorySearchCorpusBuild(
     return result;
   });
   slot.inFlight = build;
+  slot.builds.add(build);
   // error-policy:J7 A background refresh is observed and reported here; a
   // synchronous caller awaiting the same promise still receives the failure.
   void build.then(
     () => {
+      slot.builds.delete(build);
       if (slot.inFlight === build) slot.inFlight = undefined;
+      signalMemorySearchSlotAvailability(runtime);
     },
     (error: unknown) => {
+      slot.builds.delete(build);
       if (slot.inFlight === build) slot.inFlight = undefined;
+      signalMemorySearchSlotAvailability(runtime);
       runtime.reportError("MemorySearchCache.refresh", error, { roomId });
     },
   );
@@ -419,98 +533,133 @@ async function awaitCurrentMemorySearchCorpusBuild(
   roomId: UUID,
   cache: Map<string, MemorySearchCacheSlot>,
   slot: MemorySearchCacheSlot,
+  retryBudget: MemorySearchBuildRetryBudget,
 ): Promise<MemorySearchCorpus> {
-  let unstableBuildAttempts = 0;
   while (true) {
     const generation = slot.generation;
     const result = await startMemorySearchCorpusBuild(runtime, roomId, slot);
-    // The slot may have been evicted while its scan was pending. Re-enter via
+    // The slot may have been replaced while its scan was pending. Re-enter via
     // the bounded canonical map so a mutation cannot be missed by an orphaned
     // in-flight request.
-    if (cache.get(roomId) !== slot) {
-      return await getMemorySearchCorpus(runtime, roomId);
+    if (
+      memorySearchCorpusCaches.get(runtime) !== cache ||
+      cache.get(roomId) !== slot
+    ) {
+      consumeMemorySearchRetryBudget(retryBudget, roomId, "map_identity", {
+        countBefore: result.countBefore,
+        countAfter: result.countAfter,
+      });
+      return await getMemorySearchCorpus(runtime, roomId, retryBudget);
     }
     // Invalidation already prevents this build from publishing. It must also
     // prevent a request awaiting the old generation from returning that stale
     // snapshot after the mutation has completed.
-    if (slot.generation !== generation) continue;
+    if (slot.generation !== generation) {
+      consumeMemorySearchRetryBudget(retryBudget, roomId, "generation", {
+        countBefore: result.countBefore,
+        countAfter: result.countAfter,
+      });
+      continue;
+    }
     if (result.disposition !== "obsolete") return result.corpus;
 
-    unstableBuildAttempts++;
     invalidateMemorySearchCacheSlot(slot);
-    if (unstableBuildAttempts >= MEMORY_SEARCH_MAX_UNSTABLE_BUILD_ATTEMPTS) {
-      throw new ElizaError(
-        "Memory search corpus could not obtain a stable room snapshot",
-        {
-          code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
-          context: {
-            roomId,
-            attempts: unstableBuildAttempts,
-            countBefore: result.countBefore,
-            countAfter: result.countAfter,
-          },
-        },
-      );
-    }
+    consumeMemorySearchRetryBudget(retryBudget, roomId, "count_mismatch", {
+      countBefore: result.countBefore,
+      countAfter: result.countAfter,
+    });
   }
+}
+
+function consumeMemorySearchRetryBudget(
+  retryBudget: MemorySearchBuildRetryBudget,
+  roomId: UUID,
+  reason: "count_mismatch" | "generation" | "map_identity",
+  context: { countBefore?: number | null; countAfter?: number | null } = {},
+): void {
+  retryBudget.unstableAttempts++;
+  if (
+    retryBudget.unstableAttempts < MEMORY_SEARCH_MAX_UNSTABLE_BUILD_ATTEMPTS
+  ) {
+    return;
+  }
+  throw new ElizaError(
+    "Memory search corpus could not obtain a stable room snapshot",
+    {
+      code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
+      context: {
+        roomId,
+        attempts: retryBudget.unstableAttempts,
+        reason,
+        ...context,
+      },
+    },
+  );
 }
 
 async function getMemorySearchCorpus(
   runtime: AgentRuntime,
   roomId: UUID,
+  retryBudget: MemorySearchBuildRetryBudget = { unstableAttempts: 0 },
 ): Promise<MemorySearchCorpus> {
-  const cache = runtimeMemorySearchCache(runtime);
-  let slot = cache.get(roomId);
-  if (!slot) {
-    slot = { generation: 0 };
-  }
-  retainMemorySearchCacheSlot(cache, roomId, slot);
-  const cached = slot.corpus;
-  if (cached) {
-    const rowCount = await countRoomMessages(runtime, roomId);
+  const { cache, slot } = await acquireMemorySearchCacheSlot(runtime, roomId);
+  try {
+    const cached = slot.corpus;
+    if (cached) {
+      const rowCount = await countRoomMessages(runtime, roomId);
 
-    // Eviction may have orphaned this slot while COUNT was pending. Re-enter
-    // through the canonical map so the replacement build can be single-flighted
-    // and published for later requests.
-    if (cache.get(roomId) !== slot) {
-      return await getMemorySearchCorpus(runtime, roomId);
-    }
-
-    // A module-local mutation may have invalidated this slot while COUNT was
-    // pending. Never return the snapshot captured before that mutation.
-    if (slot.corpus !== cached) {
-      return await awaitCurrentMemorySearchCorpusBuild(
-        runtime,
-        roomId,
-        cache,
-        slot,
-      );
-    }
-
-    if (rowCount !== null && rowCount === cached.rowCount) {
-      const age = Date.now() - cached.builtAt;
-      if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
-      if (age <= MEMORY_SEARCH_CACHE_MAX_STALE_MS) {
-        // Keep the first post-TTL request warm while one shared refresh runs.
-        // The absolute max-stale boundary below prevents persistent failures
-        // from extending this stale-while-revalidate window indefinitely.
-        startMemorySearchCorpusBuild(runtime, roomId, slot);
-        return cached;
+      // A process/test cache reset may replace this runtime's canonical map while
+      // COUNT is pending. Re-enter through that map with the shared retry budget.
+      if (
+        memorySearchCorpusCaches.get(runtime) !== cache ||
+        cache.get(roomId) !== slot
+      ) {
+        consumeMemorySearchRetryBudget(retryBudget, roomId, "map_identity");
+        return await getMemorySearchCorpus(runtime, roomId, retryBudget);
       }
-    } else {
-      // A changed/unknown count makes both the cached corpus and any older
-      // background refresh ineligible. Detach that refresh before rebuilding;
-      // otherwise this request could join a snapshot that predates the count
-      // mismatch it just observed.
-      invalidateMemorySearchCacheSlot(slot);
+
+      // A module-local mutation may have invalidated this slot while COUNT was
+      // pending. Never return the snapshot captured before that mutation.
+      if (slot.corpus !== cached) {
+        consumeMemorySearchRetryBudget(retryBudget, roomId, "generation");
+        return await awaitCurrentMemorySearchCorpusBuild(
+          runtime,
+          roomId,
+          cache,
+          slot,
+          retryBudget,
+        );
+      }
+
+      if (rowCount !== null && rowCount === cached.rowCount) {
+        const age = Date.now() - cached.builtAt;
+        if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
+        if (age <= MEMORY_SEARCH_CACHE_MAX_STALE_MS) {
+          // Keep the first post-TTL request warm while one shared refresh runs.
+          // The absolute max-stale boundary below prevents persistent failures
+          // from extending this stale-while-revalidate window indefinitely.
+          startMemorySearchCorpusBuild(runtime, roomId, slot);
+          return cached;
+        }
+      } else {
+        // A changed/unknown count makes both the cached corpus and any older
+        // background refresh ineligible. Detach that refresh before rebuilding;
+        // otherwise this request could join a snapshot that predates the count
+        // mismatch it just observed.
+        invalidateMemorySearchCacheSlot(slot);
+      }
     }
+    return await awaitCurrentMemorySearchCorpusBuild(
+      runtime,
+      roomId,
+      cache,
+      slot,
+      retryBudget,
+    );
+  } finally {
+    slot.leases--;
+    signalMemorySearchSlotAvailability(runtime);
   }
-  return await awaitCurrentMemorySearchCorpusBuild(
-    runtime,
-    roomId,
-    cache,
-    slot,
-  );
 }
 
 async function searchMemoryNotes(

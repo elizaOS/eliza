@@ -8,6 +8,7 @@
 
 import {
   type AgentRuntime,
+  ElizaError,
   InMemoryDatabaseAdapter,
   type Memory,
   stringToUuid,
@@ -43,7 +44,9 @@ function note(
 
 function makeRuntime(store: Store) {
   const getMemories = vi.fn(async () => [...store.rows]);
-  const countMemories = vi.fn(async () => store.rows.length);
+  const countMemories = vi.fn(
+    async (_params: { roomId?: UUID }) => store.rows.length,
+  );
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
@@ -151,6 +154,14 @@ async function search(
       results: Array<{ id: string; text: string; score: number }>;
     }
   ).results;
+}
+
+async function waitForTestCondition(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for test condition");
 }
 
 beforeEach(() => {
@@ -527,7 +538,7 @@ describe("GET /api/memory/search corpus cache", () => {
     expect(getMemories).toHaveBeenCalledTimes(9);
   });
 
-  test("bounds uncached and in-flight room slots", async () => {
+  test("retains an in-flight room slot instead of starting orphaned replacement work", async () => {
     const roomId = (name: string) =>
       stringToUuid(`${name}-hash-memory-room`) as UUID;
     let releaseFirstA = () => {};
@@ -561,21 +572,111 @@ describe("GET /api/memory/search corpus cache", () => {
     } as unknown as AgentRuntime;
 
     const firstA = search(runtime, "puffin");
-    await vi.waitFor(() => expect(aScans).toBe(1));
+    await waitForTestCondition(() => aScans === 1);
     for (const room of ["B", "C", "D", "E"]) {
       runtime.character.name = room;
       await search(runtime, "puffin");
     }
 
-    // The fifth distinct room must evict A even though A has no corpus and its
-    // scan is pending. A second request therefore starts a fresh scan instead
-    // of joining the unbounded orphaned slot.
+    // Completed uncached slots remain evictable, but A stays canonical while
+    // its scan is pending. A second request joins that work instead of starting
+    // an orphaned replacement scan outside the Map bound.
     runtime.character.name = "A";
-    await expect(search(runtime, "puffin")).resolves.toHaveLength(1);
-    expect(aScans).toBe(2);
+    const secondA = search(runtime, "puffin");
+    await waitForTestCondition(() => aScans === 1);
 
     releaseFirstA();
     await expect(firstA).resolves.toHaveLength(1);
+    await expect(secondA).resolves.toHaveLength(1);
+    expect(getMemories).toHaveBeenCalledTimes(5);
+  });
+
+  test("caps peak active corpus builds across concurrent room churn", async () => {
+    let activeBuilds = 0;
+    let peakActiveBuilds = 0;
+    const getMemories = vi.fn(
+      async ({ roomId }: { roomId: UUID }): Promise<Memory[]> => {
+        activeBuilds++;
+        peakActiveBuilds = Math.max(peakActiveBuilds, activeBuilds);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        activeBuilds--;
+        return [
+          note(crypto.randomUUID(), `${roomId} bounded puffin`, 1, roomId),
+        ];
+      },
+    );
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "room-0" },
+      ensureConnection: vi.fn(async () => undefined),
+      getMemories,
+      // No countMemories keeps every completed result intentionally uncached.
+      reportError: vi.fn(() => undefined),
+    } as unknown as AgentRuntime;
+
+    const searches = Array.from({ length: 12 }, (_, index) => {
+      runtime.character.name = `room-${index}`;
+      return search(runtime, "puffin");
+    });
+
+    const settled = await Promise.allSettled(searches);
+    expect(
+      settled.flatMap((result) =>
+        result.status === "rejected"
+          ? [
+              result.reason instanceof ElizaError
+                ? { code: result.reason.code, context: result.reason.context }
+                : result.reason,
+            ]
+          : [],
+      ),
+    ).toEqual([]);
+    expect(settled).toHaveLength(12);
+    expect(getMemories).toHaveBeenCalledTimes(12);
+    expect(activeBuilds).toBe(0);
+    expect(peakActiveBuilds).toBe(4);
+  });
+
+  test("caps detached same-room builds during invalidation churn", async () => {
+    let activeBuilds = 0;
+    let peakActiveBuilds = 0;
+    let releaseBuilds = () => {};
+    const buildGate = new Promise<void>((resolve) => {
+      releaseBuilds = resolve;
+    });
+    const store: Store = {
+      rows: [note("aaaaaaaa-0000-4000-8000-000000000001", "storm petrel", 1)],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    getMemories.mockImplementation(async () => {
+      activeBuilds++;
+      peakActiveBuilds = Math.max(peakActiveBuilds, activeBuilds);
+      await buildGate;
+      activeBuilds--;
+      return [...store.rows];
+    });
+    const roomId = stringToUuid("Eliza-hash-memory-room") as UUID;
+
+    const searches: Array<Promise<unknown>> = [];
+    for (let index = 0; index < 4; index++) {
+      searches.push(search(runtime, "petrel"));
+      await waitForTestCondition(
+        () => getMemories.mock.calls.length === index + 1,
+      );
+      invalidateMemorySearchCache(runtime, roomId);
+    }
+    for (let index = 4; index < 12; index++) {
+      searches.push(search(runtime, "petrel"));
+      invalidateMemorySearchCache(runtime, roomId);
+    }
+
+    expect(activeBuilds).toBe(4);
+    expect(peakActiveBuilds).toBe(4);
+    releaseBuilds();
+
+    await expect(Promise.all(searches)).resolves.toHaveLength(12);
+    expect(activeBuilds).toBe(0);
+    expect(peakActiveBuilds).toBeLessThanOrEqual(4);
   });
 
   test("retries a cold build invalidated by a completed mutation", async () => {
@@ -838,6 +939,98 @@ describe("GET /api/memory/search corpus cache", () => {
       },
     });
     expect(getMemories).toHaveBeenCalledTimes(3);
+  });
+
+  test("shares the retry budget across perpetual generation invalidation", async () => {
+    const store: Store = {
+      rows: [
+        note("aaaaaaaa-0000-4000-8000-000000000001", "restless petrel", 1),
+      ],
+    };
+    const { runtime, getMemories } = makeRuntime(store);
+    const releases: Array<() => void> = [];
+    getMemories.mockImplementation(async () => {
+      const snapshot = [...store.rows];
+      await new Promise<void>((resolve) => releases.push(resolve));
+      return snapshot;
+    });
+    const roomId = stringToUuid("Eliza-hash-memory-room") as UUID;
+
+    const pending = search(runtime, "petrel");
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await waitForTestCondition(
+        () => getMemories.mock.calls.length === attempt,
+      );
+      invalidateMemorySearchCache(runtime, roomId);
+      const release = releases.shift();
+      if (!release) throw new Error("Expected a gated memory scan");
+      release();
+    }
+
+    await expect(pending).rejects.toMatchObject({
+      code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
+      context: { attempts: 3, reason: "generation" },
+    });
+    expect(getMemories).toHaveBeenCalledTimes(3);
+  });
+
+  test("shares the retry budget across repeated canonical slot replacement", async () => {
+    const roomA = stringToUuid("A-hash-memory-room") as UUID;
+    const store: Store = {
+      rows: [
+        note(
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "canonical sparrow",
+          1,
+          roomA,
+        ),
+      ],
+    };
+    const { runtime, countMemories } = makeRuntime(store);
+    runtime.character.name = "A";
+    let roomACountCalls = 0;
+    const countGates = new Map<number, Promise<void>>();
+    const releaseCountGates = new Map<number, () => void>();
+    for (const call of [3, 6, 9]) {
+      countGates.set(
+        call,
+        new Promise<void>((resolve) => releaseCountGates.set(call, resolve)),
+      );
+    }
+    countMemories.mockImplementation(
+      async ({ roomId }: { roomId?: UUID }): Promise<number> => {
+        if (!roomId) return store.rows.length;
+        if (roomId === roomA) {
+          roomACountCalls++;
+          const gate = countGates.get(roomACountCalls);
+          if (gate) await gate;
+        }
+        return store.rows.filter((row) => row.roomId === roomId).length;
+      },
+    );
+
+    await expect(search(runtime, "sparrow")).resolves.toHaveLength(1);
+    const pending = search(runtime, "sparrow");
+
+    const replaceMapAndRebuildRoomA = async () => {
+      invalidateMemorySearchCache();
+      runtime.character.name = "A";
+      await search(runtime, "sparrow");
+    };
+
+    for (const gatedCall of [3, 6, 9]) {
+      await waitForTestCondition(() => roomACountCalls >= gatedCall);
+      await replaceMapAndRebuildRoomA();
+      const release = releaseCountGates.get(gatedCall);
+      if (!release) throw new Error("Expected a gated COUNT probe");
+      release();
+    }
+
+    await expect(pending).rejects.toMatchObject({
+      code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
+      context: { attempts: 3, reason: "map_identity" },
+    });
+    expect(roomACountCalls).toBe(11);
   });
 
   test("single-flights concurrent cold rebuilds for one runtime and room", async () => {
