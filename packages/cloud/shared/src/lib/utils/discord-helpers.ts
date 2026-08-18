@@ -1,4 +1,5 @@
 import { truncateWellFormed } from "@elizaos/core";
+import { assertValidMessageChunkLength } from "./message-chunking";
 
 /**
  * Discord Utility Functions
@@ -83,6 +84,7 @@ export function isTextChannel(type: number): boolean {
  * Split long messages for Discord's 2000 char limit
  */
 export function splitMessage(text: string, maxLength = 2000): string[] {
+  assertValidMessageChunkLength(maxLength);
   if (!text) return [];
   if (text.length <= maxLength) return [text];
 
