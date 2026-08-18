@@ -17,6 +17,7 @@ import {
   AppNameConflictError,
   appsService,
 } from "@/lib/services/apps";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -76,13 +77,12 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const validationResult = CreateAppSchema.safeParse(rawBody);
     if (!validationResult.success) {
       return c.json(

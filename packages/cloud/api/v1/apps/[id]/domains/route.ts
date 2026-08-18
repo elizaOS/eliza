@@ -14,6 +14,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "./guards";
@@ -59,13 +60,12 @@ app.post("/", async (c) => {
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const parsed = DomainSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
@@ -161,13 +161,12 @@ app.delete("/", async (c) => {
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const parsed = DomainSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(

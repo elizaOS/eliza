@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "../guards";
@@ -22,13 +23,12 @@ app.post("/", async (c) => {
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const parsed = CheckSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
