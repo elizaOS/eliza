@@ -32,7 +32,15 @@ async function __hono_PATCH(
     const { user } =
       await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;
-    const parsed = patchRequestSchema.safeParse(await request.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not the route-wide 500 used for connector failures.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const parsed = patchRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(
         {
