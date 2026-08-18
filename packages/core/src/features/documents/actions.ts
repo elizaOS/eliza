@@ -32,6 +32,7 @@ import type {
 	State,
 	UUID,
 } from "../../types";
+import { getActiveRoutingContextsForTurn } from "../../utils/context-routing.ts";
 import {
 	describeUserReference,
 	userReferenceLogView as queryLogView,
@@ -174,6 +175,51 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 const DOCUMENT_SUB_ACTION_KEYS = Object.keys(
 	DOCUMENT_SUBACTIONS,
 ) as DocumentSubAction[];
+
+/**
+ * Subactions that only read the document store. On `knowledge`-routed turns
+ * (retrieval-only by taxonomy) the DOCUMENT action is admitted so the model
+ * can dereference the document IDs the DOCUMENTS provider advertises, but the
+ * handler restricts execution to this read-only surface — mutations require
+ * `documents` routing. See the operation gate in the handler.
+ */
+const READ_ONLY_DOCUMENT_SUBACTIONS: ReadonlySet<DocumentSubAction> = new Set([
+	"list",
+	"search",
+	"read",
+]);
+
+/**
+ * Rejects mutating subactions on turns stage-1 routed to `knowledge` without
+ * also routing to `documents`. The context gate admits DOCUMENT on knowledge
+ * turns for reads only; blanket-widening `contexts` alone would expose
+ * write/edit/delete/import on a retrieval-only routing surface. Unrouted
+ * invocations (no routing metadata on state or message) are unaffected — the
+ * gate narrows knowledge-routed turns, it does not invent a restriction for
+ * direct callers.
+ */
+function knowledgeReadOnlyRejection(
+	subaction: DocumentSubAction,
+	message: Memory,
+	state: State | undefined,
+): string | null {
+	if (READ_ONLY_DOCUMENT_SUBACTIONS.has(subaction)) {
+		return null;
+	}
+	const activeContexts = getActiveRoutingContextsForTurn(state, message).map(
+		(context) => `${context}`.toLowerCase(),
+	);
+	if (
+		!activeContexts.includes("knowledge") ||
+		activeContexts.includes("documents")
+	) {
+		return null;
+	}
+	return (
+		`The documents ${subaction.replace("_", " ")} operation is not available on a knowledge-routed turn; ` +
+		"knowledge is retrieval-only (list, search, read). Ask again as an explicit document request to modify stored documents."
+	);
+}
 
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
@@ -1169,8 +1215,15 @@ async function handleImportUrl(
 
 export const documentAction: Action = {
 	name: "DOCUMENT",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
+	// Exact-membership context gates do not expand parent/child relationships
+	// (#19701), and the DOCUMENTS provider composes for both `documents` and
+	// `knowledge` — advertising document IDs "for follow-up reads". The action
+	// must be admitted in both contexts or knowledge-routed turns hand the
+	// model IDs it cannot dereference. `knowledge` stays retrieval-only via the
+	// handler's operation gate (see knowledgeReadOnlyRejection): mutating
+	// subactions require `documents` routing.
+	contexts: ["documents", "knowledge"],
+	contextGate: { anyOf: ["documents", "knowledge"] },
 	roleGate: { minRole: "USER" },
 	description:
 		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
@@ -1394,6 +1447,17 @@ export const documentAction: Action = {
 		}
 
 		const { subaction, params } = resolved;
+
+		const readOnlyRejection = knowledgeReadOnlyRejection(
+			subaction,
+			message,
+			state,
+		);
+		if (readOnlyRejection) {
+			return result(false, readOnlyRejection, subaction, {
+				values: { error: "knowledge_context_read_only" },
+			});
+		}
 
 		try {
 			switch (subaction) {
