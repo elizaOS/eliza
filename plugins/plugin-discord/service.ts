@@ -149,10 +149,12 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryReservation,
+	INTERACTION_ONLY_FALLBACK_TEXT,
 	MessageManager,
 } from "./messages";
 import { chunkDiscordText } from "./messaging";
@@ -179,7 +181,6 @@ import type {
 	IDiscordService,
 } from "./types";
 import { DiscordEventTypes } from "./types";
-import { buildDiscordReplyPayload } from "./interactions";
 import {
 	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
@@ -1981,7 +1982,10 @@ export class DiscordService extends Service implements IDiscordService {
 						rendered.components.length > 0
 							? buildDiscordComponents(rendered.components)
 							: undefined;
-					const textContent = normalizeDiscordMessageText(rendered.text);
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && renderedComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {

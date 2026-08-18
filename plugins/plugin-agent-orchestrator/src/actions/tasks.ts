@@ -35,7 +35,6 @@ import {
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
-import { phraseForUser } from "../voice/phrase-for-user.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import {
   collisionProviderFromWorkspaceService,
@@ -73,6 +72,10 @@ import type {
   WorkspaceResult,
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
+import {
+  phraseForUser,
+  withMachineAppendix,
+} from "../voice/phrase-for-user.js";
 import {
   callbackText,
   contentRecord,
@@ -1338,7 +1341,7 @@ async function runCreateLegacy(
   // canned "Created task agent.") with the canned string as the deterministic
   // fallback. The machine widget rides byte-identical below whatever prose
   // the model wrote — widget parsers depend on the exact block.
-  const createdFallback = `Created task agent${results.length > 1 ? "s" : ""}.`;
+  const createdFact = `Created task agent${results.length > 1 ? "s" : ""}.`;
   const { text: createdProse } = await phraseForUser(
     runtime,
     {
@@ -1347,10 +1350,23 @@ async function runCreateLegacy(
         createdCount: results.length,
         titles: results.map((item) => String(item.label)),
       },
+      mustInclude: [createdFact],
+      mustNotClaim: [
+        "completed",
+        "finished",
+        "done",
+        "merged",
+        "shipped",
+        "deployed",
+        "fixed",
+        "resolved",
+      ],
     },
-    createdFallback,
+    createdFact,
   );
-  const proseText = `${createdProse}${widgetBlock}`;
+  const proseText = widgetBlock
+    ? withMachineAppendix(createdProse, widgetBlock.trimStart())
+    : createdProse;
   await callbackText(callback, proseText);
 
   // The creation ack is the complete answer to a single-operation turn:

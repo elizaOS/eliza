@@ -121,7 +121,7 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
-const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
+export const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
 // Filler tokens carrying no answer content — two single-fact replies differing
 // only in these words are the same fact reworded.

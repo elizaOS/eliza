@@ -324,6 +324,76 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+describe("handleSendMessage interaction projection", () => {
+	it("strips relay markers and attaches native controls on the provider send", async () => {
+		const { graph, runtime, service } = makeService();
+		const result = await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				channelId: graph.textChannel.id,
+			},
+			{
+				text: "Build ready.\n\n[FOLLOWUPS]\nprompt:How do I use it?=Ask usage\n[/FOLLOWUPS]",
+			},
+		);
+
+		expect(result).toMatchObject({ kind: "delivered" });
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(1);
+		const payload = graph.textChannel.send.mock.calls[0]?.[0] as {
+			content?: string;
+			components?: unknown[];
+		};
+		expect(payload.content).toBe("Build ready.");
+		expect(payload.content).not.toContain("[FOLLOWUPS]");
+		expect(payload.components).toHaveLength(1);
+	});
+
+	it("sends interaction-only relays instead of dropping their controls", async () => {
+		const { graph, runtime, service } = makeService();
+		const result = await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				channelId: graph.textChannel.id,
+			},
+			{
+				text: "[FOLLOWUPS]\nprompt:Show status=Show status\n[/FOLLOWUPS]",
+			},
+		);
+
+		expect(result).toMatchObject({ kind: "delivered" });
+		const payload = graph.textChannel.send.mock.calls[0]?.[0] as {
+			content?: string;
+			components?: unknown[];
+		};
+		expect(payload.content).toBe("Choose an option:");
+		expect(payload.components).toHaveLength(1);
+	});
+
+	it("keeps block-free relay text byte-identical", async () => {
+		const { graph, runtime, service } = makeService();
+		await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				channelId: graph.textChannel.id,
+			},
+			{ text: "plain relay text, no blocks" },
+		);
+
+		const payload = graph.textChannel.send.mock.calls[0]?.[0] as {
+			content?: string;
+			components?: unknown[];
+		};
+		expect(payload.content).toBe("plain relay text, no blocks");
+		expect(payload.components).toBeUndefined();
+	});
+});
+
 describe("DiscordAccountClientPool", () => {
 	it("keeps the account facade ready promise live after manager construction", () => {
 		const { service } = makeService();
