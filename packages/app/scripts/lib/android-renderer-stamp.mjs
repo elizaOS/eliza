@@ -9,6 +9,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 
 const RENDERER_MANIFEST = "eliza-renderer-build.json";
+const FULL_GIT_COMMIT = /^[0-9a-f]{40}$/i;
 export const ANDROID_APK_RENDERER_MANIFEST_PATH = `assets/public/${RENDERER_MANIFEST}`;
 
 function findEndOfCentralDirectory(buffer) {
@@ -104,15 +105,27 @@ export function compareAndroidRendererBuildIds({
   label = "Android APK",
   expectedCommit = null,
 }) {
-  if (
-    expectedCommit &&
-    fresh.commit &&
-    !String(expectedCommit).startsWith(String(fresh.commit)) &&
-    !String(fresh.commit).startsWith(String(expectedCommit))
-  ) {
-    throw new Error(
-      `freshly built renderer commit ${fresh.commit} != HEAD ${expectedCommit} - stale Android dist.`,
-    );
+  if (expectedCommit) {
+    const expected = String(expectedCommit);
+    if (!FULL_GIT_COMMIT.test(expected)) {
+      throw new Error(
+        `expected Android renderer commit must be a full 40-character git SHA, received ${expected}.`,
+      );
+    }
+    for (const [source, commit] of [
+      ["freshly built renderer", fresh.commit],
+      [label, packaged.commit],
+    ]) {
+      const actual = typeof commit === "string" ? commit : "";
+      if (
+        !FULL_GIT_COMMIT.test(actual) ||
+        actual.toLowerCase() !== expected.toLowerCase()
+      ) {
+        throw new Error(
+          `${source} commit ${actual || "<missing>"} != HEAD ${expected} - stale Android ${source === label ? "APK" : "dist"}.`,
+        );
+      }
+    }
   }
   if (packaged.buildId !== fresh.buildId) {
     throw new Error(

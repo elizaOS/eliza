@@ -17,6 +17,8 @@ import {
 } from "./lib/android-renderer-stamp.mjs";
 
 const tempDirs = [];
+const CURRENT_COMMIT = "a".repeat(40);
+const STALE_COMMIT = "b".repeat(40);
 
 function tempDir() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "android-renderer-stamp-"));
@@ -146,11 +148,33 @@ describe("Android renderer stamp", () => {
   it("rejects a fresh dist manifest from another commit", () => {
     expect(() =>
       compareAndroidRendererBuildIds({
-        fresh: { buildId: "same", commit: "111111111111" },
-        packaged: { buildId: "same" },
-        expectedCommit: "222222222222",
+        fresh: { buildId: "same", commit: STALE_COMMIT },
+        packaged: { buildId: "same", commit: CURRENT_COMMIT },
+        expectedCommit: CURRENT_COMMIT,
       }),
     ).toThrow(/stale Android dist/);
+  });
+
+  it("rejects missing, abbreviated, or stale packaged commits", () => {
+    for (const commit of [null, CURRENT_COMMIT.slice(0, 12), STALE_COMMIT]) {
+      expect(() =>
+        compareAndroidRendererBuildIds({
+          fresh: { buildId: "same", commit: CURRENT_COMMIT },
+          packaged: { buildId: "same", commit },
+          expectedCommit: CURRENT_COMMIT,
+        }),
+      ).toThrow(/stale Android APK/);
+    }
+  });
+
+  it("accepts only full exact commits when HEAD verification is requested", () => {
+    expect(
+      compareAndroidRendererBuildIds({
+        fresh: { buildId: "same", commit: CURRENT_COMMIT },
+        packaged: { buildId: "same", commit: CURRENT_COMMIT },
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toEqual({ buildId: "same", builtAt: null });
   });
 
   it("compares a packaged APK against the freshly built dist manifest", () => {

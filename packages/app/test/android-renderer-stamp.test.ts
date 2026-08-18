@@ -206,4 +206,14 @@ describe("Android renderer stamp decisions", () => {
       }),
     ).toThrow(/stale Android APK/);
   });
+
+  it("does not let matching buildIds hide a stale packaged commit", () => {
+    expect(() =>
+      compareAndroidRendererBuildIds({
+        fresh: { buildId: "fresh", commit: CURRENT_COMMIT },
+        packaged: { buildId: "fresh", commit: STALE_COMMIT },
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toThrow(/stale Android APK/);
+  });
 });

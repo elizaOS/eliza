@@ -143,9 +143,10 @@ jobs:
     timeout-minutes: 90
     env:
       LANG: en_US.UTF-8
-      # The simulator smoke drives a loopback host agent. Use the direct
-      # developer iOS lane; App Store/cloud builds intentionally reject
-      # cleartext loopback and are covered by release workflows.
+      # This bundle drives only the installed app's synthetic auth-callback
+      # rejection path; --skip-local-chat below does not start a host agent.
+      # Keep the direct developer lane so the simulator build remains aligned
+      # with the optional local-chat producer used outside this evidence job.
       ELIZA_BUILD_VARIANT: "direct"
       ELIZA_RELEASE_AUTHORITY: "developer-toolchain"
       VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK: "1"
