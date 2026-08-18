@@ -13,7 +13,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,
-  ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
@@ -1088,23 +1088,7 @@ export class FamilyCommunicationsRuntimeService extends Service {
       runtime.getServiceLoadPromise(
         FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
       ),
-      // The scheduling plugin registers DEFERRED (its runner appears seconds
-      // after this service starts); both the bare load-promise and the
-      // exported one-microtask waiter reject before it exists, which failed
-      // this service at every boot on the live box. Poll registration for a
-      // bounded window, then take the load promise.
-      (async () => {
-        const deadline = Date.now() + 30_000;
-        while (
-          !runtime.hasService(ScheduledTaskRunnerService.serviceType) &&
-          Date.now() < deadline
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
-        return runtime.getServiceLoadPromise(
-          ScheduledTaskRunnerService.serviceType,
-        );
-      })(),
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new FamilyCommunicationsRuntimeService(runtime);
     await service.family.initialize();

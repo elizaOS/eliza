@@ -28,9 +28,10 @@ import {
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
 } from "@elizaos/plugin-google-workspace/calendar";
-import type {
-  DispatchResult,
-  ScheduledTaskDispatchRecord,
+import {
+  type DispatchResult,
+  type ScheduledTaskDispatchRecord,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -1188,18 +1189,7 @@ export class CalendarService extends Service {
 
   private async installGoogleWatchMaintenanceOnBoot(): Promise<void> {
     try {
-      await this.runtime.initPromise;
-      // The scheduling runner registers DEFERRED, after initPromise resolves;
-      // installing immediately raced it at every boot and watch maintenance
-      // silently stayed uninstalled (live 2026-08-17). Bounded poll, then
-      // install; if the runner never appears the existing catch reports it.
-      const deadline = Date.now() + 30_000;
-      while (
-        !this.runtime.hasService("lifeops_scheduled_task_runner") &&
-        Date.now() < deadline
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
+      await waitForScheduledTaskRunnerService(this.runtime);
       await this.googleWatch.installMaintenanceTask();
     } catch (error) {
       // error-policy:J5 Service.start launches maintenance installation in the

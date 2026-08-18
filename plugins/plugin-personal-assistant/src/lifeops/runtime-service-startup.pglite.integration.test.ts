@@ -2,6 +2,8 @@
  * Verifies dependency-aware LifeOps service startup through a real AgentRuntime
  * and PGlite while plugin services leave the shared init barrier concurrently.
  */
+
+import { ScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import {
@@ -31,6 +33,7 @@ describe("LifeOps concurrent runtime-service startup", () => {
   });
 
   it("starts every graph-dependent service once and keeps it registered", async () => {
+    const runnerStart = vi.spyOn(ScheduledTaskRunnerService, "start");
     const householdStart = vi.spyOn(
       HouseholdCoordinationRuntimeService,
       "start",
@@ -46,6 +49,11 @@ describe("LifeOps concurrent runtime-service startup", () => {
     const runtimeResult = await createLifeOpsTestRuntime();
     try {
       const expectations = [
+        {
+          serviceType: ScheduledTaskRunnerService.serviceType,
+          serviceClass: ScheduledTaskRunnerService,
+          start: runnerStart,
+        },
         {
           serviceType: HOUSEHOLD_COORDINATION_SERVICE,
           serviceClass: HouseholdCoordinationRuntimeService,
