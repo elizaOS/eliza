@@ -171,6 +171,34 @@ export interface OsAtlasProActorOptions {
   ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 }
 
+/** Model-server grounding POST can wait on a VLM — longer than the 15s OAuth sibling. */
+export const OSATLAS_PRO_TIMEOUT_MS = 30_000;
+
+export async function groundOsAtlasProWithFetch(
+  opts: Pick<OsAtlasProActorOptions, "endpoint" | "apiKey" | "model">,
+  args: ActorGroundArgs,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = OSATLAS_PRO_TIMEOUT_MS,
+): Promise<GroundingResult> {
+  const body = JSON.stringify({
+    image: args.croppedImage.toString("base64"),
+    hint: args.hint,
+    ref: args.ref,
+    model: opts.model,
+  });
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
+  const resp = await fetchImpl(opts.endpoint, {
+    method: "POST",
+    body,
+    headers,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  return readOsAtlasProResponse(args, resp);
+}
+
 /**
  * Adapter for a server-side OS-Atlas-Pro (or compatible) grounding model.
  * Not wired into the cascade by default. The contract: POST a JSON payload
@@ -190,53 +218,66 @@ export class OsAtlasProActor implements Actor {
   }
 
   async ground(args: ActorGroundArgs): Promise<GroundingResult> {
-    const body = JSON.stringify({
-      image: args.croppedImage.toString("base64"),
-      hint: args.hint,
-      ref: args.ref,
-      model: this.opts.model,
-    });
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-    };
-    if (this.opts.apiKey) headers.authorization = `Bearer ${this.opts.apiKey}`;
-    const fetcher =
-      this.opts.fetcher ??
-      (async (url, init) => {
-        const resp = await fetch(url, {
-          method: "POST",
-          body: init.body,
-          headers: init.headers,
-        });
-        return { ok: resp.ok, status: resp.status, text: () => resp.text() };
+    if (this.opts.fetcher) {
+      const body = JSON.stringify({
+        image: args.croppedImage.toString("base64"),
+        hint: args.hint,
+        ref: args.ref,
+        model: this.opts.model,
       });
-    const resp = await fetcher(this.opts.endpoint, { body, headers });
-    if (!resp.ok) {
-      throw new Error(
-        `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
-      );
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (this.opts.apiKey) headers.authorization = `Bearer ${this.opts.apiKey}`;
+      const resp = await this.opts.fetcher(this.opts.endpoint, {
+        body,
+        headers,
+      });
+      if (!resp.ok) {
+        throw new Error(
+          `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
+        );
+      }
+      return parseOsAtlasProPayload(args, await resp.text());
     }
-    const text = await resp.text();
-    let parsed: { x?: number; y?: number; confidence?: number };
-    try {
-      parsed = JSON.parse(text) as typeof parsed;
-    } catch (err) {
-      throw new Error(
-        `[computeruse/actor] osatlas-pro emitted non-JSON: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
-      throw new Error(
-        `[computeruse/actor] osatlas-pro response missing (x, y): ${text}`,
-      );
-    }
-    return {
-      displayId: args.displayId,
-      x: parsed.x,
-      y: parsed.y,
-      confidence:
-        typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-      reason: `osatlas-pro grounded ${args.ref ?? args.hint}`,
-    };
+    return groundOsAtlasProWithFetch(this.opts, args, globalThis.fetch);
   }
+}
+
+async function readOsAtlasProResponse(
+  args: ActorGroundArgs,
+  resp: Response,
+): Promise<GroundingResult> {
+  if (!resp.ok) {
+    throw new Error(
+      `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
+    );
+  }
+  return parseOsAtlasProPayload(args, await resp.text());
+}
+
+function parseOsAtlasProPayload(
+  args: ActorGroundArgs,
+  text: string,
+): GroundingResult {
+  let parsed: { x?: number; y?: number; confidence?: number };
+  try {
+    parsed = JSON.parse(text) as typeof parsed;
+  } catch (err) {
+    throw new Error(
+      `[computeruse/actor] osatlas-pro emitted non-JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
+    throw new Error(
+      `[computeruse/actor] osatlas-pro response missing (x, y): ${text}`,
+    );
+  }
+  return {
+    displayId: args.displayId,
+    x: parsed.x,
+    y: parsed.y,
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+    reason: `osatlas-pro grounded ${args.ref ?? args.hint}`,
+  };
 }
