@@ -132,13 +132,20 @@ function roleFromMetadata(
   return defaultRoleFromAccountId(accountId);
 }
 
-async function exchangeCodeForToken(args: {
-  clientId: string;
-  clientSecret: string;
-  redirectUri: string;
-  code: string;
-}): Promise<GitHubTokenResponse> {
-  const response = (await fetch(GITHUB_TOKEN_ENDPOINT, {
+/** GitHub OAuth hops share the documented 15s sibling budget from Google connector OAuth. */
+export const GITHUB_OAUTH_TIMEOUT_MS = 15_000;
+
+export async function exchangeCodeForTokenWithFetch(
+  args: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    code: string;
+  },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = GITHUB_OAUTH_TIMEOUT_MS,
+): Promise<GitHubTokenResponse> {
+  const response = (await fetchImpl(GITHUB_TOKEN_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -150,6 +157,7 @@ async function exchangeCodeForToken(args: {
       code: args.code,
       redirect_uri: args.redirectUri,
     }).toString(),
+    signal: AbortSignal.timeout(timeoutMs),
   })) as GitHubFetchResponse;
   if (!response.ok) {
     const body = await response.text();
@@ -169,15 +177,18 @@ async function exchangeCodeForToken(args: {
   return parsed;
 }
 
-async function fetchGitHubUser(
+export async function fetchGitHubUserWithFetch(
   accessToken: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = GITHUB_OAUTH_TIMEOUT_MS,
 ): Promise<GitHubUserPayload> {
-  const response = (await fetch(GITHUB_USER_ENDPOINT, {
+  const response = (await fetchImpl(GITHUB_USER_ENDPOINT, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
+    signal: AbortSignal.timeout(timeoutMs),
   })) as GitHubFetchResponse;
   if (!response.ok) {
     throw new Error(`GitHub /user request failed with ${response.status}`);
@@ -187,6 +198,21 @@ async function fetchGitHubUser(
     throw new Error("GitHub /user returned an invalid payload.");
   }
   return parsed;
+}
+
+async function exchangeCodeForToken(args: {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  code: string;
+}): Promise<GitHubTokenResponse> {
+  return exchangeCodeForTokenWithFetch(args, globalThis.fetch);
+}
+
+async function fetchGitHubUser(
+  accessToken: string,
+): Promise<GitHubUserPayload> {
+  return fetchGitHubUserWithFetch(accessToken, globalThis.fetch);
 }
 
 function synthesizeEnvAccounts(runtime: IAgentRuntime): ConnectorAccount[] {
