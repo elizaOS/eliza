@@ -8486,5 +8486,7 @@
   "cloud.security.pluginPermissionsLink": "Plugin permissions →",
   "cloud.security.pluginPermissionsManage": "Manage permissions",
   "browserworkspace.NativeSurfaceUnavailable": "Browser view unavailable",
-  "browserworkspace.NativeSurfaceUnavailableDescription": "The secure browser surface could not connect. Retry without losing your tabs."
+  "browserworkspace.NativeSurfaceUnavailableDescription": "The secure browser surface could not connect. Retry without losing your tabs.",
+  "browserworkspace.NativeSurfaceUnsupported": "Secure browsing not supported here",
+  "browserworkspace.NativeSurfaceUnsupportedDescription": "This device's system WebView cannot provide the isolation Eliza requires, so Eliza will not open pages inside the app. You can open the page in the device browser instead."
 }
