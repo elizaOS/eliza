@@ -9,6 +9,37 @@ import { getTesseractPlugin } from "../bridge/native-plugins";
 
 const POLL_INTERVAL_MS = 1200;
 
+/** Independent UI hops — same 15s family as screen-capture, separate deadlines. */
+export const OCR_REQUESTS_POLL_TIMEOUT_MS = 15_000;
+export const OCR_RESULT_POST_TIMEOUT_MS = 15_000;
+
+export async function getOcrRequestsWithFetch(
+  fetchImpl: typeof fetch,
+  timeoutMs: number = OCR_REQUESTS_POLL_TIMEOUT_MS,
+): Promise<Response> {
+  return fetchImpl("/api/vision/ocr-requests", {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+export async function postOcrResultWithFetch(
+  body: Record<string, unknown>,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = OCR_RESULT_POST_TIMEOUT_MS,
+): Promise<Response> {
+  const response = await fetchImpl("/api/vision/ocr-result", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`OCR-result request failed (${response.status})`);
+  }
+  return response;
+}
+
 interface OcrRequest {
   requestId: string;
   createdAt: number;
@@ -48,11 +79,7 @@ function isOcrRequest(value: unknown): value is OcrRequest {
 }
 
 async function postOcrResult(body: Record<string, unknown>): Promise<void> {
-  await fetch("/api/vision/ocr-result", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  await postOcrResultWithFetch(body, globalThis.fetch);
 }
 
 async function serveRequest(request: OcrRequest): Promise<void> {
@@ -84,7 +111,7 @@ async function serveRequest(request: OcrRequest): Promise<void> {
 async function poll(): Promise<void> {
   let requests: OcrRequest[];
   try {
-    const res = await fetch("/api/vision/ocr-requests");
+    const res = await getOcrRequestsWithFetch(globalThis.fetch);
     if (!res.ok) return;
     const data = (await res.json()) as { requests?: unknown };
     const list = Array.isArray(data.requests) ? data.requests : [];
