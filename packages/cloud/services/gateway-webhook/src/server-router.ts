@@ -328,6 +328,7 @@ async function wakeServer(
         "Content-Type": "application/strategic-merge-patch+json",
       },
       body: JSON.stringify({ spec: { replicas: 1 } }),
+      signal: AbortSignal.timeout(15_000),
       tls: { ca: getK8sCaCert() ?? undefined },
     } as RequestInit);
     if (!res.ok) {
