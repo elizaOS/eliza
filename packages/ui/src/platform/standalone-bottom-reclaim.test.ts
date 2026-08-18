@@ -36,10 +36,38 @@ import {
   getPhysicalScreenVerticalExtent,
   installStandaloneBottomReclaim,
   measureStandaloneBottomGap,
+  resolveNativeKeyboardLift,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   STANDALONE_BOTTOM_RECLAIM_VAR,
   shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
+
+describe("resolveNativeKeyboardLift", () => {
+  it("keeps the full iOS keyboard lift when a landscape body resize shrinks by the same amount", () => {
+    // Exact installed-Simulator frame from the 56cc HOLD packet: the landscape
+    // screen was 402px tall, UIKit reported a 276px keyboard (including the
+    // form-accessory region), and WebKit shrank innerHeight from 402px to 126px.
+    // Fixed chat chrome still remained behind the keyboard, so treating that
+    // 276px layout shrink as an absorbed lift incorrectly resolves to zero.
+    expect(
+      resolveNativeKeyboardLift({
+        nativeKeyboardHeight: 276,
+        layoutShrink: 402 - 126,
+        layoutViewportAbsorbsKeyboard: false,
+      }),
+    ).toBe(276);
+  });
+
+  it("subtracts the layout-owned keyboard lift for adjustResize surfaces", () => {
+    expect(
+      resolveNativeKeyboardLift({
+        nativeKeyboardHeight: 276,
+        layoutShrink: 276,
+        layoutViewportAbsorbsKeyboard: true,
+      }),
+    ).toBe(0);
+  });
+});
 
 /**
  * Reproduce the collapsed fixed-body geometry EXACTLY as the device reports it:

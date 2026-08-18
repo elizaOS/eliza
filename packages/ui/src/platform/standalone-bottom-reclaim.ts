@@ -77,6 +77,31 @@ const RECLAIM_VAR = "--standalone-bottom-reclaim";
 export const KEYBOARD_INTRUSION_THRESHOLD_PX = 140;
 
 /**
+ * Resolve the part of a native keyboard frame that fixed chat chrome must lift.
+ *
+ * Android's adjustResize viewport already moves fixed descendants above the
+ * keyboard, so only the unabsorbed remainder is applied. Capacitor iOS uses a
+ * body-resize policy: WebKit can report an equally shrunken layout viewport
+ * while fixed descendants still remain behind the keyboard. That layout
+ * shrink is therefore diagnostic on iOS, not an absorbed lift.
+ */
+export function resolveNativeKeyboardLift({
+  nativeKeyboardHeight,
+  layoutShrink,
+  layoutViewportAbsorbsKeyboard,
+}: {
+  nativeKeyboardHeight: number;
+  layoutShrink: number;
+  layoutViewportAbsorbsKeyboard: boolean;
+}): number {
+  const height = Math.max(0, nativeKeyboardHeight);
+  const absorbed = layoutViewportAbsorbsKeyboard
+    ? Math.max(0, layoutShrink)
+    : 0;
+  return Math.max(0, height - absorbed);
+}
+
+/**
  * The last reclaim value measured while the keyboard was DOWN. Frozen and
  * re-served whenever a soft keyboard is detected up, so the resting reclaim var
  * never absorbs the keyboard-shrunk `innerHeight`. Seeded 0 (a no-op) until the
