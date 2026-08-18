@@ -42,6 +42,7 @@ import type {
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -140,6 +141,7 @@ const ANDROID_SMS_GATEWAY_PHONE_LABEL = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
     "Eliza Cloud Gateway (+14159611510)",
 );
+const ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS = 15_000;
 
 function useLaunchParams(): URLSearchParams {
   const [params, setParams] = useState(() => readLaunchParams());
@@ -1541,6 +1543,35 @@ function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   };
 }
 
+async function forwardAndroidSmsGateway(
+  incoming: IncomingSmsContext,
+  signal: AbortSignal,
+): Promise<AndroidSmsGatewayReply> {
+  return await fetchWithDeadline(
+    ANDROID_SMS_GATEWAY_WEBHOOK_URL,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-eliza-bridge": "android-sms",
+        "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
+      },
+      body: JSON.stringify(androidSmsGatewayPayload(incoming)),
+    },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(`Cloud gateway failed (${response.status})`);
+      }
+      const body: unknown = await response.json();
+      if (body === null || typeof body !== "object" || Array.isArray(body)) {
+        throw new Error("Cloud gateway returned an unparseable reply");
+      }
+      return body as AndroidSmsGatewayReply;
+    },
+    { signal, timeoutMs: ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS },
+  );
+}
+
 export function MessagesPageView() {
   const { t } = useTranslation();
   const params = useLaunchParams();
@@ -1625,33 +1656,14 @@ export function MessagesPageView() {
     if (forwardedIncomingIds.current.has(key)) return;
     forwardedIncomingIds.current.add(key);
 
+    const controller = new AbortController();
     let cancelled = false;
     const forward = async () => {
       try {
-        const response = await fetch(ANDROID_SMS_GATEWAY_WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-eliza-bridge": "android-sms",
-            "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
-          },
-          body: JSON.stringify(androidSmsGatewayPayload(incomingSms)),
-        });
-        let cloudReply: AndroidSmsGatewayReply | Record<string, never> = {};
-        try {
-          cloudReply = (await response.json()) as AndroidSmsGatewayReply;
-        } catch {
-          // error-policy:J3 a non-ok body is only quoted in the error below;
-          // an OK response with an unparseable reply is a real failure.
-          if (response.ok) {
-            throw new Error("Cloud gateway returned an unparseable reply");
-          }
-        }
-        if (!response.ok) {
-          throw new Error(
-            `Cloud gateway failed (${response.status}): ${JSON.stringify(cloudReply)}`,
-          );
-        }
+        const cloudReply = await forwardAndroidSmsGateway(
+          incomingSms,
+          controller.signal,
+        );
 
         const replyText = cloudReply.replyText?.trim();
         if (!replyText) {
@@ -1672,7 +1684,7 @@ export function MessagesPageView() {
           await refresh();
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && !controller.signal.aborted) {
           setError(err instanceof Error ? err.message : String(err));
         }
       }
@@ -1681,6 +1693,9 @@ export function MessagesPageView() {
     void forward();
     return () => {
       cancelled = true;
+      controller.abort(
+        new DOMException("Android SMS forward superseded", "AbortError"),
+      );
     };
   }, [incomingSms, refresh]);
 
