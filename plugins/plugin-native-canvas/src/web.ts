@@ -775,16 +775,23 @@ export class CanvasWeb extends WebPlugin {
     const format = options.format || "png";
     const quality = assertQuality(options.quality, "quality", 1);
 
-    let sourceCanvas = managed.canvas;
+    // Mirror the native iOS/Android composite contract: an explicit
+    // `layerIds` subset composites only those named layers, while the
+    // default (no `layerIds`) exports the base surface plus every visible
+    // layer sorted by z-index with each layer's opacity applied. Returning
+    // `managed.canvas` directly would drop all layer content on web/desktop
+    // and diverge from what the user sees and from the mobile platforms.
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = managed.size.width;
+    tempCanvas.height = managed.size.height;
+    const tempCtx = tempCanvas.getContext("2d");
+
+    if (!tempCtx) throw new Error("Failed to create temp canvas");
 
     if (options.layerIds && options.layerIds.length > 0) {
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = managed.size.width;
-      tempCanvas.height = managed.size.height;
-      const tempCtx = tempCanvas.getContext("2d");
-
-      if (!tempCtx) throw new Error("Failed to create temp canvas");
-
+      // Explicit subsets are composited in caller-provided order, matching the
+      // iOS and Android bridges. z-index ordering applies only to the default
+      // full-canvas export.
       for (const layerId of options.layerIds) {
         const layer = managed.layers.get(layerId);
         if (layer?.visible) {
@@ -792,9 +799,21 @@ export class CanvasWeb extends WebPlugin {
           tempCtx.drawImage(layer.canvas, 0, 0);
         }
       }
+    } else {
+      tempCtx.globalAlpha = 1;
+      tempCtx.drawImage(managed.canvas, 0, 0);
 
-      sourceCanvas = tempCanvas;
+      const visibleLayers = Array.from(managed.layers.values())
+        .filter((layer) => layer.visible)
+        .sort((a, b) => a.zIndex - b.zIndex);
+
+      for (const layer of visibleLayers) {
+        tempCtx.globalAlpha = layer.opacity;
+        tempCtx.drawImage(layer.canvas, 0, 0);
+      }
     }
+
+    const sourceCanvas = tempCanvas;
 
     const mimeType =
       format === "png"
