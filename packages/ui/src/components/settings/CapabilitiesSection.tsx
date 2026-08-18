@@ -97,6 +97,24 @@ type CapabilityRouterConnectResponse = {
   };
 };
 
+/** Ordinary REST budget for POST /api/capability-router/connect. */
+export const CAPABILITY_ROUTER_CONNECT_FETCH_TIMEOUT_MS = 10_000;
+
+export async function fetchCapabilityRouterConnect(
+  body: unknown,
+  timeoutMs: number = CAPABILITY_ROUTER_CONNECT_FETCH_TIMEOUT_MS,
+  api: { fetch: typeof client.fetch } = client,
+): Promise<CapabilityRouterConnectResponse> {
+  return api.fetch<CapabilityRouterConnectResponse>(
+    "/api/capability-router/connect",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { timeoutMs },
+  );
+}
+
 export function CapabilitiesSection() {
   const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } =
     useAppSelectorShallow((s) => ({
@@ -226,59 +244,53 @@ export function CapabilitiesSection() {
         ),
       ];
       try {
-        const response = await client.fetch<CapabilityRouterConnectResponse>(
-          "/api/capability-router/connect",
-          {
-            method: "POST",
-            body: JSON.stringify(
-              capabilityConnectMode === "endpoint"
-                ? {
-                    ...(capabilityEndpointProvider === "direct"
-                      ? {}
-                      : { provider: capabilityEndpointProvider }),
-                    endpoint: {
-                      baseUrl,
-                      ...(capabilityEndpointId.trim()
-                        ? { id: capabilityEndpointId.trim() }
-                        : {}),
-                      ...(capabilityEndpointToken.trim()
-                        ? { token: capabilityEndpointToken.trim() }
-                        : {}),
-                    },
-                    persist: true,
-                    unloadMissing: false,
-                    ...(allowedModuleIds.length === 0
-                      ? {}
-                      : { allowedModuleIds }),
-                  }
-                : {
-                    cloud: {
-                      cloudApiBase,
-                      authToken: cloudAuthToken,
-                      name: cloudName,
-                      ...(capabilityCloudBio.trim()
-                        ? {
-                            bio: capabilityCloudBio
-                              .split("\n")
-                              .map((item) => item.trim())
-                              .filter(Boolean),
-                          }
-                        : {}),
-                      ...(capabilityEndpointId.trim()
-                        ? { endpointId: capabilityEndpointId.trim() }
-                        : {}),
-                      ...(capabilityEndpointToken.trim()
-                        ? { token: capabilityEndpointToken.trim() }
-                        : {}),
-                      ...(allowedModuleIds.length === 0
-                        ? {}
-                        : { allowedModuleIds }),
-                    },
-                    persist: true,
-                    unloadMissing: false,
-                  },
-            ),
-          },
+        const response = await fetchCapabilityRouterConnect(
+          capabilityConnectMode === "endpoint"
+            ? {
+                ...(capabilityEndpointProvider === "direct"
+                  ? {}
+                  : { provider: capabilityEndpointProvider }),
+                endpoint: {
+                  baseUrl,
+                  ...(capabilityEndpointId.trim()
+                    ? { id: capabilityEndpointId.trim() }
+                    : {}),
+                  ...(capabilityEndpointToken.trim()
+                    ? { token: capabilityEndpointToken.trim() }
+                    : {}),
+                },
+                persist: true,
+                unloadMissing: false,
+                ...(allowedModuleIds.length === 0
+                  ? {}
+                  : { allowedModuleIds }),
+              }
+            : {
+                cloud: {
+                  cloudApiBase,
+                  authToken: cloudAuthToken,
+                  name: cloudName,
+                  ...(capabilityCloudBio.trim()
+                    ? {
+                        bio: capabilityCloudBio
+                          .split("\n")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }
+                    : {}),
+                  ...(capabilityEndpointId.trim()
+                    ? { endpointId: capabilityEndpointId.trim() }
+                    : {}),
+                  ...(capabilityEndpointToken.trim()
+                    ? { token: capabilityEndpointToken.trim() }
+                    : {}),
+                  ...(allowedModuleIds.length === 0
+                    ? {}
+                    : { allowedModuleIds }),
+                },
+                persist: true,
+                unloadMissing: false,
+              },
         );
         setCapabilityConnectResult(response);
       } catch (err) {
