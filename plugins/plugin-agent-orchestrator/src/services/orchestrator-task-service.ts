@@ -1122,6 +1122,12 @@ export class OrchestratorTaskService extends Service {
   private smithersRecoveryInFlight:
     | Promise<{ recovered: number; skipped: number }>
     | undefined;
+  /**
+   * ACP emits synchronously, but durable event application is asynchronous.
+   * Serialize that work per session and retain the tail so service shutdown can
+   * drain terminal writes instead of abandoning them after the callback returns.
+   */
+  private readonly sessionEventWriteQueues = new Map<string, Promise<void>>();
 
   constructor(
     runtime: IAgentRuntime,
@@ -1217,7 +1223,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        this.queueSessionEventWrite(
           sessionId,
           event,
           data,
@@ -1226,6 +1232,26 @@ export class OrchestratorTaskService extends Service {
         );
       },
     );
+  }
+
+  private queueSessionEventWrite(
+    sessionId: string,
+    event: string,
+    data: unknown,
+    sessionSnapshot?: SessionInfo,
+    turnId?: string,
+  ): void {
+    const prior = this.sessionEventWriteQueues.get(sessionId);
+    const write = (prior ?? Promise.resolve()).then(() =>
+      this.onSessionEvent(sessionId, event, data, sessionSnapshot, turnId),
+    );
+    let tracked: Promise<void>;
+    tracked = write.finally(() => {
+      if (this.sessionEventWriteQueues.get(sessionId) === tracked) {
+        this.sessionEventWriteQueues.delete(sessionId);
+      }
+    });
+    this.sessionEventWriteQueues.set(sessionId, tracked);
   }
 
   private async bindToAcpWhenReady(): Promise<void> {
@@ -1270,6 +1296,10 @@ export class OrchestratorTaskService extends Service {
       clearInterval(this.stuckTaskReaperTimer);
       this.stuckTaskReaperTimer = undefined;
     }
+    // The ACP callback itself is synchronous. Drain the retained async tails so
+    // a normal host shutdown cannot return while a task_complete event still
+    // has durable session/Smithers writes in flight.
+    await Promise.all([...this.sessionEventWriteQueues.values()]);
     this.started = false;
   }
 
@@ -1343,14 +1373,22 @@ export class OrchestratorTaskService extends Service {
       taskSession?: OrchestratorTaskSession;
     };
     const candidates = new Map<string, Candidate>();
+    const completedRunKeys = new Set<string>();
+    const runKey = (link: SmithersDurableRunLink): string =>
+      `${link.tenantId}\u0000${link.taskId}\u0000${link.runId}`;
     const consider = (candidate: Candidate): void => {
-      if (
-        candidate.link.state === "completed" ||
-        candidate.link.state === "superseded"
-      ) {
+      const key = runKey(candidate.link);
+      if (candidate.link.state === "completed") {
+        // Completion is a run-level tombstone. If one durable copy committed
+        // before another store failed, the stale running copy must not replay
+        // already-finished work at boot.
+        completedRunKeys.add(key);
+        candidates.delete(key);
         return;
       }
-      const key = `${candidate.link.tenantId}\u0000${candidate.link.taskId}\u0000${candidate.link.runId}`;
+      if (candidate.link.state === "superseded" || completedRunKeys.has(key)) {
+        return;
+      }
       const prior = candidates.get(key);
       const candidateTime =
         candidate.acpSession?.createdAt.getTime() ??
@@ -1606,7 +1644,25 @@ export class OrchestratorTaskService extends Service {
         writes.push(this.updateSmithersDurableRun(sessionId, next));
       }
     }
-    await Promise.all(writes);
+    const results = await Promise.allSettled(writes);
+    const failures = results
+      .filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      .map((result) => result.reason);
+    if (failures.length > 0) {
+      throw new ElizaError("Failed to synchronize durable Smithers run state", {
+        code: "SMITHERS_DURABLE_SYNC_FAILED",
+        context: {
+          taskId: activeLink.orchestratorTaskId,
+          runId: activeLink.runId,
+          failedWrites: failures.length,
+        },
+        cause: new AggregateError(failures),
+        severity: "ephemeral",
+      });
+    }
   }
 
   // ---- live change bus ---------------------------------------------------
@@ -1846,12 +1902,12 @@ export class OrchestratorTaskService extends Service {
         // earned a pointless boot "recovery" that re-ran the finished task
         // against the user — and a recovery that failed (e.g. a reclaimed
         // workspace) retried on every subsequent boot (live 2026-08-18).
-        void this.completeSmithersRunLink(sessionId).catch((err) => {
-          this.log("warn", "smithers link terminalization failed", {
-            sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
+        // This is correctness state, not telemetry: do not let the completion
+        // handler settle until both durable copies have been attempted. A
+        // failure reaches the ACP event boundary, remains observable, and the
+        // run-level completed tombstone prevents a partial write from replaying
+        // finished work during boot recovery.
+        await this.completeSmithersRunLink(sessionId);
         break;
       }
       case "error": {

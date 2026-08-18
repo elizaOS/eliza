@@ -383,11 +383,12 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(detail?.sessionCount).toBe(1);
     // The finished single-turn session is indexed for history/attribution but
     // is no longer live. Its task_complete event advances the durable task to
-    // validating, the same state the real ACP terminal event produces.
+    // validating and remains the authoritative terminal state; the following
+    // teardown `stopped` event must not erase successful delivery metadata.
     expect(detail?.activeSessionCount).toBe(0);
     expect(detail?.status).not.toBe("active");
     expect(detail?.status).toBe("validating");
-    expect(detail?.sessions[0]?.status).toBe("stopped");
+    expect(detail?.sessions[0]?.status).toBe("completed");
     expect(detail?.sessions[0]?.stoppedAt).toBeTypeOf("number");
   });
 });

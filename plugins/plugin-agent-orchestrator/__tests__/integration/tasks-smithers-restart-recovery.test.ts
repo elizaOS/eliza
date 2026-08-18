@@ -14,6 +14,7 @@ import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-stor
 import {
   readSmithersDurableRunLink,
   type SmithersDurableRunLink,
+  smithersDurableRunMetadata,
 } from "../../src/services/smithers-task-integration.js";
 import type {
   SessionEventName,
@@ -66,7 +67,10 @@ class RestartableAcp {
   private readonly handlers = new Set<SessionEventHandler>();
   private readonly liveSessions = new Set<string>();
 
-  constructor(private readonly persisted: PersistedAcpState) {}
+  constructor(
+    private readonly persisted: PersistedAcpState,
+    private readonly suppressPromptTerminalEvent = false,
+  ) {}
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
     const id = `restart-session-${++this.persisted.nextId}`;
@@ -101,10 +105,12 @@ class RestartableAcp {
       stopReason: "end_turn",
       durationMs: 1,
     };
-    this.emitSessionEvent(sessionId, "task_complete", {
-      response: result.finalText,
-      stopReason: result.stopReason,
-    });
+    if (!this.suppressPromptTerminalEvent) {
+      this.emitSessionEvent(sessionId, "task_complete", {
+        response: result.finalText,
+        stopReason: result.stopReason,
+      });
+    }
     return result;
   }
 
@@ -209,6 +215,67 @@ function runtimeFor(acp: RestartableAcp, taskService: unknown): IAgentRuntime {
 }
 
 describe("TASKS Smithers restart recovery", () => {
+  async function createLiveLinkedTask(input: {
+    dir: string;
+    stateFile: string;
+    acp: RestartableAcp;
+  }): Promise<{
+    service: OrchestratorTaskService;
+    store: OrchestratorTaskStore;
+    runtime: IAgentRuntime;
+    taskId: string;
+    sessionId: string;
+    link: SmithersDurableRunLink;
+  }> {
+    const store = new OrchestratorTaskStore({ stateFile: input.stateFile });
+    const runtime = runtimeFor(input.acp, null);
+    const service = new OrchestratorTaskService(runtime, { store });
+    runtime.getService = vi.fn((serviceType: string) =>
+      serviceType === "ORCHESTRATOR_TASK_SERVICE" ? service : input.acp,
+    ) as never;
+    await service.start();
+    const created = await service.createTask({
+      title: "Terminal Smithers task",
+      goal: "Commit one terminal result",
+      acceptanceCriteria: [],
+      roomId: "11111111-1111-4111-8111-111111111111",
+    });
+    const link: SmithersDurableRunLink = {
+      version: 1,
+      orchestratorTaskId: created.id,
+      tenantId: "restart-tenant",
+      taskId: "smithers-task-terminal",
+      runId: "smithers-run-terminal",
+      initialPrompt: "commit one terminal result",
+      state: "running",
+      keepAliveAfterComplete: true,
+    };
+    const spawned = await input.acp.spawnSession({
+      agentType: "codex",
+      workdir: input.dir,
+      metadata: {
+        taskId: created.id,
+        ...smithersDurableRunMetadata(link),
+      },
+    });
+    await service.attachSession(created.id, {
+      sessionId: spawned.sessionId,
+      agentType: spawned.agentType,
+      workdir: spawned.workdir,
+      status: "ready",
+      metadata: spawned.metadata,
+      durableRun: link,
+    });
+    return {
+      service,
+      store,
+      runtime,
+      taskId: created.id,
+      sessionId: spawned.sessionId,
+      link,
+    };
+  }
+
   it("persists linkage before the prompt and recovers a committed run without replaying it", async () => {
     const dir = await mkdtemp(join(tmpdir(), "tasks-smithers-restart-"));
     let firstTaskService: OrchestratorTaskService | undefined;
@@ -220,7 +287,11 @@ describe("TASKS Smithers restart recovery", () => {
         prompts: [],
         nextId: 0,
       };
-      const firstAcp = new RestartableAcp(persistedAcp);
+      // Model a host termination after the durable Smithers graph commits but
+      // before the ACP terminal event reaches this process. The explicit
+      // completion-copy write below then fails on the task-store side, leaving
+      // the task copy running for restart recovery.
+      const firstAcp = new RestartableAcp(persistedAcp, true);
       const firstStore = new OrchestratorTaskStore({ stateFile });
       const firstRuntime = runtimeFor(firstAcp, null);
       firstTaskService = new OrchestratorTaskService(firstRuntime, {
@@ -337,4 +408,146 @@ describe("TASKS Smithers restart recovery", () => {
       });
     }
   }, 60_000);
+
+  it("drains task_complete until both durable Smithers copies are terminal", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "tasks-smithers-terminal-drain-"));
+    let service: OrchestratorTaskService | undefined;
+    try {
+      const persistedAcp: PersistedAcpState = {
+        sessions: new Map(),
+        prompts: [],
+        nextId: 0,
+      };
+      const acp = new RestartableAcp(persistedAcp);
+      const fixture = await createLiveLinkedTask({
+        dir,
+        stateFile: join(dir, "orchestrator-tasks.json"),
+        acp,
+      });
+      service = fixture.service;
+
+      let releaseWrite: (() => void) | undefined;
+      const writeGate = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      let markWriteStarted: (() => void) | undefined;
+      const writeStarted = new Promise<void>((resolve) => {
+        markWriteStarted = resolve;
+      });
+      const originalUpdate = acp.updateSessionMetadata.bind(acp);
+      vi.spyOn(acp, "updateSessionMetadata").mockImplementation(
+        async (sessionId, patch) => {
+          markWriteStarted?.();
+          await writeGate;
+          await originalUpdate(sessionId, patch);
+        },
+      );
+
+      acp.emitSessionEvent(fixture.sessionId, "task_complete", {
+        response: "terminal result",
+        stopReason: "end_turn",
+      });
+      await writeStarted;
+      let stopped = false;
+      const stopping = service.stop().then(() => {
+        stopped = true;
+      });
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+
+      releaseWrite?.();
+      await stopping;
+
+      const acpLink = readSmithersDurableRunLink(
+        persistedAcp.sessions.get(fixture.sessionId)?.metadata,
+      );
+      const taskLink = readSmithersDurableRunLink(
+        (await fixture.store.getTask(fixture.taskId))?.sessions.find(
+          (session) => session.sessionId === fixture.sessionId,
+        )?.metadata,
+      );
+      expect(acpLink?.state).toBe("completed");
+      expect(taskLink?.state).toBe("completed");
+    } finally {
+      await service?.stop();
+      await rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
+  });
+
+  it("does not replay a completed run when one terminal-copy write fails", async () => {
+    const dir = await mkdtemp(
+      join(tmpdir(), "tasks-smithers-partial-terminal-"),
+    );
+    let service: OrchestratorTaskService | undefined;
+    try {
+      const stateFile = join(dir, "orchestrator-tasks.json");
+      const persistedAcp: PersistedAcpState = {
+        sessions: new Map(),
+        prompts: [],
+        nextId: 0,
+      };
+      const acp = new RestartableAcp(persistedAcp);
+      const fixture = await createLiveLinkedTask({ dir, stateFile, acp });
+      service = fixture.service;
+      vi.spyOn(acp, "updateSessionMetadata").mockRejectedValueOnce(
+        new Error("simulated ACP metadata outage"),
+      );
+
+      acp.emitSessionEvent(fixture.sessionId, "task_complete", {
+        response: "terminal result",
+        stopReason: "end_turn",
+      });
+      await service.stop();
+      service = undefined;
+
+      expect(fixture.runtime.reportError).toHaveBeenCalledWith(
+        "OrchestratorTask.recordSessionEvent",
+        expect.any(Error),
+        expect.objectContaining({
+          sessionId: fixture.sessionId,
+          event: "task_complete",
+        }),
+      );
+      expect(
+        readSmithersDurableRunLink(
+          persistedAcp.sessions.get(fixture.sessionId)?.metadata,
+        )?.state,
+      ).toBe("running");
+      expect(
+        readSmithersDurableRunLink(
+          (await fixture.store.getTask(fixture.taskId))?.sessions.find(
+            (session) => session.sessionId === fixture.sessionId,
+          )?.metadata,
+        )?.state,
+      ).toBe("completed");
+
+      const restartedStore = new OrchestratorTaskStore({ stateFile });
+      const restartedRuntime = runtimeFor(acp, null);
+      const restartedService = new OrchestratorTaskService(restartedRuntime, {
+        store: restartedStore,
+      });
+      restartedRuntime.getService = vi.fn((serviceType: string) =>
+        serviceType === "ORCHESTRATOR_TASK_SERVICE" ? restartedService : acp,
+      ) as never;
+      const recovery = await restartedService.recoverInterruptedSmithersRuns(
+        acp as never,
+      );
+      expect(recovery).toEqual({ recovered: 0, skipped: 0 });
+      expect(persistedAcp.prompts).toEqual([]);
+      await restartedService.stop();
+    } finally {
+      await service?.stop();
+      await rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
+  });
 });
