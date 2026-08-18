@@ -3391,37 +3391,11 @@ export class OrchestratorTaskService extends Service {
         }
         await new Promise((r) => setTimeout(r, 10_000));
       }
+      claimed = true;
       // checkout -B: moves (or creates) the registered branch at the child's
       // HEAD and checks it out in one step — including when the registered
       // branch IS the currently checked-out branch, where `branch -f` refuses
       // ("cannot force update the checked-out branch", live 2026-08-18).
-      await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
-      await workspaceService.push(workspaceId, { setUpstream: true });
-      // PR title/body must not carry the chat connector envelope — the raw
-      // originalRequest embeds "[Discord #channel | server] @user (ts):" plus
-      // platform mention ids, and a PR on a public repo publishes it (live
-      // 2026-08-18, sandbox PR #4). Use the planner-authored goal/title,
-      // stripped of any envelope prefix, mention tokens, and the trailing
-      // "and open a PR"-style instruction.
-      const scrubChatEnvelope = (value: string): string =>
-        value
-          .replace(/^\[[^\]\n]{0,120}\]\s*@?[\w.-]*\s*\([^)\n]{0,60}\)\s*:\s*/u, "")
-          .replace(/<@!?\d+>/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
-      const rawTitle = doc.task.title || doc.task.goal || workspace.branch;
-      const title = scrubChatEnvelope(rawTitle)
-        .replace(/[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu, "")
-        .trim()
-        .slice(0, 120) || workspace.branch;
-      const bodySummary = scrubChatEnvelope(
-        doc.task.goal?.slice(0, 800) ?? rawTitle,
-      );
-      const pr = await workspaceService.createPR(workspaceId, {
-        title,
-        body: `${bodySummary}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
-      });
-      claimed = true;
       await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
 
       // The exact local HEAD is scanned only after completion verification has
@@ -3451,7 +3425,19 @@ export class OrchestratorTaskService extends Service {
           },
         },
       });
-      const title = (doc.task.title || workspace.branch).slice(0, 120);
+      // Scrub the chat connector envelope and mention ids out of the title —
+      // the task title can embed "[Discord #channel | server] @user (ts):"
+      // and platform mentions, and a PR on a public repo publishes it (live
+      // 2026-08-18, sandbox PR #4). The trailing "…and open a PR" instruction
+      // is dropped too; it is orchestration, not a change description.
+      const scrubbedTitle =
+        (doc.task.title || doc.task.goal || workspace.branch)
+          .replace(/^\[[^\]\n]{0,120}\]\s*@?[\w.-]*\s*\([^)\n]{0,60}\)\s*:\s*/u, "")
+          .replace(/<@!?\d+>/g, "")
+          .replace(/[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      const title = (scrubbedTitle || workspace.branch).slice(0, 120);
       const pr =
         (await workspaceService.findOpenPullRequest(
           workspaceId,
