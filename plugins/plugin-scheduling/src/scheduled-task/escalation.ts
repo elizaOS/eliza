@@ -11,7 +11,7 @@
  * `priority_<level>_default` keys.
  */
 
-import { isRepresentableMs } from "./time-range.js";
+import { projectMinuteOffsetMs } from "./time-range.js";
 import type {
   EscalationStep,
   ScheduledTask,
@@ -152,12 +152,12 @@ export function nextEscalationStep(
   const step = ladder.steps[nextIdx];
   if (!step) return null;
   const lastMs = new Date(cursor.lastDispatchedAt).getTime();
-  const fireAtMs = lastMs + step.delayMinutes * 60_000;
+  const fireAtMs = projectMinuteOffsetMs(lastMs, step.delayMinutes);
   // A schema-valid but unbounded `delayMinutes` (no upper bound in schema.ts)
   // can push the product past the JS Date range, where `toISOString()` would
   // throw. Treat that as "no next step" so the ladder settles instead of
   // stranding a claimed row.
-  if (!isRepresentableMs(fireAtMs)) return null;
+  if (fireAtMs === null) return null;
   return {
     step,
     nextStepIndex: nextIdx,

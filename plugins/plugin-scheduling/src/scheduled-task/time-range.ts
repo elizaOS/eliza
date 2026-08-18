@@ -22,3 +22,23 @@ export const MAX_DATE_MS = 8_640_000_000_000_000;
 export function isRepresentableMs(ms: number): boolean {
   return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 }
+
+/**
+ * Add a non-negative minute offset to a representable epoch instant.
+ * Returns `null` for untrusted negative/non-finite offsets or when the result
+ * would fall outside the JS Date range.
+ */
+export function projectMinuteOffsetMs(
+  baseMs: number,
+  offsetMinutes: number,
+): number | null {
+  if (
+    !isRepresentableMs(baseMs) ||
+    !Number.isFinite(offsetMinutes) ||
+    offsetMinutes < 0
+  ) {
+    return null;
+  }
+  const projectedMs = baseMs + offsetMinutes * 60_000;
+  return isRepresentableMs(projectedMs) ? projectedMs : null;
+}

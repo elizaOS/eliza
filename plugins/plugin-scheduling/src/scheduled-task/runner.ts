@@ -39,7 +39,7 @@ import {
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
-import { isRepresentableMs } from "./time-range.js";
+import { projectMinuteOffsetMs } from "./time-range.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -2231,9 +2231,11 @@ export function createScheduledTaskRunner(
         // huge value would push the park-back instant past the JS Date range
         // and make `toISOString()` throw AFTER the row was atomically claimed
         // to `"fired"`, stranding it. Settle terminally instead of stranding.
-        const nextAttemptMs =
-          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000;
-        if (!isRepresentableMs(nextAttemptMs)) {
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          decision.retryAfterMinutes,
+        );
+        if (nextAttemptMs === null) {
           return failTerminal(task, decision.reason, failure.message);
         }
         const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
@@ -2276,9 +2278,11 @@ export function createScheduledTaskRunner(
         // upper limit); guard the park-back instant against the Date range so
         // a claimed row settles terminally instead of throwing while stranded
         // in `"fired"`.
-        const nextAttemptMs =
-          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000;
-        if (!isRepresentableMs(nextAttemptMs)) {
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          nextStep.delayMinutes,
+        );
+        if (nextAttemptMs === null) {
           if (decision.kind === "surface_degraded") {
             recordConnectorDegradation(task, decision, fireAtIso);
           }
