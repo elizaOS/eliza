@@ -40,9 +40,20 @@ import { persistConnectorCredentialRefs } from "./connector-credential-refs";
 import { getSetting } from "./utils/settings";
 
 const TWITTER_AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
-const TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
-const TWITTER_USERS_ME_URL =
+export const TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+export const TWITTER_USERS_ME_URL =
   "https://api.twitter.com/2/users/me?user.fields=id,name,username";
+
+/** X token-exchange POST — same 15s Fal #21205 family as Slack OAuth. */
+export const X_OAUTH_TOKEN_TIMEOUT_MS = 15_000;
+/** X users/me GET — independent hop, own 15s deadline. */
+export const X_OAUTH_USERS_ME_TIMEOUT_MS = 15_000;
+
+export interface XConnectorAccountProviderOptions {
+  fetchImpl?: typeof fetch;
+  tokenTimeoutMs?: number;
+  usersMeTimeoutMs?: number;
+}
 
 const DEFAULT_SCOPES = [
   "tweet.read",
@@ -123,12 +134,16 @@ function formEncode(params: Record<string, string>): string {
     .join("&");
 }
 
-async function exchangeCodeForToken(args: {
-  clientId: string;
-  redirectUri: string;
-  code: string;
-  codeVerifier: string;
-}): Promise<TwitterTokenResponse> {
+export async function exchangeXOauthTokenWithFetch(
+  args: {
+    clientId: string;
+    redirectUri: string;
+    code: string;
+    codeVerifier: string;
+  },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = X_OAUTH_TOKEN_TIMEOUT_MS,
+): Promise<TwitterTokenResponse> {
   const body = formEncode({
     grant_type: "authorization_code",
     client_id: args.clientId,
@@ -136,10 +151,11 @@ async function exchangeCodeForToken(args: {
     code: args.code,
     code_verifier: args.codeVerifier,
   });
-  const res = await fetch(TWITTER_TOKEN_URL, {
+  const res = await fetchImpl(TWITTER_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const json = (await res.json().catch(() => ({}))) as TwitterTokenResponse;
   if (!res.ok || !json.access_token) {
@@ -150,11 +166,14 @@ async function exchangeCodeForToken(args: {
   return json;
 }
 
-async function fetchAuthenticatedUser(
+export async function fetchXAuthenticatedUserWithFetch(
   accessToken: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = X_OAUTH_USERS_ME_TIMEOUT_MS,
 ): Promise<{ id: string; username?: string; name?: string }> {
-  const res = await fetch(TWITTER_USERS_ME_URL, {
+  const res = await fetchImpl(TWITTER_USERS_ME_URL, {
     headers: { authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const json = (await res.json().catch(() => ({}))) as TwitterUserMeResponse;
   if (!res.ok || !json.data?.id) {
@@ -223,7 +242,12 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
 
 export function createXConnectorAccountProvider(
   runtime: IAgentRuntime,
+  options: XConnectorAccountProviderOptions = {},
 ): ConnectorAccountProvider {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const tokenTimeoutMs = options.tokenTimeoutMs ?? X_OAUTH_TOKEN_TIMEOUT_MS;
+  const usersMeTimeoutMs =
+    options.usersMeTimeoutMs ?? X_OAUTH_USERS_ME_TIMEOUT_MS;
   return {
     provider: X_PROVIDER,
     label: "X (Twitter)",
@@ -278,19 +302,27 @@ export function createXConnectorAccountProvider(
           "Twitter OAuth flow is missing code verifier — restart the flow",
         );
       }
-      const token = await exchangeCodeForToken({
-        clientId: config.clientId,
-        redirectUri,
-        code,
-        codeVerifier,
-      });
+      const token = await exchangeXOauthTokenWithFetch(
+        {
+          clientId: config.clientId,
+          redirectUri,
+          code,
+          codeVerifier,
+        },
+        fetchImpl,
+        tokenTimeoutMs,
+      );
       const accessToken = token.access_token;
       if (!accessToken) {
         throw new Error(
           "Twitter OAuth token exchange did not return an access_token",
         );
       }
-      const me = await fetchAuthenticatedUser(accessToken);
+      const me = await fetchXAuthenticatedUserWithFetch(
+        accessToken,
+        fetchImpl,
+        usersMeTimeoutMs,
+      );
       const expiresAt =
         typeof token.expires_in === "number"
           ? Date.now() + token.expires_in * 1000
