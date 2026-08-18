@@ -595,7 +595,7 @@ function snapshotOf(job: MutableJob): InstallJobSnapshot {
 
 function truncateError(message: string, max = 800): string {
   const clean = message.replace(/\s+/g, " ").trim();
-  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
 // ── Singleton ──────────────────────────────────────────────────────────────
