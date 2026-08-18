@@ -1,75 +1,73 @@
 /**
  * @vitest-environment jsdom
  *
- * Behavioral RelationshipsView graph-JSON deadline. Executes
- * getRelationshipsJsonWithFetch under abort — not a source-grep of
- * RelationshipsView.tsx.
+ * RelationshipsView graph JSON through the canonical ElizaClient seam.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("@elizaos/ui/api", () => ({
-	client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 vi.mock("./RelationshipsSpatialView.tsx", () => ({
-	EMPTY_RELATIONSHIPS: { state: "loading", nodes: [], filters: [] },
-	RelationshipsSpatialView: () => null,
+  EMPTY_RELATIONSHIPS: { state: "loading", nodes: [], filters: [] },
+  RelationshipsSpatialView: () => null,
 }));
 
 import {
-	RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
-	getRelationshipsJsonWithFetch,
+  getRelationshipsJsonWithClient,
+  RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
 } from "./RelationshipsView.js";
 
-const URL = "http://test.local/api/lifeops/entities";
-
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected relationships-view abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
-}
+const PATH = "/api/lifeops/entities";
 
 describe("RelationshipsView graph JSON deadline", () => {
-	it("keeps a documented UI JSON budget", () => {
-		expect(RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS).toBe(15_000);
-	});
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-	it("aborts a stalled graph GET at the injected deadline", async () => {
-		await expect(
-			getRelationshipsJsonWithFetch(URL, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
+  it("keeps a documented UI JSON budget", () => {
+    expect(RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS).toBe(15_000);
+  });
 
-	it("surfaces a provider error from a completed graph GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
 
-		await expect(
-			getRelationshipsJsonWithFetch(URL, fetchImpl, 1_000, "Entities"),
-		).rejects.toThrow("503");
-	});
+    await expect(
+      getRelationshipsJsonWithClient(PATH, { fetch: clientFetch }, 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 10,
+    });
+  });
 
-	it("uses the injected fetch for a successful graph GET", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({ entities: [] });
-		};
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new Error("Entities request failed (503)"),
+    );
 
-		const body = await getRelationshipsJsonWithFetch<{ entities: unknown[] }>(
-			URL,
-			fetchImpl,
-			1_000,
-			"Entities",
-		);
+    await expect(
+      getRelationshipsJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).rejects.toThrow("503");
+  });
 
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(body.entities).toEqual([]);
-	});
+  it("uses the bounded client path for a successful graph GET", async () => {
+    clientFetch.mockResolvedValueOnce({ entities: [] });
+
+    await expect(
+      getRelationshipsJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).resolves.toEqual({ entities: [] });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 1_000,
+    });
+  });
 });
