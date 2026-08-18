@@ -27,6 +27,7 @@
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import type { NotificationPriority } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import {
   isSafeDeepLink,
   navigateDeepLink,
@@ -186,7 +187,13 @@ export function initLocalNotificationTapRouting(
     .then(() =>
       addListener.call(plugin, "localNotificationActionPerformed", (action) => {
         const deepLink = localNotificationTapDeepLink(action);
-        if (deepLink) deps.navigate(deepLink);
+        if (deepLink) {
+          logger.info(
+            { src: "local-notification-tap", deepLink },
+            "[local-notification-tap] routed native notification action",
+          );
+          deps.navigate(deepLink);
+        }
       }),
     )
     .then(() => undefined)
