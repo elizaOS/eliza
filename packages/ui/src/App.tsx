@@ -1797,6 +1797,8 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const shellPhase = controller?.phase;
+  const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
+  const firstRunPinnedOpen = firstRunComplete === false;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
@@ -1910,7 +1912,8 @@ function ShellFoundationMount({
     // While the shared mobile sheet is open, its five-state callback owns the
     // exact native frame (including full work-area maximization). The legacy
     // expanded/hover RPC remains the compatibility path for the resting pill.
-    if (useWebChatPanel && shellIsOpen) return undefined;
+    if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen))
+      return undefined;
     let cancelled = false;
     setShellPreviewHostReady(false);
 
@@ -1947,12 +1950,17 @@ function ShellFoundationMount({
     };
   }, [
     hasController,
+    firstRunPinnedOpen,
     shellHostDetent,
     shellIsOpen,
     shellPhase,
     shellPreviewHovered,
     useWebChatPanel,
   ]);
+  useEffect(() => {
+    if (!useWebChatPanel || !firstRunPinnedOpen || shellIsOpen) return;
+    controller?.open();
+  }, [controller, firstRunPinnedOpen, shellIsOpen, useWebChatPanel]);
   useEffect(() => {
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
@@ -1975,7 +1983,7 @@ function ShellFoundationMount({
   );
   if (!controller) return null;
 
-  if (useWebChatPanel && shellIsOpen) {
+  if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen)) {
     return (
       <ChatOverlayMount
         releaseFirstRunToHalf={false}
