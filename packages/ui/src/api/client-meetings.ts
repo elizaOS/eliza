@@ -24,51 +24,79 @@ export interface ListMeetingsOptions {
   active?: boolean;
 }
 
+/** Request POST — existing 10s REST budget, independent hop. */
+export const MEETINGS_REQUEST_FETCH_TIMEOUT_MS = 10_000;
+/** List GET — existing 10s REST budget, independent hop. */
+export const MEETINGS_LIST_FETCH_TIMEOUT_MS = 10_000;
+/** Get GET — existing 10s REST budget, independent hop. */
+export const MEETINGS_GET_FETCH_TIMEOUT_MS = 10_000;
+/** Stop DELETE — existing 10s REST budget, independent hop. */
+export const MEETINGS_STOP_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
     requestMeetingBot(
       input: MeetingJoinRequest,
+      timeoutMs?: number,
     ): Promise<{ session: MeetingSession }>;
     listMeetings(
       options?: ListMeetingsOptions,
+      timeoutMs?: number,
     ): Promise<{ sessions: MeetingSession[] }>;
-    getMeeting(id: string): Promise<{ session: MeetingSession }>;
-    stopMeeting(id: string): Promise<{ ok: boolean }>;
+    getMeeting(
+      id: string,
+      timeoutMs?: number,
+    ): Promise<{ session: MeetingSession }>;
+    stopMeeting(id: string, timeoutMs?: number): Promise<{ ok: boolean }>;
   }
 }
 
 ElizaClient.prototype.requestMeetingBot = async function (
   this: ElizaClient,
   input: MeetingJoinRequest,
+  timeoutMs: number = MEETINGS_REQUEST_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/meetings", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return this.fetch(
+    "/api/meetings",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    { timeoutMs },
+  );
 };
 
 ElizaClient.prototype.listMeetings = async function (
   this: ElizaClient,
   options?: ListMeetingsOptions,
+  timeoutMs: number = MEETINGS_LIST_FETCH_TIMEOUT_MS,
 ) {
   const q = options?.active ? "?active=1" : "";
-  return this.fetch(`/api/meetings${q}`);
+  return this.fetch(`/api/meetings${q}`, undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.getMeeting = async function (
   this: ElizaClient,
   id: string,
+  timeoutMs: number = MEETINGS_GET_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch(`/api/meetings/${encodeURIComponent(id)}`);
+  return this.fetch(`/api/meetings/${encodeURIComponent(id)}`, undefined, {
+    timeoutMs,
+  });
 };
 
 ElizaClient.prototype.stopMeeting = async function (
   this: ElizaClient,
   id: string,
+  timeoutMs: number = MEETINGS_STOP_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch(`/api/meetings/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  return this.fetch(
+    `/api/meetings/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+    { timeoutMs },
+  );
 };
 
 function isSegmentArray(value: unknown): value is TranscriptSegment[] {
