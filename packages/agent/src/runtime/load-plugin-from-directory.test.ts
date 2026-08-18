@@ -499,15 +499,19 @@ describe("loadPluginFromDirectory", () => {
   });
 
   it("rejects package entries that resolve through a symlink outside the plugin directory", async () => {
-    const outside = path.join(tmpDir, "outside.js");
-    await fsp.writeFile(outside, PREBUILT_PLUGIN_JS);
+    const outside = path.join(tmpDir, "outside-entry");
+    await fsp.mkdir(outside, { recursive: true });
+    await fsp.writeFile(path.join(outside, "index.js"), PREBUILT_PLUGIN_JS);
     const dir = await scaffold(
       "plugin-symlink-entry",
       { name: "@local/plugin-symlink-entry", main: "dist/index.js" },
       {},
     );
-    await fsp.mkdir(path.join(dir, "dist"), { recursive: true });
-    await fsp.symlink(outside, path.join(dir, "dist/index.js"));
+    await fsp.symlink(
+      outside,
+      path.join(dir, "dist"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     const runtime = new AgentRuntime({ logLevel: "fatal" });
     await expect(

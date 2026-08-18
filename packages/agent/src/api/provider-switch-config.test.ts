@@ -296,7 +296,11 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     const outside = mkdtempSync(path.join(tmpdir(), "eliza-reset-outside-"));
     const authRoot = path.join(isolatedElizaHome, "auth");
     mkdirSync(authRoot, { recursive: true });
-    symlinkSync(outside, path.join(authRoot, "openai-codex"), "dir");
+    symlinkSync(
+      outside,
+      path.join(authRoot, "openai-codex"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
     process.env.OPENAI_API_KEY = "must-survive";
     const config = buildFullyOnboardedConfig();
     const before = structuredClone(config);
