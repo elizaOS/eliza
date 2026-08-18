@@ -190,6 +190,13 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	READ_EMAIL: ["MESSAGE", "INBOX"],
 	CHECK_EMAIL: ["MESSAGE", "INBOX"],
 	CHECK_INBOX: ["MESSAGE", "INBOX"],
+	// Memory-recall candidates bind to the canonical MEMORY umbrella action.
+	RECALL_MEMORY: ["MEMORY"],
+	RECALL_MEMORIES: ["MEMORY"],
+	MEMORY_RECALL: ["MEMORY"],
+	MEMORY_SEARCH: ["MEMORY"],
+	SEARCH_MEMORIES: ["MEMORY"],
+	CHECK_MEMORY: ["MEMORY"],
 	// Terminal-shaped candidates bind to the shell surface (same F21 batch:
 	// TERMINAL_COMMAND resolved to nothing).
 	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],

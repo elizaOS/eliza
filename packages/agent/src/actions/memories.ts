@@ -365,9 +365,11 @@ async function doSearch(
   const items = scan.matches
     .slice(0, limit)
     .map((c) => toListItem(c.memory, c.type));
+  // The text projection carries enough of each hit for model reasoning; the
+  // complete records remain machine data for state and trajectory consumers.
   const lines = items
     .slice(0, 25)
-    .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
+    .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 300)}`);
 
   // Report what was actually rendered, not what was collected: the previous
   // header claimed up to 50 items while printing 25 lines, and printed the
@@ -399,6 +401,15 @@ async function doSearch(
       op: "search" as const,
       memories: items,
       matchedInWindow,
+      scanWindowPerTable: scan.perTable,
+      scanWindowSaturatedTables: scan.saturatedTables,
+      limit,
+    },
+    promptData: {
+      actionName: "MEMORY",
+      op: "search" as const,
+      matchedInWindow,
+      rendered: lines.length,
       scanWindowPerTable: scan.perTable,
       scanWindowSaturatedTables: scan.saturatedTables,
       limit,
@@ -610,6 +621,11 @@ export const memoryAction: Action = {
     "UPDATE_MEMORY",
     "DELETE_MEMORY",
     "RECALL_MEMORY_FILTERED",
+    // Stage-1 recall names bind directly to the MEMORY umbrella action.
+    "RECALL_MEMORY",
+    "RECALL_MEMORIES",
+    "MEMORY_RECALL",
+    "MEMORY_SEARCH",
     "FORGET_MEMORY",
     "EDIT_MEMORY",
     // Common aliases
