@@ -16,6 +16,7 @@ import {
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
 import {
+  dispatchChatOpen,
   dispatchOpenNotificationCenter,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
@@ -205,8 +206,10 @@ export function DesktopTrayRuntime() {
 
         switch (itemId) {
           case "tray-open-chat":
-            switchShellView("desktop");
-            setTab("chat");
+            // Messages belongs to the floating shared composer, not the
+            // desktop dashboard tab. The host listener opens and focuses the
+            // same half-height surface used by the pill.
+            dispatchChatOpen();
             await showAndFocusWindow();
             return;
           case "tray-open-plugins":

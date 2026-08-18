@@ -131,6 +131,7 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
+  CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -1798,6 +1799,25 @@ function ShellFoundationMount({
   const shellPhase = controller?.phase;
   const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
   const firstRunPinnedOpen = firstRunComplete === false;
+  // Completion updates the store before the half-height overlay can release
+  // its first-run pin. Keep that mounted instance through the edge so its
+  // shared transcript stays visible until the user deliberately folds to the
+  // pill; a completed relaunch starts with both values false.
+  const firstRunWasPinnedOpenRef = useRef(firstRunPinnedOpen);
+  const firstRunJustCompleted =
+    firstRunWasPinnedOpenRef.current && !firstRunPinnedOpen;
+  const [keepChatOpenAfterFirstRun, setKeepChatOpenAfterFirstRun] =
+    useState(false);
+  useEffect(() => {
+    if (firstRunJustCompleted) setKeepChatOpenAfterFirstRun(true);
+    firstRunWasPinnedOpenRef.current = firstRunPinnedOpen;
+  }, [firstRunJustCompleted, firstRunPinnedOpen]);
+  const shouldMountWebChatPanel =
+    useWebChatPanel &&
+    (shellIsOpen ||
+      firstRunPinnedOpen ||
+      firstRunJustCompleted ||
+      keepChatOpenAfterFirstRun);
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
@@ -1911,8 +1931,7 @@ function ShellFoundationMount({
     // While the shared mobile sheet is open, its five-state callback owns the
     // exact native frame (including full work-area maximization). The legacy
     // expanded/hover RPC remains the compatibility path for the resting pill.
-    if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen))
-      return undefined;
+    if (shouldMountWebChatPanel) return undefined;
     let cancelled = false;
     setShellPreviewHostReady(false);
 
@@ -1949,7 +1968,7 @@ function ShellFoundationMount({
     };
   }, [
     hasController,
-    firstRunPinnedOpen,
+    shouldMountWebChatPanel,
     shellHostDetent,
     shellIsOpen,
     shellPhase,
@@ -1970,17 +1989,31 @@ function ShellFoundationMount({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [shellIsOpen, useWebChatPanel]);
+  const openSharedDesktopComposer = useCallback(() => {
+    focusComposerOnOpenRef.current = useWebChatPanel;
+    if (useWebChatPanel) setShellHostDetent("half");
+    controller?.open();
+  }, [controller, useWebChatPanel]);
+  useEffect(() => {
+    if (!useWebChatPanel || typeof window === "undefined") return undefined;
+    window.addEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
+    return () =>
+      window.removeEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
+  }, [openSharedDesktopComposer, useWebChatPanel]);
   const closeWebChatWhenPilled = useCallback(
     (pilled: boolean) => {
-      if (pilled) controller?.close();
+      if (!pilled) return;
+      setKeepChatOpenAfterFirstRun(false);
+      controller?.close();
     },
     [controller],
   );
   if (!controller) return null;
 
-  if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen)) {
+  if (shouldMountWebChatPanel) {
     return (
       <ChatOverlayMount
+        initialMode="half"
         releaseFirstRunToHalf={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
@@ -1996,11 +2029,7 @@ function ShellFoundationMount({
         phase={controller.phase}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={() => {
-          focusComposerOnOpenRef.current = useWebChatPanel;
-          if (useWebChatPanel) setShellHostDetent("input");
-          controller.open();
-        }}
+        onOpen={openSharedDesktopComposer}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
@@ -2063,12 +2092,14 @@ function ShellFoundationMount({
  * provider is present.
  */
 function ChatOverlayMount({
+  initialMode,
   releaseFirstRunToHalf,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
   onStateChange,
 }: {
+  initialMode?: "input" | "half";
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
   onPilledChange?: (pilled: boolean) => void;
@@ -2102,6 +2133,7 @@ function ChatOverlayMount({
       controller={controller}
       agentName={agentName}
       slash={slash}
+      initialMode={initialMode}
       firstRunOpen={firstRunComplete === false}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}

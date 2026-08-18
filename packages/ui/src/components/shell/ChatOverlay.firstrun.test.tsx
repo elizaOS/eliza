@@ -222,6 +222,20 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
+  it("opens a completed desktop session at the shared half-height composer", () => {
+    const controller = makeController();
+    render(<ChatOverlay controller={controller} initialMode="half" />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(document.activeElement).not.toBe(input);
+    input.focus();
+    fireEvent.change(input, { target: { value: "Hello again" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("Hello again");
+  });
+
   it("ignores an outside tap while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");

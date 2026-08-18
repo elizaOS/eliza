@@ -1172,6 +1172,7 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  initialMode = "input",
   releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
@@ -1192,6 +1193,8 @@ export function ChatOverlay({
    * to dismiss to the pill.
    */
   firstRunOpen?: boolean;
+  /** Initial resting detent when a host opens this shared chat surface. */
+  initialMode?: "input" | "half";
   /**
    * One-shot completion intent retained by the parent shell when onboarding
    * completion and a runtime-target remount happen in the same transition.
@@ -1488,7 +1491,7 @@ export function ChatOverlay({
   // structurally HALF and undismissable (see firstRunOpen docs above).
   const pinnedOpen = firstRunOpen;
   const [mode, setMode] = React.useState<ChatMode>(
-    pinnedOpen ? "half" : "input",
+    pinnedOpen ? "half" : initialMode,
   );
   // The pin-at-half + stable edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens HALF first.
