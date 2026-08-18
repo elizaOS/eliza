@@ -19,6 +19,7 @@ import {
 	type ReplyToMode,
 	type SsrfPolicy,
 	trimTokens,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,
@@ -924,8 +925,11 @@ export function splitMessage(
 				splitIdx = lastSpace;
 			}
 
-			chunks.push(line.slice(0, splitIdx));
-			line = line.slice(splitIdx).trimStart();
+			const chunkCandidate = truncateWellFormed(line, splitIdx);
+			const cutPoint =
+				chunkCandidate.length > 0 ? chunkCandidate.length : splitIdx;
+			chunks.push(line.slice(0, cutPoint));
+			line = line.slice(cutPoint).trimStart();
 		}
 		chunks.push(line);
 		return chunks;

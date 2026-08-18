@@ -363,3 +363,18 @@ describe("postToConnectorThread delivery contract", () => {
 		expect(result).toBeDefined();
 	});
 });
+
+describe("splitMessage surrogate pair safety", () => {
+	it("keeps surrogate pairs intact when splitting across max length", async () => {
+		const { splitMessage } = await import("../utils");
+		const prefix = "a".repeat(1999);
+		const text = `${prefix}\u{1F98A}bbbb`;
+		const chunks = splitMessage(text, 2000);
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.isWellFormed()).toBe(true);
+			expect(chunk.length).toBeLessThanOrEqual(2000);
+		}
+		expect(chunks.join("")).toBe(text);
+	});
+});
