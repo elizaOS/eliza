@@ -49,30 +49,49 @@ function createInitProbeVector(): number[] {
  * L2-normalize an embedding so its Euclidean norm is 1. Google returns
  * sub-3072 `outputDimensionality` vectors un-normalized, so callers that expect
  * cosine-comparable unit vectors (as the native 768-dim `text-embedding-004`
- * produced) must renormalize. A non-finite component (a `NaN`/`±Infinity`
- * slipping through a transport/SDK bug) or a zero-magnitude vector cannot yield
- * a unit vector, so each is rejected here with its own typed error rather than
- * returning a silently-corrupt embedding a downstream store could persist.
+ * produced) must renormalize. Three inputs cannot yield a unit vector and are
+ * each rejected here with a typed error rather than returning a silently-corrupt
+ * embedding a downstream store could persist: a non-finite component (a
+ * `NaN`/`±Infinity` slipping through a transport/SDK bug), a norm that overflows
+ * to a non-finite value (a huge or accumulating magnitude whose squares exceed
+ * `Number.MAX_VALUE` even though every component is finite — dividing by it
+ * would yield an all-zero "unit" vector), and a zero-magnitude vector.
  */
 function l2Normalize(vector: number[]): number[] {
   let sumSquares = 0;
-  for (const value of vector) {
+  for (let index = 0; index < vector.length; index++) {
+    const value = vector[index];
     if (!Number.isFinite(value)) {
       throw new ElizaError(
         "Google GenAI API returned a non-finite embedding component that cannot be normalized",
         {
           code: "EMBEDDING_NON_FINITE",
-          context: { dimensions: vector.length },
+          context: { dimensions: vector.length, index },
         },
       );
     }
     sumSquares += value * value;
   }
   const norm = Math.sqrt(sumSquares);
+  if (!Number.isFinite(norm)) {
+    // Every component is finite but their squared sum overflowed the double
+    // range, so `norm` is `Infinity` and `value / norm` would be all zeros —
+    // a silent all-zero "unit" vector. Fail closed like the other classes.
+    throw new ElizaError(
+      "Google GenAI API returned an embedding whose magnitude overflowed to a non-finite value and cannot be normalized",
+      {
+        code: "EMBEDDING_NORM_OVERFLOW",
+        context: { dimensions: vector.length },
+      },
+    );
+  }
   if (norm === 0) {
     throw new ElizaError(
       "Google GenAI API returned a zero-magnitude embedding that cannot be normalized",
-      { code: "EMBEDDING_ZERO_MAGNITUDE" },
+      {
+        code: "EMBEDDING_ZERO_MAGNITUDE",
+        context: { dimensions: vector.length },
+      },
     );
   }
   return vector.map((value) => value / norm);

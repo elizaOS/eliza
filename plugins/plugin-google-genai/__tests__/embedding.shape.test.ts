@@ -3,9 +3,11 @@
  * probe/write width contract (#22010 — both pinned to 768 so the runtime's
  * probe-sized pgvector column matches every write), L2 normalization, usage
  * emission, and the typed fail-closed throw paths (empty input, empty API
- * response, width mismatch, zero-magnitude, and non-finite components).
- * The config, events, tokenization, and `@google/genai` layers are mocked — no
- * live call.
+ * response, width mismatch, zero-magnitude, non-finite components, and a norm
+ * that overflows to a non-finite value). The real `ElizaError` is used via
+ * `importActual` so the typed `code`/`context` contract is asserted against the
+ * class the handler actually throws; the config, events, tokenization, and
+ * `@google/genai` layers are mocked — no live call.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,34 +19,24 @@ const mocks = vi.hoisted(() => ({
   emitModelUsageEvent: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  ElizaError: class ElizaError extends Error {
-    code?: string;
-    context?: Record<string, unknown>;
-    constructor(
-      message: string,
-      options?: {
-        code?: string;
-        cause?: unknown;
-        context?: Record<string, unknown>;
-      },
-    ) {
-      super(message, { cause: options?.cause });
-      this.name = "ElizaError";
-      this.code = options?.code;
-      this.context = options?.context;
-    }
-  },
-  logger: {
-    debug: vi.fn(),
-    error: vi.fn(),
-    log: vi.fn(),
-    warn: vi.fn(),
-  },
-  ModelType: {
-    TEXT_EMBEDDING: "TEXT_EMBEDDING",
-  },
-}));
+vi.mock("@elizaos/core", async () => {
+  // Use the real ElizaError so `instanceof` and the typed code/context contract
+  // are exercised against the class the handler throws, not a drifting stub.
+  const actual =
+    await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
+  return {
+    ElizaError: actual.ElizaError,
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      warn: vi.fn(),
+    },
+    ModelType: {
+      TEXT_EMBEDDING: "TEXT_EMBEDDING",
+    },
+  };
+});
 
 vi.mock("../utils/config", () => ({
   createGoogleGenAI: mocks.createGoogleGenAI,
@@ -147,26 +139,71 @@ describe("Google GenAI embeddings", () => {
     expect(embedding[0]).toBeCloseTo(1 / Math.sqrt(768), 10);
   });
 
-  it("fails closed when the provider returns a width other than the probe (no mismatched write)", async () => {
+  it("fails closed with a typed width-mismatch error when the provider returns a width other than the probe (no mismatched write)", async () => {
     // Adversarial: a provider ignoring outputDimensionality and returning 3072
     // must not be written into the 768-sized column; the handler throws instead.
     mocks.embedContent.mockResolvedValue({
       embeddings: [{ values: Array(3072).fill(0.01) }],
     });
 
-    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
-      "returned 3072 dimensions",
-    );
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_DIMENSION_MISMATCH",
+      context: {
+        model: "gemini-embedding-001",
+        returnedDimensions: 3072,
+        expectedDimensions: 768,
+      },
+    });
   });
 
-  it("rejects a zero-magnitude embedding that cannot be normalized", async () => {
+  it("rejects a zero-magnitude embedding with a typed error that cannot be normalized", async () => {
     mocks.embedContent.mockResolvedValue({
       embeddings: [{ values: Array(768).fill(0) }],
     });
 
-    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
-      "zero-magnitude embedding",
-    );
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_ZERO_MAGNITUDE",
+      context: { dimensions: 768 },
+    });
+  });
+
+  it("fails closed when the norm overflows to a non-finite value (all components finite)", async () => {
+    // A single enormous component squares past Number.MAX_VALUE, so sumSquares
+    // (and thus the norm) is Infinity even though every component is finite and
+    // the per-component Number.isFinite guard passes. Dividing by an Infinity
+    // norm would return an all-zero "unit" vector — a silent corrupt embedding a
+    // store could persist — so the handler must fail closed instead.
+    const single = Array(768).fill(1e-10);
+    single[0] = 1e200;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: single }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NORM_OVERFLOW",
+      context: { dimensions: 768 },
+    });
+
+    // Accumulation variant: 768 finite components whose squares each fit the
+    // double range but whose sum overflows, even though the true norm
+    // (√768·10^154 ≈ 2.77e155) is perfectly representable. The naive sum can't
+    // see this, so guarding the norm — not just each component — is required.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(1e154) }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NORM_OVERFLOW",
+      context: { dimensions: 768 },
+    });
   });
 
   it("fails closed on a non-finite component instead of returning an all-NaN unit vector", async () => {
@@ -180,9 +217,12 @@ describe("Google GenAI embeddings", () => {
       embeddings: [{ values: poisoned }],
     });
 
-    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
-      "non-finite embedding component",
-    );
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NON_FINITE",
+      context: { dimensions: 768, index: 7 },
+    });
 
     // Infinity is analogous (norm = Infinity), and must also fail closed.
     const infinite = Array(768).fill(0.5);
@@ -191,9 +231,12 @@ describe("Google GenAI embeddings", () => {
       embeddings: [{ values: infinite }],
     });
 
-    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
-      "non-finite embedding component",
-    );
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NON_FINITE",
+      context: { dimensions: 768, index: 7 },
+    });
   });
 
   it("throws for empty embedding input before creating a client", async () => {
