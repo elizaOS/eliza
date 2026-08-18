@@ -38,10 +38,13 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     };
     const finiteNumber = (value: unknown): value is number =>
       typeof value === "number" && Number.isFinite(value);
+    const nonNegativeInteger = (value: unknown): value is number =>
+      finiteNumber(value) && Number.isInteger(value) && value >= 0;
+    const positiveNumber = (value: unknown): value is number => finiteNumber(value) && value > 0;
 
-    if (finiteNumber(constraints.minLength))
+    if (nonNegativeInteger(constraints.minLength))
       rule("minLength", `at least ${constraints.minLength} chars`);
-    if (finiteNumber(constraints.maxLength))
+    if (nonNegativeInteger(constraints.maxLength))
       rule("maxLength", `at most ${constraints.maxLength} chars`);
     if (finiteNumber(constraints.minimum)) rule("minimum", `>= ${constraints.minimum}`);
     if (finiteNumber(constraints.maximum)) rule("maximum", `<= ${constraints.maximum}`);
@@ -49,19 +52,21 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
       rule("exclusiveMinimum", `> ${constraints.exclusiveMinimum}`);
     if (finiteNumber(constraints.exclusiveMaximum))
       rule("exclusiveMaximum", `< ${constraints.exclusiveMaximum}`);
-    if (finiteNumber(constraints.multipleOf))
+    if (positiveNumber(constraints.multipleOf))
       rule("multipleOf", `multiple of ${constraints.multipleOf}`);
     if (constraints.format === "email") rule("format", "valid email");
     if (constraints.format === "uri" || constraints.format === "url") rule("format", "valid URL");
     if (typeof constraints.pattern === "string") rule("pattern", `matches ${constraints.pattern}`);
     if (Array.isArray(constraints.enum) && constraints.enum.length > 0)
       rule("enum", `one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`);
-    if (finiteNumber(constraints.minItems)) rule("minItems", `>= ${constraints.minItems} items`);
-    if (finiteNumber(constraints.maxItems)) rule("maxItems", `<= ${constraints.maxItems} items`);
+    if (nonNegativeInteger(constraints.minItems))
+      rule("minItems", `>= ${constraints.minItems} items`);
+    if (nonNegativeInteger(constraints.maxItems))
+      rule("maxItems", `<= ${constraints.maxItems} items`);
     if (constraints.uniqueItems === true) rule("uniqueItems", "unique items");
-    if (finiteNumber(constraints.minProperties))
+    if (nonNegativeInteger(constraints.minProperties))
       rule("minProperties", `>= ${constraints.minProperties} properties`);
-    if (finiteNumber(constraints.maxProperties))
+    if (nonNegativeInteger(constraints.maxProperties))
       rule("maxProperties", `<= ${constraints.maxProperties} properties`);
     if (constraints.additionalProperties === false)
       rule("additionalProperties", "no additional properties");

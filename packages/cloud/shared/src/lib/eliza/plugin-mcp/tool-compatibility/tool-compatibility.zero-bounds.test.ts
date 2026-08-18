@@ -62,6 +62,23 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain("at least 2 chars");
     });
 
+    it("does not render invalid cardinalities or non-positive multiples as rules", () => {
+      const schema = {
+        type: "array",
+        minItems: -1,
+        maxItems: 1.5,
+        multipleOf: 0,
+      } as unknown as JSONSchema7;
+      const text = describeOf(google(), schema);
+
+      expect(text).toContain('"minItems":-1');
+      expect(text).toContain('"maxItems":1.5');
+      expect(text).toContain('"multipleOf":0');
+      expect(text).not.toContain(">= -1 items");
+      expect(text).not.toContain("<= 1.5 items");
+      expect(text).not.toContain("multiple of 0");
+    });
+
     it("preserves a stripped closed-object constraint", () => {
       const out = google().transformToolSchema({
         type: "object",
@@ -137,6 +154,23 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain("must match: null");
       expect(text).not.toContain("must be > true");
       expect(text).not.toContain("multiple of 2");
+    });
+
+    it("does not render invalid cardinalities or non-positive multiples as rules", () => {
+      const schema = {
+        type: "object",
+        minProperties: -1,
+        maxProperties: 1.5,
+        multipleOf: -2,
+      } as unknown as JSONSchema7;
+      const text = describeOf(reasoning(), schema);
+
+      expect(text).toContain('"minProperties":-1');
+      expect(text).toContain('"maxProperties":1.5');
+      expect(text).toContain('"multipleOf":-2');
+      expect(text).not.toContain("at least -1 properties");
+      expect(text).not.toContain("at most 1.5 properties");
+      expect(text).not.toContain("multiple of -2");
     });
 
     it("keeps empty enums in the unrendered tail and renders non-empty enums exactly", () => {

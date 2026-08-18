@@ -81,10 +81,13 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     };
     const finiteNumber = (value: unknown): value is number =>
       typeof value === "number" && Number.isFinite(value);
+    const nonNegativeInteger = (value: unknown): value is number =>
+      finiteNumber(value) && Number.isInteger(value) && value >= 0;
+    const positiveNumber = (value: unknown): value is number => finiteNumber(value) && value > 0;
 
-    if (finiteNumber(constraints.minLength))
+    if (nonNegativeInteger(constraints.minLength))
       rule("minLength", `minimum ${constraints.minLength} characters`);
-    if (finiteNumber(constraints.maxLength))
+    if (nonNegativeInteger(constraints.maxLength))
       rule("maxLength", `maximum ${constraints.maxLength} characters`);
     if (finiteNumber(constraints.minimum)) rule("minimum", `must be >= ${constraints.minimum}`);
     if (finiteNumber(constraints.maximum)) rule("maximum", `must be <= ${constraints.maximum}`);
@@ -92,7 +95,7 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
       rule("exclusiveMinimum", `must be > ${constraints.exclusiveMinimum}`);
     if (finiteNumber(constraints.exclusiveMaximum))
       rule("exclusiveMaximum", `must be < ${constraints.exclusiveMaximum}`);
-    if (finiteNumber(constraints.multipleOf))
+    if (positiveNumber(constraints.multipleOf))
       rule("multipleOf", `must be a multiple of ${constraints.multipleOf}`);
     if (constraints.format === "email") rule("format", `must be a valid email`);
     if (constraints.format === "uri" || constraints.format === "url")
@@ -104,14 +107,14 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
         "enum",
         `must be one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`,
       );
-    if (finiteNumber(constraints.minItems))
+    if (nonNegativeInteger(constraints.minItems))
       rule("minItems", `at least ${constraints.minItems} items`);
-    if (finiteNumber(constraints.maxItems))
+    if (nonNegativeInteger(constraints.maxItems))
       rule("maxItems", `at most ${constraints.maxItems} items`);
     if (constraints.uniqueItems === true) rule("uniqueItems", `items must be unique`);
-    if (finiteNumber(constraints.minProperties))
+    if (nonNegativeInteger(constraints.minProperties))
       rule("minProperties", `at least ${constraints.minProperties} properties`);
-    if (finiteNumber(constraints.maxProperties))
+    if (nonNegativeInteger(constraints.maxProperties))
       rule("maxProperties", `at most ${constraints.maxProperties} properties`);
     if (constraints.additionalProperties === false)
       rule("additionalProperties", "must not contain additional properties");
