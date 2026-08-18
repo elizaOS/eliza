@@ -195,11 +195,19 @@ interface ResolvedCoords extends Coords {
   approximate: boolean;
 }
 
+/** Ordinary REST budget for GET /api/location/approximate. */
+export const WEATHER_APPROXIMATE_LOCATION_FETCH_TIMEOUT_MS = 10_000;
+
 /** Server-side coarse IP-geolocation (city centroid). Same-origin/agent-API
  *  call, so it works on hosted origins where a browser-side lookup CORS-fails. */
-async function fetchApproximateCoords(): Promise<ResolvedCoords> {
-  const data = await client.fetch<{ lat: number; lon: number }>(
+export async function fetchApproximateCoords(
+  timeoutMs: number = WEATHER_APPROXIMATE_LOCATION_FETCH_TIMEOUT_MS,
+  api: { fetch: typeof client.fetch } = client,
+): Promise<ResolvedCoords> {
+  const data = await api.fetch<{ lat: number; lon: number }>(
     "/api/location/approximate",
+    undefined,
+    { timeoutMs },
   );
   if (
     typeof data.lat !== "number" ||
