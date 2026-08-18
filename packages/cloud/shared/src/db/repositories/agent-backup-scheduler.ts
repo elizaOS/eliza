@@ -16,7 +16,10 @@ import { dbWrite } from "../helpers";
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizations } from "../schemas/organizations";
-import { reserveAgentBackupOperationInTransaction } from "./agent-backup-catalog";
+import {
+  lockAgentBackupReservationReplayInTransaction,
+  reserveAgentBackupOperationInTransaction,
+} from "./agent-backup-catalog";
 
 export const DEFAULT_AGENT_BACKUP_SCHEDULE_INTERVAL_MS = 10 * 60_000;
 export const DEFAULT_AGENT_BACKUP_RPO_MS = 15 * 60_000;
@@ -961,6 +964,7 @@ export async function reserveClaimedAgentBackupSchedule(params: {
     max: 365 * 24 * 60 * 60_000,
   });
   return dbWrite.transaction(async (tx) => {
+    await lockAgentBackupReservationReplayInTransaction(tx, claim);
     const source = await lockClaimedSandbox(tx, claim);
     const [organization] = await tx
       .select({ id: organizations.id })
