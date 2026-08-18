@@ -5,6 +5,9 @@
  * registry pricing (with eliza cloud margin applied). Useful for the agent
  * "give me a few options" flow before committing to a /buy.
  *
+ * Untrusted POST JSON is parsed before schema: syntax errors and non-object
+ * bodies return 400 and never query the registrar.
+ *
  * Org-scoped (not per-app) since the user picks an app to attach to AFTER
  * choosing a domain.
  */
@@ -28,7 +31,20 @@ app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
 
-    const parsed = SearchSchema.safeParse(await c.req.json());
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the outer
+      // catch mapping it through failureResponse as HTTP 500.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+
+    const parsed = SearchSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
         {
