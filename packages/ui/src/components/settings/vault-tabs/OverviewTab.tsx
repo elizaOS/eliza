@@ -33,6 +33,7 @@ import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -622,6 +623,18 @@ export function InstallSheet({
   const start = useCallback(
     async (method: InstallMethod) => {
       if (method.kind === "manual") {
+        // method.url is a wire value from the install/methods endpoint — only
+        // absolute http(s) may open; anything else surfaces the sheet's
+        // visible error state instead of navigating.
+        if (!isSafeNavigationUrl(method.url)) {
+          setError(
+            t("vault.install.invalidMethodUrl", {
+              defaultValue:
+                "The install link returned by the server is not a valid URL.",
+            }),
+          );
+          return;
+        }
         window.open(method.url, "_blank", "noopener,noreferrer");
         return;
       }
