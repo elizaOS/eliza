@@ -287,6 +287,12 @@ describe("Railway PostgreSQL resilience preflight", () => {
         errors: [{ message: "redacted" }],
       },
     });
+    const foreignProject = evidence({
+      status: {
+        ...evidence().status,
+        id: "60000000-0000-4000-8000-000000000006",
+      },
+    });
 
     expect(
       verifyRailwayPostgresResilience(foreignTarget, expectation(), NOW).checks
@@ -296,6 +302,13 @@ describe("Railway PostgreSQL resilience preflight", () => {
       verifyRailwayPostgresResilience(errored, expectation(), NOW).checks
         .immutableVolumeBound,
     ).toBe(false);
+    const foreignProjectResult = verifyRailwayPostgresResilience(
+      foreignProject,
+      expectation(),
+      NOW,
+    );
+    expect(foreignProjectResult.checks.immutableVolumeBound).toBe(false);
+    expect(foreignProjectResult.receipts.volume).toBeNull();
   });
 
   test("requires exact project, environment, service, image, and volume bindings", () => {

@@ -207,6 +207,7 @@ export function verifyRailwayPostgresResilience(
     ({ id }) => id === expected.serviceId,
   );
   const service = matching.length === 1 ? matching[0] : undefined;
+  const projectBound = evidence.status.id === expected.projectId;
   const volumes = (service?.volumes ?? []).filter(
     (volume) =>
       volume.mountPath === POSTGRES_MOUNT &&
@@ -239,7 +240,15 @@ export function verifyRailwayPostgresResilience(
   const immutableVolume =
     immutableVolumes.length === 1 ? immutableVolumes[0] : undefined;
   const immutableVolumeId = canonicalString(immutableVolume?.id);
-  const volumeReceipt = immutableVolumeId ? sha256(immutableVolumeId) : null;
+  const immutableVolumeBound =
+    projectBound &&
+    evidence.volumes.errors === undefined &&
+    evidence.volumes.data?.environment?.id === expected.environmentId &&
+    immutableVolumes.length === 1;
+  const volumeReceipt =
+    immutableVolumeBound && immutableVolumeId
+      ? sha256(immutableVolumeId)
+      : null;
 
   const backupCandidates = evidence.backups
     .map((backup) => ({ backup, time: scheduledBackupTime(backup) }))
@@ -262,7 +271,7 @@ export function verifyRailwayPostgresResilience(
     : [];
 
   const checks: Record<string, boolean> = {
-    projectBound: evidence.status.id === expected.projectId,
+    projectBound,
     environmentBound: hasResource(
       evidence.status.environments?.edges,
       expected.environmentId,
@@ -277,10 +286,7 @@ export function verifyRailwayPostgresResilience(
       typeof service?.source?.image === "string" &&
       /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(service.source.image),
     exactReadyVolume: volumes.length === 1,
-    immutableVolumeBound:
-      evidence.volumes.errors === undefined &&
-      evidence.volumes.data?.environment?.id === expected.environmentId &&
-      immutableVolumes.length === 1,
+    immutableVolumeBound,
     pitrTargetBound:
       evidence.pitr.service?.id === expected.serviceId &&
       evidence.pitr.root?.id === expected.serviceId &&

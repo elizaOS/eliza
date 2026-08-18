@@ -79,7 +79,9 @@ resilience preflight before schema mutation. It is inert by default:
 - Staging enforcement also requires protected SHA-256 receipts for the
   production Postgres service and immutable volume-instance ID and proves the
   selected staging service and volume differ. Mutable volume labels are never
-  isolation evidence. The gate emits receipts and booleans only; it does
+  isolation evidence. A volume receipt is emitted only after that instance is
+  bound to the selected project, environment, service, and Postgres data mount.
+  The gate emits receipts and booleans only; it does
   not print connection strings, Railway inventory, raw service IDs, or volume
   names.
 
