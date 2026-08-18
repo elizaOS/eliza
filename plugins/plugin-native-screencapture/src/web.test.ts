@@ -65,6 +65,7 @@ class FakeStream {
 
 class FakeMediaRecorder {
   static supported = true;
+  static startError: Error | null = null;
   static instances: FakeMediaRecorder[] = [];
 
   static isTypeSupported(mimeType: string): boolean {
@@ -75,7 +76,9 @@ class FakeMediaRecorder {
   onerror: MediaRecorderEventHandler = null;
   onstop: MediaRecorderEventHandler = null;
   readonly mimeType: string;
-  readonly start = vi.fn((_timeslice?: number) => {});
+  readonly start = vi.fn((_timeslice?: number) => {
+    if (FakeMediaRecorder.startError) throw FakeMediaRecorder.startError;
+  });
   readonly pause = vi.fn();
   readonly resume = vi.fn();
   readonly stop = vi.fn(() => {
@@ -139,6 +142,7 @@ describe("ScreenCaptureWeb", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     FakeMediaRecorder.supported = true;
+    FakeMediaRecorder.startError = null;
     FakeMediaRecorder.instances = [];
   });
 
@@ -335,6 +339,39 @@ describe("ScreenCaptureWeb", () => {
     // dangling recorder timer behind.
     await plugin.stopRecording();
     expect(secondVideoTrack.stopped).toBe(true);
+  });
+
+  it("rolls back every acquired track when MediaRecorder fails to start", async () => {
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    FakeMediaRecorder.startError = new Error("recorder start failed");
+
+    const videoTrack = new FakeTrack("video");
+    const microphoneTrack = new FakeTrack("audio");
+    const displayStream = new FakeStream([videoTrack]);
+    const microphoneStream = new FakeStream([microphoneTrack]);
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia: vi.fn(
+          async () => displayStream as unknown as MediaStream,
+        ),
+        getUserMedia: vi.fn(
+          async () => microphoneStream as unknown as MediaStream,
+        ),
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    await expect(
+      plugin.startRecording({ captureMicrophone: true }),
+    ).rejects.toThrow("recorder start failed");
+
+    expect(videoTrack.stopped).toBe(true);
+    expect(microphoneTrack.stopped).toBe(true);
+    await expect(plugin.getRecordingState()).resolves.toEqual({
+      isRecording: false,
+      duration: 0,
+      fileSize: 0,
+    });
   });
 
   it.each([
