@@ -26,11 +26,11 @@ import { getLocalDateKey, getZonedDateParts } from "../time.js";
 // Truncate snippet/preview text and append an ellipsis when we actually cut.
 // Without the marker the slice looks like a sentence the sender wrote, which
 // confuses readers when content gets clipped mid-word.
-function truncateForPreview(value: string, maxLength: number): string {
+export function truncateForPreview(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 // Build a "Display Name <email@host>" string when both are available, or
