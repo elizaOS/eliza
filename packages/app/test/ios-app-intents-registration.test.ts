@@ -478,6 +478,13 @@ describe("native assistant entry contracts", () => {
     expect(liveActivityBridgeSwift).toContain(
       "private static var lifecycleGeneration = 0",
     );
+    expect(liveActivityBridgeSwift).toContain(
+      "@MainActor private static var currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      "let ownsCurrent = explicitId == nil || explicitId == Self.currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain("if ownsCurrent {");
     expect(liveActivityBridgeSwift).toContain("await Self.endActivities(");
     expect(liveActivityBridgeSwift).toContain('transcriptSnippet: ""');
 

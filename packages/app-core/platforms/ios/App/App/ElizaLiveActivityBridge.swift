@@ -38,11 +38,11 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // At most one dictation activity is live at a time. Track its id and start
     // anchor so `update` keeps the same live timer running without reading the
     // content state back (the readback API differs across 16.1/16.2).
-    private static var currentActivityId: String?
-    private static var currentStartedAt: Date?
+    @MainActor private static var currentActivityId: String?
+    @MainActor private static var currentStartedAt: Date?
     // Every start/end advances the generation. A late async start can only
     // create an activity when it still owns the newest lifecycle request.
-    private static var lifecycleGeneration = 0
+    @MainActor private static var lifecycleGeneration = 0
 
     @objc public func isSupported(_ call: CAPPluginCall) {
         if #available(iOS 16.1, *) {
@@ -65,17 +65,22 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let title = Self.sessionTitle(from: call)
         let phase = Self.phase(from: call.getString("phase")) ?? .ready
-        Self.lifecycleGeneration += 1
-        let generation = Self.lifecycleGeneration
-
         Task { @MainActor in
+            Self.lifecycleGeneration += 1
+            let generation = Self.lifecycleGeneration
+            let previousStartedAt = Self.currentStartedAt ?? Date()
+            // A new start claims native ownership before the orphan cleanup
+            // yields. An explicit late end for the previous id can then finish
+            // only that activity without cancelling this generation.
+            Self.currentActivityId = nil
+            Self.currentStartedAt = nil
             // A terminated app can leave an ActivityKit surface behind. A new
             // explicit session first clears every orphan so one session owns at
             // most one Live Activity across relaunches.
             await Self.endActivities(
                 id: nil,
                 phase: .ended,
-                startedAt: Self.currentStartedAt ?? Date(),
+                startedAt: previousStartedAt,
                 dismissalPolicy: .immediate
             )
             guard generation == Self.lifecycleGeneration else {
@@ -142,36 +147,34 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Live Activities require iOS 16.1 or later")
             return
         }
-        let requestedId = call.getString("activityId") ?? Self.currentActivityId
-        guard
-            let requestedId,
-            let activity = Activity<ElizaDictationAttributes>.activities
-                .first(where: { $0.id == requestedId })
-        else {
-            call.reject("No active Live Activity to update")
-            return
-        }
-
+        let explicitId = call.getString("activityId")
         let phase = Self.phase(from: call.getString("phase")) ?? .ready
-        let startedAt = Self.currentStartedAt ?? Date()
-        let state = ElizaDictationAttributes.ContentState(
-            phase: phase,
-            startedAt: startedAt,
-            transcriptSnippet: ""
-        )
-        let generation = Self.lifecycleGeneration
 
         Task { @MainActor in
-            guard generation == Self.lifecycleGeneration else {
-                call.resolve(["updated": false])
+            let requestedId = explicitId ?? Self.currentActivityId
+            guard
+                let requestedId,
+                let activity = Activity<ElizaDictationAttributes>.activities
+                    .first(where: { $0.id == requestedId })
+            else {
+                call.reject("No active Live Activity to update")
                 return
             }
+            let startedAt = requestedId == Self.currentActivityId
+                ? Self.currentStartedAt ?? Date()
+                : Date()
+            let state = ElizaDictationAttributes.ContentState(
+                phase: phase,
+                startedAt: startedAt,
+                transcriptSnippet: ""
+            )
+            let generation = Self.lifecycleGeneration
             if #available(iOS 16.2, *) {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
             } else {
                 await activity.update(using: state)
             }
-            call.resolve(["updated": true])
+            call.resolve(["updated": generation == Self.lifecycleGeneration])
         }
     }
 
@@ -180,17 +183,21 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["ended": false])
             return
         }
-        let requestedId = call.getString("activityId") ?? Self.currentActivityId
+        let explicitId = call.getString("activityId")
         let phase = Self.phase(from: call.getString("phase")) ?? .ended
-        let startedAt = Self.currentStartedAt ?? Date()
-        Self.lifecycleGeneration += 1
-        Self.currentActivityId = nil
-        Self.currentStartedAt = nil
-        let dismissalPolicy: ActivityUIDismissalPolicy = phase == .error
-            ? .after(Date().addingTimeInterval(10))
-            : .immediate
 
         Task { @MainActor in
+            let requestedId = explicitId ?? Self.currentActivityId
+            let ownsCurrent = explicitId == nil || explicitId == Self.currentActivityId
+            let startedAt = ownsCurrent ? Self.currentStartedAt ?? Date() : Date()
+            if ownsCurrent {
+                Self.lifecycleGeneration += 1
+                Self.currentActivityId = nil
+                Self.currentStartedAt = nil
+            }
+            let dismissalPolicy: ActivityUIDismissalPolicy = phase == .error
+                ? .after(Date().addingTimeInterval(10))
+                : .immediate
             await Self.endActivities(
                 id: requestedId,
                 phase: phase,
