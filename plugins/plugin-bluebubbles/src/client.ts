@@ -48,9 +48,7 @@ export async function blueBubblesRequestWithFetch<T>(
 
 	if (!response.ok) {
 		const errorText = await response.text();
-		throw new Error(
-			`BlueBubbles API error (${response.status}): ${errorText}`,
-		);
+		throw new Error(`BlueBubbles API error (${response.status}): ${errorText}`);
 	}
 
 	return response.json() as Promise<T>;
