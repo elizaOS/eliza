@@ -19,12 +19,13 @@ import {
   spawn,
   spawnSync,
 } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   chmod,
   copyFile,
   mkdir,
+  mkdtemp,
   readdir,
   rm,
   stat,
@@ -106,6 +107,7 @@ import {
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
   isDeniedSubAgentEnvKey,
+  SUB_AGENT_SYSTEM_ENV_KEYS,
 } from "./sub-agent-env-policy.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
@@ -714,6 +716,15 @@ function sessionGitWrapper(): string {
   return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
 }
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
+const ACP_WARM_CLIENT_MAX_AGE_MS = 120_000;
+
+type WarmNativeClientSlot = {
+  client: NativeAcpClient;
+  command: string;
+  claimToken: string;
+  createdAt: number;
+  bootstrapHome: string;
+};
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
 // store and the per-session maps don't grow without bound on a long-lived bot.
@@ -850,6 +861,9 @@ export class AcpService extends Service {
   private readonly nativePromptSessionIds = new Set<string>();
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
+  private warmNativeClient?: WarmNativeClientSlot;
+  private warmNativeClientStarting?: Promise<void>;
+  private readonly warmSpawnEnabled: boolean;
   private readonly outputBuffers = new Map<string, string[]>();
   // Full session output remains available for history, while custom validators
   // need the exact latest prompt turn so a retry cannot re-consume an older
@@ -930,6 +944,11 @@ export class AcpService extends Service {
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
     );
+    this.warmSpawnEnabled =
+      boolSetting(this.setting("ELIZA_ACP_WARM_SPAWN")) === true &&
+      this.transportMode === "native" &&
+      (normalizeTaskAgentAdapter(this.defaultAgent) ?? this.defaultAgent) ===
+        "elizaos";
   }
 
   static async start(runtime: IAgentRuntime): Promise<AcpService> {
@@ -978,6 +997,106 @@ export class AcpService extends Service {
       process.once("SIGINT", AcpService.sharedShutdownHandler);
       AcpService.shutdownHookInstalled = true;
     }
+    this.scheduleWarmNativeClient();
+  }
+
+  private scheduleWarmNativeClient(): void {
+    if (
+      !this.started ||
+      !this.warmSpawnEnabled ||
+      this.warmNativeClient ||
+      this.warmNativeClientStarting
+    ) {
+      return;
+    }
+    this.warmNativeClientStarting = this.createWarmNativeClient()
+      .catch((err) => {
+        this.log("warn", "warm ACP child pre-initialization failed", {
+          error: errorMessage(err),
+        });
+      })
+      .finally(() => {
+        this.warmNativeClientStarting = undefined;
+      });
+  }
+
+  private async createWarmNativeClient(): Promise<void> {
+    const bootstrapHome = await mkdtemp(join(tmpdir(), "eliza-acp-warm-"));
+    const claimToken = randomBytes(32).toString("hex");
+    const projected = applySubAgentEnvPolicy(process.env);
+    const allowedBootstrapKeys = new Set<string>(SUB_AGENT_SYSTEM_ENV_KEYS);
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+      Object.entries(projected).filter(([key]) =>
+        allowedBootstrapKeys.has(key),
+      ),
+    );
+    env.HOME = bootstrapHome;
+    if (env.USERPROFILE) env.USERPROFILE = bootstrapHome;
+    env.ELIZA_ACP_WARM_CLAIM_TOKEN = claimToken;
+    const command = this.nativeAgentCommand("elizaos");
+    const client = new NativeAcpClient({
+      command,
+      cwd: process.cwd(),
+      env,
+      approvalPreset: this.defaultApprovalPreset,
+      timeoutMs: this.sessionTimeoutMs,
+      terminal: !this.shouldDisableTerminalCapability(),
+      mcpServers: readConfigMcpServers(),
+    });
+    try {
+      await client.start();
+      if (!this.started || this.warmNativeClient) {
+        await client.close();
+        await rm(bootstrapHome, { recursive: true, force: true });
+        return;
+      }
+      this.warmNativeClient = {
+        client,
+        command,
+        claimToken,
+        createdAt: Date.now(),
+        bootstrapHome,
+      };
+      this.log("debug", "warm ACP child ready", { agentType: "elizaos" });
+    } catch (err) {
+      await client.close().catch(() => undefined);
+      await rm(bootstrapHome, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+      throw err;
+    }
+  }
+
+  private async disposeWarmNativeClient(
+    slot: WarmNativeClientSlot,
+  ): Promise<void> {
+    await slot.client.close().catch(() => undefined);
+    await rm(slot.bootstrapHome, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+  }
+
+  private takeWarmNativeClient(
+    agentType: AgentType,
+  ): WarmNativeClientSlot | undefined {
+    if (
+      !this.warmSpawnEnabled ||
+      (normalizeTaskAgentAdapter(agentType) ?? agentType) !== "elizaos"
+    ) {
+      return undefined;
+    }
+    const slot = this.warmNativeClient;
+    this.warmNativeClient = undefined;
+    this.scheduleWarmNativeClient();
+    if (!slot) return undefined;
+    if (
+      slot.command !== this.nativeAgentCommand(agentType) ||
+      Date.now() - slot.createdAt > ACP_WARM_CLIENT_MAX_AGE_MS
+    ) {
+      void this.disposeWarmNativeClient(slot);
+      return undefined;
+    }
+    return slot;
   }
 
   private async reconcileOrphanedSessions(): Promise<void> {
@@ -1052,6 +1171,7 @@ export class AcpService extends Service {
   }
 
   async stop(): Promise<void> {
+    this.started = false;
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = undefined;
@@ -1070,6 +1190,8 @@ export class AcpService extends Service {
       process.off("SIGINT", AcpService.sharedShutdownHandler);
       AcpService.shutdownHookInstalled = false;
     }
+    const warm = this.warmNativeClient;
+    this.warmNativeClient = undefined;
     const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
       this.stopTrackedProcess(sessionId),
     );
@@ -1081,8 +1203,13 @@ export class AcpService extends Service {
     const leaseRevokes = Array.from(this.modelLeases.keys()).map((sessionId) =>
       this.revokeModelLease(sessionId, "service_stop"),
     );
-    await Promise.allSettled([...stops, ...nativeStops, ...leaseRevokes]);
-    this.started = false;
+    await Promise.allSettled([
+      ...stops,
+      ...nativeStops,
+      ...leaseRevokes,
+      ...(warm ? [this.disposeWarmNativeClient(warm)] : []),
+      ...(this.warmNativeClientStarting ? [this.warmNativeClientStarting] : []),
+    ]);
   }
 
   private acpxStateRoot(): string {
@@ -1550,6 +1677,12 @@ export class AcpService extends Service {
 
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
+    const warm = this.warmNativeClient;
+    if (warm && Date.now() - warm.createdAt > ACP_WARM_CLIENT_MAX_AGE_MS) {
+      this.warmNativeClient = undefined;
+      await this.disposeWarmNativeClient(warm);
+      this.scheduleWarmNativeClient();
+    }
     let sessions: SessionInfo[];
     try {
       sessions = await this.store.list();
@@ -2970,58 +3103,64 @@ export class AcpService extends Service {
     },
   ): { client: NativeAcpClient; command: string } {
     const command = this.nativeAgentCommand(session.agentType);
+    const client = new NativeAcpClient({
+      command,
+      cwd: session.workdir,
+      approvalPreset: session.approvalPreset,
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      terminal: !this.shouldDisableTerminalCapability(),
+      env: this.buildEnv(
+        opts.env,
+        opts.customCredentials,
+        opts.model,
+        session.agentType,
+        session.id,
+        opts.codexInitialAgentModeOverride,
+      ),
+      mcpServers: readConfigMcpServers(),
+    });
+    this.configureNativeClientForSession(client, session, opts);
     return {
       command,
-      client: new NativeAcpClient({
-        command,
-        cwd: session.workdir,
-        approvalPreset: session.approvalPreset,
-        timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-        terminal: !this.shouldDisableTerminalCapability(),
-        env: this.buildEnv(
-          opts.env,
-          opts.customCredentials,
-          opts.model,
-          session.agentType,
-          session.id,
-          opts.codexInitialAgentModeOverride,
-        ),
-        // Auto-inherit the parent runtime's configured MCP servers (config
-        // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
-        // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
-        mcpServers: readConfigMcpServers(),
-        onEvent: (event, protocolSessionId) => {
-          this.handleAcpEvent(
-            event,
-            session.id,
-            "",
-            Date.now(),
-            false,
-            new Set<string>(),
-          );
-          if (protocolSessionId && protocolSessionId !== session.id) {
-            void this.store
-              .update(session.id, { acpxSessionId: protocolSessionId })
-              // error-policy:J7 mapping write runs inside the ACP event
-              // callback and must not throw into the transport, but a swallowed
-              // failure leaves the acpxSessionId unpersisted so later protocol
-              // lookups silently miss the session — report it.
-              .catch((err) =>
-                this.runtime.reportError(
-                  "AcpService.persistAcpxSessionId",
-                  err,
-                  {
-                    sessionId: session.id,
-                  },
-                ),
-              );
-          }
-        },
-        onStderr: (chunk) => {
-          opts.stderr.push(chunk);
-        },
-      }),
+      client,
     };
+  }
+
+  private configureNativeClientForSession(
+    client: NativeAcpClient,
+    session: SessionInfo,
+    opts: { timeoutMs?: number; stderr: string[] },
+  ): void {
+    client.configureClaimedSession({
+      cwd: session.workdir,
+      approvalPreset: session.approvalPreset,
+      mcpServers: readConfigMcpServers(),
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      onEvent: (event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          session.id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== session.id) {
+          void this.store
+            .update(session.id, { acpxSessionId: protocolSessionId })
+            // error-policy:J7 mapping persistence runs inside an ACP event
+            // callback and must report without throwing into the transport.
+            .catch((err) =>
+              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
+                sessionId: session.id,
+              }),
+            );
+        }
+      },
+      onStderr: (chunk) => {
+        opts.stderr.push(chunk);
+      },
+    });
   }
 
   private async attachNativeClientWithManagedCodexFallback(opts: {
@@ -3037,6 +3176,46 @@ export class AcpService extends Service {
     stderr: string[];
   }> {
     let stderr: string[] = [];
+    const warm = this.takeWarmNativeClient(opts.session.agentType);
+    if (warm) {
+      this.configureNativeClientForSession(warm.client, opts.session, {
+        timeoutMs: opts.timeoutMs,
+        stderr,
+      });
+      try {
+        const builtEnv = this.buildEnv(
+          opts.env,
+          opts.customCredentials,
+          opts.model,
+          opts.session.agentType,
+          opts.session.id,
+        );
+        const claimEnv: Record<string, string> = {};
+        for (const [key, value] of Object.entries(builtEnv)) {
+          if (typeof value === "string") claimEnv[key] = value;
+        }
+        const nativeSession = await warm.client.createSession(
+          opts.session.workdir,
+          {
+            token: warm.claimToken,
+            env: claimEnv,
+          },
+        );
+        await rm(warm.bootstrapHome, { recursive: true, force: true });
+        this.log("debug", "claimed warm ACP child", {
+          sessionId: opts.session.id,
+          agentType: opts.session.agentType,
+        });
+        return { client: warm.client, nativeSession, stderr };
+      } catch (err) {
+        await this.disposeWarmNativeClient(warm);
+        this.log("warn", "warm ACP child claim failed; falling back cold", {
+          sessionId: opts.session.id,
+          error: errorMessage(err),
+        });
+        stderr = [];
+      }
+    }
     let { client, command } = this.createNativeClient(opts.session, {
       env: opts.env,
       customCredentials: opts.customCredentials,

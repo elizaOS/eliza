@@ -274,6 +274,7 @@ README → "GitHub credentials".
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
 | `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
+| `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to pre-initialize one native `elizaos` ACP child. The child receives no session credentials until an authenticated, single-use claim and exits after that session; stale unclaimed children are recycled. |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |

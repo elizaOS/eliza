@@ -39,6 +39,7 @@ import {
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { publishParsedReply } from "./acp-response.js";
+import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import {
@@ -63,6 +64,7 @@ function log(message: string, extra?: unknown): void {
 // Lazily-initialized shared runtime (one per ACP server process).
 let runtimePromise: Promise<AgentRuntime> | null = null;
 let identity: SessionIdentity | null = null;
+const warmSessionClaim = new AcpWarmSessionClaim();
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
   if (!runtimePromise) {
@@ -229,7 +231,11 @@ const _connection = new AgentSideConnection(
     async authenticate() {
       return {};
     },
-    async newSession(params: { cwd?: string }) {
+    async newSession(params: {
+      cwd?: string;
+      _meta?: Record<string, unknown> | null;
+    }) {
+      warmSessionClaim.apply(params._meta);
       const runtime = await ensureRuntime(params.cwd);
       const id = randomUUID();
       const session = identity as SessionIdentity;
@@ -349,6 +355,13 @@ const _connection = new AgentSideConnection(
     async closeSession(params: { sessionId?: string }) {
       const sessionId = params?.sessionId;
       if (sessionId) sessions.delete(sessionId);
+      if (warmSessionClaim.wasConsumed) {
+        warmSessionClaim.clear();
+        // A warm child is single-claim by design. Runtime/provider instances
+        // may retain derived credentials even after process.env is cleared, so
+        // true cross-session isolation requires process disposal, not reuse.
+        setTimeout(() => process.exit(0), 0).unref?.();
+      }
       log("session closed", { sessionId });
       return {};
     },

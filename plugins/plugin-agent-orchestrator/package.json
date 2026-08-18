@@ -144,6 +144,13 @@
         "default": "elizaos",
         "sensitive": false
       },
+      "ELIZA_ACP_WARM_SPAWN": {
+        "type": "boolean",
+        "description": "Pre-initialize one native elizaos ACP child without session credentials and claim it once at spawn time.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
       "ELIZA_DEFAULT_AGENT_TYPE": {
         "type": "string",
         "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
