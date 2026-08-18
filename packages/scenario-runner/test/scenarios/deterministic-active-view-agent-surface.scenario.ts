@@ -222,17 +222,26 @@ function promptHasActiveViewElements(value: string): boolean {
   ].every((needle) => value.includes(needle));
 }
 
-function evaluatorFixture({
+function postTurnEvaluatorFixture({
   capability,
   elementId,
-  thought,
+  input,
 }: {
   capability: "agent-click" | "agent-fill";
   elementId: string;
-  thought: string;
+  input: string;
 }) {
+  const expectedEvaluatorNames = [
+    "factMemory",
+    "preferences",
+    "relationships",
+    "identities",
+    "success",
+    "ftu_goal_discovery",
+    capability === "agent-fill" ? "experiencePatterns" : "skillProposal",
+  ];
   return {
-    name: `active-view-evaluator-${capability}-${elementId}`,
+    name: `active-view-post-turn-${capability}-${elementId}`,
     match: (call: DeterministicModelCall) => {
       if (call.modelType !== ModelType.TEXT_SMALL) return false;
       const promptText =
@@ -242,15 +251,37 @@ function evaluatorFixture({
               .map((m: { content?: string }) => m.content ?? "")
               .join("\n")
           : "");
+      const schema = call.params.responseSchema as
+        | { properties?: Record<string, unknown> }
+        | undefined;
+      const evaluatorNames = Object.keys(schema?.properties ?? {});
       return (
-        promptText.includes("task: Evaluate latest action") &&
-        promptText.includes(elementId)
+        promptText.includes("# Task: Post-turn evaluation") &&
+        promptText.includes(input) &&
+        promptText.includes(capability) &&
+        promptText.includes(elementId) &&
+        evaluatorNames.length === expectedEvaluatorNames.length &&
+        expectedEvaluatorNames.every((name) => evaluatorNames.includes(name))
       );
     },
     response: {
-      success: true,
-      decision: "FINISH",
-      thought,
+      factMemory: { ops: [] },
+      preferences: { ops: [] },
+      relationships: { relationships: [] },
+      identities: { identities: [] },
+      success: {
+        completed: true,
+        reason: "The requested active-view interaction completed successfully.",
+      },
+      ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+      ...(capability === "agent-fill"
+        ? { experiencePatterns: { experiences: [] } }
+        : {
+            skillProposal: {
+              extract: false,
+              reason: "This one-off view interaction is not a reusable skill.",
+            },
+          }),
     },
     times: 1,
   };
@@ -431,10 +462,10 @@ export default scenario({
             messageToUser: "Filled the active ledger title.",
             value: "Close Issue 11355",
           }),
-          evaluatorFixture({
+          postTurnEvaluatorFixture({
             capability: "agent-fill",
             elementId: "ledger-title",
-            thought: "Filled the active ledger title element successfully.",
+            input: FILL_TEXT,
           }),
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
@@ -455,10 +486,10 @@ export default scenario({
             input: CLICK_TEXT,
             messageToUser: "Saved the active ledger.",
           }),
-          evaluatorFixture({
+          postTurnEvaluatorFixture({
             capability: "agent-click",
             elementId: "save-ledger",
-            thought: "Clicked the save ledger element successfully.",
+            input: CLICK_TEXT,
           }),
         );
         return undefined;
