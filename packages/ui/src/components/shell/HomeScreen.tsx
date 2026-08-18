@@ -14,13 +14,16 @@ import {
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { useAppSelector } from "../../state";
 import { useNotifications } from "../../state/notifications/notification-store";
+import { useShellSurface } from "../../state/shell-surface-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 import {
-  consumeNotificationCenterOpenRequest,
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
   subscribeNotificationCenterOpenRequests,
 } from "./notification-center-open-request";
 
@@ -223,24 +226,45 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   const wasAppsDisplacedRef = useRef(false);
   const [notificationShadeExpanded, setNotificationShadeExpanded] =
     useState(false);
+  const [
+    pendingNotificationCenterOpenRequestId,
+    setPendingNotificationCenterOpenRequestId,
+  ] = useState<number | null>(null);
   const [notificationCenterOpenRequestId, setNotificationCenterOpenRequestId] =
     useState<number | null>(null);
+  const activeTab = useAppSelector((state) => state.tab);
+  const { page: shellSurfacePage } = useShellSurface();
   const { notifications } = useNotifications();
   const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
   appsDisplacedRef.current = appsDisplaced;
 
   useLayoutEffect(() => {
-    // Subscribe before consuming so a request racing this mount is either
-    // delivered live or retained, never lost between those two states.
+    // Subscribe before peeking so a request racing this mount is either
+    // delivered live or observed as retained, never lost between those states.
     const unsubscribe = subscribeNotificationCenterOpenRequests(
-      setNotificationCenterOpenRequestId,
+      setPendingNotificationCenterOpenRequestId,
     );
-    const retainedRequestId = consumeNotificationCenterOpenRequest();
+    const retainedRequestId = peekNotificationCenterOpenRequest();
     if (retainedRequestId !== null) {
-      setNotificationCenterOpenRequestId(retainedRequestId);
+      setPendingNotificationCenterOpenRequestId(retainedRequestId);
     }
     return unsubscribe;
   }, []);
+
+  useLayoutEffect(() => {
+    if (
+      activeTab !== "chat" ||
+      shellSurfacePage !== "home" ||
+      pendingNotificationCenterOpenRequestId === null
+    ) {
+      return;
+    }
+    const requestId = pendingNotificationCenterOpenRequestId;
+    if (acknowledgeNotificationCenterOpenRequest(requestId)) {
+      setNotificationCenterOpenRequestId(requestId);
+    }
+    setPendingNotificationCenterOpenRequestId(null);
+  }, [activeTab, pendingNotificationCenterOpenRequestId, shellSurfacePage]);
 
   // Remember the latest launcher control independently of the shade gesture.
   // A notification can arrive asynchronously while an expanded empty shade

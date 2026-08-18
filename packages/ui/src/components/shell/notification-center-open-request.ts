@@ -14,22 +14,26 @@ const listeners = new Set<NotificationCenterOpenRequestListener>();
 export function requestNotificationCenterOpen(): number {
   const requestId = nextRequestId;
   nextRequestId += 1;
-
-  if (listeners.size === 0) {
-    pendingRequestId = requestId;
-    return requestId;
-  }
-
-  pendingRequestId = null;
+  // Delivery is only an observation. The visible Home owns acknowledgement;
+  // an inert/offscreen Home may still be mounted beside the Launcher and must
+  // not make the request disappear before navigation commits.
+  pendingRequestId = requestId;
   for (const listener of [...listeners]) listener(requestId);
   return requestId;
 }
 
-/** Takes the request retained while no Home destination was mounted. */
-export function consumeNotificationCenterOpenRequest(): number | null {
-  const requestId = pendingRequestId;
+/** Reads the newest request without transferring destination ownership. */
+export function peekNotificationCenterOpenRequest(): number | null {
+  return pendingRequestId;
+}
+
+/** Clears a request only when the acknowledging visible Home still owns it. */
+export function acknowledgeNotificationCenterOpenRequest(
+  requestId: number,
+): boolean {
+  if (pendingRequestId !== requestId) return false;
   pendingRequestId = null;
-  return requestId;
+  return true;
 }
 
 /** Delivers requests that arrive while a Home destination is mounted. */
