@@ -78,6 +78,7 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
+import { resolveAppShellMode } from "../../platform/app-shell-mode";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
@@ -928,14 +929,17 @@ function SheetGrabber({
   open,
   onOpen,
   onClose,
+  onActivate,
   binding,
   breathing,
   opacity,
   pilled,
+  tightHitbox,
 }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  onActivate: () => void;
   binding: PullGestureBinding;
   breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
@@ -945,8 +949,11 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
+  /** Keep the forgiving target entirely inside the detached painted host. */
+  tightHitbox: boolean;
 }): React.JSX.Element {
   const disabled = pilled;
+  const lastPointerReleaseAt = React.useRef(Number.NEGATIVE_INFINITY);
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -965,8 +972,7 @@ function SheetGrabber({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (open) onClose();
-          else onOpen();
+          onActivate();
         } else if (e.key === "ArrowUp") {
           e.preventDefault();
           onOpen();
@@ -984,6 +990,18 @@ function SheetGrabber({
       onTouchEnd={(e) => {
         if (e.cancelable) e.preventDefault();
       }}
+      // WebKit accessibility activation may emit a compatibility click without
+      // the pointer sequence used by the gesture recognizer. Accept that path,
+      // but suppress the click that follows a real pointer release: the latter
+      // has already run `binding.onTap` and must not step two detents at once.
+      onPointerUpCapture={() => {
+        lastPointerReleaseAt.current = performance.now();
+      }}
+      onClick={() => {
+        if (performance.now() - lastPointerReleaseAt.current > 150) {
+          onActivate();
+        }
+      }}
       {...binding}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
@@ -994,12 +1012,15 @@ function SheetGrabber({
         // open" affordance) but STAYS ABOVE the input row so it never steals
         // taps meant for the textarea / +/mic controls below it.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute inset-x-6 top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+        tightHitbox
+          ? "absolute inset-x-0 top-0 z-50 flex h-8 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing"
+          : "absolute inset-x-6 top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
         // The invisible hit target reaches a comfortable distance ABOVE the
         // panel (a swipe-up begun in the empty field just over the composer is
         // caught) and STOPS at the handle's own bottom, so it never overlaps the
         // interactive composer row beneath — taps fall through to the input.
-        "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
+        !tightHitbox &&
+          "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
       )}
     >
       <span
@@ -2911,7 +2932,15 @@ export function ChatOverlay({
     viewport.innerWidth,
     viewport.innerHeight,
   );
+  const desktopChatOverlay =
+    typeof window !== "undefined" &&
+    resolveAppShellMode(
+      window.location.search,
+      window.location.hash,
+      window.ELIZAOS_SHELL_MODE,
+    ) === "chat-overlay";
   const compactLanding =
+    !desktopChatOverlay &&
     shortLandscape &&
     !sheetOpen &&
     !fullBleed &&
@@ -4534,11 +4563,19 @@ export function ChatOverlay({
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
-  // when one of them holds focus). Registered only while open.
+  // when one of them holds focus). The detached desktop shell also accepts a
+  // second Escape from INPUT to the resting pill; web/mobile keep their current
+  // input behavior.
   React.useEffect(() => {
-    if (typeof document === "undefined" || !sheetOpen) return undefined;
+    if (
+      typeof document === "undefined" ||
+      pilled ||
+      (!sheetOpen && !desktopChatOverlay)
+    )
+      return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (e.defaultPrevented) return;
         // An open Radix dialog (data-state="open" — e.g. the command palette)
         // sits above the chat: let ITS Escape handling win — collapsing here
         // too closed both at once (e.g. an invisible palette + the chat).
@@ -4558,12 +4595,13 @@ export function ChatOverlay({
           return;
         }
         e.preventDefault();
-        collapse();
+        if (sheetOpen) collapse();
+        else collapseToPill();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [sheetOpen, collapse]);
+  }, [sheetOpen, pilled, desktopChatOverlay, collapse, collapseToPill]);
 
   // Android hardware/gesture back closes the open chat sheet FIRST — the same
   // "dismiss the open surface" behavior desktop/web get from Escape (#9148).
@@ -5139,6 +5177,10 @@ export function ChatOverlay({
         collapse();
         return;
       }
+      if (desktopChatOverlay) {
+        collapseToPill();
+        return;
+      }
       openFromGrabber();
     },
     // A deliberate (slow) drag: REST exactly where released instead of snapping
@@ -5476,6 +5518,10 @@ export function ChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
+        // The detached native host is itself the expanded surface. Occupy its
+        // complete height so there are no transparent pixels above the panel
+        // that can intercept the application underneath.
+        top: desktopChatOverlay && sheetOpen ? 0 : undefined,
         // At rest, the measured reclaim offset seats the composer at the
         // physical bottom on collapsed iOS standalone/native viewports. Off that
         // surface the custom property is zero. When the keyboard is visible,
@@ -5488,20 +5534,23 @@ export function ChatOverlay({
         // Non-full-bleed keeps the same safe-area clearance above the reclaimed
         // physical bottom, with the wallpaper/app floor owning everything below.
         // Side inset eases with the shape spring (12px inset → 0 at full-bleed).
-        paddingLeft: overlayPadX,
-        paddingRight: overlayPadX,
+        paddingLeft: desktopChatOverlay ? 0 : overlayPadX,
+        paddingRight: desktopChatOverlay ? 0 : overlayPadX,
         // Bottom clearance: the keyboard-lift gap wins when the keyboard is up;
         // else, only WHILE maximizing/restoring does the composer inset ease with
         // the shape spring (its value equals the plain rest inset at the boundary,
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
-        paddingBottom: keyboardLiftActive
-          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
-          : fullBleed || restoreDragging || isDragging
-            ? overlayPadBottom
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
+        paddingBottom: desktopChatOverlay
+          ? 0
+          : keyboardLiftActive
+            ? `${KEYBOARD_COMPOSER_GAP_PX}px`
+            : fullBleed || restoreDragging || isDragging
+              ? overlayPadBottom
+              : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
+      data-desktop-overlay={desktopChatOverlay ? "true" : undefined}
       data-chat-gesture-surface=""
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -5612,7 +5661,10 @@ export function ChatOverlay({
         // grabber + pill are positioned relative to THIS wrapper, so they
         // shrink and re-corner with it.
         style={{ maxWidth: wrapperMaxW }}
-        className="pointer-events-none relative flex w-full flex-col items-center"
+        className={cn(
+          "pointer-events-none relative flex w-full flex-col items-center",
+          desktopChatOverlay && sheetOpen && "h-full justify-end",
+        )}
       >
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
@@ -5628,6 +5680,11 @@ export function ChatOverlay({
             open={sheetOpen}
             onOpen={openFromGrabber}
             onClose={collapse}
+            onActivate={() => {
+              if (sheetOpen) collapse();
+              else if (desktopChatOverlay) collapseToPill();
+              else openFromGrabber();
+            }}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
@@ -5637,6 +5694,7 @@ export function ChatOverlay({
             breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
+            tightHitbox={desktopChatOverlay}
           />
         ) : null}
         <motion.fieldset
@@ -5665,7 +5723,7 @@ export function ChatOverlay({
             // Morph-driven cap: the inset ceiling at rest, growing to the
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
-            maxHeight: panelCapH,
+            maxHeight: desktopChatOverlay ? undefined : panelCapH,
             // Resting full-screen needs an explicit height because an intrinsic
             // flexbox can shrink around the composer. During a drag and its
             // release spring, however, the thread/content box is the geometry
@@ -5674,7 +5732,12 @@ export function ChatOverlay({
             // Returning to `auto` for that whole motion keeps surface, transcript,
             // and composer bottom-anchored as one object; the settled full-screen
             // endpoint switches to the same explicit cap only after they match.
-            height: fullBleed && !isDragging ? panelCapH : "auto",
+            height:
+              desktopChatOverlay && sheetOpen && !isDragging
+                ? "100%"
+                : fullBleed && !isDragging
+                  ? panelCapH
+                  : "auto",
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
             // bar (the "gap at the top when maximized" bug). While open (incl. a
@@ -5693,6 +5756,7 @@ export function ChatOverlay({
             // content wrapper instead, so clipping the scroll never clips a hard
             // square edge over the content.
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
+            desktopChatOverlay && sheetOpen && "max-h-full justify-end",
           )}
         >
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live

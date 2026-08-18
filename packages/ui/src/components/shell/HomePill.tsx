@@ -49,6 +49,9 @@ export interface HomePillProps {
    *  and listening lanes stay compact until then so WKWebView cannot clip them
    *  into the resting 96px window. Web callers leave this unset. */
   previewHostReady?: boolean;
+  /** Paint the complete detached-window target so no invisible native pixels
+   * can intercept the application underneath. */
+  tightNativeHitbox?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -122,6 +125,7 @@ export function HomePill({
   signingIn = false,
   onPreviewHoverChange,
   previewHostReady = true,
+  tightNativeHitbox = false,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
@@ -291,9 +295,17 @@ export function HomePill({
       onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
-        composerSized ? "h-16 w-[36rem]" : "h-8 w-16",
-        "transition-[width,height,transform] duration-200 hover:bg-transparent motion-reduce:transition-none",
+        "group pointer-events-auto relative flex items-center justify-center rounded-full p-0",
+        tightNativeHitbox ? "mb-0" : "mb-2",
+        composerSized
+          ? tightNativeHitbox
+            ? "h-16 w-[600px]"
+            : "h-16 w-[36rem]"
+          : "h-8 w-16",
+        tightNativeHitbox
+          ? "border border-white/20 bg-[#181a20]/95 backdrop-blur-xl hover:bg-[#202228]/95"
+          : "bg-transparent hover:bg-transparent",
+        "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}

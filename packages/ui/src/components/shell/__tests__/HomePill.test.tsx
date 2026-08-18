@@ -44,6 +44,22 @@ describe("HomePill", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
+  it("paints exactly the detached native target when tight hit-testing is enabled", () => {
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        tightNativeHitbox
+      />,
+    );
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("h-8");
+    expect(button.className).toContain("w-16");
+    expect(button.className).toContain("mb-0");
+    expect(button.className).toContain("bg-[#181a20]/95");
+  });
+
   it("expands the resting handle into a compact composer preview on hover", () => {
     const onPreviewHoverChange = vi.fn();
     render(

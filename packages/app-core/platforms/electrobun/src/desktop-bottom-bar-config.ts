@@ -108,6 +108,8 @@ export interface DesktopShellWindowPresentation {
   titleBarStyle: DesktopShellTitleBarStyle;
   transparent: boolean;
   nativeShadow: boolean;
+  /** Bottom-bar and kiosk surfaces are display-anchored, not user-draggable. */
+  nativeInteractiveChrome: boolean;
 }
 
 /**
@@ -138,20 +140,21 @@ export function resolveDesktopShellWindowPresentation(
           : "default",
     transparent: bottomBar,
     nativeShadow: !kiosk && !bottomBar,
+    nativeInteractiveChrome: !kiosk && !bottomBar,
   };
 }
 
-/** Resting native hit area around the 64×32 visible pill. */
-export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
-export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
+/** Resting native hit area exactly matching the 64×32 visible pill. */
+export const DEFAULT_BOTTOM_BAR_WIDTH = 64;
+export const DEFAULT_BOTTOM_BAR_HEIGHT = 32;
 
 /** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
 export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
 export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 
-/** Shallow host for the resting pill's composer preview while hovered. */
+/** Exact-height host for the resting composer preview while hovered. */
 export const HOVER_BOTTOM_BAR_WIDTH = 600;
-export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+export const HOVER_BOTTOM_BAR_HEIGHT = 64;
 
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
@@ -207,7 +210,7 @@ export function computeBottomBarFrame(
   const margin = Math.max(0, Math.round(options?.margin ?? 0));
   const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
   const requestedHeight = Math.max(
-    48,
+    1,
     Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
   );
   const height = Math.min(requestedHeight, availableHeight);
