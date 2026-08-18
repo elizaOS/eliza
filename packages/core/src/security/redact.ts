@@ -167,6 +167,14 @@ export function isSensitiveKeyName(key: string): boolean {
 	) {
 		return true;
 	}
+	// Separator-free concatenations (masterKey, MASTERKEY, encryption-key, …)
+	// have no word boundary for the substring rules above; a closed suffix set
+	// on the normalized name catches them without opening `key$` to lookalikes
+	// (monkey/turnkey/KEYBOARD stay non-sensitive). Same closed set as the leaf
+	// logger's isSensitiveLogKey and the agent's isSensitiveConfigKey.
+	if (/(?:master|signing|ssh|encryption)key$/i.test(normalized)) {
+		return true;
+	}
 	return false;
 }
 
@@ -538,6 +546,11 @@ const MAX_LOG_REDACT_DEPTH = 8;
  * util.inspect.custom never reach the clone because the walk copies string keys
  * only.
  *
+ * Buffer/TypedArray/DataView/ArrayBuffer values collapse to a size-only marker:
+ * the indexed walk would otherwise emit the raw bytes as {"0":115,…} under an
+ * innocent-looking key, and JSON.stringify would emit them as
+ * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
+ *
  * Depth is bounded and cycles are broken (returning the mask) so a pathological
  * log payload cannot hang or blow the stack — a redactor must never be the thing
  * that takes the process down.
@@ -578,6 +591,13 @@ function redactLogArg(
 		redacted.name = value.name;
 		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
 		return redacted;
+	}
+	// Binary payloads carry raw bytes that JSON serializes verbatim
+	// ({"type":"Buffer","data":[...]}); walked as indexed objects they emit the
+	// same bytes as {"0":115,...} under an innocent-looking key, so mask with a
+	// size-only marker (same marker shape as the leaf logger's).
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
 	}
 	// A null-prototype target prevents a __proto__ input key from changing the
 	// clone's prototype and reintroducing inherited serializer behavior.

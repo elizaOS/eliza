@@ -520,6 +520,31 @@ describe("isSensitiveKeyName", () => {
 		}
 		expect(isSensitiveKeyName("accessTokens")).toBe(true);
 	});
+
+	it("flags the closed concat key set without catching key lookalikes", () => {
+		// master/encryption concatenations had no word boundary for the substring
+		// rules, so pattern-inert values under them leaked; the closed suffix set
+		// matches the leaf logger's isSensitiveLogKey and the agent's
+		// isSensitiveConfigKey without opening `key$` to lookalikes.
+		for (const key of [
+			"masterKey",
+			"master_key",
+			"MASTERKEY",
+			"MASTER_KEY",
+			"encryptionKey",
+			"encryption-key",
+			"ENCRYPTIONKEY",
+			"signingKey",
+			"SIGNINGKEY",
+			"sshKey",
+			"SSHKEY",
+		]) {
+			expect(isSensitiveKeyName(key), key).toBe(true);
+		}
+		for (const key of ["monkey", "turnkey", "hotkey", "keyboard", "KEYBOARD"]) {
+			expect(isSensitiveKeyName(key), key).toBe(false);
+		}
+	});
 });
 
 /**
@@ -733,6 +758,62 @@ describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 		const [out] = redactLogArgs([fn]);
 		expect(out).toBeNull();
 		expect(JSON.stringify(redactLogArgs([fn]))).not.toContain(secret);
+	});
+
+	it("masks a pattern-inert value under a concat credential key", () => {
+		// Neither value matches a credential shape — only the key name can catch
+		// them. masterKey/encryptionKey had no separator for the substring rules
+		// before the closed concat set, so these leaked verbatim.
+		const [ctx] = redactLogArgs([
+			{
+				encryptionKey: "correct-horse-battery-staple",
+				masterKey: "hunter2-master-value",
+				monkey: "visible",
+			},
+		]) as [Record<string, unknown>];
+		expect(ctx.encryptionKey).toBe("[REDACTED]");
+		expect(ctx.masterKey).toBe("[REDACTED]");
+		expect(ctx.monkey).toBe("visible");
+		const serialized = JSON.stringify(ctx);
+		expect(serialized).not.toContain("correct-horse-battery-staple");
+		expect(serialized).not.toContain("hunter2-master-value");
+	});
+
+	it("masks Buffer/TypedArray/DataView/ArrayBuffer payloads with a size-only marker", () => {
+		const secret = "sk-buffer-payload-secret";
+		const buf = Buffer.from(secret, "utf8");
+		const bytes = new TextEncoder().encode(secret);
+		const view = new DataView(new ArrayBuffer(16));
+		const raw = new ArrayBuffer(8);
+		// A distinct instance for the nested slot: reusing `buf` would trip the
+		// cycle guard on the second encounter, not the buffer branch.
+		const deep = Buffer.from(secret, "utf8");
+		const [ctx] = redactLogArgs([
+			{ buf, bytes, view, raw, nested: { deep } },
+		]) as [Record<string, unknown>];
+		expect(ctx.buf).toBe(`[BUFFER REDACTED ${buf.byteLength} bytes]`);
+		expect(ctx.bytes).toBe(`[BUFFER REDACTED ${bytes.byteLength} bytes]`);
+		expect(ctx.view).toBe("[BUFFER REDACTED 16 bytes]");
+		expect(ctx.raw).toBe("[BUFFER REDACTED 8 bytes]");
+		expect(ctx.nested).toEqual({
+			deep: `[BUFFER REDACTED ${deep.byteLength} bytes]`,
+		});
+		const serialized = JSON.stringify(ctx);
+		// The pre-fix walk emitted the bytes as indexed properties (115 is 's'),
+		// and Buffer's own toJSON would emit them as a data array — either shape
+		// reconstitutes the secret byte-for-byte.
+		expect(serialized).not.toContain('"0":115');
+		expect(serialized).not.toContain("115,107");
+	});
+
+	it("does not let a hostile own toJSON on a Buffer reconstitute its bytes", () => {
+		const secret = "sk-buffer-hook-secret-value";
+		const hostile = Object.assign(Buffer.from(secret, "utf8"), {
+			toJSON: () => secret,
+		});
+		const [out] = redactLogArgs([hostile]);
+		expect(out).toBe(`[BUFFER REDACTED ${hostile.byteLength} bytes]`);
+		expect(JSON.stringify(out)).not.toContain(secret);
 	});
 
 	it("leaves non-string, non-object arguments untouched", () => {
