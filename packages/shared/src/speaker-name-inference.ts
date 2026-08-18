@@ -445,6 +445,7 @@ export function inferSpeakerName(
     (hasStrongSource(chosen) || chosen.sources.length > 1) &&
     !sameFirstNameAmbiguity &&
     !unresolvedConflict &&
+    (!borrowedDeviceConflict || correction !== undefined) &&
     input.sensitiveAttributeGuardrail !== true;
   if (canConfirm) reasonCodes.push("high_confidence_name");
   if (chosen && !canConfirm) reasonCodes.push("low_confidence_name");
