@@ -7,7 +7,7 @@
  *
  * Flags: --serial <s>, --skip-local-chat, --skip-route-coverage, --cloud,
  * --launcher-loop, --start-host-agent, --host-emulator-probes,
- * --arm64-local-probes, --force-build/--build, --skip-build,
+ * --arm64-local-probes, --host-agent-port <port>, --force-build/--build, --skip-build,
  * --no-emulator-boot, and --no-wait.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -533,7 +533,10 @@ async function main() {
         hostAgent = await startDeviceE2eHostAgent({
           repoRoot: elizaRoot,
           artifactDir: bundle.logsDir,
-          requestedPort: 31337,
+          requestedPort: val(
+            "--host-agent-port",
+            process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
+          ),
           log,
         });
         process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
