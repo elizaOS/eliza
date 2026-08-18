@@ -17,10 +17,12 @@
  * pipeline owns ASR/text/TTS while this harness remains observable on-device.
  */
 
+import { ElizaClient } from "../api";
 import {
   getElizaVoicePlugin,
   getTalkModePlugin,
 } from "../bridge/native-plugins";
+import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import {
   type JniAttributedTurn,
   type JniCompletedPcmTurn,
@@ -108,26 +110,27 @@ function float32ToBase64(pcm: Float32Array): string {
   return btoa(binary);
 }
 
+/** Native PCM handoff is a short local-agent POST. */
+const JNI_VOICE_PCM_TURN_TIMEOUT_MS = 15_000;
+const localAgentClient = new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+
 async function forwardCompletedPcmTurnToLocalAgent(
   turn: JniCompletedPcmTurn,
 ): Promise<void> {
-  const res = await fetch("/api/voice/native-pcm-turn", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      turnId: turn.turnId,
-      pcm: float32ToBase64(turn.audio.pcm),
-      sampleRate: turn.audio.sampleRate,
-      signal: turn.signal,
-    }),
-  });
-  if (!res.ok) {
-    // error-policy:J6 best-effort error detail — the throw carries the status
-    const detail = await res.text().catch(() => "");
-    throw new Error(
-      `[JniVoiceHarness] native PCM turn handoff failed (${res.status}): ${detail}`,
-    );
-  }
+  await localAgentClient.rawRequest(
+    "/api/voice/native-pcm-turn",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        turnId: turn.turnId,
+        pcm: float32ToBase64(turn.audio.pcm),
+        sampleRate: turn.audio.sampleRate,
+        signal: turn.signal,
+      }),
+    },
+    { timeoutMs: JNI_VOICE_PCM_TURN_TIMEOUT_MS },
+  );
 }
 
 function pipelineOptionsForHarness(
