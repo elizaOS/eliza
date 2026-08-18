@@ -117,6 +117,7 @@ const ALLOWED_EXACT = new Set([
   "audit:tee-secret-leak:self-test",
   "audit:alias-read-guard:self-test",
   "audit:test-integrity:no-vi-mocks",
+  "audit:mock-module-exports",
   "mvp:closeout-audit",
   "check:pr-evidence",
   "evidence:pr",

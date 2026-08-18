@@ -1,0 +1,422 @@
+[
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/agent-bridge-runtime-routing.test.ts mock \"@/lib/services/eliza-sandbox\" is missing bound export(s): AdminCanaryCleanupExpectationError, assertOrgAgentQuota, buildAgentSandboxInsertValues, SNAPSHOT_ENDPOINT_UNSUPPORTED",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/chat-stream-credit-leak.test.ts mock \"@/lib/models\" is missing bound export(s): CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/chat-stream-credit-leak.test.ts mock \"@/lib/services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, MIN_RESERVATION",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-create-idempotency.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-orphan-cleanup.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-warm-pool-character-push.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-warm-pool-empty-on-claim.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-warm-pool-key-push.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/db/client\" is missing bound export(s): db, dbRead, dbWrite, getDbConnectionInfo",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/pricing\" is missing bound export(s): API_KEY_PREFIX_LENGTH, calculateCost",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/runtime/cloud-bindings\" is missing bound export(s): getCloudAwareEnv, getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): billFlatUsage, reserveCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/services/shared-runtime/run-shared-agent-turn\" is missing bound export(s): appendSharedTurn",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-clawback.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): getAffiliatePayoutSourceId, reserveFlatUsageCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-clawback.test.ts mock \"@/lib/services/credits\" is missing bound export(s): COST_BUFFER, MIN_RESERVATION",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-clawback.test.ts mock \"@/lib/services/org-rate-limits\" is missing bound export(s): getOrgRpmForEndpoint, getOrgRpmForEndpointCacheOnly, recalculateOrgTier",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-queue-route.test.ts mock \"@/lib/queue/redis-queue\" is missing bound export(s): drain, queueLength",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-webhook-route.test.ts mock \"@/lib/queue/redis-queue\" is missing bound export(s): enqueue",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/billing/checkout/verify/route.l1.test.ts mock \"@/lib/services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/db/repositories\" is missing bound export(s): affiliatesRepository, autoTopUpAttemptsRepository, creditPacksRepository, creditTransactionsRepository, generationsRepository, organizationInvitesRepository, organizationsRepository, usageRecordsRepository, userCharactersRepository, userSessionsRepository",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/lib/services/eliza-sandbox\" is missing bound export(s): AdminCanaryCleanupExpectationError, assertOrgAgentQuota, buildAgentSandboxInsertValues, SNAPSHOT_ENDPOINT_UNSUPPORTED",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/cron/container-billing/route.test.ts mock \"@/db/repositories\" is missing bound export(s): affiliatesRepository, autoTopUpAttemptsRepository, creditPacksRepository, creditTransactionsRepository, generationsRepository, organizationInvitesRepository, organizationsRepository, usageRecordsRepository, userCharactersRepository, userSessionsRepository",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/cron/sweep-inference-charges/route.test.ts mock \"@/lib/services/inference-billing-fast-path\" is missing bound export(s): createOptimisticDebitSettler, debitInferenceCost, getGateBalanceHint, InferenceBalanceCacheWarmingError, isOptimisticBackstopAvailable, isOptimisticEligible, resolveSafeBalanceThresholdUsd, scheduleOrgBalanceHintHydration, writePendingInferenceCharge",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/cron/sweep-inference-charges/route.test.ts mock \"@/lib/services/inference-billing-ledger\" is missing bound export(s): admitInferenceChargeViaLedger, createLedgerDebitSettler, resolveInferenceBillingLedger",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/internal/eliza-app/personal-shared/messages/route.test.ts mock \"@/lib/services/agent-tier-upgrade-target\" is missing bound export(s): isAuthoritativePersonalDedicatedTarget",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/internal/eliza-app/personal-shared/messages/route.test.ts mock \"@/lib/services/shared-runtime/conversation-coordinator\" is missing bound export(s): commitPersonalProvisionalHistoryConvergence, preparePersonalProvisionalHistoryConvergence, releasePersonalProvisionalHistoryConvergence",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/my-agents/characters/[id]/route.json.test.ts mock \"@/lib/cache/keys\" is missing bound export(s): CacheTTL",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/my-agents/characters/route.category.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): ValidationError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/my-agents/characters/route.sort.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): ValidationError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/src/shared-runtime-conversation.test.ts mock \"@/db/client\" is missing bound export(s): db, dbRead, dbWrite, getDbConnectionInfo",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/src/shared-runtime-conversation.test.ts mock \"@/lib/runtime/cloud-bindings\" is missing bound export(s): getCloudAwareEnv, getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/cron/shared-agent-keepwarm/route.test.ts mock \"@/db/repositories/agent-sandboxes\" is missing bound export(s): PRE_DELETE_BACKUP_RETENTION_MS, prepareAgentBackupInsertData",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/eliza/agents/route.auto-provision.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/internal-eliza-conversation-fetch.encoding.test.ts mock \"@/lib/cache/keys\" is missing bound export(s): CacheTTL",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/internal-eliza-conversation-fetch.encoding.test.ts mock \"@/lib/runtime/cloud-bindings\" is missing bound export(s): getCloudAwareEnv, getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/mint-consent-route.test.ts mock \"@elizaos/core\" is missing bound export(s): ElizaError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/revoke-and-metering.test.ts mock \"@elizaos/core\" is missing bound export(s): DEFAULT_MAX_BODY_BYTES, ElizaError, expandConnectorSourceFilter, formatError, getConnectorIdentityMetadataMapping, getConnectorSourceAliases, getConnectorSourceMetadata, getConnectorWorldIdMetadataKeys, getElizaNamespace, getRecentMessagesData, isConnectorConfigured, isPassiveConnectorSource, isWechatConfigured, logger, ModelType, normalizeConnectorSource, parseJsonModelRecord, readJsonBody, readRequestBody, readRequestBodyBuffer, registerConnectorSourceAliases, registerConnectorSourceDefinitions, registerConnectorSourceMetadata, replaceIndexedNameTokens, replaceNameTokens, resolveStateDir, resolveUserPath, runWithTrajectoryPurpose, sendJson, sendJsonError, stringToUuid, unregisterConnectorSourceMetadataOwner",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/voice-agent-scope-hydration.test.ts mock \"@/db/client\" is missing bound export(s): db, dbRead, dbWrite, getDbConnectionInfo",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/voice-agent-scope-hydration.test.ts mock \"@/lib/pricing\" is missing bound export(s): API_KEY_PREFIX_LENGTH, estimateTokens, PLATFORM_MARKUP_MULTIPLIER",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/voice-agent-scope-hydration.test.ts mock \"@/lib/services/inference-admission-gate\" is missing bound export(s): acquireInferenceAdmissionLease, consumeInferenceRateLimit, InferenceAdmissionGateUnavailableError, InferenceAdmissionLeaseRejectedError, inferenceSettlementAmounts, isInferenceAdmissionDispatchMarkError, markInferenceAdmissionLeaseDispatched, settleInferenceAdmissionLease",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/voice-agent-scope-hydration.test.ts mock \"@/lib/services/inference-admission-snapshot\" is missing bound export(s): getInferenceAdmissionSnapshotCacheOnly, InferenceAdmissionSnapshotCacheWarmingError, inferenceRateLimitConfig",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/ws-lifecycle.test.ts mock \"@elizaos/core\" is missing bound export(s): DEFAULT_MAX_BODY_BYTES, ElizaError, expandConnectorSourceFilter, formatError, getConnectorIdentityMetadataMapping, getConnectorSourceAliases, getConnectorSourceMetadata, getConnectorWorldIdMetadataKeys, getElizaNamespace, getRecentMessagesData, isConnectorConfigured, isPassiveConnectorSource, isWechatConfigured, logger, ModelType, normalizeConnectorSource, parseJsonModelRecord, readJsonBody, readRequestBody, readRequestBodyBuffer, registerConnectorSourceAliases, registerConnectorSourceDefinitions, registerConnectorSourceMetadata, replaceIndexedNameTokens, replaceNameTokens, resolveStateDir, resolveUserPath, runWithTrajectoryPurpose, sendJson, sendJsonError, stringToUuid, unregisterConnectorSourceMetadataOwner",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/ws-route-upgrade.test.ts mock \"@/lib/cache/redis-factory\" is missing bound export(s): hasRedisConfig, isCloudflareWorkerRuntime",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): ApiError, ValidationError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts mock \"@/lib/cache/redis-factory\" is missing bound export(s): isCloudflareWorkerRuntime",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts mock \"@elizaos/core\" is missing bound export(s): canRequesterMutateDocument, ChannelType, DatabaseAdapter, decryptedCharacter, DEFAULT_MAX_BODY_BYTES, DOCUMENT_LIST_QUERY_CAPABILITY_VERSION, documentMutationSnapshotMatches, documentRoleHasGlobalVisibility, ElizaError, encryptedCharacter, expandConnectorSourceFilter, formatError, getConnectorIdentityMetadataMapping, getConnectorSourceAliases, getConnectorSourceMetadata, getConnectorWorldIdMetadataKeys, getElizaNamespace, getRecentMessagesData, isConnectorConfigured, isPassiveConnectorSource, isWechatConfigured, logger, ModelType, normalizeConnectorSource, normalizePairingPageOptions, parseJsonModelRecord, readJsonBody, readRequestBody, readRequestBodyBuffer, registerConnectorSourceAliases, registerConnectorSourceDefinitions, registerConnectorSourceMetadata, replaceIndexedNameTokens, replaceNameTokens, resolveStateDir, resolveUserPath, runWithTrajectoryPurpose, sendJson, sendJsonError, Service, stringToUuid, unregisterConnectorSourceMetadataOwner, validateDocumentFragmentQueryParams, validateDocumentListQueryParams, validateDocumentRequesterContext, validateQueryEntitiesPagination, validateUuid",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/stt/route.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): AuthenticationError, ForbiddenError, ValidationError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/stt/route.test.ts mock \"@/lib/pricing-constants\" is missing bound export(s): API_KEY_PREFIX_LENGTH, IMAGE_GENERATION_COST, MONTHLY_CREDIT_CAP, STT_COST_PER_MINUTE, STT_MINIMUM_COST, TTS_COST_PER_1K_CHARS, TTS_MINIMUM_COST, VIDEO_GENERATION_COST, VIDEO_GENERATION_FALLBACK_COST",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/stt/route.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): billUsage, estimateInputTokens, getAffiliatePayoutSourceId, InsufficientCreditsError, recordUsageAnalytics, reserveCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/stt/route.test.ts mock \"@/lib/services/ai-pricing\" is missing bound export(s): calculateImageGenerationCostFromCatalog, calculateTextCostFromCatalog, calculateVideoGenerationCostFromCatalog, calculateVoiceCloneCostFromCatalog",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/stt/route.test.ts mock \"@/lib/services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, creditsService, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): AuthenticationError, ForbiddenError, ValidationError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@/lib/pricing-constants\" is missing bound export(s): API_KEY_PREFIX_LENGTH, IMAGE_GENERATION_COST, MONTHLY_CREDIT_CAP, PLATFORM_MARKUP_MULTIPLIER, STT_COST_PER_MINUTE, STT_MINIMUM_COST, TTS_COST_PER_1K_CHARS, TTS_MINIMUM_COST, VIDEO_GENERATION_COST, VIDEO_GENERATION_FALLBACK_COST",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): billUsage, estimateInputTokens, getAffiliatePayoutSourceId, InsufficientCreditsError, recordUsageAnalytics, reserveCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@/lib/services/ai-pricing\" is missing bound export(s): calculateImageGenerationCostFromCatalog, calculateSTTCostFromCatalog, calculateTextCostFromCatalog, calculateVideoGenerationCostFromCatalog, calculateVoiceCloneCostFromCatalog",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@/lib/services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, creditsService, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@elizaos/core\" is missing bound export(s): canRequesterMutateDocument, ChannelType, DatabaseAdapter, decryptedCharacter, DEFAULT_MAX_BODY_BYTES, DOCUMENT_LIST_QUERY_CAPABILITY_VERSION, documentMutationSnapshotMatches, documentRoleHasGlobalVisibility, encryptedCharacter, expandConnectorSourceFilter, formatError, getConnectorIdentityMetadataMapping, getConnectorSourceAliases, getConnectorSourceMetadata, getConnectorWorldIdMetadataKeys, getElizaNamespace, getRecentMessagesData, isConnectorConfigured, isElizaError, isPassiveConnectorSource, isWechatConfigured, logger, ModelType, normalizeConnectorSource, normalizePairingPageOptions, parseJsonModelRecord, readJsonBody, readRequestBody, readRequestBodyBuffer, redactSensitiveText, registerConnectorSourceAliases, registerConnectorSourceDefinitions, registerConnectorSourceMetadata, replaceIndexedNameTokens, replaceNameTokens, resolveStateDir, resolveUserPath, runWithTrajectoryPurpose, sendJson, sendJsonError, Service, stringToUuid, unregisterConnectorSourceMetadataOwner, validateDocumentFragmentQueryParams, validateDocumentListQueryParams, validateDocumentRequesterContext, validateQueryEntitiesPagination, validateUuid",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/api/a2a/skills.money-guard.test.ts mock \"../../runtime/cloud-bindings\" is missing bound export(s): getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/auth-default-character-selfheal.test.ts mock \"./services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/middleware/rate-limit-fail-closed.test.ts mock \"@elizaos/cloud-routing\" is missing bound export(s): cloudServiceApisBaseUrl, isCloudConnected, resolveCloudRoute, toRuntimeSettings",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/__tests__/docker-sandbox-stop-no-capacity-mutation.test.ts mock \"../docker-ssh\" is missing bound export(s): classifyDockerSshProbeError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/__tests__/docker-sandbox-unreachable-terminal.test.ts mock \"../docker-ssh\" is missing bound export(s): classifyDockerSshProbeError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/__tests__/payout-status-resilience.test.ts mock \"../../runtime/cloud-bindings\" is missing bound export(s): getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-env-crypto.test.ts mock \"../../db/helpers\" is missing bound export(s): writeTransaction",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-gateway-router.test.ts mock \"./eliza-agent-config\" is missing bound export(s): AGENT_MANAGED_DISCORD_KEY, AGENT_PERSONAL_CUTOVER_KEY, AGENT_UPGRADED_FROM_KEY, readPersonalElizaCutover, readUpgradedFromAgentId, reusesExistingElizaCharacter, stripReservedElizaConfigKeys, withReusedElizaCharacterOwnership",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-tier-upgrade-target-lock.test.ts mock \"../../db/helpers\" is missing bound export(s): dbRead",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-tier-upgrade-target-lock.test.ts mock \"./managed-eliza-config\" is missing bound export(s): applyManagedAgentInferenceEnvDefaults",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-tier-upgrade-target.test.ts mock \"../../db/helpers\" is missing bound export(s): dbRead, writeTransaction",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-tier-upgrade-target.test.ts mock \"./agent-env-crypto\" is missing bound export(s): decryptAgentEnvVars",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-tier-upgrade-target.test.ts mock \"./managed-eliza-config\" is missing bound export(s): applyManagedAgentInferenceEnvDefaults",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/docker-node-manager-embedding-sidecar.test.ts mock \"./node-disk-manager\" is missing bound export(s): diskHealthVerdict",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/docker-node-manager-health-disable.test.ts mock \"./node-disk-manager\" is missing bound export(s): diskHealthVerdict",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/docker-node-manager-tofu-persist.test.ts mock \"./node-disk-manager\" is missing bound export(s): diskHealthVerdict",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.test.ts mock \"../../runtime/cloud-bindings\" is missing bound export(s): getCloudBinding, hasCloudBindingsContext",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-sandbox-dedicated-bootstrap.test.ts mock \"./ai-billing\" is missing bound export(s): billFlatUsage, getAffiliatePayoutSourceId, reserveFlatUsageCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-sandbox-dedicated-bootstrap.test.ts mock \"./shared-runtime/run-shared-agent-turn\" is missing bound export(s): runSharedAgentTurnStream",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-sandbox-shared-billing.test.ts mock \"./ai-billing\" is missing bound export(s): billFlatUsage, getAffiliatePayoutSourceId, reserveFlatUsageCredits",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-sandbox-warm-claim-key-push.test.ts mock \"../../db/helpers\" is missing bound export(s): writeTransaction",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/eliza-sandbox.test.ts mock \"../../db/helpers\" is missing bound export(s): dbRead, writeTransaction",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/inference-auth-context.test.ts mock \"./inference-admission-snapshot\" is missing bound export(s): getInferenceAdmissionSnapshotCacheOnly, InferenceAdmissionSnapshotCacheWarmingError, inferenceRateLimitConfig",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts mock \"./inference-admission-snapshot\" is missing bound export(s): getInferenceAdmissionSnapshotCacheOnly, InferenceAdmissionSnapshotCacheWarmingError, inferenceRateLimitConfig",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/message-router/index.test.ts mock \"../../utils/blooio-api\" is missing bound export(s): validateBlooioChatId",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/provisioning-jobs-delete-enqueue.test.ts mock \"../../db/repositories/jobs\" is missing bound export(s): cutoverResumeWindowAllows, msWindowTimestampMatch, StaleJobExecutionError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/provisioning-jobs-delete-lifecycle.test.ts mock \"../../db/helpers\" is missing bound export(s): dbRead, writeTransaction",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/proxy/engine.error-policy.test.ts mock \"../../auth\" is missing bound export(s): requireAuthOrApiKey, requireAuthOrApiKeyWithOrg, requireAuthWithOrg",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/proxy/engine.error-policy.test.ts mock \"../credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, InsufficientCreditsError, MIN_RESERVATION",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.test.ts mock \"../../pricing\" is missing bound export(s): calculateCost",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/user-metrics.error-policy.test.ts mock \"../../db/client\" is missing bound export(s): db, getDbConnectionInfo",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-default-character-selfheal.test.ts mock \"./services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-default-provisioning.test.ts mock \"./services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-eager-tenant.test.ts mock \"./services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-grant.test.ts mock \"./services/credits\" is missing bound export(s): APP_CHAT_RESERVATION_SETTLEMENT_MARKER, COST_BUFFER, InsufficientCreditsError, MIN_RESERVATION, ReservationNotFoundError",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-phone-convergence.test.ts mock \"./services/steward-tenant-config\" is missing bound export(s): resolveStewardTenantCredentials",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/steward-sync-verified-phone-link.test.ts mock \"./services/steward-tenant-config\" is missing bound export(s): resolveStewardTenantCredentials",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/voice-session/config-consent-opus.test.ts mock \"../cache/redis-factory\" is missing bound export(s): supportsRedisEval",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] plugins/plugin-personal-assistant/src/routes/relationships.encoding.test.ts mock \"@elizaos/agent\" is missing bound export(s): APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, checkRateLimit, computeNextCronRunAtMs, createApprovalQueue, createIntegrationTelemetrySpan, createPendingPromptsStore, getAgentEventService, hasOwnerAccess, loadElizaConfig, loadOwnerContactRoutingHints, loadOwnerContactsConfig, parseCronExpression, PgApprovalQueue, registerEscalationChannel, resolveApprovalService, resolveOwnerContactWithFallback, resolveOwnerEntityId, resolvePendingPromptsService, saveElizaConfig",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/api/__tests__/eliza-app-onboarding-chat-platform-caller.test.ts cannot resolve internal mock \"@/lib/services/eliza-app/eliza-managed-launch\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts cannot resolve internal mock \"../lib/session\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts cannot resolve internal mock \"../services/audit-dispatcher-singleton\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/shared/src/lib/services/__tests__/agent-monetization-numeric-fail-closed.test.ts cannot resolve internal mock \"../pricing\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/shared/src/lib/services/gateway-discord/__tests__/dm-policy-routing.test.ts cannot resolve internal mock \"../../eliza/runtime-factory\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/shared/src/lib/services/gateway-discord/__tests__/dm-policy-routing.test.ts cannot resolve internal mock \"../../eliza/user-context\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/shared/src/lib/steward-sync-eager-tenant.test.ts cannot resolve internal mock \"./db/repositories/organization-invites\"",
+    "count": 1
+  },
+  {
+    "finding": "[unresolved-module] packages/cloud/shared/src/lib/steward-sync-grant.test.ts cannot resolve internal mock \"./db/repositories/organization-invites\"",
+    "count": 1
+  },
+  {
+    "finding": "[unsupported-factory] packages/homepage/tests/provisioning-poll-hook.test.ts mock \"@/lib/provisioning-poll-body\" must return an object literal, spread the real module, or explicitly ignore: buildProvisioningPollBody",
+    "count": 1
+  }
+]
