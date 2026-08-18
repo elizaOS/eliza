@@ -340,6 +340,43 @@ describe("GET /api/memory/search corpus cache", () => {
     expect(getMemories).toHaveBeenCalledTimes(2);
   });
 
+  test("retries a cold build invalidated by a completed mutation", async () => {
+    const target = "aaaaaaaa-0000-4000-8000-000000000005";
+    const store: Store = { rows: [note(target, "original wording", 1)] };
+    const { runtime, getMemories } = makeRuntime(store);
+    let releaseScan = () => {};
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    getMemories.mockImplementationOnce(async () => {
+      const staleSnapshot = [...store.rows];
+      await scanGate;
+      return staleSnapshot;
+    });
+
+    const pendingSearch = search(runtime, "gyroscope");
+    await vi.waitFor(() => expect(getMemories).toHaveBeenCalledOnce());
+
+    const response: { value?: unknown } = {};
+    await handleMemoryRoutes(
+      contextFor({
+        runtime,
+        method: "PATCH",
+        path: `/api/memories/${target}`,
+        body: { text: "corrected wording about the gyroscope" },
+        response,
+      }),
+    );
+    releaseScan();
+
+    await expect(pendingSearch).resolves.toEqual([
+      expect.objectContaining({
+        text: "corrected wording about the gyroscope",
+      }),
+    ]);
+    expect(getMemories).toHaveBeenCalledTimes(2);
+  });
+
   test("out-of-band create (row count change) is picked up on the next search", async () => {
     const store: Store = {
       rows: [note("aaaaaaaa-0000-4000-8000-000000000001", "baseline note", 1)],

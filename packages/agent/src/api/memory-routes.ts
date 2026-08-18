@@ -406,6 +406,27 @@ function startMemorySearchCorpusBuild(
   return build;
 }
 
+async function awaitCurrentMemorySearchCorpusBuild(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  cache: Map<string, MemorySearchCacheSlot>,
+  slot: MemorySearchCacheSlot,
+): Promise<MemorySearchCorpus> {
+  while (true) {
+    const generation = slot.generation;
+    const corpus = await startMemorySearchCorpusBuild(
+      runtime,
+      roomId,
+      cache,
+      slot,
+    );
+    // Invalidation already prevents this build from publishing. It must also
+    // prevent a request awaiting the old generation from returning that stale
+    // snapshot after the mutation has completed.
+    if (slot.generation === generation) return corpus;
+  }
+}
+
 async function getMemorySearchCorpus(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -423,7 +444,12 @@ async function getMemorySearchCorpus(
     // A module-local mutation may have invalidated this slot while COUNT was
     // pending. Never return the snapshot captured before that mutation.
     if (slot.corpus !== cached) {
-      return await startMemorySearchCorpusBuild(runtime, roomId, cache, slot);
+      return await awaitCurrentMemorySearchCorpusBuild(
+        runtime,
+        roomId,
+        cache,
+        slot,
+      );
     }
 
     if (rowCount !== null && rowCount === cached.rowCount) {
@@ -444,7 +470,12 @@ async function getMemorySearchCorpus(
       invalidateMemorySearchCacheSlot(slot);
     }
   }
-  return await startMemorySearchCorpusBuild(runtime, roomId, cache, slot);
+  return await awaitCurrentMemorySearchCorpusBuild(
+    runtime,
+    roomId,
+    cache,
+    slot,
+  );
 }
 
 async function searchMemoryNotes(
