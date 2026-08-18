@@ -58,5 +58,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "elizaos": {
+    "managedIntegration": {
+      "promoted": true,
+      "contractId": "github-connector-oauth"
+    }
   }
 }

@@ -58,6 +58,10 @@
     "./package.json": "./package.json"
   },
   "elizaos": {
+    "managedIntegration": {
+      "promoted": true,
+      "contractId": "eliza-cloud-api"
+    },
     "scripts": {
       "coreBuild": true,
       "testLanes": [

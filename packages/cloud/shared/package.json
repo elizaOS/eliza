@@ -115,6 +115,10 @@
     "vitest": "^4.1.4"
   },
   "elizaos": {
+    "managedIntegration": {
+      "promoted": true,
+      "contractId": "hetzner-cloud"
+    },
     "scripts": {
       "coreBuild": true
     }

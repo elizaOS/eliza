@@ -47,6 +47,9 @@ To enable OAuth-app flows through the connector account manager, also set:
 - `GITHUB_OAUTH_CLIENT_SECRET`
 - `GITHUB_OAUTH_REDIRECT_URI`
 
+The connector binds callbacks to one-time state and S256 PKCE material. Its
+token and user requests remain pinned to GitHub-owned endpoints.
+
 ## Actions
 
 The plugin exposes one umbrella action `GITHUB` that dispatches to sub-operations via an `action` parameter:

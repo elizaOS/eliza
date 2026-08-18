@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "integrations": [
+    {
+      "id": "eliza-cloud-api",
+      "adapterName": "CloudApiClient",
+      "profile": "outbound-http",
+      "package": "packages/cloud/sdk",
+      "suite": "packages/cloud/test-mocks/test/provider-contract/cloud-api-client.contract.test.ts",
+      "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
+      "capabilities": ["http-read", "http-write"],
+      "liveLaneRequiredInForks": false
+    },
+    {
+      "id": "hetzner-cloud",
+      "adapterName": "HetznerCloudClient",
+      "profile": "outbound-http",
+      "package": "packages/cloud/shared",
+      "suite": "packages/cloud/test-mocks/test/provider-contract/hetzner-cloud-client.contract.test.ts",
+      "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
+      "capabilities": ["http-read", "http-write", "irreversible-write"],
+      "liveLaneRequiredInForks": false
+    },
+    {
+      "id": "github-connector-oauth",
+      "adapterName": "GitHubConnectorAccountProvider",
+      "profile": "outbound-http",
+      "package": "plugins/plugin-github",
+      "suite": "packages/cloud/test-mocks/test/provider-contract/github-connector-oauth.contract.test.ts",
+      "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
+      "capabilities": ["oauth"],
+      "liveLaneRequiredInForks": false
+    },
+    {
+      "id": "whatsapp-cloud-webhook",
+      "adapterName": "WhatsAppWebhookRoute",
+      "profile": "inbound-webhook",
+      "package": "plugins/plugin-whatsapp",
+      "suite": "packages/cloud/test-mocks/test/provider-contract/whatsapp-cloud-webhook.contract.test.ts",
+      "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
+      "capabilities": ["tenant-isolation", "webhooks"],
+      "liveLaneRequiredInForks": false
+    }
+  ]
+}
