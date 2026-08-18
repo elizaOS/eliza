@@ -577,4 +577,48 @@ describe("during_window midnight-wrapping owner windows (#22053)", () => {
       }),
     ).resolves.toMatchObject({ due: false, reason: "window_inactive" });
   });
+
+  it("does not turn an overlapping derived afternoon gap into an almost-all-day window", async () => {
+    const overlappingFacts = {
+      timezone: "UTC",
+      morningWindow: { start: "16:00", end: "19:00" },
+      eveningWindow: { start: "18:00", end: "22:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("afternoon"), {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: overlappingFacts,
+      }),
+    ).resolves.toMatchObject({ due: false, reason: "window_inactive" });
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T17:00:00.000Z"),
+        "UTC",
+        "morning",
+        overlappingFacts,
+      ),
+    ).toBe("2026-08-18:morning:morning");
+  });
+
+  it("keeps a legitimate wrapping afternoon gap for a coherent night-shift partition", async () => {
+    const nightShiftFacts = {
+      timezone: "UTC",
+      morningWindow: { start: "16:00", end: "19:00" },
+      eveningWindow: { start: "06:00", end: "08:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("afternoon"), {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: nightShiftFacts,
+      }),
+    ).resolves.toMatchObject({ due: true, reason: "window_due" });
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T03:00:00.000Z"),
+        "UTC",
+        "afternoon",
+        nightShiftFacts,
+      ),
+    ).toBe("2026-08-17:afternoon:afternoon");
+  });
 });

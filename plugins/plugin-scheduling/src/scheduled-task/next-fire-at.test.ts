@@ -423,4 +423,42 @@ describe("computeNextFireAt with a midnight-wrapping evening window (#22053)", (
     );
     expect(next).toBe("2026-08-19T18:00:00.000Z");
   });
+
+  it("does not index a derived afternoon gap that overlaps explicit owner windows", async () => {
+    const next = await computeNextFireAt(
+      {
+        ...evening,
+        trigger: { kind: "during_window", windowKey: "afternoon" },
+      },
+      {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: {
+          timezone: "UTC",
+          morningWindow: { start: "16:00", end: "19:00" },
+          eveningWindow: { start: "18:00", end: "22:00" },
+        },
+        anchors: null,
+      },
+    );
+    expect(next).toBeNull();
+  });
+
+  it("indexes the canonical start of a legitimate wrapping night-shift afternoon", async () => {
+    const next = await computeNextFireAt(
+      {
+        ...evening,
+        trigger: { kind: "during_window", windowKey: "afternoon" },
+      },
+      {
+        now: new Date("2026-08-18T18:00:00.000Z"),
+        ownerFacts: {
+          timezone: "UTC",
+          morningWindow: { start: "16:00", end: "19:00" },
+          eveningWindow: { start: "06:00", end: "08:00" },
+        },
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-08-18T19:00:00.000Z");
+  });
 });

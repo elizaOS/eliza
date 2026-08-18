@@ -20,7 +20,7 @@ import type {
   ScheduledTaskStatus,
   ScheduledTaskTrigger,
 } from "./types.js";
-import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
+import { resolveOwnerWindowSegments } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -321,59 +321,6 @@ async function relativeAnchorDue(
 }
 
 /**
- * Expands a named window into its active `[start, end)` minute segments.
- * `end > start` is a same-day window (one segment). `end < start` wraps past
- * midnight and splits into `[start, 24:00)` ∪ `[0, end)` — the pattern `night`
- * has always used — so an 18:00→00:30 evening is active for its real 6.5h
- * instead of zero minutes (#22053). `end === start` only reaches here for the
- * DERIVED windows (afternoon = morningEnd→eveningStart, night =
- * eveningEnd→morningStart), where equal bounds mean the adjacent owner windows
- * genuinely leave no gap: the derived window is empty, so emit no segments.
- * Owner-stated equal bounds are rejected upstream by
- * `resolveOwnerWindowBoundsMinutes`, which substitutes that window's defaults.
- */
-function windowSegments(
-  name: string,
-  start: number,
-  end: number,
-): Array<{ name: string; start: number; end: number }> {
-  if (end === start) return [];
-  if (end > start) return [{ name, start, end }];
-  return [
-    { name, start, end: 24 * 60 },
-    { name, start: 0, end },
-  ];
-}
-
-function windowBoundsMinutes(
-  windowKey: string,
-  ownerFacts: OwnerFactsView,
-): Array<{ name: string; start: number; end: number }> {
-  const { morningStart, morningEnd, eveningStart, eveningEnd } =
-    resolveOwnerWindowBoundsMinutes(ownerFacts);
-  const morning = windowSegments("morning", morningStart, morningEnd);
-  const afternoon = windowSegments("afternoon", morningEnd, eveningStart);
-  const evening = windowSegments("evening", eveningStart, eveningEnd);
-  // Night is the wrap from evening's end to morning's start. When the evening
-  // itself wraps past midnight (eveningEnd < morningStart, both pre-dawn),
-  // this collapses to a single post-midnight segment [eveningEnd, morningStart)
-  // instead of the near-all-day leak the unconditional split produced.
-  const night = windowSegments("night", eveningEnd, morningStart);
-  const windows: Record<
-    string,
-    Array<{ name: string; start: number; end: number }>
-  > = {
-    morning,
-    afternoon,
-    evening,
-    night,
-    morning_or_night: [...morning, ...night],
-    morning_or_evening: [...morning, ...evening],
-  };
-  return windows[windowKey] ?? [];
-}
-
-/**
  * Stable per-occurrence key for a `during_window` fire. A window that wraps past
  * midnight — `night` is `[eveningEnd, 24:00)` ∪ `[0, morningStart)` — is ONE
  * occurrence per night, but its two segments share the name `"night"` and land
@@ -391,7 +338,7 @@ export function windowOccurrenceKey(
 ): string | null {
   const parts = localParts(at, timeZone);
   const atMinutes = parts.hour * 60 + parts.minute;
-  const windows = windowBoundsMinutes(windowKey, ownerFacts);
+  const windows = resolveOwnerWindowSegments(windowKey, ownerFacts);
   const active = windows.find(
     (window) => atMinutes >= window.start && atMinutes < window.end,
   );
