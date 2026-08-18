@@ -158,10 +158,27 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(setup.with?.["bun-version"]).toBe("1.3.14");
 
+    const install = namedStep("Install contract dependencies");
+    expect(install.run).toBe("bun install --frozen-lockfile --ignore-scripts");
+    expect(install.uses).toBeUndefined();
+
     const validation = namedStep("Validate canary and workflow contracts").run;
     expect(validation).toContain("bridge-reply-verdict.test.ts");
     expect(validation).toContain("managed-dedicated-canary.test.ts");
     expect(validation).toContain("managed-dedicated-canary-workflow.test.ts");
+
+    const setupIndex = dedicated.steps.indexOf(setup);
+    const installIndex = dedicated.steps.indexOf(install);
+    const validationIndex = dedicated.steps.findIndex(
+      (step) => step.name === "Validate canary and workflow contracts",
+    );
+    expect(installIndex).toBe(setupIndex + 1);
+    expect(validationIndex).toBe(installIndex + 1);
+    expect(
+      dedicated.steps.some(
+        (step) => step.uses === "./.github/actions/setup-bun-workspace",
+      ),
+    ).toBe(false);
   });
 
   test("uploads only canonical privacy-validated evidence", () => {

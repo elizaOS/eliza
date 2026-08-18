@@ -173,6 +173,9 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Install contract dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Validate canary and workflow contracts
         run: |
           bun test \
