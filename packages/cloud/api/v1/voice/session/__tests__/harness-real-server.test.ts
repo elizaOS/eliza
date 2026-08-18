@@ -1,14 +1,21 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const calls: string[] = [];
 
-class FakeSocket {
+class FakeSocket extends EventEmitter {
+  static instances: FakeSocket[] = [];
+
+  constructor() {
+    super();
+    FakeSocket.instances.push(this);
+  }
+
   addEventListener() {}
   close() {}
-  on() {}
   send() {}
 }
 
@@ -112,7 +119,10 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         cartesiaInkWebSocketFactory(request: {
           url: string;
           headers: Record<string, string>;
-        }): { addEventListener(type: string, listener: () => void): void };
+        }): {
+          addEventListener(type: string, listener: () => void): void;
+          removeEventListener(type: string, listener: () => void): void;
+        };
         cartesiaWebSocketFactory(
           url: string,
           options: { headers: Record<string, string> },
@@ -123,7 +133,16 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           url: "ws://127.0.0.1:1/provider",
           headers: { "X-API-Key": "test" },
         });
-        ink.addEventListener("error", () => undefined);
+        const inkErrorListener = () => undefined;
+        ink.addEventListener("error", inkErrorListener);
+        ink.removeEventListener("error", inkErrorListener);
+        // The DOM adapter removes its own listener before closing. A late
+        // transport error from an outbound socket that is still connecting
+        // must remain process-safe (the exact local-gateway `bye` race).
+        FakeSocket.instances
+          .at(-1)
+          ?.emit("error", new Error("late connect error after cleanup"));
+        calls.push("late-error-absorbed");
         const cartesia = options.cartesiaWebSocketFactory(
           "ws://127.0.0.1:1/provider",
           {
@@ -247,6 +266,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       expect(minted.sessionId).toBeTruthy();
       expect(calls).toContain("signing");
       expect(calls).toContain("recorded");
+      expect(calls).toContain("late-error-absorbed");
       expect(logs).toContain("real voice server listening");
       expect(logs).toContain("minted real voice-session token");
 

@@ -127,6 +127,14 @@ const MAX_LOCAL_TTS_TEXT_LENGTH = 4_000;
 type WsLike = CartesiaInkWebSocket & CartesiaWebSocketLike;
 
 function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
+  // `ws` uses EventEmitter semantics: an `error` emitted after the last
+  // listener is removed terminates the whole Bun/Node process. The DOM-style
+  // provider adapters intentionally detach their listeners before closing a
+  // socket, so an error from an outbound connection that is still opening can
+  // otherwise escape during a perfectly normal client `bye`. Keep one inert
+  // transport listener for the lifetime of this harness socket; the adapter's
+  // own listener still receives and reports errors while it is attached.
+  socket.on("error", () => undefined);
   const listenerMap = new WeakMap<
     (e: unknown) => void,
     (...a: unknown[]) => void
