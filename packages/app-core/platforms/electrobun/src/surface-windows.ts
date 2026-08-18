@@ -195,6 +195,10 @@ export class SurfaceWindowManager {
     string,
     Promise<ManagedWindowSnapshot>
   >();
+  private readonly pendingAppWindows = new Map<
+    string,
+    Promise<ManagedWindowSnapshot>
+  >();
   private counter = 0;
 
   constructor(options: SurfaceWindowManagerOptions) {
@@ -305,7 +309,29 @@ export class SurfaceWindowManager {
     path: string;
     alwaysOnTop?: boolean;
   }): Promise<ManagedWindowSnapshot> {
-    return this.createManagedWindow(
+    if (!options.slug) {
+      return this.createManagedWindow(
+        "app",
+        undefined,
+        false,
+        undefined,
+        options.path,
+        options.title,
+        options.alwaysOnTop === true,
+      );
+    }
+
+    const pending = this.pendingAppWindows.get(options.slug);
+    if (pending) {
+      const snapshot = await pending;
+      if (options.alwaysOnTop === true && !snapshot.alwaysOnTop) {
+        this.setWindowAlwaysOnTop(snapshot.id, true);
+        return { ...snapshot, alwaysOnTop: true };
+      }
+      return snapshot;
+    }
+
+    const task = this.createManagedWindow(
       "app",
       undefined,
       false,
@@ -315,6 +341,14 @@ export class SurfaceWindowManager {
       options.alwaysOnTop === true,
       options.slug,
     );
+    this.pendingAppWindows.set(options.slug, task);
+    try {
+      return await task;
+    } finally {
+      if (this.pendingAppWindows.get(options.slug) === task) {
+        this.pendingAppWindows.delete(options.slug);
+      }
+    }
   }
 
   findWindowBySlug(slug: string): ManagedWindowSnapshot | undefined {

@@ -322,6 +322,64 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.created[0]?.focus).toHaveBeenCalledOnce();
   });
 
+  it("serializes concurrent opens for the same app slug", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({
+      resolveRendererUrl: () => rendererUrl,
+    });
+
+    const first = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Duplicate",
+      path: "/settings",
+      alwaysOnTop: true,
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    const [firstWindow, secondWindow] = await Promise.all([first, second]);
+
+    expect(secondWindow).toEqual({ ...firstWindow, alwaysOnTop: true });
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/?boot=1&appWindow=1#/",
+    );
+  });
+
+  it("clears a failed app-slug reservation so a later open can retry", async () => {
+    const resolveRendererUrl = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error("renderer unavailable"))
+      .mockResolvedValueOnce("http://127.0.0.1:5173/?boot=1#old");
+    const fixture = createFixture({ resolveRendererUrl });
+
+    await expect(
+      fixture.manager.openAppWindow({
+        slug: "workspace",
+        title: "Workspace",
+        path: "/",
+      }),
+    ).rejects.toThrow("renderer unavailable");
+
+    await expect(
+      fixture.manager.openAppWindow({
+        slug: "workspace",
+        title: "Workspace",
+        path: "/",
+      }),
+    ).resolves.toMatchObject({ id: "app_workspace" });
+    expect(resolveRendererUrl).toHaveBeenCalledTimes(2);
+    expect(fixture.created).toHaveLength(1);
+  });
+
   it("focuses, mutates always-on-top, lists, traverses, and loads existing app windows", async () => {
     const fixture = createFixture();
 
