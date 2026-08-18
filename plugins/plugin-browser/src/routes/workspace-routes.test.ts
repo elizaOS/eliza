@@ -145,6 +145,205 @@ describe("browser workspace HTTP routes", () => {
     expect(res.body).toEqual({ error: "request body must be a JSON object" });
   });
 
+  it.each([
+    [null, "command.steps[0] must be a JSON object"],
+    ["click", "command.steps[0] must be a JSON object"],
+    [42, "command.steps[0] must be a JSON object"],
+    [true, "command.steps[0] must be a JSON object"],
+    [[], "command.steps[0] must be a JSON object"],
+  ])("rejects a malformed batch step %# as a 400", async (step, error) => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: { subaction: "batch", steps: [step] },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error });
+  });
+
+  it("rejects sparse and deeply nested malformed batch steps as a 400", async () => {
+    const sparseSteps = new Array(1);
+    const malformedBodies = [
+      { subaction: "batch", steps: sparseSteps },
+      {
+        subaction: "batch",
+        steps: [{ subaction: "batch", steps: [null] }],
+      },
+      { subaction: "batch", steps: "not-an-array" },
+    ];
+
+    for (const body of malformedBodies) {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/browser-workspace/command",
+        body,
+      });
+
+      await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: expect.stringMatching(/^command(?:\.steps\[\d+\])?\.steps/),
+      });
+    }
+  });
+
+  it.each([{}, { operation: 42 }, { subaction: "   " }])(
+    "rejects a nested command missing a usable subaction",
+    async (step) => {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/browser-workspace/command",
+        body: { subaction: "batch", steps: [step] },
+      });
+
+      await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: "command.steps[0].subaction is required",
+      });
+    },
+  );
+
+  it("rejects excessive command nesting before recursive normalization", async () => {
+    let nested: Record<string, unknown> = { subaction: "list" };
+    for (let depth = 0; depth < 33; depth += 1) {
+      nested = { subaction: "batch", steps: [nested] };
+    }
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: nested,
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: expect.stringContaining("exceeds the maximum nesting depth of 32"),
+    });
+  });
+
+  it("accepts exactly 256 total commands through the real route", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: {
+        subaction: "batch",
+        steps: Array.from({ length: 255 }, () => ({ operation: "list" })),
+      },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      subaction: "batch",
+    });
+    const steps = (res.body as { steps: Array<{ subaction: string }> }).steps;
+    expect(steps).toHaveLength(255);
+    expect(steps.every((step) => step.subaction === "list")).toBe(true);
+  });
+
+  it("rejects 257 total commands before gating or execution", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: {
+        subaction: "batch",
+        connectorProvider: "would-require-a-runtime-if-gating-ran",
+        connectorAccountId: "untrusted",
+        steps: Array.from({ length: 256 }, () => ({ operation: "list" })),
+      },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: "command tree exceeds the maximum of 256 commands",
+    });
+  });
+
+  it("applies the 256-command cap across nested batches", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: {
+        subaction: "batch",
+        steps: [
+          {
+            subaction: "batch",
+            steps: Array.from({ length: 127 }, () => ({ operation: "list" })),
+          },
+          {
+            subaction: "batch",
+            steps: Array.from({ length: 127 }, () => ({ operation: "list" })),
+          },
+        ],
+      },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: "command tree exceeds the maximum of 256 commands",
+    });
+  });
+
+  it.each([
+    { subaction: "batch" },
+    { subaction: "batch", steps: [] },
+    {
+      subaction: "batch",
+      steps: [{ operation: "batch" }],
+    },
+  ])("rejects missing or empty batch steps as a 400", async (body) => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body,
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: expect.stringMatching(
+        /\.steps must contain at least one command$/,
+      ),
+    });
+  });
+
+  it("preserves operation aliases and valid nested batch execution", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: {
+        operation: "batch",
+        steps: [
+          { operation: "batch", steps: [{ operation: "list" }] },
+          { subaction: " LIST " },
+        ],
+      },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      subaction: "batch",
+      steps: [
+        { subaction: "batch", steps: [{ subaction: "list" }] },
+        { subaction: "list" },
+      ],
+    });
+  });
+
   it("rejects malformed encoded tab ids as a 400", async () => {
     const { ctx, res } = buildCtx({
       method: "DELETE",
