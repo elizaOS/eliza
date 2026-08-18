@@ -112,6 +112,7 @@ export function installParentProcessExitHandler(options: {
     clearInterval(timer);
     void options.lifecycle
       .dispose("desktop parent exited")
+      // error-policy:J6 desktop parent loss is teardown; report disposal failure before exiting.
       .catch((error) => {
         options.onError(error);
       })
