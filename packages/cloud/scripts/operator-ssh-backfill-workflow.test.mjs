@@ -7,19 +7,42 @@
  * tested without any cloud or host mutation.
  */
 
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { describe, expect, test } from "bun:test";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 
 const workflow = readFileSync(
-  new URL("../../../.github/workflows/backfill-operator-ssh-key.yml", import.meta.url),
+  new URL(
+    "../../../.github/workflows/backfill-operator-ssh-key.yml",
+    import.meta.url,
+  ),
   "utf8",
 );
-const installerPath = new URL("./admin/install-operator-public-key.sh", import.meta.url).pathname;
-const resolverPath = new URL("./admin/resolve-operator-ssh-targets.sh", import.meta.url).pathname;
-const validatorPath = new URL("./admin/validate-operator-public-key.sh", import.meta.url).pathname;
+const installerPath = new URL(
+  "./admin/install-operator-public-key.sh",
+  import.meta.url,
+).pathname;
+const resolverPath = new URL(
+  "./admin/resolve-operator-ssh-targets.sh",
+  import.meta.url,
+).pathname;
+const validatorPath = new URL(
+  "./admin/validate-operator-public-key.sh",
+  import.meta.url,
+).pathname;
 const operatorKey = "ssh-ed25519 AAAATESTONLYOPERATORKEY operator@test";
+const githubExpression = (expression) => `$${`{{ ${expression} }}`}`;
+const shellUrlSuffix = `$${"{url##*/}"}`;
 
 function installerEnvironment(home, key = operatorKey) {
   return {
@@ -49,13 +72,22 @@ function withTempHome(run) {
 describe("operator SSH backfill workflow", () => {
   test("is manual, protected, canonical-source-only, and count fenced", () => {
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).toContain("environment: ${{ inputs.environment }}");
+    expect(workflow).toContain(
+      `environment: ${githubExpression("inputs.environment")}`,
+    );
+    expect(workflow).toContain("environment: staging-approval");
+    expect(workflow).toContain("needs: [staging-approval]");
+    expect(workflow).toContain("needs.staging-approval.result == 'success'");
     expect(workflow).toContain('expected_ref="refs/heads/');
     expect(workflow).toContain('actual_count" != "$EXPECTED_HOST_COUNT"');
-    expect(workflow).toContain("Unsupported environment and target-class combination");
+    expect(workflow).toContain(
+      "Unsupported environment and target-class combination",
+    );
     expect(workflow).toContain("ELIZA_OPERATOR_DATA_PLANE_SERVER_IDS");
     expect(workflow).toContain("ELIZA_OPERATOR_APPS_SERVER_IDS");
-    expect(workflow).toContain("packages/cloud/scripts/admin/resolve-operator-ssh-targets.sh");
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/resolve-operator-ssh-targets.sh",
+    );
     expect(workflow).not.toContain("per_page=");
   });
 
@@ -70,26 +102,39 @@ describe("operator SSH backfill workflow", () => {
   });
 
   test("selects exact project credentials with no fallback", () => {
-    expect(workflow).toContain("PROJECT_HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}");
-    expect(workflow).toContain("APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}");
+    expect(workflow).toContain(
+      `PROJECT_HCLOUD_TOKEN: ${githubExpression("secrets.HCLOUD_TOKEN")}`,
+    );
+    expect(workflow).toContain(
+      `APPS_HCLOUD_TOKEN: ${githubExpression("secrets.HCLOUD_APPS_TOKEN")}`,
+    );
     expect(workflow).not.toMatch(/HCLOUD_APPS_TOKEN\s*\|\|/);
     expect(workflow).not.toMatch(/HCLOUD_APPS_TOKEN\s*&&/);
   });
 
   test("validates a single wire-format ED25519 key with ssh-keygen", () => {
-    expect(workflow).toContain("packages/cloud/scripts/admin/validate-operator-public-key.sh");
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/validate-operator-public-key.sh",
+    );
     expect(workflow).not.toContain("[A-Za-z0-9+/]");
   });
 
   test("keeps secret values out of job scope and non-shell actions", () => {
-    const jobEnv = workflow.slice(workflow.indexOf("    env:\n"), workflow.indexOf("    steps:\n"));
+    const jobEnv = workflow.slice(
+      workflow.indexOf("    env:\n"),
+      workflow.indexOf("    steps:\n"),
+    );
     expect(jobEnv).not.toContain("secrets.");
-    expect(workflow).toContain("HAS_APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN != '' }}");
+    expect(workflow).toContain(
+      `HAS_APPS_HCLOUD_TOKEN: ${githubExpression("secrets.HCLOUD_APPS_TOKEN != ''")}`,
+    );
     expect(workflow).not.toContain("ELIZA_OPERATOR_PIN_ARTIFACT_KEY");
   });
 
   test("uses the checked-in atomic installer and keeps targets out of logs", () => {
-    expect(workflow).toContain("packages/cloud/scripts/admin/install-operator-public-key.sh");
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/install-operator-public-key.sh",
+    );
     expect(workflow).toContain("addresses remain undisclosed");
     expect(workflow).toContain("failed for one undisclosed target");
     expect(workflow).toContain('2>"$ssh_error_path"');
@@ -108,7 +153,7 @@ describe("immutable operator target resolver", () => {
       const mockCurl = join(mockBin, "curl");
       writeFileSync(
         mockCurl,
-        '#!/bin/sh\nfor argument do url="$argument"; done\nid="${url##*/}"\ncase "$id" in *[!0-9]*|"") exit 2 ;; esac\ncat "$MOCK_SERVER_DIR/$id.json"\n',
+        `#!/bin/sh\nfor argument do url="$argument"; done\nid="${shellUrlSuffix}"\ncase "$id" in *[!0-9]*|"") exit 2 ;; esac\ncat "$MOCK_SERVER_DIR/$id.json"\n`,
         { mode: 0o700 },
       );
       const fixture = (id, name, role, publicIp, privateIp = null) =>
@@ -140,8 +185,12 @@ describe("immutable operator target resolver", () => {
         PROJECT_HCLOUD_TOKEN: "test-token",
         OUTPUT_PATH: output,
       };
-      expect(Bun.spawnSync(["bash", resolverPath], { env: environment }).exitCode).toBe(0);
-      expect(readFileSync(output, "utf8")).toBe("192.0.2.101\tdirect\n192.0.2.102\tdirect\n");
+      expect(
+        Bun.spawnSync(["bash", resolverPath], { env: environment }).exitCode,
+      ).toBe(0);
+      expect(readFileSync(output, "utf8")).toBe(
+        "192.0.2.101\tdirect\n192.0.2.102\tdirect\n",
+      );
 
       expect(
         Bun.spawnSync(["bash", resolverPath], {
@@ -165,7 +214,7 @@ describe("immutable operator target resolver", () => {
       const mockCurl = join(mockBin, "curl");
       writeFileSync(
         mockCurl,
-        '#!/bin/sh\nfor argument do url="$argument"; done\nid="${url##*/}"\ncat "$MOCK_SERVER_DIR/$id.json"\n',
+        `#!/bin/sh\nfor argument do url="$argument"; done\nid="${shellUrlSuffix}"\ncat "$MOCK_SERVER_DIR/$id.json"\n`,
         { mode: 0o700 },
       );
       writeFileSync(
@@ -208,7 +257,9 @@ describe("immutable operator target resolver", () => {
         },
       });
       expect(result.exitCode).toBe(0);
-      expect(readFileSync(output, "utf8")).toBe("10.0.0.2\tproxy\n192.0.2.201\tdirect\n");
+      expect(readFileSync(output, "utf8")).toBe(
+        "10.0.0.2\tproxy\n192.0.2.201\tdirect\n",
+      );
     });
   });
 });
@@ -217,32 +268,56 @@ describe("operator public-key validator", () => {
   test("accepts one real ED25519 public key and rejects malformed or multiple keys", () => {
     withTempHome((home) => {
       const privatePath = join(home, "test-operator");
-      const generated = Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privatePath]);
+      const generated = Bun.spawnSync([
+        "ssh-keygen",
+        "-q",
+        "-t",
+        "ed25519",
+        "-N",
+        "",
+        "-f",
+        privatePath,
+      ]);
       expect(generated.exitCode).toBe(0);
       const publicPath = `${privatePath}.pub`;
-      expect(Bun.spawnSync(["bash", validatorPath, publicPath]).exitCode).toBe(0);
+      expect(Bun.spawnSync(["bash", validatorPath, publicPath]).exitCode).toBe(
+        0,
+      );
 
       const malformedPath = join(home, "malformed.pub");
       writeFileSync(malformedPath, "ssh-ed25519 AAAATESTONLY malformed@test\n");
-      expect(Bun.spawnSync(["bash", validatorPath, malformedPath]).exitCode).not.toBe(0);
+      expect(
+        Bun.spawnSync(["bash", validatorPath, malformedPath]).exitCode,
+      ).not.toBe(0);
 
       const multiplePath = join(home, "multiple.pub");
       const valid = readFileSync(publicPath, "utf8");
       writeFileSync(multiplePath, `${valid}${valid}`);
-      expect(Bun.spawnSync(["bash", validatorPath, multiplePath]).exitCode).not.toBe(0);
+      expect(
+        Bun.spawnSync(["bash", validatorPath, multiplePath]).exitCode,
+      ).not.toBe(0);
 
       const keyFields = valid.trimEnd().split(/\s+/).slice(0, 2).join(" ");
       const knownHostsPath = join(home, "known-host-shaped.pub");
       writeFileSync(knownHostsPath, `example.invalid ${keyFields}\n`);
-      expect(Bun.spawnSync(["bash", validatorPath, knownHostsPath]).exitCode).not.toBe(0);
+      expect(
+        Bun.spawnSync(["bash", validatorPath, knownHostsPath]).exitCode,
+      ).not.toBe(0);
 
       const optionsPath = join(home, "authorized-key-options.pub");
       writeFileSync(optionsPath, `restrict ${keyFields}\n`);
-      expect(Bun.spawnSync(["bash", validatorPath, optionsPath]).exitCode).not.toBe(0);
+      expect(
+        Bun.spawnSync(["bash", validatorPath, optionsPath]).exitCode,
+      ).not.toBe(0);
 
       const commentedPath = join(home, "commented.pub");
-      writeFileSync(commentedPath, `${keyFields} operator comment is allowed\n`);
-      expect(Bun.spawnSync(["bash", validatorPath, commentedPath]).exitCode).toBe(0);
+      writeFileSync(
+        commentedPath,
+        `${keyFields} operator comment is allowed\n`,
+      );
+      expect(
+        Bun.spawnSync(["bash", validatorPath, commentedPath]).exitCode,
+      ).toBe(0);
     });
   });
 });
@@ -305,7 +380,9 @@ describe("atomic operator public-key installer", () => {
       chmodSync(sshDir, 0o700);
       const result = runInstaller(home);
       expect(result.exitCode).not.toBe(0);
-      expect(lstatSync(join(sshDir, "authorized_keys")).isDirectory()).toBe(true);
+      expect(lstatSync(join(sshDir, "authorized_keys")).isDirectory()).toBe(
+        true,
+      );
     });
   });
 

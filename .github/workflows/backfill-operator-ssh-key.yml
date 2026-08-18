@@ -26,8 +26,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  staging-approval:
+    name: Independent staging approval
+    if: inputs.environment == 'staging'
+    runs-on: ubuntu-24.04
+    environment: staging-approval
+    timeout-minutes: 5
+    steps:
+      - name: Record approval gate completion
+        run: echo "Independent staging approval granted; no target credentials were loaded."
+
   backfill:
     name: Backfill operator key (${{ inputs.environment }} / ${{ inputs.target_class }})
+    needs: [staging-approval]
+    if: ${{ always() && (inputs.environment == 'production' || needs.staging-approval.result == 'success') }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     timeout-minutes: 15
