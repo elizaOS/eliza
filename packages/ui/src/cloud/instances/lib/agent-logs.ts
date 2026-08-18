@@ -219,17 +219,17 @@ export function parseAgentLogsJob(
   if (resultError) {
     return { kind: "failed", message: LOG_COLLECTION_FAILED_MESSAGE };
   }
-  if (result.skipped === true) {
-    throw new AgentLogsUnavailableError(
-      "This agent is no longer available. Refresh the agent list and try again.",
-    );
-  }
   if (
     typeof result.cloudAgentId !== "string" ||
     result.cloudAgentId !== expected.agentId
   ) {
     throw new AgentLogsProtocolError(
       "The completed log job does not match the requested agent.",
+    );
+  }
+  if (result.skipped === true) {
+    throw new AgentLogsUnavailableError(
+      "This agent is no longer available. Refresh the agent list and try again.",
     );
   }
   if (!Number.isSafeInteger(result.tail) || result.tail !== expected.tail) {
