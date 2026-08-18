@@ -44,7 +44,14 @@ app.patch("/", async (c) => {
       );
     }
 
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const parsed = updateEmailSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
