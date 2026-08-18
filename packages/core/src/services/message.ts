@@ -3596,7 +3596,7 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content:
-				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user — phrase it in your voice so it reads as a reminder arriving (lead with something like "reminder:" or equivalent), never a bare echo of the item text alone; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
 		});
 	}
 
@@ -3637,7 +3637,7 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content:
-				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user — phrase it in your voice so it reads as a reminder arriving (lead with something like "reminder:" or equivalent), never a bare echo of the item text alone; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
 		});
 	}
 
@@ -11465,6 +11465,34 @@ export function wrapSingleTurnVisibleCallback(
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
+	// Turn-scoped paraphrase suppression: a relay turn can REPLY, run another
+	// tool, then REPLY again with a light rewording of the same completion
+	// ("added an Install section … (15 lines added)." then "added an
+	// **Install** section … (15 insertions)." — live 2026-08-18, double
+	// message in the channel). Exact-dupe recording already exists downstream;
+	// this catches the paraphrase class at the one funnel every visible
+	// delivery passes through. Guarded tightly — ≥8 shared-vocabulary tokens
+	// and ≥0.85 Jaccard — so progress updates that differ in the numbers or
+	// content keep flowing.
+	const deliveredTokenSetsThisTurn: Array<Set<string>> = [];
+	const nearDuplicateOfDeliveredThisTurn = (text: string): boolean => {
+		const tokens = new Set(
+			text
+				.toLowerCase()
+				.replace(/[*_`~#>]+/g, " ")
+				.split(/[^a-z0-9%.]+/)
+				.filter((token) => token.length > 0),
+		);
+		if (tokens.size < 8) return false;
+		for (const prior of deliveredTokenSetsThisTurn) {
+			if (prior.size < 8) continue;
+			let shared = 0;
+			for (const token of tokens) if (prior.has(token)) shared++;
+			const union = prior.size + tokens.size - shared;
+			if (union > 0 && shared / union >= 0.85) return true;
+		}
+		return false;
+	};
 	const deliver = async (response: Content, actionName?: string) => {
 		const fullMessage = message as Memory;
 		response = await enforceTrustedDeliveryAudienceAtEgress(
@@ -11529,6 +11557,25 @@ export function wrapSingleTurnVisibleCallback(
 			response,
 			actionName,
 		);
+		if (typeof response?.text === "string" && response.text.trim()) {
+			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
+				fullRuntime.logger?.debug?.(
+					{ actionName, text: response.text.slice(0, 120) },
+					"[message] suppressed near-duplicate delivery within the turn",
+				);
+				recordDeliveredVisibleText?.(response.text);
+				return [];
+			}
+			deliveredTokenSetsThisTurn.push(
+				new Set(
+					response.text
+						.toLowerCase()
+						.replace(/[*_`~#>]+/g, " ")
+						.split(/[^a-z0-9%.]+/)
+						.filter((token) => token.length > 0),
+				),
+			);
+		}
 		const delivered = await callback(response, actionName);
 		if (rawUnsanitizedText) {
 			recordDeliveredVisibleText?.(rawUnsanitizedText);
