@@ -230,9 +230,10 @@ export async function processFragmentsSynchronously({
 		fullDocumentText,
 		contentType,
 		agentId,
-		// roomId/entityId must satisfy readDocumentMutationSnapshot's isUuid gate
-		// (database/document-list-query.ts) to stay readable, so "" is coerced
-		// like a missing value; worldId has no such gate and keeps "" verbatim.
+		// service.ts's addDocument (this function's only caller) already
+		// rejects an explicit "" for roomId/entityId via
+		// requireDocumentScopeUuid, so || vs ?? is moot here in practice.
+		// worldId has no such gate and keeps "" verbatim.
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
 		worldId: worldId ?? agentId,

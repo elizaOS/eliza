@@ -1,25 +1,22 @@
 /**
- * Regression coverage for the worldId `|| agentId` → `?? agentId` hardening
- * across docs-loader.ts, document-processor.ts, and service.ts.
+ * Regression coverage for document scope ids (worldId/roomId/entityId).
  *
- * `||` collapses an explicit empty-string worldId (a real sentinel used
- * elsewhere in this codebase, e.g. `clientDocumentId: "" as UUID`) into the
- * agent's own id, silently widening a document's tenant scope. `??` only
- * falls back when the caller omitted the value (`undefined`).
+ * `x || agentId` silently converted an explicitly invalid scope value (most
+ * realistically an empty string) into the agent's own tenant, masking the
+ * caller's mistake. The initial fix here switched some of these to
+ * `x ?? agentId`, intending to preserve an explicit "" as a meaningful scope
+ * value distinct from omission. Independent review (see PR #22100) found
+ * that premise wrong for all three fields: worldId/roomId/entityId are
+ * UUID-typed Postgres columns (`plugins/plugin-sql/src/schema/memory.ts`),
+ * so "" is never a representable value in production — only the in-memory
+ * test adapter tolerated it, proving divergence from production rather than
+ * a safe end-to-end behavior.
  *
- * roomId and entityId deliberately keep `||`: every persisted document must
- * satisfy `readDocumentMutationSnapshot`'s `isUuid(roomId)` / `isUuid(entityId)`
- * gate (`database/document-list-query.ts`) to stay listable/mutable/visible at
- * all, and "" is never a valid UUID. Switching those two to `??` was verified
- * against a real `DocumentService.addDocument` call below: it makes
- * `addDocument` itself throw `DOCUMENT_INGESTION_IN_PROGRESS` (the freshly
- * written document fails its own post-write readability check), which is
- * worse than the tenant-scope concern it would have "fixed". worldId carries
- * no such gate, so preserving "" there is safe.
- *
- * These tests drive real persistence through `DocumentService.addDocument`
- * (both the auto-fragmentation and pre-chunked-fragments paths) and the real
- * `addDocumentFromFilePath` call boundary.
+ * The corrected contract, verified below against a real
+ * `DocumentService.addDocument` call: only a truly omitted (undefined)
+ * value defaults to agentId; an explicitly provided empty or malformed
+ * value is rejected with a typed `DOCUMENT_SCOPE_ID_INVALID` error before
+ * any memory write, for all three fields alike.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../database/inMemoryAdapter";
@@ -32,7 +29,7 @@ import type { AddDocumentOptions } from "../types";
 const AGENT_ID = "00000000-0000-0000-0000-00000000f00d" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
-const EMPTY = "" as UUID;
+const WORLD_ID = "00000000-0000-0000-0000-00000000abcd" as UUID;
 
 async function makeHarness(): Promise<{
 	runtime: AgentRuntime;
@@ -44,13 +41,32 @@ async function makeHarness(): Promise<{
 		agentId: AGENT_ID,
 		character: {
 			name: "DocumentScopeIntegrationAgent",
-			bio: "Exercises document/fragment scope-id fallback semantics.",
+			bio: "Exercises document/fragment scope-id validation semantics.",
 			settings: {},
 		} as Character,
 		adapter,
 		logLevel: "fatal",
 	});
 	return { runtime, service: new DocumentService(runtime) };
+}
+
+function baseOptions(
+	overrides: Partial<AddDocumentOptions>,
+): AddDocumentOptions {
+	return {
+		agentId: AGENT_ID,
+		worldId: WORLD_ID,
+		roomId: ROOM_ID,
+		entityId: ENTITY_ID,
+		clientDocumentId: "" as UUID,
+		contentType: "text/plain",
+		originalFilename: "scope-validation.txt",
+		content: "Document scope id validation coverage.",
+		addedBy: AGENT_ID,
+		addedByRole: "RUNTIME",
+		addedFrom: "runtime-internal",
+		...overrides,
+	};
 }
 
 async function fragmentsFor(
@@ -69,87 +85,57 @@ async function fragmentsFor(
 	);
 }
 
-describe("document worldId preserves an explicit empty-string sentinel", () => {
-	it("auto-fragmentation path: addDocument keeps worldId as '' end to end", async () => {
+describe("DocumentService.addDocument scope id validation", () => {
+	it("valid worldId/roomId/entityId survive persistence unchanged", async () => {
 		const { runtime, service } = await makeHarness();
-
-		const { storedDocumentMemoryId } = await service.addDocument({
-			agentId: AGENT_ID,
-			worldId: EMPTY,
-			roomId: ROOM_ID,
-			entityId: ENTITY_ID,
-			clientDocumentId: EMPTY,
-			contentType: "text/plain",
-			originalFilename: "scope-sentinel.txt",
-			content: "Empty-string worldId sentinel must survive persistence.",
-			addedBy: AGENT_ID,
-			addedByRole: "RUNTIME",
-			addedFrom: "runtime-internal",
-		} satisfies AddDocumentOptions);
+		const { storedDocumentMemoryId } = await service.addDocument(
+			baseOptions({}),
+		);
 
 		const fragments = await fragmentsFor(runtime, storedDocumentMemoryId);
 		expect(fragments.length).toBeGreaterThan(0);
 		for (const fragment of fragments) {
-			expect(fragment.worldId).toBe("");
+			expect(fragment.worldId).toBe(WORLD_ID);
+			expect(fragment.roomId).toBe(ROOM_ID);
 		}
 	});
 
-	it("pre-chunked-fragments path: addDocument keeps worldId as '' end to end", async () => {
-		const { runtime, service } = await makeHarness();
+	it.each(["worldId", "roomId", "entityId"] as const)(
+		"rejects an explicit empty %s with a typed error before any write",
+		async (field) => {
+			const { runtime, service } = await makeHarness();
+			await expect(
+				service.addDocument(baseOptions({ [field]: "" as UUID })),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_SCOPE_ID_INVALID",
+				context: { field },
+			});
 
-		const { storedDocumentMemoryId } = await service.addDocument({
-			agentId: AGENT_ID,
-			worldId: EMPTY,
-			roomId: ROOM_ID,
-			entityId: ENTITY_ID,
-			clientDocumentId: EMPTY,
-			contentType: "text/plain",
-			originalFilename: "scope-sentinel-prechunked.txt",
-			content: "unused when fragments are pre-chunked",
-			addedBy: AGENT_ID,
-			addedByRole: "RUNTIME",
-			addedFrom: "runtime-internal",
-			fragments: [
-				{
-					text: "First pre-chunked fragment body.",
-					metadata: { startMs: 0, endMs: 100, segmentIds: ["seg-1"] },
-				},
-				{
-					text: "Second pre-chunked fragment body.",
-					metadata: { startMs: 100, endMs: 200, segmentIds: ["seg-2"] },
-				},
-			],
-		} satisfies AddDocumentOptions);
+			const fragments = await runtime.getMemories({
+				tableName: "document_fragments",
+				agentId: AGENT_ID,
+				count: 50,
+			});
+			expect(fragments).toHaveLength(0);
+		},
+	);
 
-		const fragments = await fragmentsFor(runtime, storedDocumentMemoryId);
-		expect(fragments).toHaveLength(2);
-		for (const fragment of fragments) {
-			expect(fragment.worldId).toBe("");
-		}
-	});
+	it.each(["worldId", "roomId", "entityId"] as const)(
+		"rejects a malformed %s with a typed error before any write",
+		async (field) => {
+			const { service } = await makeHarness();
+			await expect(
+				service.addDocument(baseOptions({ [field]: "not-a-uuid" as UUID })),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_SCOPE_ID_INVALID",
+				context: { field },
+			});
+		},
+	);
+});
 
-	it("an explicit empty roomId is coerced to agentId, keeping the document readable", async () => {
-		const { runtime, service } = await makeHarness();
-
-		const { storedDocumentMemoryId } = await service.addDocument({
-			agentId: AGENT_ID,
-			worldId: AGENT_ID,
-			roomId: EMPTY,
-			entityId: ENTITY_ID,
-			clientDocumentId: EMPTY,
-			contentType: "text/plain",
-			originalFilename: "empty-room-coerced.txt",
-			content: "roomId '' must still resolve to a valid, readable document",
-			addedBy: AGENT_ID,
-			addedByRole: "RUNTIME",
-			addedFrom: "runtime-internal",
-		} satisfies AddDocumentOptions);
-
-		const persisted = await runtime.getMemoryById(storedDocumentMemoryId);
-		expect(persisted?.roomId).toBe(AGENT_ID);
-	});
-
-	it("addDocumentFromFilePath forwards an explicit worldId '' unchanged, but still normalizes roomId/entityId", async () => {
+describe("addDocumentFromFilePath omission vs. invalid-input handling", () => {
+	function withStubService() {
 		const calls: AddDocumentOptions[] = [];
 		const stubService = {
 			reportError: () => undefined,
@@ -162,7 +148,10 @@ describe("document worldId preserves an explicit empty-string sentinel", () => {
 				};
 			},
 		};
+		return { calls, stubService };
+	}
 
+	async function withFixtureFile<T>(run: (filePath: string) => Promise<T>) {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const path = await import("node:path");
@@ -171,35 +160,45 @@ describe("document worldId preserves an explicit empty-string sentinel", () => {
 			"scope-sentinel.txt",
 		);
 		fs.writeFileSync(filePath, "fixture body");
-
 		try {
-			await addDocumentFromFilePath({
-				service: stubService,
-				agentId: AGENT_ID,
-				worldId: EMPTY,
-				roomId: EMPTY,
-				entityId: EMPTY,
-				filePath,
-			});
-			await addDocumentFromFilePath({
-				service: stubService,
-				agentId: AGENT_ID,
-				filePath,
-			});
+			return await run(filePath);
 		} finally {
 			fs.rmSync(filePath, { force: true });
 		}
+	}
 
-		expect(calls).toHaveLength(2);
+	it("omitted worldId/roomId/entityId default to agentId", async () => {
+		const { calls, stubService } = withStubService();
+		await withFixtureFile((filePath) =>
+			addDocumentFromFilePath({
+				service: stubService,
+				agentId: AGENT_ID,
+				filePath,
+			}),
+		);
+
+		expect(calls).toHaveLength(1);
 		expect(calls[0]).toMatchObject({
-			worldId: "",
-			roomId: AGENT_ID,
-			entityId: AGENT_ID,
-		});
-		expect(calls[1]).toMatchObject({
 			worldId: AGENT_ID,
 			roomId: AGENT_ID,
 			entityId: AGENT_ID,
 		});
+	});
+
+	it("forwards an explicit empty worldId/roomId/entityId unchanged instead of masking it", async () => {
+		const { calls, stubService } = withStubService();
+		await withFixtureFile((filePath) =>
+			addDocumentFromFilePath({
+				service: stubService,
+				agentId: AGENT_ID,
+				worldId: "" as UUID,
+				roomId: "" as UUID,
+				entityId: "" as UUID,
+				filePath,
+			}),
+		);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ worldId: "", roomId: "", entityId: "" });
 	});
 });

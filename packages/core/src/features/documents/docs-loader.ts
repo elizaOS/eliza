@@ -201,17 +201,14 @@ export async function addDocumentFromFilePath({
 		clientDocumentId: "" as UUID,
 		contentType,
 		originalFilename: fileName,
-		// worldId has no downstream UUID-format requirement, so an explicit ""
-		// is a meaningful scope value and only an omitted worldId should default
-		// to agentId. roomId/entityId cannot make the same distinction: every
-		// persisted document must satisfy readDocumentMutationSnapshot's
-		// isUuid(roomId)/isUuid(entityId) gate (database/document-list-query.ts)
-		// or the write is immediately unreadable, so "" is coerced like a
-		// missing value here too.
+		// Only a truly omitted (undefined) value defaults to agentId. An
+		// explicit "" is not omission -- it's forwarded as-is so
+		// DocumentService.addDocument's requireDocumentScopeUuid check rejects
+		// it with a typed error instead of this call silently masking it.
 		worldId: worldId ?? agentId,
 		content,
-		roomId: roomId || agentId,
-		entityId: entityId || agentId,
+		roomId: roomId ?? agentId,
+		entityId: entityId ?? agentId,
 		scope,
 		scopedToEntityId,
 		addedBy,
