@@ -102,19 +102,42 @@ describe("agent log protocol", () => {
 
   it("rejects the producer's completed agent-gone no-op as unavailable", () => {
     expect(() =>
-      parseAgentLogsJob({
-        success: true,
-        data: {
-          type: "agent_logs",
-          status: "completed",
-          result: {
-            cloudAgentId: "agent-gone",
-            skipped: true,
-            reason: "Agent not found",
+      parseAgentLogsJobBoundary(
+        {
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result: {
+              cloudAgentId: "agent-gone",
+              skipped: true,
+              reason: "Agent not found",
+            },
           },
         },
-      }),
+        { agentId: "agent-gone", tail: 200 },
+      ),
     ).toThrow(AgentLogsUnavailableError);
+    expect(() =>
+      parseAgentLogsJobBoundary(
+        {
+          success: true,
+          data: {
+            type: "agent_logs",
+            status: "completed",
+            result: {
+              cloudAgentId: "agent-gone",
+              skipped: true,
+              reason: "Agent not found",
+            },
+          },
+        },
+        { agentId: "agent-gone", tail: 200 },
+      ),
+    ).toThrow("This agent is no longer available");
+  });
+
+  it("rejects a skipped completion for a different requested agent", () => {
     expect(() =>
       parseAgentLogsJob({
         success: true,
@@ -122,13 +145,13 @@ describe("agent log protocol", () => {
           type: "agent_logs",
           status: "completed",
           result: {
-            cloudAgentId: "agent-gone",
+            cloudAgentId: "different-agent",
             skipped: true,
             reason: "Agent not found",
           },
         },
       }),
-    ).toThrow("This agent is no longer available");
+    ).toThrow("does not match the requested agent");
   });
 
   it("rejects completed results without an explicit logs string", () => {
