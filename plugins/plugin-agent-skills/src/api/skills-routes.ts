@@ -185,29 +185,36 @@ const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
 const SCAFFOLD_FALLBACK_DESCRIPTION = "Describe what this skill does.";
 
 /**
- * Collapse a user-supplied skill description into a single-line, YAML-safe
- * scalar for the scaffold's bare `description:` frontmatter field.
+ * Normalize a user-supplied skill description to the exact string that should be
+ * stored in the scaffold's `description:` frontmatter field.
  *
- * The scaffold scalar is unquoted, so quotes and backslashes round-trip through
- * `parseFrontmatter`'s subset parser without escaping — the former
- * `replace(/\\/g,'\\\\').replace(/"/g,'\\"')` step only injected literal
- * backslashes and corrupted the stored description. Newlines and other control
- * characters are collapsed to a single space so a multi-line description cannot
- * smuggle extra frontmatter keys (e.g. `allowed-tools`, `homepage`, or an
- * overriding `name`) past the parser, which reads only up to the first newline.
- * An empty result falls back to the scaffold default so the required
- * `description` field never renders blank.
+ * Trimming yields the stored value; an all-whitespace description falls back to
+ * the scaffold default so the required field never renders blank. This function
+ * deliberately does no lossy rewriting — quote/backslash/newline/coercion safety
+ * is handled at serialization time by {@link serializeScaffoldDescription},
+ * which emits an unambiguously quoted scalar. Kept exported for the round-trip
+ * regression test.
  */
 export function sanitizeScaffoldDescription(description: string): string {
-  // Matching control characters (newlines, NUL, etc.) is the deliberate intent:
-  // they are the injection vector this sanitizer neutralizes.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: control chars are the vector being stripped
-  const controlChars = /[\u0000-\u001f\u007f]+/g;
-  const collapsed = description
-    .replace(controlChars, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return collapsed || SCAFFOLD_FALLBACK_DESCRIPTION;
+  const trimmed = description.trim();
+  return trimmed || SCAFFOLD_FALLBACK_DESCRIPTION;
+}
+
+/**
+ * Serialize a description into an unambiguously double-quoted YAML scalar for
+ * the scaffold's `description:` field.
+ *
+ * `JSON.stringify` emits a JSON string literal — a valid YAML double-quoted flow
+ * scalar — with every quote, backslash, control character, and non-ASCII code
+ * point escaped. Because the value is quoted, `parseFrontmatter` never coerces
+ * it to a boolean/number/null/object/array (which would make `toSkillFrontmatter`
+ * reject the skill for having a non-string description) and cannot be tricked
+ * into parsing embedded newlines as extra frontmatter keys. The parser decodes
+ * the same literal via `decodeFrontmatterScalarString`, so the stored
+ * description round-trips back to `sanitizeScaffoldDescription(input)` exactly.
+ */
+export function serializeScaffoldDescription(description: string): string {
+  return JSON.stringify(sanitizeScaffoldDescription(description));
 }
 
 function validateSkillId(
@@ -950,12 +957,14 @@ export async function handleSkillsRoutes(
 
     const description = body.description ?? SCAFFOLD_FALLBACK_DESCRIPTION;
     const safeDescription = sanitizeScaffoldDescription(description);
+    const descriptionScalar = serializeScaffoldDescription(description);
     const template = skillScaffoldMarkdown
       .replace(/__SLUG__/g, slug)
-      // Use a function replacer so `$`-sequences in the description (e.g. `$&`,
-      // `$1`) are inserted literally rather than treated as replacement
-      // patterns by String.prototype.replace.
-      .replace(/__DESCRIPTION__/g, () => safeDescription);
+      // Use a function replacer so any `$`-sequence produced by JSON string
+      // escaping (or a literal `$&`/`$1` inside the description) is inserted
+      // verbatim rather than treated as a replacement pattern by
+      // String.prototype.replace.
+      .replace(/__DESCRIPTION__/g, () => descriptionScalar);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
