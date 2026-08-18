@@ -37,5 +37,12 @@
     "web-ext": "^10.6.0",
     "vitest": "^4.0.17"
   },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
   "private": true
 }
