@@ -3,10 +3,7 @@
  * POST under abort — not a source-grep of actor.ts.
  */
 import { describe, expect, it } from "vitest";
-import {
-  OSATLAS_PRO_TIMEOUT_MS,
-  groundOsAtlasProWithFetch,
-} from "./actor.js";
+import { groundOsAtlasProWithFetch, OSATLAS_PRO_TIMEOUT_MS } from "./actor.js";
 
 const OPTS = { endpoint: "https://osatlas.example/v1" };
 const ARGS = {
@@ -40,7 +37,10 @@ describe("OsAtlasPro request deadline", () => {
 
   it("surfaces a provider error from a completed grounding POST", async () => {
     const fetchImpl: typeof fetch = async () =>
-      new Response("overloaded", { status: 503, statusText: "Service Unavailable" });
+      new Response("overloaded", {
+        status: 503,
+        statusText: "Service Unavailable",
+      });
 
     await expect(
       groundOsAtlasProWithFetch(OPTS, ARGS, fetchImpl, 1_000),
@@ -54,7 +54,12 @@ describe("OsAtlasPro request deadline", () => {
       return Response.json({ x: 12, y: 34, confidence: 0.9 });
     };
 
-    const result = await groundOsAtlasProWithFetch(OPTS, ARGS, fetchImpl, 1_000);
+    const result = await groundOsAtlasProWithFetch(
+      OPTS,
+      ARGS,
+      fetchImpl,
+      1_000,
+    );
 
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);

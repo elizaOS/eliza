@@ -228,7 +228,8 @@ export class OsAtlasProActor implements Actor {
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
-      if (this.opts.apiKey) headers.authorization = `Bearer ${this.opts.apiKey}`;
+      if (this.opts.apiKey)
+        headers.authorization = `Bearer ${this.opts.apiKey}`;
       const resp = await this.opts.fetcher(this.opts.endpoint, {
         body,
         headers,
