@@ -9,8 +9,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DISTRIBUTION_PROFILE_ENV_KEY,
   DISTRIBUTION_PROFILES,
   isDistributionProfile,
+  isStoreDistributionProfile,
+  isUnrestrictedDistributionProfile,
   resolveDistributionProfile,
 } from "../distribution-profile";
 
@@ -52,7 +55,24 @@ describe("distribution profile", () => {
     expect(isDistributionProfile(undefined)).toBe(false);
   });
 
-  it("exposes the canonical profile list", () => {
+  it("exposes the canonical profile list and env key", () => {
     expect([...DISTRIBUTION_PROFILES]).toEqual(["store", "unrestricted"]);
+    expect(DISTRIBUTION_PROFILE_ENV_KEY).toBe("ELIZA_DISTRIBUTION_PROFILE");
+  });
+
+  it("checks isStoreDistributionProfile and isUnrestrictedDistributionProfile", () => {
+    expect(isStoreDistributionProfile("store")).toBe(true);
+    expect(isStoreDistributionProfile("unrestricted")).toBe(false);
+    expect(isStoreDistributionProfile("other")).toBe(false);
+
+    expect(isUnrestrictedDistributionProfile("unrestricted")).toBe(true);
+    expect(isUnrestrictedDistributionProfile("store")).toBe(false);
+    expect(isUnrestrictedDistributionProfile(null)).toBe(false);
+  });
+
+  it("falls back to process.env when env argument is nullish", () => {
+    expect(
+      resolveDistributionProfile(null as unknown as NodeJS.ProcessEnv),
+    ).toBeDefined();
   });
 });

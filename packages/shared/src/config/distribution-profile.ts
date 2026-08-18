@@ -14,7 +14,7 @@ export const DISTRIBUTION_PROFILES = ["store", "unrestricted"] as const;
 
 export type DistributionProfile = (typeof DISTRIBUTION_PROFILES)[number];
 
-const DISTRIBUTION_PROFILE_ENV_KEY = "ELIZA_DISTRIBUTION_PROFILE";
+export const DISTRIBUTION_PROFILE_ENV_KEY = "ELIZA_DISTRIBUTION_PROFILE";
 
 export function isDistributionProfile(
   value: unknown,
@@ -25,10 +25,19 @@ export function isDistributionProfile(
   );
 }
 
+export function isStoreDistributionProfile(value: unknown): boolean {
+  return isDistributionProfile(value) && value === "store";
+}
+
+export function isUnrestrictedDistributionProfile(value: unknown): boolean {
+  return isDistributionProfile(value) && value === "unrestricted";
+}
+
 export function resolveDistributionProfile(
   env: NodeJS.ProcessEnv = process.env,
 ): DistributionProfile {
-  const raw = env[DISTRIBUTION_PROFILE_ENV_KEY];
+  const safeEnv = env && typeof env === "object" ? env : process.env;
+  const raw = safeEnv[DISTRIBUTION_PROFILE_ENV_KEY];
   if (typeof raw !== "string") return "unrestricted";
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed) return "unrestricted";
