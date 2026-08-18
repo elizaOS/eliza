@@ -23,18 +23,27 @@ export const RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 export type RestartHandler = (reason?: string) => void | Promise<void>;
 
 // Browser-safe default. Server hosts register a real handler.
-let _handler: RestartHandler = () => {};
+const DEFAULT_RESTART_HANDLER: RestartHandler = () => {};
+let _handler: RestartHandler = DEFAULT_RESTART_HANDLER;
 
 /**
  * Replace the active restart handler.
  */
 export function setRestartHandler(handler: RestartHandler): void {
-  _handler = handler;
+  _handler = typeof handler === "function" ? handler : DEFAULT_RESTART_HANDLER;
+}
+
+/**
+ * Reset the active restart handler to the default noop function (for test cleanup).
+ */
+export function resetRestartHandlerForTests(): void {
+  _handler = DEFAULT_RESTART_HANDLER;
 }
 
 /**
  * Trigger a restart. Delegates to whatever handler is currently registered.
  */
 export function requestRestart(reason?: string): void | Promise<void> {
-  return _handler(reason);
+  const cleanReason = typeof reason === "string" ? reason.trim() : undefined;
+  return _handler(cleanReason);
 }
