@@ -1173,6 +1173,9 @@ export class DocumentService extends Service {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
+				// roomId must satisfy readDocumentMutationSnapshot's isUuid gate
+				// (database/document-list-query.ts) to stay readable, so "" is
+				// coerced like a missing value.
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
@@ -1227,9 +1230,12 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
+						// roomId must satisfy readDocumentMutationSnapshot's isUuid gate
+						// (database/document-list-query.ts) to stay readable, so "" is
+						// coerced like a missing value; worldId has no such gate.
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1251,7 +1257,7 @@ export class DocumentService extends Service {
 						contentType,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
