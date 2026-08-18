@@ -23,21 +23,13 @@ import { MockSocketRedis } from "./mock-redis";
 import { SocketRedis } from "./socket-redis";
 
 interface CompatibleRedisPipeline {
-  zremrangebyscore(
-    key: string,
-    min: number | string,
-    max: number | string,
-  ): this;
+  zremrangebyscore(key: string, min: number | string, max: number | string): this;
   zcard(key: string): this;
   zadd(key: string, member: { score: number; member: string }): this;
   zrem(key: string, ...members: string[]): this;
   expire(key: string, seconds: number): this;
   pexpire(key: string, ms: number): this;
-  set(
-    key: string,
-    value: unknown,
-    options?: { nx?: boolean; ex?: number; px?: number },
-  ): this;
+  set(key: string, value: unknown, options?: { nx?: boolean; ex?: number; px?: number }): this;
   setex(key: string, ttlSeconds: number, value: unknown): this;
   get(key: string): this;
   del(...keys: string[]): this;
@@ -51,19 +43,12 @@ interface CompatibleRedisPipeline {
 // without adding a third overloaded class to the Upstash union. Override the
 // pipeline class itself because its private fields are intentionally nominal.
 export interface EvalCapableRedis {
-  eval(
-    script: string,
-    keys: string[],
-    args: Array<string | number>,
-  ): Promise<unknown>;
+  eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown>;
 }
 
 type CompatibleSocketRedis = Pick<
   SocketRedis,
-  Exclude<
-    Extract<keyof SocketRedis, keyof MockSocketRedis>,
-    "pipeline" | "eval"
-  >
+  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline" | "eval">
 > & {
   pipeline(): CompatibleRedisPipeline;
   // The in-memory factory client intentionally has no Lua support. Keeping the
@@ -93,14 +78,11 @@ export type RedisFactoryEnvSource = RedisFactoryEnv | NodeJS.ProcessEnv;
 
 type DirectRedisBackend = "auto" | "redis" | "redis-rest" | "invalid";
 
-function resolveDirectRedisBackend(
-  value: string | undefined,
-): DirectRedisBackend {
+function resolveDirectRedisBackend(value: string | undefined): DirectRedisBackend {
   if (value === undefined || value.trim() === "") {
     return "auto";
   }
-  if (value === "auto" || value === "redis" || value === "redis-rest")
-    return value;
+  if (value === "auto" || value === "redis" || value === "redis-rest") return value;
   return "invalid";
 }
 
@@ -109,21 +91,16 @@ function normalizedConfigValue(value: string | undefined): string | null {
   return normalized ? normalized : null;
 }
 
-function restRedisConfig(
-  env: RedisFactoryEnvSource,
-): { url: string; token: string } | null {
+function restRedisConfig(env: RedisFactoryEnvSource): { url: string; token: string } | null {
   const url =
-    normalizedConfigValue(env.KV_REST_API_URL) ??
-    normalizedConfigValue(env.UPSTASH_REDIS_REST_URL);
+    normalizedConfigValue(env.KV_REST_API_URL) ?? normalizedConfigValue(env.UPSTASH_REDIS_REST_URL);
   const token =
     normalizedConfigValue(env.KV_REST_API_TOKEN) ??
     normalizedConfigValue(env.UPSTASH_REDIS_REST_TOKEN);
   return url && token ? { url, token } : null;
 }
 
-export function buildRedisClient(
-  env?: RedisFactoryEnvSource,
-): CompatibleRedis | null {
+export function buildRedisClient(env?: RedisFactoryEnvSource): CompatibleRedis | null {
   const e = env ?? process.env;
 
   if (e.MOCK_REDIS === "1") {
@@ -166,9 +143,7 @@ export function hasRedisConfig(env?: RedisFactoryEnvSource): boolean {
   if (backend === "redis") return normalizedConfigValue(e.REDIS_URL) !== null;
   if (backend === "redis-rest") return restRedisConfig(e) !== null;
   if (backend === "invalid") return false;
-  return (
-    normalizedConfigValue(e.REDIS_URL) !== null || restRedisConfig(e) !== null
-  );
+  return normalizedConfigValue(e.REDIS_URL) !== null || restRedisConfig(e) !== null;
 }
 
 /**
