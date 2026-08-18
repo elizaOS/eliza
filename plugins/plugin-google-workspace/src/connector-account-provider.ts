@@ -45,7 +45,7 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 
-/** Token exchange and userinfo are short hops; still need a hard cap. */
+/** Maximum time allowed for one Google OAuth or userinfo request. */
 export const GOOGLE_OAUTH_FETCH_TIMEOUT_MS = 15_000;
 
 const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
@@ -367,11 +367,13 @@ function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
 export async function fetchGoogleUserInfoWithFetch(
   accessToken: string,
   fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal
 ): Promise<GoogleIdentity> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   const response = await fetchImpl(GOOGLE_USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
   });
   if (!response.ok) {
     throw new Error(`Google userinfo request failed with ${response.status}`);
@@ -396,7 +398,8 @@ export async function exchangeAuthorizationCodeWithFetch(
     codeVerifier?: string;
   },
   fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal
 ): Promise<GoogleTokenResponse> {
   const params = new URLSearchParams({
     client_id: args.clientId,
@@ -409,11 +412,12 @@ export async function exchangeAuthorizationCodeWithFetch(
     params.set("code_verifier", args.codeVerifier);
   }
 
+  const deadline = AbortSignal.timeout(timeoutMs);
   const response = await fetchImpl(GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
   });
   if (!response.ok) {
     const body = await response.text();

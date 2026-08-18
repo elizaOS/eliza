@@ -1,6 +1,6 @@
 /**
- * Behavioral Google OAuth deadlines. Executes userinfo and token-exchange
- * under abort — not a source-grep of connector-account-provider.ts.
+ * Exercises Google OAuth deadlines and caller cancellation through injectable
+ * token-exchange and userinfo HTTP boundaries.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -38,6 +38,21 @@ describe("Google OAuth request deadlines", () => {
     await expect(exchangeAuthorizationCodeWithFetch(TOKEN_ARGS, fetchImpl, 1_000)).rejects.toThrow(
       "invalid_grant"
     );
+  });
+
+  it("preserves caller cancellation during token exchange", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("oauth flow stopped", "AbortError");
+    const pending = exchangeAuthorizationCodeWithFetch(
+      TOKEN_ARGS,
+      stallUntilAborted(),
+      1_000,
+      controller.signal
+    );
+
+    controller.abort(reason);
+
+    await expect(pending).rejects.toBe(reason);
   });
 
   it("uses the injected fetch for a successful token exchange", async () => {

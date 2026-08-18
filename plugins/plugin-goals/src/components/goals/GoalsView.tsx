@@ -74,15 +74,36 @@ interface GoalsWire {
 // ---------------------------------------------------------------------------
 
 export interface GoalsFetchers {
-  fetchGoals: () => Promise<GoalsWire>;
+  fetchGoals: (signal?: AbortSignal) => Promise<GoalsWire>;
 }
 
-async function getGoals(): Promise<GoalsWire> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/goals`);
+/** Goals JSON GET is a short UI read — same 15s family as InboxView / FocusView. */
+export const GOALS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getGoalsJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = GOALS_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
     throw new Error(`Goals request failed (${response.status})`);
   }
-  return (await response.json()) as GoalsWire;
+  return (await response.json()) as T;
+}
+
+async function getGoals(signal?: AbortSignal): Promise<GoalsWire> {
+  return getGoalsJsonWithFetch<GoalsWire>(
+    `${client.getBaseUrl()}/api/lifeops/goals`,
+    globalThis.fetch,
+    GOALS_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 const defaultFetchers: GoalsFetchers = {
@@ -180,27 +201,31 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(() => {
-    let cancelled = false;
-    setState({ kind: "loading" });
+  const load = useCallback((background = false) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
+    if (!background) setState({ kind: "loading" });
     fetchersRef.current
-      .fetchGoals()
+      .fetchGoals(controller.signal)
       .then((wire) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setState({ kind: "ready", goals: wire.goals.map(mapGoal) });
       })
+      // error-policy:J4 foreground failures render an error; background failures preserve last-good state.
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
             error instanceof Error ? error.message : "Could not load goals.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Initial fetch on mount, then a quiet 20s background poll keeps the list
@@ -208,23 +233,11 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   // The poll refetches silently: it never drops to the loading skeleton and a
   // transient poll failure leaves the current data on screen.
   useEffect(() => {
-    const cancelInitial = load();
-    let active = true;
-    const interval = setInterval(() => {
-      fetchersRef.current
-        .fetchGoals()
-        .then((wire) => {
-          if (active)
-            setState({ kind: "ready", goals: wire.goals.map(mapGoal) });
-        })
-        .catch(() => {
-          /* keep the last good render on a transient poll failure */
-        });
-    }, 20000);
+    load();
+    const interval = setInterval(() => load(true), 20_000);
     return () => {
-      active = false;
       clearInterval(interval);
-      cancelInitial();
+      activeLoadRef.current?.abort();
     };
   }, [load]);
 

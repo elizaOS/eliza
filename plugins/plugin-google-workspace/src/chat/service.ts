@@ -57,7 +57,7 @@ const CHAT_API_BASE = "https://chat.googleapis.com/v1";
 const CHAT_UPLOAD_BASE = "https://chat.googleapis.com/upload/v1";
 const CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
 
-/** Chat REST and upload hops share one documented deadline (not a grep token). */
+/** Maximum time allowed for one Google Chat API or upload request. */
 export const GOOGLE_CHAT_API_TIMEOUT_MS = 30_000;
 
 function normalizeGoogleChatQuery(query: string): string {
@@ -246,9 +246,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   private async chatFetch(input: string, init: RequestInit = {}): Promise<Response> {
     const fetchImpl = this.fetchImpl ?? globalThis.fetch;
     const timeoutMs = this.chatTimeoutMs ?? GOOGLE_CHAT_API_TIMEOUT_MS;
+    const deadline = AbortSignal.timeout(timeoutMs);
     return fetchImpl(input, {
       ...init,
-      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+      signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
     });
   }
 

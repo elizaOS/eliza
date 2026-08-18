@@ -36,6 +36,8 @@ export interface ActorGroundArgs {
   hint: string;
   /** Optional reference from `BrainProposedAction.ref`. */
   ref?: string;
+  /** Cancels remote grounding when the owning computer-use turn stops. */
+  signal?: AbortSignal;
 }
 
 export interface Actor {
@@ -164,40 +166,21 @@ export interface OsAtlasProActorOptions {
   apiKey?: string;
   /** Model identifier on the server. */
   model?: string;
+  /** Per-request deadline; injectable for deterministic tests. */
+  timeoutMs?: number;
   /** Override the HTTP fetch (mostly for tests). */
   fetcher?: (
     input: string,
-    init: { body: string; headers: Record<string, string> },
+    init: {
+      body: string;
+      headers: Record<string, string>;
+      signal: AbortSignal;
+    },
   ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 }
 
-/** Model-server grounding POST can wait on a VLM — longer than the 15s OAuth sibling. */
+/** Maximum time allowed for one remote grounding request. */
 export const OSATLAS_PRO_TIMEOUT_MS = 30_000;
-
-export async function groundOsAtlasProWithFetch(
-  opts: Pick<OsAtlasProActorOptions, "endpoint" | "apiKey" | "model">,
-  args: ActorGroundArgs,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = OSATLAS_PRO_TIMEOUT_MS,
-): Promise<GroundingResult> {
-  const body = JSON.stringify({
-    image: args.croppedImage.toString("base64"),
-    hint: args.hint,
-    ref: args.ref,
-    model: opts.model,
-  });
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
-  const resp = await fetchImpl(opts.endpoint, {
-    method: "POST",
-    body,
-    headers,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  return readOsAtlasProResponse(args, resp);
-}
 
 /**
  * Adapter for a server-side OS-Atlas-Pro (or compatible) grounding model.
@@ -218,43 +201,43 @@ export class OsAtlasProActor implements Actor {
   }
 
   async ground(args: ActorGroundArgs): Promise<GroundingResult> {
-    if (this.opts.fetcher) {
-      const body = JSON.stringify({
-        image: args.croppedImage.toString("base64"),
-        hint: args.hint,
-        ref: args.ref,
-        model: this.opts.model,
-      });
-      const headers: Record<string, string> = {
-        "content-type": "application/json",
-      };
-      if (this.opts.apiKey)
-        headers.authorization = `Bearer ${this.opts.apiKey}`;
-      const resp = await this.opts.fetcher(this.opts.endpoint, {
-        body,
-        headers,
-      });
-      if (!resp.ok) {
-        throw new Error(
-          `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
-        );
-      }
-      return parseOsAtlasProPayload(args, await resp.text());
-    }
-    return groundOsAtlasProWithFetch(this.opts, args, globalThis.fetch);
-  }
-}
-
-async function readOsAtlasProResponse(
-  args: ActorGroundArgs,
-  resp: Response,
-): Promise<GroundingResult> {
-  if (!resp.ok) {
-    throw new Error(
-      `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
+    const body = JSON.stringify({
+      image: args.croppedImage.toString("base64"),
+      hint: args.hint,
+      ref: args.ref,
+      model: this.opts.model,
+    });
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (this.opts.apiKey) headers.authorization = `Bearer ${this.opts.apiKey}`;
+    const deadline = AbortSignal.timeout(
+      this.opts.timeoutMs ?? OSATLAS_PRO_TIMEOUT_MS,
     );
+    const signal = args.signal
+      ? AbortSignal.any([args.signal, deadline])
+      : deadline;
+    const fetcher =
+      this.opts.fetcher ??
+      (async (input, init) => {
+        const response = await globalThis.fetch(input, {
+          method: "POST",
+          ...init,
+        });
+        return {
+          ok: response.ok,
+          status: response.status,
+          text: () => response.text(),
+        };
+      });
+    const resp = await fetcher(this.opts.endpoint, { body, headers, signal });
+    if (!resp.ok) {
+      throw new Error(
+        `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
+      );
+    }
+    return parseOsAtlasProPayload(args, await resp.text());
   }
-  return parseOsAtlasProPayload(args, await resp.text());
 }
 
 function parseOsAtlasProPayload(

@@ -1499,9 +1499,7 @@ function decodePathSegment(raw: string): string | null {
   try {
     return decodeURIComponent(raw);
   } catch {
-    // error-policy:J3 untrusted path segments: a lone "%" or "%ZZ" makes
-    // decodeURIComponent throw URIError, which escapes this fetch kernel
-    // as an unhandled 500. Malformed encoding is client input.
+    // error-policy:J3 malformed percent-encoding is invalid client input.
     return null;
   }
 }

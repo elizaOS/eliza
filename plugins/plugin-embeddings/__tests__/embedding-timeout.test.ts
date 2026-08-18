@@ -1,16 +1,13 @@
-/**
- * Behavioral deadline for plugin-embeddings when the caller omits signal.
- * Not a source-grep test: runs timeout, provider-error, and success paths.
- */
+/** Exercises embedding deadlines, cancellation, and fallback with deterministic fetches. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
-import { handleTextEmbeddingWithFetch } from "../src/models/embedding";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { handleTextEmbedding } from "../src/models/embedding";
 
 const DIM = 384;
 
 function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const values: Record<string, string> = {
-    EMBEDDING_BASE_URL: "https://embeddings.invalid/v1",
+    EMBEDDING_BASE_URL: "https://primary.invalid/v1",
     EMBEDDING_API_KEY: "test-key",
     EMBEDDING_DIMENSIONS: String(DIM),
     ...settings,
@@ -24,54 +21,86 @@ function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected embedding abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    })) as typeof fetch;
+function vector(): number[] {
+  return Array.from({ length: DIM }, (_, index) => (index === 0 ? 0.1 : 0));
 }
 
-function vector(): number[] {
-  return Array.from({ length: DIM }, (_, i) => (i === 0 ? 0.1 : 0));
+function stallUntilAborted(): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    const signal = (vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1] as RequestInit | undefined)
+      ?.signal;
+    if (!signal) throw new Error("expected embedding abort signal");
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
 }
+
+function timeoutSoon(): AbortSignal {
+  const controller = new AbortController();
+  queueMicrotask(() => controller.abort(new DOMException("Timed out", "TimeoutError")));
+  return controller.signal;
+}
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("plugin-embeddings request deadlines", () => {
-  it("aborts a stalled embedding at the injected deadline", async () => {
-    await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", stallUntilAborted(), 10)
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+  it("bounds a stalled request", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutSoon());
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => stallUntilAborted());
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).rejects.toMatchObject({
+      cause: { name: "TimeoutError" },
+    });
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(30_000);
   });
 
-  it("surfaces a provider error from a completed embedding", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" });
-
-    await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", fetchImpl, 1_000)
-    ).rejects.toThrow("quota exceeded");
+  it("preserves caller cancellation", async () => {
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => stallUntilAborted());
+    const pending = handleTextEmbedding(createRuntime(), {
+      text: "embed this",
+      signal: caller.signal,
+    });
+    caller.abort(new DOMException("Cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  it("uses the injected fetch for a successful embedding", async () => {
-    const signals: AbortSignal[] = [];
+  it("retries the fallback with a fresh deadline after primary timeout", async () => {
     const embedding = vector();
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({
-        data: [{ embedding, index: 0 }],
-      });
-    };
+    vi.spyOn(AbortSignal, "timeout")
+      .mockReturnValueOnce(timeoutSoon())
+      .mockReturnValueOnce(new AbortController().signal);
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => stallUntilAborted())
+      .mockResolvedValueOnce(Response.json({ data: [{ embedding, index: 0 }] }));
 
-    const result = await handleTextEmbeddingWithFetch(
-      createRuntime(),
-      "embed a bounded line",
-      fetchImpl,
-      1_000
+    await expect(
+      handleTextEmbedding(
+        createRuntime({ EMBEDDING_FALLBACK_BASE_URL: "https://fallback.invalid/v1" }),
+        "embed this"
+      )
+    ).resolves.toEqual(embedding);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(AbortSignal.timeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a completed provider error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" })
     );
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).rejects.toThrow(
+      "quota exceeded"
+    );
+  });
 
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(result).toEqual(embedding);
+  it("keeps successful embedding behavior", async () => {
+    const embedding = vector();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ data: [{ embedding, index: 0 }] })
+    );
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).resolves.toEqual(embedding);
   });
 });

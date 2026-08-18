@@ -35,14 +35,14 @@ type EmbeddingEndpoint = {
 // safe buffer at the conventional ~4 chars/token estimate.
 const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
-/** Retrieval embeddings are short, but an omitted caller signal must still cap the POST. */
-export const EMBEDDING_TIMEOUT_MS = 30_000;
+const EMBEDDING_TIMEOUT_MS = 30_000;
 
 function resolveEmbeddingSignal(
   callerSignal: AbortSignal | undefined,
   timeoutMs: number
 ): AbortSignal {
-  return callerSignal ?? AbortSignal.timeout(timeoutMs);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 }
 
 export function validateEmbeddingDimension(dimension: number): VectorDimension {
@@ -144,9 +144,7 @@ async function requestEmbeddings(
   runtime: IAgentRuntime,
   input: string | string[],
   embeddingDimension: VectorDimension,
-  callerSignal?: AbortSignal,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = EMBEDDING_TIMEOUT_MS
+  callerSignal?: AbortSignal
 ): Promise<number[][]> {
   const endpoints = getEmbeddingEndpoints(runtime);
   const expectedCount = Array.isArray(input) ? input.length : 1;
@@ -160,18 +158,10 @@ async function requestEmbeddings(
         input,
         embeddingDimension,
         expectedCount,
-        callerSignal,
-        fetchImpl,
-        timeoutMs
+        callerSignal
       );
     } catch (error) {
       if (callerSignal?.aborted) {
-        throw error;
-      }
-      if (
-        error instanceof DOMException &&
-        (error.name === "TimeoutError" || error.name === "AbortError")
-      ) {
         throw error;
       }
       failures.push(`${endpoint.role} ${endpoint.baseURL}: ${formatFailure(error)}`);
@@ -200,17 +190,15 @@ async function requestEmbeddingsFromEndpoint(
   input: string | string[],
   embeddingDimension: VectorDimension,
   expectedCount: number,
-  callerSignal?: AbortSignal,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = EMBEDDING_TIMEOUT_MS
+  callerSignal?: AbortSignal
 ): Promise<number[][]> {
   const url = `${endpoint.baseURL}/embeddings`;
-  const signal = resolveEmbeddingSignal(callerSignal, timeoutMs);
+  const signal = resolveEmbeddingSignal(callerSignal, EMBEDDING_TIMEOUT_MS);
 
   logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`);
 
   // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
-  const response = await fetchImpl(url, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       ...getEndpointAuthHeader(runtime, endpoint.apiKey),
@@ -293,11 +281,9 @@ async function requestEmbeddingsFromEndpoint(
  * vector length (it reads `.length`), so a correctly-sized marker vector is the
  * only legitimate synthetic return — every real failure throws.
  */
-export async function handleTextEmbeddingWithFetch(
+export async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = EMBEDDING_TIMEOUT_MS
+  params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
   const signal = extractSignal(params);
@@ -315,14 +301,7 @@ export async function handleTextEmbeddingWithFetch(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  const vectors = await requestEmbeddings(
-    runtime,
-    truncate(trimmed),
-    embeddingDimension,
-    signal,
-    fetchImpl,
-    timeoutMs
-  );
+  const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension, signal);
   const vector = vectors[0];
   if (!vector) {
     throw new Error("Embedding provider returned no vector for the input");
@@ -330,23 +309,14 @@ export async function handleTextEmbeddingWithFetch(
   return vector;
 }
 
-export async function handleTextEmbedding(
-  runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null
-): Promise<number[]> {
-  return handleTextEmbeddingWithFetch(runtime, params);
-}
-
 /**
  * `TEXT_EMBEDDING_BATCH` handler. Embeds many texts in one request. Demands a
  * vector per input (no holes); throws on any failure so the runtime can fall
  * through to another provider instead of persisting corrupt vectors.
  */
-export async function handleBatchTextEmbeddingWithFetch(
+export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
-  texts: string[],
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = EMBEDDING_TIMEOUT_MS
+  texts: string[]
 ): Promise<number[][]> {
   if (!Array.isArray(texts) || texts.length === 0) {
     return [];
@@ -361,12 +331,5 @@ export async function handleBatchTextEmbeddingWithFetch(
     return truncate(text.trim());
   });
 
-  return requestEmbeddings(runtime, prepared, embeddingDimension, undefined, fetchImpl, timeoutMs);
-}
-
-export async function handleBatchTextEmbedding(
-  runtime: IAgentRuntime,
-  texts: string[]
-): Promise<number[][]> {
-  return handleBatchTextEmbeddingWithFetch(runtime, texts);
+  return requestEmbeddings(runtime, prepared, embeddingDimension, undefined);
 }

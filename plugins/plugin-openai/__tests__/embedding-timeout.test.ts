@@ -1,9 +1,6 @@
-/**
- * Behavioral deadline for OpenAI text embeddings.
- * Caller abort is composed with a documented provider timeout (not source-grep).
- */
+/** Exercises OpenAI embedding deadlines and caller cancellation with deterministic fetches. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -14,7 +11,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   };
 });
 
-import { handleTextEmbeddingWithFetch } from "../models/embedding";
+import { handleTextEmbedding } from "../models/embedding";
 
 const DIM = 384;
 
@@ -32,52 +29,65 @@ function createRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+function vector(): number[] {
+  return Array.from({ length: DIM }, (_, index) => (index === 0 ? 0.1 : 0));
+}
+
 function stallUntilAborted(): typeof fetch {
   return ((_input, init) =>
     new Promise<Response>((_resolve, reject) => {
       const signal = init?.signal;
       if (!signal) throw new Error("expected embedding abort signal");
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     })) as typeof fetch;
 }
 
-function vector(): number[] {
-  return Array.from({ length: DIM }, (_, i) => (i === 0 ? 0.1 : 0));
+function timeoutSoon(): AbortSignal {
+  const controller = new AbortController();
+  queueMicrotask(() => controller.abort(new DOMException("Timed out", "TimeoutError")));
+  return controller.signal;
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("OpenAI embedding request deadlines", () => {
-  it("aborts a stalled embedding at the injected deadline", async () => {
-    await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", stallUntilAborted(), 10)
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+  it("aborts a stalled request at its deadline", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutSoon());
+    vi.spyOn(globalThis, "fetch").mockImplementation(stallUntilAborted());
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(30_000);
   });
 
-  it("surfaces a provider error from a completed embedding", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" });
-
-    await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", fetchImpl, 1_000)
-    ).rejects.toThrow("quota exceeded");
+  it("preserves caller cancellation", async () => {
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
+    vi.spyOn(globalThis, "fetch").mockImplementation(stallUntilAborted());
+    const pending = handleTextEmbedding(createRuntime(), {
+      text: "embed this",
+      signal: caller.signal,
+    });
+    caller.abort(new DOMException("Cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  it("uses the injected fetch for a successful embedding", async () => {
-    const signals: AbortSignal[] = [];
-    const embedding = vector();
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({ data: [{ embedding }] });
-    };
-
-    const result = await handleTextEmbeddingWithFetch(
-      createRuntime(),
-      "embed a bounded line",
-      fetchImpl,
-      1_000
+  it("surfaces a completed provider error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" })
     );
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).rejects.toThrow(
+      "quota exceeded"
+    );
+  });
 
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(result).toEqual(embedding);
+  it("keeps successful embedding behavior", async () => {
+    const embedding = vector();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ data: [{ embedding }] }));
+    await expect(handleTextEmbedding(createRuntime(), "embed this")).resolves.toEqual(embedding);
   });
 });

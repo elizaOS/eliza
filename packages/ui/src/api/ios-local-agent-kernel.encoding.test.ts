@@ -1,4 +1,7 @@
-/** Verifies that the iOS local-agent kernel rejects malformed encoded path parameters at its request boundary. */
+/**
+ * Verifies that the iOS local-agent kernel rejects malformed encoded path
+ * segments without invoking route-specific stores or reporting a server error.
+ */
 import { describe, expect, it } from "vitest";
 import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 
@@ -24,7 +27,6 @@ describe("iOS local-agent kernel path encoding", () => {
     const response = await handleIosLocalAgentRequest(
       new Request(`http://127.0.0.1:31337${path}`, { method }),
     );
-
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "malformed URL encoding",

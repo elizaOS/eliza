@@ -23,26 +23,24 @@ import { useCallback, useEffect, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
 
-export const BUILD_INFO_URL = "/build-info.json";
+const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
 
-/** Build-info GET is a short UI read — same 15s family as useWeather. */
-export const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
+const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
 
-export async function getBuildInfoJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = BUILD_BADGE_JSON_TIMEOUT_MS,
-): Promise<T> {
-  const response = await fetchImpl(url, {
+async function fetchBuildInfo(signal: AbortSignal): Promise<BuildInfo> {
+  const response = await globalThis.fetch(BUILD_INFO_URL, {
     method: "GET",
     cache: "no-store",
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(BUILD_BADGE_JSON_TIMEOUT_MS),
+    ]),
   });
   if (!response.ok) {
     throw new Error(`Build info request failed (${response.status})`);
   }
-  return (await response.json()) as T;
+  return (await response.json()) as BuildInfo;
 }
 
 interface BuildInfo {
@@ -309,21 +307,18 @@ export function BuildBadge() {
 
   useEffect(() => {
     if (dismissed) return;
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const info = await getBuildInfoJsonWithFetch<BuildInfo>(
-          BUILD_INFO_URL,
-          globalThis.fetch,
-        );
-        if (!cancelled) setLabel(toLabel(info));
+        const info = await fetchBuildInfo(controller.signal);
+        setLabel(toLabel(info));
       } catch {
-        // Best-effort: no build info available (production builds without the
-        // build-time stamp). Stay hidden silently.
+        // error-policy:J4 a missing, invalid, timed-out, or cancelled build
+        // stamp keeps this optional diagnostics surface hidden.
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [dismissed]);
 

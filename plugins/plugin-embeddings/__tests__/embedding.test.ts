@@ -85,7 +85,10 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://embeddings.example/v1/embeddings");
-    expect(init.signal).toBe(controller.signal);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal).not.toBe(controller.signal);
+    controller.abort();
+    expect(init.signal?.aborted).toBe(true);
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
     const body = JSON.parse(init.body as string);
     expect(body.input).toBe("hello world");
