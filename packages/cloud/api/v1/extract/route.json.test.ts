@@ -7,6 +7,11 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type {
+  HostedBrowserAuthContext,
+  HostedExtractOptions,
+  HostedExtractResult,
+} from "@/lib/services/browser-tools";
 
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -16,9 +21,14 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: ORG_ID,
 }));
 
-const extractHostedPage = mock(async () => {
-  throw new Error("extractHostedPage must not run");
-});
+const extractHostedPage = mock(
+  async (
+    _options: HostedExtractOptions,
+    _auth?: HostedBrowserAuthContext,
+  ): Promise<HostedExtractResult> => {
+    throw new Error("extractHostedPage must not run");
+  },
+);
 
 const logHostedBrowserFailure = mock(() => undefined);
 
@@ -101,8 +111,13 @@ describe("POST /api/v1/extract JSON body", () => {
 
   test("still extracts a canonical object body", async () => {
     extractHostedPage.mockResolvedValue({
+      provider: "firecrawl",
       markdown: "# ok",
       url: "https://example.com",
+      html: null,
+      screenshot: null,
+      links: [],
+      metadata: {},
     });
 
     const res = await post(JSON.stringify({ url: "https://example.com" }));
