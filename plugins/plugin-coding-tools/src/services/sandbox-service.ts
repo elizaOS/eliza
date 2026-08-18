@@ -5,6 +5,7 @@
  * system paths) and, when `CODING_TOOLS_WORKSPACE_ROOTS` is set, any path outside
  * the allow-roots. No file handler may touch disk without passing through here.
  */
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import {
@@ -13,6 +14,11 @@ import {
   Service,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
+import {
+  discoverGitAdminMetadata,
+  type GitAdminMetadata,
+  isGitAdminMutationPath,
+} from "../lib/git-admin-path.js";
 import {
   isAbsolutePath,
   isUncPath,
@@ -48,6 +54,14 @@ export class SandboxService extends Service {
   private blockedPaths: string[] = [];
   private allowedRoots: string[] = [];
   private conversationRoots = new Map<string, Set<string>>();
+  private gitAdminMetadata: GitAdminMetadata = {
+    adminPaths: [],
+    repositories: [],
+  };
+  private conversationGitAdminMetadata = new Map<
+    string,
+    Map<string, GitAdminMetadata>
+  >();
 
   static async start(runtime: IAgentRuntime): Promise<SandboxService> {
     const svc = new SandboxService(runtime);
@@ -62,6 +76,8 @@ export class SandboxService extends Service {
     this.blockedPaths = [];
     this.allowedRoots = [];
     this.conversationRoots.clear();
+    this.gitAdminMetadata = { adminPaths: [], repositories: [] };
+    this.conversationGitAdminMetadata.clear();
   }
 
   private async loadConfig(): Promise<void> {
@@ -103,6 +119,13 @@ export class SandboxService extends Service {
           )
         : [];
     this.allowedRoots = dedupe(resolvedAllowedRoots);
+    const existingAllowedRoots = this.allowedRoots.filter((root) =>
+      existsSync(root),
+    );
+    this.gitAdminMetadata =
+      existingAllowedRoots.length > 0
+        ? discoverGitAdminMetadata(existingAllowedRoots)
+        : { adminPaths: [], repositories: [] };
   }
 
   /**
@@ -129,6 +152,16 @@ export class SandboxService extends Service {
     const roots = this.conversationRoots.get(conversationId) ?? new Set();
     roots.add(path.resolve(expandHome(absPath)));
     this.conversationRoots.set(conversationId, roots);
+    const metadataByRoot =
+      this.conversationGitAdminMetadata.get(conversationId) ?? new Map();
+    const root = path.resolve(expandHome(absPath));
+    metadataByRoot.set(
+      root,
+      existsSync(root)
+        ? discoverGitAdminMetadata([root])
+        : { adminPaths: [], repositories: [] },
+    );
+    this.conversationGitAdminMetadata.set(conversationId, metadataByRoot);
   }
 
   removeRoot(conversationId: string | undefined, absPath: string): void {
@@ -138,6 +171,12 @@ export class SandboxService extends Service {
     const roots = this.conversationRoots.get(conversationId);
     if (!roots) return;
     roots.delete(path.resolve(expandHome(absPath)));
+    const metadataByRoot =
+      this.conversationGitAdminMetadata.get(conversationId);
+    metadataByRoot?.delete(path.resolve(expandHome(absPath)));
+    if (metadataByRoot?.size === 0) {
+      this.conversationGitAdminMetadata.delete(conversationId);
+    }
     if (roots.size === 0) {
       this.conversationRoots.delete(conversationId);
     }
@@ -146,6 +185,7 @@ export class SandboxService extends Service {
   async validatePath(
     conversationId: string | undefined,
     absPath: string,
+    access: "read" | "write" = "read",
   ): Promise<
     | { ok: true; resolved: string }
     | {
@@ -154,6 +194,7 @@ export class SandboxService extends Service {
           | "not_absolute"
           | "unc_path"
           | "blocked"
+          | "git_admin_write"
           | "outside_allowed_roots";
         message: string;
       }
@@ -172,7 +213,29 @@ export class SandboxService extends Service {
         message: `UNC paths are not permitted: ${absPath}`,
       };
     }
-    const resolved = await resolveRealPath(absPath);
+    let resolved: string;
+    try {
+      resolved = await resolveRealPath(absPath);
+    } catch {
+      return {
+        ok: false,
+        reason: "blocked",
+        message: `Path ${absPath} could not be safely canonicalized.`,
+      };
+    }
+    if (
+      access === "write" &&
+      isGitAdminMutationPath(
+        absPath,
+        this.resolveGitAdminMetadata(conversationId),
+      )
+    ) {
+      return {
+        ok: false,
+        reason: "git_admin_write",
+        message: `Path ${absPath} is Git administration state and is read-only to coding FILE mutations.`,
+      };
+    }
     for (const blocked of this.blockedPaths) {
       if (isWithin(resolved, blocked) || resolved === blocked) {
         return {
@@ -205,6 +268,18 @@ export class SandboxService extends Service {
       if (scoped) roots.push(...scoped);
     }
     return dedupe(roots);
+  }
+
+  private resolveGitAdminMetadata(conversationId?: string): GitAdminMetadata {
+    const metadata = [this.gitAdminMetadata];
+    if (conversationId) {
+      const scoped = this.conversationGitAdminMetadata.get(conversationId);
+      if (scoped) metadata.push(...scoped.values());
+    }
+    return {
+      adminPaths: dedupe(metadata.flatMap((entry) => entry.adminPaths)),
+      repositories: metadata.flatMap((entry) => entry.repositories),
+    };
   }
 }
 

@@ -6,11 +6,8 @@
  * process env, per config-env conventions). In gateway mode a spawned
  * sub-agent's env points `OPENAI_BASE_URL` (Codex CLI) and
  * `ANTHROPIC_BASE_URL` (Claude Code via claude-agent-acp) at the gateway,
- * with the gateway token injected as the api-key env for both paths. OpenCode
- * routes through the gateway too: in gateway mode `buildOpencodeSpawnConfig`
- * (opencode-config.ts) builds a gateway-pointed provider config instead of
- * embedding a raw provider key into `OPENCODE_CONFIG_CONTENT`. Raw provider
- * credentials are actively excluded — deleted before the token is assigned,
+ * with the gateway token injected as the api-key env for both paths. Raw
+ * provider credentials are actively excluded — deleted before the token is assigned,
  * and any composite env value still embedding a raw key is dropped whole —
  * so a sub-agent env dump contains no raw provider credential.
  * With either var unset the child env is byte-identical to non-gateway
@@ -37,8 +34,8 @@ export const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN";
  * credential `AcpService.buildEnv` merge paths can carry into a child env:
  * - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` — on the
  *   host-env forwarding allowlist (`shouldForwardEnv`).
- * - `ELIZA_OPENCODE_API_KEY` / `ELIZA_E2E_CEREBRAS_API_KEY` — raw provider
- *   keys forwarded via the broad `ELIZA_` prefix rule.
+ * - `ELIZA_E2E_CEREBRAS_API_KEY` — a raw provider key forwarded via the broad
+ *   `ELIZA_` prefix rule.
  * - `CLAUDE_CODE_OAUTH_TOKEN` — injected by multi-account selection
  *   (`selectCodingAccount` envPatch) for linked Claude subscriptions.
  * - `CODEX_API_KEY` — resolved by task-agent framework detection and
@@ -52,7 +49,7 @@ export const MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS = [
   "ANTHROPIC_API_KEY",
   "CODEX_API_KEY",
   "CEREBRAS_API_KEY",
-  "ELIZA_OPENCODE_API_KEY",
+  "ELIZA_CODE_API_KEY",
   "ELIZA_E2E_CEREBRAS_API_KEY",
   "CLAUDE_CODE_OAUTH_TOKEN",
 ] as const;
@@ -97,12 +94,8 @@ const MODEL_GATEWAY_ENV_PREFIX = "ELIZA_MODEL_GATEWAY_";
  *
  * The invariant is "no raw provider key VALUE anywhere in the child env",
  * not "the named keys are absent" — so after deleting the named keys, any
- * remaining env var whose value embeds one of their raw values (a composite
- * carrier, e.g. a JSON config blob like `OPENCODE_CONFIG_CONTENT`) is
- * dropped whole. Fail closed: a misconfigured child beats a leaked key.
- * (The opencode path never trips this in practice — in gateway mode
- * `buildOpencodeSpawnConfig` builds a gateway-pointed config with no raw
- * key; this sweep is the backstop for future merge steps.)
+ * remaining env var whose value embeds one of their raw values is dropped
+ * whole. Fail closed: a misconfigured child beats a leaked key.
  */
 export function applyModelGatewayEnv(
   env: NodeJS.ProcessEnv,

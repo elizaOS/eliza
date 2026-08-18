@@ -326,6 +326,21 @@ describe("orchestrator routes — task CRUD", () => {
     expect(result.json.error).toBe("Invalid JSON body");
   });
 
+  it("rejects unknown create fields and points a misspelled criteria field at the schema", async () => {
+    const result = await call(
+      makeService(),
+      "POST",
+      "/api/orchestrator/tasks",
+      {
+        title: "Build it",
+        criteria: ["tests pass"],
+      },
+    );
+    expect(result.status).toBe(400);
+    expect(result.json.error).toContain("criteria");
+    expect(result.json.error).toContain("acceptanceCriteria");
+  });
+
   it("lists tasks with status, archived, and limit filters", async () => {
     const service = makeService();
     const open = await seedTask(service, "open one");

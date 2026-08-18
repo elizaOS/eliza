@@ -492,7 +492,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
   });
 
   it("loads the agent orchestrator when a coding-agent default is configured", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "elizaos";
 
     const names = collectPluginNames({} as ElizaConfig);
 
@@ -516,7 +516,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
   it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "elizaos";
 
     const names = collectPluginNames({} as ElizaConfig);
 

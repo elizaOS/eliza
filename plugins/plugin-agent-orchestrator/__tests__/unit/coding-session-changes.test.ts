@@ -29,7 +29,7 @@ function session(
   return {
     id: uuid(),
     name: "task",
-    agentType: "opencode",
+    agentType: "elizaos",
     workdir: "/home/example/projects/custom-apps",
     status: "ready",
     approvalPreset: "standard",

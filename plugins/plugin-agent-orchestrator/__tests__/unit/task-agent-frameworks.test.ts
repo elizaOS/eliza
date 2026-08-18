@@ -22,6 +22,7 @@ const ENV_KEYS = [
   "CLAUDE_API_KEY",
   "CLAUDE_CODE_API_KEY",
   "CODEX_API_KEY",
+  "ELIZA_CODE_API_KEY",
   "ELIZA_AGENT_SELECTION_STRATEGY",
   "ELIZA_CODEX_ACP_COMMAND",
   "ELIZA_CONFIG_PATH",
@@ -29,6 +30,8 @@ const ENV_KEYS = [
   "ELIZA_ELIZAOS_ACP_COMMAND",
   "ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS",
   "ELIZA_LLM_PROVIDER",
+  "ELIZA_MODEL_GATEWAY_TOKEN",
+  "ELIZA_MODEL_GATEWAY_URL",
   "ELIZA_PI_AGENT_ACP_COMMAND",
   "ELIZA_PROVIDER",
   "HOME",
@@ -51,7 +54,7 @@ function installedProbe(): TaskAgentFrameworkProbe {
     checkAvailableAgents: vi.fn(async () => [
       { adapter: "Claude Code", installed: true },
       { adapter: "OpenAI Codex", installed: true },
-      { adapter: "OpenCode", installed: true },
+      { adapter: "Eliza Code", installed: true },
     ]),
   };
 }
@@ -65,7 +68,7 @@ function delayedInstalledProbe(): TaskAgentFrameworkProbe {
             resolve([
               { adapter: "Claude Code", installed: true },
               { adapter: "OpenAI Codex", installed: true },
-              { adapter: "OpenCode", installed: true },
+              { adapter: "Eliza Code", installed: true },
             ]);
           }, 10);
         }),
@@ -115,7 +118,7 @@ describe("getTaskAgentFrameworkState", () => {
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it("defaults Cerebras-backed benchmark runs to OpenCode", async () => {
+  it("defaults Cerebras-backed benchmark runs to Eliza Code", async () => {
     setEnv({
       BENCHMARK_MODEL_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-test",
@@ -123,20 +126,20 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
+    expect(state.preferred.id).toBe("elizaos");
     expect(
-      state.frameworks.find((item) => item.id === "opencode")?.authReady,
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
     ).toBe(true);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
   });
 
-  it("prefers eliza-code over OpenCode as the BYO default once eliza-code is installed", async () => {
+  it("prefers eliza-code over Eliza Code as the BYO default once eliza-code is installed", async () => {
     // With a native ElizaOS ACP command configured, eliza-code is a real
-    // candidate. It shares OpenCode's BYO provider thumb (no Claude/Codex key is
+    // candidate. It shares Eliza Code's BYO provider thumb (no Claude/Codex key is
     // set), and its dominant capability-profile fit makes it the default over
-    // OpenCode — which stays the fallback for hosts without eliza-code.
+    // Eliza Code — which stays the fallback for hosts without eliza-code.
     writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
       ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
@@ -151,7 +154,7 @@ describe("getTaskAgentFrameworkState", () => {
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
     expect(
-      state.frameworks.find((item) => item.id === "opencode")?.installed,
+      state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
   });
 
@@ -168,6 +171,52 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
+    ).toBe(true);
+  });
+
+  it("does not treat an installed Eliza Code binary as provider-auth ready", async () => {
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
+    setEnv({ ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp" });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+    const elizaCode = state.frameworks.find((item) => item.id === "elizaos");
+
+    expect(elizaCode?.installed).toBe(true);
+    expect(elizaCode?.authReady).toBe(false);
+    expect(elizaCode?.reason).toContain("no model-provider credentials");
+  });
+
+  it("does not treat a paired Cloud key alone as Eliza Code provider auth", async () => {
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
+    fs.writeFileSync(
+      process.env.ELIZA_CONFIG_PATH ?? "",
+      JSON.stringify({
+        cloud: { apiKey: "paired-cloud-test-key" },
+        env: { ELIZA_LLM_PROVIDER: "cloud" },
+      }),
+    );
+    setEnv({
+      ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+      ELIZA_LLM_PROVIDER: "cloud",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
+    ).toBe(false);
+  });
+
+  it("treats the exact model-gateway pair injected by AcpService as provider auth", async () => {
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
+    setEnv({
+      ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+      ELIZA_MODEL_GATEWAY_URL: "http://127.0.0.1:9988/v1",
+      ELIZA_MODEL_GATEWAY_TOKEN: "synthetic-gateway-token",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.authReady,
     ).toBe(true);
@@ -242,7 +291,7 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
+    expect(state.preferred.id).toBe("elizaos");
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
@@ -430,7 +479,7 @@ describe("getTaskAgentFrameworkState", () => {
 
 // Model prefs must honor a freshly-saved config-file value on the NEXT spawn:
 // runtime.getSetting snapshots character settings at boot, so config-env is
-// checked first (matching how the codex/opencode prefs already behave).
+// checked first (matching how the codex/elizaos prefs already behave).
 describe("getTaskAgentModelPrefs", () => {
   const PREF_ENV_KEYS = [
     "ELIZA_CONFIG_PATH",

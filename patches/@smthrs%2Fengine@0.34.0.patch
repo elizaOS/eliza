@@ -1,0 +1,16 @@
+diff --git a/src/engine.js b/src/engine.js
+--- a/src/engine.js
++++ b/src/engine.js
+@@ -5830,10 +5830,8 @@
+             : null;
+         // Record the effort each adapter ACTUALLY applies at spawn. In every
+         // adapter an adapter-specific source WINS over the first-class
+-        // `effort`, so those rank first here — and they don't cross-contaminate
+-        // (variant is OpenCode-only, model_reasoning_effort is Codex-only,
+-        // `--settings` effortLevel is Claude-only):
+-        //   OpenCode: an explicit `variant` wins over `effort` (OpenCodeAgent.js)
++        // `effort`, so those rank first here and do not cross-contaminate.
++        // Known adapter-specific sources are:
+         //   Claude:   `--settings` effortLevel (inline JSON; extraArgs > opts)
+         //             wins over `effort` (ClaudeCodeAgent.js)
+         //   Codex:    `config.model_reasoning_effort` wins over `effort` (CodexAgent.js)

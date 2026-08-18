@@ -98,7 +98,7 @@ export function makeSpawnCapturingAcp() {
         sessionId,
         id: sessionId,
         name: opts.name ?? `reflexion-${counter}`,
-        agentType: opts.agentType ?? "opencode",
+        agentType: opts.agentType ?? "elizaos",
         workdir: opts.workdir ?? "/tmp/reflexion",
         status: "ready",
         metadata: { ...(opts.metadata ?? {}) },

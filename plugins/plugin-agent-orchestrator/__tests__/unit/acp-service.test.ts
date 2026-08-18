@@ -341,6 +341,67 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
+  it.each([
+    ["unknown", "custom-native-adapter"],
+    ["metacharacter", "codex; touch /tmp/acp-injected"],
+    ["retired", ["open", "code"].join("")],
+  ])(
+    "rejects %s native adapter ids before constructing a client",
+    async (_kind, agentType) => {
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "native" }),
+      );
+      await service.start();
+
+      await expect(
+        service.spawnSession({
+          name: "unsupported-native-adapter",
+          agentType,
+          workdir: "/tmp/acp-test",
+        }),
+      ).rejects.toThrow("Unsupported ACP agent adapter");
+
+      expect(nativeClientMock.instances).toHaveLength(0);
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(await service.listSessions()).toHaveLength(0);
+      await service.stop();
+    },
+  );
+
+  it("strips parent-control secrets from both spawn env and custom credentials", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+
+    await service.spawnSession({
+      name: "sealed-child-env",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+      env: {
+        ELIZA_API_TOKEN: "synthetic-owner-token",
+        ELIZA_ACCOUNT_POOL_BROKER_SECRET: "synthetic-broker-secret",
+        ELIZA_FCM_SERVICE_ACCOUNT: "synthetic-service-account-json",
+        ELIZA_MANAGED_DATABASE_URL: "postgres://managed-credential",
+      },
+      customCredentials: {
+        ELIZA_WALLET_EXPORT_TOKEN: "synthetic-wallet-token",
+        ELIZA_HOME_REMOTE_RUNNER_TOKEN: "synthetic-runner-token",
+        ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM: "synthetic-private-key",
+        ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: "synthetic-signing-key",
+      },
+    });
+
+    const childEnv = firstNativeClient().opts.env ?? {};
+    expect(childEnv.ELIZA_API_TOKEN).toBeUndefined();
+    expect(childEnv.ELIZA_ACCOUNT_POOL_BROKER_SECRET).toBeUndefined();
+    expect(childEnv.ELIZA_WALLET_EXPORT_TOKEN).toBeUndefined();
+    expect(childEnv.ELIZA_HOME_REMOTE_RUNNER_TOKEN).toBeUndefined();
+    expect(childEnv.ELIZA_FCM_SERVICE_ACCOUNT).toBeUndefined();
+    expect(childEnv.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
+    expect(childEnv.ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM).toBeUndefined();
+    expect(childEnv.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64).toBeUndefined();
+    await service.stop();
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
@@ -459,6 +520,45 @@ describe("AcpService", () => {
       "claude-opus-4-8",
     );
     expect(session?.metadata?.spawnModel).toBe("claude-opus-4-8");
+    await service.stop();
+  });
+
+  it("makes an explicit native Eliza Code spawn model authoritative across provider tiers", async () => {
+    const explicitModel = "explicit-cerebras-model";
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODE_MODEL_POWERFUL: "configured-powerful-model",
+        ELIZA_CODE_MODEL_FAST: "configured-fast-model",
+      }),
+    );
+    await service.start();
+
+    const result = await service.spawnSession({
+      name: "eliza-code-explicit-model",
+      agentType: "elizaos",
+      model: explicitModel,
+      workdir: "/tmp/acp-test",
+      env: {
+        ELIZA_CODE_MODEL_POWERFUL: "inherited-powerful-model",
+        ELIZA_CODE_MODEL_FAST: "inherited-fast-model",
+        OPENAI_LARGE_MODEL: "inherited-large-model",
+        OPENAI_MEDIUM_MODEL: "inherited-medium-model",
+        OPENAI_SMALL_MODEL: "inherited-small-model",
+      },
+    });
+
+    const env = nativeClientMock.instances[0]?.opts.env;
+    expect(env).toMatchObject({
+      ELIZA_CODE_MODEL_POWERFUL: explicitModel,
+      ELIZA_CODE_MODEL_FAST: explicitModel,
+      OPENAI_LARGE_MODEL: explicitModel,
+      OPENAI_MEDIUM_MODEL: explicitModel,
+      OPENAI_SMALL_MODEL: explicitModel,
+      OPENAI_MODEL: explicitModel,
+    });
+    const session = await service.getSession(result.sessionId);
+    expect(session?.metadata?.spawnModel).toBe(explicitModel);
     await service.stop();
   });
 
@@ -887,6 +987,29 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(0);
   });
 
+  it("fails closed when CLI transport is paired with the native-only Eliza Code adapter", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "cli",
+        ELIZA_ACP_DEFAULT_AGENT: "elizaos",
+      }),
+    );
+    await service.start();
+
+    await expect(
+      service.spawnSession({
+        name: "invalid-eliza-code-cli",
+        agentType: "elizaos",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toThrow("Eliza Code requires the native ACP transport");
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(0);
+    expect(await service.listSessions()).toHaveLength(0);
+    await service.stop();
+  });
+
   it("uses configured native commands when explicitly configured", async () => {
     const service = new AcpService(
       runtime({
@@ -1218,67 +1341,36 @@ describe("AcpService", () => {
     expect(events).not.toContain("task_complete");
   });
 
-  it("prepares OpenCode ACP environment for Cerebras", async () => {
-    const reg = nextProc();
+  it("prepares Eliza Code ACP environment for Cerebras", async () => {
     const service = new AcpService(
       runtime({
-        ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-        ELIZA_OPENCODE_API_KEY: "csk_test",
-        ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODE_BASE_URL: "https://api.cerebras.ai/v1",
+        ELIZA_CODE_API_KEY: "csk_test",
+        ELIZA_ELIZAOS_MODEL_POWERFUL: "gpt-oss-120b",
       }),
     );
     await service.start();
 
-    const spawned = service.spawnSession({
-      name: "opencode-cerebras",
-      agentType: "opencode",
+    await service.spawnSession({
+      name: "elizaos-cerebras",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    await spawned;
 
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
-    // with platform-native path separators (`\` on Windows, `/` on POSIX).
-    // On Windows the spawn target is wrapped in double quotes (paths can
-    // contain spaces) and uses the `.cmd` shim, so accept either
-    // separator after `plugin-agent-orchestrator`, any extension on the
-    // opencode shim, and tolerate surrounding quotes / trailing tokens
-    // around the trailing `acp` subcommand.
-    const shimArg = args?.[agentArgIndex + 1];
-    expect(shimArg).toBeDefined();
-    expect(shimArg).toContain("plugin-agent-orchestrator");
-    expect(shimArg).toContain("opencode");
-    expect(shimArg).toMatch(/\sacp(\s|$)/);
-    expect(args).not.toContain("opencode");
-
-    const env = spawnMock.mock.calls[0]?.[2]?.env as
-      | Record<string, string>
-      | undefined;
-    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
-      provider?: Record<
-        string,
-        { npm?: string; options?: { baseURL?: string; apiKey?: string } }
-      >;
-      model?: string;
-    };
-    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
-    expect(env?.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
-    expect(config.model).toBe("cerebras/gpt-oss-120b");
-    expect(config.provider?.cerebras?.options?.baseURL).toBe(
-      "https://api.cerebras.ai/v1",
-    );
-    expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
-    expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
+    const client = firstNativeClient();
+    expect(client.opts.command).toBe("eliza-code-acp");
+    const env = client.opts.env as Record<string, string> | undefined;
+    expect(env?.ELIZA_CODE_BASE_URL).toBe("https://api.cerebras.ai/v1");
+    expect(env?.ELIZA_CODE_API_KEY).toBe("csk_test");
+    expect(env?.ELIZA_CODE_MODEL_POWERFUL).toBe("gpt-oss-120b");
+    expect(env?.ELIZA_ELIZAOS_MODEL_POWERFUL).toBeUndefined();
   });
 
   it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
-    const reg = nextProc();
     const service = new AcpService(
       runtime({
+        ELIZA_ACP_TRANSPORT: "native",
         BENCHMARK_TASK_AGENT: "elizaos",
         CEREBRAS_API_KEY: "csk_test",
         CEREBRAS_MODEL: "gpt-oss-120b",
@@ -1286,23 +1378,16 @@ describe("AcpService", () => {
     );
     await service.start();
 
-    const spawned = service.spawnSession({
+    const session = await service.spawnSession({
       name: "benchmark-elizaos",
       workdir: "/tmp/acp-test",
     });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    const session = await spawned;
 
     expect(session.agentType).toBe("elizaos");
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    expect(args).toContain("elizaos");
-    expect(args).not.toContain("opencode");
-
-    const env = spawnMock.mock.calls[0]?.[2]?.env as
+    const env = firstNativeClient().opts.env as
       | Record<string, string>
       | undefined;
-    expect(env?.OPENCODE_MODEL).toBeUndefined();
+    expect(env?.ELIZA_CODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
   });
 
@@ -1472,6 +1557,110 @@ describe("AcpService", () => {
     await fs.rm(stateRoot, { recursive: true, force: true });
   });
 
+  it.each([
+    ["native", "ready"],
+    ["native", "busy"],
+    ["cli", "ready"],
+    ["cli", "busy"],
+  ] as const)(
+    "refuses a persisted retired %s adapter in %s state without launching it",
+    async (transportMode, status) => {
+      const store = new InMemorySessionStore();
+      const now = new Date();
+      const sessionId = `retired-${transportMode}-${status}`;
+      const retiredAgentType = ["open", "code"].join("");
+      await store.create({
+        id: sessionId,
+        name: sessionId,
+        agentType: retiredAgentType,
+        workdir: "/tmp/acp-test",
+        status,
+        acpxSessionId: "retired-protocol",
+        approvalPreset: "autonomous",
+        createdAt: now,
+        lastActivityAt: now,
+        metadata: { transportMode },
+      });
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: transportMode }),
+        { store },
+      );
+      let cliStateRoot: string | undefined;
+      if (transportMode === "cli") {
+        cliStateRoot = await fs.mkdtemp(join(os.tmpdir(), "acp-retired-cli-"));
+        await fs.mkdir(join(cliStateRoot, "sessions"), { recursive: true });
+        await fs.writeFile(
+          join(cliStateRoot, "sessions", "retired-protocol.json"),
+          "{}",
+          "utf8",
+        );
+        Object.defineProperty(service, "acpxStateRoot", {
+          value: () => cliStateRoot,
+        });
+      }
+      await service.start();
+
+      if (status === "busy") {
+        const recovery = await service.resumeOrphanedBusySessions();
+        expect(recovery).toEqual({ resumed: 0, skipped: 1 });
+        expect((await service.getSession(sessionId))?.status).toBe("errored");
+      } else {
+        await expect(
+          service.sendPrompt(sessionId, "must not launch"),
+        ).rejects.toThrow(/Unsupported ACP agent adapter/);
+      }
+
+      expect(nativeClientMock.instances).toHaveLength(0);
+      expect(spawnMock).not.toHaveBeenCalled();
+      await expect(service.closeSession(sessionId)).resolves.toBeUndefined();
+      expect((await service.getSession(sessionId))?.status).toBe("stopped");
+      if (cliStateRoot) {
+        await fs.rm(cliStateRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("refuses a persisted CLI session whose Eliza Code adapter cannot exist in acpx", async () => {
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    await store.create({
+      id: "legacy-cli-eliza-code",
+      name: "legacy-cli-eliza-code",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId: "legacy-cli-protocol",
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode: "cli" },
+    });
+    const stateRoot = await fs.mkdtemp(join(os.tmpdir(), "acp-cli-eliza-"));
+    await fs.mkdir(join(stateRoot, "sessions"), { recursive: true });
+    await fs.writeFile(
+      join(stateRoot, "sessions", "legacy-cli-protocol.json"),
+      "{}",
+      "utf8",
+    );
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }), {
+      store,
+    });
+    Object.defineProperty(service, "acpxStateRoot", {
+      value: () => stateRoot,
+    });
+    await service.start();
+
+    await expect(
+      service.sendPrompt("legacy-cli-eliza-code", "must not launch"),
+    ).rejects.toThrow("Eliza Code requires the native ACP transport");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(0);
+    await expect(
+      service.closeSession("legacy-cli-eliza-code"),
+    ).resolves.toBeUndefined();
+    await fs.rm(stateRoot, { recursive: true, force: true });
+  });
+
   it("dispatches cancelSession and closeSession by persisted CLI transport in a native-default service", async () => {
     const store = new InMemorySessionStore();
     const now = new Date();
@@ -1605,51 +1794,6 @@ describe("AcpService", () => {
         process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
       }
     }
-  });
-
-  it("uses an explicit OpenCode ACP command override when configured", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_ACP_COMMAND: "/opt/opencode/bin/opencode acp",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-command",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    const { sessionId } = await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toBe("/opt/opencode/bin/opencode acp");
-    expect(args).not.toContain("opencode");
-
-    const prompt = nextProc();
-    const sent = service.sendPrompt(sessionId, "write a tiny static page");
-    await waitForSpawn(prompt);
-    prompt.proc.stdout.emit(
-      "data",
-      Buffer.from(
-        '{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
-      ),
-    );
-    closeOk(prompt);
-    await sent;
-
-    const promptArgs = spawnMock.mock.calls[1]?.[1] as string[] | undefined;
-    const promptAgentArgIndex = promptArgs?.indexOf("--agent") ?? -1;
-    expect(promptAgentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(promptArgs?.[promptAgentArgIndex + 1]).toBe(
-      "/opt/opencode/bin/opencode acp",
-    );
-    expect(promptArgs).not.toContain("opencode");
   });
 
   it("sendPrompt emits message, tool_running, task_complete and resolves PromptResult", async () => {
@@ -2128,7 +2272,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-reasoning",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2185,7 +2329,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-plan",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2779,7 +2923,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "route-prefixed",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2810,7 +2954,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "ignore-echo",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -3178,7 +3322,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     return {
       id: over.id ?? "00000000-0000-0000-0000-0000000000aa",
       name: "hc",
-      agentType: "opencode" as const,
+      agentType: "elizaos" as const,
       workdir: "/tmp/acp-test",
       status: "ready" as const,
       approvalPreset: "standard" as const,

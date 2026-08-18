@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
 import { workspaceDiskBudgetError } from "../../src/services/workspace-registry.js";
@@ -21,6 +21,19 @@ import {
 const spawnOptions = { parameters: { action: "spawn_agent" } };
 const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
 const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
+const PREV_CONFIG_PATH = process.env.ELIZA_CONFIG_PATH;
+
+beforeAll(() => {
+  process.env.ELIZA_CONFIG_PATH = path.join(
+    os.tmpdir(),
+    "eliza-spawn-agent-tests-no-config.json",
+  );
+});
+
+afterAll(() => {
+  if (PREV_CONFIG_PATH === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = PREV_CONFIG_PATH;
+});
 
 describe("TASKS:spawn_agent", () => {
   it("rejects a list_agents alias on the promoted spawn tool before spawning", async () => {
@@ -312,7 +325,7 @@ describe("TASKS:spawn_agent", () => {
       runtimeWith(svc),
       memory({
         task: "Build the app and verify the public URL. Reply only after verification with the final URL.",
-        agentType: "opencode",
+        agentType: "elizaos",
       }),
       state,
       spawnOptions,
@@ -329,7 +342,7 @@ describe("TASKS:spawn_agent", () => {
     const cb = callback();
     const result = await spawnAgentAction.handler(
       runtimeWith(svc),
-      memory({ task: "Build the app", agentType: "opencode" }),
+      memory({ task: "Build the app", agentType: "elizaos" }),
       state,
       { parameters: { action: "spawn_agent", deferUserReply: true } },
       cb,
@@ -362,8 +375,8 @@ describe("TASKS:spawn_agent", () => {
       const result = await spawnAgentAction.handler(
         runtimeWith(svc),
         memory({
-          task: "Create a counter at /srv/apps/opencode-check.",
-          agentType: "opencode",
+          task: "Create a counter at /srv/apps/elizaos-check.",
+          agentType: "elizaos",
         }),
         state,
         spawnOptions,
@@ -420,7 +433,7 @@ describe("TASKS:spawn_agent", () => {
         runtimeWith(svc),
         memory({
           task: "Polish the chimes.",
-          agentType: "opencode",
+          agentType: "elizaos",
           workdir: appDir,
         }),
         state,
@@ -477,7 +490,7 @@ describe("TASKS:spawn_agent", () => {
           parameters: {
             action: "spawn_agent",
             task: "Continue the failed static page build.",
-            agentType: "opencode",
+            agentType: "elizaos",
           },
         },
         callback(),

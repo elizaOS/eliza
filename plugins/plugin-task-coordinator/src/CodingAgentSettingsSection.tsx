@@ -1,6 +1,6 @@
 /**
  * Per-framework coding-agent settings panel — the tabbed configuration surface
- * (elizaOS, Pi Agent, OpenCode, Claude, Codex) for auth, model, and
+ * (Eliza Code, Pi Agent, Claude, Codex) for auth, model, and
  * approval-preset settings. Fills the `@elizaos/ui` settings-section slot and
  * composes AgentTabsSection, GlobalPrefsSection, LlmProviderSection,
  * ModelConfigSection, and GitHubConnectionCard. Preferences persist through the
@@ -31,6 +31,7 @@ import {
   ENV_PREFIX,
   FALLBACK_MODELS,
   type LlmProvider,
+  MODEL_CATALOG_PROVIDERS,
   type ModelOption,
 } from "./coding-agent-settings-shared";
 import { GitHubConnectionCard } from "./GitHubConnectionCard";
@@ -75,10 +76,17 @@ export function CodingAgentSettingsSection() {
     void (async () => {
       setLoading(true);
       try {
-        const [cfg, anthropicRes, openaiRes, preflightRes] = await Promise.all([
+        const [cfg, catalogResponses, preflightRes] = await Promise.all([
           client.getConfig(),
-          client.fetchModels("anthropic", false).catch(() => null),
-          client.fetchModels("openai", false).catch(() => null),
+          Promise.all(
+            MODEL_CATALOG_PROVIDERS.map(
+              async (providerId) =>
+                [
+                  providerId,
+                  await client.fetchModels(providerId, false).catch(() => null),
+                ] as const,
+            ),
+          ),
           fetch("/api/coding-agents/preflight", {
             signal: controller.signal,
           })
@@ -95,8 +103,8 @@ export function CodingAgentSettingsSection() {
         if (cloud.apiKey) {
           loaded._CLOUD_API_KEY = cloud.apiKey;
         }
-        for (const agent of ["CLAUDE", "CODEX", "OPENCODE"] as const) {
-          const prefix = `ELIZA_${agent}`;
+        for (const agent of AGENT_TABS) {
+          const prefix = ENV_PREFIX[agent];
           if (env[`${prefix}_MODEL_POWERFUL`]) {
             loaded[`${prefix}_MODEL_POWERFUL`] =
               env[`${prefix}_MODEL_POWERFUL`];
@@ -121,19 +129,15 @@ export function CodingAgentSettingsSection() {
           "OPENAI_API_KEY",
           "ANTHROPIC_BASE_URL",
           "OPENAI_BASE_URL",
-          "ELIZA_OPENCODE_API_KEY",
-          "ELIZA_OPENCODE_BASE_URL",
-          "ELIZA_OPENCODE_LOCAL",
+          "ELIZA_CODE_API_KEY",
+          "ELIZA_CODE_BASE_URL",
         ] as const) {
           if (env[key]) loaded[key] = env[key];
         }
         setPrefs(loaded);
 
         const models: Record<string, ModelOption[]> = {};
-        for (const [providerId, response] of [
-          ["anthropic", anthropicRes],
-          ["openai", openaiRes],
-        ] as const) {
+        for (const [providerId, response] of catalogResponses) {
           if (
             response?.models &&
             Array.isArray(response.models) &&

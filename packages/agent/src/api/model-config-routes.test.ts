@@ -177,8 +177,8 @@ describe("POST /api/models/config validation", () => {
   it("rejects effort on backends without an effort seam", async () => {
     const { ctx, json } = makeHarness("POST", {
       target: "coding",
-      backend: "opencode",
-      model: "cerebras/gpt-oss-120b",
+      backend: "eliza-code",
+      model: "gpt-oss-120b",
       effort: "high",
     });
     await handleModelConfigRoutes(ctx as never);
@@ -376,20 +376,41 @@ describe("POST /api/models/config coding writes", () => {
     expect(body).toMatchObject({ applied: true, restart: false });
   });
 
-  it("accepts a free-form opencode model and a defaultBackend switch", async () => {
-    const { ctx, config } = makeHarness("POST", {
+  it("accepts a free-form Eliza Code model and a defaultBackend switch", async () => {
+    const { ctx, config, json } = makeHarness("POST", {
       target: "coding",
-      backend: "opencode",
-      model: "cerebras/gpt-oss-120b",
-      defaultBackend: "opencode",
+      backend: "eliza-code",
+      model: "gpt-oss-120b",
+      defaultBackend: "eliza-code",
     });
     await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json)).toMatchObject({
+      body: { applied: true },
+      status: undefined,
+    });
     const env = (config as Record<string, unknown>).env as Record<
       string,
       unknown
     >;
-    expect(env.ELIZA_OPENCODE_MODEL_POWERFUL).toBe("cerebras/gpt-oss-120b");
-    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("opencode");
+    expect(env.ELIZA_CODE_MODEL_POWERFUL).toBe("gpt-oss-120b");
+    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("elizaos");
+  });
+
+  it("rejects provider-qualified model ids before persisting Eliza Code config", async () => {
+    const { ctx, config, json } = makeHarness("POST", {
+      target: "coding",
+      backend: "eliza-code",
+      model: "cerebras/gpt-oss-120b",
+    });
+
+    await handleModelConfigRoutes(ctx as never);
+
+    const { status, body } = responseOf(json);
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ code: "MODEL_CONFIG_INVALID" });
+    expect((config as Record<string, unknown>).env).not.toMatchObject({
+      ELIZA_CODE_MODEL_POWERFUL: expect.anything(),
+    });
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {
@@ -404,7 +425,7 @@ describe("POST /api/models/config coding writes", () => {
       string,
       unknown
     >;
-    expect(env.ELIZA_ELIZAOS_MODEL_POWERFUL).toBe("eliza-local");
+    expect(env.ELIZA_CODE_MODEL_POWERFUL).toBe("eliza-local");
     expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("elizaos");
   });
 

@@ -22,17 +22,21 @@ ELIZA_CODING_WORKSPACE=/workspace
 ```
 
 The image includes `git`, `ripgrep`, `python3`, `openssh-client`, Codex CLI,
-Claude Code, and opencode by default. Disable individual CLI installs at build
+and Claude Code by default. Disable optional third-party CLI installs at build
 time:
 
 ```bash
 docker build \
   --build-arg INSTALL_CODEX=false \
   --build-arg INSTALL_CLAUDE_CODE=false \
-  --build-arg INSTALL_OPENCODE=false \
   -t ghcr.io/elizaos/coding-remote-runner:local \
   packages/cloud/services/coding-remote-runner
 ```
+
+This image is an HTTP filesystem/process executor; it does not start an LLM
+agent. `ELIZA_CODING_AGENT` is provisioning metadata. Native Eliza Code ACP runs
+from `eliza-code-acp` in the canonical managed-agent image, whose build installs
+and smoke-tests that executable.
 
 Configure Eliza Cloud to use the published image with:
 

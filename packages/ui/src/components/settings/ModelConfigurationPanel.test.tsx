@@ -168,11 +168,10 @@ function fixtureConfig(): ModelsConfigResponse {
         ELIZA_CODEX_EFFORT: { value: "medium", source: "config.env" },
         ELIZA_CLAUDE_MODEL_POWERFUL: null,
         ELIZA_CLAUDE_EFFORT: null,
-        ELIZA_OPENCODE_MODEL_POWERFUL: {
+        ELIZA_CODE_MODEL_POWERFUL: {
           value: "custom-oss-model",
           source: "config.env",
         },
-        ELIZA_ELIZAOS_MODEL_POWERFUL: null,
       },
     },
   };
@@ -341,22 +340,7 @@ describe("prefill and option filtering", () => {
     ]);
   });
 
-  it("keeps a configured opencode model visible even when not in the suggestion list", async () => {
-    await renderReady();
-
-    fill("models-coding-backend", "opencode");
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "custom-oss-model",
-      "gemma-4-31b",
-      "zai-glm-4.7",
-      "plain-model",
-    ]);
-    expect(
-      document.querySelector('[data-agent-id="models-coding-effort"]'),
-    ).toBeNull();
-  });
-
-  it("renders a free-form model input for the eliza-code backend", async () => {
+  it("renders a free-form model input without stale provider suggestions for Eliza Code", async () => {
     await renderReady();
 
     fill("models-coding-backend", "eliza-code");
@@ -364,6 +348,10 @@ describe("prefill and option filtering", () => {
       'input[data-agent-id="models-coding-model"]',
     );
     expect(input).toBeTruthy();
+    expect(agentElements.get("models-coding-model")?.options).toBeUndefined();
+    expect(
+      document.querySelector('[data-agent-id="models-coding-effort"]'),
+    ).toBeNull();
   });
 });
 
@@ -550,7 +538,7 @@ describe("coding save flow", () => {
     clientMock.updateModelsConfig.mockResolvedValue({
       kind: "applied",
       restart: false,
-      keys: ["ELIZA_ELIZAOS_MODEL_POWERFUL"],
+      keys: ["ELIZA_CODE_MODEL_POWERFUL"],
     });
     await renderReady();
 

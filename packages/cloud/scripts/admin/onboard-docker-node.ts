@@ -10,19 +10,21 @@
  *
  * Every step is idempotent and safe to re-run:
  *   1. verify/install Docker + ensure the daemon is running,
- *   2. ensure the shared bridge network exists,
- *   3. ensure deterministic ghcr access — THE robot fix: clear any stale
+ *   2. install and verify the hosted-agent seccomp + enforcing AppArmor
+ *      policies (SSH must be root or have passwordless sudo root capability),
+ *   3. ensure the shared bridge network exists,
+ *   4. ensure deterministic ghcr access — THE robot fix: clear any stale
  *      stored credential (an expired ghcr token in /root/.docker/config.json
  *      overrides anonymous access and bricks the public-image pull with
  *      `denied`). Reuses `ensureRegistryAccess`.
- *   4. clean zombie/stale agent containers (exited/created orphans matching the
+ *   5. clean zombie/stale agent containers (exited/created orphans matching the
  *      agent naming scheme — never an active sandbox),
- *   5. ensure the local-embedding sidecar is running (same contract the
+ *   6. ensure the local-embedding sidecar is running (same contract the
  *      cloud-init bootstrap installs; see `embedding-sidecar.ts`),
- *   6. pre-pull the agent image,
- *   7. attest the exact Linux boot UUID over host-key-verified SSH,
- *   8. upsert the node into `docker_nodes` (update if it already exists),
- *   9. print a clear summary of what changed vs. was already in place.
+ *   7. pre-pull the agent image,
+ *   8. attest the exact Linux boot UUID over host-key-verified SSH,
+ *   9. upsert the node into `docker_nodes` (update if it already exists),
+ *  10. print a clear summary of what changed vs. was already in place.
  *
  * No secrets are hard-coded: the registry token (if any) comes from the
  * control-plane env via `containersEnv`; the DB target from `DATABASE_URL`.
@@ -36,7 +38,7 @@
  *   --node-id     <id>           Logical node id (ONBOARD_NODE_ID)          [required]
  *   --key         <path>         SSH private key path (ONBOARD_NODE_SSH_KEY) [default ~/.ssh/id_ed25519]
  *   --ssh-port    <n>            SSH port (ONBOARD_NODE_SSH_PORT)            [default 22]
- *   --ssh-user    <user>         SSH user (ONBOARD_NODE_SSH_USER)           [default root]
+ *   --ssh-user    <user>         Root or passwordless-sudo SSH user          [default root]
  *   --capacity    <n>            Agent capacity (ONBOARD_NODE_CAPACITY)     [default 8]
  *   --dry-run                    Print the planned steps, touch nothing.
  */
@@ -60,6 +62,8 @@ async function loadDeps() {
     dockerUtils,
     { DockerSSHClient },
     { buildEnsureEmbeddingSidecarCmd },
+    { buildEnsureHostedAgentAppArmorProfileCmd },
+    { buildEnsureHostedAgentSeccompProfileCmd },
   ] = await Promise.all([
     import("@elizaos/cloud-shared/db/repositories/docker-nodes"),
     import(
@@ -71,6 +75,8 @@ async function loadDeps() {
     import("@elizaos/cloud-shared/lib/services/docker-sandbox-utils"),
     import("@elizaos/cloud-shared/lib/services/docker-ssh"),
     import("@elizaos/cloud-shared/lib/services/containers/embedding-sidecar"),
+    import("@elizaos/cloud-shared/lib/services/hosted-agent-apparmor-profile"),
+    import("@elizaos/cloud-shared/lib/services/hosted-agent-seccomp-profile"),
   ]);
   return {
     dockerNodesRepository,
@@ -81,6 +87,8 @@ async function loadDeps() {
     shellQuote: dockerUtils.shellQuote,
     DockerSSHClient,
     buildEnsureEmbeddingSidecarCmd,
+    buildEnsureHostedAgentAppArmorProfileCmd,
+    buildEnsureHostedAgentSeccompProfileCmd,
   };
 }
 
@@ -324,6 +332,8 @@ async function main(): Promise<void> {
     shellQuote,
     DockerSSHClient,
     buildEnsureEmbeddingSidecarCmd,
+    buildEnsureHostedAgentAppArmorProfileCmd,
+    buildEnsureHostedAgentSeccompProfileCmd,
   } = await loadDeps();
   const summary: string[] = [];
   const existing = await dockerNodesRepository.findByNodeId(args.nodeId);
@@ -361,11 +371,21 @@ async function main(): Promise<void> {
     await ssh.exec("docker info >/dev/null 2>&1", 30_000);
     summary.push("Docker daemon running");
 
-    // 2. Shared bridge network (idempotent, race-safe).
+    // 2. Mandatory host-policy migration. Docker-group membership is not
+    // enough: /etc policy installation and AppArmor loading require root. The
+    // generated commands accept root SSH or passwordless sudo and otherwise
+    // fail before an unusable node can be registered.
+    await ssh.exec(buildEnsureHostedAgentAppArmorProfileCmd(), 30_000);
+    await ssh.exec(buildEnsureHostedAgentSeccompProfileCmd(), 30_000);
+    summary.push(
+      "hosted-agent AppArmor + seccomp policies installed and verified",
+    );
+
+    // 3. Shared bridge network (idempotent, race-safe).
     await ssh.exec(buildEnsureNetworkCmd(network), 30_000);
     summary.push(`network "${network}" ensured`);
 
-    // 3. THE robot fix: deterministic registry access (clear stale ghcr cred).
+    // 4. THE robot fix: deterministic registry access (clear stale ghcr cred).
     await ensureRegistryAccess(ssh, image);
     summary.push(
       containersEnv.registryToken() || containersEnv.registryTokenFile()
@@ -373,7 +393,7 @@ async function main(): Promise<void> {
         : "ghcr stale creds cleared (anonymous pull)",
     );
 
-    // 4. Reap zombie agent containers (orphaned, non-running). Conservative.
+    // 5. Reap zombie agent containers (orphaned, non-running). Conservative.
     const psOutput = await ssh.exec(
       "docker ps -a --format '{{.Names}}\t{{.State}}'",
       30_000,
@@ -391,7 +411,7 @@ async function main(): Promise<void> {
       summary.push("no zombie containers");
     }
 
-    // 5. Ensure the local-embedding sidecar is running. Non-fatal on failure —
+    // 6. Ensure the local-embedding sidecar is running. Non-fatal on failure —
     // the node still registers and the control plane's health loop both
     // surfaces the missing sidecar (docker_nodes metadata) and self-heals it,
     // so a transient pull failure here cannot silently strand the node on the
@@ -408,7 +428,7 @@ async function main(): Promise<void> {
         );
       });
 
-    // 6. Pull the agent image now so the first deploy on this node is warm.
+    // 7. Pull the agent image now so the first deploy on this node is warm.
     console.log(
       `[onboard] pre-pulling ${image} (first run can take a few minutes)`,
     );
@@ -422,7 +442,7 @@ async function main(): Promise<void> {
         summary.push("agent image pre-pull FAILED (non-fatal)");
       });
 
-    // 7. Read the exact running-kernel identity over the same verified SSH
+    // 8. Read the exact running-kernel identity over the same verified SSH
     // connection. Unlike image warming, this proof is mandatory: without it
     // the node must not become manifest-v2 source authority.
     const nodeIncarnation = parseLinuxBootId(
@@ -434,7 +454,7 @@ async function main(): Promise<void> {
     );
     summary.push(`boot incarnation attested (${nodeIncarnation})`);
 
-    // 8. Register / upsert exact Robot authority. Existing rows use one CAS
+    // 9. Register / upsert exact Robot authority. Existing rows use one CAS
     // write so reboot rotation and operational host updates cannot tear apart.
     if (existing) {
       await dockerNodesRepository.attestRobotSourceAuthority({

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Boots the interactive and one-shot eliza-code entrypoints after capturing
  * the host executable-search baseline needed by shell-backed coding tools.

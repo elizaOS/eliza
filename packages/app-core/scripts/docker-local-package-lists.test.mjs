@@ -66,4 +66,19 @@ describe("Docker local package lists", () => {
       );
     }
   });
+
+  it("ships Eliza Code and every provider plugin its ACP entrypoint imports", () => {
+    const linked = normalizedLinkedPackages();
+    expect(linked).toEqual(
+      expect.arrayContaining([
+        "packages/examples/code",
+        "plugins/plugin-openai",
+        "plugins/plugin-anthropic",
+        "plugins/plugin-embeddings",
+        "plugins/plugin-goals",
+        "plugins/plugin-coding-tools",
+        "plugins/plugin-sql",
+      ]),
+    );
+  });
 });

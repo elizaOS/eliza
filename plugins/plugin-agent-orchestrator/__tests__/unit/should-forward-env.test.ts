@@ -52,7 +52,7 @@ describe("shouldForwardEnv", () => {
   // Regression: the repo runtime is Bun, and Bun on Windows reports the search
   // path as `Path` (and other OS vars with native casing), so a case-sensitive
   // `=== "PATH"` forwarded NONE of them — the child spawned with no PATH and the
-  // opencode shim died with "'bun' is not recognized". Match case-insensitively.
+  // elizaos shim died with "'bun' is not recognized". Match case-insensitively.
   it("forwards PATH regardless of OS casing (Windows reports `Path`)", () => {
     expect(shouldForwardEnv("Path")).toBe(true);
     expect(shouldForwardEnv("path")).toBe(true);
@@ -128,6 +128,20 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
     for (const key of [
       "ELIZA_VAULT_PASSPHRASE",
       "ELIZA_TERMINAL_RUN_TOKEN",
+      "ELIZA_API_TOKEN",
+      "ELIZA_ACCOUNT_POOL_BROKER_SECRET",
+      "ELIZA_WALLET_EXPORT_TOKEN",
+      "ELIZA_CLOUD_SANDBOX_TOKEN",
+      "ELIZA_HOME_REMOTE_RUNNER_TOKEN",
+      "ELIZA_APNS_KEY",
+      "ELIZA_LOCAL_ROOT_KEY",
+      "ELIZA_TOKEN_ENCRYPTION_KEY",
+      "ELIZA_CERT_SIGNING_KEY",
+      "ELIZA_BLUEBUBBLES_PASSWORD",
+      "ELIZA_FCM_SERVICE_ACCOUNT",
+      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
+      "ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64",
+      "ELIZA_MANAGED_DATABASE_URL",
       "ELIZA_DISCORD_TOKEN",
       "ELIZA_BOT_TOKEN",
       "ELIZAOS_CLOUD_TERMINAL_RUN_TOKEN",
@@ -153,6 +167,10 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
     for (const key of SUB_AGENT_SYSTEM_ENV_KEYS) {
       expect(isEnvForwardableToSubAgent(key), key).toBe(true);
     }
+    expect(isEnvForwardableToSubAgent("ELIZA_CODE_API_KEY")).toBe(true);
+    expect(isEnvForwardableToSubAgent("ELIZA_APP_IMAGE_REGISTRY_TOKEN")).toBe(
+      true,
+    );
   });
 });
 
@@ -215,6 +233,18 @@ describe("forwardableSubAgentEnv", () => {
       ANTHROPIC_LARGE_MODEL: "proxy-large",
       ELIZA_VAULT_PASSPHRASE: "secret", // allowlisted by ELIZA_ but deny-listed
       ELIZA_TERMINAL_RUN_TOKEN: "host-shell-token", // allowlisted by ELIZA_ but deny-listed
+      ELIZA_API_TOKEN: "owner-api-token",
+      ELIZA_ACCOUNT_POOL_BROKER_SECRET: "broker-secret",
+      ELIZA_WALLET_EXPORT_TOKEN: "wallet-export-token",
+      ELIZA_CLOUD_SANDBOX_TOKEN: "sandbox-control-token",
+      ELIZA_HOME_REMOTE_RUNNER_TOKEN: "runner-control-token",
+      ELIZA_LOCAL_ROOT_KEY: "root-kms-key",
+      ELIZA_CERT_SIGNING_KEY: "private-signing-key",
+      ELIZA_BLUEBUBBLES_PASSWORD: "connector-password",
+      ELIZA_FCM_SERVICE_ACCOUNT: "serialized-service-account",
+      ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM: "private-key-pem",
+      ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: "signing-key-base64",
+      ELIZA_MANAGED_DATABASE_URL: "postgres://managed-credential",
       DISCORD_BOT_TOKEN: "nope", // not allowlisted
       MISSING: undefined, // non-string skipped
     });
@@ -225,6 +255,18 @@ describe("forwardableSubAgentEnv", () => {
     expect(out.ANTHROPIC_SMALL_MODEL).toBe("proxy-small");
     expect(out.ANTHROPIC_MEDIUM_MODEL).toBe("proxy-medium");
     expect(out.ANTHROPIC_LARGE_MODEL).toBe("proxy-large");
+    expect(out.ELIZA_API_TOKEN).toBeUndefined();
+    expect(out.ELIZA_ACCOUNT_POOL_BROKER_SECRET).toBeUndefined();
+    expect(out.ELIZA_WALLET_EXPORT_TOKEN).toBeUndefined();
+    expect(out.ELIZA_CLOUD_SANDBOX_TOKEN).toBeUndefined();
+    expect(out.ELIZA_HOME_REMOTE_RUNNER_TOKEN).toBeUndefined();
+    expect(out.ELIZA_LOCAL_ROOT_KEY).toBeUndefined();
+    expect(out.ELIZA_CERT_SIGNING_KEY).toBeUndefined();
+    expect(out.ELIZA_BLUEBUBBLES_PASSWORD).toBeUndefined();
+    expect(out.ELIZA_FCM_SERVICE_ACCOUNT).toBeUndefined();
+    expect(out.ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM).toBeUndefined();
+    expect(out.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64).toBeUndefined();
+    expect(out.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
   });
 
   // Symmetry (#16562): the OpenAI proxy/tier twins forward exactly like the

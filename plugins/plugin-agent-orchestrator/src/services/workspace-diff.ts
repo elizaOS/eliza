@@ -278,6 +278,7 @@ async function git(
   workdir: string,
   args: string[],
 ): Promise<string | undefined> {
+  const isNoIndexDiff = args[0] === "diff" && args.includes("--no-index");
   const direct = spawnSync("git", args, {
     cwd: workdir,
     timeout: GIT_TIMEOUT_MS,
@@ -285,12 +286,17 @@ async function git(
     windowsHide: true,
   });
   const directStdout = outputToString(direct.stdout);
-  if (directStdout && directStdout.length > 0) return directStdout;
+  const directSucceeded =
+    direct.status === 0 || (isNoIndexDiff && direct.status === 1);
+  if (directSucceeded && directStdout && directStdout.length > 0) {
+    return directStdout;
+  }
 
   // Bun's test runner can report a successful git process with an empty stdout
   // pipe. In that environment only, ask the shell to redirect stdout itself.
-  if (direct.status !== 0 && !process.versions.bun) return undefined;
-  if (!process.versions.bun) return directStdout;
+  if (!process.versions.bun) {
+    return directSucceeded ? directStdout : undefined;
+  }
 
   const outDir = mkdtempSync(join(tmpdir(), "workspace-diff-git-"));
   const outPath = join(outDir, "stdout");
@@ -314,7 +320,12 @@ async function git(
   // session lifecycle.
   try {
     const stdout = readFileSync(outPath, "utf8");
-    if (result.status === 0 || stdout.length > 0) return stdout;
+    if (
+      result.status === 0 ||
+      (isNoIndexDiff && result.status === 1 && stdout.length > 0)
+    ) {
+      return stdout;
+    }
     return undefined;
   } finally {
     rmSync(outDir, { recursive: true, force: true });

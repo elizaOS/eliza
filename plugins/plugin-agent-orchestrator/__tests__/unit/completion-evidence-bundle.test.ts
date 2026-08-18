@@ -69,7 +69,7 @@ class BundleFakeAcp {
     this.sessionWorkdir.set(sessionId, workdir);
     return Promise.resolve({
       sessionId,
-      agentType: (opts.agentType as string | undefined) ?? "opencode",
+      agentType: (opts.agentType as string | undefined) ?? "elizaos",
       workdir,
       status: "ready",
     });

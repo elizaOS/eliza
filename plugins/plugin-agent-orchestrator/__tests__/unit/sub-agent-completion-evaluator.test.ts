@@ -36,7 +36,7 @@ function makeContext(overrides: {
     content: {
       text:
         overrides.text ??
-        "[sub-agent: demo (opencode) — task_complete]\nhttps://example.test/apps/demo/",
+        "[sub-agent: demo (elizaos) — task_complete]\nhttps://example.test/apps/demo/",
       source: overrides.source ?? "sub_agent",
       metadata: {
         subAgent: true,
@@ -91,7 +91,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("posts verified URL replies even when Stage 1 inferred generic TASKS", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nSearch for data/apps directory.\n[tool output: data/apps]\n/workspace/apps/demo/index.html",
+      text: "[sub-agent: demo (elizaos) — task_complete]\nSearch for data/apps directory.\n[tool output: data/apps]\n/workspace/apps/demo/index.html",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -119,7 +119,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("does not re-query the sub-agent when a captured-output completion already has a URL reply", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\n[tool output: data/apps]\n/workspace/apps/demo/index.html",
+      text: "[sub-agent: demo (elizaos) — task_complete]\n[tool output: data/apps]\n/workspace/apps/demo/index.html",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -147,7 +147,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("prefers grounded completion prose over a model-invented URL reply", async () => {
     const context = makeContext({
-      text: "[sub-agent: tweet app (opencode) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
+      text: "[sub-agent: tweet app (elizaos) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -176,7 +176,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("uses verified URLs instead of leaking raw tool transcripts", async () => {
     const context = makeContext({
-      text: "[sub-agent: nebula app (opencode) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nI'll follow redirect.\nThe app is live at https://example.test/apps/nebula/.",
+      text: "[sub-agent: nebula app (elizaos) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nI'll follow redirect.\nThe app is live at https://example.test/apps/nebula/.",
       metadata: {
         subAgentVerifiedUrls: ["https://example.test/apps/nebula/"],
       },
@@ -209,7 +209,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("keeps clean completion prose after stripped tool output when it cites a verified URL", async () => {
     const context = makeContext({
-      text: "[sub-agent: nebula app (opencode) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nBuilt Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
+      text: "[sub-agent: nebula app (elizaos) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nBuilt Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
       metadata: {
         subAgentVerifiedUrls: ["https://example.test/apps/nebula/"],
       },
@@ -241,7 +241,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("prefers the public verified URL when completion only contains URL aliases", async () => {
     const context = makeContext({
-      text: "[sub-agent: tweet app (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/random-tweet/\nhttps://example.test/apps/random-tweet/",
+      text: "[sub-agent: tweet app (elizaos) — task_complete]\nhttp://127.0.0.1:6900/apps/random-tweet/\nhttps://example.test/apps/random-tweet/",
       metadata: {
         subAgentVerifiedUrls: [
           "http://127.0.0.1:6900/apps/random-tweet/",
@@ -274,7 +274,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("keeps a clean synthesized reply when bare completion URLs are verified", async () => {
     const context = makeContext({
-      text: "[sub-agent: permit garden (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/permit-garden/\nhttps://example.test/apps/permit-garden/",
+      text: "[sub-agent: permit garden (elizaos) — task_complete]\nhttp://127.0.0.1:6900/apps/permit-garden/\nhttps://example.test/apps/permit-garden/",
       metadata: {
         subAgentVerifiedUrls: [
           "http://127.0.0.1:6900/apps/permit-garden/",
@@ -309,7 +309,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("removes loopback route aliases from verified app completion replies", async () => {
     const context = makeContext({
-      text: "[sub-agent: civic vitrine (opencode) — task_complete]\nBuilt Civic Vitrine.\n- URL: http://127.0.0.1:6900/apps/civic-vitrine/\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
+      text: "[sub-agent: civic vitrine (elizaos) — task_complete]\nBuilt Civic Vitrine.\n- URL: http://127.0.0.1:6900/apps/civic-vitrine/\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
       metadata: {
         subAgentVerifiedUrls: [
           "http://127.0.0.1:6900/apps/civic-vitrine/",
@@ -344,7 +344,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("appends the public verified URL to a clean synthesized reply that omits it", async () => {
     const context = makeContext({
-      text: "[sub-agent: queue cathedral (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/queue-cathedral/\nhttps://example.test/apps/queue-cathedral/",
+      text: "[sub-agent: queue cathedral (elizaos) — task_complete]\nhttp://127.0.0.1:6900/apps/queue-cathedral/\nhttps://example.test/apps/queue-cathedral/",
       metadata: {
         subAgentVerifiedUrls: [
           "http://127.0.0.1:6900/apps/queue-cathedral/",
@@ -379,7 +379,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("suppresses empty task_complete placeholders", async () => {
     const context = makeContext({
-      text: "[sub-agent: tweet app (opencode) — task_complete]\nsub-agent reports task complete (no captured output).",
+      text: "[sub-agent: tweet app (elizaos) — task_complete]\nsub-agent reports task complete (no captured output).",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -406,7 +406,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("uses non-URL sub-agent completion text instead of a generic model reply", async () => {
     const context = makeContext({
-      text: "[sub-agent: disk check (opencode) — task_complete]\nRoot / is 84% used. /home is 57% used.",
+      text: "[sub-agent: disk check (elizaos) — task_complete]\nRoot / is 84% used. /home is 57% used.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -435,7 +435,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("routes captured tool-output-only completions back through TASKS", async () => {
     const context = makeContext({
-      text: "[sub-agent: disk check (opencode) — task_complete]\n[tool output: Get disk usage percentages]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root        45G   38G  7.0G  84% /\n[/tool output]",
+      text: "[sub-agent: disk check (elizaos) — task_complete]\n[tool output: Get disk usage percentages]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root        45G   38G  7.0G  84% /\n[/tool output]",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -467,7 +467,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("uses final prose when captured tool output is followed by a real answer", async () => {
     const context = makeContext({
-      text: "[sub-agent: disk check (opencode) — task_complete]\n[tool output: Get disk usage percentages]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root        45G   38G  7.0G  84% /\n[/tool output]\nRoot / is 84% used with 7.0G available.",
+      text: "[sub-agent: disk check (elizaos) — task_complete]\n[tool output: Get disk usage percentages]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root        45G   38G  7.0G  84% /\n[/tool output]\nRoot / is 84% used with 7.0G available.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -495,7 +495,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("surfaces clean zero-result completions instead of re-querying the sub-agent", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\nNo files found for the requested source-file search.",
+      text: "[sub-agent: source count (elizaos) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\nNo files found for the requested source-file search.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -522,7 +522,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("routes command failures back through TASKS for grounded follow-up", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nrg: command not found\n[/tool output]\nThe search command failed with command not found.",
+      text: "[sub-agent: source count (elizaos) — task_complete]\n[tool output: Find matching source files]\nrg: command not found\n[/tool output]\nThe search command failed with command not found.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -549,7 +549,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("does not use fabricated quantitative replies when hidden no-result output has unrelated prose", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\n[tool output: List project root]\nREADME.md\npackage.json\ntsconfig.json\n[/tool output]\nThe project root contains unrelated files.",
+      text: "[sub-agent: source count (elizaos) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\n[tool output: List project root]\nREADME.md\npackage.json\ntsconfig.json\n[/tool output]\nThe project root contains unrelated files.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -576,7 +576,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("allows positive quantitative completions even when phrased as a count", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\nFound 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
+      text: "[sub-agent: source count (elizaos) — task_complete]\nFound 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -604,7 +604,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("allows positive quantitative completions with larger spelled-out counts", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\nFound thirteen matching source files; no files were missing from the requested search.",
+      text: "[sub-agent: source count (elizaos) — task_complete]\nFound thirteen matching source files; no files were missing from the requested search.",
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -632,7 +632,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("prefers a clean final answer over a raw transcript reply with incidental URLs", async () => {
     const context = makeContext({
-      text: '[sub-agent: package check (opencode) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"url":"git+https://github.com/elizaOS/eliza.git"}}\n[/tool output]@elizaos/core',
+      text: '[sub-agent: package check (elizaos) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"url":"git+https://github.com/elizaOS/eliza.git"}}\n[/tool output]@elizaos/core',
       messageHandler: {
         plan: {
           contexts: ["simple"],
@@ -660,7 +660,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("does not run a follow-up tool when tool output is followed by a clean final answer", async () => {
     const context = makeContext({
-      text: '[sub-agent: package check (opencode) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza"}\n[/tool output]The package name is `@elizaos/core`.',
+      text: '[sub-agent: package check (elizaos) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza"}\n[/tool output]The package name is `@elizaos/core`.',
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -688,7 +688,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("promotes ignored verified task_complete messages into direct replies", async () => {
     const context = makeContext({
-      text: "[sub-agent: tweet app (opencode) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
+      text: "[sub-agent: tweet app (elizaos) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
       messageHandler: {
         processMessage: "IGNORE",
         plan: {
@@ -718,7 +718,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("keeps the normal action layer when Stage 1 requested a follow-up action", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nThe app still needs an API key before it can finish.",
+      text: "[sub-agent: demo (elizaos) — task_complete]\nThe app still needs an API key before it can finish.",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -784,7 +784,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("overrides stale concrete action hints when the verified completion already has a URL reply", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\n[tool output: tool output]\nNo files found\n[/tool output]\nYour app is live at https://example.test/apps/demo/.",
+      text: "[sub-agent: demo (elizaos) — task_complete]\n[tool output: tool output]\nNo files found\n[/tool output]\nYour app is live at https://example.test/apps/demo/.",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -812,7 +812,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("uses router-verified URLs when the sub-agent completion text omits them", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nCreated app directory and files.",
+      text: "[sub-agent: demo (elizaos) — task_complete]\nCreated app directory and files.",
       metadata: {
         subAgentVerifiedUrls: [
           "http://127.0.0.1:6900/apps/demo/",
@@ -822,7 +822,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
       messageHandler: {
         plan: {
           contexts: ["general"],
-          reply: "On it — spawning opencode sub-agent now.",
+          reply: "On it — spawning elizaos sub-agent now.",
           requiresTool: true,
           candidateActions: ["TASKS_SPAWN_AGENT"],
         },
@@ -846,11 +846,11 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("does not respawn after a successful completion when Stage 1 inferred a stale spawn hint", async () => {
     const context = makeContext({
-      text: "[sub-agent: tweet app (opencode) — task_complete]\nCreated the random tweet app files and verified the build.",
+      text: "[sub-agent: tweet app (elizaos) — task_complete]\nCreated the random tweet app files and verified the build.",
       messageHandler: {
         plan: {
           contexts: ["general"],
-          reply: "On it — spawning opencode sub-agent to handle your request.",
+          reply: "On it — spawning elizaos sub-agent to handle your request.",
           requiresTool: true,
           candidateActions: ["TASKS_SPAWN_AGENT"],
           parentActionHints: ["TASKS"],
@@ -875,7 +875,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("does not suppress incomplete build reports", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]",
+      text: "[sub-agent: demo (elizaos) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]",
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
@@ -884,7 +884,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
   it("does not handle non-completion sub-agent events", async () => {
     const context = makeContext({
       metadata: { subAgentEvent: "blocked" },
-      text: "[sub-agent: demo (opencode) — blocked]\nNeed credentials.",
+      text: "[sub-agent: demo (elizaos) — blocked]\nNeed credentials.",
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
@@ -898,7 +898,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
     // as direct replies instead of being routed back through TASKS as a
     // suspected transcript leak.
     const context = makeContext({
-      text: "[sub-agent: blog (opencode) — task_complete]\nDeployed the blog. The admin panel is mounted at /admin and posts live under /posts/123.\nhttps://example.test/blog/",
+      text: "[sub-agent: blog (elizaos) — task_complete]\nDeployed the blog. The admin panel is mounted at /admin and posts live under /posts/123.\nhttps://example.test/blog/",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -922,7 +922,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
     // so the evaluator routes such completions back through TASKS rather
     // than leaking the path to the user.
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nFound files:\n/Users/stan/projects/demo/index.html\n/var/log/app.log",
+      text: "[sub-agent: demo (elizaos) — task_complete]\nFound files:\n/Users/stan/projects/demo/index.html\n/var/log/app.log",
       metadata: {
         subAgentVerifiedUrls: ["https://example.test/apps/demo/"],
       },

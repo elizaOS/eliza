@@ -76,6 +76,42 @@ function makeCtx(acp: Partial<AcpMock>): RouteContext {
 }
 
 describe("agent-routes goal wrapper", () => {
+  it.each([
+    "sh -c 'touch /tmp/owned'",
+    "node -e process.exit()",
+    ["open", "code"].join(""),
+    ["open", "code"].join("-"),
+    "",
+  ])(
+    "rejects unsupported direct-spawn agent type %j before service dispatch",
+    async (agentType) => {
+      const listSessions = vi.fn();
+      const spawnSession = vi.fn();
+      const ctx = makeCtx({ listSessions, spawnSession });
+      const req = fakeRequest({
+        method: "POST",
+        url: "/api/coding-agents/spawn",
+        body: { agentType, task: "must never execute" },
+      });
+      const { res, status, body } = fakeResponse();
+
+      const handled = await handleAgentRoutes(
+        req,
+        res,
+        "/api/coding-agents/spawn",
+        ctx,
+      );
+
+      expect(handled).toBe(true);
+      expect(status()).toBe(400);
+      expect(body()).toMatchObject({
+        error: expect.stringContaining("Unsupported agent type"),
+      });
+      expect(listSessions).not.toHaveBeenCalled();
+      expect(spawnSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("GET /metrics returns real session counts instead of an empty object", async () => {
     const ctx = makeCtx({
       listSessions: vi.fn().mockResolvedValue([

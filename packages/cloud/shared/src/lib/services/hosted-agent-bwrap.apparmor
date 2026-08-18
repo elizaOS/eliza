@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright The Moby Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Derived from moby/profiles apparmor/template.go. The only authority increase
+# relative to docker-default is mount/pivot-root/umount mediation: Docker still
+# drops every capability, so the kernel permits those operations only after
+# bubblewrap atomically creates its unprivileged user + mount namespaces. All
+# docker-default proc/sysfs, AF_ALG, signal, and ptrace restrictions remain.
+
+abi <abi/3.0>,
+#include <tunables/global>
+
+profile "eliza-hosted-agent-bwrap" flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  # Disallow AF_ALG (Linux kernel crypto API); see https://copy.fail/
+  deny network alg,
+  capability,
+  file,
+  mount,
+  pivot_root,
+  umount,
+  # Host and OCI-runtime processes may stop/kill the container.
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=crun,
+  # Container processes may signal one another.
+  signal (send,receive) peer="eliza-hosted-agent-bwrap",
+
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
+  # bubblewrap --disable-userns sets this one namespace-local sysctl to zero;
+  # retain docker-default's write denial for every other current user sysctl.
+  deny @{PROC}/sys/[^ku]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sys/user/max_{cgroup,ipc,mnt,net,pid,time,uts}_namespaces w,
+  @{PROC}/sys/user/max_user_namespaces w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  ptrace (trace,tracedby,read,readby) peer="eliza-hosted-agent-bwrap",
+}

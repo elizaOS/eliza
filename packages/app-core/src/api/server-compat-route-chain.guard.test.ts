@@ -53,7 +53,7 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
       serverSrc,
       "async function handleCompatRouteInner(",
     );
-    // The dispatcher must walk the registry rather than open-code the chain.
+    // The dispatcher must walk the registry rather than hard-code the chain.
     expect(body).toContain("runCompatRouteChain(COMPAT_ROUTE_CHAIN");
   });
 

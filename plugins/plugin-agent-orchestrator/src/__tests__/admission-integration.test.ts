@@ -99,7 +99,7 @@ class FakeAcp {
     const session: SessionInfo = {
       id,
       name: opts.name ?? id,
-      agentType: opts.agentType ?? "opencode",
+      agentType: opts.agentType ?? "elizaos",
       workdir: opts.workdir ?? "/tmp/work",
       status: "running",
       approvalPreset: opts.approvalPreset ?? "standard",

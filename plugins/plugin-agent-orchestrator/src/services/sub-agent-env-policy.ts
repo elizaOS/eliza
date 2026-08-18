@@ -18,12 +18,28 @@ const DENY_ENV_PATTERNS = [
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
   /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT|GH_PAT)$/i,
-  // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
-  // AFTER this filter runs). A caller- or host-supplied value would let the
-  // spawner inject arbitrary provider config into the child, so it is denied at
-  // both intake paths.
-  /^OPENCODE_CONFIG_CONTENT$/i,
+  // Cloud-managed agents receive the shared Postgres credential URI under
+  // this ELIZA_ name. Eliza Code clears DATABASE_URL/POSTGRES_URL, but this
+  // alias otherwise survived the broad runtime-config projection.
+  /^ELIZA_MANAGED_DATABASE_URL$/i,
 ];
+
+// The historical `ELIZA_*` forwarding rule carries runtime configuration, but
+// that namespace also contains parent control-plane credentials. Keep the two
+// narrowly-scoped child credentials that are deliberately part of supported
+// coding flows; all other secret-shaped ELIZA keys must be added explicitly at
+// a later, per-session authority boundary rather than inherited wholesale.
+const ALLOWED_SENSITIVE_ELIZA_ENV_KEYS: ReadonlySet<string> = new Set([
+  "ELIZA_CODE_API_KEY",
+  "ELIZA_APP_IMAGE_REGISTRY_TOKEN",
+]);
+// Match credential *components* instead of only suffixes. Production settings
+// include serialized credentials and encoded/PEM key aliases such as
+// ELIZA_FCM_SERVICE_ACCOUNT, ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM, and
+// ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64. A suffix-only rule silently leaked
+// all three through the broad ELIZA_* configuration allowance.
+const SENSITIVE_ELIZA_ENV_KEY =
+  /^ELIZA_.*(?:^|_)(?:TOKEN|SECRET|PASSPHRASE|PASSWORD|CREDENTIALS?|KEY|PRIVATE_KEY|SIGNING_KEY|ENCRYPTION_KEY|ROOT_KEY|SERVICE_ACCOUNT|AUTH_JSON|CONFIG_CONTENT)(?:_|$)/i;
 
 /**
  * A key that must never reach a sub-agent, regardless of source — parent
@@ -32,7 +48,12 @@ const DENY_ENV_PATTERNS = [
  * vault passphrase) the deny-list exists to keep out of sub-agents.
  */
 export function isDeniedSubAgentEnvKey(key: string): boolean {
-  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+  if (DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))) return true;
+  const upper = key.toUpperCase();
+  return (
+    SENSITIVE_ELIZA_ENV_KEY.test(key) &&
+    !ALLOWED_SENSITIVE_ELIZA_ENV_KEYS.has(upper)
+  );
 }
 
 /**
@@ -40,7 +61,7 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
  * Matched case-insensitively (see `shouldForwardEnv`): the repo runtime is Bun,
  * and Bun on Windows reports these with native casing — `Path`, not `PATH` —
  * so a case-sensitive check would forward NONE of them, leaving the child with
- * no search path (the opencode shim then fails with "'bun' is not recognized").
+ * no search path and native ACP adapters cannot start.
  * Includes the Windows essentials cmd.exe + Bun + the agent's config/cache
  * resolution rely on, alongside the POSIX names.
  */
@@ -98,17 +119,16 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
   "OPENAI_MODEL",
   "ANTHROPIC_MODEL",
   "ANTHROPIC_SMALL_MODEL",
   "ANTHROPIC_MEDIUM_MODEL",
   "ANTHROPIC_LARGE_MODEL",
-  "OPENCODE_MODEL",
   // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
   // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
   "CLAUDE_CODE_EFFORT_LEVEL",
-  "OPENCODE_DISABLE_AUTOUPDATE",
-  "OPENCODE_DISABLE_TERMINAL_TITLE",
   "CODEX_HOME",
   // Container-registry PUSH credential for app-image builds (docker login
   // ghcr.io before the deploy contract's docker push). Narrow by design:

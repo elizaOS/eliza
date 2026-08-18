@@ -614,7 +614,13 @@ describe("strict mode — fail closed rather than hand out a static token", () =
       agentType: "claude",
       workdir: "/tmp/acp-lease-test",
     });
+    const persistedBeforeStop = await store.get(spawned.sessionId);
+    if (!persistedBeforeStop) throw new Error("spawned session was not stored");
     await firstService.stop();
+    // stop() is a graceful terminal transition. Restore the pre-stop durable
+    // record to model the abrupt process replacement this reconnect test owns,
+    // while still closing the first service's mock client and lease cleanly.
+    await store.create(persistedBeforeStop);
 
     gateway.mintError = new Error("broker unreachable on reconnect");
     const { runtime: reconnectRuntime } = runtime();

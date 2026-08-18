@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
- * Client Protocol, exactly like the opencode / codex / claude ACP agents.
+ * Client Protocol, alongside optional Codex and Claude ACP adapters.
  *
  * The orchestrator resolves the `elizaos` agent type to the command in
  * `ELIZA_ELIZAOS_ACP_COMMAND` and spawns it as a long-lived ACP JSON-RPC server
@@ -30,7 +30,7 @@
 // directories, and every SHELL command (builtins included) dies with exit -1
 // "No boot-authorized shell was detected" — the exact live failure observed in
 // spawned eliza-code sessions on 2026-08-16 while FILE tools kept working.
-import "./host-baseline.js";
+import "./acp-host-baseline.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AgentRuntime } from "@elizaos/core";
@@ -49,7 +49,7 @@ import {
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { ensureSessionIdentity, type SessionIdentity } from "./lib/identity.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
+import { applyElizaCodeProviderEnv } from "./lib/model-provider.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
 function log(message: string, extra?: unknown): void {
@@ -90,12 +90,9 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
     // that boundary to the fail-closed local-safe backend; an operator can still
     // explicitly select cloud isolation or local-yolo before spawning ACP.
     process.env.ELIZA_RUNTIME_MODE ??= "local-safe";
-    // Drop-in for the opencode coding sub-agent: when the host configured
-    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
-    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
-    // same backend with zero extra setup. The orchestrator forwards the parent
-    // env to this spawned process.
-    applyOpencodeProviderEnv(process.env);
+    // Materialize Eliza Code's native provider settings (including an already
+    // authorized Cerebras endpoint) onto the OpenAI-compatible provider plugin.
+    applyElizaCodeProviderEnv(process.env);
     // Isolated, ephemeral database for this coding sub-agent. PGlite is
     // single-process: the parent bot (and any other concurrently-spawned
     // eliza-code sub-agent) holds the PGlite dir under ELIZA_STATE_DIR, so a
@@ -168,7 +165,7 @@ const CONNECTION_CLOSE_QUIESCE_TIMEOUT_MS = 100;
 /**
  * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
  * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
- * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
+ * coding sub-agent, the relay contract"). Optional external adapters auto-read these
  * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
  * read them explicitly from the build workspace and inject them so the sub-agent
  * gets the same orientation as the other backends.

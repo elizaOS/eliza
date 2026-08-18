@@ -135,22 +135,22 @@ SSH.
 Eliza Cloud and Home default to:
 
 ```text
-codex,claude-code,opencode
+elizaos,codex,claude-code
 ```
 
 Override with:
 
 ```text
-ELIZA_SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
-SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
+ELIZA_SANDBOX_AGENT_RUNNERS=elizaos,codex,claude-code
+SANDBOX_AGENT_RUNNERS=elizaos,codex,claude-code
 ```
 
-`claude` is normalized to `claude-code`; `open-code` is normalized to
-`opencode`.
+`claude` is normalized to `claude-code`; `eliza` and `eliza-code` are
+normalized to the `elizaos` runner id.
 
-These are coding-agent runners, not model providers. The sandbox provider
-starts the runner in the workspace; Codex, Claude Code, and opencode each use
-their own configured auth/model settings inside that runner.
+These are coding-agent runners, not model providers. The selected runner is
+request metadata for provisioning and routing; the remote runner HTTP service
+does not itself start an LLM loop.
 
 ### Codex server mode
 
@@ -184,32 +184,17 @@ Use `CODEX_BIN` when the binary is not on `PATH`. Use
 long-lived app-server process. `codex` remains the runner id; the runner mode is
 `exec` or `app-server`.
 
-### opencode server mode
+### Eliza Code runner
 
-An opencode-backed sandbox should run opencode as a headless server inside the
-same sandbox workspace:
+The `elizaos` runner id selects the native Eliza Code ACP adapter. Its
+executable is `eliza-code-acp`, not the general `elizaos` CLI. The hosting image
+must provide that binary and its runtime plugin dependencies; the canonical
+managed-agent image builds and smoke-tests it.
 
-```text
-opencode serve --hostname 127.0.0.1 --port 4096
-```
-
-Use `OPENCODE_SERVER_PASSWORD` to require HTTP Basic auth. The default username
-is `opencode`; set `OPENCODE_SERVER_USERNAME` only when a runner needs a
-different account name.
-
-The opencode server provides:
-
-| Path | Purpose |
-| --- | --- |
-| `/global/health` | Server health and version. |
-| `/event` | Server-sent event stream. |
-| `/doc` | OpenAPI 3.1 spec. |
-| `/session` and `/session/:id/message` | Programmatic coding-agent sessions. |
-| `/find`, `/find/file`, `/file`, `/file/content`, `/file/status` | Workspace search and file reads. |
-| `/vcs` and `/session/:id/diff` | VCS status and session diff. |
-
-The remote runner HTTP runner remains the outer capability boundary. opencode is an
-agent runner inside E2B, Eliza Cloud, or Home, not a fourth sandbox provider.
+The orchestrator owns the ACP process over stdio. There is no Eliza Code HTTP
+server mode or Basic-auth REST API. The remote runner HTTP service remains the
+outer capability boundary and only provides the `/v1` filesystem/process
+contract documented below.
 
 ## remote runner HTTP Contract
 

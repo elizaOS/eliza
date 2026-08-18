@@ -166,7 +166,7 @@ describe("attachmentsProvider", () => {
 			}),
 			makeMessage({
 				source: "sub_agent",
-				text: "[sub-agent: app-build (opencode) — task_complete]\nResult: https://example.test/apps/demo/",
+				text: "[sub-agent: app-build (elizaos) — task_complete]\nResult: https://example.test/apps/demo/",
 			}),
 		);
 

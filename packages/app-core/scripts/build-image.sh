@@ -110,7 +110,19 @@ fi
 REPO_ROOT="$(pwd)"
 log "Repo root: ${YELLOW}${REPO_ROOT}${NC}"
 
-load_env_file "eliza/packages/app-core/deploy/deploy.defaults.env"
+# This legacy outer-repo builder uses the nested Eliza checkout for runtime
+# packages while the host app remains at packages/app. Keep every Docker path
+# explicit so Dockerfile.ci never falls back to its flat-monorepo defaults.
+APP_CORE_DIR="eliza/packages/app-core"
+PACKAGES_DIR="eliza/packages"
+PLUGINS_DIR="eliza/plugins"
+PATCHES_DIR="eliza/patches"
+AGENT_DIR="$PACKAGES_DIR/agent"
+APP_DIR="packages/app"
+ELIZA_CODE_DIR="$PACKAGES_DIR/examples/code"
+[[ -f "$ELIZA_CODE_DIR/package.json" ]] || die "$ELIZA_CODE_DIR/package.json not found"
+
+load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
@@ -142,8 +154,8 @@ log "Tag:     ${YELLOW}${IMAGE_NAME}${NC}"
 $DRY_RUN && warn "DRY RUN mode — commands will be shown but not executed"
 
 # ── Select Dockerfile ─────────────────────────────────────────────────────────
-if [[ -f "eliza/packages/app-core/deploy/Dockerfile.ci" ]]; then
-  DOCKERFILE="eliza/packages/app-core/deploy/Dockerfile.ci"
+if [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]]; then
+  DOCKERFILE="$APP_CORE_DIR/deploy/Dockerfile.ci"
   log "Dockerfile: ${YELLOW}${DOCKERFILE}${NC} (canonical production image)"
 else
   die "No Dockerfile found. Expected eliza/packages/app-core/deploy/Dockerfile.ci."
@@ -275,8 +287,13 @@ run "bun packages/app-core/scripts/build-native-plugins.mjs"
 ok "Capacitor plugins built"
 
 hdr "Step 2d: Build workspace packages"
-run "cd eliza/packages/agent && bun run build:docker-dist && cd ${REPO_ROOT}"
-run "cd eliza/packages/core && bun run build:node && cd ${REPO_ROOT}"
+run "cd ${AGENT_DIR} && bun run build:docker-dist && cd ${REPO_ROOT}"
+run "cd ${PACKAGES_DIR}/core && bun run build:node && cd ${REPO_ROOT}"
+run "cd ${ELIZA_CODE_DIR} && bun run build && cd ${REPO_ROOT}"
+if ! $DRY_RUN; then
+  [[ -s "$ELIZA_CODE_DIR/dist/index.js" ]] || die "$ELIZA_CODE_DIR/dist/index.js missing after build"
+  [[ -s "$ELIZA_CODE_DIR/dist/acp.js" ]] || die "$ELIZA_CODE_DIR/dist/acp.js missing after build"
+fi
 ok "Workspace packages built"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -330,6 +347,13 @@ hdr "Step 6: Docker build → ${IMAGE_NAME}"
 
 # Stamp the version into build-args so the image knows its own version
 BUILD_ARGS=(
+  "--build-arg" "APP_CORE_DIR=${APP_CORE_DIR}"
+  "--build-arg" "PACKAGES_DIR=${PACKAGES_DIR}"
+  "--build-arg" "PLUGINS_DIR=${PLUGINS_DIR}"
+  "--build-arg" "PATCHES_DIR=${PATCHES_DIR}"
+  "--build-arg" "AGENT_DIR=${AGENT_DIR}"
+  "--build-arg" "APP_DIR=${APP_DIR}"
+  "--build-arg" "ELIZA_CODE_DIR=${ELIZA_CODE_DIR}"
   "--build-arg" "VERSION=v${VERSION#v}"
   "--build-arg" "VERSION_CLEAN=${VERSION#v}"
   "--build-arg" "REVISION=${SOURCE_SHA}"
@@ -343,10 +367,10 @@ BUILD_ARGS=(
   "--build-arg" "OCI_LICENSES=${OCI_LICENSES}"
 )
 
-if [[ "$DOCKERFILE" == "eliza/packages/app-core/deploy/Dockerfile.ci" ]]; then
-  [[ -f "eliza/packages/app-core/deploy/.dockerignore.ci" ]] || die "eliza/packages/app-core/deploy/.dockerignore.ci is required for Dockerfile.ci builds"
+if [[ "$DOCKERFILE" == "$APP_CORE_DIR/deploy/Dockerfile.ci" ]]; then
+  [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || die "$APP_CORE_DIR/deploy/.dockerignore.ci is required for Dockerfile.ci builds"
   if $DRY_RUN; then
-    warn "[dry-run] Would copy eliza/packages/app-core/deploy/.dockerignore.ci → .dockerignore for Dockerfile.ci"
+    warn "[dry-run] Would copy $APP_CORE_DIR/deploy/.dockerignore.ci → .dockerignore for Dockerfile.ci"
   else
     DOCKERIGNORE_BACKUP="$(mktemp)"
     if [[ -f .dockerignore ]]; then
@@ -355,8 +379,8 @@ if [[ "$DOCKERFILE" == "eliza/packages/app-core/deploy/Dockerfile.ci" ]]; then
     else
       : >"$DOCKERIGNORE_BACKUP"
     fi
-    cp eliza/packages/app-core/deploy/.dockerignore.ci .dockerignore
-    ok "Using eliza/packages/app-core/deploy/.dockerignore.ci for canonical image build"
+    cp "$APP_CORE_DIR/deploy/.dockerignore.ci" .dockerignore
+    ok "Using $APP_CORE_DIR/deploy/.dockerignore.ci for canonical image build"
   fi
 fi
 

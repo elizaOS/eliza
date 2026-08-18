@@ -256,11 +256,9 @@ describe("multi-account coding-agent spawn", () => {
     }
   });
 
-  it("injects the pooled CEREBRAS_API_KEY for an opencode spawn", async () => {
-    // opencode pool-rotates across cerebras-api accounts; the bridge injects
-    // CEREBRAS_API_KEY which buildOpencodeSpawnConfig reads to target Cerebras.
+  it("does not select an external account-pool credential for Eliza Code", async () => {
     const select = installBridge({
-      opencode: {
+      elizaos: {
         providerId: "cerebras-api",
         accountId: "cb-1",
         label: "Cerebras 1",
@@ -272,22 +270,16 @@ describe("multi-account coding-agent spawn", () => {
     const service = new AcpService(runtime());
     await service.start();
     const result = await service.spawnSession({
-      name: "opencode-mt",
-      agentType: "opencode",
+      name: "elizaos-mt",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     const env = firstNativeClient().opts.env ?? {};
-    expect(env.CEREBRAS_API_KEY).toBe("cb-key-pooled");
-    expect(select).toHaveBeenCalledWith(
-      "opencode",
-      expect.objectContaining({ sessionKey: result.sessionId }),
-    );
-    const account = (result.metadata as Record<string, unknown>)?.account as
-      | Record<string, unknown>
-      | undefined;
-    expect(account?.providerId).toBe("cerebras-api");
-    expect(account?.accountId).toBe("cb-1");
-    expect(JSON.stringify(account)).not.toContain("cb-key-pooled");
+    expect(env.CEREBRAS_API_KEY).toBeUndefined();
+    expect(select).not.toHaveBeenCalled();
+    expect(
+      (result.metadata as Record<string, unknown>)?.account,
+    ).toBeUndefined();
     await service.stop();
   });
 

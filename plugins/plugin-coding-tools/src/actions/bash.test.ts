@@ -1020,7 +1020,7 @@ describeIfPosix("shellAction", () => {
         runtime,
         makeMessage(
           roomId,
-          "is the vendored opencode submodule present and what commit is checked out? concise",
+          "is the local workspace submodule present and what commit is checked out? concise",
         ),
         undefined,
         { command: `git -C ${staleRoot} --version` },
@@ -1298,7 +1298,7 @@ describeIfPosix("shellAction", () => {
   it("bounds broad local source searches to the current workspace", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
-        "does the vendored opencode source include Cerebras endpoint detection? concise",
+        "does the local workspace source include Cerebras endpoint detection? concise",
       command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
       platform: "linux",
     });
@@ -1307,9 +1307,7 @@ describeIfPosix("shellAction", () => {
     expect(result.command).toContain("git grep -n --recurse-submodules");
     expect(result.command).toContain("rg -n");
     expect(result.command).toContain("'Cerebras'");
-    expect(result.command).toContain(
-      "plugins/plugin-agent-orchestrator/vendor/opencode",
-    );
+    expect(result.command).toContain("SEARCH_ROOT='.'");
     expect(result.command).not.toContain("grep -R");
     expect(result.command).not.toContain("/home/example");
     expect(result.command).not.toContain("head -n");
@@ -1318,24 +1316,22 @@ describeIfPosix("shellAction", () => {
   it("bounds broad local source directory walks to the requested source root", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
-        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
-      command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+        "does the local workspace source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: "find /home/example -type d -name '*cerebras*' 2>/dev/null",
       platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
     expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
     expect(result.command).toContain("sed -n '1,120p'");
-    expect(result.command).toContain(
-      "plugins/plugin-agent-orchestrator/vendor/opencode",
-    );
+    expect(result.command).toContain("SEARCH_ROOT='.'");
     expect(result.command).not.toContain("/home/example");
   });
 
   it("bounds recursive source directory walks from the current directory", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
-        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+        "does the local workspace source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "ls -R . | head -n 50",
       platform: "linux",
     });
@@ -1343,9 +1339,7 @@ describeIfPosix("shellAction", () => {
     expect(result.rewritten).toBe(true);
     expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
     expect(result.command).toContain("sed -n '1,120p'");
-    expect(result.command).toContain(
-      "plugins/plugin-agent-orchestrator/vendor/opencode",
-    );
+    expect(result.command).toContain("SEARCH_ROOT='.'");
     expect(result.command).not.toContain("ls -R");
     expect(result.command).not.toContain("head -n");
   });
@@ -1353,16 +1347,14 @@ describeIfPosix("shellAction", () => {
   it("bounds recursive source directory walks from absolute home paths", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
-        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
-      command: "ls -R /home/example | grep -i opencode -n",
+        "does the local workspace source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: "ls -R /home/example | grep -i cerebras -n",
       platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
     expect(result.command).toContain('find "$SEARCH_ROOT" -maxdepth 5');
-    expect(result.command).toContain(
-      "plugins/plugin-agent-orchestrator/vendor/opencode",
-    );
+    expect(result.command).toContain("SEARCH_ROOT='.'");
     expect(result.command).not.toContain("ls -R");
     expect(result.command).not.toContain("/home/example");
   });
@@ -1370,18 +1362,15 @@ describeIfPosix("shellAction", () => {
   it("bounds relative recursive source grep pipelines", () => {
     const result = resolveSourceInspectionCommand({
       messageText:
-        "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
-      command:
-        'grep -R "cerebrasReasoning" -n plugins/plugin-agent-orchestrator/vendor/opencode | head -n 20',
+        "does the local workspace source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+      command: 'grep -R "cerebrasReasoning" -n . | head -n 20',
       platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
     expect(result.command).toContain("git grep -n --recurse-submodules");
     expect(result.command).toContain("'cerebrasReasoning'");
-    expect(result.command).toContain(
-      "plugins/plugin-agent-orchestrator/vendor/opencode",
-    );
+    expect(result.command).toContain("SEARCH_ROOT='.'");
     expect(result.command).not.toContain("grep -R");
     expect(result.command).not.toContain("head -n");
   });
@@ -3104,7 +3093,7 @@ describe("platform-aware canned resource commands", () => {
     it("rewrites a broad source grep to a PowerShell git-grep/rg/Select-String chain (no POSIX find)", () => {
       const result = resolveSourceInspectionCommand({
         messageText:
-          "does the vendored opencode source include Cerebras endpoint detection? concise",
+          "does the local workspace source include Cerebras endpoint detection? concise",
         command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
         platform: "windows",
       });
@@ -3124,8 +3113,8 @@ describe("platform-aware canned resource commands", () => {
     it("rewrites a broad source directory walk to a PowerShell Get-ChildItem listing (no sed)", () => {
       const result = resolveSourceInspectionCommand({
         messageText:
-          "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
-        command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+          "does the local workspace source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+        command: "find /home/example -type d -name '*cerebras*' 2>/dev/null",
         platform: "windows",
       });
       expect(result.rewritten).toBe(true);

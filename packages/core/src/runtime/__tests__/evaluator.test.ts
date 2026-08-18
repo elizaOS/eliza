@@ -677,7 +677,7 @@ df -h / /home
 		const runtime = {
 			useModel: vi.fn(
 				async () =>
-					'We need to locate OpenCode vendored endpoint detection change. Search for "OpenCode" and maybe "endpoint detection".Let\'s grep for "OpenCode" again but focusing on directory where detection could be. Search for "endpoint detection".Use grep.Search for "opencode" case-insensitive.\n- **Standard parsing** - Using `new URL(...).hostname` relies on the built-in URL parser.\n- **Avoids regex pitfalls** - Hand-rolled regular expressions often miss valid forms.',
+					'We need to locate Eliza Code vendored endpoint detection change. Search for "Eliza Code" and maybe "endpoint detection".Let\'s grep for "Eliza Code" again but focusing on directory where detection could be. Search for "endpoint detection".Use grep.Search for "elizaos" case-insensitive.\n- **Standard parsing** - Using `new URL(...).hostname` relies on the built-in URL parser.\n- **Avoids regex pitfalls** - Hand-rolled regular expressions often miss valid forms.',
 			),
 		};
 
@@ -697,7 +697,7 @@ df -h / /home
 						toolCall: { id: "tool-1", name: "SHELL", params: {} },
 						result: {
 							success: true,
-							text: "plugins/plugin-agent-orchestrator/vendor/opencode/packages/opencode/src/provider/provider.ts",
+							text: "plugins/plugin-agent-orchestrator/vendor/elizaos/packages/elizaos/src/provider/provider.ts",
 						},
 					},
 				],

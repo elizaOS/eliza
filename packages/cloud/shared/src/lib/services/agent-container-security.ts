@@ -4,25 +4,31 @@
  * The agent container reuses the same escape-hardening primitive as the app
  * lane — {@link buildAppContainerSecurityFlags}: `--cap-drop=ALL`,
  * `--security-opt no-new-privileges`, `--pids-limit=<n>` (#12230/#12302) — but,
- * unlike an untrusted app, the agent legitimately needs ONE capability back
- * when the headscale VPN is enabled: `NET_ADMIN` plus `/dev/net/tun` to bring up
- * the tailnet interface.
+ * the normal lane starts directly as uid 10001. The Headscale lane starts its
+ * trusted bootstrap as root and receives only `SETUID`, `SETGID`, `NET_ADMIN`
+ * plus `/dev/net/tun`; after tailscaled starts, PID 1 irreversibly execs the
+ * runtime as uid 10001 under no-new-privileges. Volume ownership is prepared on
+ * the host before `docker start`, so the container never needs CHOWN authority.
  *
  * ORDER IS LOAD-BEARING. `--cap-drop=ALL` must be emitted BEFORE
- * `--cap-add=NET_ADMIN` so the result is the canonical docker drop-all-then-
- * re-add-exactly-one idiom, leaving the container with NET_ADMIN and nothing
- * else. Keeping the composition in one pure builder makes that invariant a
+ * the narrow Headscale bootstrap set so the result remains an
+ * explicit drop-all-then-re-add contract. Keeping the composition in one pure
+ * builder makes that invariant a
  * unit-testable contract instead of an implicit ordering buried in a large
  * inline arg array in the provider.
  */
 
 import { buildAppContainerSecurityFlags } from "./app-network-utils";
 import { shellQuote } from "./docker-sandbox-utils";
+import { HOSTED_AGENT_BWRAP_APPARMOR_PROFILE_NAME } from "./hosted-agent-apparmor-profile";
+import { buildHostedAgentPolicyRootCmd } from "./hosted-agent-root-command";
+import { HOSTED_AGENT_BWRAP_SECCOMP_PROFILE_PATH } from "./hosted-agent-seccomp-profile";
 
 /**
  * Build the ordered `docker create` capability/security flags for a hosted-agent
  * container. Always drops all capabilities and forbids privilege escalation;
- * under headscale, re-adds exactly `NET_ADMIN` + the tun device AFTER the drop.
+ * under headscale only, re-adds `SETUID`, `SETGID`, `NET_ADMIN` + the tun device
+ * AFTER the drop. The normal lane stays at cap-drop=ALL.
  */
 export function buildAgentContainerSecurityFlags(opts: {
   headscaleEnabled: boolean;
@@ -30,8 +36,39 @@ export function buildAgentContainerSecurityFlags(opts: {
 }): string[] {
   return [
     ...buildAppContainerSecurityFlags({ pidsLimit: opts.pidsLimit }),
-    ...(opts.headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
+    "--security-opt",
+    `seccomp=${shellQuote(HOSTED_AGENT_BWRAP_SECCOMP_PROFILE_PATH)}`,
+    "--security-opt",
+    `apparmor=${shellQuote(HOSTED_AGENT_BWRAP_APPARMOR_PROFILE_NAME)}`,
+    ...(opts.headscaleEnabled
+      ? ["--cap-add=SETUID", "--cap-add=SETGID", "--cap-add=NET_ADMIN", "--device /dev/net/tun"]
+      : []),
   ];
+}
+
+/** Start the non-VPN lane as the final unprivileged runtime user. */
+export function buildAgentContainerUserFlags(opts: { headscaleEnabled: boolean }): string[] {
+  return opts.headscaleEnabled ? [] : ["--user 10001:10001"];
+}
+
+/**
+ * Prepare the two bind-mounted state trees as root on the Docker host. The
+ * provider derives this path from a validated agent id; the extra assertion
+ * keeps this destructive ownership operation fail-closed if that contract ever
+ * changes. GNU chown's physical traversal does not follow symlinks encountered
+ * below the tree.
+ */
+export function buildPrepareAgentRuntimeVolumesCmd(volumePath: string): string {
+  if (!/^\/data\/agents\/[A-Za-z0-9_-]+$/u.test(volumePath)) {
+    throw new Error("hosted-agent runtime volume must be a validated per-agent path");
+  }
+  const elizaStatePath = `${volumePath}/eliza`;
+  return buildHostedAgentPolicyRootCmd(
+    [
+      `install -d -m 0750 -o 10001 -g 10001 ${shellQuote(volumePath)} ${shellQuote(elizaStatePath)}`,
+      `chown -hR 10001:10001 -- ${shellQuote(volumePath)}`,
+    ].join(" && "),
+  );
 }
 
 /**

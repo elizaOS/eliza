@@ -556,22 +556,6 @@ describe("coding-account-bridge", () => {
     expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
-  it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
-    writeAccount("cerebras-api", "cb-busy", "cb-key-busy");
-    writeAccount("cerebras-api", "cb-idle", "cb-key-idle");
-    getDefaultAccountPool();
-    await setUsage("cerebras-api", "cb-busy", 88);
-    await setUsage("cerebras-api", "cb-idle", 4);
-    const sel = await getCodingAgentSelectorBridge()?.select("opencode", {
-      strategy: "least-used",
-    });
-    expect(sel?.providerId).toBe("cerebras-api");
-    expect(sel?.accountId).toBe("cb-idle");
-    // buildOpencodeSpawnConfig reads CEREBRAS_API_KEY from the injected env.
-    expect(sel?.envPatch.CEREBRAS_API_KEY).toBe("cb-key-idle");
-    expect(sel?.source).toBe("api-key");
-  });
-
   it("attributes recorded usage to the serving account (per-account delta)", async () => {
     writeAccount("anthropic-subscription", "acct", "sk-ant-oat-acct");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();

@@ -1,0 +1,320 @@
+diff --git a/src/BaseCliAgent/BaseCliAgent.js b/src/BaseCliAgent/BaseCliAgent.js
+index 59f2aeb500e48cfca55b8a154a585440e12f1b12..44a73209f0bc3369ae85ee61d4b1456c89ec4db5 100644
+--- a/src/BaseCliAgent/BaseCliAgent.js
++++ b/src/BaseCliAgent/BaseCliAgent.js
+@@ -536,15 +536,15 @@ function extractTextFromJsonPayload(raw) {
+         if (text) return text;
+       }
+     }
+-    // OpenCode-style CLIs emit a final "finish" or "done" event with the
+-    // complete response text directly on the payload. Prefer this over
++    // Some CLIs emit a final "finish" or "done" event with the complete
++    // response text directly on the payload. Prefer this over
+     // concatenating all text_delta chunks which would duplicate content.
+     if (type === "finish" || type === "done") {
+       const text = typeof parsed?.text === "string" ? parsed.text : undefined;
+       if (text) return text;
+     }
+-    // OpenCode nd-JSON format: "text" events carry part.text with finalized
+-    // text chunks. Accumulate these as a fallback when the interpreter's
++    // Some nd-JSON formats use "text" events with finalized part.text chunks.
++    // Accumulate these as a fallback when the interpreter's
+     // completed event isn't surfaced properly.
+     if (type === "text" && parsed?.part?.text) {
+       // Don't return early — accumulate via the chunks path below
+diff --git a/src/BaseCliAgent/BaseCliAgentOptions.ts b/src/BaseCliAgent/BaseCliAgentOptions.ts
+index 3a79dd5f8bcadc4726535681b3e519bfd1dacf50..c1cc89904bde7202d06a64ea7d6cbb4a2b889279 100644
+--- a/src/BaseCliAgent/BaseCliAgentOptions.ts
++++ b/src/BaseCliAgent/BaseCliAgentOptions.ts
+@@ -29,8 +29,7 @@ export type BaseCliAgentOptions = {
+    * - CodexAgent → `config.model_reasoning_effort` (Codex historically accepts
+    *   only `minimal | low | medium | high`, `xhigh` on newer gpt-5-codex; it is
+    *   a documented pass-through with that ceiling — `max` is not a Codex value).
+-   * - OpenCodeAgent → the provider-defined `--variant` string (OpenCode has no
+-   *   fixed effort ladder), else unsupported for that adapter.
++   * Other adapters may expose provider-specific pass-through values.
+    */
+   effort?: "low" | "medium" | "high" | "xhigh" | "max" | string;
+ };
+diff --git a/src/README.md b/src/README.md
+index 1f90310b1b934eaa59a4be2e9c8ee0bb97342b36..d7ede14c40aad7f00b77885e47aed436902352c9 100644
+--- a/src/README.md
++++ b/src/README.md
+@@ -6,7 +6,7 @@ Agent adapters for Smithers. Three families:
+   `OpenAIAgent`, `HermesAgent` (see also `resolveSdkModel.js`,
+   `streamResultToGenerateResult.js`).
+ - **CLI agents** extending `BaseCliAgent`: `ClaudeCodeAgent`, `CodexAgent`,
+-  `KimiAgent`, `PiAgent`, `OpenCodeAgent`, `AmpAgent`, `AntigravityAgent`,
++  `KimiAgent`, `PiAgent`, `AmpAgent`, `AntigravityAgent`,
+   `ForgeAgent`, `HermesCliAgent`, `OpenClawAgent`, `VibeAgent`, `CursorAgent`.
+   `GeminiAgent` is sunset and only surfaces `GEMINI_SUNSET_MESSAGE`.
+ - **Headless native bridge agents** implementing `AgentLike` directly:
+diff --git a/src/capability-registry/AgentCapabilityRegistry.ts b/src/capability-registry/AgentCapabilityRegistry.ts
+index 05b20b64ab358a3e4f6b9365dc19b5a07c3a6c05..35feb7605c7cd90eb4d13bd63f7f5759cc517c42 100644
+--- a/src/capability-registry/AgentCapabilityRegistry.ts
++++ b/src/capability-registry/AgentCapabilityRegistry.ts
+@@ -14,7 +14,6 @@ export type AgentCapabilityRegistry = {
+     | "amp"
+     | "forge"
+     | "hermes"
+-    | "opencode"
+     | "openclaw"
+     | "pool"
+     | "vibe";
+diff --git a/src/cli-capabilities/CliAgentCapabilityAdapterId.ts b/src/cli-capabilities/CliAgentCapabilityAdapterId.ts
+index a2ac76a0e351f6411913a422c67857a06cd5d442..fa11c65e334d4debc5a2bf4bdc591011b2d9c2e6 100644
+--- a/src/cli-capabilities/CliAgentCapabilityAdapterId.ts
++++ b/src/cli-capabilities/CliAgentCapabilityAdapterId.ts
+@@ -7,7 +7,6 @@ export type CliAgentCapabilityAdapterId =
+   | "forge"
+   | "hermes"
+   | "kimi"
+-  | "opencode"
+   | "openclaw"
+   | "pi"
+   | "omp"
+diff --git a/src/cli-capabilities/getCliAgentCapabilityReport.js b/src/cli-capabilities/getCliAgentCapabilityReport.js
+index 164c84ec887cec9386aafdbf268e11d06b9d7a58..bd4dd23e3276a8148061113e71876612da66b199 100644
+--- a/src/cli-capabilities/getCliAgentCapabilityReport.js
++++ b/src/cli-capabilities/getCliAgentCapabilityReport.js
+@@ -8,7 +8,6 @@ import { createForgeCapabilityRegistry } from "../ForgeAgent.js";
+ import { createHermesCliCapabilityRegistry } from "../HermesCliAgent.js";
+ import { createKimiCapabilityRegistry } from "../KimiAgent.js";
+ import { createOpenClawCapabilityRegistry } from "../OpenClawAgent.js";
+-import { createOpenCodeCapabilityRegistry } from "../OpenCodeAgent.js";
+ import { createPiCapabilityRegistry } from "../PiAgent.js";
+ import { createOmpCapabilityRegistry } from "../OmpAgent.js";
+ import { createPoolCapabilityRegistry } from "../PoolAgent.js";
+@@ -57,11 +56,6 @@ const CLI_AGENT_CAPABILITY_ADAPTERS = [
+     binary: "kimi",
+     buildRegistry: () => createKimiCapabilityRegistry(),
+   },
+-  {
+-    id: "opencode",
+-    binary: "opencode",
+-    buildRegistry: () => createOpenCodeCapabilityRegistry(),
+-  },
+   {
+     id: "openclaw",
+     binary: "openclaw",
+diff --git a/src/cli-surface/cliAgentSurfaceManifest.js b/src/cli-surface/cliAgentSurfaceManifest.js
+index 1ce36f89bbdeabe2baacfc9ad8b7cb16837950e2..a730c2c9b9630702024258f17888542626cce238 100644
+--- a/src/cli-surface/cliAgentSurfaceManifest.js
++++ b/src/cli-surface/cliAgentSurfaceManifest.js
+@@ -557,27 +557,6 @@ export const CLI_AGENT_SURFACE_MANIFEST = [
+       notes: "Maps to vibe --resume <session-id> for headless continuation.",
+     },
+   },
+-  {
+-    id: "opencode",
+-    displayName: "OpenCode",
+-    binary: "opencode",
+-    packageExport: "OpenCodeAgent",
+-    defaultOutputFormat: "stream-json",
+-    docsUrls: ["https://opencode.ai/docs/cli"],
+-    emittedFlags: ["run", "-m", "--dir", "--format", "--agent", "-f", "--continue", "--session", "--variant", "--"],
+-    supportedFlags: [],
+-    unsupportedFlags: [],
+-    optionMappings: [
+-      { option: "sessionId", flag: "--session" },
+-      { option: "resumeSession", flag: "--session" },
+-      { option: "yolo", env: "OPENCODE_PERMISSION" },
+-    ],
+-    resume: {
+-      kind: "flag",
+-      emitted: ["--session"],
+-      notes: "OpenCode receives a session id through --session for headless continuation.",
+-    },
+-  },
+   {
+     id: "openclaw",
+     displayName: "OpenClaw",
+diff --git a/src/index-GhnOiRTn.d.ts b/src/index-GhnOiRTn.d.ts
+index 7c725d312ed2fc31abd59648e6c2eb60f574ce8c..4458da230e17caf0cdaabf73d0ab0b3796bf22a5 100644
+--- a/src/index-GhnOiRTn.d.ts
++++ b/src/index-GhnOiRTn.d.ts
+@@ -190,8 +190,7 @@ type BaseCliAgentOptions$2 = {
+      * - CodexAgent → `config.model_reasoning_effort` (Codex historically accepts
+      *   only `minimal | low | medium | high`, `xhigh` on newer gpt-5-codex; it is
+      *   a documented pass-through with that ceiling — `max` is not a Codex value).
+-     * - OpenCodeAgent → the provider-defined `--variant` string (OpenCode has no
+-     *   fixed effort ladder), else unsupported for that adapter.
++     * Other adapters may expose provider-specific pass-through values.
+      */
+     effort?: "low" | "medium" | "high" | "xhigh" | "max" | string;
+ };
+diff --git a/src/index.d.ts b/src/index.d.ts
+index a301b4e0ff495ad6aeec23b1345d513fee86f9c9..4fc45cdd1ad246b27d8af3fa2a6e2afe894c8199 100644
+--- a/src/index.d.ts
++++ b/src/index.d.ts
+@@ -195,7 +195,7 @@ type ImageGenerationProvider$1 = {
+     generateImage(request: ImageGenerationRequest$1): Promise<ImageGenerationResult$1> | ImageGenerationResult$1;
+ };
+ 
+-type CliAgentCapabilityAdapterId$1 = "claude" | "amp" | "antigravity" | "codex" | "cursor" | "forge" | "hermes" | "kimi" | "opencode" | "openclaw" | "pi" | "omp" | "pool" | "vibe";
++type CliAgentCapabilityAdapterId$1 = "claude" | "amp" | "antigravity" | "codex" | "cursor" | "forge" | "hermes" | "kimi" | "openclaw" | "pi" | "omp" | "pool" | "vibe";
+ 
+ type CliAgentSurfaceOptionMapping$1 = {
+     option: string;
+@@ -234,7 +234,7 @@ type AgentToolDescriptor$1 = {
+ 
+ type AgentCapabilityRegistry$c = {
+     version: 1;
+-    engine: "claude-code" | "codex" | "cursor" | "antigravity" | "gemini" | "kimi" | "pi" | "omp" | "amp" | "forge" | "hermes" | "opencode" | "openclaw" | "pool" | "vibe";
++    engine: "claude-code" | "codex" | "cursor" | "antigravity" | "gemini" | "kimi" | "pi" | "omp" | "amp" | "forge" | "hermes" | "openclaw" | "pool" | "vibe";
+     runtimeTools: Record<string, AgentToolDescriptor$1>;
+     mcp: {
+         bootstrap: "inline-config" | "project-config" | "allow-list" | "unsupported";
+@@ -496,31 +496,6 @@ type PoolAgentOptions$2 = BaseCliAgentOptions & {
+     resumeSession?: string;
+ };
+ 
+-/**
+- * Configuration options for the OpenCodeAgent.
+- */
+-type OpenCodeAgentOptions$2 = BaseCliAgentOptions$1 & {
+-    /** Model identifier (e.g., "anthropic/claude-opus-4-8", "openai/gpt-5.6-luna") */
+-    model?: string;
+-    /** OpenCode agent name (maps to --agent flag, selects predefined agent config) */
+-    agentName?: string;
+-    /** Files to attach to the prompt via -f flags */
+-    attachFiles?: string[];
+-    /** Continue a previous session */
+-    continueSession?: boolean;
+-    /** Resume a specific session by ID */
+-    sessionId?: string;
+-    /**
+-     * Provider-specific model variant/reasoning-effort level (OpenCode `--variant`).
+-     *
+-     * OpenCode has no fixed effort ladder: the shared {@link BaseCliAgentOptions.effort}
+-     * option maps onto this provider-defined string when `variant` is unset (an
+-     * explicit `variant` always wins). Providers that expose no variant knob
+-     * treat `effort` as unsupported.
+-     */
+-    variant?: string;
+-};
+-
+ type CursorAgentOptions$2 = BaseCliAgentOptions & {
+     apiKey?: string;
+     header?: string[];
+@@ -1458,86 +1433,6 @@ type AgentCapabilityRegistry$7 = AgentCapabilityRegistry$c;
+ type CliOutputInterpreter$5 = CliOutputInterpreter$e;
+ type ForgeAgentOptions = ForgeAgentOptions$1;
+ 
+-/**
+- * CLI agent wrapper for OpenCode (https://opencode.ai).
+- *
+- * Shells out to `opencode run` in non-interactive mode with `--format json`
+- * for streaming nd-JSON output. Parses AgentCliEvents from the JSON stream.
+- *
+- * Usage:
+- *   const agent = new OpenCodeAgent({
+- *     model: "anthropic/claude-opus-4-8",
+- *     yolo: true,
+- *   });
+- *   const result = await agent.generate({
+- *     messages: [{ role: "user", content: "Fix the bug" }],
+- *   });
+- */
+-declare class OpenCodeAgent extends BaseCliAgent {
+-    /**
+-     * @param {OpenCodeAgentOptions} [opts]
+-     */
+-    constructor(opts?: OpenCodeAgentOptions$1);
+-    /** @type {OpenCodeAgentOptions} */
+-    opts: OpenCodeAgentOptions$1;
+-    /** @type {AgentCapabilityRegistry} */
+-    capabilities: AgentCapabilityRegistry$6;
+-    /** @type {"opencode"} */
+-    cliEngine: "opencode";
+-    /**
+-     * Create an output interpreter that parses OpenCode's nd-JSON streaming format.
+-     *
+-     * OpenCode `--format json` emits one JSON object per line (verified from source:
+-     * packages/opencode/src/cli/cmd/run.ts). The envelope is:
+-     *
+-     *   { type, timestamp: number, sessionID: string, ...payload }
+-     *
+-     * Event types:
+-     *   step_start  → { part: { type:"step-start", id, sessionID, messageID } }
+-     *   text        → { part: { type:"text", text, time: { start, end } } }
+-     *   tool_use    → { part: { type:"tool", tool, callID, state: { status, ... } } }
+-     *   step_finish → { part: { type:"step-finish", reason, tokens, cost } }
+-     *   reasoning   → { part: { type:"reasoning", text } }
+-     *   error       → { error: { name, data: { message } } }
+-     *
+-     * We map these to Smithers' AgentCliEvent union (started | action | completed).
+-     *
+-     * @returns {CliOutputInterpreter}
+-     */
+-    createOutputInterpreter(): CliOutputInterpreter$4;
+-    /**
+-     * Normalize a `file_change` action (as emitted by {@link createOutputInterpreter})
+-     * into {@link AgentFileChange} records. `action` is `{ title, detail: { input } }`.
+-     *
+-     * @param {unknown} action
+-     * @returns {import("./agent-contract/AgentFileChange.ts").AgentFileChange[] | undefined}
+-     */
+-    parseFileChanges(action: unknown): AgentFileChange$1[] | undefined;
+-    /**
+-     * Build the CLI command spec for `opencode run`.
+-     *
+-     * @param {{ prompt: string; systemPrompt?: string; cwd: string; options: any }} params
+-     */
+-    buildCommand(params: {
+-        prompt: string;
+-        systemPrompt?: string;
+-        cwd: string;
+-        options: any;
+-    }): Promise<{
+-        command: string;
+-        args: string[];
+-        outputFormat: string;
+-        env: {
+-            OPENCODE_PERMISSION: string;
+-        } | undefined;
+-        stdoutBannerPatterns: RegExp[];
+-        stdoutErrorPatterns: RegExp[];
+-    }>;
+-}
+-type AgentCapabilityRegistry$6 = AgentCapabilityRegistry$a;
+-type OpenCodeAgentOptions$1 = OpenCodeAgentOptions$2;
+-type CliOutputInterpreter$4 = CliOutputInterpreter$f;
+-
+ declare class VibeAgent extends BaseCliAgent {
+     /**
+      * @param {VibeAgentOptions} [opts]
+@@ -2263,7 +2158,6 @@ type PiAgentOptions = PiAgentOptions$2;
+ type CursorAgentOptions = CursorAgentOptions$2;
+ type PiExtensionUiRequest = PiExtensionUiRequest$1;
+ type PiExtensionUiResponse = PiExtensionUiResponse$1;
+-type OpenCodeAgentOptions = OpenCodeAgentOptions$2;
+ type PoolAgentOptions = PoolAgentOptions$2;
+ type VibeAgentOptions = VibeAgentOptions$2;
+ type FallbackAgentsOptions = FallbackAgentsOptions$2;
+@@ -2306,4 +2200,4 @@ type TranscriptionProvider = TranscriptionProvider$1;
+ type TranscriptionToolInput = TranscriptionToolInput$1;
+ type TranscriptionToolResult = TranscriptionToolResult$1;
+ 
+-export { type AgentCapabilityRegistry, type AgentCheckpoint, type AgentCheckpointCapability, type AgentCheckpointContinuationOptions, type AgentCheckpointFormat, type AgentCheckpointJsonArray, type AgentCheckpointJsonObject, type AgentCheckpointJsonPrimitive, type AgentCheckpointJsonValue, type AgentCheckpointMode, type AgentCheckpointPublisher, type AgentCheckpointResult, type AgentFileChange, type AgentFileChangeKind, type AgentGenerateOptions, type AgentLike, type AgentToolDescriptor, AmpAgent, AnthropicAgent, type AnthropicAgentOptions, AntigravityAgent, type AudioHostResolver, BaseCliAgent, CLI_AGENT_SURFACE_MANIFEST, ClaudeCodeAgent, type CliAgentCapabilityAdapterId, type CliAgentCapabilityDoctorEntry, type CliAgentCapabilityDoctorReport, type CliAgentCapabilityIssue, type CliAgentCapabilityReportEntry, type CliAgentSurfaceManifestEntry, type CliAgentSurfaceOptionMapping, type CliAgentSurfaceResumeContract, type CliAgentUnsupportedFlag, CodexAgent, type CreateHttpToolOptions, type CreateTranscriptionToolOptions, CursorAgent, type CursorAgentOptions, DEFAULT_AGENT_CHECKPOINT_MAX_BYTES, type FallbackAgentProvider, type FallbackAgentsOptions, ForgeAgent, GeminiAgent, HermesAgent, type HermesAgentOptions, HermesCliAgent, type HermesCliAgentOptions, type HttpToolAuth, type HttpToolInput, type HttpToolOutput, type ImageGenerationProvider, type ImageGenerationRequest, type ImageGenerationResult, type ImageGenerationToolOptions, KimiAgent, NanocodexAgent, type NanocodexAgentOptions, type NanocodexAuth, type NanocodexGenerateOptions, type NanocodexReasoningMode, type NanocodexThinking, OmpAgent, OpenAIAgent, type OpenAIAgentOptions, OpenClawAgent, type OpenClawAgentOptions, OpenCodeAgent, type OpenCodeAgentOptions, PiAgent, type PiAgentOptions, type PiExtensionUiRequest, type PiExtensionUiResponse, type PinnedAudioTransport, type PinnedAudioTransportRequest, PoolAgent, type PoolAgentOptions, type ResolvedAudioAddress, type SmithersAgentContract, type SmithersAgentContractTool, type SmithersAgentToolCategory, type SmithersListedTool, type SmithersToolSurface, type TranscriptionProvider, type TranscriptionToolInput, type TranscriptionToolResult, VibeAgent, type VibeAgentOptions, agentProducesCheckpoint, agentSupportsCheckpoint, cloneAgentCheckpoint, createBraveSearchProvider, createElevenLabsTextToSpeechTool, createExaSearchProvider, createGroundedWebSearchToolset, createHermesCliCapabilityRegistry, createHttpTool, createImageGenerationTool, createOmpCapabilityRegistry, createOpenClawCapabilityRegistry, createPoolCapabilityRegistry, createSerperSearchProvider, createSmithersAgentContract, createTavilySearchProvider, createTranscriptionTool, fallbackAgents, formatCliAgentCapabilityDoctorReport, getCliAgentCapabilityDoctorReport, getCliAgentCapabilityReport, getCliAgentSurfaceManifestEntry, hashAgentCheckpointCapabilities, hashCapabilityRegistry, listCliAgentSurfaceManifests, renderSmithersAgentPromptGuidance, sanitizeForOpenAI, zodToOpenAISchema };
++export { type AgentCapabilityRegistry, type AgentCheckpoint, type AgentCheckpointCapability, type AgentCheckpointContinuationOptions, type AgentCheckpointFormat, type AgentCheckpointJsonArray, type AgentCheckpointJsonObject, type AgentCheckpointJsonPrimitive, type AgentCheckpointJsonValue, type AgentCheckpointMode, type AgentCheckpointPublisher, type AgentCheckpointResult, type AgentFileChange, type AgentFileChangeKind, type AgentGenerateOptions, type AgentLike, type AgentToolDescriptor, AmpAgent, AnthropicAgent, type AnthropicAgentOptions, AntigravityAgent, type AudioHostResolver, BaseCliAgent, CLI_AGENT_SURFACE_MANIFEST, ClaudeCodeAgent, type CliAgentCapabilityAdapterId, type CliAgentCapabilityDoctorEntry, type CliAgentCapabilityDoctorReport, type CliAgentCapabilityIssue, type CliAgentCapabilityReportEntry, type CliAgentSurfaceManifestEntry, type CliAgentSurfaceOptionMapping, type CliAgentSurfaceResumeContract, type CliAgentUnsupportedFlag, CodexAgent, type CreateHttpToolOptions, type CreateTranscriptionToolOptions, CursorAgent, type CursorAgentOptions, DEFAULT_AGENT_CHECKPOINT_MAX_BYTES, type FallbackAgentProvider, type FallbackAgentsOptions, ForgeAgent, GeminiAgent, HermesAgent, type HermesAgentOptions, HermesCliAgent, type HermesCliAgentOptions, type HttpToolAuth, type HttpToolInput, type HttpToolOutput, type ImageGenerationProvider, type ImageGenerationRequest, type ImageGenerationResult, type ImageGenerationToolOptions, KimiAgent, NanocodexAgent, type NanocodexAgentOptions, type NanocodexAuth, type NanocodexGenerateOptions, type NanocodexReasoningMode, type NanocodexThinking, OmpAgent, OpenAIAgent, type OpenAIAgentOptions, OpenClawAgent, type OpenClawAgentOptions, PiAgent, type PiAgentOptions, type PiExtensionUiRequest, type PiExtensionUiResponse, type PinnedAudioTransport, type PinnedAudioTransportRequest, PoolAgent, type PoolAgentOptions, type ResolvedAudioAddress, type SmithersAgentContract, type SmithersAgentContractTool, type SmithersAgentToolCategory, type SmithersListedTool, type SmithersToolSurface, type TranscriptionProvider, type TranscriptionToolInput, type TranscriptionToolResult, VibeAgent, type VibeAgentOptions, agentProducesCheckpoint, agentSupportsCheckpoint, cloneAgentCheckpoint, createBraveSearchProvider, createElevenLabsTextToSpeechTool, createExaSearchProvider, createGroundedWebSearchToolset, createHermesCliCapabilityRegistry, createHttpTool, createImageGenerationTool, createOmpCapabilityRegistry, createOpenClawCapabilityRegistry, createPoolCapabilityRegistry, createSerperSearchProvider, createSmithersAgentContract, createTavilySearchProvider, createTranscriptionTool, fallbackAgents, formatCliAgentCapabilityDoctorReport, getCliAgentCapabilityDoctorReport, getCliAgentCapabilityReport, getCliAgentSurfaceManifestEntry, hashAgentCheckpointCapabilities, hashCapabilityRegistry, listCliAgentSurfaceManifests, renderSmithersAgentPromptGuidance, sanitizeForOpenAI, zodToOpenAISchema };
+diff --git a/src/index.js b/src/index.js
+index 3e2fe53481a273a7019bcecde9bf749cbe864b59..379ada33bb67659ffae98c661f7c5d63eadf716b 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -35,7 +35,6 @@
+ /** @typedef {import("./CursorAgentOptions.ts").CursorAgentOptions} CursorAgentOptions */
+ /** @typedef {import("./BaseCliAgent/PiExtensionUiRequest.ts").PiExtensionUiRequest} PiExtensionUiRequest */
+ /** @typedef {import("./BaseCliAgent/PiExtensionUiResponse.ts").PiExtensionUiResponse} PiExtensionUiResponse */
+-/** @typedef {import("./OpenCodeAgentOptions.ts").OpenCodeAgentOptions} OpenCodeAgentOptions */
+ /** @typedef {import("./PoolAgentOptions.ts").PoolAgentOptions} PoolAgentOptions */
+ /** @typedef {import("./VibeAgentOptions.ts").VibeAgentOptions} VibeAgentOptions */
+ /** @typedef {import("./FallbackAgentsOptions.ts").FallbackAgentsOptions} FallbackAgentsOptions */
+@@ -104,7 +103,6 @@ export { PiAgent } from "./PiAgent.js";
+ export { OmpAgent, createOmpCapabilityRegistry } from "./OmpAgent.js";
+ export { KimiAgent } from "./KimiAgent.js";
+ export { ForgeAgent } from "./ForgeAgent.js";
+-export { OpenCodeAgent } from "./OpenCodeAgent.js";
+ export { VibeAgent } from "./VibeAgent.js";
+ export { fallbackAgents } from "./fallbackAgents.js";
+ export { NanocodexAgent } from "./NanocodexAgent.js";

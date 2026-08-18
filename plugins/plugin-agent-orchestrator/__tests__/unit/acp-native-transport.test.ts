@@ -378,7 +378,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     // caused real coding-sub-agent work (PDF generation, multi-file refactor,
     // dependency install + run) to abort prematurely. The bot's planner
     // retried each timed-out spawn, producing 44 sub-agent trajectories for
-    // one user prompt while 23 orphaned opencode processes accumulated.
+    // one user prompt while 23 orphaned elizaos processes accumulated.
     // The conservative new default is 5 minutes (300_000 ms), still
     // overridable per-call via `setTimeoutMs` or per-request via the
     // `timeoutMs` argument, and via env vars at the service layer
@@ -409,7 +409,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
   });
 
   it("initialize honors the configured session timeout instead of the 300s default", async () => {
-    // Regression: the first opencode spawn compiles its TS tree and installs the
+    // Regression: the first elizaos spawn compiles its TS tree and installs the
     // provider npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s
     // default. The `initialize` handshake must honor the configured session
     // timeout like `session/prompt` does, or a cold spawn aborts with

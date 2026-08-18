@@ -23,7 +23,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
+    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/sanitize-smithers-runtime.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
     "install:light": "bun install",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
@@ -434,7 +434,10 @@
     "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
     "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
     "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
-    "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch"
+    "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
+    "@smthrs/agents@0.34.0": "patches/@smthrs%2Fagents@0.34.0.patch",
+    "@smthrs/engine@0.34.0": "patches/@smthrs%2Fengine@0.34.0.patch",
+    "smthrs@0.34.0": "patches/smthrs@0.34.0.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",

@@ -1,7 +1,7 @@
 # Inline chat activity pipeline (#13536)
 
 How elizaOS surfaces orchestrator/task/sub-agent/tool/workflow/todo activity
-**inline in the chat thread** as it happens — the Codex / Claude-Code / OpenCode
+**inline in the chat thread** as it happens — the Codex / Claude-Code / Eliza Code
 turn-pipelining model, mapped onto the event stream elizaOS already emits. This
 note records the mapping so the next engineer does not reinvent it or add a
 second mechanism.
@@ -19,7 +19,7 @@ a separate rail:
 - **Codex** — the same shape over its exec/event protocol: streamed
   reasoning + message deltas, `tool_call` items that resolve to `tool_result`,
   and a plan/update surface rendered as a checklist.
-- **OpenCode** — an ordered `part` stream per message (`text`, `reasoning`,
+- **Eliza Code** — an ordered `part` stream per message (`text`, `reasoning`,
   `tool`, `step-start/finish`), child sessions nested under the parent, and a
   `todowrite`/`plan` tool whose latest snapshot is the checklist.
 

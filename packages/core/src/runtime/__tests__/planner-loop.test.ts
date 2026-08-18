@@ -143,7 +143,7 @@ describe("v5 planner loop skeleton", () => {
 		const output = parsePlannerOutput({
 			text:
 				'{"type":"REPLY","args":{"text":"On it."}}\n' +
-				'{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent","agentType":"opencode"}}',
+				'{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent","agentType":"elizaos"}}',
 			toolCalls: [{ id: "tc1", name: "REPLY", arguments: { text: "On it." } }],
 		});
 
@@ -153,7 +153,7 @@ describe("v5 planner loop skeleton", () => {
 		]);
 		expect(output.toolCalls[1].params).toEqual({
 			action: "spawn_agent",
-			agentType: "opencode",
+			agentType: "elizaos",
 		});
 		// The text was tool-call JSON, not prose — the reply comes from the
 		// REPLY call, never the raw JSON blob.

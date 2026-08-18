@@ -60,7 +60,7 @@ async function makeWorld(opts: {
     id: "framing-row-1",
     taskId: detail.task.id,
     sessionId,
-    framework: "opencode",
+    framework: "elizaos",
     label: "Ada",
     originalTask: "answer the question",
     workdir: "",

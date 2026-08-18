@@ -254,8 +254,6 @@ const SOURCE_SEARCH_EXCLUDES = [
   "!**/coverage/**",
   "!**/.next/**",
 ] as const;
-const VENDORED_OPENCODE_SOURCE_ROOT =
-  "plugins/plugin-agent-orchestrator/vendor/opencode";
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -548,13 +546,7 @@ function broadRecursiveGrepPattern(command: string): string | undefined {
 }
 
 function sourceInspectionRoot(messageText: string): string {
-  const normalized = messageText.toLowerCase();
-  if (
-    /\bopencode\b/.test(normalized) &&
-    /\b(?:vendored|vendor|source)\b/.test(normalized)
-  ) {
-    return VENDORED_OPENCODE_SOURCE_ROOT;
-  }
+  void messageText;
   return ".";
 }
 

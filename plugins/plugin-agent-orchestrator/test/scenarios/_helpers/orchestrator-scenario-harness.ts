@@ -157,7 +157,7 @@ class ScenarioAcpService {
     const sessionId = `orchestrator-scenario-session-${this.counter}`;
     const metadata = { ...(opts.metadata ?? {}) };
     const scenarioAccount = scenarioAccountFor(
-      opts.agentType ?? "opencode",
+      opts.agentType ?? "elizaos",
       sessionId,
     );
     if (scenarioAccount && !metadata.account) {
@@ -168,7 +168,7 @@ class ScenarioAcpService {
       id: sessionId,
       name:
         opts.name ?? metadata.label?.toString() ?? `session-${this.counter}`,
-      agentType: opts.agentType ?? "opencode",
+      agentType: opts.agentType ?? "elizaos",
       workdir: opts.workdir ?? this.workdir,
       status: "ready",
       metadata,
@@ -1155,7 +1155,7 @@ function scenarioAccountFor(agentType: string, sessionId: string) {
         source: "oauth",
         strategy: "least-used",
       };
-    case "opencode":
+    case "elizaos":
       return {
         providerId: "cerebras-api",
         accountId: `scenario-cerebras-${sessionId}`,

@@ -1,6 +1,6 @@
 /**
  * Unit tests for the cockpit mode → providerPolicy lowering (cockpit-modes):
- * that each of the four modes resolves to the right provider source, model, and
+ * that each mode resolves to the right provider source, model, and
  * create-task input. Pure functions, no DOM or network.
  */
 import { describe, expect, it } from "vitest";
@@ -15,16 +15,13 @@ import {
 
 describe("cockpit-modes lowering", () => {
   describe("cockpitModeProviderSource", () => {
-    it("eliza-cloud + opencode source from eliza-cloud; subscription/experimental from the vendor", () => {
+    it("Eliza Cloud sources from Eliza Cloud; subscription/experimental from the vendor", () => {
       expect(
         cockpitModeProviderSource({
           mode: "eliza-cloud",
           agentType: "elizaos",
           tier: "small",
         }),
-      ).toBe("eliza-cloud");
-      expect(
-        cockpitModeProviderSource({ mode: "opencode", agentType: "opencode" }),
       ).toBe("eliza-cloud");
       expect(
         cockpitModeProviderSource({
@@ -61,9 +58,6 @@ describe("cockpit-modes lowering", () => {
           tier: "large",
         }),
       ).toBe("gemma-4-31b");
-      expect(
-        cockpitModeModel({ mode: "opencode", agentType: "opencode" }),
-      ).toBeUndefined();
       expect(
         cockpitModeModel({
           mode: "subscription",
@@ -118,13 +112,13 @@ describe("cockpit-modes lowering", () => {
         buildCockpitCreateTaskInput({
           goal: "do a thing",
           title: "Custom Title",
-          mode: { mode: "opencode", agentType: "opencode" },
+          mode: { mode: "subscription", agentType: "claude" },
         }).title,
       ).toBe("Custom Title");
       const long = "x".repeat(120);
       const t = buildCockpitCreateTaskInput({
         goal: long,
-        mode: { mode: "opencode", agentType: "opencode" },
+        mode: { mode: "subscription", agentType: "claude" },
       }).title;
       expect(t.length).toBeLessThanOrEqual(80);
       expect(t.endsWith("…")).toBe(true);

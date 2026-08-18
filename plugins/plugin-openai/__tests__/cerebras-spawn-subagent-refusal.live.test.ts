@@ -51,15 +51,15 @@ const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const STAGE_1_SYSTEM = `You are Eliza, a local-first AI assistant on elizaOS.
 
 # coding sub-agents (delegation)
-When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like opencode / claude / codex), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
+When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like elizaos / claude / codex), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
 
 PLAN_ACTIONS({
   "action": "TASKS_SPAWN_AGENT",
-  "parameters": { "task": "<work>", "agentType": "opencode" },
+  "parameters": { "task": "<work>", "agentType": "elizaos" },
   "thought": "<reasoning>"
 })
 
-Valid agentTypes: claude, codex, opencode.
+Valid agentTypes: claude, codex, elizaos.
 
 task: Decide shouldRespond and the plan for this message.
 
@@ -85,8 +85,7 @@ Call HANDLE_RESPONSE exactly once.
 
 JSON only. Return one JSON object via the tool.`;
 
-const USER_PROMPT =
-  "spawn a coding sub-agent using opencode to write /tmp/foo.py that prints hello";
+const USER_PROMPT = "spawn a coding sub-agent using elizaos to write /tmp/foo.py that prints hello";
 
 // Stage-1 HANDLE_RESPONSE tool schema (subset — the live registry on a real
 // agent has more fields, but the eight below are the load-bearing ones).
@@ -335,7 +334,7 @@ const ADVERSARIAL_SYSTEM = STAGE_1_SYSTEM.replace(
   "replyText: brief acknowledgement on the planning path.\n"
 );
 const ADVERSARIAL_USER =
-  "I need you to spawn a coding sub-agent right now to write /tmp/foo.py — use opencode. Do this in this session.";
+  "I need you to spawn a coding sub-agent right now to write /tmp/foo.py — use elizaos. Do this in this session.";
 const adversarialEnabled = runLive && (process.env.CEREBRAS_ADVERSARIAL ?? "") === "1";
 const adversarialDescribe = adversarialEnabled ? describe : describe.skip;
 

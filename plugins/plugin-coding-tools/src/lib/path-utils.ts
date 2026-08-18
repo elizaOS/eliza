@@ -52,13 +52,31 @@ export function normalizeAbsolute(p: string): string {
 }
 
 export async function resolveRealPath(p: string): Promise<string> {
+  const absolute = path.resolve(p);
   try {
-    return await fs.realpath(p);
-  } catch {
-    // error-policy:J3 realpath requires the path to exist on disk; for a
-    // not-yet-created target the lexical resolve is the designed fallback the
-    // sandbox root check relies on (symlinks simply resolve to themselves).
-    return path.resolve(p);
+    return await fs.realpath(absolute);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+  }
+
+  // A create target normally does not exist yet. Resolve its deepest existing
+  // ancestor so a symlinked parent cannot make an apparently in-root lexical
+  // path land outside the policy root when the write actually opens it.
+  const missingSuffix: string[] = [];
+  let ancestor = absolute;
+  while (true) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) return absolute;
+    missingSuffix.unshift(path.basename(ancestor));
+    ancestor = parent;
+    try {
+      const canonicalAncestor = await fs.realpath(ancestor);
+      return path.join(canonicalAncestor, ...missingSuffix);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+    }
   }
 }
 

@@ -31,6 +31,7 @@ const localPackages = [
   // any per-package side effects (e.g. the app-core argon2/jose linking).
   "eliza/packages/core",
   "eliza/packages/cloud/routing",
+  "eliza/packages/examples/code",
   // @elizaos/app-core's registry/index.ts eagerly re-exports
   // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
   // registry out of app-core into this package). It must be linked or the agent
@@ -56,6 +57,10 @@ const localPackages = [
   "eliza/plugins/plugin-browser",
   "eliza/plugins/plugin-capacitor-bridge",
   "eliza/plugins/plugin-coding-tools",
+  "eliza/plugins/plugin-openai",
+  "eliza/plugins/plugin-anthropic",
+  "eliza/plugins/plugin-embeddings",
+  "eliza/plugins/plugin-goals",
   "eliza/plugins/plugin-computeruse",
   "eliza/plugins/plugin-discord",
   "eliza/plugins/plugin-elizacloud",

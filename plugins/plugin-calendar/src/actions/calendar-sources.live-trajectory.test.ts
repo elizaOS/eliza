@@ -18,22 +18,15 @@ import { calendarSourcesAction } from "./calendar-sources.js";
 
 const LIVE =
   process.env.ELIZA_LIVE_TEST === "1" &&
-  Boolean(
-    process.env.OPENAI_API_KEY ||
-      process.env.CEREBRAS_API_KEY ||
-      process.env.OPENCODE_GO_API_KEY,
-  );
+  Boolean(process.env.OPENAI_API_KEY || process.env.CEREBRAS_API_KEY);
 
 const BASE_URL = (
   process.env.OPENAI_BASE_URL ||
-  process.env.PI_OPENCODE_GO_BASE_URL ||
+  process.env.CEREBRAS_BASE_URL ||
   "https://api.openai.com/v1"
 ).replace(/\/$/, "");
 const API_KEY =
-  process.env.OPENAI_API_KEY ||
-  process.env.OPENCODE_GO_API_KEY ||
-  process.env.CEREBRAS_API_KEY ||
-  "";
+  process.env.OPENAI_API_KEY || process.env.CEREBRAS_API_KEY || "";
 const MODEL = process.env.LIVE_MODEL || "gpt-5.4-mini";
 const HEAD = process.env.EVIDENCE_HEAD || "unknown";
 const OUTDIR =

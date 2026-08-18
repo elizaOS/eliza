@@ -542,7 +542,7 @@ describe("buildConversation", () => {
           id: "tool-only-running",
           data: {
             toolCall: {
-              id: "tool-opencode",
+              id: "tool-elizaos",
               title: "Write file",
               status: "in_progress",
               rawInput: { filePath: "src/index.ts" },
@@ -558,7 +558,7 @@ describe("buildConversation", () => {
     expect(toolBlock).toEqual(
       expect.objectContaining({
         tool: expect.objectContaining({
-          id: "tool-opencode",
+          id: "tool-elizaos",
           status: "done",
           rawStatus: "in_progress",
         }),

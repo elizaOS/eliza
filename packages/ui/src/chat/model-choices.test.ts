@@ -180,11 +180,8 @@ describe("resolveModelChoices", () => {
     ]);
     // Free-form backends have no catalog to complete from.
     expect(
-      resolveModelChoices(CATALOG, ctx(2, ["coding", "opencode"])),
+      resolveModelChoices(CATALOG, ctx(2, ["coding", "eliza-code"])),
     ).toEqual([]);
-    expect(resolveModelChoices(CATALOG, ctx(2, ["coding", "elizaos"]))).toEqual(
-      [],
-    );
   });
 
   it("offers efforts for the chosen coding model", () => {
@@ -243,7 +240,7 @@ describe("buildModelChoiceLabels", () => {
       expect(labels.get("coding")).toBe("coding sub-agent model (global)");
       expect(labels.get("show")).toBe("current model configuration");
       expect(labels.get("codex")).toBe("Codex CLI");
-      expect(labels.get("elizaos")).toBe("elizaOS coder");
+      expect(labels.get("eliza-code")).toBe("Eliza Code");
     }
   });
 });

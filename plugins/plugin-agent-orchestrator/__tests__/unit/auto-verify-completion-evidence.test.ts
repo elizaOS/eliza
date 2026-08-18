@@ -54,7 +54,7 @@ class EvidenceFakeAcp {
     const sessionId = `session-${this.counter}`;
     return Promise.resolve({
       sessionId,
-      agentType: (opts.agentType as string | undefined) ?? "opencode",
+      agentType: (opts.agentType as string | undefined) ?? "elizaos",
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
     });

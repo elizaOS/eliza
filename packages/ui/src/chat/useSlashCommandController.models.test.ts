@@ -155,7 +155,7 @@ describe("useSlashCommandController — models choice source", () => {
         argIndex: 1,
         precedingTokens: ["coding"],
       }),
-    ).toEqual(["codex", "claude", "opencode", "elizaos"]);
+    ).toEqual(["codex", "claude", "eliza-code"]);
     expect(
       result.current.resolveChoices("models", {
         commandKey: "model",

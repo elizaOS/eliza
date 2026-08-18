@@ -30,12 +30,11 @@ type ChatTarget = "small" | "large";
 export const CODING_BACKEND_CHOICES = [
   "codex",
   "claude",
-  "opencode",
-  "elizaos",
+  "eliza-code",
 ] as const;
 
-// Catalog provider that carries each backend's model list; opencode/elizaos
-// take free-form model ids, so they get no completion source.
+// Catalog provider that carries each backend's model list; Eliza Code accepts
+// free-form model ids, so it gets no completion source.
 const CODING_BACKEND_CATALOG_PROVIDER: Record<string, string> = {
   codex: "codex",
   claude: "claude-coding",
@@ -259,8 +258,7 @@ const STATIC_MODEL_CHOICE_LABELS: ReadonlyArray<[string, string]> = [
   ["cloud", "Eliza Cloud inference"],
   ["codex", "Codex CLI"],
   ["claude", "Claude Code"],
-  ["opencode", "OpenCode"],
-  ["elizaos", "elizaOS coder"],
+  ["eliza-code", "Eliza Code"],
 ];
 
 /**

@@ -13,7 +13,7 @@ import {
   withoutEmbeddingModels,
 } from "./coding-embedding-config.js";
 import {
-  applyOpencodeProviderEnv,
+  applyElizaCodeProviderEnv,
   resolveModelProvider,
 } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
@@ -97,7 +97,7 @@ export async function initializeAgent(
   options: InitializeAgentOptions = {},
 ): Promise<AgentRuntime> {
   const includeOrchestrator = options.includeOrchestrator !== false;
-  applyOpencodeProviderEnv(process.env);
+  applyElizaCodeProviderEnv(process.env);
   const provider = resolveModelProvider(process.env);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     throw new Error(

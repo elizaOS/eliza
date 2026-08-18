@@ -12,7 +12,12 @@ import {
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { useAppSelector } from "@elizaos/ui/state";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { LlmProvider, ModelOption } from "./coding-agent-settings-shared";
+import {
+  DEFAULT_MODEL_SENTINEL,
+  type LlmProvider,
+  type ModelOption,
+  normalizeModelPreference,
+} from "./coding-agent-settings-shared";
 
 interface ModelConfigSectionProps {
   llmProvider: LlmProvider;
@@ -44,7 +49,10 @@ export function ModelConfigSection({
           <Select
             value={powerfulValue}
             onValueChange={(value: string) =>
-              setPref(`${prefix}_MODEL_POWERFUL`, value)
+              setPref(
+                `${prefix}_MODEL_POWERFUL`,
+                normalizeModelPreference(value),
+              )
             }
           >
             <SettingsControls.SelectTrigger variant="compact">
@@ -53,7 +61,7 @@ export function ModelConfigSection({
               />
             </SettingsControls.SelectTrigger>
             <SelectContent>
-              <SelectItem value="__default__">
+              <SelectItem value={DEFAULT_MODEL_SENTINEL}>
                 {t("codingagentsettingssection.Default")}
               </SelectItem>
               {modelOptions.map((option) => (
@@ -71,7 +79,7 @@ export function ModelConfigSection({
           <Select
             value={fastValue}
             onValueChange={(value: string) =>
-              setPref(`${prefix}_MODEL_FAST`, value)
+              setPref(`${prefix}_MODEL_FAST`, normalizeModelPreference(value))
             }
           >
             <SettingsControls.SelectTrigger variant="compact">
@@ -80,7 +88,7 @@ export function ModelConfigSection({
               />
             </SettingsControls.SelectTrigger>
             <SelectContent>
-              <SelectItem value="__default__">
+              <SelectItem value={DEFAULT_MODEL_SENTINEL}>
                 {t("codingagentsettingssection.Default")}
               </SelectItem>
               {modelOptions.map((option) => (

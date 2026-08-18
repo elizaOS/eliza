@@ -93,7 +93,7 @@ describe("recentMessagesProvider", () => {
 			makeMemory(
 				"msg-2",
 				"00000000-0000-0000-0000-000000000004",
-				"[sub-agent: app build (opencode) — task_complete]\n[tool output: list files]\nnoisy transcript",
+				"[sub-agent: app build (elizaos) — task_complete]\n[tool output: list files]\nnoisy transcript",
 				"acpx:sub-agent-router",
 				2000,
 				{ subAgent: true },

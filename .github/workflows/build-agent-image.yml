@@ -46,6 +46,7 @@ on:
       - "packages/app-core/deploy/Dockerfile.ci"
       - "packages/agent/**"
       - "packages/core/**"
+      - "packages/examples/code/**"
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/cloud/sdk/**"
@@ -130,11 +131,11 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo docker image prune -a -f || true
 
-      - name: Install jq
-        # Used by docker-ci-smoke's boot-KPI budget parser after the image is
-        # built. Keep it explicit so the real boot gate reports the committed
-        # budget instead of falling back to its baked-in default.
-        run: sudo apt-get install -y --no-install-recommends jq
+      - name: Install image-smoke host tools
+        # jq parses the boot-KPI budget. apparmor_parser loads the named,
+        # enforcing hosted-agent profile before the real bubblewrap SHELL smoke;
+        # never let runner-image package drift turn that gate into unconfined.
+        run: sudo apt-get install -y --no-install-recommends apparmor jq
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -201,6 +202,11 @@ jobs:
           node packages/scripts/run-turbo.mjs run build --concurrency=8 \
             --filter=@elizaos/app \
             --filter=@elizaos/agent \
+            --filter=@elizaos/example-code \
+            --filter=@elizaos/plugin-openai \
+            --filter=@elizaos/plugin-anthropic \
+            --filter=@elizaos/plugin-embeddings \
+            --filter=@elizaos/plugin-goals \
             --filter=@elizaos/plugin-sql \
             --filter=@elizaos/plugin-video \
             --filter=@elizaos/plugin-agent-skills \
@@ -222,6 +228,11 @@ jobs:
             --filter=@elizaos/plugin-whatsapp \
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow
+
+      - name: Verify Eliza Code build artifacts
+        run: |
+          test -s packages/examples/code/dist/index.js
+          test -s packages/examples/code/dist/acp.js
 
       - name: Prune stale Turbo cache entries
         # actions/cache restores + re-saves the whole cache dir, so without a
@@ -343,6 +354,13 @@ jobs:
           tags: ${{ steps.image.outputs.name }}:ci-boot-verify
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          build-args: |
+            APP_CORE_DIR=packages/app-core
+            PACKAGES_DIR=packages
+            PLUGINS_DIR=plugins
+            AGENT_DIR=packages/agent
+            APP_DIR=packages/app
+            ELIZA_CODE_DIR=packages/examples/code
           # Registry-backed build cache (checked first), with the old GHA
           # cache kept as a read-only fallback. The GHA backend shares one
           # repo-wide 10GB budget with every other workflow; this image's

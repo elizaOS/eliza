@@ -484,7 +484,10 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
 
   it("does not turn a scoped or conditional commit warning into a no-commit delivery policy", async () => {
     const acp = new FakeAcp();
-    const service = makeService(acp);
+    // Use the supported legacy CLI/Codex path here so the canonical native
+    // Eliza Code safety default (always reviewable uncommitted delivery) does
+    // not mask what this test is actually proving about directive parsing.
+    const service = makeService(acp, { ELIZA_ACP_TRANSPORT: "cli" });
     await service.start();
     const scoped = await service.createTask(
       createInput({ goal: "Do not commit secrets; commit the finished work." }),
@@ -508,6 +511,46 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     expect(
       conditionalDetail.sessions[0]?.metadata.completionGitPolicy,
     ).toBeUndefined();
+  });
+
+  it("defaults native Eliza Code delivery to reviewable uncommitted changes", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp, {
+      ELIZA_ACP_DEFAULT_AGENT: "elizaos",
+    });
+    await service.start();
+    const task = await service.createTask(
+      createInput({ goal: "Implement and verify the requested change." }),
+    );
+
+    const detail = must(
+      await service.spawnAgentForTask(task.id),
+      "expected Eliza Code spawn",
+    );
+
+    expect(acp.spawnArgs[0]?.agentType).toBe("elizaos");
+    expect(detail.sessions[0]?.metadata.completionGitPolicy).toBe(
+      "leave_uncommitted",
+    );
+  });
+
+  it("stamps reviewable uncommitted delivery on the unconfigured native default", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(
+      createInput({ goal: "Implement and verify the requested change." }),
+    );
+
+    const detail = must(
+      await service.spawnAgentForTask(task.id),
+      "expected default native spawn",
+    );
+
+    expect(acp.spawnArgs[0]?.agentType).toBeUndefined();
+    expect(detail.sessions[0]?.metadata.completionGitPolicy).toBe(
+      "leave_uncommitted",
+    );
   });
 
   it("gives a spawned session a non-empty person-name label", async () => {
@@ -1886,7 +1929,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
       const { id } = await service.createTask(createInput());
       const result = must(await service.postUserMessage(id, "hello"), "post");
       // Parity: messaging a task with no live agent "just works" — it spawns one
-      // (the default vendored opencode backend) to act on the message, rather than
+      // (the default vendored elizaos backend) to act on the message, rather than
       // silently recording it with nowhere to go.
       expect(result.forwardedTo).toEqual(["auto-spawned"]);
       expect(acp.spawnArgs).toHaveLength(1);
@@ -2892,9 +2935,9 @@ describe("OrchestratorTaskService — usage telemetry", () => {
     });
     const usage = must(await service.getUsage(taskId), "usage");
     // With no ELIZA_*_AGENT setting the spawn passes no explicit agentType, so
-    // the session inherits acp-service's configured default. opencode is never
+    // the session inherits acp-service's configured default. elizaos is never
     // that default — it is explicit-selection only (acp-service DEFAULT_AGENTS
-    // orders elizaos → codex → claude → opencode, and the fallback is
+    // orders elizaos → codex → claude → elizaos, and the fallback is
     // native→"elizaos"/non-native→"codex"). The FakeAcp here mirrors the
     // non-native "codex" fallback, so a provider-less usage frame is attributed
     // to "codex".

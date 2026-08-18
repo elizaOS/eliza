@@ -4,8 +4,12 @@
 ARG NODE_VERSION=24
 ARG BUN_VERSION=1.3.14
 ARG APP_CORE_DIR=packages/app-core
+ARG PACKAGES_DIR=packages
+ARG PLUGINS_DIR=plugins
+ARG PATCHES_DIR=patches
 ARG AGENT_DIR=packages/agent
 ARG APP_DIR=packages/app
+ARG ELIZA_CODE_DIR=packages/examples/code
 ARG APP_ENTRYPOINT=packages/agent/dist/bin.js
 # `--import` points at the standalone tsx loader installed by the `tsx` stage
 # at /opt/tsx — avoids depending on workspace-resolved `tsx` in /app/node_modules.
@@ -59,13 +63,24 @@ ARG TAILSCALE_VERSION=1.90.8
 FROM node:${NODE_VERSION}-slim AS runtime-deps
 WORKDIR /app
 ARG APP_CORE_DIR
+ARG PACKAGES_DIR
+ARG PLUGINS_DIR
+ARG PATCHES_DIR
 COPY --parents bun.lock \
-  packages/*/package.json \
-  packages/cloud/*/package.json \
-  plugins/*/package.json \
+  ${PACKAGES_DIR}/*/package.json \
+  ${PACKAGES_DIR}/examples/*/package.json \
+  ${PACKAGES_DIR}/cloud/*/package.json \
+  ${PLUGINS_DIR}/*/package.json \
   ${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs \
   ./
-RUN mkdir -p /deps \
+COPY ${PATCHES_DIR}/@smthrs%2Fagents@0.34.0.patch \
+  ${PATCHES_DIR}/@smthrs%2Fengine@0.34.0.patch \
+  ${PATCHES_DIR}/smthrs@0.34.0.patch \
+  /app/patches/
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends patch \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /deps \
   && cd /deps \
   && npm init -y >/dev/null \
   && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" \
@@ -76,7 +91,28 @@ RUN mkdir -p /deps \
     --fetch-retries=5 \
     --fetch-retry-mintimeout=20000 \
     --fetch-retry-maxtimeout=120000 \
-    $(cat /deps/deps.txt)
+    $(cat /deps/deps.txt) \
+  && patch --batch --forward -p1 -d /deps/node_modules/@smthrs/agents \
+       < /app/patches/@smthrs%2Fagents@0.34.0.patch \
+  && patch --batch --forward -p1 -d /deps/node_modules/@smthrs/engine \
+       < /app/patches/@smthrs%2Fengine@0.34.0.patch \
+  && patch --batch --forward -p1 -d /deps/node_modules/smthrs \
+       < /app/patches/smthrs@0.34.0.patch \
+  && rm -f /deps/node_modules/@smthrs/agents/src/Open?odeAgent.js \
+           /deps/node_modules/@smthrs/agents/src/Open?odeAgentOptions.ts \
+           /deps/node_modules/smthrs/docs/llms-full.txt \
+           /deps/node_modules/smthrs/src/bin/smithers.js \
+           /deps/node_modules/.bin/smithers \
+  && rm -rf /deps/node_modules/@smthrs/cli \
+            /deps/node_modules/@smthrs/herdr \
+            /deps/node_modules/@smthrs/review \
+            /deps/node_modules/@smthrs/tui \
+            /deps/node_modules/@smthrs/tui-ui \
+  && ! grep -R -E -i --include='*.js' --include='*.d.ts' --include='*.ts' \
+       '(opencode|open[-_ ]+code)' \
+       /deps/node_modules/@smthrs/agents \
+       /deps/node_modules/@smthrs/engine \
+       /deps/node_modules/smthrs
 
 FROM node:${NODE_VERSION}-slim AS pruner
 WORKDIR /app
@@ -84,6 +120,7 @@ COPY . .
 ARG APP_CORE_DIR
 ARG AGENT_DIR
 ARG APP_DIR
+ARG ELIZA_CODE_DIR
 
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
@@ -98,6 +135,13 @@ RUN mkdir -p /app/node_modules \
 COPY --from=runtime-deps /deps/node_modules/ /app/node_modules/
 
 RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
+
+# Eliza Code is the canonical in-house coding adapter. The workflow builds both
+# entrypoints before the Docker build; fail the image build if either artifact
+# is missing, then expose stable executable names on PATH.
+RUN test -s "${ELIZA_CODE_DIR}/dist/index.js" \
+  && test -s "${ELIZA_CODE_DIR}/dist/acp.js" \
+  && chmod 0755 "${ELIZA_CODE_DIR}/dist/index.js" "${ELIZA_CODE_DIR}/dist/acp.js"
 
 RUN node "${APP_CORE_DIR}/scripts/ensure-generated-core-proto-js.mjs"
 
@@ -161,6 +205,7 @@ FROM oven/bun:${BUN_VERSION} AS bun-runtime
 FROM node:${NODE_VERSION}-slim
 ARG BUN_VERSION
 ARG APP_CORE_DIR
+ARG ELIZA_CODE_DIR
 ARG APP_ENTRYPOINT
 ARG APP_CMD_START
 ARG APP_PORT
@@ -180,8 +225,20 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.version="${VERSION_CLEAN}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bubblewrap ca-certificates curl ffmpeg git libopus-dev passwd python3 ripgrep util-linux \
   && rm -rf /var/lib/apt/lists/*
+
+# The entrypoint performs the optional root-only tailnet bootstrap and then
+# irreversibly drops to this unprivileged account. Host provisioning prepares
+# persistent-mount ownership before the container starts.
+# Bubblewrap's user-namespace setup must never start as container UID 0 with an
+# empty capability set: recent kernels require CAP_SETFCAP for that identity
+# mapping, which the hosted security contract deliberately does not grant.
+RUN groupadd --gid 10001 eliza-runtime \
+  && useradd --uid 10001 --gid 10001 --home-dir /home/eliza-runtime \
+       --create-home --shell /usr/sbin/nologin eliza-runtime \
+  && chmod 0711 /root
 
 # Install tailscale so Cloud-managed agent sandboxes can join Headscale/Tailscale
 # when TS_AUTHKEY is injected at runtime (see scripts/docker-entrypoint.sh). The
@@ -222,6 +279,9 @@ COPY --from=pruner /app /app
 # deps) at /opt/tsx, independent of bun's workspace install.
 COPY --from=tsx /opt/tsx /opt/tsx
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s "/app/${ELIZA_CODE_DIR}/dist/index.js" /usr/local/bin/eliza-code \
+  && ln -s "/app/${ELIZA_CODE_DIR}/dist/acp.js" /usr/local/bin/eliza-code-acp \
+  && eliza-code --version | grep -F "eliza-code v"
 
 ENV NODE_ENV=production
 ENV ELIZA_DISABLE_DIRECT_RUN=1
@@ -238,6 +298,8 @@ ENV ELIZA_API_BIND=${APP_API_BIND}
 # (takes priority over package.json patching which can be fragile)
 ENV ELIZA_BUNDLED_VERSION=${VERSION_CLEAN}
 ENV ELIZA_ALLOWED_HOSTS=*
+ENV ELIZA_RUNTIME_UID=10001
+ENV ELIZA_RUNTIME_GID=10001
 EXPOSE ${APP_PORT}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \

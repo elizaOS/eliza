@@ -133,7 +133,7 @@ class ScratchCapAcp {
     const session: SessionInfo = {
       id,
       name: opts.name ?? id,
-      agentType: opts.agentType ?? "opencode",
+      agentType: opts.agentType ?? "elizaos",
       workdir,
       status: "running",
       approvalPreset: opts.approvalPreset ?? "standard",

@@ -1,5 +1,6 @@
 /** Tests for the SandboxService path policy: blocklist defaults and allow-root enforcement. */
-import { homedir } from "node:os";
+import * as fs from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -202,6 +203,35 @@ describe("SandboxService default blocklist", () => {
     if (!outside.ok) expect(outside.reason).toBe("outside_allowed_roots");
   });
 
+  it("rejects a missing leaf below an in-root symlink that targets outside", async () => {
+    const fixture = await fs.mkdtemp(
+      path.join(tmpdir(), "sandbox-symlink-parent-"),
+    );
+    const root = path.join(fixture, "root");
+    const outside = path.join(fixture, "outside");
+    await fs.mkdir(root, { recursive: true });
+    await fs.mkdir(outside, { recursive: true });
+    await fs.symlink(outside, path.join(root, "alias"), "dir");
+
+    try {
+      const svc = await SandboxService.start(
+        mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+      );
+      const result = await svc.validatePath(
+        undefined,
+        path.join(root, "alias", "missing", "file.txt"),
+        "write",
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        reason: "outside_allowed_roots",
+      });
+      await svc.stop();
+    } finally {
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("supports conversation-scoped allow roots", async () => {
     const root = path.join(homedir(), "conversation-root");
     const svc = await SandboxService.start(mockRuntime());
@@ -252,5 +282,54 @@ describe("SandboxService default blocklist", () => {
       path.join(homedir(), "totally-fine-dir"),
     );
     expect(v.ok).toBe(true);
+  });
+
+  it("allows Git administration reads but denies marker, gitdir, and commondir writes", async () => {
+    const root = await fs.mkdtemp(path.join(tmpdir(), "git-admin-policy-"));
+    const worktree = path.join(root, "worktree");
+    const gitDirectory = path.join(root, "actual-admin");
+    const commonDirectory = path.join(root, "shared-admin");
+    await fs.mkdir(worktree, { recursive: true });
+    await fs.mkdir(path.join(commonDirectory, "objects"), { recursive: true });
+    await fs.mkdir(gitDirectory, { recursive: true });
+    await fs.writeFile(
+      path.join(worktree, ".git"),
+      "gitdir: ../actual-admin\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(gitDirectory, "commondir"),
+      "../shared-admin\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(gitDirectory, "HEAD"), "ref: refs/heads/x\n");
+    await fs.mkdir(path.join(commonDirectory, "refs", "heads"), {
+      recursive: true,
+    });
+    await fs.writeFile(path.join(commonDirectory, "refs", "heads", "x"), "0\n");
+
+    try {
+      const svc = await SandboxService.start(
+        mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+      );
+      const paths = [
+        path.join(worktree, ".git"),
+        path.join(gitDirectory, "HEAD"),
+        path.join(commonDirectory, "refs", "heads", "x"),
+      ];
+      for (const candidate of paths) {
+        await expect(
+          svc.validatePath(undefined, candidate),
+        ).resolves.toMatchObject({
+          ok: true,
+        });
+        await expect(
+          svc.validatePath(undefined, candidate, "write"),
+        ).resolves.toMatchObject({ ok: false, reason: "git_admin_write" });
+      }
+      await svc.stop();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -50,7 +50,7 @@ function makeWorkdirCapturingAcp() {
         sessionId,
         id: sessionId,
         name: opts.name ?? `binding-${counter}`,
-        agentType: opts.agentType ?? "opencode",
+        agentType: opts.agentType ?? "elizaos",
         // Echo the requested workdir back as the landed workdir; the default
         // stands in for AcpService's own fallback when none was supplied.
         workdir: opts.workdir ?? "/acp/default/dir",

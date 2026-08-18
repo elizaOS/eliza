@@ -1,5 +1,7 @@
 // Exercises node bootstrap behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
+import { HOSTED_AGENT_BWRAP_APPARMOR_PROFILE_SHA256 } from "../hosted-agent-apparmor-profile";
+import { HOSTED_AGENT_BWRAP_SECCOMP_PROFILE_SHA256 } from "../hosted-agent-seccomp-profile";
 import { buildContainerNodeUserData } from "./node-bootstrap";
 
 const REGISTRY_ENV_KEYS = [
@@ -35,6 +37,23 @@ describe("buildContainerNodeUserData — ghcr access", () => {
     expect(userData).toContain("eliza-container-egress-guard.service");
     expect(userData).toContain("iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP");
     expect(userData).toContain("iptables -I DOCKER-USER 1 -d 169.254.169.254/32 -j DROP");
+  });
+
+  test("loads the AppArmor policy in enforce mode and installs seccomp before Docker network use", () => {
+    clearRegistryEnv();
+    const userData = buildContainerNodeUserData(baseInput);
+    const dockerIdx = userData.indexOf("systemctl enable --now docker");
+    const apparmorIdx = userData.indexOf("/etc/apparmor.d/eliza-hosted-agent-bwrap");
+    const seccompIdx = userData.indexOf("hosted-agent-bwrap-seccomp.json");
+    const networkIdx = userData.indexOf("docker network create");
+    expect(dockerIdx).toBeGreaterThanOrEqual(0);
+    expect(apparmorIdx).toBeGreaterThan(dockerIdx);
+    expect(seccompIdx).toBeGreaterThan(apparmorIdx);
+    expect(networkIdx).toBeGreaterThan(seccompIdx);
+    expect(userData).toContain("apparmor_parser -Kr");
+    expect(userData).toContain("eliza-hosted-agent-bwrap (enforce)");
+    expect(userData).toContain(HOSTED_AGENT_BWRAP_APPARMOR_PROFILE_SHA256);
+    expect(userData).toContain(HOSTED_AGENT_BWRAP_SECCOMP_PROFILE_SHA256);
   });
 
   test("clears stale ghcr creds (logout) when no registry token is configured", () => {

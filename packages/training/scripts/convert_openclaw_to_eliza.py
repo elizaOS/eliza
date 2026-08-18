@@ -29,7 +29,7 @@ from lib.native_record import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("convert_openclaw")
 
-OPENCLAW_DATASET = "awax1122/openclaw-opencode-dataset"
+OPENCLAW_DATASET = "awax1122/openclaw-elizaos-dataset"
 ELIZA_SYSTEM_PROMPT = "You are Eliza, an AI assistant. Help the user with their request."
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
@@ -221,7 +221,7 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
         if role in ("user", "tool"):
             turns.append({"role": role, "content": content})
 
-    # openclaw-opencode format: assistant response is in `target` dict, not messages
+    # openclaw-elizaos format: assistant response is in `target` dict, not messages
     target = raw.get("target")
     if final_assistant_content is None and isinstance(target, dict):
         thought_text = target.get("assistant", "").strip()

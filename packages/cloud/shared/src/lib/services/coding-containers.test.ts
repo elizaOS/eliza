@@ -36,7 +36,7 @@ describe("coding container payloads", () => {
       },
       () =>
         buildCodingContainerCreatePayload({
-          agent: "opencode",
+          agent: "elizaos",
           container: { image: "ghcr.io/example/custom-coding-image:latest" },
         }),
     );
@@ -46,9 +46,9 @@ describe("coding container payloads", () => {
 });
 
 describe("request schema", () => {
-  it("defaults a missing agent to claude", () => {
+  it("defaults a missing agent to Eliza Code", () => {
     const parsed = RequestCodingAgentContainerRequestSchema.parse({});
-    expect(parsed.agent).toBe("claude");
+    expect(parsed.agent).toBe("elizaos");
   });
 
   it("still honors an explicit agent", () => {

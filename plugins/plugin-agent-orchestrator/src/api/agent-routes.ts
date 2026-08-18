@@ -21,6 +21,10 @@ import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
+  KNOWN_ADAPTER_TYPES,
+  normalizeTaskAgentAdapter,
+} from "../services/task-agent-routing.js";
+import {
   type AgentType,
   type ApprovalPreset,
   SessionCapError,
@@ -310,11 +314,7 @@ export async function handleAgentRoutes(
     }
     const rawAgentType = authMatch[1];
 
-    const SUPPORTED_AGENTS: ReadonlyArray<string> = [
-      "claude",
-      "codex",
-      "opencode",
-    ];
+    const SUPPORTED_AGENTS: ReadonlyArray<string> = ["claude", "codex"];
     if (!SUPPORTED_AGENTS.includes(rawAgentType)) {
       sendError(res, `Unsupported agent type: ${rawAgentType}`, 400);
       return true;
@@ -435,7 +435,7 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, codex, opencode)",
+          "agentType query parameter required (elizaos, pi-agent, claude, codex)",
           400,
         );
         return true;
@@ -582,6 +582,18 @@ export async function handleAgentRoutes(
             ? initialTask
             : undefined;
 
+      const requestedAgentType =
+        agentType === undefined
+          ? String((await ctx.acpService.resolveAgentType?.({})) ?? "elizaos")
+          : typeof agentType === "string"
+            ? agentType
+            : "";
+      const agentStr = normalizeTaskAgentAdapter(requestedAgentType);
+      if (!agentStr || !KNOWN_ADAPTER_TYPES.has(agentStr)) {
+        sendError(res, `Unsupported agent type: ${requestedAgentType}`, 400);
+        return true;
+      }
+
       let workdir = rawWorkdir as string | undefined;
       if (workdir) {
         try {
@@ -627,11 +639,6 @@ export async function handleAgentRoutes(
           );
         }
       }
-
-      // Resolve requested framework through the single ACP path.
-      const agentStr = agentType
-        ? (agentType as string).toLowerCase()
-        : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
       const callerMetadata = (metadata as Record<string, unknown>) ?? {};
       const taskRoomId =

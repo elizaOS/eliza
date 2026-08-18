@@ -1,9 +1,9 @@
 ---
 name: coding-agent
-description: Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control. Use when the agent needs to spawn, monitor, or orchestrate coding agents in a terminal session, delegate programming tasks to a sub-agent, review pull requests with an external CLI tool, or run parallel background coding workflows across git worktrees.
+description: Run Codex CLI, Claude Code, Eliza Code, or Pi Coding Agent via background process for programmatic control. Use when the agent needs to spawn, monitor, or orchestrate coding agents in a terminal session, delegate programming tasks to a sub-agent, review pull requests with an external CLI tool, or run parallel background coding workflows across git worktrees.
 metadata:
   {
-    "otto": { "emoji": "🧩", "requires": { "anyBins": ["claude", "codex", "opencode", "pi"] } },
+    "otto": { "emoji": "🧩", "requires": { "anyBins": ["claude", "codex", "eliza-code", "pi"] } },
   }
 ---
 
@@ -11,7 +11,7 @@ metadata:
 
 ## Availability
 
-This skill requires the **direct download** build of Eliza. It is disabled in store-distributed builds (Mac App Store, Microsoft Store, Flathub) because those builds run inside an OS sandbox that forbids forking arbitrary user-installed binaries (Codex, Claude Code, OpenCode, Pi).
+This skill requires the **direct download** build of Eliza. It is disabled in store-distributed builds (Mac App Store, Microsoft Store, Flathub) because those builds run inside an OS sandbox that forbids forking arbitrary user-installed binaries (Codex, Claude Code, Eliza Code, Pi).
 
 When the runtime detects a store build (`ELIZA_BUILD_VARIANT=store`), the agent-orchestrator plugin registers a single blocked `TASKS` action that returns a clear blocked-message and does not attempt any spawn. To enable coding agents, install the direct download from <https://eliza.so/download>.
 
@@ -177,10 +177,10 @@ bash pty:true workdir:~/project background:true command:"claude 'Your task'"
 
 ---
 
-## OpenCode
+## Eliza Code
 
 ```bash
-bash pty:true workdir:~/project command:"opencode run 'Your task'"
+bash pty:true workdir:~/project command:"eliza-code 'Your task'"
 ```
 
 ---

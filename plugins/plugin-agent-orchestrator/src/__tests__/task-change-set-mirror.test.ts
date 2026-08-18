@@ -92,7 +92,7 @@ async function seedTaskWithSession(
     id: "row-1",
     taskId,
     sessionId,
-    framework: "opencode",
+    framework: "elizaos",
     label: "Ada",
     originalTask: "do the thing",
     workdir: "/tmp/x",

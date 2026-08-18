@@ -89,7 +89,7 @@ const SELF_MODEL_CONTEXT_TERMS = new Set([
 	"default",
 ]);
 const CODING_AGENT_CONTEXT_TERMS = new Set([
-	"opencode",
+	"elizaos",
 	"codex",
 	"claude",
 	"gemini",
@@ -283,7 +283,7 @@ export const runtimeModelContextProvider: Provider = {
 		"gpt",
 		"claude",
 		"sonnet",
-		"opencode",
+		"elizaos",
 	],
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
@@ -309,11 +309,11 @@ export const runtimeModelContextProvider: Provider = {
 			ModelType.TEXT_SMALL,
 		);
 		const defaultAgentType = readSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE");
-		const opencodeModel =
-			readSetting(runtime, "ELIZA_OPENCODE_MODEL_POWERFUL") ??
-			readSetting(runtime, "ELIZA_OPENCODE_MODEL_FAST");
-		const opencodeEndpointHost = endpointHost(
-			readSetting(runtime, "ELIZA_OPENCODE_BASE_URL"),
+		const elizaCodeModel =
+			readSetting(runtime, "ELIZA_CODE_MODEL_POWERFUL") ??
+			readSetting(runtime, "ELIZA_CODE_MODEL_FAST");
+		const elizaCodeEndpointHost = endpointHost(
+			readSetting(runtime, "ELIZA_CODE_BASE_URL"),
 		);
 
 		const responseHandlerProvider = registeredProviderFor(
@@ -351,8 +351,8 @@ export const runtimeModelContextProvider: Provider = {
 			optionalLine("Action planner provider adapter", actionPlannerProvider),
 			optionalLine("Action planner endpoint host", actionPlannerEndpointHost),
 			optionalLine("Default coding sub-agent", defaultAgentType),
-			optionalLine("OpenCode model", opencodeModel),
-			optionalLine("OpenCode endpoint host", opencodeEndpointHost),
+			optionalLine("Eliza Code model", elizaCodeModel),
+			optionalLine("Eliza Code endpoint host", elizaCodeEndpointHost),
 		].filter((line): line is string => line !== null);
 
 		return {
@@ -363,8 +363,8 @@ export const runtimeModelContextProvider: Provider = {
 				textLargeModel,
 				textSmallModel,
 				defaultAgentType,
-				opencodeModel,
-				opencodeEndpointHost,
+				elizaCodeModel,
+				elizaCodeEndpointHost,
 			},
 			data: {
 				responseHandlerModel,
@@ -376,8 +376,8 @@ export const runtimeModelContextProvider: Provider = {
 				actionPlannerProvider,
 				actionPlannerEndpointHost,
 				defaultAgentType,
-				opencodeModel,
-				opencodeEndpointHost,
+				elizaCodeModel,
+				elizaCodeEndpointHost,
 			},
 		};
 	},

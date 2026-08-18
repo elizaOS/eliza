@@ -47,7 +47,7 @@ describe("TASKS:send", () => {
       runtimeWith(svc),
       memory({
         source: "sub_agent",
-        text: "[sub-agent: disk check (opencode) — task_complete]\n[tool output: Get root filesystem usage]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       387G  223G  165G  58% /",
+        text: "[sub-agent: disk check (elizaos) — task_complete]\n[tool output: Get root filesystem usage]\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       387G  223G  165G  58% /",
         metadata: {
           subAgent: true,
           subAgentEvent: "task_complete",

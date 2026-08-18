@@ -174,6 +174,24 @@ export function validateSmithersSource(source: unknown): void {
       code: 'SMTHRS_IMPORT_REQUIRED',
     });
   }
+  // Stored/generated workflow source executes in a real Bun worker. Keep that
+  // boundary on the declarative Smithers builder and schemas only: importing
+  // the package root exposes vendor CLI agent constructors and arbitrary
+  // imports expose the host process directly. The JSX
+  // transform may resolve smthrs/jsx-runtime itself; it is not authored as a
+  // source import and remains available through the linked package.
+  const authoredImports = Array.from(
+    trimmed.matchAll(/\b(?:import|export)\s+(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]/g),
+    (match) => match[1]
+  );
+  const allowedImports = new Set(['smthrs/create', 'zod']);
+  const forbiddenImport = authoredImports.find((specifier) => !allowedImports.has(specifier));
+  if (forbiddenImport || /\bimport\s*\(|\brequire\s*\(/.test(trimmed)) {
+    throw new ElizaError(
+      `Workflow source import is not allowed: ${forbiddenImport ?? 'dynamic module loading'}`,
+      { code: 'SMTHRS_IMPORT_NOT_ALLOWED' }
+    );
+  }
   if (!/\bexport\s+default\b/.test(trimmed)) {
     throw new ElizaError('Workflow source must default-export a Smithers workflow', {
       code: 'SMTHRS_DEFAULT_EXPORT_REQUIRED',

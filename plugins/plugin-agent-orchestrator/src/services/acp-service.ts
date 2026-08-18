@@ -1,7 +1,7 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns Eliza Code (elizaos) or an optional ACP adapter (pi-agent, claude, codex),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -82,10 +82,6 @@ import {
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
 import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
-import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
   type OrchestratorOwnedArtifact,
@@ -113,7 +109,11 @@ import {
   isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
 } from "./subagent-stdout-log.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
+import { getTaskAgentFrameworkState } from "./task-agent-frameworks.js";
+import {
+  KNOWN_ADAPTER_TYPES,
+  normalizeTaskAgentAdapter,
+} from "./task-agent-routing.js";
 import {
   type AcpCapacity,
   type AcpEventCallback,
@@ -139,6 +139,7 @@ import {
   captureBaselineSha,
   captureBaselineUntracked,
   captureWorkspacePathFingerprints,
+  type WorkspacePathFingerprint,
 } from "./workspace-diff.js";
 import {
   getSharedWorkspaceRegistry,
@@ -153,6 +154,30 @@ export {
   isEnvForwardableToSubAgent,
   shouldForwardEnv,
 } from "./sub-agent-env-policy.js";
+
+export function buildCodingBaselineMetadata(
+  baselineSha: string | undefined,
+  baselineDirty: readonly string[],
+  baselineUntracked: readonly string[],
+  baselinePathFingerprints: readonly WorkspacePathFingerprint[],
+): Record<string, unknown> {
+  return {
+    ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
+    ...(baselineDirty.length > 0
+      ? { codingBaselineDirty: [...baselineDirty] }
+      : {}),
+    ...(baselineUntracked.length > 0
+      ? { codingBaselineUntracked: [...baselineUntracked] }
+      : {}),
+    ...(baselinePathFingerprints.length > 0
+      ? {
+          codingBaselinePathFingerprints: baselinePathFingerprints.map(
+            (fingerprint) => ({ ...fingerprint }),
+          ),
+        }
+      : {}),
+  };
+}
 
 /** Resolve the config-backed cloud-key forwarding opt-in for each child spawn. */
 export function isCloudKeyForwardingEnabled(): boolean {
@@ -783,7 +808,6 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -1244,23 +1268,63 @@ export class AcpService extends Service {
     if (!repoIndex) return undefined;
     repoIndex = resolve(workdir, repoIndex);
 
-    try {
-      const st = await stat(repoIndex);
-      if (!st.isFile()) return undefined;
-    } catch {
-      // error-policy:J3 unborn or exotic repos can lack an index; fall back to
-      // default git behavior rather than spawning with an invalid empty index.
-      return undefined;
-    }
-
     const root = this.acpGitIndexRoot(sessionId);
     const wrapperDir = join(root, "bin");
     const wrapperFile = join(wrapperDir, "git");
     const indexFile = join(root, "index");
     const baseFile = join(root, "index.base");
     await mkdir(wrapperDir, { recursive: true });
-    await copyFile(repoIndex, baseFile);
-    await copyFile(repoIndex, indexFile);
+    let copiedExistingIndex = false;
+    try {
+      const st = await stat(repoIndex);
+      if (!st.isFile()) {
+        throw new Error("repository index is not a regular file");
+      }
+      await copyFile(repoIndex, baseFile);
+      await copyFile(repoIndex, indexFile);
+      copiedExistingIndex = true;
+    } catch (error) {
+      // Unborn repositories legitimately have no .git/index yet. They still
+      // need the same private-index and read-only Git-admin boundary as mature
+      // repositories; falling back to ordinary Git would let the child create
+      // and mutate the operator's real index. Ask Git to create a valid empty
+      // index at the session-owned path and fail the spawn closed if it cannot.
+      const initialized = spawnSync(
+        findGitBinaryForAcp(),
+        ["-C", workdir, "read-tree", "--empty"],
+        {
+          env: {
+            ...process.env,
+            GIT_INDEX_FILE: indexFile,
+            GIT_OPTIONAL_LOCKS: "0",
+          },
+          timeout: 5_000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+      );
+      if (initialized.status !== 0) {
+        await rm(root, { recursive: true, force: true });
+        throw new Error(
+          "Unable to initialize the session-private Git index for this repository.",
+          { cause: error },
+        );
+      }
+      const initializedStat = await stat(indexFile).catch(() => undefined);
+      if (!initializedStat?.isFile()) {
+        await rm(root, { recursive: true, force: true });
+        throw new Error(
+          "Git did not create a valid session-private index for this repository.",
+        );
+      }
+      await copyFile(indexFile, baseFile);
+    }
+    if (!copiedExistingIndex && baselineSha) {
+      await rm(root, { recursive: true, force: true });
+      throw new Error(
+        "The repository has a baseline commit but no readable Git index; refusing an ambiguous session index.",
+      );
+    }
     await writeFile(wrapperFile, sessionGitWrapper(), "utf8");
     await chmod(wrapperFile, 0o755);
     return {
@@ -1830,11 +1894,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
+  // which never exists for native sessions (verified: 0 such files on
   // disk, only ses_*.json) — a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
   // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // native session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -1881,6 +1945,7 @@ export class AcpService extends Service {
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    this.assertTransportSupportsAgentType(agentType, this.transportMode);
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     // Orchestrated spawns (via tasks.ts → resolveSpawnWorkdir) always pass
     // opts.workdir, which already applies route/convention/explicit resolution
@@ -2029,16 +2094,12 @@ export class AcpService extends Service {
               [ACP_METADATA_WORKDIR_ROOT]: resolve(baseWorkdir),
             }
           : {}),
-        ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
-        ...(baselineSha && baselineDirty.length > 0
-          ? { codingBaselineDirty: baselineDirty }
-          : {}),
-        ...(baselineSha && baselineUntracked.length > 0
-          ? { codingBaselineUntracked: baselineUntracked }
-          : {}),
-        ...(baselineSha && baselinePathFingerprints.length > 0
-          ? { codingBaselinePathFingerprints: baselinePathFingerprints }
-          : {}),
+        ...buildCodingBaselineMetadata(
+          baselineSha,
+          baselineDirty,
+          baselineUntracked,
+          baselinePathFingerprints,
+        ),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
@@ -2323,6 +2384,7 @@ export class AcpService extends Service {
     let turn: { id: string; sessionSnapshot: SessionInfo } | undefined;
     try {
       const session = await this.requireSession(sessionId);
+      await this.assertSupportedSessionAgentType(session);
       if (TERMINAL_SESSION_STATUSES.has(session.status)) {
         admission.prevented = true;
         throw new ElizaError(
@@ -2386,6 +2448,10 @@ export class AcpService extends Service {
     opts: SendOptions,
   ): Promise<PromptResult> {
     const sessionId = session.id;
+    // Durable stores intentionally retain the historical string shape of
+    // agent_type. Validate it before either transport can turn that value into
+    // an executable/adapter selector during reconnect or orphan recovery.
+    await this.assertSupportedSessionAgentType(session);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -3005,6 +3071,12 @@ export class AcpService extends Service {
         skipped += 1;
         continue;
       }
+      try {
+        await this.assertSupportedSessionAgentType(session);
+      } catch {
+        skipped += 1;
+        continue;
+      }
       const transportMode = sessionTransportMode(session, this.transportMode);
       if (transportMode === "native") {
         if (this.nativeClients.has(session.id)) {
@@ -3179,11 +3251,23 @@ export class AcpService extends Service {
   }
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {
-    return DEFAULT_AGENTS.map((agentType) => ({
-      adapter: agentType,
-      agentType,
-      installed: true,
-      auth: { status: "unknown" },
+    const state = await getTaskAgentFrameworkState(this.runtime);
+    return state.frameworks.map((framework) => ({
+      adapter: framework.id,
+      agentType: framework.id,
+      installed: framework.installed,
+      auth: {
+        status:
+          framework.installed && framework.authReady
+            ? "authenticated"
+            : framework.installed
+              ? "unauthenticated"
+              : "unknown",
+        detail: framework.reason,
+      },
+      installCommand: framework.installCommand,
+      docsUrl: framework.docsUrl,
+      reason: framework.reason,
     }));
   }
 
@@ -3265,12 +3349,6 @@ export class AcpService extends Service {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
-  }
-
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
@@ -4011,6 +4089,10 @@ export class AcpService extends Service {
     session: SessionInfo,
     opts: SendOptions,
   ): Promise<{ client: NativeAcpClient; protocolSessionId: string }> {
+    // Durable stores intentionally deserialize old agent_type values as
+    // strings. Never let a legacy/unknown value become an executable during a
+    // lazy reconnect or orphan resume after upgrade.
+    await this.assertSupportedSessionAgentType(session);
     const existing = this.nativeClients.get(session.id);
     if (existing) {
       return {
@@ -4095,13 +4177,7 @@ export class AcpService extends Service {
   }
 
   private nativeAgentCommand(agentType: AgentType): string {
-    const normalizedAgentType =
-      normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
-    }
+    const normalizedAgentType = this.assertSupportedAgentType(agentType);
     if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
@@ -4122,7 +4198,50 @@ export class AcpService extends Service {
         findExecutableOnPath("eliza-code-acp") ??
         "eliza-code-acp"
       );
-    return String(normalizedAgentType);
+    if (normalizedAgentType === "pi-agent")
+      return this.setting("ELIZA_PI_AGENT_ACP_COMMAND") ?? "pi-agent";
+    throw new Error(
+      `Unsupported native ACP agent adapter: ${JSON.stringify(normalizedAgentType)}`,
+    );
+  }
+
+  private assertSupportedAgentType(agentType: AgentType): AgentType {
+    const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (!KNOWN_ADAPTER_TYPES.has(normalized)) {
+      throw new Error(
+        `Unsupported ACP agent adapter: ${JSON.stringify(normalized)}`,
+      );
+    }
+    return normalized;
+  }
+
+  private assertTransportSupportsAgentType(
+    agentType: AgentType,
+    transportMode: "native" | "cli",
+  ): AgentType {
+    const normalized = this.assertSupportedAgentType(agentType);
+    if (transportMode === "cli" && normalized === "elizaos") {
+      throw new Error(
+        "Eliza Code requires the native ACP transport; acpx has no built-in elizaos adapter. Set ELIZA_ACP_TRANSPORT=native or select an acpx-supported external adapter.",
+      );
+    }
+    return normalized;
+  }
+
+  private async assertSupportedSessionAgentType(
+    session: SessionInfo,
+  ): Promise<AgentType> {
+    try {
+      return this.assertTransportSupportsAgentType(
+        session.agentType,
+        sessionTransportMode(session, this.transportMode),
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      throw error;
+    }
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
@@ -4158,10 +4277,7 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
+    return [agentType, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4542,7 +4658,7 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
+      // in the SAME payload shape as agent_message_chunk (Eliza Code emits it for
       // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
@@ -4554,7 +4670,7 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
+      // plan: Eliza Code emits the agent's checklist/plan list as a `plan` update with
       // entries [{content, status, priority}] (driven by its todowrite tool).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
@@ -5050,16 +5166,57 @@ export class AcpService extends Service {
       env[canonicalForwardedEnvKey(key)] = value;
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
-      if (typeof value === "string") env[canonicalForwardedEnvKey(key)] = value;
+      if (typeof value !== "string") continue;
+      // Spawn/prompt extras can ultimately originate with a direct API or task
+      // caller. They are not a privileged bypass around the host/custom secret
+      // boundary; trusted per-session gateway/proxy credentials are injected
+      // later in this method after all caller-controlled merges complete.
+      if (isDeniedSubAgentEnvKey(key)) {
+        this.log("warn", "rejecting spawn env matching env deny-list", { key });
+        continue;
+      }
+      env[canonicalForwardedEnvKey(key)] = value;
+    }
+    if (agentType === "elizaos") {
+      for (const key of [
+        "ELIZA_CODE_API_KEY",
+        "ELIZA_CODE_BASE_URL",
+        "ELIZA_CODE_MODEL_POWERFUL",
+        "ELIZA_CODE_MODEL_FAST",
+      ] as const) {
+        const configured = this.setting(key)?.trim();
+        if (configured && !env[key]) env[key] = configured;
+      }
+      const legacyModelSettings = {
+        ELIZA_CODE_MODEL_POWERFUL: "ELIZA_ELIZAOS_MODEL_POWERFUL",
+        ELIZA_CODE_MODEL_FAST: "ELIZA_ELIZAOS_MODEL_FAST",
+      } as const;
+      for (const [canonical, legacy] of Object.entries(legacyModelSettings)) {
+        if (env[canonical]) continue;
+        const configured = this.setting(legacy)?.trim();
+        if (configured) env[canonical] = configured;
+      }
     }
     if (model) {
       const normalizedModel =
         agentType === "claude" ? normalizeClaudeAcpModelId(model) : model;
       if (normalizedModel) env.OPENAI_MODEL = normalizedModel;
+      if (agentType === "elizaos" && normalizedModel) {
+        // Eliza Code selects models from its powerful/fast contract, which its
+        // provider bridge materializes onto the OpenAI large/medium/small
+        // tiers. OPENAI_MODEL alone is intentionally ignored there, so pin the
+        // explicit per-spawn choice across both sides of that bridge. This runs
+        // after inherited/configured defaults, making the task's explicit model
+        // authoritative without changing any other ACP backend.
+        env.ELIZA_CODE_MODEL_POWERFUL = normalizedModel;
+        env.ELIZA_CODE_MODEL_FAST = normalizedModel;
+        env.OPENAI_LARGE_MODEL = normalizedModel;
+        env.OPENAI_MEDIUM_MODEL = normalizedModel;
+        env.OPENAI_SMALL_MODEL = normalizedModel;
+      }
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -5156,18 +5313,6 @@ export class AcpService extends Service {
           "debug",
           "Dropped inherited OPENAI_MODEL for codex subscription sub-agent (lets Codex use its ChatGPT-compatible default)",
         );
-      }
-    }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
       }
     }
     // Per-spawn git identity: pin an explicit author/committer for every agent

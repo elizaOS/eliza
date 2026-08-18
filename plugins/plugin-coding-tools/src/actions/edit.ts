@@ -106,10 +106,16 @@ export async function editFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, inputPath.value);
+  const validated = await sandbox.validatePath(
+    conversationId,
+    inputPath.value,
+    "write",
+  );
   if (validated.ok === false) {
     const reason =
-      validated.reason === "blocked" ? "path_blocked" : "invalid_param";
+      validated.reason === "blocked" || validated.reason === "git_admin_write"
+        ? "path_blocked"
+        : "invalid_param";
     return failureToActionResult({ reason, message: validated.message });
   }
 

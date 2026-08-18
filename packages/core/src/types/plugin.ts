@@ -1266,7 +1266,7 @@ export interface RemotePluginConfig {
 	 * delivered to it.
 	 */
 	subAgent?: {
-		runner: "claude-code" | "codex" | "opencode" | "eliza";
+		runner: "claude-code" | "codex" | "elizaos" | "eliza";
 		promptInjection: "stdin-only" | "argv" | "env";
 	};
 	/**

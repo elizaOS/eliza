@@ -105,7 +105,7 @@ function makeRuntime(opts: {
     sessionId: "retry-session-id",
     id: "retry-session-id",
     name: "retry",
-    agentType: "opencode",
+    agentType: "elizaos",
     workdir: o.workdir ?? "/tmp/wf",
     status: "ready",
   }));

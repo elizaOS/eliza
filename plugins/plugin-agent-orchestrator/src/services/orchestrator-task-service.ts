@@ -221,6 +221,7 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   TASK_SUPERVISOR_SERVICE_TYPE,
   type TaskSupervisorService,
@@ -244,8 +245,8 @@ import {
 } from "./workdir-validation.js";
 import {
   captureChangeSet,
-  subtractChangeSetBaseline,
   sanitizeWorkspacePathFingerprints,
+  subtractChangeSetBaseline,
   type WorkspaceChangeSet,
 } from "./workspace-diff.js";
 import { getCodingWorkspaceService } from "./workspace-service.js";
@@ -313,13 +314,36 @@ function configuredDefaultAgentType(runtime: {
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
   // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
+  // the "Eliza Code" fallback, which may not be installed. This mirrors the env
   // resolution the spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
   }
   return undefined;
+}
+
+/** Resolve the adapter AcpService will use when the caller leaves agentType
+ * undefined. Keep this limited to the transport-dependent defaults in
+ * AcpService's constructor so completion policy is stamped for the ordinary
+ * unconfigured native dogfood path as well as explicit `elizaos` selections. */
+function effectiveTaskAgentAdapter(
+  runtime: RuntimeLike,
+  requested: string | undefined,
+): string {
+  const normalized = normalizeTaskAgentAdapter(requested);
+  if (normalized) return normalized;
+  const configuredTransport = ["ELIZA_ACP_TRANSPORT", "ACPX_TRANSPORT"]
+    .map((key) => runtime.getSetting?.(key))
+    .find(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    );
+  const transport =
+    configuredTransport ??
+    process.env.ELIZA_ACP_TRANSPORT ??
+    process.env.ACPX_TRANSPORT;
+  return transport?.trim().toLowerCase() === "cli" ? "codex" : "elizaos";
 }
 
 /** Provenance stamped on the `validateTask` verdict produced by the independent
@@ -5655,7 +5679,7 @@ export class OrchestratorTaskService extends Service {
         : 0;
     const spawn = await acp.spawnSession({
       // Undefined defers to acp-service's defaultAgent (eliza-code on the
-      // native transport); opencode is opt-in via explicit settings only.
+      // native transport); Eliza Code is opt-in via explicit settings only.
       agentType: configuredDefaultAgentType(this.runtime),
       workdir,
       initialTask: prompt,
@@ -5798,7 +5822,7 @@ export class OrchestratorTaskService extends Service {
     } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
-      // the default framework (opencode + Cerebras) into a per-task workdir.
+      // the default framework (Eliza Code + Cerebras) into a per-task workdir.
       try {
         await this.spawnAgentForTask(taskId, {
           task: content,
@@ -6442,6 +6466,15 @@ export class OrchestratorTaskService extends Service {
       opts.framework ??
       policy.preferredFramework ??
       configuredDefaultAgentType(this.runtime);
+    const completionGitPolicy =
+      requestedCompletionGitPolicy(
+        opts.task,
+        doc.task.originalRequest,
+        doc.task.goal,
+      ) ??
+      (effectiveTaskAgentAdapter(this.runtime, framework) === "elizaos"
+        ? LEAVE_UNCOMMITTED_GIT_POLICY
+        : undefined);
 
     // W3 wave cap layers on top of the existing global ACP admission queue.
     // Default-OFF supervisor means this lookup is behavior-neutral. When the
@@ -6493,7 +6526,7 @@ export class OrchestratorTaskService extends Service {
         // undefined and spawnSession resolves acp-service's `defaultAgent`
         // (eliza-code under the native transport) — the single source of
         // truth, so an unconfigured host dogfoods eliza-code rather than a
-        // vendored CLI. opencode remains available only as an explicit
+        // vendored CLI. Eliza Code remains available only as an explicit
         // selection (settings/routing/request).
         agentType: framework,
         workdir,
@@ -6528,11 +6561,7 @@ export class OrchestratorTaskService extends Service {
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
-          ...(requestedCompletionGitPolicy(
-            opts.task,
-            doc.task.originalRequest,
-            doc.task.goal,
-          )
+          ...(completionGitPolicy
             ? {
                 [COMPLETION_GIT_POLICY_METADATA_KEY]:
                   LEAVE_UNCOMMITTED_GIT_POLICY,

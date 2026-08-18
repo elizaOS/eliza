@@ -1,0 +1,67 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -186,10 +186,7 @@
+     "README.md",
+     "docs/llms.txt",
+     "docs/llms-full.txt"
+   ],
+-  "bin": {
+-    "smithers": "./src/bin/smithers.js"
+-  },
+   "dependencies": {
+     "@mdx-js/esbuild": "^3.1.1",
+     "ai": "^7.0.10",
+@@ -201,5 +198,4 @@
+     "zod": "^4.4.3",
+     "@smthrs/agents": "0.34.0",
+-    "@smthrs/cli": "0.34.0",
+     "@smthrs/components": "0.34.0",
+     "@smthrs/aws": "0.34.0",
+diff --git a/src/index.d.ts b/src/index.d.ts
+index 90e2b5b740ec5fd0de566aa90afed36987e3b5b3..a5eea89c07c8772a449862cf953624e60ca6ff15 100644
+--- a/src/index.d.ts
++++ b/src/index.d.ts
+@@ -63,7 +63,7 @@ export { Gateway } from '@smthrs/server/gateway';
+ import * as _smthrs_scorers from '@smthrs/scorers';
+ export { aggregateScores, createScorer, estimateCostUsd, faithfulnessScorer, latencyScorer, llmJudge, modelTokenPrices, relevancyScorer, runScorersAsync, runScorersBatch, schemaAdherenceScorer, smithersScorers, toxicityScorer } from '@smthrs/scorers';
+ import * as _smthrs_agents from '@smthrs/agents';
+-export { AmpAgent, AnthropicAgent, AntigravityAgent, ClaudeCodeAgent, CodexAgent, CursorAgent, DEFAULT_AGENT_CHECKPOINT_MAX_BYTES, ForgeAgent, GeminiAgent, HermesAgent, HermesCliAgent, KimiAgent, NanocodexAgent, OmpAgent, OpenAIAgent, OpenClawAgent, OpenCodeAgent, PiAgent, PoolAgent, VibeAgent, agentProducesCheckpoint, agentSupportsCheckpoint, cloneAgentCheckpoint, createHttpTool, createOmpCapabilityRegistry, fallbackAgents, hashAgentCheckpointCapabilities } from '@smthrs/agents';
++export { AmpAgent, AnthropicAgent, AntigravityAgent, ClaudeCodeAgent, CodexAgent, CursorAgent, DEFAULT_AGENT_CHECKPOINT_MAX_BYTES, ForgeAgent, GeminiAgent, HermesAgent, HermesCliAgent, KimiAgent, NanocodexAgent, OmpAgent, OpenAIAgent, OpenClawAgent, PiAgent, PoolAgent, VibeAgent, agentProducesCheckpoint, agentSupportsCheckpoint, cloneAgentCheckpoint, createHttpTool, createOmpCapabilityRegistry, fallbackAgents, hashAgentCheckpointCapabilities } from '@smthrs/agents';
+ import * as _smthrs_agents_capability_registry from '@smthrs/agents/capability-registry';
+ export { hashCapabilityRegistry } from '@smthrs/agents/capability-registry';
+ export { ERROR_REFERENCE_URL } from '@smthrs/errors/ERROR_REFERENCE_URL';
+@@ -680,7 +680,6 @@ type OmpAgentOptions = _smthrs_agents.OmpAgentOptions;
+ type CursorAgentOptions = _smthrs_agents.CursorAgentOptions;
+ type PiExtensionUiRequest = _smthrs_agents.PiExtensionUiRequest;
+ type PiExtensionUiResponse = _smthrs_agents.PiExtensionUiResponse;
+-type OpenCodeAgentOptions = _smthrs_agents.OpenCodeAgentOptions;
+ type PoolAgentOptions = _smthrs_agents.PoolAgentOptions;
+ type VibeAgentOptions = _smthrs_agents.VibeAgentOptions;
+ type MonitorCondition = _smthrs_components.MonitorCondition;
+@@ -762,4 +761,4 @@ type InferDeps<D extends DepsSpec$2> = InferDeps$1<D>;
+ type SignalProps<Schema extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>> = SignalProps$2<Schema>;
+ type TaskProps<Row, Output extends OutputTarget$1 = OutputTarget$1, D extends DepsSpec$2 = {}> = TaskProps$2<Row, Output, D>;
+ 
+-export { type AgentCapabilityRegistry, type AgentCheckpoint, type AgentCheckpointCapability, type AgentCheckpointContinuationOptions, type AgentCheckpointFormat, type AgentCheckpointJsonArray, type AgentCheckpointJsonObject, type AgentCheckpointJsonPrimitive, type AgentCheckpointJsonValue, type AgentCheckpointMode, type AgentCheckpointPublisher, type AgentCheckpointResult, type AgentFileChange, type AgentFileChangeKind, type AgentGenerateOptions, type AgentLike, type AgentToolDescriptor, type AggregateOptions, type AggregateScore, type AnthropicAgentOptions, type ApprovalAutoApprove, type ApprovalDecision, type ApprovalMode, type ApprovalOption, type ApprovalProps, type ApprovalRanking, type ApprovalRequest, type ApprovalSelection, type ColumnDef, type ConnectRequest, type ContinueAsNewProps, type CreateScorerConfig, type CreateSmithersApi, type CreateSmithersOptions, type CursorAgentOptions, type DepsSpec, type EventFrame, type ExternalSmithersConfig, type GatewayAuthConfig, type GatewayDefaults, type GatewayOperatorUiConfig, type GatewayOptions, type GatewayRegisterOptions, type GatewayTokenGrant, type GatewayUiConfig, type GatewayWebhookConfig, type GatewayWebhookRunConfig, type GatewayWebhookSignalConfig, type GraphSnapshot, type HelloResponse, type HermesAgentOptions, type HermesCliAgentOptions, type HindsightMemoryStoreOptions, type HostContainer, type HostNodeJson, type InferDeps, type InferOutputEntry, type InferRow, type JjRevertResult, type KanbanProps, type KnownSmithersErrorCode, type LlmJudgeConfig, type MemoryFact, type MemoryLayerConfig, type MemoryMessage, type MemoryNamespace, type MemoryNamespaceKind, type MemoryProcessor, type MemoryProcessorConfig, type MemoryProps, type MemoryServiceApi, type MemoryStore, type MemoryThread, type MessageHistoryConfig, type MigrateSmithersStoreOptions, type MonitorCondition, type MonitorProps, type NanocodexAgentOptions, type NanocodexAuth, type NanocodexGenerateOptions, type NanocodexReasoningMode, type NanocodexThinking, type OmpAgentOptions, type OpenAIAgentOptions, type OpenApiAuth, type OpenApiSpec, type OpenApiToolsOptions, type OpenClawAgentOptions, type OpenCodeAgentOptions, type OpenSmithersBackendOptions, type OutputAccessor, type OutputKey, type OutputTarget, type PiAgentOptions, type PiExtensionUiRequest, type PiExtensionUiResponse, type PollerProps, type PoolAgentOptions, type ProofBinding, type RequestFrame, type ResolvedSmithersObservabilityOptions, type ResponseFrame, type RevertOptions, type RevertResult, type RunJjOptions, type RunJjResult, type RunOptions, type RunResult, type RunStartedBy, type RunStatus, type SagaProps, type SagaStepDef, type SagaStepProps, type SamplingConfig, type SandboxProps, type SandboxRuntime, type SandboxVolumeMount, type SandboxWorkspaceSpec, type SchemaRegistryEntry, type ScoreResult, type ScoreRow, type Scorer, type ScorerBinding, type ScorerContext, type ScorerFn, type ScorerInput, type ScorersMap, type SemanticRecallConfig, type SerializedCtx, type ServeOptions, type ServerOptions, type SignalProps, type SmithersAlertLabels, type SmithersAlertPolicy, type SmithersAlertPolicyDefaults, type SmithersAlertPolicyRule, type SmithersAlertReaction, type SmithersAlertReactionKind, type SmithersAlertReactionRef, type SmithersAlertSeverity, type SmithersCtx, type SmithersError, type SmithersErrorCode, type SmithersErrorReport, type SmithersEvent, type SmithersLogFormat, type SmithersMigrationResult, type SmithersObservabilityOptions, type SmithersObservabilityService, type SmithersWorkflow, type SmithersWorkflowOptions, type TUIProps, type TaskDescriptor, type TaskMemoryConfig, type TaskProps, type TimeTravelOptions, type TimeTravelResult, type TimerProps, type TrellisProps, type TryCatchFinallyProps, type UIProps, type VibeAgentOptions, type WaitForEventProps, type WorkflowViewBootProps, type WorkflowViewProps, type WorkingMemoryConfig, type WorkspaceAddOptions, type WorkspaceInfo, type WorkspaceResult, type XmlElement, type XmlNode, type XmlText, bash, createExternalSmithers, createSmithers, createSmithersCloudflare, createSmithersPostgres, defineTool, edit, getDefinedToolMetadata, grep, mdxPlugin, migrateSmithersStore, openSmithersBackend, openSmithersStore, read, resolveSmithersBackendChoice, resolveSmithersBackendPreference, tools, write };
++export { type AgentCapabilityRegistry, type AgentCheckpoint, type AgentCheckpointCapability, type AgentCheckpointContinuationOptions, type AgentCheckpointFormat, type AgentCheckpointJsonArray, type AgentCheckpointJsonObject, type AgentCheckpointJsonPrimitive, type AgentCheckpointJsonValue, type AgentCheckpointMode, type AgentCheckpointPublisher, type AgentCheckpointResult, type AgentFileChange, type AgentFileChangeKind, type AgentGenerateOptions, type AgentLike, type AgentToolDescriptor, type AggregateOptions, type AggregateScore, type AnthropicAgentOptions, type ApprovalAutoApprove, type ApprovalDecision, type ApprovalMode, type ApprovalOption, type ApprovalProps, type ApprovalRanking, type ApprovalRequest, type ApprovalSelection, type ColumnDef, type ConnectRequest, type ContinueAsNewProps, type CreateScorerConfig, type CreateSmithersApi, type CreateSmithersOptions, type CursorAgentOptions, type DepsSpec, type EventFrame, type ExternalSmithersConfig, type GatewayAuthConfig, type GatewayDefaults, type GatewayOperatorUiConfig, type GatewayOptions, type GatewayRegisterOptions, type GatewayTokenGrant, type GatewayUiConfig, type GatewayWebhookConfig, type GatewayWebhookRunConfig, type GatewayWebhookSignalConfig, type GraphSnapshot, type HelloResponse, type HermesAgentOptions, type HermesCliAgentOptions, type HindsightMemoryStoreOptions, type HostContainer, type HostNodeJson, type InferDeps, type InferOutputEntry, type InferRow, type JjRevertResult, type KanbanProps, type KnownSmithersErrorCode, type LlmJudgeConfig, type MemoryFact, type MemoryLayerConfig, type MemoryMessage, type MemoryNamespace, type MemoryNamespaceKind, type MemoryProcessor, type MemoryProcessorConfig, type MemoryProps, type MemoryServiceApi, type MemoryStore, type MemoryThread, type MessageHistoryConfig, type MigrateSmithersStoreOptions, type MonitorCondition, type MonitorProps, type NanocodexAgentOptions, type NanocodexAuth, type NanocodexGenerateOptions, type NanocodexReasoningMode, type NanocodexThinking, type OmpAgentOptions, type OpenAIAgentOptions, type OpenApiAuth, type OpenApiSpec, type OpenApiToolsOptions, type OpenClawAgentOptions, type OpenSmithersBackendOptions, type OutputAccessor, type OutputKey, type OutputTarget, type PiAgentOptions, type PiExtensionUiRequest, type PiExtensionUiResponse, type PollerProps, type PoolAgentOptions, type ProofBinding, type RequestFrame, type ResolvedSmithersObservabilityOptions, type ResponseFrame, type RevertOptions, type RevertResult, type RunJjOptions, type RunJjResult, type RunOptions, type RunResult, type RunStartedBy, type RunStatus, type SagaProps, type SagaStepDef, type SagaStepProps, type SamplingConfig, type SandboxProps, type SandboxRuntime, type SandboxVolumeMount, type SandboxWorkspaceSpec, type SchemaRegistryEntry, type ScoreResult, type ScoreRow, type Scorer, type ScorerBinding, type ScorerContext, type ScorerFn, type ScorerInput, type ScorersMap, type SemanticRecallConfig, type SerializedCtx, type ServeOptions, type ServerOptions, type SignalProps, type SmithersAlertLabels, type SmithersAlertPolicy, type SmithersAlertPolicyDefaults, type SmithersAlertPolicyRule, type SmithersAlertReaction, type SmithersAlertReactionKind, type SmithersAlertReactionRef, type SmithersAlertSeverity, type SmithersCtx, type SmithersError, type SmithersErrorCode, type SmithersErrorReport, type SmithersEvent, type SmithersLogFormat, type SmithersMigrationResult, type SmithersObservabilityOptions, type SmithersObservabilityService, type SmithersWorkflow, type SmithersWorkflowOptions, type TUIProps, type TaskDescriptor, type TaskMemoryConfig, type TaskProps, type TimeTravelOptions, type TimeTravelResult, type TimerProps, type TrellisProps, type TryCatchFinallyProps, type UIProps, type VibeAgentOptions, type WaitForEventProps, type WorkflowViewBootProps, type WorkflowViewProps, type WorkingMemoryConfig, type WorkspaceAddOptions, type WorkspaceInfo, type WorkspaceResult, type XmlElement, type XmlNode, type XmlText, bash, createExternalSmithers, createSmithers, createSmithersCloudflare, createSmithersPostgres, defineTool, edit, getDefinedToolMetadata, grep, mdxPlugin, migrateSmithersStore, openSmithersBackend, openSmithersStore, read, resolveSmithersBackendChoice, resolveSmithersBackendPreference, tools, write };
+diff --git a/src/index.js b/src/index.js
+index 4353190cc9893f8a932ad44a0b84e48eedbc5b74..a9bf878540a646eedde266467f48555654b35cbf 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -120,7 +120,6 @@
+ /** @typedef {import("@smthrs/agents").CursorAgentOptions} CursorAgentOptions */
+ /** @typedef {import("@smthrs/agents").PiExtensionUiRequest} PiExtensionUiRequest */
+ /** @typedef {import("@smthrs/agents").PiExtensionUiResponse} PiExtensionUiResponse */
+-/** @typedef {import("@smthrs/agents").OpenCodeAgentOptions} OpenCodeAgentOptions */
+ /** @typedef {import("@smthrs/agents").PoolAgentOptions} PoolAgentOptions */
+ /** @typedef {import("@smthrs/agents").VibeAgentOptions} VibeAgentOptions */
+ /** @typedef {import("@smthrs/components").MonitorCondition} MonitorCondition */
+@@ -357,7 +356,6 @@ export {
+   KimiAgent,
+   ForgeAgent,
+   VibeAgent,
+-  OpenCodeAgent,
+   PoolAgent,
+   fallbackAgents,
+   createHttpTool,

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/example-code",
   "version": "2.0.0-beta.1",
-  "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
+  "description": "Eliza Code, the native ElizaOS coding agent terminal and ACP server",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaOS/eliza.git",
@@ -23,7 +23,7 @@
   "scripts": {
     "start": "bun --conditions eliza-source src/index.ts",
     "dev": "bun --conditions eliza-source --watch src/index.ts",
-    "build": "bun build --conditions eliza-source src/index.ts --outdir dist --target bun --external @elizaos/core --external \"@elizaos/plugin-*\" && bun build --conditions eliza-source src/acp.ts --outdir dist --target bun --external @elizaos/core --external \"@elizaos/plugin-*\" && node scripts/write-dist-tsconfig.mjs",
+    "build": "bun build --conditions eliza-source src/index.ts --outdir dist --target bun --external @elizaos/core --external \"@elizaos/plugin-*\" && bun build --conditions eliza-source src/acp.ts --outdir dist --target bun --external @elizaos/core --external \"@elizaos/plugin-*\" && node scripts/write-dist-tsconfig.mjs && node scripts/smoke-dist.mjs",
     "test": "bun test --conditions=eliza-source src",
     "e2e:subagents": "bun src/e2e/subagents.ts",
     "e2e:games": "bun src/e2e/game-generation.ts",
@@ -47,7 +47,7 @@
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/tui": "latest",
+    "@elizaos/tui": "2.0.0-alpha.77",
     "chalk": "^5.3.0",
     "dotenv": "^17.2.3",
     "react": "19.2.3",

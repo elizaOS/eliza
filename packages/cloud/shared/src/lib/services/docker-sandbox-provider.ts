@@ -27,6 +27,8 @@ import {
   buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
+  buildAgentContainerUserFlags,
+  buildPrepareAgentRuntimeVolumesCmd,
 } from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
@@ -75,6 +77,8 @@ import {
 } from "./headscale-auth-status";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
+import { buildEnsureHostedAgentAppArmorProfileCmd } from "./hosted-agent-apparmor-profile";
+import { buildEnsureHostedAgentSeccompProfileCmd } from "./hosted-agent-seccomp-profile";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
@@ -1512,9 +1516,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
-        // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
-        // The builder guarantees --cap-drop=ALL precedes --cap-add=NET_ADMIN.
+        // Headscale only: re-add the SETUID/SETGID bootstrap capabilities plus
+        // NET_ADMIN + /dev/net/tun. PID 1 drops those capabilities when it
+        // transitions to uid/gid 10001 after tailscaled starts.
         ...buildAgentContainerSecurityFlags({ headscaleEnabled }),
+        ...buildAgentContainerUserFlags({ headscaleEnabled }),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).
@@ -1532,6 +1538,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       // run the cloud-init bootstrap; the network can also be pruned away).
       // Without this, `docker create --network` below fails with an opaque
       // "network not found" and the provision retries forever.
+      // The managed image's local-safe SHELL path uses unprivileged bubblewrap.
+      // Docker's stock seccomp and AppArmor policies block namespace/mount
+      // setup before the kernel can apply user-namespace capability checks,
+      // so install the pinned per-container profiles before create. This stays
+      // cap-drop=ALL and fails closed if either profile cannot be installed,
+      // loaded (AppArmor enforce mode), or checksum-verified.
+      await ssh.exec(buildEnsureHostedAgentAppArmorProfileCmd(), DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(buildEnsureHostedAgentSeccompProfileCmd(), DOCKER_CMD_TIMEOUT_MS);
       await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
 
       // This clock starts the durable uncertainty window. Keep it adjacent to
@@ -1633,6 +1647,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           }`,
         );
       }
+
+      // Prepare legacy and fresh persistent state on the host, after every
+      // pre-seed write but before the first container process starts. This is
+      // the authority boundary that lets the normal image run as uid 10001
+      // with cap-drop=ALL; it also avoids granting CHOWN to the Headscale lane.
+      await ssh.exec(buildPrepareAgentRuntimeVolumesCmd(volumePath), DOCKER_CMD_TIMEOUT_MS);
 
       await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
       logger.info(

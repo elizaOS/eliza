@@ -1,24 +1,17 @@
 /**
  * API contract for Cloud coding-container requests: the container service type
- * and the schema of coding agents a request may select (claude/codex/opencode/
- * elizaos). Shared so the Cloud API and its callers validate the same enum.
+ * and the schema of coding agents a request may select (elizaos/claude/codex).
+ * Shared so the Cloud API and its callers validate the same enum.
  */
 import z from "zod";
 
 export const CLOUD_CONTAINER_SERVICE_TYPE = "CLOUD_CONTAINER";
 
-// `elizaos` = the elizaOS-owned coding sub-agent (eliza-code, runtime +
-// plugin-coding-tools + orchestrator). It resolves to the `eliza-code-acp` bin
-// in plugin-agent-orchestrator and is a drop-in for opencode on the same model.
-// Accepting it here lets a Cloud coding-container request explicitly select
-// eliza-code once the runner image ships the bin (issue #10059). The default
-// stays `claude` — the image must contain the agent before it becomes default.
-export const CloudCodingAgentSchema = z.enum([
-  "claude",
-  "codex",
-  "opencode",
-  "elizaos",
-]);
+// `elizaos` = the elizaOS-owned coding sub-agent (Eliza Code, runtime +
+// plugin-coding-tools + orchestrator). It is also provisioning metadata for
+// HTTP-only remote executors. Any image that actually launches this runner must
+// provide the `eliza-code-acp` binary; the canonical managed-agent image does.
+export const CloudCodingAgentSchema = z.enum(["elizaos", "claude", "codex"]);
 
 export const CloudCodingContainerStatusSchema = z.enum([
   "requested",
@@ -106,10 +99,10 @@ export const PromoteVfsToCloudContainerRequestSchema = z
 export const RequestCodingAgentContainerRequestSchema = z
   .object({
     // The coding agent is meaningless for a self-contained image (which boots
-    // its own runtime), so callers may omit it. Defaults to "claude". The
+    // its own runtime), so callers may omit it. Defaults to Eliza Code. The
     // output type stays required, so downstream code that reads `request.agent`
     // (env-var injection, session response) needs no change.
-    agent: CloudCodingAgentSchema.default("claude"),
+    agent: CloudCodingAgentSchema.default("elizaos"),
     promotionId: z.string().regex(/\S/).optional(),
     source: CloudVfsBundleSchema.optional(),
     prompt: z.string().optional(),

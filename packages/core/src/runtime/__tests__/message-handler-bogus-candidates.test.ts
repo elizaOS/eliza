@@ -516,7 +516,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 				shouldRespond: "RESPOND",
 				contexts: [],
 				candidateActionNames: [],
-				replyText: "Checking for the vendored opencode submodule...",
+				replyText: "Checking for the vendored elizaos submodule...",
 				intents: ["check submodule"],
 				facts: [],
 				addressedTo: [],
@@ -525,7 +525,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{
 				actions: [SHELL],
 				messageText:
-					"is the vendored opencode submodule present and what commit is checked out? concise",
+					"is the vendored elizaos submodule present and what commit is checked out? concise",
 			},
 		);
 
@@ -541,7 +541,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 				shouldRespond: "RESPOND",
 				contexts: [],
 				candidateActionNames: [],
-				replyText: "Checking for the vendored opencode submodule...",
+				replyText: "Checking for the vendored elizaos submodule...",
 				intents: [],
 				facts: [],
 				addressedTo: [],
@@ -550,7 +550,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{
 				actions: [SHELL],
 				messageText:
-					"is the vendored opencode submodule present and what commit is checked out? concise",
+					"is the vendored elizaos submodule present and what commit is checked out? concise",
 			},
 		);
 
@@ -575,7 +575,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{
 				actions: [SHELL],
 				messageText:
-					"does the vendored opencode source include Cerebras endpoint detection? concise",
+					"does the vendored elizaos source include Cerebras endpoint detection? concise",
 			},
 		);
 
@@ -592,7 +592,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 				contexts: [],
 				candidateActionNames: ["TASKS_SPAWN_AGENT"],
 				replyText:
-					"Spawning a sub-agent to search the vendored opencode source for the requested feature.",
+					"Spawning a sub-agent to search the vendored elizaos source for the requested feature.",
 				intents: [],
 				facts: [],
 				addressedTo: [],
@@ -601,7 +601,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{
 				actions: REAL_ACTIONS,
 				messageText:
-					"does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+					"does the local vendored elizaos source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
 			},
 		);
 
@@ -626,7 +626,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{
 				actions: REAL_ACTIONS,
 				messageText:
-					"spawn an opencode sub-agent to inspect the local vendored opencode source",
+					"spawn an elizaos sub-agent to inspect the local vendored elizaos source",
 			},
 		);
 

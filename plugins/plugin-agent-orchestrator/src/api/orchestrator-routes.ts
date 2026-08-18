@@ -54,8 +54,35 @@ const PRIORITIES: ReadonlySet<string> = new Set([
   "urgent",
 ]);
 
+const CREATE_TASK_BODY_KEYS: ReadonlySet<string> = new Set([
+  "title",
+  "goal",
+  "originalRequest",
+  "kind",
+  "priority",
+  "acceptanceCriteria",
+  "ownerUserId",
+  "worldId",
+  "projectId",
+  "workdir",
+  "roomId",
+  "taskRoomId",
+  "providerPolicy",
+  "currentPlan",
+  "metadata",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function unknownBodyKeys(
+  body: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): string[] {
+  return Object.keys(body)
+    .filter((key) => !allowed.has(key))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function asPriority(value: unknown): OrchestratorTaskPriority | undefined {
@@ -402,6 +429,18 @@ async function dispatchOrchestratorRoutes(
     const body = await parseBody(req).catch(() => null);
     if (!body) {
       sendError(res, "Invalid JSON body", 400);
+      return true;
+    }
+    const unknownKeys = unknownBodyKeys(body, CREATE_TASK_BODY_KEYS);
+    if (unknownKeys.length > 0) {
+      const criteriaHint = unknownKeys.includes("criteria")
+        ? " Use acceptanceCriteria for caller-supplied criteria."
+        : "";
+      sendError(
+        res,
+        `Unknown task field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}.${criteriaHint}`,
+        400,
+      );
       return true;
     }
     const title = asString(body.title);

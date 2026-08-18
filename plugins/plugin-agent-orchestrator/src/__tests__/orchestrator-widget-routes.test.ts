@@ -228,6 +228,24 @@ describe("orchestrator widget routes", () => {
     expect(h.res.statusCode).not.toBe(400);
   });
 
+  it("rejects misspelled task criteria instead of silently generating different criteria", async () => {
+    const url = "/api/orchestrator/tasks";
+    const h = harness(url, "POST");
+
+    expect(
+      await dispatchJson(h, url, {
+        title: "Create route tests",
+        criteria: ["npm test passes"],
+      }),
+    ).toBe(true);
+
+    expect(h.res.statusCode).toBe(400);
+    expect(h.service.createTask).not.toHaveBeenCalled();
+    expect(JSON.parse(h.chunks.join(""))).toMatchObject({
+      error: expect.stringMatching(/acceptanceCriteria/),
+    });
+  });
+
   it("stops a named task session", async () => {
     const url = "/api/orchestrator/tasks/task-1/agents/session-1/stop";
     const h = harness(url, "POST");

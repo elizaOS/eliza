@@ -102,9 +102,7 @@ const overview: OrchestratorAccountOverview = {
       },
     ],
     codex: [{ providerId: "openai-codex", total: 1, enabled: 1, healthy: 1 }],
-    opencode: [
-      { providerId: "cerebras-api", total: 1, enabled: 1, healthy: 0 },
-    ],
+    elizaos: [{ providerId: "cerebras-api", total: 1, enabled: 1, healthy: 0 }],
   },
   assignments: [
     {

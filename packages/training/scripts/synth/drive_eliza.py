@@ -23,7 +23,7 @@ shape — the same format the gold-standard nubilio-trajectories use.
 Sub-agent capture (closes M8 / W1-T1 + W1-T2 + W1-T3):
     With ``--allow-subagents`` the driver flags each request with
     ``allow_subagents: true`` in the context block, then watches for sub-agent
-    sessions that the agent spawns via the orchestrator (Claude/Codex/OpenCode).
+    sessions that the agent spawns via the orchestrator (Claude/Codex/Eliza Code).
     After the benchmark turn, the driver queries the orchestrator bridge
     (``/api/coding-agents/<sessionId>/...``) for each new session, normalizes
     the captured rollout, and writes a ``synth_kind: 'with_subagents'`` row to
@@ -754,7 +754,7 @@ def main() -> int:
     ap.add_argument(
         "--allow-subagents",
         action="store_true",
-        help="permit sub-agent (Codex/Claude/OpenCode) spawns and capture "
+        help="permit sub-agent (Codex/Claude/Eliza Code) spawns and capture "
         "the resulting sessions via the orchestrator bridge. Writes "
         "<output-dir>/with_subagents.jsonl tagged synth_kind='with_subagents'.",
     )

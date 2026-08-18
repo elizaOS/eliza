@@ -2166,7 +2166,7 @@ async function runSpawnAgent(
       // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
       // duplicate spawns per Discord message, which (a) burns through
       // the 8-slot concurrent-session pool inside a single turn, (b)
-      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
+      // costs 5x more Cerebras tokens, and (c) wastes Eliza Code CPU
       // running the same task in parallel.
       //
       // `continueChain: false` is the planner-loop's terminal flag —
@@ -5161,15 +5161,15 @@ export const tasksAction: Action & {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
-    "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+    "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -5218,7 +5218,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Heuristic backend guess (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
+        "Heuristic backend guess (elizaos, pi-agent, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5232,11 +5232,11 @@ export const tasksAction: Action & {
     {
       name: "requestedBackend",
       description:
-        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, opencode, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
+        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: ["elizaos", "pi-agent", "opencode", "codex", "claude"],
+        enum: ["elizaos", "pi-agent", "codex", "claude"],
       },
     },
     {
@@ -5680,7 +5680,7 @@ export const tasksAction: Action & {
     // inline FILE.write or hallucinate a refusal. The cluster covers
     // explicit verbs (spawn / delegate / fire up), explicit nouns
     // (sub-agent / coding agent / sub-process), and the
-    // user-naming-the-adapter case (elizaos / pi-agent / opencode /
+    // user-naming-the-adapter case (elizaos / pi-agent /
     // claude / codex) so the
     // few-shot matches whatever provider the user has wired.
     [
@@ -5697,7 +5697,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with Eliza Code (elizaos) or an optional adapter (pi-agent / claude / codex).",
         },
       },
     ],
@@ -5723,17 +5723,17 @@ export const tasksAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "use opencode to write a script that prints hello world",
+          text: "use eliza code to write a script that prints hello world",
           source: "chat",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Spawning an opencode sub-agent for the script.",
+          text: "Spawning an Eliza Code sub-agent for the script.",
           actions: ["TASKS"],
           thought:
-            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
+            "User explicitly named Eliza Code. TASKS action=spawn_agent with agentType=elizaos hands off to the native Eliza Code ACP adapter.",
         },
       },
     ],
@@ -5769,7 +5769,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with Eliza Code (elizaos) or an optional adapter (pi-agent / claude / codex).",
         },
       },
     ],

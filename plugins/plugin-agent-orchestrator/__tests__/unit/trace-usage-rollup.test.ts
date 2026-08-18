@@ -86,19 +86,52 @@ async function seedTaskWithSession(
   return { taskId, sessionId };
 }
 
-function trajectoryJson(traceId: string, prompt: number, cost: number): string {
+function trajectoryJson(
+  trajectoryId: string,
+  traceId: string,
+  taskId: string,
+  sessionId: string,
+  prompt: number,
+  cost: number,
+): string {
+  const completion = Math.floor(prompt / 5);
   return JSON.stringify({
-    trajectoryId: `tj-${prompt}`,
+    trajectoryId,
     agentId: "child-agent",
     traceId,
+    taskId,
+    sessionId,
     rootMessage: { id: "m", text: "hi" },
     startedAt: 0,
     status: "finished",
-    stages: [],
+    stages: [
+      {
+        stageId: "model-1",
+        kind: "planner",
+        startedAt: 0,
+        endedAt: 0,
+        latencyMs: 0,
+        model: {
+          modelType: "text_large",
+          provider: "cerebras",
+          modelName: "gpt-oss-120b",
+          response: "",
+          usage: {
+            promptTokens: prompt,
+            completionTokens: completion,
+            reasoningTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+          costUsd: cost,
+        },
+      },
+    ],
     metrics: {
       totalLatencyMs: 0,
       totalPromptTokens: prompt,
-      totalCompletionTokens: Math.floor(prompt / 5),
+      totalCompletionTokens: completion,
+      totalReasoningTokens: 0,
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
       totalCostUsd: cost,
@@ -151,11 +184,11 @@ describeCore("getTraceUsage", () => {
     await mkdir(dir, { recursive: true });
     writeFileSync(
       join(dir, "tj-100.json"),
-      trajectoryJson("trace-parent", 100, 0.01),
+      trajectoryJson("tj-100", "trace-parent", taskId, sessionId, 100, 0.01),
     );
     writeFileSync(
       join(dir, "tj-50.json"),
-      trajectoryJson("trace-parent", 50, 0.005),
+      trajectoryJson("tj-50", "trace-parent", taskId, sessionId, 50, 0.005),
     );
 
     await ingest(svc, taskId, sessionId);
@@ -193,7 +226,7 @@ describeCore("getTraceUsage", () => {
     await mkdir(dir, { recursive: true });
     writeFileSync(
       join(dir, "tj-good.json"),
-      trajectoryJson("trace-parent", 40, 0.004),
+      trajectoryJson("tj-good", "trace-parent", taskId, sessionId, 40, 0.004),
     );
     writeFileSync(join(dir, "tj-bad.json"), "{ this is not valid json");
 
@@ -231,7 +264,7 @@ describeCore("getTraceUsage", () => {
     await mkdir(dir, { recursive: true });
     writeFileSync(
       join(dir, "tj-good.json"),
-      trajectoryJson("trace-parent", 25, 0.0025),
+      trajectoryJson("tj-good", "trace-parent", taskId, sessionId, 25, 0.0025),
     );
     writeFileSync(
       join(dir, "tj-invalid.json"),
@@ -283,7 +316,10 @@ describeCore("getTraceUsage", () => {
     );
     await mkdir(dir, { recursive: true });
     const trajPath = join(dir, "tj-dup.json");
-    writeFileSync(trajPath, trajectoryJson("trace-parent", 80, 0.008));
+    writeFileSync(
+      trajPath,
+      trajectoryJson("tj-dup", "trace-parent", taskId, sessionId, 80, 0.008),
+    );
 
     // ingestChildTrajectories now path-dedupes at ingest time (#14110), so it
     // attaches at most one row per file and a re-ingest is a no-op. getTraceUsage

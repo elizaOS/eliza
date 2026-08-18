@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
@@ -15,6 +15,15 @@ import {
   serviceMock,
   state,
 } from "../../src/test-utils/action-test-utils.js";
+
+const PREV_CONFIG_PATH = process.env.ELIZA_CONFIG_PATH;
+beforeAll(() => {
+  process.env.ELIZA_CONFIG_PATH = `${os.tmpdir()}/eliza-create-task-tests-no-config.json`;
+});
+afterAll(() => {
+  if (PREV_CONFIG_PATH === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = PREV_CONFIG_PATH;
+});
 
 describe("TASKS:create", () => {
   it("rejects a history operation alias on the promoted create tool", async () => {

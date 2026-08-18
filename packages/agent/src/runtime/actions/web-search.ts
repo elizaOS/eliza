@@ -2,7 +2,7 @@
  * WEB_SEARCH — keyless inline general web search.
  *
  * Queries the keyless Parallel.ai search MCP (with an Exa fallback) — the same
- * backends the bundled opencode `websearch` tool uses — but INLINE this turn,
+ * backends a coding agent web-search tool uses — but INLINE this turn,
  * with no coding sub-agent spawn. Gives every runtime a fast, general web
  * search ("find me X", "latest on Y", "best Z", "who/what/where is …") that
  * needs no API key and no backing service, returning ranked results

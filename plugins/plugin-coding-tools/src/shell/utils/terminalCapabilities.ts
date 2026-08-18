@@ -16,7 +16,7 @@ export const TERMINAL_TOOL_NAMES = [
   "acpx",
   "codex",
   "claude",
-  "opencode",
+  "elizaos",
 ] as const;
 
 export type TerminalToolName = (typeof TERMINAL_TOOL_NAMES)[number];

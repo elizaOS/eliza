@@ -565,14 +565,14 @@ describe("codingActionSummary — archived steps", () => {
 });
 
 // A weak planner (gpt-oss-class) sometimes hallucinates its own TASKS spawn-arg
-// object into messageToUser, leaking {"task":…,"agentType":"opencode",…} to the
+// object into messageToUser, leaking {"task":…,"agentType":"elizaos",…} to the
 // user instead of spawning + narrating the sub-agent's real result (battery #3).
 // userSafeFinalMessage suppresses it via this structural shape detector.
 describe("looksLikeSpawnEnvelopeJson — spawn-arg leak detector", () => {
 	it("flags a leaked TASKS spawn-arg JSON object", () => {
 		expect(
 			looksLikeSpawnEnvelopeJson(
-				'{"task":"Fetch the current Bitcoin price","agentType":"opencode","approvalPreset":"standard","brief":"webfetch coingecko"}',
+				'{"task":"Fetch the current Bitcoin price","agentType":"elizaos","approvalPreset":"standard","brief":"webfetch coingecko"}',
 			),
 		).toBe(true);
 	});

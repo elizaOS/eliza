@@ -14,7 +14,7 @@ function mkSession(id: string, name: string, status: string) {
   return {
     id,
     name,
-    agentType: "opencode",
+    agentType: "elizaos",
     status,
     workdir: `/work/${id}`,
     metadata: {},

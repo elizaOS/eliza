@@ -1,4 +1,7 @@
 /** Unit tests for the path predicates and blocklist resolution. */
+import * as fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isAbsolutePath,
@@ -8,6 +11,7 @@ import {
   isWithinAnyRoot,
   normalizeAbsolute,
   relativeFromRoot,
+  resolveRealPath,
 } from "./path-utils.js";
 
 /** Sandbox path validation — prevents traversal/escape, so the matching is pinned. */
@@ -78,5 +82,26 @@ describe("normalizeAbsolute / relativeFromRoot", () => {
     // relativeFromRoot uses path.relative (backslashes on Windows) — normalize.
     expect(relativeFromRoot("/a/b/c", "/a").replace(/\\/g, "/")).toBe("b/c");
     expect(relativeFromRoot("/a", "/a")).toBe(".");
+  });
+});
+
+describe("resolveRealPath", () => {
+  it("canonicalizes the deepest existing symlink ancestor for a missing leaf", async () => {
+    const fixture = await fs.mkdtemp(
+      path.join(tmpdir(), "path-real-ancestor-"),
+    );
+    const outside = path.join(fixture, "outside");
+    const root = path.join(fixture, "root");
+    await fs.mkdir(outside, { recursive: true });
+    await fs.mkdir(root, { recursive: true });
+    await fs.symlink(outside, path.join(root, "alias"), "dir");
+
+    try {
+      await expect(
+        resolveRealPath(path.join(root, "alias", "missing", "file.txt")),
+      ).resolves.toBe(path.join(outside, "missing", "file.txt"));
+    } finally {
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
   });
 });

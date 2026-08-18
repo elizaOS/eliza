@@ -20,7 +20,7 @@ describe('native Smithers workflow source', () => {
     for (const source of [undefined, null, 42, {}]) {
       expect(() => validateSmithersSource(source)).toThrow('source is required');
     }
-    expect(() => validateSmithersSource("import { Smithers } from 'smthrs';")).toThrow(
+    expect(() => validateSmithersSource("import { createSmithers } from 'smthrs/create';")).toThrow(
       'default-export'
     );
     expect(() =>
@@ -28,5 +28,20 @@ describe('native Smithers workflow source', () => {
         "import { Smithers } from '@smithers-orchestrator/engine'; export default Smithers;"
       )
     ).toThrow('import its runtime from smthrs');
+  });
+
+  test('rejects package-root agents and arbitrary module loading', () => {
+    const finish = '; export default {};';
+    const retiredAgent = ['Open', 'Code', 'Agent'].join('');
+    for (const source of [
+      `import { ${retiredAgent} } from 'smthrs'${finish}`,
+      `import * as smithers from 'smthrs'; void smithers${finish}`,
+      `import { ${retiredAgent} } from '@smthrs/agents'${finish}`,
+      `import { spawn } from 'node:child_process'${finish}`,
+      `import { createSmithers } from 'smthrs/create'; await import('node:fs')${finish}`,
+      `import { createSmithers } from 'smthrs/create'; require('node:fs')${finish}`,
+    ]) {
+      expect(() => validateSmithersSource(source)).toThrow();
+    }
   });
 });

@@ -355,6 +355,13 @@ describe("workspace-diff — unborn HEAD + untracked (#11578)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("does not treat failed rev-parse stdout as a real baseline SHA", async () => {
+    // Modern Git may print the literal token `HEAD` before returning non-zero
+    // for an unborn branch. Exit status, not non-empty stdout, determines
+    // whether the repository has a usable baseline commit.
+    expect(await captureBaselineSha(dir)).toBeUndefined();
+  });
+
   it("returns a change set on an unborn HEAD for a shell-written file", async () => {
     writeFileSync(join(dir, "app.js"), "console.log('hi');\n");
     const cs = await captureChangeSet(dir);

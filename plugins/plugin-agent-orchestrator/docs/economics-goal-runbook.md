@@ -52,9 +52,9 @@ within a spend cap.
    ELIZA_CLOUD_BASE_URL=http://127.0.0.1:<apiPort>
    ELIZAOS_CLOUD_API_KEY=<a seeded org API key>      # see cloud-e2e seedTestUser
    ELIZA_AGENT_SPEND_CAP_USD=20
-   ELIZA_ACP_DEFAULT_AGENT=opencode                   # Cerebras auto-detected; or codex/claude with their keys
-   OPENCODE_DISABLE_AUTOUPDATE=1                       # opencode's network update check can blow the spawn timeout
-   ACPX_DEFAULT_TIMEOUT_MS=600000                      # first opencode init (compile + provider fetch) ~3-5min
+   ELIZA_ACP_DEFAULT_AGENT=elizaos                   # Cerebras auto-detected; or codex/claude with their keys
+   ELIZA_CODE_DISABLE_AUTOUPDATE=1                       # elizaos's network update check can blow the spawn timeout
+   ACPX_DEFAULT_TIMEOUT_MS=600000                      # first elizaos init (compile + provider fetch) ~3-5min
    ```
 
 3. Create an economics task — `/economics build and monetize a tiny app` in the
@@ -106,7 +106,7 @@ stays covered by `parent-agent-broker.test.ts`.
 ## Live verification (2026-06-06)
 
 The full loop was run end-to-end against `cloud:mock` with a real
-`opencode` ACP child on a Cerebras key (`gpt-oss-120b`) — no human in the loop:
+`elizaos` ACP child on a Cerebras key (`gpt-oss-120b`) — no human in the loop:
 
 - The child read `SKILLS.md`, then drove `cloud.health → apps.create →
   containers.create` entirely through `USE_SKILL parent-agent {…}` directives.
@@ -127,7 +127,7 @@ Two defects the live run surfaced (both fixed):
 1. **Windows env forwarding (`acp-service.ts`).** `shouldForwardEnv` matched
    `PATH` case-sensitively, but the repo runtime is Bun and Bun-on-Windows
    reports the key as `Path` — so ACP sub-agents spawned with NO `PATH` and the
-   opencode shim died with `'bun' is not recognized`. Now matched
+   elizaos shim died with `'bun' is not recognized`. Now matched
    case-insensitively (+ Windows system vars), with the path key canonicalized
    to `PATH` in `buildEnv`.
 2. **Mid-turn reply delivery (`parent-agent-dispatch.ts`).** A child emits its

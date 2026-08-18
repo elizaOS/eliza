@@ -1657,7 +1657,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
-				text: "[sub-agent: package check (opencode) task_complete]\nhttps://eliza.so\nhttps://app.eliza.so",
+				text: "[sub-agent: package check (elizaos) task_complete]\nhttps://eliza.so\nhttps://app.eliza.so",
 				source: "sub_agent",
 			}),
 			state,
@@ -3052,7 +3052,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			{
 				actions: [{ name: "TASKS" }],
 				messageText:
-					"Use the OpenCode coding sub-agent to build a tiny static app with index.html, style.css, app.js, and verify the public URL.",
+					"Use the Eliza Code coding sub-agent to build a tiny static app with index.html, style.css, app.js, and verify the public URL.",
 			},
 		);
 
@@ -3343,7 +3343,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
 									createdAt: 2,
 									content: {
-										text: "[sub-agent: old build (opencode) — task_complete]\n[tool output: ls]\nstale raw transcript",
+										text: "[sub-agent: old build (elizaos) — task_complete]\n[tool output: ls]\nstale raw transcript",
 										source: "acpx:sub-agent-router",
 										metadata: { subAgent: true },
 									},
@@ -4343,7 +4343,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
 									createdAt: 3,
 									content: {
-										text: "[sub-agent: price check (opencode) — task_complete]\nraw transcript",
+										text: "[sub-agent: price check (elizaos) — task_complete]\nraw transcript",
 										source: "acpx:sub-agent-router",
 										metadata: { subAgent: true },
 									},
@@ -6397,7 +6397,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 // classifying LLM text — genuine user task-intent turns keep the backstop.
 describe("sub-agent completion relay vs the direct-candidate injection backstop", () => {
 	const RELAY_ENVELOPE_TEXT =
-		"[sub-agent: Build and deploy a dice roller web app (opencode) — completed]\n" +
+		"[sub-agent: Build and deploy a dice roller web app (elizaos) — completed]\n" +
 		"Done. I built the dice roller web app and deployed it. " +
 		"The app is live at https://apps.example.test/dice/ — repo updated on branch feat/dice.";
 

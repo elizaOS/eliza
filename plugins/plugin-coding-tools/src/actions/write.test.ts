@@ -220,6 +220,33 @@ describe("WRITE", () => {
     expect(result.text).toContain("path_blocked");
   });
 
+  it("rejects direct writes to Git administration state", async () => {
+    const file = path.join(env.tmpDir, ".git", "config");
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, content: "[core]\n" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
+    await expect(fs.access(file)).rejects.toBeDefined();
+  });
+
+  it("rejects a missing leaf reached through a symlinked parent outside policy", async () => {
+    const alias = path.join(env.tmpDir, "outside-alias");
+    const escaped = path.join(env.blockedPath, "escaped.txt");
+    await fs.symlink(env.blockedPath, alias, "dir");
+
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: path.join(alias, "escaped.txt"),
+        content: "must not escape",
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
+    await expect(fs.access(escaped)).rejects.toBeDefined();
+  });
+
   it("fails when content param is missing", async () => {
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: path.join(env.tmpDir, "x.txt") },

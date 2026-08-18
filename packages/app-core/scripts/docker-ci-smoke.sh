@@ -197,6 +197,7 @@ if [[ -d packages/app-core ]]; then
   PACKAGES_DIR="packages"
   APP_DIR="packages/app"
   PLUGINS_DIR="plugins"
+  PATCHES_DIR="patches"
 elif [[ -d eliza/packages/app-core ]]; then
   # Inside the eliza outer repo where eliza is a submodule: app-core
   # is nested under eliza/, while the host app can live in apps/app.
@@ -208,11 +209,13 @@ elif [[ -d eliza/packages/app-core ]]; then
     APP_DIR="eliza/packages/app"
   fi
   PLUGINS_DIR="eliza/plugins"
+  PATCHES_DIR="eliza/patches"
 else
   fail "packages/app-core not found"
 fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
+ELIZA_CODE_DIR="$PACKAGES_DIR/examples/code"
 RM_PATH_RECURSIVE=(node "$PACKAGES_DIR/scripts/rm-path-recursive.mjs")
 # @elizaos/core source lives under packages/core (current) or packages/typescript
 # (legacy). Prefer the current name; fall back to the legacy path so older branches
@@ -226,6 +229,14 @@ fi
 [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
 [[ -d "$APP_DIR" ]] || fail "$APP_DIR not found"
+[[ -f "$ELIZA_CODE_DIR/package.json" ]] || fail "$ELIZA_CODE_DIR/package.json not found"
+
+HOSTED_AGENT_SECCOMP_PROFILE="$PACKAGES_DIR/cloud/shared/src/lib/services/hosted-agent-bwrap-seccomp.json"
+[[ -f "$HOSTED_AGENT_SECCOMP_PROFILE" ]] || fail "$HOSTED_AGENT_SECCOMP_PROFILE not found"
+HOSTED_AGENT_APPARMOR_PROFILE="$PACKAGES_DIR/cloud/shared/src/lib/services/hosted-agent-bwrap.apparmor"
+HOSTED_AGENT_APPARMOR_PROFILE_NAME="eliza-hosted-agent-bwrap"
+HOSTED_AGENT_APPARMOR_PROFILE_SHA256="c498d75415082ce5033cc1ac8bcaaa508b7b034118602abe60734820eb8333ea"
+[[ -f "$HOSTED_AGENT_APPARMOR_PROFILE" ]] || fail "$HOSTED_AGENT_APPARMOR_PROFILE not found"
 
 load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
@@ -269,6 +280,44 @@ DOCKER_BIN="$(find_docker_bin)" || fail "docker is required"
 
 "$DOCKER_BIN" info >/dev/null 2>&1 || fail "docker daemon is not available"
 
+ensure_hosted_agent_apparmor_profile() {
+  log "Loading the hosted-agent AppArmor policy in enforce mode"
+  [[ -r /sys/module/apparmor/parameters/enabled ]] \
+    || fail "AppArmor kernel status is unavailable; refusing an unconfined hosted-agent smoke"
+  [[ "$(tr -d '[:space:]' </sys/module/apparmor/parameters/enabled)" == "Y" ]] \
+    || fail "AppArmor is not enabled; refusing an unconfined hosted-agent smoke"
+  printf '%s  %s\n' "$HOSTED_AGENT_APPARMOR_PROFILE_SHA256" "$HOSTED_AGENT_APPARMOR_PROFILE" \
+    | sha256sum -c - >/dev/null \
+    || fail "Hosted-agent AppArmor profile checksum mismatch"
+
+  local parser=""
+  if command -v apparmor_parser >/dev/null 2>&1; then
+    parser="$(command -v apparmor_parser)"
+  elif [[ -x /usr/sbin/apparmor_parser ]]; then
+    parser="/usr/sbin/apparmor_parser"
+  elif [[ -x /sbin/apparmor_parser ]]; then
+    parser="/sbin/apparmor_parser"
+  else
+    fail "apparmor_parser is required for hosted-agent image smoke"
+  fi
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$parser" -Kr "$HOSTED_AGENT_APPARMOR_PROFILE"
+  else
+    command -v sudo >/dev/null 2>&1 \
+      || fail "root or passwordless sudo is required to load the hosted-agent AppArmor profile"
+    sudo -n "$parser" -Kr "$HOSTED_AGENT_APPARMOR_PROFILE"
+  fi
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    grep -Fxq "$HOSTED_AGENT_APPARMOR_PROFILE_NAME (enforce)" \
+      /sys/kernel/security/apparmor/profiles
+  else
+    sudo -n grep -Fxq "$HOSTED_AGENT_APPARMOR_PROFILE_NAME (enforce)" \
+      /sys/kernel/security/apparmor/profiles
+  fi || fail "Hosted-agent AppArmor profile was not loaded in enforce mode"
+}
+
 DOCKERIGNORE_BACKUP="$(mktemp)"
 HAD_ROOT_DOCKERIGNORE=0
 if [[ -f .dockerignore ]]; then
@@ -299,6 +348,61 @@ cleanup() {
 }
 trap cleanup EXIT
 
+verify_eliza_code_shell() {
+  log "Verifying Eliza Code and its real local-safe SHELL boundary in the image"
+  timeout 30 "$DOCKER_BIN" exec "$CONTAINER_NAME" eliza-code --version \
+    | grep -F "eliza-code v" >/dev/null \
+    || fail "Eliza Code CLI is missing or non-runnable in the built image"
+  timeout 60 "$DOCKER_BIN" exec "$CONTAINER_NAME" \
+    bun "/app/${ELIZA_CODE_DIR}/scripts/smoke-dist.mjs" \
+    | grep -F "ACP initialize/session/new" >/dev/null \
+    || fail "Eliza Code ACP runtime/session smoke failed in the built image"
+
+  local workspace="/tmp/eliza-code-shell-smoke"
+  local outside_sentinel="/home/eliza-runtime/.eliza-code-shell-outside-sentinel"
+  timeout 30 "$DOCKER_BIN" exec "$CONTAINER_NAME" /bin/sh -c \
+    "mkdir -p '$workspace' && printf preserved > '$outside_sentinel'" \
+    || fail "Could not prepare Eliza Code SHELL smoke fixtures"
+
+  local shell_smoke_script
+  shell_smoke_script=$(cat <<EOF
+import { runShell } from "/app/${PLUGINS_DIR}/plugin-coding-tools/src/lib/run-shell.ts";
+const runtime = { getService: () => null };
+const inside = await runShell(runtime, {
+  command: "printf shell-ok > inside.txt",
+  cwd: "${workspace}",
+  timeoutMs: 10_000,
+});
+if (inside.exitCode !== 0 || inside.sandbox !== "bubblewrap") {
+  throw new Error(`inside SHELL failed: exit=\${inside.exitCode} sandbox=\${inside.sandbox} stderr=\${inside.stderr}`);
+}
+const outside = await runShell(runtime, {
+  command: "printf escaped > ${outside_sentinel}",
+  cwd: "${workspace}",
+  timeoutMs: 10_000,
+});
+if (outside.exitCode === 0 || outside.sandbox !== "bubblewrap") {
+  throw new Error(`outside-root SHELL was not denied: exit=\${outside.exitCode} sandbox=\${outside.sandbox}`);
+}
+console.log("eliza-code-shell-smoke: bubblewrap inside-write=allowed outside-write=denied");
+EOF
+)
+
+  timeout 45 "$DOCKER_BIN" exec \
+    -e ELIZA_RUNTIME_MODE=local-safe \
+    -e CODING_TOOLS_WORKSPACE_ROOTS="$workspace" \
+    -e SHELL_ALLOWED_DIRECTORY="$workspace" \
+    -w "$workspace" \
+    "$CONTAINER_NAME" bun --conditions=eliza-source --eval "$shell_smoke_script" \
+    || fail "Eliza Code local-safe SHELL smoke failed under the hosted container profile"
+
+  local sentinel
+  sentinel="$(timeout 10 "$DOCKER_BIN" exec "$CONTAINER_NAME" /bin/sh -c "cat '$outside_sentinel'" 2>/dev/null || true)"
+  [[ "$sentinel" == "preserved" ]] \
+    || fail "Eliza Code SHELL smoke mutated the outside-workspace sentinel"
+  log "Eliza Code SHELL verified: bubblewrap ran, workspace write succeeded, outside write was denied"
+}
+
 # boot_verify boots the just-built (or pre-supplied) image running the REAL
 # agent entrypoint and fails the script if the agent crashes on startup or
 # never serves health. This is the gate that stops a container that crashes on
@@ -306,6 +410,7 @@ trap cleanup EXIT
 boot_verify() {
   log "Starting container boot verification (real agent entrypoint)"
   log "Command under test: ${APP_CMD_START}"
+  ensure_hosted_agent_apparmor_profile
 
   # A tiny, valid character so the agent has a concrete identity to boot with.
   # The runtime falls back to a bundled default if this is unset, but pinning
@@ -333,6 +438,11 @@ boot_verify() {
   # images ship green before; do not reintroduce it.
   "$DOCKER_BIN" run -d \
     --name "$CONTAINER_NAME" \
+    --user 10001:10001 \
+    --cap-drop=ALL \
+    --security-opt no-new-privileges \
+    --security-opt "seccomp=$REPO_ROOT/$HOSTED_AGENT_SECCOMP_PROFILE" \
+    --security-opt "apparmor=$HOSTED_AGENT_APPARMOR_PROFILE_NAME" \
     -e PORT="$CONTAINER_PORT" \
     -e APP_PORT="$CONTAINER_PORT" \
     -e ELIZA_PORT="$CONTAINER_PORT" \
@@ -350,6 +460,22 @@ boot_verify() {
     -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
     -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
     "$DOCKER_IMAGE" >/dev/null
+
+  local applied_apparmor
+  applied_apparmor="$(timeout 10 "$DOCKER_BIN" inspect -f '{{.AppArmorProfile}}' "$CONTAINER_NAME")"
+  [[ "$applied_apparmor" == "$HOSTED_AGENT_APPARMOR_PROFILE_NAME" ]] \
+    || fail "Container AppArmor mismatch: expected $HOSTED_AGENT_APPARMOR_PROFILE_NAME, got ${applied_apparmor:-none}"
+
+  local pid1_status
+  pid1_status="$(timeout 10 "$DOCKER_BIN" exec "$CONTAINER_NAME" /bin/sh -c \
+    "grep -E '^(Uid|CapInh|CapPrm|CapEff|CapBnd|CapAmb):' /proc/1/status")"
+  printf '%s\n' "$pid1_status" | grep -Eq '^Uid:[[:space:]]+10001[[:space:]]+10001[[:space:]]+10001[[:space:]]+10001$' \
+    || fail "Hosted agent PID 1 is not running entirely as uid 10001"
+  if printf '%s\n' "$pid1_status" \
+    | grep -E '^Cap(Inh|Prm|Eff|Bnd|Amb):' \
+    | grep -Ev '^Cap(Inh|Prm|Eff|Bnd|Amb):[[:space:]]+0+$' >/dev/null; then
+    fail "Hosted agent PID 1 retained Linux capabilities"
+  fi
 
   local status_url="http://127.0.0.1:${SMOKE_PORT}/api/status"
   local health_url="http://127.0.0.1:${SMOKE_PORT}/api/health"
@@ -580,6 +706,7 @@ boot_verify() {
       health_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
       if confirm_stable "$health_ts"; then
         log "Boot verified: agent stayed up after health came up"
+        verify_eliza_code_shell
         emit_boot_kpi || fail "boot-kpi cold readyMs budget exceeded (BOOT_KPI_ENFORCE=1)"
         return 0
       fi
@@ -595,6 +722,7 @@ boot_verify() {
       status_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
       if confirm_stable "$status_ts"; then
         log "Boot verified: agent stayed up after status came up"
+        verify_eliza_code_shell
         emit_boot_kpi || fail "boot-kpi cold readyMs budget exceeded (BOOT_KPI_ENFORCE=1)"
         return 0
       fi
@@ -640,6 +768,7 @@ for attempt in 1 2 3; do
   log "bun install attempt $attempt failed; retrying in 30s..."
   sleep 30
 done
+
 # --ignore-scripts avoids running the full repo postinstall during the package
 # install, but build tools still need their platform binaries materialized.
 node node_modules/esbuild/install.js 2>/dev/null || true
@@ -773,6 +902,13 @@ for plugin in \
   fi
 done
 
+log "Building Eliza Code workspace and running its dist smoke"
+pushd "$ELIZA_CODE_DIR" >/dev/null
+"$BUN_BIN" run build
+popd >/dev/null
+[[ -s "$ELIZA_CODE_DIR/dist/index.js" ]] || fail "$ELIZA_CODE_DIR/dist/index.js missing after build"
+[[ -s "$ELIZA_CODE_DIR/dist/acp.js" ]] || fail "$ELIZA_CODE_DIR/dist/acp.js missing after build"
+
 log "Building all @elizaos/app workspace deps (turbo, --force to bypass cache)"
 # apps/app's build:web (Vite) resolves every workspace package via its
 # `exports` map, which points at `dist/`. Without prior builds those
@@ -851,8 +987,12 @@ fi
   --tag "$DOCKER_IMAGE" \
   --build-arg "BUN_VERSION=$BUN_VERSION" \
   --build-arg "APP_CORE_DIR=$APP_CORE_DIR" \
+  --build-arg "PACKAGES_DIR=$PACKAGES_DIR" \
+  --build-arg "PLUGINS_DIR=$PLUGINS_DIR" \
+  --build-arg "PATCHES_DIR=$PATCHES_DIR" \
   --build-arg "AGENT_DIR=$AGENT_DIR" \
   --build-arg "APP_DIR=$APP_DIR" \
+  --build-arg "ELIZA_CODE_DIR=$ELIZA_CODE_DIR" \
   --build-arg "APP_ENTRYPOINT=$APP_ENTRYPOINT" \
   --build-arg "APP_CMD_START=$APP_CMD_START" \
   --build-arg "APP_PORT=$APP_PORT" \

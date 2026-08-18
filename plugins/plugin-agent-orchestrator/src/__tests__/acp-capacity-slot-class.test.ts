@@ -32,7 +32,7 @@ function session(
   return {
     id,
     name: id,
-    agentType: "opencode",
+    agentType: "elizaos",
     workdir: "/tmp/x",
     status,
     approvalPreset: "standard",

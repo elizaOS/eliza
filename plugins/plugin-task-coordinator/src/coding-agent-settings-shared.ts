@@ -5,7 +5,7 @@
  * project's ~500 LOC guideline.
  */
 
-export type AgentTab = "elizaos" | "pi-agent" | "opencode" | "claude" | "codex";
+export type AgentTab = "elizaos" | "pi-agent" | "claude" | "codex";
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -22,7 +22,6 @@ export type LlmProvider = "subscription" | "api_keys" | "cloud";
 export const AGENT_TABS: AgentTab[] = [
   "elizaos",
   "pi-agent",
-  "opencode",
   "claude",
   "codex",
 ];
@@ -102,12 +101,23 @@ export interface ModelOption {
   label: string;
 }
 
+export const DEFAULT_MODEL_SENTINEL = "__default__";
+
+export function normalizeModelPreference(value: string): string {
+  return value === DEFAULT_MODEL_SENTINEL ? "" : value;
+}
+
+export const MODEL_CATALOG_PROVIDERS = [
+  "anthropic",
+  "openai",
+  "cerebras",
+] as const;
+
 export const AGENT_PROVIDER_MAP: Record<AgentTab, string> = {
   elizaos: "cerebras",
   "pi-agent": "cerebras",
   claude: "anthropic",
   codex: "openai",
-  opencode: "cerebras",
 };
 
 export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
@@ -121,15 +131,18 @@ export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
     { value: "o4-mini", label: "o4-mini" },
     { value: "gpt-4o", label: "GPT-4o" },
   ],
-  cerebras: [{ value: "gemma-4-31b", label: "gemma-4-31b" }],
+  cerebras: [
+    { value: "gemma-4-31b", label: "gemma-4-31b" },
+    { value: "gpt-oss-120b", label: "gpt-oss-120b" },
+    { value: "zai-glm-4.7", label: "zai-glm-4.7" },
+  ],
 };
 
 export const AGENT_LABELS: Record<AgentTab, string> = {
-  elizaos: "elizaOS",
+  elizaos: "Eliza Code",
   "pi-agent": "Pi Agent",
   claude: "Claude",
   codex: "Codex",
-  opencode: "OpenCode",
 };
 
 /** Map full adapter names from the preflight API to short tab keys. */
@@ -139,8 +152,6 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "eliza os": "elizaos",
   elizaos: "elizaos",
   "openai codex": "codex",
-  "open code": "opencode",
-  opencode: "opencode",
   pi: "pi-agent",
   "pi agent": "pi-agent",
   "pi-agent": "pi-agent",
@@ -149,11 +160,10 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
 };
 
 export const ENV_PREFIX: Record<AgentTab, string> = {
-  elizaos: "ELIZA_ELIZAOS",
+  elizaos: "ELIZA_CODE",
   "pi-agent": "ELIZA_PI_AGENT",
   claude: "ELIZA_CLAUDE",
   codex: "ELIZA_CODEX",
-  opencode: "ELIZA_OPENCODE",
 };
 
 export interface AuthResult {

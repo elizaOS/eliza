@@ -119,7 +119,7 @@ const ACP_PROTOCOL_VERSION = 1;
 // took 60-200 s in live trajectories on 2026-05-25, blowing the 30 s
 // budget. The framework then aborted via the timeout, the planner retried
 // the spawn, and the orchestrator accumulated 44 sub-agent trajectories
-// for one user prompt while leaving 20+ orphaned opencode processes.
+// for one user prompt while leaving 20+ orphaned Eliza Code processes.
 // 300 s (5 min) is the conservative new default that covers the observed
 // completion-time distribution (max ~14 s on `task_complete`, ~270 s tail
 // on what would otherwise have been timeouts) without letting genuinely
@@ -212,7 +212,7 @@ export class NativeAcpClient {
           version: "2.0.0",
         },
       },
-      // The first opencode spawn compiles its TS tree and installs the provider
+      // The first Eliza Code spawn compiles its TS tree and installs the provider
       // npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s default.
       // Honor the configured session timeout for the handshake too.
       this.opts.timeoutMs && this.opts.timeoutMs > 0

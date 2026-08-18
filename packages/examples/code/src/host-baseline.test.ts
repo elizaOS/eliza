@@ -20,15 +20,18 @@ describe("eliza-code host execution baseline", () => {
     expect(resolveHostExecutable(process.execPath)).toBe(process.execPath);
   });
 
-  it.each(["acp.ts", "index.ts"])(
-    "keeps host-baseline as the FIRST import of %s",
-    (entry) => {
+  it.each([
+    ["acp.ts", 'import "./acp-host-baseline.js";'],
+    ["index.ts", 'import "./host-baseline.js";'],
+  ])(
+    "keeps the process prelude as the FIRST import of %s",
+    (entry, expected) => {
       const source = readFileSync(
         new URL(`./${entry}`, import.meta.url),
         "utf8",
       );
       const firstImport = source.match(/^import .*$/m)?.[0] ?? "";
-      expect(firstImport).toBe('import "./host-baseline.js";');
+      expect(firstImport).toBe(expected);
     },
   );
 });

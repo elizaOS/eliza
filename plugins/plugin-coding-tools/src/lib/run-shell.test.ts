@@ -59,6 +59,10 @@ const ENV_KEYS = [
   "ACP_GIT_INDEX_FILE",
   "ACP_REAL_GIT",
   "GIT_INDEX_FILE",
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
   "ELIZA_TEST_API_KEY",
   "LC_SECRET",
 ] as const;
@@ -349,6 +353,10 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       process.env.GIT_INDEX_FILE = indexFile;
       process.env.ACP_REAL_GIT = realGit;
       process.env.ACP_GIT_BASELINE_SHA = baseline;
+      process.env.GIT_AUTHOR_NAME = "Eliza Test Agent";
+      process.env.GIT_AUTHOR_EMAIL = "eliza-test@example.invalid";
+      process.env.GIT_COMMITTER_NAME = "Eliza Test Agent";
+      process.env.GIT_COMMITTER_EMAIL = "eliza-test@example.invalid";
       process.env.PATH = `${wrapperDir}:${savedEnv.PATH ?? ""}`;
       const runtime = {
         getSetting: (key: string) => process.env[key],
@@ -375,6 +383,288 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
         expect(result.stdout).toContain(baseline);
         expect(result.stdout).toContain("?? host-only.txt");
         expect(readFileSync(wrapperMarker, "utf8")).toBe("used");
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itWithBubblewrap(
+    "OS-enforces the private ACP index and immutable repository refs against wrapper bypasses",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      const fixture = mkdtempSync(join(tmpdir(), "eliza-bwrap-git-boundary-"));
+      const workspace = join(fixture, "workspace");
+      const sessionRoot = join(fixture, "session-git-index");
+      const wrapperDir = join(sessionRoot, "bin");
+      const wrapper = join(wrapperDir, "git");
+      const indexFile = join(sessionRoot, "index");
+      const discoveredGit = spawnSync("sh", ["-c", "command -v git"], {
+        encoding: "utf8",
+      }).stdout.trim();
+      const realGit = realpathSync(discoveredGit);
+      mkdirSync(workspace, { recursive: true });
+      mkdirSync(wrapperDir, { recursive: true });
+      spawnSync(realGit, ["init", "-b", "main", workspace], {
+        stdio: "ignore",
+      });
+      spawnSync(realGit, ["-C", workspace, "config", "user.name", "Test"], {
+        stdio: "ignore",
+      });
+      spawnSync(
+        realGit,
+        ["-C", workspace, "config", "user.email", "test@example.com"],
+        { stdio: "ignore" },
+      );
+      writeFileSync(join(workspace, "base.txt"), "base\n", "utf8");
+      spawnSync(realGit, ["-C", workspace, "add", "base.txt"], {
+        stdio: "ignore",
+      });
+      spawnSync(realGit, ["-C", workspace, "commit", "-m", "base"], {
+        stdio: "ignore",
+      });
+      copyFileSync(join(workspace, ".git", "index"), indexFile);
+      writeFileSync(
+        wrapper,
+        [
+          "#!/bin/sh",
+          `: "\${ACP_REAL_GIT:?}"`,
+          `: "\${ACP_GIT_INDEX_FILE:?}"`,
+          'test "$GIT_INDEX_FILE" = "$ACP_GIT_INDEX_FILE" || exit 91',
+          'exec "$ACP_REAL_GIT" "$@"',
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      chmodSync(wrapper, 0o755);
+      const baseline = spawnSync(
+        realGit,
+        ["-C", workspace, "rev-parse", "HEAD"],
+        { encoding: "utf8" },
+      ).stdout.trim();
+      const operatorIndexBefore = readFileSync(
+        join(workspace, ".git", "index"),
+      );
+      const operatorRef = join(workspace, ".git", "refs", "heads", "main");
+      const operatorRefBefore = readFileSync(operatorRef, "utf8");
+      writeFileSync(join(workspace, "session-only.txt"), "session\n", "utf8");
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      process.env.ACP_GIT_INDEX_FILE = indexFile;
+      process.env.GIT_INDEX_FILE = indexFile;
+      process.env.ACP_REAL_GIT = realGit;
+      process.env.ACP_GIT_BASELINE_SHA = baseline;
+      process.env.GIT_AUTHOR_NAME = "Eliza Test Agent";
+      process.env.GIT_AUTHOR_EMAIL = "eliza-test@example.invalid";
+      process.env.GIT_COMMITTER_NAME = "Eliza Test Agent";
+      process.env.GIT_COMMITTER_EMAIL = "eliza-test@example.invalid";
+      process.env.PATH = `${wrapperDir}:${savedEnv.PATH ?? ""}`;
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        const result = await runShell(runtime, {
+          command: [
+            "set -e",
+            "git add session-only.txt",
+            "git status --short session-only.txt | grep '^A  session-only.txt$'",
+            "if git commit -m 'must not become ephemeral delivery' >/dev/null 2>&1; then exit 80; fi",
+            'if env -u GIT_INDEX_FILE -u ACP_GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES "$ACP_REAL_GIT" add session-only.txt 2>/dev/null; then exit 81; fi',
+            `if env -u GIT_INDEX_FILE -u ACP_GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES ${quoteShellArg(realGit)} add session-only.txt 2>/dev/null; then exit 82; fi`,
+            `if GIT_DIR=.git GIT_WORK_TREE=. GIT_INDEX_FILE=.git/index ${quoteShellArg(realGit)} add session-only.txt 2>/dev/null; then exit 83; fi`,
+            `if ACP_REAL_GIT=${quoteShellArg(realGit)} GIT_DIR=.git GIT_WORK_TREE=. GIT_INDEX_FILE=.git/index git add session-only.txt 2>/dev/null; then exit 84; fi`,
+            `if GIT_DIR=.git GIT_WORK_TREE=. ${quoteShellArg(realGit)} update-ref refs/heads/model-write HEAD 2>/dev/null; then exit 85; fi`,
+            "if printf corrupt > .git/index 2>/dev/null; then exit 86; fi",
+            "if printf corrupt > .git/refs/heads/main 2>/dev/null; then exit 87; fi",
+            'test -n "$(git diff --cached --name-only)"',
+          ].join("; "),
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+
+        expect(result, JSON.stringify(result)).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+        expect(readFileSync(join(workspace, ".git", "index"))).toEqual(
+          operatorIndexBefore,
+        );
+        expect(readFileSync(operatorRef, "utf8")).toBe(operatorRefBefore);
+        expect(() =>
+          readFileSync(
+            join(workspace, ".git", "refs", "heads", "model-write"),
+            "utf8",
+          ),
+        ).toThrow();
+        expect(readFileSync(indexFile)).not.toEqual(operatorIndexBefore);
+        expect(() => readFileSync(join(sessionRoot, "git", "HEAD"))).toThrow();
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itWithBubblewrap(
+    "fails closed before launch when Git metadata discovery exceeds its depth budget",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      const fixture = mkdtempSync(join(tmpdir(), "eliza-bwrap-git-budget-"));
+      const workspace = join(fixture, "workspace");
+      const sessionRoot = join(fixture, "session-git-index");
+      const wrapperDir = join(sessionRoot, "bin");
+      const indexFile = join(sessionRoot, "index");
+      const wrapper = join(wrapperDir, "git");
+      let nested = workspace;
+      for (let depth = 0; depth < 65; depth += 1) {
+        nested = join(nested, "d");
+      }
+      mkdirSync(nested, { recursive: true });
+      mkdirSync(wrapperDir, { recursive: true });
+      writeFileSync(indexFile, "", "utf8");
+      writeFileSync(wrapper, "#!/bin/sh\nexit 0\n", "utf8");
+      chmodSync(wrapper, 0o755);
+      const realGit = realpathSync(
+        spawnSync("sh", ["-c", "command -v git"], {
+          encoding: "utf8",
+        }).stdout.trim(),
+      );
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      process.env.ACP_GIT_INDEX_FILE = indexFile;
+      process.env.GIT_INDEX_FILE = indexFile;
+      process.env.ACP_REAL_GIT = realGit;
+      delete process.env.ACP_GIT_BASELINE_SHA;
+      process.env.PATH = `${wrapperDir}:${savedEnv.PATH ?? ""}`;
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        await expect(
+          runShell(runtime, {
+            command: "printf launched > command-ran.txt",
+            cwd: workspace,
+            timeoutMs: 5_000,
+          }),
+        ).rejects.toThrow("metadata scan exceeded maximum depth 64");
+        expect(() =>
+          readFileSync(join(workspace, "command-ran.txt"), "utf8"),
+        ).toThrow();
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itWithBubblewrap(
+    "rejects nondurable commits in a linked worktree while preserving the shared ref",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      const fixture = mkdtempSync(join(tmpdir(), "eliza-bwrap-worktree-git-"));
+      const main = join(fixture, "main");
+      const workspace = join(fixture, "linked-worktree");
+      const sessionRoot = join(fixture, "session-git-index");
+      const wrapperDir = join(sessionRoot, "bin");
+      const wrapper = join(wrapperDir, "git");
+      const indexFile = join(sessionRoot, "index");
+      const realGit = realpathSync(
+        spawnSync("sh", ["-c", "command -v git"], {
+          encoding: "utf8",
+        }).stdout.trim(),
+      );
+      mkdirSync(main, { recursive: true });
+      spawnSync(realGit, ["init", "-b", "main", main], { stdio: "ignore" });
+      spawnSync(realGit, ["-C", main, "config", "user.name", "Test"], {
+        stdio: "ignore",
+      });
+      spawnSync(
+        realGit,
+        ["-C", main, "config", "user.email", "test@example.com"],
+        { stdio: "ignore" },
+      );
+      writeFileSync(join(main, "base.txt"), "base\n", "utf8");
+      spawnSync(realGit, ["-C", main, "add", "base.txt"], {
+        stdio: "ignore",
+      });
+      spawnSync(realGit, ["-C", main, "commit", "-m", "base"], {
+        stdio: "ignore",
+      });
+      spawnSync(
+        realGit,
+        ["-C", main, "worktree", "add", "-b", "linked", workspace],
+        { stdio: "ignore" },
+      );
+      const worktreeIndex = spawnSync(
+        realGit,
+        [
+          "-C",
+          workspace,
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-path",
+          "index",
+        ],
+        { encoding: "utf8" },
+      ).stdout.trim();
+      mkdirSync(wrapperDir, { recursive: true });
+      copyFileSync(worktreeIndex, indexFile);
+      writeFileSync(
+        wrapper,
+        [
+          "#!/bin/sh",
+          `: "\${ACP_REAL_GIT:?}"`,
+          `: "\${ACP_GIT_INDEX_FILE:?}"`,
+          'exec "$ACP_REAL_GIT" "$@"',
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      chmodSync(wrapper, 0o755);
+      const baseline = spawnSync(
+        realGit,
+        ["-C", workspace, "rev-parse", "HEAD"],
+        { encoding: "utf8" },
+      ).stdout.trim();
+      const operatorRef = join(main, ".git", "refs", "heads", "linked");
+      const operatorRefBefore = readFileSync(operatorRef, "utf8");
+      writeFileSync(join(workspace, "private-commit.txt"), "private\n", "utf8");
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      process.env.ACP_GIT_INDEX_FILE = indexFile;
+      process.env.GIT_INDEX_FILE = indexFile;
+      process.env.ACP_REAL_GIT = realGit;
+      process.env.ACP_GIT_BASELINE_SHA = baseline;
+      process.env.GIT_AUTHOR_NAME = "Eliza Test Agent";
+      process.env.GIT_AUTHOR_EMAIL = "eliza-test@example.invalid";
+      process.env.GIT_COMMITTER_NAME = "Eliza Test Agent";
+      process.env.GIT_COMMITTER_EMAIL = "eliza-test@example.invalid";
+      process.env.PATH = `${wrapperDir}:${savedEnv.PATH ?? ""}`;
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        const result = await runShell(runtime, {
+          command: [
+            "set -e",
+            'test "$(git rev-parse --absolute-git-dir)" != /run/eliza-acp-git/git',
+            "git add private-commit.txt",
+            "if git commit -m 'must not become ephemeral delivery' >/dev/null 2>&1; then exit 80; fi",
+            "git status --short private-commit.txt | grep '^A  private-commit.txt$'",
+          ].join("; "),
+          cwd: workspace,
+          timeoutMs: 10_000,
+        });
+
+        expect(result, JSON.stringify(result)).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+        expect(readFileSync(operatorRef, "utf8")).toBe(operatorRefBefore);
+        expect(() => readFileSync(join(sessionRoot, "git", "HEAD"))).toThrow();
       } finally {
         rmSync(fixture, { recursive: true, force: true });
       }

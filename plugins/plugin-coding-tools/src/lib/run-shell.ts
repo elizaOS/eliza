@@ -14,6 +14,7 @@ import {
   createWriteStream,
   existsSync,
   constants as fsConstants,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -36,6 +37,10 @@ import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
 } from "@elizaos/shared/host-execution-env";
+import {
+  discoverGitAdminMetadata,
+  type GitAdminMetadata,
+} from "./git-admin-path.js";
 import {
   detectTerminalSupport,
   missingToolForCommand,
@@ -213,9 +218,24 @@ interface AcpGitToolchainMount {
   env: Record<string, string>;
 }
 
+interface ProtectedGitMetadata extends GitAdminMetadata {
+  mounts: Array<{ source: string; destination: string }>;
+  objectDirectories: string[];
+}
+
+const MAX_PROTECTED_GIT_SESSION_SNAPSHOTS = 256;
+const protectedGitSessionSnapshots = new Map<string, ProtectedGitMetadata>();
+
 function invalidAcpGitConfiguration(reason: string): never {
   throw new Error(`local-safe ACP git configuration is invalid: ${reason}`);
 }
+
+const ACP_GIT_IDENTITY_ENV_KEYS = [
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+] as const;
 
 const UNSAFE_MUTABLE_WORKSPACE_ROOTS = [
   "/",
@@ -592,7 +612,24 @@ function resolveAcpGitToolchainMount(): AcpGitToolchainMount | undefined {
       );
     }
 
+    const objects = importPath.join(root, "objects");
+    mkdirSync(objects, { recursive: true, mode: 0o700 });
+    if (realpathSync(objects) !== objects || !statSync(objects).isDirectory()) {
+      invalidAcpGitConfiguration(
+        "the private object database must be a real session-root directory",
+      );
+    }
+
     const sandboxRoot = "/run/eliza-acp-git";
+    const identityEnv: Record<string, string> = {};
+    for (const key of ACP_GIT_IDENTITY_ENV_KEYS) {
+      const value = process.env[key];
+      if (value === undefined) continue;
+      if (!value.trim() || /[\0\r\n]/u.test(value)) {
+        invalidAcpGitConfiguration(`${key} contains an unsafe identity value`);
+      }
+      identityEnv[key] = value;
+    }
     return {
       hostRoot: root,
       sandboxRoot,
@@ -601,6 +638,8 @@ function resolveAcpGitToolchainMount(): AcpGitToolchainMount | undefined {
         ACP_GIT_INDEX_FILE: importPath.join(sandboxRoot, "index"),
         ACP_REAL_GIT: realGit,
         GIT_INDEX_FILE: importPath.join(sandboxRoot, "index"),
+        GIT_OBJECT_DIRECTORY: importPath.join(sandboxRoot, "objects"),
+        ...identityEnv,
         ...(baseline ? { ACP_GIT_BASELINE_SHA: baseline } : {}),
       },
     };
@@ -614,6 +653,123 @@ function resolveAcpGitToolchainMount(): AcpGitToolchainMount | undefined {
     invalidAcpGitConfiguration(
       "the session wrapper, index, or real Git binary is unavailable",
     );
+  }
+}
+
+/**
+ * Find every pre-existing repository below the writable workspace binds.
+ *
+ * A private GIT_INDEX_FILE is only a cooperative guard: model-authored shell
+ * can unset it, invoke an absolute Git binary, or write .git directly. Shadow
+ * every real Git administration path with a read-only bind after mounting the
+ * workspace writable. New blobs go to the ACP session's private object store;
+ * the immutable real object stores are configured as read-only alternates.
+ */
+function discoverProtectedGitMetadata(roots: string[]): ProtectedGitMetadata {
+  const metadata = discoverGitAdminMetadata(roots);
+  const mountMap = new Map(
+    metadata.adminPaths.map((adminPath) => [adminPath, adminPath]),
+  );
+
+  // If a common Git directory contains a per-worktree Git directory, the
+  // common parent read-only mount already covers it. Keep file markers and the
+  // smallest set of directory mounts to avoid redundant nested mountpoints.
+  const mounts = Array.from(mountMap, ([source, destination]) => ({
+    source,
+    destination,
+  })).filter((candidate, _index, candidates) => {
+    if (!statSync(candidate.destination).isDirectory()) return true;
+    return !candidates.some(
+      (parent) =>
+        parent.destination !== candidate.destination &&
+        statSync(parent.destination).isDirectory() &&
+        isPathInside(candidate.destination, parent.destination),
+    );
+  });
+
+  return {
+    ...metadata,
+    mounts,
+    objectDirectories: Array.from(
+      new Set(metadata.repositories.map((repo) => repo.objectDirectory)),
+    ).sort(),
+  };
+}
+
+function resolveProtectedGitMetadata(
+  acpGit: AcpGitToolchainMount,
+  roots: string[],
+): ProtectedGitMetadata {
+  // The ACP session root is unique per coding session. Snapshot the operator's
+  // repositories on its first shell turn: repeated commands avoid a full-tree
+  // scan, while a repository intentionally created later by the isolated
+  // session remains writable and usable by that session. This defines the
+  // concurrency boundary: operators must not add repository metadata to the
+  // same workspace while an ACP session is active; such a repository is not
+  // part of that session's protected baseline and requires a new ACP session.
+  const key = [acpGit.hostRoot, ...roots].join("\0");
+  const cached = protectedGitSessionSnapshots.get(key);
+  if (cached) return cached;
+
+  const discovered = discoverProtectedGitMetadata(roots);
+  if (
+    protectedGitSessionSnapshots.size >= MAX_PROTECTED_GIT_SESSION_SNAPSHOTS
+  ) {
+    const oldest = protectedGitSessionSnapshots.keys().next().value;
+    if (oldest !== undefined) protectedGitSessionSnapshots.delete(oldest);
+  }
+  protectedGitSessionSnapshots.set(key, discovered);
+  return discovered;
+}
+
+function configureProtectedSessionGit(
+  acpGit: AcpGitToolchainMount,
+  metadata: ProtectedGitMetadata,
+  cwd: string,
+): void {
+  const repository = metadata.repositories
+    .filter((candidate) => isPathInside(cwd, candidate.worktree))
+    .sort((a, b) => b.worktree.length - a.worktree.length)[0];
+  if (!repository) return;
+
+  const realGit = acpGit.env.ACP_REAL_GIT;
+  const baseline = acpGit.env.ACP_GIT_BASELINE_SHA;
+  try {
+    if (!baseline) return;
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(baseline)) {
+      invalidAcpGitConfiguration(
+        "the repository baseline is not a full object id",
+      );
+    }
+    execFileSync(
+      realGit,
+      ["-C", repository.worktree, "cat-file", "-e", `${baseline}^{commit}`],
+      { stdio: "ignore" },
+    );
+  } catch (error) {
+    throw new Error(
+      "local-safe ACP git configuration is invalid: the repository baseline commit is unavailable",
+      { cause: error },
+    );
+  }
+
+  // Keep the operator's real Git directory mounted read-only. The session can
+  // stage and inspect changes through its private index/object store, but a
+  // history-changing command must fail rather than create a temporary commit
+  // below the session root that teardown later deletes. A durable commit needs
+  // an explicit, separately-authorized landing protocol; local-safe never
+  // reports an ephemeral private ref as delivered work.
+  acpGit.env.GIT_CONFIG_NOSYSTEM = "1";
+}
+
+function appendProtectedGitMetadataMounts(
+  args: string[],
+  createdDirectories: Set<string>,
+  metadata: ProtectedGitMetadata,
+): void {
+  for (const mount of metadata.mounts) {
+    appendDestinationParents(args, mount.destination, createdDirectories);
+    args.push("--ro-bind", mount.source, mount.destination);
   }
 }
 
@@ -681,6 +837,12 @@ async function runInBubblewrap(
   ];
   const createdDirectories = new Set<string>();
   const acpGit = resolveAcpGitToolchainMount();
+  const protectedGit = acpGit
+    ? resolveProtectedGitMetadata(acpGit, workspace.roots)
+    : undefined;
+  if (acpGit && protectedGit) {
+    configureProtectedSessionGit(acpGit, protectedGit, workspace.cwd);
+  }
   for (const source of BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS) {
     if (existsSync(source)) args.push("--ro-bind", source, source);
   }
@@ -719,6 +881,9 @@ async function runInBubblewrap(
     appendDestinationParents(args, root, createdDirectories);
     args.push("--bind", root, root);
   }
+  if (protectedGit) {
+    appendProtectedGitMetadataMounts(args, createdDirectories, protectedGit);
+  }
   // Bubblewrap starts with an empty writable root, and `--dir` creates the
   // absolute ancestors needed by the selected workspace binds. Without this
   // non-recursive remount, a command can create an ephemeral file in one of
@@ -730,6 +895,10 @@ async function runInBubblewrap(
   const childEnv = bubblewrapSpawnEnv(process.env);
   if (acpGit) {
     Object.assign(childEnv, acpGit.env);
+    if (protectedGit && protectedGit.objectDirectories.length > 0) {
+      childEnv.GIT_ALTERNATE_OBJECT_DIRECTORIES =
+        protectedGit.objectDirectories.join(importPath.delimiter);
+    }
     const baselinePath = childEnv.PATH;
     childEnv.PATH = [
       acpGit.wrapperDir,

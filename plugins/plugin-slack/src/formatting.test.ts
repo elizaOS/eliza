@@ -148,7 +148,7 @@ describe("chunkSlackText", () => {
     const text = `${"line\n".repeat(559)}\`\`\`${"x".repeat(300)}\n\`\`\`\n`;
     const chunks = chunkSlackText(text, 3000);
     expect(chunks.every((c) => c.length <= 3000)).toBe(true);
-    // no chunk may carry an odd number of fences (a half-open code block)
+    // no chunk may carry an odd number of fences (an unterminated code block)
     for (const c of chunks) {
       expect((c.match(/```/g) || []).length % 2).toBe(0);
     }

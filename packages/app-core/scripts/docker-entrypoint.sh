@@ -200,4 +200,39 @@ export ELIZA_API_PORT="${ELIZA_API_PORT:-$resolved_port}"
 
 start_tailscale_if_configured
 
-exec "$@"
+drop_to_runtime_user() {
+  if [ "$(id -u)" != "0" ]; then
+    exec "$@"
+  fi
+
+  runtime_uid="${ELIZA_RUNTIME_UID:-10001}"
+  runtime_gid="${ELIZA_RUNTIME_GID:-10001}"
+  case "$runtime_uid:$runtime_gid" in
+    *[!0-9:]*|:*|*:)
+      echo "[docker-entrypoint] invalid ELIZA_RUNTIME_UID/ELIZA_RUNTIME_GID" >&2
+      exit 1
+      ;;
+  esac
+  command -v setpriv >/dev/null 2>&1 || {
+    echo "[docker-entrypoint] setpriv is required to drop runtime privileges" >&2
+    exit 1
+  }
+
+  # Host provisioning owns and migrates both persistent mounts before start.
+  # Keeping ownership mutation outside the tenant container means the normal
+  # lane can start with cap-drop=ALL and the Headscale bootstrap needs only the
+  # setuid transition plus NET_ADMIN.
+  [ -d /app/data ] && [ -d /root/.eliza ] || {
+    echo "[docker-entrypoint] managed runtime volumes were not prepared" >&2
+    exit 1
+  }
+  export HOME=/root
+
+  exec setpriv \
+    --reuid="$runtime_uid" \
+    --regid="$runtime_gid" \
+    --init-groups \
+    -- "$@"
+}
+
+drop_to_runtime_user "$@"

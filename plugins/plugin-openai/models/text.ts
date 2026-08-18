@@ -42,18 +42,15 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
-  getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
-  getSetting,
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
-  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -330,36 +327,6 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-function isOpenCodeGoEndpoint(value: string | undefined): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname.toLowerCase() === "opencode.ai" &&
-      (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
-    );
-  } catch {
-    // error-policy:J3 Malformed configuration is not a matching provider URL.
-    return false;
-  }
-}
-
-/**
- * Detects the endpoint contract that translates `reasoning_effort: "none"`.
- *
- * Browser requests terminate at an opaque proxy, so the direct base URL is not
- * proof of the proxy's upstream. Proxy deployments must declare their actual
- * upstream explicitly before this provider-specific wire value is emitted.
- */
-function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
-  return (
-    isProxyMode(runtime) &&
-    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
-  );
-}
-
 /** Maps thinking suppression only for exact model ids on proven endpoints. */
 function resolveThinkingOffReasoningEffort(
   runtime: IAgentRuntime,
@@ -371,9 +338,6 @@ function resolveThinkingOffReasoningEffort(
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
   }
-
-  const exactModelId = modelName.trim().toLowerCase();
-  if (exactModelId === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none";
   return undefined;
 }
 
@@ -2001,7 +1965,7 @@ async function waitForTransientRetry(opts: {
 
 /**
  * Call `generateText` with bounded retry + exponential backoff on transient
- * provider errors (see {@link isTransientProviderError}). Mirrors opencode's
+ * provider errors (see {@link isTransientProviderError}). Mirrors elizaos's
  * resilience posture (it sets `retries: 2` on its coding LLM call) but also
  * covers Cerebras's non-standard transient-400 that the AI SDK won't retry.
  * Non-transient errors propagate immediately on the first attempt, an aborted
@@ -2089,7 +2053,7 @@ async function consumeStreamWithTransientRetry(
       // routes the error to `onError` and ends the stream empty (an empty
       // result then reads as "model called no tool" upstream). Capture it here
       // and rethrow after consumption so the retry below can act on it. (This
-      // is the same reason opencode attaches an onError to its streamText.)
+      // is the same reason elizaos attaches an onError to its streamText.)
       let capturedError: unknown;
       opts.beforeAttempt?.();
       const result = streamText({

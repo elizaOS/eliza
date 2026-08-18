@@ -79,7 +79,7 @@ function truncateUtf8(text: string, maxBytes: number): string {
  */
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
-export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
+export type CodingAgentRunner = "elizaos" | "claude-code" | "codex";
 
 export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
 
@@ -88,9 +88,9 @@ export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
 type DisabledSandboxRunnerProvider = "cloudflare" | "rivet" | "vercel";
 
 const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
+  "elizaos",
   "codex",
   "claude-code",
-  "opencode",
 ];
 
 export interface E2BRemoteRunnerConfig {
@@ -333,7 +333,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   }
 }
 
-type CloudCodingAgent = "claude" | "codex" | "opencode";
+type CloudCodingAgent = "elizaos" | "claude" | "codex";
 
 type CloudCodingContainerSession = {
   containerId: string;
@@ -382,7 +382,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          agent: toCloudCodingAgent(config.agentRunners[0] ?? "codex"),
+          agent: toCloudCodingAgent(config.agentRunners[0] ?? "elizaos"),
           workspacePath: config.workdir,
           container: {
             ...(config.cloudContainerImage
@@ -1358,9 +1358,10 @@ function agentRunnersSetting(
 }
 
 function toCodingAgentRunner(value: string): CodingAgentRunner {
+  if (value === "elizaos" || value === "eliza" || value === "eliza-code")
+    return "elizaos";
   if (value === "codex") return "codex";
   if (value === "claude" || value === "claude-code") return "claude-code";
-  if (value === "opencode" || value === "open-code") return "opencode";
   throw new Error(`Unsupported sandbox agent runner: ${value}`);
 }
 

@@ -839,7 +839,11 @@ describe("TASKS create lane planner integration", () => {
     });
     const taskService = makeTaskService();
     const runtime = makeRuntime(
-      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      {
+        ELIZA_ORCHESTRATOR_LANE_PLANNER: "1",
+        // Exercise backend resolution rather than a persisted/default pin.
+        ELIZA_AGENT_SELECTION_STRATEGY: "dynamic",
+      },
       acp,
       taskService,
     );

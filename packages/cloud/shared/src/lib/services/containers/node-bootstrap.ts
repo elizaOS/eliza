@@ -23,6 +23,8 @@
 import { containersEnv } from "../../config/containers-env";
 import { CLOUD_METADATA_IP } from "../app-firewall-utils";
 import { validateDockerPlatform } from "../docker-sandbox-utils";
+import { buildEnsureHostedAgentAppArmorProfileCmd } from "../hosted-agent-apparmor-profile";
+import { buildEnsureHostedAgentSeccompProfileCmd } from "../hosted-agent-seccomp-profile";
 import { buildEnsureEmbeddingSidecarCmd } from "./embedding-sidecar";
 import { getImageRegistryHost } from "./hetzner-client/registry";
 
@@ -191,6 +193,8 @@ runcmd:
   - chmod 0700 /data/containers /data/agents
   - curl -fsSL https://get.docker.com | sh
   - systemctl enable --now docker
+  - ${buildEnsureHostedAgentAppArmorProfileCmd()}
+  - ${buildEnsureHostedAgentSeccompProfileCmd()}
   - systemctl daemon-reload
   - systemctl enable --now eliza-container-egress-guard.service
   - docker network inspect '${sanitizeShellSingleQuoted(network)}' >/dev/null 2>&1 || docker network create --driver bridge '${sanitizeShellSingleQuoted(network)}'

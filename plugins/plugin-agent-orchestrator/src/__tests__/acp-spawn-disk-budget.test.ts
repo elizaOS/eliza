@@ -56,7 +56,7 @@ function workerSession(id: string): SessionInfo {
   return {
     id,
     name: id,
-    agentType: "opencode",
+    agentType: "elizaos",
     workdir: "/tmp/preexisting",
     status: "running",
     approvalPreset: "standard",
@@ -88,7 +88,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     const before = registry.size();
 
     await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "elizaos", slotClass: "worker" }),
     ).rejects.toThrow();
 
     // No leaked task-* dir under the configured root, and no live registry entry
@@ -124,7 +124,10 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     });
 
     await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
+      // CLI transport intentionally rejects native-only Eliza Code before
+      // acpx starts. Use a supported CLI adapter so this reaches the durable
+      // post-persist startup failure the regression is designed to exercise.
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     const [session] = await store.list();
@@ -152,7 +155,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
 
     let refusal: unknown;
     try {
-      await svc.spawnSession({ agentType: "opencode", slotClass: "worker" });
+      await svc.spawnSession({ agentType: "elizaos", slotClass: "worker" });
     } catch (err) {
       refusal = err;
     }

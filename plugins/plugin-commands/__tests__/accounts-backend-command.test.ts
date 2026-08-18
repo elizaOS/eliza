@@ -569,7 +569,7 @@ describe("/backend", () => {
 				targets: {
 					coding: {
 						ELIZA_DEFAULT_AGENT_TYPE: {
-							value: "opencode",
+							value: "elizaos",
 							source: "config.env",
 						},
 					},
@@ -583,7 +583,7 @@ describe("/backend", () => {
 		const [call] = recordedCalls(fetchMock);
 		expect(call?.url).toContain("/api/models/config");
 		expect(call?.method).toBe("GET");
-		expect(r.reply).toContain("Default coding backend: opencode (config.env)");
+		expect(r.reply).toContain("Default coding backend: eliza (config.env)");
 		expect(r.reply).toContain("codex, claude, eliza");
 	});
 
@@ -661,7 +661,7 @@ describe("/backend", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
+		const r = await resolveCommand(runtime, msg("/backend elizaos"), OWNER);
 		expect(r.reply).toContain(error);
 	});
 });

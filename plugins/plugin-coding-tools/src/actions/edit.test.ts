@@ -225,4 +225,22 @@ describe("EDIT", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("path_blocked");
   });
+
+  it("rejects edits to Git administration state after a valid read", async () => {
+    const directory = path.join(env.tmpDir, ".git");
+    const file = path.join(directory, "config");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(file, "before", "utf8");
+    await env.fileState.recordRead("test-room", file);
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        old_string: "before",
+        new_string: "after",
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
+    expect(await fs.readFile(file, "utf8")).toBe("before");
+  });
 });

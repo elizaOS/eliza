@@ -51,9 +51,11 @@ const THREAD_ID = "aaaabbbb-1111-2222-3333-444455556666";
 // so the stale-status bug is identical on either runner.
 const PREV_SMITHERS = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
 const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+const PREV_CONFIG_PATH = process.env.ELIZA_CONFIG_PATH;
 beforeAll(() => {
   process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
   process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "0";
+  process.env.ELIZA_CONFIG_PATH = `${os.tmpdir()}/eliza-create-attach-tests-no-config.json`;
 });
 afterAll(() => {
   if (PREV_SMITHERS === undefined)
@@ -62,6 +64,8 @@ afterAll(() => {
   if (PREV_GOAL_CONTRACT === undefined)
     delete process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
   else process.env.ELIZA_REQUIRE_GOAL_CONTRACT = PREV_GOAL_CONTRACT;
+  if (PREV_CONFIG_PATH === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = PREV_CONFIG_PATH;
 });
 
 /**

@@ -191,7 +191,7 @@ function makeRuntime(opts: {
     sessionId: "retry-session-id",
     id: "retry-session-id",
     name: "retry",
-    agentType: "opencode",
+    agentType: "elizaos",
     workdir: o.workdir ?? "/tmp/wf",
     status: "ready",
   }));
@@ -2708,7 +2708,7 @@ describe("SubAgentRouter state_lost respawn cap", () => {
       getSession: vi.fn(async (id: string) => ({
         id,
         name: id,
-        agentType: "opencode",
+        agentType: "elizaos",
         workdir: "/tmp/wf",
         status: "running",
         approvalPreset: "standard",

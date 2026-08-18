@@ -45,14 +45,11 @@ export interface ResolvedCodingAccount {
 }
 
 /**
- * Agent types that authenticate per pooled account. claude and codex are
- * first-party CLIs; opencode pool-rotates across `cerebras-api` accounts (the
- * one backend it resolves from a pooled key — its injected CEREBRAS_API_KEY is
- * read by buildOpencodeSpawnConfig). elizaos/pi-agent authenticate through their
- * own backend, and z.ai/Kimi/GLM have no first-party coding CLI. Keep this in
- * sync with the app-core bridge's AGENT_PROVIDER_CANDIDATES.
+ * Agent types that authenticate per pooled account. Claude and Codex use their
+ * own external CLI account pools. Eliza Code and Pi Agent authenticate through
+ * the runtime/provider configuration instead.
  */
-const MULTI_ACCOUNT_AGENT_TYPES = new Set(["claude", "codex", "opencode"]);
+const MULTI_ACCOUNT_AGENT_TYPES = new Set(["claude", "codex"]);
 
 export function isMultiAccountAgentType(agentType: string): boolean {
   return MULTI_ACCOUNT_AGENT_TYPES.has(agentType.toLowerCase());

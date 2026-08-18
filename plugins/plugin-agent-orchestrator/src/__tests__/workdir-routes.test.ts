@@ -22,6 +22,7 @@ let originalDefaultAgent: string | undefined;
 let originalAcpDefaultAgent: string | undefined;
 let originalBenchmarkAgent: string | undefined;
 let originalSelectionStrategy: string | undefined;
+let originalConfigPath: string | undefined;
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workdir-routes-"));
@@ -32,6 +33,10 @@ beforeEach(() => {
   originalAcpDefaultAgent = process.env.ELIZA_ACP_DEFAULT_AGENT;
   originalBenchmarkAgent = process.env.BENCHMARK_TASK_AGENT;
   originalSelectionStrategy = process.env.ELIZA_AGENT_SELECTION_STRATEGY;
+  originalConfigPath = process.env.ELIZA_CONFIG_PATH;
+  // Adapter resolution deliberately reads the persisted UI config. Unit tests
+  // must not inherit the developer machine's real default-agent selection.
+  process.env.ELIZA_CONFIG_PATH = path.join(tmpRoot, "missing-eliza.json");
 });
 
 afterEach(() => {
@@ -49,6 +54,8 @@ afterEach(() => {
   if (originalSelectionStrategy === undefined)
     delete process.env.ELIZA_AGENT_SELECTION_STRATEGY;
   else process.env.ELIZA_AGENT_SELECTION_STRATEGY = originalSelectionStrategy;
+  if (originalConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = originalConfigPath;
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -57,7 +64,6 @@ describe("task-agent adapter defaults", () => {
     expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("eliza-os")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("pi agent")).toBe("pi-agent");
-    expect(normalizeTaskAgentAdapter("open code")).toBe("opencode");
   });
 
   it("pins the settings default so planner guesses cannot override it", () => {
@@ -70,16 +76,16 @@ describe("task-agent adapter defaults", () => {
   });
 
   it("lets BENCHMARK_TASK_AGENT override the normal default for matrix runs", () => {
-    process.env.BENCHMARK_TASK_AGENT = "opencode";
+    process.env.BENCHMARK_TASK_AGENT = "elizaos";
     process.env.ELIZA_ACP_DEFAULT_AGENT = "elizaos";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi-agent";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
 
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 
   it("does not pin an adapter when selection strategy is dynamic", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "elizaos";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "dynamic";
 
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
@@ -367,8 +373,8 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns the configured adapter when default + fixed strategy", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "elizaos";
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 
   it("defaults to fixed strategy when the env var is unset", () => {
@@ -377,7 +383,7 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns undefined when strategy is non-fixed", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "elizaos";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "ranked";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
@@ -388,7 +394,7 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("normalises case", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "OPENCODE";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "ELIZA_CODE";
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 });

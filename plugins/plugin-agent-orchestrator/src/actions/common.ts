@@ -369,7 +369,7 @@ export async function listSessionsWithin(
  * configured ceiling, so concurrent spawns don't stampede the model
  * provider.
  *
- * Why this exists: coding sub-agents (opencode + gpt-oss-class models on
+ * Why this exists: coding sub-agents (Eliza Code + gpt-oss-class models on
  * Cerebras / other OpenAI-compatible providers) degrade hard under
  * concurrent load — the provider rate-limits, and the model responds by
  * silently skipping its Write/tool calls and "completing" with a text-only
