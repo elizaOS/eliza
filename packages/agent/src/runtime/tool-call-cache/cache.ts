@@ -79,7 +79,7 @@ export class ToolCallCache {
     }
 
     if (!fromMemory) this.memory.set(key, candidate);
-    return candidate;
+    return structuredClone(candidate);
   }
 
   /**
@@ -101,7 +101,7 @@ export class ToolCallCache {
       toolVersion: descriptor.version,
       cachedAt,
       expiresAt: cachedAt + descriptor.ttlMs,
-      output,
+      output: structuredClone(output),
     };
     this.memory.set(key, entry);
     this.disk.write(entry);
