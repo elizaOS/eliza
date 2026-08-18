@@ -254,6 +254,32 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
 	ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
 	WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+	// Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
+	// invents CODE_*/PR spellings for repo asks ("add a one-line description to
+	// the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
+	// tj-79876bf0f950e8): CODE_EDIT resolved to nothing while CODE_PR_CREATE's
+	// CREATE token tripped the view heuristic into VIEWS, so the planner surface
+	// carried no coding tool and the turn ended on a bare re-ack — the promised
+	// PR never started. TASKS owns repo work end-to-end (clone, commits, push,
+	// PR), so the intent hint routes there; admission still passes through
+	// appendIfAllowed's role/context gates.
+	CODE_EDIT: ["TASKS"],
+	CODE_CHANGE: ["TASKS"],
+	CODE_WRITE: ["TASKS"],
+	EDIT_CODE: ["TASKS"],
+	WRITE_CODE: ["TASKS"],
+	CODE_FIX: ["TASKS"],
+	FIX_CODE: ["TASKS"],
+	FIX_BUG: ["TASKS"],
+	CODE_PR_CREATE: ["TASKS"],
+	CREATE_PR: ["TASKS"],
+	OPEN_PR: ["TASKS"],
+	SUBMIT_PR: ["TASKS"],
+	PR_CREATE: ["TASKS"],
+	PULL_REQUEST: ["TASKS"],
+	CREATE_PULL_REQUEST: ["TASKS"],
+	OPEN_PULL_REQUEST: ["TASKS"],
+	GITHUB_PR: ["TASKS"],
 	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
 	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
 	FINANCE: ["OWNER_FINANCES"],
@@ -1120,6 +1146,13 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 	if (looksLikeSettingsPermissionCandidateAction(normalized)) {
 		return ["SETTINGS"];
 	}
+	// Coding/repo-shaped names route to the TASKS umbrella before the view
+	// heuristics get a chance to claim them: git-surface tokens plus a view
+	// operation (CODE_PR_CREATE, UPDATE_REPO_README) otherwise read as a
+	// "generated capability" and misroute repo work to the views catalog.
+	if (looksLikeCodingCandidateAction(normalized)) {
+		return ["TASKS"];
+	}
 	const aliases: string[] = [];
 	if (looksLikeViewCandidateAction(normalized)) {
 		aliases.push("VIEWS");
@@ -1225,6 +1258,30 @@ function looksLikeSettingsPermissionCandidateAction(
 		tokens.has("ACCESS") &&
 		hasAnyToken(tokens, SETTINGS_PERMISSION_NAMESPACE_TOKENS);
 	return namesAPermission || namesAScopedAccess;
+}
+
+// Git-surface vocabulary. CODE is included but guarded against QR_CODE-style
+// names; generic verbs (PULL, MERGE, CREATE) are deliberately absent — bare
+// verbs collide with contact/view inventions (MERGE_CONTACTS) and only the
+// surface nouns are unambiguous.
+const CODING_SURFACE_TOKENS = new Set([
+	"CODE",
+	"CODING",
+	"REPO",
+	"REPOSITORY",
+	"GITHUB",
+	"PR",
+	"COMMIT",
+	"BRANCH",
+]);
+
+function looksLikeCodingCandidateAction(
+	normalizedActionName: string,
+): boolean {
+	if (!normalizedActionName) return false;
+	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
+	if (tokens.has("QR")) return false;
+	return hasAnyToken(tokens, CODING_SURFACE_TOKENS);
 }
 
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
