@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { getSkillsDir } from "@elizaos/skills";
+import { decodeFrontmatterScalarString } from "../parser";
 import type { ElizaConfig, SkillEntry } from "./skills-routes";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
@@ -437,10 +438,13 @@ export function scanSkillsDir(
           const fmBlock = fmMatch[1];
           const nameMatch = /^name:\s*(.+)$/m.exec(fmBlock);
           const descMatch = /^description:\s*(.+)$/m.exec(fmBlock);
+          // Decode via the shared frontmatter scalar decoder so a quoted,
+          // JSON-escaped description written by the create scaffold round-trips
+          // to its exact value instead of leaking literal backslashes.
           if (nameMatch)
-            skillName = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+            skillName = decodeFrontmatterScalarString(nameMatch[1]);
           if (descMatch)
-            description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+            description = decodeFrontmatterScalarString(descMatch[1]);
         }
 
         // Fallback to heading / first paragraph
