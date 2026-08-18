@@ -776,11 +776,10 @@ function parseBrowserBridgeKind(
   value: string | undefined,
 ): BrowserBridgeKind | null {
   if (!value) return null;
-  const decoded = decodeURIComponent(value);
   return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
-    decoded,
+    value,
   )
-    ? (decoded as BrowserBridgeKind)
+    ? (value as BrowserBridgeKind)
     : null;
 }
 
@@ -879,12 +878,18 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
+    const decodedBrowser = decodePathComponent(
+      packageBuildMatch[1],
+      res,
+      "browser bridge package browser",
+    );
+    if (decodedBrowser === null) return true;
     const browserPlugin = await getBrowserBridgePlugin();
     if (!browserPlugin) {
       error(res, "Browser bridge is not available on this platform", 503);
       return true;
     }
-    const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
+    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
@@ -899,15 +904,18 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
+    const decodedBrowser = decodePathComponent(
+      packageManagerMatch[1],
+      res,
+      "browser bridge package browser",
+    );
+    if (decodedBrowser === null) return true;
     const browserPlugin = await getBrowserBridgePlugin();
     if (!browserPlugin) {
       error(res, "Browser bridge is not available on this platform", 503);
       return true;
     }
-    const browser = parseBrowserBridgeKind(
-      browserPlugin,
-      packageManagerMatch[1],
-    );
+    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
@@ -977,7 +985,17 @@ async function handleBuiltinOptionalRoutes(
     return false;
   }
 
-  const tabId = decodeURIComponent(tabMatch[1]).trim();
+  const decodedTabId = decodePathComponent(
+    tabMatch[1],
+    res,
+    "browser workspace tab id",
+  );
+  if (decodedTabId === null) return true;
+  const tabId = decodedTabId.trim();
+  if (!tabId) {
+    error(res, "Browser workspace tab id is required", 400);
+    return true;
+  }
   const action = tabMatch[2] ?? null;
 
   const browserPlugin = await getBrowserWorkspacePlugin();
