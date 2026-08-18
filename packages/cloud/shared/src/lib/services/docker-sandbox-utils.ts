@@ -267,6 +267,50 @@ export function validateEnvValue(key: string, value: string): void {
   }
 }
 
+const PUBLIC_CONTAINER_ENV_KEY_ALLOWLIST = new Set([
+  "AGENT_DISABLE_AUTO_API_TOKEN",
+  "ELIZA_ALLOW_WS_QUERY_TOKEN",
+  "ELIZA_DISABLE_AUTO_API_TOKEN",
+]);
+
+/**
+ * Keep only fixed, non-secret feature flags on the Docker command line.
+ * Caller-provided environment keys are arbitrary BYO-secret material, so an
+ * unknown name must fail closed to the stdin-backed env file rather than rely
+ * on a credential-name heuristic.
+ */
+export function isSecretContainerEnvKey(key: string): boolean {
+  return !PUBLIC_CONTAINER_ENV_KEY_ALLOWLIST.has(key);
+}
+
+export interface DockerContainerEnvTransport {
+  commandFlags: string[];
+  secretInput: string;
+}
+
+const CONTAINER_SECRET_ENV_STDIN_SENTINEL = "ELIZA_SECRET_ENV_STDIN_V1_END";
+
+/** Split validated container env into visible flags and stdin-only entries. */
+export function buildDockerContainerEnvTransport(
+  environment: Readonly<Record<string, string>>,
+): DockerContainerEnvTransport {
+  const commandFlags: string[] = [];
+  const secretLines: string[] = [];
+  for (const [key, value] of Object.entries(environment)) {
+    validateEnvKey(key);
+    validateEnvValue(key, value);
+    if (isSecretContainerEnvKey(key)) {
+      secretLines.push(`${key}=${value}`);
+    } else {
+      commandFlags.push(`-e ${shellQuote(`${key}=${value}`)}`);
+    }
+  }
+  return {
+    commandFlags,
+    secretInput: `${secretLines.length > 0 ? `${secretLines.join("\n")}\n` : ""}ELIZA_VAULT_PASSPHRASE=\n${CONTAINER_SECRET_ENV_STDIN_SENTINEL}\n`,
+  };
+}
+
 /** Docker container names must be simple shell-safe identifiers. */
 export function validateContainerName(containerName: string): void {
   if (hasControlChars(containerName) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(containerName)) {
@@ -454,32 +498,42 @@ export function getVolumeVaultPassphrasePath(volumePath: string): string {
 }
 
 /**
- * Shell command that reads the per-agent vault master passphrase persisted on
- * the agent's host volume, creating it once (mode 0600 via umask, tmp+rename)
- * when absent — from `seedValue` when the operator injected one, otherwise 64
- * hex chars from /dev/urandom. Replacement container B over the same volume
- * therefore derives the same vault master key container A used — the key is
- * per agent, never derived from agent/org identifiers. A generated key never
- * transits a shell argument; an operator seed does, over the same ssh.exec
- * channel that already carries it inside `docker create -e`.
+ * Shell command that establishes and validates the per-agent vault master
+ * passphrase persisted on the host volume. An optional operator seed arrives
+ * only on stdin; the command emits no passphrase bytes. Replacement containers
+ * therefore derive the same per-volume key without exposing it to the caller.
  */
-export function buildVolumeVaultPassphraseCommand(volumePath: string, seedValue?: string): string {
-  const keyFile = shellQuote(getVolumeVaultPassphrasePath(volumePath));
-  const tmpFile = shellQuote(`${getVolumeVaultPassphrasePath(volumePath)}.tmp`);
-  const writeKey =
-    seedValue !== undefined
-      ? `printf %s ${shellQuote(seedValue)} > ${tmpFile}`
-      : `head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > ${tmpFile}`;
-  // ponytail: tmp+mv is last-writer-wins on a concurrent FIRST provision;
-  // upstream lifecycle locks serialize per-agent provisioning, and once the
-  // file exists every later provision only reads it.
-  return `test -s ${keyFile} || { umask 077; ${writeKey} && mv ${tmpFile} ${keyFile}; }; cat ${keyFile}`;
+export function buildVolumeVaultPassphraseCommand(volumePath: string): string {
+  const keyPath = getVolumeVaultPassphrasePath(volumePath);
+  const keyFile = shellQuote(keyPath);
+  const overrideFile = `${shellQuote(`${keyPath}.override`)}.$$`;
+  const generatedFile = `${shellQuote(`${keyPath}.generated`)}.$$`;
+  const normalizedFile = `${shellQuote(`${keyPath}.normalized`)}.$$`;
+  return [
+    "set -eu",
+    `override_file=${overrideFile}`,
+    `generated_file=${generatedFile}`,
+    `normalized_file=${normalizedFile}`,
+    'trap \'rm -f "$override_file" "$generated_file" "$normalized_file"\' EXIT',
+    "trap 'exit 1' HUP INT TERM",
+    "umask 077",
+    'cat > "$override_file"',
+    `if test ! -s ${keyFile}; then if test -s "$override_file"; then mv "$override_file" ${keyFile}; else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > "$generated_file" && mv "$generated_file" ${keyFile}; fi; fi`,
+    `normalized=$(cat ${keyFile})`,
+    'printf %s "$normalized" > "$normalized_file"',
+    `key_length=$(wc -c < "$normalized_file" | tr -d ' ')`,
+    `nonspace_length=$(tr -d '[:space:]' < "$normalized_file" | wc -c | tr -d ' ')`,
+    'if test "$key_length" -lt 12 || test "$key_length" != "$nonspace_length"; then exit 43; fi',
+    `if ! cmp -s "$normalized_file" ${keyFile}; then mv "$normalized_file" ${keyFile}; fi`,
+    `chmod 600 ${keyFile}`,
+    `if test -s "$override_file" && ! cmp -s "$override_file" ${keyFile}; then exit 42; fi`,
+  ].join("; ");
 }
 
 /**
- * Run {@link buildVolumeVaultPassphraseCommand} through `exec` (the node's
- * shell, e.g. over SSH) and validate the result. Fails closed on a short or
- * empty read — a fresh random per-launch key would silently orphan every
+ * Run {@link buildVolumeVaultPassphraseCommand} through an stdin-capable node
+ * shell and validate the result remotely. Fails closed on a short or empty
+ * key — a fresh random per-launch key would silently orphan every
  * credential already encrypted on the volume.
  *
  * `operatorOverride` (an injected `ELIZA_VAULT_PASSPHRASE`) is not allowed to
@@ -492,11 +546,11 @@ export function buildVolumeVaultPassphraseCommand(volumePath: string, seedValue?
  * the ciphertext.
  */
 export async function ensureVolumeVaultPassphrase(
-  exec: (cmd: string, timeoutMs: number) => Promise<string>,
+  execStdin: (cmd: string, input: string, timeoutMs: number) => Promise<string>,
   volumePath: string,
   timeoutMs: number,
   operatorOverride?: string,
-): Promise<string> {
+): Promise<void> {
   // Empty/whitespace-only override means "not set" — same as the historical
   // `environmentVars.ELIZA_VAULT_PASSPHRASE?.trim() ||` fallthrough.
   const override = operatorOverride?.trim() || undefined;
@@ -504,36 +558,86 @@ export async function ensureVolumeVaultPassphrase(
     // Validate BEFORE seeding: persisting an unusable override would brick
     // every subsequent launch on the post-write length check below.
     throw new ElizaError(
-      `[docker-sandbox] injected ELIZA_VAULT_PASSPHRASE is unusable (length ${override.length}); refusing to seed ${getVolumeVaultPassphrasePath(volumePath)} with a key the vault would reject`,
+      `[docker-sandbox] injected vault override is unusable (length ${override.length}); refusing to seed ${getVolumeVaultPassphrasePath(volumePath)} with a key the vault would reject`,
       {
         code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_UNUSABLE",
         context: { volumePath, passphraseLength: override.length },
       },
     );
   }
-  const output = await exec(buildVolumeVaultPassphraseCommand(volumePath, override), timeoutMs);
-  const passphrase = output.trim();
-  // 12 chars is the vault's own passphraseMasterKey minimum; generated keys
-  // are 64 hex chars, but an operator-provisioned key file is honored as-is.
-  if (passphrase.length < 12 || /\s/.test(passphrase)) {
-    throw new ElizaError(
-      `[docker-sandbox] persisted vault passphrase at ${getVolumeVaultPassphrasePath(volumePath)} is unusable (length ${passphrase.length}); refusing to mint a fresh per-launch key that would orphan the volume's vault ciphertext`,
-      {
-        code: "SANDBOX_VAULT_PASSPHRASE_UNUSABLE",
-        context: { volumePath, passphraseLength: passphrase.length },
-      },
-    );
+  try {
+    await execStdin(buildVolumeVaultPassphraseCommand(volumePath), override ?? "", timeoutMs);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const exitCode =
+      typeof cause === "object" && cause !== null && "code" in cause
+        ? (cause as { code?: unknown }).code
+        : undefined;
+    if (exitCode === 42 || message.includes("exited with code 42")) {
+      throw new ElizaError(
+        `[docker-sandbox] injected vault override does not match the key persisted at ${getVolumeVaultPassphrasePath(volumePath)}; that file remains the durable source of truth`,
+        {
+          code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_MISMATCH",
+          context: { volumePath },
+          cause,
+        },
+      );
+    }
+    if (exitCode === 43 || message.includes("exited with code 43")) {
+      throw new ElizaError(
+        `[docker-sandbox] persisted vault passphrase at ${getVolumeVaultPassphrasePath(volumePath)} is unusable; refusing to mint a fresh per-launch key`,
+        {
+          code: "SANDBOX_VAULT_PASSPHRASE_UNUSABLE",
+          context: { volumePath },
+          cause,
+        },
+      );
+    }
+    throw cause;
   }
-  if (override !== undefined && passphrase !== override) {
-    throw new ElizaError(
-      `[docker-sandbox] injected ELIZA_VAULT_PASSPHRASE does not match the key persisted at ${getVolumeVaultPassphrasePath(volumePath)}; that file is the durable source of truth for the volume's vault ciphertext — remove the override or rotate the key file deliberately`,
-      {
-        code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_MISMATCH",
-        context: { volumePath },
-      },
-    );
+}
+
+/** Unique restrictive env file used only for one remote `docker create`. */
+export function getContainerSecretEnvPath(
+  volumePath: string,
+  replacementAttemptId: string,
+): string {
+  if (!/^[a-f0-9-]{36}$/i.test(replacementAttemptId)) {
+    throw new Error("Invalid replacement attempt ID for container secret environment file.");
   }
-  return passphrase;
+  return `${volumePath}/.container-env-${replacementAttemptId}`;
+}
+
+/**
+ * Wrap `docker create` so stdin becomes a 0600 env file, the persisted vault
+ * value is appended without being read by the caller, and every shell exit
+ * removes the file.
+ */
+export function buildDockerCreateWithSecretEnvCommand(options: {
+  dockerCreateCommand: string;
+  secretEnvPath: string;
+  vaultPassphrasePath: string;
+}): string {
+  const envFile = shellQuote(options.secretEnvPath);
+  const envBodyFile = shellQuote(`${options.secretEnvPath}.body`);
+  const vaultFile = shellQuote(options.vaultPassphrasePath);
+  return [
+    "set -eu",
+    `env_file=${envFile}`,
+    `env_body_file=${envBodyFile}`,
+    'trap \'rm -f "$env_file" "$env_body_file"\' EXIT',
+    "trap 'exit 1' HUP INT TERM",
+    "umask 077",
+    'cat > "$env_file"',
+    `test "$(tail -n 1 "$env_file")" = ${shellQuote(CONTAINER_SECRET_ENV_STDIN_SENTINEL)}`,
+    'sed \'$d\' "$env_file" > "$env_body_file"',
+    'mv "$env_body_file" "$env_file"',
+    'truncate -s -1 "$env_file"',
+    `cat ${vaultFile} >> "$env_file"`,
+    "printf '\\n' >> \"$env_file\"",
+    'chmod 600 "$env_file"',
+    options.dockerCreateCommand,
+  ].join("; ");
 }
 
 // ---------------------------------------------------------------------------
