@@ -26,7 +26,10 @@ import {
   setDesktopLauncherEntries,
 } from "@elizaos/ui/state/desktop-tray-launcher";
 import { useApp } from "@elizaos/ui/state/useApp";
-import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
+import {
+  openDesktopSettingsWindow,
+  openDesktopWorkspaceWindow,
+} from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
 import {
   DESKTOP_VIEW_WINDOWS,
@@ -227,7 +230,7 @@ export function DesktopTrayRuntime() {
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":
-            await openDesktopSettingsWindow("desktop");
+            await openDesktopWorkspaceWindow();
             return;
           case "tray-open-voice-controls":
             await openDesktopSettingsWindow("voice");

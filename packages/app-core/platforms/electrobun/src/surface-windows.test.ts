@@ -295,6 +295,33 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.manager.listWindows()).toEqual([second]);
   });
 
+  it("opens the full workspace shell at the root and deduplicates its managed window", async () => {
+    const fixture = createFixture();
+
+    const first = await fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = await fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Duplicate",
+      path: "/settings",
+    });
+
+    expect(first).toMatchObject({
+      id: "app_workspace",
+      surface: "app",
+      title: "Workspace",
+    });
+    expect(second).toEqual(first);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/?boot=1&appWindow=1#/",
+    );
+    expect(fixture.created[0]?.focus).toHaveBeenCalledOnce();
+  });
+
   it("focuses, mutates always-on-top, lists, traverses, and loads existing app windows", async () => {
     const fixture = createFixture();
 

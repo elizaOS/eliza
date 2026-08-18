@@ -41,6 +41,7 @@ import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
+  openDesktopWorkspaceWindow,
   requestDesktopBridge,
 } from "../../utils";
 import { Button } from "../ui/button";
@@ -156,6 +157,9 @@ export function CommandPalette() {
           "desktopFocusWindow",
           "desktop:focusWindow",
         );
+      },
+      openDesktopWorkspaceWindow: () => {
+        void openDesktopWorkspaceWindow();
       },
       openDesktopSettingsWindow: (tabHint?: string) => {
         void openDesktopSettingsWindow(tabHint);
