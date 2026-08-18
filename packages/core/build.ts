@@ -766,6 +766,24 @@ const edgeRuntimeSourcesPlugin: BunPlugin = {
 						}
 					: undefined,
 		);
+		// mammoth/unpdf are `external` for this target, but a single-file worker
+		// bundle still inlines both graphs (~2.1 MB minified) because the bare
+		// specifiers survive into the artifact and every downstream bundler
+		// resolves them. Aliasing the one module that imports them removes the
+		// specifiers entirely, honoring the `documents: false` edge default
+		// (#21327).
+		build.onResolve(
+			{ filter: /^\.\/parsers(?:\.ts|\.js)?$/ },
+			({ importer }) =>
+				importer.endsWith("/src/features/documents/utils.ts")
+					? {
+							path: join(
+								process.cwd(),
+								"src/features/documents/parsers.edge.ts",
+							),
+						}
+					: undefined,
+		);
 	},
 };
 
