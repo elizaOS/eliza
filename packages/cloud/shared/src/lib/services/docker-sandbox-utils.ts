@@ -518,12 +518,17 @@ export function buildVolumeVaultPassphraseCommand(volumePath: string): string {
     "trap 'exit 1' HUP INT TERM",
     "umask 077",
     'cat > "$override_file"',
-    `if test ! -s ${keyFile}; then if test -s "$override_file"; then mv "$override_file" ${keyFile}; else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > "$generated_file" && mv "$generated_file" ${keyFile}; fi; fi`,
-    `normalized=$(cat ${keyFile})`,
-    'printf %s "$normalized" > "$normalized_file"',
+    `if test ! -s ${keyFile}; then if test -s "$override_file"; then candidate_file="$override_file"; else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > "$generated_file"; candidate_file="$generated_file"; fi; if ln "$candidate_file" ${keyFile} 2>/dev/null; then :; elif test -s ${keyFile}; then :; else exit 43; fi; fi`,
+    // A shell variable cannot represent NUL bytes: command substitution would
+    // silently delete them and rewrite the durable key. Validate the raw file
+    // before normalization, accepting at most one trailing newline from an
+    // operator-provisioned text file and rejecting every other control byte.
+    `line_count=$(awk 'END { print NR }' ${keyFile})`,
+    'if test "$line_count" != 1; then exit 43; fi',
+    `tr -d '\\n' < ${keyFile} > "$normalized_file"`,
     `key_length=$(wc -c < "$normalized_file" | tr -d ' ')`,
-    `nonspace_length=$(tr -d '[:space:]' < "$normalized_file" | wc -c | tr -d ' ')`,
-    'if test "$key_length" -lt 12 || test "$key_length" != "$nonspace_length"; then exit 43; fi',
+    `safe_length=$(LC_ALL=C tr -d '[:space:][:cntrl:]' < "$normalized_file" | wc -c | tr -d ' ')`,
+    'if test "$key_length" -lt 12 || test "$key_length" != "$safe_length"; then exit 43; fi',
     `if ! cmp -s "$normalized_file" ${keyFile}; then mv "$normalized_file" ${keyFile}; fi`,
     `chmod 600 ${keyFile}`,
     `if test -s "$override_file" && ! cmp -s "$override_file" ${keyFile}; then exit 42; fi`,

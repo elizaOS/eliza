@@ -577,6 +577,26 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
+  test("concurrent first provisions establish exactly one durable override", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const overrides = ["concurrent-operator-key-A", "concurrent-operator-key-B"];
+    const results = await Promise.allSettled(
+      overrides.map((override) =>
+        ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override),
+      ),
+    );
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    if (rejected?.status === "rejected") {
+      expect(String(rejected.reason)).toMatch(/durable source of truth/);
+    }
+    expect(overrides).toContain(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8"));
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
   test("fails closed on an unusable override BEFORE seeding the key file", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
@@ -604,6 +624,24 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
       /refusing to mint a fresh per-launch key/,
     );
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed without rewriting a persisted key containing a NUL byte", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    const corruptKey = Buffer.concat([
+      Buffer.from("operator-key"),
+      Buffer.from([0]),
+      Buffer.from("suffix"),
+    ]);
+    fs.writeFileSync(keyPath, corruptKey);
+
+    await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
+      /persisted vault passphrase.*unusable/,
+    );
+    expect(fs.readFileSync(keyPath)).toEqual(corruptKey);
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
