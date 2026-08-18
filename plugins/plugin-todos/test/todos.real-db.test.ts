@@ -221,6 +221,88 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     );
   });
 
+  it("reconciles a cross-room mark-complete by id instead of duplicating (regression #22124)", async () => {
+    // Reads (CURRENT_TODOS provider, list()) are entity-scoped across rooms,
+    // so writeList must reconcile against that same cross-room set. A todo
+    // created in ROOM_A and marked complete by id from ROOM_B must be UPDATED
+    // in place, not re-created as a new ROOM_B row while the ROOM_A original
+    // survives untouched (the pre-fix duplicate + lost-update corruption).
+    const entityId = "9a9a9a9a-9a9a-4a9a-8a9a-9a9a9a9a9a9a" as UUID;
+    const roomA = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1" as UUID;
+    const roomB = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2" as UUID;
+    const seeded = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomA,
+      content: "Cross-room todo",
+      status: "pending",
+    });
+
+    const { before, after } = await service.writeList({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      worldId: null,
+      parentTrajectoryStepId: null,
+      todos: [
+        { id: seeded.id, content: "Cross-room todo", status: "completed" },
+      ],
+    });
+    // The reconciler saw the ROOM_A row (matched by id) and updated it in place.
+    expect(before.map((t) => t.id)).toEqual([seeded.id]);
+    expect(after).toHaveLength(1);
+    expect(after[0]?.id).toBe(seeded.id);
+    expect(after[0]?.status).toBe("completed");
+
+    const rows = await service.list({ entityId, agentId: runtime.agentId });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(seeded.id);
+    expect(rows[0]?.status).toBe("completed");
+    // The original room is preserved; no duplicate ROOM_B row was minted.
+    expect(rows[0]?.roomId).toBe(roomA);
+  });
+
+  it("deletes a cross-room todo omitted from a writeList without duplicating the kept one (regression #22124)", async () => {
+    const entityId = "7c7c7c7c-7c7c-4c7c-8c7c-7c7c7c7c7c7c" as UUID;
+    const roomA = "c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3" as UUID;
+    const roomB = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4" as UUID;
+    const keep = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomA,
+      content: "Keep across rooms",
+      status: "pending",
+    });
+    const drop = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomA,
+      content: "Drop across rooms",
+      status: "pending",
+    });
+
+    // From ROOM_B the planner submits only the kept todo by id; the omitted one
+    // must be deleted from the shared cross-room set, not silently survive.
+    const { after } = await service.writeList({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      worldId: null,
+      parentTrajectoryStepId: null,
+      todos: [{ id: keep.id, content: "Keep across rooms", status: "pending" }],
+    });
+    expect(after.map((t) => t.id)).toEqual([keep.id]);
+
+    const rows = await service.list({ entityId, agentId: runtime.agentId });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(keep.id);
+    expect(rows.some((t) => t.id === drop.id)).toBe(false);
+    // Exactly one row, matched by id — no duplicate of the kept todo appeared.
+    expect(rows.filter((t) => t.content === "Keep across rooms")).toHaveLength(
+      1,
+    );
+  });
+
   it("rejects duplicate write ids without deleting rows or issuing a receipt", async () => {
     const entityId = "12345678-1234-4234-8234-123456789abc" as UUID;
     const roomId = "abcdefab-cdef-4def-8def-abcdefabcdef" as UUID;
@@ -577,7 +659,10 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     ).toBeNull();
   });
 
-  it("detaches cross-room children when room-scoped writeList removes their parent", async () => {
+  it("detaches a cross-room child when writeList omits (deletes) its parent", async () => {
+    // writeList reconciles against the user's whole cross-room set, so a child
+    // kept by id while its parent is omitted must be detached, not orphaned or
+    // deleted, even though the two rows live in different rooms.
     const entityId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID;
     const parent = await service.create({
       entityId,
@@ -593,17 +678,20 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       parentTodoId: parent.id,
     });
 
+    // Called from a THIRD room; the desired list keeps only the child by id.
     await service.writeList({
       entityId,
       agentId: runtime.agentId,
-      roomId: "11111111-2222-4333-8444-555555555555",
+      roomId: "77777777-8888-4999-8aaa-bbbbbbbbbbbb",
       worldId: null,
       parentTrajectoryStepId: null,
-      todos: [],
+      todos: [{ id: child.id, content: "Room B child", status: "pending" }],
     });
-    expect(
-      (await service.get(scope(entityId), child.id))?.parentTodoId,
-    ).toBeNull();
+    // Parent (omitted) is deleted; child (kept) survives with a null parent.
+    expect(await service.get(scope(entityId), parent.id)).toBeNull();
+    const survivingChild = await service.get(scope(entityId), child.id);
+    expect(survivingChild).not.toBeNull();
+    expect(survivingChild?.parentTodoId).toBeNull();
   });
 
   it("serializes a parent clear against concurrent child creation", async () => {
