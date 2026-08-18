@@ -32,7 +32,6 @@ import {
   getEmbeddingModel,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
-import { countTokens } from "../utils/tokenization";
 
 const TEXT_EMBEDDING_MODEL_TYPE = ((
   ElizaCore as { ModelType?: Record<string, string> }
@@ -128,9 +127,29 @@ async function providerTokenCount(
   model: string,
   contents: string,
 ): Promise<number> {
-  const response = await genAI.models.countTokens({ model, contents });
+  let response: Awaited<ReturnType<GoogleGenAI["models"]["countTokens"]>>;
+  try {
+    response = await genAI.models.countTokens({ model, contents });
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — token counting is the provider
+    // safety boundary, so transport/auth/model failures must remain typed and
+    // attributable instead of falling through as an unrelated embedding error.
+    throw new ElizaError(
+      `Google token counting failed for embedding model "${model}"`,
+      {
+        code: "EMBEDDING_TOKEN_COUNT_FAILED",
+        context: { model, inputCodeUnits: contents.length },
+        cause: error,
+      },
+    );
+  }
   const total = response.totalTokens;
-  if (typeof total !== "number" || !Number.isSafeInteger(total) || total < 0) {
+  if (
+    typeof total !== "number" ||
+    !Number.isSafeInteger(total) ||
+    total < 0 ||
+    (contents.length > 0 && total === 0)
+  ) {
     throw new ElizaError("Google token counter returned an invalid total", {
       code: "EMBEDDING_TOKEN_COUNT_INVALID",
       context: { model, totalTokens: total },
@@ -273,7 +292,10 @@ export async function handleTextEmbedding(
     // is unit-length and cosine-comparable like the native 768-dim model.
     const embedding = l2Normalize(rawEmbedding);
 
-    const promptTokens = await countTokens(text);
+    // The exact provider count that admitted this request is also the only
+    // accurate usage value. The local characters/4 helper is telemetry-only
+    // and must never overwrite provider-boundary evidence.
+    const promptTokens = bounded.tokens;
 
     emitModelUsageEvent(runtime, TEXT_EMBEDDING_MODEL_TYPE, text, {
       promptTokens,

@@ -45,6 +45,7 @@ import {
 } from "../utils/config";
 
 const PLUGIN_ROOT = new URL("../", import.meta.url);
+const REPOSITORY_ROOT = new URL("../../../", import.meta.url);
 
 function readPluginJson(relativePath: string): unknown {
   return JSON.parse(
@@ -174,6 +175,16 @@ describe("Google GenAI config", () => {
         GOOGLE_EMBEDDING_MODEL: { default: string; placeholder: string };
       };
     };
+    const generated = readPluginJsonFromRepository(
+      "packages/registry/src/first-party/generated.json",
+    ) as {
+      entries: Array<{
+        id: string;
+        config: {
+          GOOGLE_EMBEDDING_MODEL?: { default?: string; placeholder?: string };
+        };
+      }>;
+    };
 
     expect(
       pkg.agentConfig.pluginParameters.GOOGLE_EMBEDDING_MODEL.default,
@@ -181,9 +192,24 @@ describe("Google GenAI config", () => {
     expect(registry.config.GOOGLE_EMBEDDING_MODEL.default).toBe(
       DEFAULT_GOOGLE_EMBEDDING_MODEL,
     );
+    const generatedGoogle = generated.entries.find(
+      (entry) => entry.id === "google-genai",
+    );
+    expect(generatedGoogle?.config.GOOGLE_EMBEDDING_MODEL).toEqual(
+      registry.config.GOOGLE_EMBEDDING_MODEL,
+    );
     // The placeholder must name valid Google embedding ids, not an OpenAI model.
     const placeholder = registry.config.GOOGLE_EMBEDDING_MODEL.placeholder;
     expect(placeholder).toContain("gemini-embedding");
     expect(placeholder).not.toMatch(/text-embedding-3|gpt-|openai/i);
   });
 });
+
+function readPluginJsonFromRepository(relativePath: string): unknown {
+  return JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL(relativePath, REPOSITORY_ROOT)),
+      "utf-8",
+    ),
+  );
+}

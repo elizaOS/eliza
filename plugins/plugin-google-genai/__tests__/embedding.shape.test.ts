@@ -13,7 +13,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  countTokens: vi.fn(),
   countEmbeddingTokens: vi.fn(),
   createGoogleGenAI: vi.fn(),
   embedContent: vi.fn(),
@@ -57,10 +56,6 @@ vi.mock("../utils/events", () => ({
   emitModelUsageEvent: mocks.emitModelUsageEvent,
 }));
 
-vi.mock("../utils/tokenization", () => ({
-  countTokens: mocks.countTokens,
-}));
-
 import { handleTextEmbedding } from "../models/embedding";
 
 function createRuntime(): IAgentRuntime {
@@ -74,7 +69,6 @@ describe("Google GenAI embeddings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-001");
-    mocks.countTokens.mockResolvedValue(5);
     mocks.countEmbeddingTokens.mockImplementation(
       async ({ contents }: { contents: string }) => ({
         totalTokens: Math.ceil(contents.length / 4),
@@ -114,11 +108,40 @@ describe("Google GenAI embeddings", () => {
       "TEXT_EMBEDDING",
       "hello",
       {
-        promptTokens: 5,
+        promptTokens: 2,
         completionTokens: 0,
-        totalTokens: 5,
+        totalTokens: 2,
       },
     );
+  });
+
+  it("fails closed when the provider reports zero tokens for non-empty input", async () => {
+    mocks.countEmbeddingTokens.mockResolvedValue({ totalTokens: 0 });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "non-empty"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_TOKEN_COUNT_INVALID",
+      context: { model: "gemini-embedding-001", totalTokens: 0 },
+    });
+    expect(mocks.embedContent).not.toHaveBeenCalled();
+  });
+
+  it("wraps provider token-count failures with typed boundary context", async () => {
+    const transportFailure = new Error("countTokens transport failed");
+    mocks.countEmbeddingTokens.mockRejectedValue(transportFailure);
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "non-empty"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_TOKEN_COUNT_FAILED",
+      context: {
+        model: "gemini-embedding-001",
+        inputCodeUnits: 9,
+      },
+      cause: transportFailure,
+    });
+    expect(mocks.embedContent).not.toHaveBeenCalled();
   });
 
   it("pins outputDimensionality to the probe width so the write matches the sized column (#22010)", async () => {
