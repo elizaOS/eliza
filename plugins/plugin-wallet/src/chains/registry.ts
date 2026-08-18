@@ -79,6 +79,9 @@ import type { SolanaService } from "./solana/service";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
+
+export const DEFAULT_PUMPPORTAL_FETCH_TIMEOUT_MS = 10_000;
+
 const PUMPFUN_DEFAULT_PRIORITY_FEE_SOL = 0.00005;
 const PUMPFUN_DEFAULT_SLIPPAGE_BPS = 1_000;
 
@@ -645,7 +648,7 @@ function resolvePumpFunTradeLocalSettings(
  * `simulate` so both build the exact same unsigned transaction from the same
  * inputs — simulate never sees a different route than execute would submit.
  */
-async function fetchPumpFunTransaction(
+export async function fetchPumpFunTransaction(
   publicKey: PublicKey,
   mint: string,
   amountSol: number,
@@ -664,6 +667,7 @@ async function fetchPumpFunTransaction(
       priorityFee: settings.priorityFee,
       pool: settings.pool,
     }),
+    signal: AbortSignal.timeout(DEFAULT_PUMPPORTAL_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
