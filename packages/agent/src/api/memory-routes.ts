@@ -18,6 +18,7 @@ import {
   ChannelType,
   composePrompt,
   createMessageMemory,
+  ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
@@ -42,6 +43,17 @@ export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
+/**
+ * Warm-corpus reuse window for the hash-memory search cache. Module-local
+ * writes (remember/delete/patch) invalidate explicitly and a row-count check
+ * runs before every reuse. Count-preserving out-of-band edits trigger refresh
+ * after 10 seconds and may be served stale only until the 20-second hard bound.
+ */
+const MEMORY_SEARCH_CACHE_TTL_MS = 10_000;
+const MEMORY_SEARCH_CACHE_MAX_STALE_MS = 20_000;
+const MEMORY_SEARCH_CACHE_MAX_ENTRIES = 4;
+const MEMORY_SEARCH_CACHE_MAX_TEXT_BYTES = 8 * 1024 * 1024;
+const MEMORY_SEARCH_MAX_UNSTABLE_BUILD_ATTEMPTS = 3;
 const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
@@ -145,6 +157,20 @@ export function rankByKeyword<T>(
     items.map((item) => ({ content: getText(item) })),
     { stemming: true },
   );
+  return rankWithIndex(query, items, bm25);
+}
+
+/**
+ * Same ranking contract as {@link rankByKeyword} but against a prebuilt BM25
+ * index whose docs correspond 1:1 (by array index) with `items`. This is the
+ * shared scoring tail, so cached and cold paths cannot drift.
+ */
+function rankWithIndex<T>(
+  query: string,
+  items: T[],
+  bm25: BM25,
+): Array<{ item: T; score: number }> {
+  if (items.length === 0) return [];
   const results = bm25.search(query, items.length);
   if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
   const firstScore = results[0]?.score;
@@ -178,21 +204,148 @@ export function matchesKeyword(text: string, query: string): boolean {
     .some((term) => normalizedText.includes(term));
 }
 
-async function searchMemoryNotes(
+type MemorySearchCandidate = { id: UUID; text: string; createdAt: number };
+
+type MemorySearchCorpus = {
+  candidates: MemorySearchCandidate[];
+  /** BM25 index whose doc order matches `candidates` by array index. */
+  bm25: BM25;
+  /** Room message-row count observed when this corpus was built. */
+  rowCount: number;
+  builtAt: number;
+};
+
+type MemorySearchCacheSlot = {
+  generation: number;
+  corpus?: MemorySearchCorpus;
+  inFlight?: Promise<MemorySearchCorpusBuild>;
+};
+
+type MemorySearchCorpusBuild = {
+  corpus: MemorySearchCorpus;
+  disposition: "cacheable" | "uncached" | "obsolete";
+  countBefore: number | null;
+  countAfter: number | null;
+};
+
+/**
+ * Per-runtime, per-room corpus + BM25 index cache for the hash-memory search
+ * endpoints. Building this per request was the whole latency story: a full
+ * `getMemories` scan (up to {@link MEMORY_SEARCH_SCAN_LIMIT} rows, some
+ * multi-KB) plus a fresh BM25 tokenize/index pass cost ~2s+ at ~2k rows while
+ * the actual query scoring is sub-millisecond.
+ *
+ * Freshness model (memories can be written outside this module, e.g. normal
+ * chat writes to the "messages" table):
+ *  - explicit invalidation on every mutation routed through this module
+ *    (remember / DELETE / PATCH);
+ *  - a cheap COUNT check before every reuse catches out-of-band creates and
+ *    deletes immediately;
+ *  - a short TTL triggers refresh for count-preserving out-of-band edits, and
+ *    {@link MEMORY_SEARCH_CACHE_MAX_STALE_MS} is their absolute stale bound.
+ */
+let memorySearchCorpusCaches = new WeakMap<
+  AgentRuntime,
+  Map<string, MemorySearchCacheSlot>
+>();
+
+function invalidateMemorySearchCacheSlot(slot: MemorySearchCacheSlot): void {
+  slot.generation++;
+  slot.corpus = undefined;
+  // Detach an older build so a request arriving after invalidation cannot join
+  // a stale snapshot. Its generation check prevents that build from publishing.
+  slot.inFlight = undefined;
+}
+
+export function invalidateMemorySearchCache(
+  runtime?: AgentRuntime,
+  roomId?: UUID,
+): void {
+  if (!runtime) {
+    // Test/process reset only. Runtime-owned maps otherwise disappear when the
+    // runtime is collected, without keeping tenant state alive module-wide.
+    memorySearchCorpusCaches = new WeakMap();
+    return;
+  }
+  const cache = memorySearchCorpusCaches.get(runtime);
+  if (!cache) return;
+  if (roomId) {
+    const slot = cache.get(roomId);
+    if (slot) invalidateMemorySearchCacheSlot(slot);
+    return;
+  }
+  for (const slot of cache.values()) invalidateMemorySearchCacheSlot(slot);
+}
+
+async function countRoomMessages(
   runtime: AgentRuntime,
   roomId: UUID,
-  query: string,
-  limit: number,
-): Promise<MemorySearchHit[]> {
+): Promise<number | null> {
+  if (typeof runtime.countMemories !== "function") return null;
+  try {
+    return await runtime.countMemories({
+      roomId,
+      tableName: "messages",
+    });
+  } catch (error) {
+    // error-policy:J7 A freshness-probe failure is reported but cannot turn a
+    // safe uncached search into a user-visible route failure.
+    runtime.reportError("MemorySearchCache.countRoomMessages", error, {
+      roomId,
+    });
+    return null;
+  }
+}
+
+function runtimeMemorySearchCache(
+  runtime: AgentRuntime,
+): Map<string, MemorySearchCacheSlot> {
+  let cache = memorySearchCorpusCaches.get(runtime);
+  if (!cache) {
+    cache = new Map();
+    memorySearchCorpusCaches.set(runtime, cache);
+  }
+  return cache;
+}
+
+function retainMemorySearchCacheSlot(
+  cache: Map<string, MemorySearchCacheSlot>,
+  roomId: string,
+  slot: MemorySearchCacheSlot,
+): void {
+  // Map insertion order is the LRU order. Bound slots themselves, not only
+  // populated corpora: uncached, failed, invalidated, and in-flight rooms must
+  // not let an attacker grow the per-runtime map without limit.
+  cache.delete(roomId);
+  cache.set(roomId, slot);
+  while (cache.size > MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestRoomId = cache.keys().next().value;
+    if (typeof oldestRoomId !== "string") break;
+    cache.delete(oldestRoomId);
+  }
+}
+
+async function buildMemorySearchCorpus(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<MemorySearchCorpusBuild> {
+  // The two counts form a lightweight seqlock around the scan. A create/delete
+  // interleaving with getMemories makes the counts disagree, so that mixed
+  // snapshot is marked obsolete and retried instead of being returned or
+  // published for later reuse.
+  const countBefore = await countRoomMessages(runtime, roomId);
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
     limit: MEMORY_SEARCH_SCAN_LIMIT,
     includeEmbedding: false, // only reads content.text
   });
+  const countAfter =
+    countBefore === null ? null : await countRoomMessages(runtime, roomId);
 
-  // Gather hash-memory candidates first, then BM25-rank them as a corpus.
-  const candidates: Array<{ id: UUID; text: string; createdAt: number }> = [];
+  const candidates: MemorySearchCandidate[] = [];
+  const textEncoder = new TextEncoder();
+  let retainedTextBytes = 0;
   for (const memory of memories) {
     const text = (
       memory.content as { text?: string } | undefined
@@ -201,6 +354,7 @@ async function searchMemoryNotes(
     const source = (memory.content as { source?: string } | undefined)?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
     if (!memory.id || typeof memory.createdAt !== "number") continue;
+    retainedTextBytes += textEncoder.encode(text).byteLength;
     candidates.push({
       id: memory.id,
       text,
@@ -208,10 +362,169 @@ async function searchMemoryNotes(
     });
   }
 
-  const hits: MemorySearchHit[] = rankByKeyword(
+  const countsMatch =
+    countBefore !== null && countAfter !== null && countBefore === countAfter;
+  return {
+    corpus: {
+      candidates,
+      bm25: new BM25(
+        candidates.map((candidate) => ({ content: candidate.text })),
+        { stemming: true },
+      ),
+      rowCount: countAfter ?? memories.length,
+      builtAt: Date.now(),
+    },
+    disposition:
+      countBefore !== null && countAfter !== null && !countsMatch
+        ? "obsolete"
+        : countsMatch && retainedTextBytes <= MEMORY_SEARCH_CACHE_MAX_TEXT_BYTES
+          ? "cacheable"
+          : "uncached",
+    countBefore,
+    countAfter,
+  };
+}
+
+function startMemorySearchCorpusBuild(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  slot: MemorySearchCacheSlot,
+): Promise<MemorySearchCorpusBuild> {
+  if (slot.inFlight) return slot.inFlight;
+  const generation = slot.generation;
+  const build = buildMemorySearchCorpus(runtime, roomId).then((result) => {
+    if (slot.generation === generation) {
+      slot.corpus =
+        result.disposition === "cacheable" ? result.corpus : undefined;
+    }
+    return result;
+  });
+  slot.inFlight = build;
+  // error-policy:J7 A background refresh is observed and reported here; a
+  // synchronous caller awaiting the same promise still receives the failure.
+  void build.then(
+    () => {
+      if (slot.inFlight === build) slot.inFlight = undefined;
+    },
+    (error: unknown) => {
+      if (slot.inFlight === build) slot.inFlight = undefined;
+      runtime.reportError("MemorySearchCache.refresh", error, { roomId });
+    },
+  );
+  return build;
+}
+
+async function awaitCurrentMemorySearchCorpusBuild(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  cache: Map<string, MemorySearchCacheSlot>,
+  slot: MemorySearchCacheSlot,
+): Promise<MemorySearchCorpus> {
+  let unstableBuildAttempts = 0;
+  while (true) {
+    const generation = slot.generation;
+    const result = await startMemorySearchCorpusBuild(runtime, roomId, slot);
+    // The slot may have been evicted while its scan was pending. Re-enter via
+    // the bounded canonical map so a mutation cannot be missed by an orphaned
+    // in-flight request.
+    if (cache.get(roomId) !== slot) {
+      return await getMemorySearchCorpus(runtime, roomId);
+    }
+    // Invalidation already prevents this build from publishing. It must also
+    // prevent a request awaiting the old generation from returning that stale
+    // snapshot after the mutation has completed.
+    if (slot.generation !== generation) continue;
+    if (result.disposition !== "obsolete") return result.corpus;
+
+    unstableBuildAttempts++;
+    invalidateMemorySearchCacheSlot(slot);
+    if (unstableBuildAttempts >= MEMORY_SEARCH_MAX_UNSTABLE_BUILD_ATTEMPTS) {
+      throw new ElizaError(
+        "Memory search corpus could not obtain a stable room snapshot",
+        {
+          code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
+          context: {
+            roomId,
+            attempts: unstableBuildAttempts,
+            countBefore: result.countBefore,
+            countAfter: result.countAfter,
+          },
+        },
+      );
+    }
+  }
+}
+
+async function getMemorySearchCorpus(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<MemorySearchCorpus> {
+  const cache = runtimeMemorySearchCache(runtime);
+  let slot = cache.get(roomId);
+  if (!slot) {
+    slot = { generation: 0 };
+  }
+  retainMemorySearchCacheSlot(cache, roomId, slot);
+  const cached = slot.corpus;
+  if (cached) {
+    const rowCount = await countRoomMessages(runtime, roomId);
+
+    // Eviction may have orphaned this slot while COUNT was pending. Re-enter
+    // through the canonical map so the replacement build can be single-flighted
+    // and published for later requests.
+    if (cache.get(roomId) !== slot) {
+      return await getMemorySearchCorpus(runtime, roomId);
+    }
+
+    // A module-local mutation may have invalidated this slot while COUNT was
+    // pending. Never return the snapshot captured before that mutation.
+    if (slot.corpus !== cached) {
+      return await awaitCurrentMemorySearchCorpusBuild(
+        runtime,
+        roomId,
+        cache,
+        slot,
+      );
+    }
+
+    if (rowCount !== null && rowCount === cached.rowCount) {
+      const age = Date.now() - cached.builtAt;
+      if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
+      if (age <= MEMORY_SEARCH_CACHE_MAX_STALE_MS) {
+        // Keep the first post-TTL request warm while one shared refresh runs.
+        // The absolute max-stale boundary below prevents persistent failures
+        // from extending this stale-while-revalidate window indefinitely.
+        startMemorySearchCorpusBuild(runtime, roomId, slot);
+        return cached;
+      }
+    } else {
+      // A changed/unknown count makes both the cached corpus and any older
+      // background refresh ineligible. Detach that refresh before rebuilding;
+      // otherwise this request could join a snapshot that predates the count
+      // mismatch it just observed.
+      invalidateMemorySearchCacheSlot(slot);
+    }
+  }
+  return await awaitCurrentMemorySearchCorpusBuild(
+    runtime,
+    roomId,
+    cache,
+    slot,
+  );
+}
+
+async function searchMemoryNotes(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  query: string,
+  limit: number,
+): Promise<MemorySearchHit[]> {
+  const corpus = await getMemorySearchCorpus(runtime, roomId);
+
+  const hits: MemorySearchHit[] = rankWithIndex(
     query,
-    candidates,
-    (c) => c.text,
+    corpus.candidates,
+    corpus.bm25,
   )
     .filter(({ score }) => score > 0)
     .map(({ item, score }) => ({
@@ -496,6 +809,7 @@ export async function handleMemoryRoutes(
       },
     });
     await runtime.createMemory(message, "messages");
+    invalidateMemorySearchCache(runtime, roomId);
     json(res, {
       ok: true,
       id: message.id,
@@ -753,6 +1067,7 @@ export async function handleMemoryRoutes(
 
     if (method === "DELETE") {
       await runtime.deleteMemory(memoryId);
+      invalidateMemorySearchCache(runtime, existing.roomId);
       json(res, { deleted: true, id: memoryId });
       return true;
     }
@@ -795,6 +1110,7 @@ export async function handleMemoryRoutes(
       content: nextContent,
       embedding,
     });
+    invalidateMemorySearchCache(runtime, existing.roomId);
 
     const updated = await runtime.getMemoryById(memoryId);
     json(res, { updated: true, id: memoryId, memory: updated });
