@@ -6,9 +6,9 @@
  * rather than bisect a pair, in both the no-whitespace fallback path and the
  * fence-preserving path.
  */
-import { toWellFormedUnicode } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { chunkDiscordText, MIN_CHUNK_CHARS } from "../messaging.ts";
+import { chunkDiscordText } from "../messaging.ts";
 
 // toWellFormedUnicode only rewrites lone surrogates, so an unmodified
 // round-trip is a real (and portable -- it has its own manual-scan fallback
@@ -53,55 +53,68 @@ describe("chunkDiscordText surrogate-pair safety", () => {
 		expect(chunks.join("")).toBe(text);
 	});
 
-	// maxChars: 1 forces splitLongLine's internal limit to 1 code unit -- too
-	// small to fit a surrogate pair without splitting it. Before the fix,
-	// truncateWellFormed(remaining, 1) on emoji-leading text returned "" and
-	// both branches below made zero progress per iteration; `out` grows
-	// unbounded until V8 throws `RangeError: Invalid array length` a few
-	// seconds in (verified: reverting the source fix makes both tests below
-	// fail with that RangeError, not a hang). These are load-bearing.
-	//
-	// maxChars: 1 is below MIN_CHUNK_CHARS, so chunkDiscordText raises it to
-	// MIN_CHUNK_CHARS (2) -- the load-bearing chunk.length assertion checks
-	// against that *effective* bound, not the literal requested value, since
-	// no cut below it can stay well-formed (see ChunkDiscordTextOpts.maxChars).
-	it("terminates, stays well formed, and honors the effective bound at maxChars: 1 (no-whitespace path)", () => {
+	// maxChars: 1 is too small to fit a surrogate pair without splitting it
+	// (truncateWellFormed(remaining, 1) on emoji-leading text returns "").
+	// Before the round-1 fix that made zero progress per loop iteration --
+	// `out` grew unbounded until V8 threw `RangeError: Invalid array length`
+	// a few seconds in. A transport limit is a hard cap, not advisory: a
+	// bound too small for even one well-formed unit must fail closed with a
+	// typed error instead of silently widening past it (matching the
+	// fail-closed contract already merged for plugin-slack). These are
+	// load-bearing: reverting the fix makes both tests below fail (the
+	// call either hangs/crashes or returns an over-limit chunk instead of
+	// throwing).
+	it("fails closed at maxChars: 1 with emoji-leading content (no-whitespace path)", () => {
 		const text = "\u{1F600}".repeat(5);
-		const chunks = chunkDiscordText(text, { maxChars: 1, maxLines: 999 });
 
-		expect(chunks.length).toBeGreaterThan(1);
-		for (const chunk of chunks) {
-			expect(isWellFormedString(chunk)).toBe(true);
-			expect(chunk.length).toBeLessThanOrEqual(MIN_CHUNK_CHARS);
+		try {
+			chunkDiscordText(text, { maxChars: 1, maxLines: 999 });
+			expect.unreachable();
+		} catch (err) {
+			expect(err).toBeInstanceOf(ElizaError);
+			expect((err as ElizaError).code).toBe("DISCORD_CHUNK_LIMIT_TOO_SMALL");
 		}
-		expect(chunks.join("")).toBe(text);
 	}, 5_000);
 
-	// At maxChars: 1 the fence delimiter itself (```, 3 ASCII chars) no longer
-	// fits the budget, so splitLongLine shreds it across chunks like any other
-	// line -- a real but pre-existing, orthogonal characteristic of degenerate
-	// tiny bounds that has nothing to do with surrogate pairs, and no chunk
-	// length bound is provable here. Only what this PR guarantees is checked:
-	// termination and surrogate-pair well-formedness. The realistic
-	// wrapper-accounting case (fence marker comfortably fits the budget) is
-	// covered separately below.
-	it("terminates and stays well formed at maxChars: 1 (fenced/preserve-whitespace path)", () => {
+	// At maxChars: 1 the fence delimiter itself (```, 3 ASCII chars) can't fit
+	// the reservation either -- this must fail closed at the fence-close
+	// reservation, before ever attempting to split the emoji body.
+	it("fails closed at maxChars: 1 on a fenced/preserve-whitespace payload", () => {
 		const body = "\u{1F600}".repeat(5);
 		const text = `\`\`\`\n${body}\n\`\`\``;
-		const chunks = chunkDiscordText(text, { maxChars: 1, maxLines: 999 });
 
-		expect(chunks.length).toBeGreaterThan(1);
-		for (const chunk of chunks) {
-			expect(isWellFormedString(chunk)).toBe(true);
+		try {
+			chunkDiscordText(text, { maxChars: 1, maxLines: 999 });
+			expect.unreachable();
+		} catch (err) {
+			expect(err).toBeInstanceOf(ElizaError);
+			expect((err as ElizaError).code).toBe("DISCORD_CHUNK_LIMIT_TOO_SMALL");
 		}
 	}, 5_000);
 
-	// The fence-reservation fallback used to silently drop back to the full
-	// (unreserved) maxChars whenever the closing marker's width made the
-	// reserved budget go non-positive, letting a chunk overrun by the fence's
-	// entire width. At a small-but-sane bound (large enough for the marker to
-	// actually fit) every chunk -- including the ones that close and reopen
-	// the fence across a split -- must stay within the requested maxChars.
+	it("rejects a non-positive-integer maxChars instead of silently coercing it", () => {
+		for (const invalid of [0, -1, 1.5, NaN, Infinity, -Infinity]) {
+			try {
+				chunkDiscordText("hello world", { maxChars: invalid });
+				expect.unreachable();
+			} catch (err) {
+				expect(err).toBeInstanceOf(ElizaError);
+				expect((err as ElizaError).code).toBe("DISCORD_CHUNK_LIMIT_INVALID");
+			}
+		}
+	});
+
+	// Two related overrun bugs, both load-bearing here: (1) the fence
+	// reservation used to silently drop back to the full (unreserved)
+	// maxChars whenever the closing marker's width made the reserved budget
+	// go non-positive; (2) when a segment got flushed mid-fence, `current`
+	// was reset to the fence's re-opening line and then the segment was
+	// appended unconditionally, without accounting for that re-opening
+	// prefix's own width, so a segment sized right up to the (already
+	// reserved) budget still overran once the prefix was added. At a
+	// small-but-sane bound (large enough for the marker to actually fit)
+	// every chunk -- including ones that close and reopen the fence across a
+	// split -- must stay within the requested maxChars.
 	it("keeps every chunk within maxChars when closing/reopening a fence at a small bound", () => {
 		const maxChars = 10;
 		const body = `x${"\u{1F600}".repeat(30)}`;

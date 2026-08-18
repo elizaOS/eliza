@@ -3,7 +3,7 @@
  * length limit, escaping Discord markdown, and extracting user mentions from
  * message content.
  */
-import { truncateWellFormed } from "@elizaos/core";
+import { ElizaError, truncateWellFormed } from "@elizaos/core";
 import type { Guild, MessageReaction } from "discord.js";
 
 /**
@@ -11,16 +11,16 @@ import type { Guild, MessageReaction } from "discord.js";
  */
 export interface ChunkDiscordTextOpts {
 	/**
-	 * Max characters per Discord message. Default: 2000.
+	 * Max characters per Discord message. Default: 2000. Must be a positive
+	 * integer.
 	 *
-	 * Values below {@link MIN_CHUNK_CHARS} are raised to it: `truncateWellFormed`
-	 * cannot guarantee a non-empty, well-formed cut below the width of a UTF-16
-	 * surrogate pair (an astral-plane emoji), so a smaller request can't be
-	 * honored exactly. Even at or above the floor, a chunk that closes an open
-	 * fenced code block or reasoning-italics wrapper may exceed this bound by
-	 * the wrapper's own fixed width -- there's no valid split short enough to
-	 * fit an arbitrarily small budget and still close the wrapper (e.g. you
-	 * cannot emit a closing ` ``` ` in fewer than 3 characters).
+	 * A transport limit is a hard cap, never advisory: `chunkDiscordText`
+	 * never emits a chunk longer than this value. If the requested bound is
+	 * too small to hold even one well-formed unit of the content (a surrogate
+	 * pair, or a wrapper like a closing code-fence marker plus one unit of
+	 * body), it throws an {@link ElizaError} (`DISCORD_CHUNK_LIMIT_INVALID` /
+	 * `DISCORD_CHUNK_LIMIT_TOO_SMALL`) instead of silently widening past it --
+	 * matching the fail-closed contract used by `chunkSlackText`.
 	 */
 	maxChars?: number;
 	/**
@@ -41,12 +41,44 @@ interface OpenFence {
 
 const DEFAULT_MAX_CHARS = 2000;
 const DEFAULT_MAX_LINES = 17;
-// The widest atomic unit truncateWellFormed can guarantee a cut around: a
-// UTF-16 surrogate pair (2 code units). Below this, no cut can both make
-// progress and stay well-formed when the text starts with an astral-plane
-// character, so every maxChars-derived limit floors here instead of at 1.
-export const MIN_CHUNK_CHARS = 2;
 const FENCE_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/;
+
+/**
+ * A hard per-chunk cap can never be honored for arbitrary text unless it's a
+ * positive integer that can hold at least one UTF-16 code unit; anything
+ * else (NaN, 0, negative, fractional) has no sensible "effective bound" and
+ * must fail closed instead of silently coercing into one.
+ */
+function requireValidChunkLimit(maxChars: number, fnName: string): void {
+	if (!Number.isInteger(maxChars) || maxChars < 1) {
+		throw new ElizaError(
+			`${fnName}: maxChars must be a positive integer, got ${maxChars}`,
+			{ code: "DISCORD_CHUNK_LIMIT_INVALID", context: { fnName, maxChars } },
+		);
+	}
+}
+
+/**
+ * `effectiveLimit` (the actual per-chunk budget after wrapper/fence
+ * accounting) is too small to hold even one well-formed unit of the
+ * remaining text. Widening past the caller's requested `maxChars` would
+ * silently break the "never emits more than maxChars" contract, so this
+ * fails closed instead -- matching the pattern already merged for
+ * `chunkSlackText`.
+ */
+function chunkLimitTooSmall(
+	fnName: string,
+	effectiveLimit: number,
+	maxChars: number,
+): never {
+	throw new ElizaError(
+		`${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) cannot hold the next well-formed unit without exceeding the requested bound`,
+		{
+			code: "DISCORD_CHUNK_LIMIT_TOO_SMALL",
+			context: { fnName, effectiveLimit, maxChars },
+		},
+	);
+}
 
 function countLines(text: string): number {
 	if (!text) {
@@ -88,25 +120,39 @@ function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
 	return `${text}${closeLine}`;
 }
 
-// truncateWellFormed(remaining, limit) returns "" only when limit === 1 and
+// truncateWellFormed(remaining, limit) returns "" only when `limit` can't
+// hold even one well-formed unit of `remaining` (e.g. limit === 1 and
 // `remaining` opens with a surrogate pair: the pair needs 2 code units and
-// truncateWellFormed refuses to split it, so it backs the cut off to 0. An
-// empty chunk makes zero progress, turning the caller's while-loop infinite
-// instead of just malformed. Callers now floor `limit` at MIN_CHUNK_CHARS
-// (2), which already fits any single surrogate pair, so this widening is
-// unreachable through chunkDiscordText/chunkDiscordTextWithMode -- kept as a
-// defensive guarantee for any future direct caller of splitLongLine.
-function takeWellFormedChunk(text: string, limit: number): string {
+// truncateWellFormed refuses to split it). An empty chunk would make zero
+// progress, turning the caller's while-loop infinite -- and silently
+// widening past `limit` would violate the maxChars contract instead, so
+// this fails closed.
+function takeWellFormedChunkOrThrow(
+	text: string,
+	limit: number,
+	requestedMaxChars: number,
+): string {
 	const chunk = truncateWellFormed(text, limit);
-	return chunk.length > 0 ? chunk : truncateWellFormed(text, limit + 1);
+	if (chunk.length === 0) {
+		chunkLimitTooSmall(
+			"chunkDiscordText (splitLongLine)",
+			limit,
+			requestedMaxChars,
+		);
+	}
+	return chunk;
 }
 
+// `maxChars` here is the already-validated per-line character budget (never
+// less than 1 -- see the callers' fail-closed checks); `requestedMaxChars` is
+// only threaded through for error context.
 function splitLongLine(
 	line: string,
 	maxChars: number,
 	opts: { preserveWhitespace: boolean },
+	requestedMaxChars: number,
 ): string[] {
-	const limit = Math.max(MIN_CHUNK_CHARS, Math.floor(maxChars));
+	const limit = Math.floor(maxChars);
 	if (line.length <= limit) {
 		return [line];
 	}
@@ -120,13 +166,21 @@ function splitLongLine(
 			// emoji), splitting one character across two chunks as a lone high
 			// surrogate + lone low surrogate. truncateWellFormed backs the cut off
 			// by one unit instead.
-			const chunk = takeWellFormedChunk(remaining, limit);
+			const chunk = takeWellFormedChunkOrThrow(
+				remaining,
+				limit,
+				requestedMaxChars,
+			);
 			out.push(chunk);
 			remaining = remaining.slice(chunk.length);
 			continue;
 		}
 
-		const window = takeWellFormedChunk(remaining, limit);
+		const window = takeWellFormedChunkOrThrow(
+			remaining,
+			limit,
+			requestedMaxChars,
+		);
 		let breakIdx = -1;
 		for (let i = window.length - 1; i >= 0; i--) {
 			if (/\s/.test(window[i])) {
@@ -205,10 +259,8 @@ export function chunkDiscordText(
 	text: string,
 	opts: ChunkDiscordTextOpts = {},
 ): string[] {
-	const requestedMaxChars = Math.max(
-		MIN_CHUNK_CHARS,
-		Math.floor(opts.maxChars ?? DEFAULT_MAX_CHARS),
-	);
+	const requestedMaxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
+	requireValidChunkLimit(requestedMaxChars, "chunkDiscordText");
 	const maxLines = Math.max(1, Math.floor(opts.maxLines ?? DEFAULT_MAX_LINES));
 
 	const body = text ?? "";
@@ -216,13 +268,26 @@ export function chunkDiscordText(
 		return [];
 	}
 
+	// Reserves room for the closing/reopening "_" a split reasoning-italics
+	// chunk needs (see rebalanceReasoningItalics). Only validated once
+	// chunking actually runs -- a payload that already fits `requestedMaxChars`
+	// as a single chunk never needs the reservation, so a tiny bound the
+	// caller only intended for other content shouldn't reject it.
 	const maxChars = isReasoningItalicsPayload(body)
-		? Math.max(MIN_CHUNK_CHARS, requestedMaxChars - 2)
+		? requestedMaxChars - 2
 		: requestedMaxChars;
 
 	const alreadyOk = body.length <= maxChars && countLines(body) <= maxLines;
 	if (alreadyOk) {
 		return [body];
+	}
+
+	if (maxChars <= 0) {
+		chunkLimitTooSmall(
+			"chunkDiscordText (reasoning-italics reservation)",
+			maxChars,
+			requestedMaxChars,
+		);
 	}
 
 	const lines = body.split("\n");
@@ -271,19 +336,46 @@ export function chunkDiscordText(
 		const effectiveMaxChars = maxChars - reserveChars;
 		const effectiveMaxLines = maxLines - reserveLines;
 		// A closing fence marker (` ``` `, or longer/indented) can be wider than
-		// maxChars itself at small bounds; reserving its full width would drive
-		// charLimit non-positive. Floor at MIN_CHUNK_CHARS instead of falling
-		// back to the unreserved maxChars, so a chunk that ends up closing the
-		// fence exceeds the requested bound only by the fence marker's own
-		// (fixed, known) width -- not by silently dropping the reservation.
-		const charLimit =
-			effectiveMaxChars > 0 ? effectiveMaxChars : MIN_CHUNK_CHARS;
+		// maxChars itself at small bounds. Reserving its full width can drive
+		// the remaining content budget non-positive -- there's no valid split
+		// that both fits the requested bound and still closes the fence, so
+		// this fails closed instead of silently falling back to the unreserved
+		// maxChars (which let a flushed chunk overrun by the fence's width).
+		if (effectiveMaxChars <= 0) {
+			chunkLimitTooSmall(
+				"chunkDiscordText (fence-close reservation)",
+				effectiveMaxChars,
+				requestedMaxChars,
+			);
+		}
+		const charLimit = effectiveMaxChars;
 		const lineLimit = effectiveMaxLines > 0 ? effectiveMaxLines : maxLines;
-		const prefixLen = current.length > 0 ? current.length + 1 : 0;
-		const segmentLimit = Math.max(MIN_CHUNK_CHARS, charLimit - prefixLen);
-		const segments = splitLongLine(originalLine, segmentLimit, {
-			preserveWhitespace: wasInsideFence,
-		});
+		// The append loop below flushes `current` first whenever a segment
+		// wouldn't fit alongside it, so segments don't need to be pre-shrunk by
+		// the current buffer's length. But when `wasInsideFence`, that flush
+		// reopens `current` with the fence's own opening line + a newline
+		// before appending the segment -- so a segment sized right up to
+		// `charLimit` would overrun once that reopened prefix is included.
+		// Reserve room for it too, symmetric to the close-fence reservation
+		// above.
+		const reopenPrefixLen =
+			wasInsideFence && openFence ? openFence.openLine.length + 1 : 0;
+		const segmentBudget = charLimit - reopenPrefixLen;
+		if (segmentBudget <= 0) {
+			chunkLimitTooSmall(
+				"chunkDiscordText (fence-reopen reservation)",
+				segmentBudget,
+				requestedMaxChars,
+			);
+		}
+		const segments = splitLongLine(
+			originalLine,
+			segmentBudget,
+			{
+				preserveWhitespace: wasInsideFence,
+			},
+			requestedMaxChars,
+		);
 
 		for (let segIndex = 0; segIndex < segments.length; segIndex++) {
 			const segment = segments[segIndex];
@@ -365,10 +457,10 @@ export function chunkDiscordTextWithMode(
 		return chunkDiscordText(text, opts);
 	}
 
-	const lineChunks = chunkMarkdownTextByNewline(
-		text,
-		Math.max(1, Math.floor(opts.maxChars ?? DEFAULT_MAX_CHARS)),
-	);
+	const requestedMaxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
+	requireValidChunkLimit(requestedMaxChars, "chunkDiscordTextWithMode");
+
+	const lineChunks = chunkMarkdownTextByNewline(text, requestedMaxChars);
 
 	const chunks: string[] = [];
 	for (const line of lineChunks) {
