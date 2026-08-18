@@ -3429,11 +3429,13 @@ export class OrchestratorTaskService extends Service {
     } catch (error) {
       // error-policy:J7 auto-submit is fire-and-forget from the event bridge;
       // failure is loud here and the user still gets the completion relay.
-      this.log("warn", "auto-submit of provisioned workspace failed", {
-        taskId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const submitError =
+        error instanceof Error ? error.message : String(error);
+      this.log(
+        "warn",
+        `auto-submit of provisioned workspace failed (task=${taskId} session=${sessionId}): ${submitError}`,
+        { taskId, sessionId, error: submitError },
+      );
       // Re-arm: a failed submit must not permanently claim the once-per-task
       // stamp — a later genuine task_complete (verify re-engage, retry)
       // deserves another attempt.
