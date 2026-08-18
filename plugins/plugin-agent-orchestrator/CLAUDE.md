@@ -158,7 +158,6 @@ plugins/plugin-agent-orchestrator/
     actions/
       tasks.ts                   TASKS parent action + all sub-action runners
       common.ts                  Shared action helpers (getAcpService, labelFor, etc.)
-      elizaos-capability.ts      elizaOS-specific capability action
       sandbox-stub.ts            Stub actions for sandboxed/no-terminal runtimes
     providers/
       available-agents.ts        AVAILABLE_AGENTS provider

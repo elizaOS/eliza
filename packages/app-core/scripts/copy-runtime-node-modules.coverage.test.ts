@@ -40,6 +40,7 @@ import {
   parseArgs,
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
+  recordMissingRuntimeDependency,
   recursiveRemoveErrorDetail,
   selectCopyTargetNodeModules,
   selectResolvedCandidate,
@@ -57,6 +58,50 @@ import {
 } from "./runtime-package-manifest";
 
 let tmpDir: string;
+
+describe("recordMissingRuntimeDependency", () => {
+  it("routes missing hard and optional queue entries to distinct result sets", () => {
+    const required = new Set<string>();
+    const optional = new Set<string>();
+
+    recordMissingRuntimeDependency(
+      { name: "hard-dependency", required: true },
+      required,
+      optional,
+    );
+    recordMissingRuntimeDependency(
+      { name: "optional-peer", required: false },
+      required,
+      optional,
+    );
+
+    expect([...required]).toEqual(["hard-dependency"]);
+    expect([...optional]).toEqual(["optional-peer"]);
+  });
+
+  it("keeps required classification regardless of queue traversal order", () => {
+    for (const requiredFirst of [true, false]) {
+      const required = new Set<string>();
+      const optional = new Set<string>();
+      const entries = requiredFirst
+        ? [
+            { name: "shared-dependency", required: true },
+            { name: "shared-dependency", required: false },
+          ]
+        : [
+            { name: "shared-dependency", required: false },
+            { name: "shared-dependency", required: true },
+          ];
+
+      for (const entry of entries) {
+        recordMissingRuntimeDependency(entry, required, optional);
+      }
+
+      expect([...required]).toEqual(["shared-dependency"]);
+      expect([...optional]).toEqual([]);
+    }
+  });
+});
 
 function writeManifest(
   name: string,
