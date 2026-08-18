@@ -3,7 +3,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { interact } from "./viewManagerData";
+import {
+	getViewEntriesWithFetch,
+	interact,
+	VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS,
+} from "./viewManagerData";
 
 const viewList = {
 	views: [
@@ -117,7 +121,10 @@ describe("interact() error paths", () => {
 		await expect(interact("open-view", { viewId: "ghost" })).rejects.toThrow(
 			'View "ghost" not found',
 		);
-		expect(fetchMock).toHaveBeenCalledWith("/api/views");
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/views",
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
 		expect(
 			fetchMock.mock.calls.some((c) => String(c[0]).includes("/navigate")),
 		).toBe(false);
@@ -132,3 +139,50 @@ describe("interact() error paths", () => {
 		);
 	});
 });
+
+function stallUntilAborted(): typeof fetch {
+	return ((_input, init) =>
+		new Promise<Response>((_resolve, reject) => {
+			const signal = init?.signal;
+			if (!signal) throw new Error("expected view-manager abort signal");
+			signal.addEventListener("abort", () => reject(signal.reason), {
+				once: true,
+			});
+		})) as typeof fetch;
+}
+
+describe("view-manager list request deadline", () => {
+	it("keeps a documented UI fetch budget", () => {
+		expect(VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS).toBe(15_000);
+	});
+
+	it("aborts a stalled /api/views GET at the injected deadline", async () => {
+		await expect(
+			getViewEntriesWithFetch(undefined, stallUntilAborted(), 10),
+		).rejects.toMatchObject({ name: "TimeoutError" });
+	});
+
+	it("surfaces a provider error from a completed /api/views GET", async () => {
+		const fetchImpl: typeof fetch = async () =>
+			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+		await expect(
+			getViewEntriesWithFetch(undefined, fetchImpl, 1_000),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			message: "GET /api/views returned HTTP 503",
+		});
+	});
+
+	it("uses the injected fetch for a successful /api/views GET", async () => {
+		const signals: AbortSignal[] = [];
+		const fetchImpl: typeof fetch = async (_input, init) => {
+			if (init?.signal) signals.push(init.signal);
+			return jsonResponse(viewList);
+		};
+		const entries = await getViewEntriesWithFetch(undefined, fetchImpl, 1_000);
+		expect(signals).toHaveLength(1);
+		expect(signals[0]?.aborted).toBe(false);
+		expect(entries.map((entry) => entry.id)).toEqual(["wallet", "messages"]);
+	});
+});
+

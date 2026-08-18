@@ -204,11 +204,18 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 	};
 }
 
-export async function fetchViewEntries(
-	viewType?: "gui" | "tui" | "xr",
+/** View-list GET is a short UI hop — same 15s Fal #21205 family. */
+export const VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS = 15_000;
+
+export async function getViewEntriesWithFetch(
+	viewType: "gui" | "tui" | "xr" | undefined,
+	fetchImpl: typeof fetch,
+	timeoutMs: number = VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS,
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetch(`/api/views${qs}`);
+	const res = await fetchImpl(`/api/views${qs}`, {
+		signal: AbortSignal.timeout(timeoutMs),
+	});
 	if (!res.ok) {
 		throw new ElizaError(`GET /api/views returned HTTP ${res.status}`, {
 			code: "VIEW_MANAGER_LIST_HTTP_FAILED",
@@ -234,6 +241,12 @@ export async function fetchViewEntries(
 		);
 	}
 	return data.views.map(parseViewEntry);
+}
+
+export async function fetchViewEntries(
+	viewType?: "gui" | "tui" | "xr",
+): Promise<ViewEntry[]> {
+	return getViewEntriesWithFetch(viewType, globalThis.fetch);
 }
 
 export async function requestViewNavigation(
