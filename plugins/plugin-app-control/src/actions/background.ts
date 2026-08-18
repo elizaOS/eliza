@@ -671,7 +671,13 @@ export function createBackgroundAction(
 		// GENERATE_CODE/CREATE_FILE), and a context-gated BACKGROUND then never
 		// reaches the planner surface at all — the programmable-shader ask
 		// belongs to this action, so it must survive that classification (#11360).
-		contexts: ["general", "settings", "media", "code"],
+		// NOT "code": the wallpaper action advertised itself on every coding
+		// turn, and "give the countdown PAGE a purple gradient background"
+		// repainted the agent's own UI instead of editing the page (live
+		// 2026-08-18 — the planner took the shinier BACKGROUND match over the
+		// routed coding task). A genuine mid-coding wallpaper ask classifies
+		// as general/settings/media on its own.
+		contexts: ["general", "settings", "media"],
 		contextGate: { anyOf: ["general", "settings", "media", "code"] },
 		roleGate: { minRole: "USER" },
 		similes: [
