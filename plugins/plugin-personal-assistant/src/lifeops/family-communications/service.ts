@@ -13,7 +13,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,
-  ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
@@ -1088,7 +1088,7 @@ export class FamilyCommunicationsRuntimeService extends Service {
       runtime.getServiceLoadPromise(
         FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
       ),
-      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new FamilyCommunicationsRuntimeService(runtime);
     await service.family.initialize();

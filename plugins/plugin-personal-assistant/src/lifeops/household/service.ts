@@ -15,7 +15,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
-  ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import {
   type Entity,
@@ -3048,7 +3048,7 @@ export class HouseholdCoordinationRuntimeService extends Service {
   ): Promise<HouseholdCoordinationRuntimeService> {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
-      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();

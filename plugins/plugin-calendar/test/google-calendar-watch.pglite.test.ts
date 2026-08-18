@@ -350,6 +350,7 @@ async function createHarness(
     google?: FakeGoogleCalendar;
     initialize?: boolean;
     webhookEnabled?: boolean;
+    calendarBeforeScheduling?: boolean;
   } = {},
 ): Promise<Harness> {
   const pg = args.pg ?? new PGlite();
@@ -385,6 +386,12 @@ async function createHarness(
       if (name === ScheduledTaskRunnerService.serviceType) return scheduling;
       return null;
     },
+    hasService: (name: string) =>
+      name === ScheduledTaskRunnerService.serviceType && scheduling !== null,
+    getServiceRegistrationStatus: (name: string) =>
+      name === ScheduledTaskRunnerService.serviceType && scheduling !== null
+        ? "registered"
+        : "unknown",
     getServiceLoadPromise: async (name: string) => {
       if (name === "calendar") return calendar;
       if (name === ScheduledTaskRunnerService.serviceType) return scheduling;
@@ -401,8 +408,17 @@ async function createHarness(
     },
   } as unknown as IAgentRuntime;
 
-  scheduling = await ScheduledTaskRunnerService.start(runtime);
-  calendar = await CalendarService.start(runtime);
+  if (args.calendarBeforeScheduling) {
+    calendar = await CalendarService.start(runtime);
+    // Let the detached boot installer observe the missing deferred declaration
+    // before the real runner is made available.
+    await Promise.resolve();
+    await Promise.resolve();
+    scheduling = await ScheduledTaskRunnerService.start(runtime);
+  } else {
+    scheduling = await ScheduledTaskRunnerService.start(runtime);
+    calendar = await CalendarService.start(runtime);
+  }
   const gate: CalendarHostGate = {
     getGoogleConnectorAccounts: async () => [status(grant(ACCOUNT_ID))],
     resolveGuestAvailabilityGrants: async () => {
@@ -489,7 +505,7 @@ async function waitForMaintenanceTask(harness: Harness): Promise<string> {
   const runner = getScheduledTaskRunner(harness.runtime, {
     agentId: AGENT_ID,
   });
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
     const tasks = await runner.list({ kind: "watcher" });
     const maintenance = tasks.find(
       (task) => task.metadata?.calendarGoogleWatchOperation === "maintenance",
@@ -529,6 +545,27 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       const harness = harnesses.pop();
       if (harness) await harness.close();
     }
+  });
+
+  it("installs one maintenance task when Calendar starts before the deferred runner", async () => {
+    const harness = await createHarness({ calendarBeforeScheduling: true });
+    harnesses.push(harness);
+
+    const maintenanceTaskId = await waitForMaintenanceTask(harness);
+    const tasks = await getScheduledTaskRunner(harness.runtime, {
+      agentId: AGENT_ID,
+    }).list({ kind: "watcher" });
+    const maintenanceTasks = tasks.filter(
+      (task) => task.metadata?.calendarGoogleWatchOperation === "maintenance",
+    );
+
+    expect(maintenanceTasks.map((task) => task.taskId)).toEqual([
+      maintenanceTaskId,
+    ]);
+    expect(harness.reportError).not.toHaveBeenCalledWith(
+      "calendar:google-watch-install",
+      expect.anything(),
+    );
   });
 
   it("does not create or accept push channels when the webhook is disabled", async () => {
