@@ -422,6 +422,18 @@ describe("DesktopManager main window controls", () => {
     await manager.dispose();
   });
 
+  it("lets a full onboarding surface yield to the external sign-in browser", async () => {
+    const { manager, window } = createManagerWithWindow();
+    manager.enableBottomBarReanchor();
+
+    await manager.setBottomBarSurfaceState({ state: "MAXIMIZED" });
+    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+
+    await manager.setBottomBarSurfaceState({ state: "OPEN_HALF_OR_OVER" });
+    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    await manager.dispose();
+  });
+
   it("applies a chip frame requested before the native window becomes available", async () => {
     vi.useFakeTimers();
     try {

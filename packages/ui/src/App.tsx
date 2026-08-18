@@ -1958,10 +1958,6 @@ function ShellFoundationMount({
     useWebChatPanel,
   ]);
   useEffect(() => {
-    if (!useWebChatPanel || !firstRunPinnedOpen || shellIsOpen) return;
-    controller?.open();
-  }, [controller, firstRunPinnedOpen, shellIsOpen, useWebChatPanel]);
-  useEffect(() => {
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
     }
