@@ -825,6 +825,8 @@ function proxyGeneratedAgentRequest(
  * a non-API request to `<app-slug>.<suffix>` is served from the app's active
  * frontend deployment. We rewrite it to the internal public serve route (which
  * has DB + R2 bootstrapped) rather than resolving in this thin entrypoint.
+ * The rewrite preserves the request hostname, which the serve route reads as
+ * the ONLY trusted host source — no `?host=` override is attached or honored.
  * Opt-in: returns null (no-op) when the suffix env is unset. `/api/*` and
  * `/steward/*` on a system host still reach the API (so the page-view beacon and
  * app APIs work), so only non-API paths are rewritten.
@@ -846,7 +848,6 @@ export function getHostedFrontendServeRewrite(
 
   const rewritten = new URL(url);
   rewritten.pathname = `/api/v1/hosted-frontend/serve${url.pathname === "/" ? "" : url.pathname}`;
-  rewritten.searchParams.set("host", hostname);
   return rewritten;
 }
 

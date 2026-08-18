@@ -533,7 +533,10 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
       env,
     );
     expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve/dashboard");
-    expect(out?.searchParams.get("host")).toBe("acme.sites.eliza.app");
+    // The hostname is preserved in the rewritten URL and is the serve route's
+    // only trusted host source; no `?host=` override is attached.
+    expect(out?.hostname).toBe("acme.sites.eliza.app");
+    expect(out?.searchParams.get("host")).toBeNull();
   });
 
   test("rewrites the root path", () => {

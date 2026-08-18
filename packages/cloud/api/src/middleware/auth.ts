@@ -16,6 +16,7 @@ import type { MiddlewareHandler } from "hono";
 
 import { jsonError } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
@@ -294,7 +295,7 @@ function isLocalDevAdminRequest(
         action: "admin.action",
         result: "success",
         resource: { type: "endpoint", id: url.pathname },
-        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: getRequestIp(c),
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: { reason: "local_dev_admin_bypass" },

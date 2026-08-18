@@ -39,6 +39,7 @@ import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
+import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
 
@@ -443,6 +444,10 @@ export function createApp(): Hono<AppEnv> {
   );
 
   app.use("*", authMiddleware);
+  // CSRF: cookie-authenticated mutations must carry a first-party Origin and a
+  // non-simple request marker; programmatic credentials and safe methods pass
+  // through (see middleware/cookie-mutation-guard.ts).
+  app.use("*", cookieMutationGuardMiddleware);
 
   app.all("/steward", embeddedStewardHandler);
   app.all("/steward/*", embeddedStewardHandler);
