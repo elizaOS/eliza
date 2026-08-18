@@ -27,10 +27,15 @@ import { getLocalDateKey, getZonedDateParts } from "../time.js";
 // Without the marker the slice looks like a sentence the sender wrote, which
 // confuses readers when content gets clipped mid-word.
 function truncateForPreview(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
+  const limit = Number.isFinite(maxLength)
+    ? Math.max(0, Math.floor(maxLength))
+    : 0;
+  if (value.length <= limit) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  if (limit === 0) return "";
+  if (limit === 1) return "…";
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
 }
 
 // Build a "Display Name <email@host>" string when both are available, or
