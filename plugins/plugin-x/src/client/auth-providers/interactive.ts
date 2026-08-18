@@ -81,6 +81,7 @@ export async function waitForLoopbackCallback(
       else reject(new Error("OAuth callback finished without result"));
       try {
         server.close();
+        server.closeAllConnections();
       } catch {
         // ignore
       }

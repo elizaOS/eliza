@@ -542,5 +542,6 @@ export async function runAndroidBridgeCli(): Promise<void> {
 
 	await stopped;
 	server.close();
+	server.closeAllConnections();
 	_logToFile("[android-bridge] shutdown signal received, exiting.");
 }
