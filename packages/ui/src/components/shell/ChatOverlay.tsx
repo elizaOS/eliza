@@ -83,6 +83,7 @@ import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
+  resolveNativeKeyboardLift,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   shouldInstallStandaloneBottomReclaim,
 } from "../../platform/standalone-bottom-reclaim";
@@ -2922,10 +2923,11 @@ export function ChatOverlay({
       for (const handle of handles) handle.remove();
     };
   }, []);
-  // Track the layout-viewport height with the keyboard DOWN. On Android the
-  // WebView window shrinks (adjustResize) when the keyboard opens, so the fixed
-  // overlay's `bottom: 0` already rises with it; on iOS (`resize: "body"`) the
-  // layout height is unchanged and the fixed composer stays behind the keyboard.
+  // Track the layout-viewport height with the keyboard DOWN. Android's
+  // adjustResize window shrink moves fixed descendants with the viewport. On
+  // iOS, WebKit's body resize can shrink innerHeight by the full keyboard frame
+  // while the fixed overlay still stays behind the keyboard, so that shrink is
+  // not proof that the composer was lifted.
   const baseInnerHeightRef = React.useRef(viewport.innerHeight);
   React.useEffect(() => {
     if (nativeKeyboardHeight === 0) {
@@ -2933,18 +2935,21 @@ export function ChatOverlay({
     }
   }, [nativeKeyboardHeight, viewport.innerHeight]);
 
-  // Lift the composer above the keyboard by ONLY the part the layout didn't
-  // already absorb. On Android the window shrank by ~the keyboard height
-  // (layoutShrink ≈ keyboardHeight), so the extra native lift is ~0 — without
-  // this the chat double-counts and jumps a whole keyboard height too high. On
-  // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
-  // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
-  // the visualViewport-derived inset.
+  // Lift the composer by the platform-owned remainder. Android's layout shrink
+  // is a real absorbed lift, so subtracting it prevents a double keyboard jump.
+  // iOS body resize is not: the installed landscape trace reports both a 276px
+  // keyboard and a 276px innerHeight shrink while fixed chat chrome remains
+  // behind it, so iOS must retain the full native frame. Web (no native plugin)
+  // keeps the visualViewport-derived inset.
   const layoutShrink = Math.max(
     0,
     baseInnerHeightRef.current - viewport.innerHeight,
   );
-  const nativeLift = Math.max(0, nativeKeyboardHeight - layoutShrink);
+  const nativeLift = resolveNativeKeyboardLift({
+    nativeKeyboardHeight,
+    layoutShrink,
+    layoutViewportAbsorbsKeyboard: !isIOS,
+  });
   const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
   const keyboardLiftActive = effectiveKeyboardInset > 0;
   // A REAL keyboard (not the few-px inset mobile emulation reports) blocks the
