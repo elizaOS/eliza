@@ -150,6 +150,16 @@ describe("VoiceLiveActivityController", () => {
     expect(plugin.end).toHaveBeenCalledWith({ phase: "ended" });
   });
 
+  it("clears an orphan as ended instead of projecting a stale error", async () => {
+    const plugin = fakePlugin();
+    const controller = new VoiceLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+    await controller.sync({ active: false, phase: "error" });
+    expect(plugin.end).toHaveBeenCalledWith({ phase: "ended" });
+  });
+
   it("serializes start before end when toggled rapidly", async () => {
     const order: string[] = [];
     const plugin = fakePlugin({

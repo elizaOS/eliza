@@ -152,7 +152,12 @@ export class VoiceLiveActivityController {
     this.lastPhase = null;
     this.nativeReconciled = true;
     if (typeof this.plugin.end === "function") {
-      await this.plugin.end(activityId ? { activityId, phase } : { phase });
+      // A relaunch has no proof that a stale native activity belongs to the
+      // current error. Only an activity owned by this controller may receive
+      // the delayed terminal-error presentation; orphan cleanup ends silently.
+      await this.plugin.end(
+        activityId ? { activityId, phase } : { phase: "ended" },
+      );
     }
   }
 }
