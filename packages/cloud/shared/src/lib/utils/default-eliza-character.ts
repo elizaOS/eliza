@@ -49,7 +49,11 @@ export function getDefaultElizaCharacterData() {
       chat: [...persona.style.chat],
       post: [...persona.style.post],
     },
-    character_data: {} as Record<string, unknown>,
+    // The characters table has no templates column. Keep character-authored
+    // failure replies in the generic data envelope rather than dropping them.
+    character_data: persona.templates
+      ? { templates: { ...persona.templates } }
+      : ({} as Record<string, unknown>),
     is_template: false,
     is_public: false,
     source: "cloud" as const,
