@@ -6,11 +6,13 @@
  * Intentionally dependency-free — only string/object inspection.
  */
 
+import {
+  formatDiagnosticError,
+  readDiagnosticProperty,
+} from "./utils/safe-diagnostic-error.js";
+
 export function formatUncaughtError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.stack ?? error.message;
-  }
-  return String(error);
+  return formatDiagnosticError(error);
 }
 
 function hasInsufficientCreditsSignal(input: string): boolean {
@@ -42,14 +44,10 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
     if (isProviderError) {
       if (hasInsufficientCreditsSignal(formatted)) return true;
 
-      const statusCode = isObject
-        ? (current as { statusCode?: number }).statusCode
-        : undefined;
+      const statusCode = readDiagnosticProperty(current, "statusCode");
       if (statusCode === 402) return true;
 
-      const responseBody = isObject
-        ? (current as { responseBody?: unknown }).responseBody
-        : undefined;
+      const responseBody = readDiagnosticProperty(current, "responseBody");
       if (
         typeof responseBody === "string" &&
         hasInsufficientCreditsSignal(responseBody)
@@ -60,12 +58,12 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
 
     if (!isObject) continue;
 
-    const errors = (current as { errors?: unknown }).errors;
+    const errors = readDiagnosticProperty(current, "errors");
     if (Array.isArray(errors)) {
       pending.push(...errors);
     }
 
-    pending.push((current as { cause?: unknown }).cause);
+    pending.push(readDiagnosticProperty(current, "cause"));
   }
 
   return false;
