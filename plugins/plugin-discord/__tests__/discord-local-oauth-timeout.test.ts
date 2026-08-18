@@ -65,6 +65,16 @@ function grantTypeOf(init?: RequestInit): string {
 
 function installRpcStubs(service: DiscordLocalService): void {
 	Object.assign(service, {
+		// CI runs ubuntu-24.04. requireConfig() throws off darwin before any
+		// OAuth fetch, so stub the platform gate and return the test credentials.
+		requireConfig: () => ({
+			enabled: true,
+			clientId: "discord-client",
+			clientSecret: "discord-secret",
+			scopes: ["rpc", "identify", "rpc.notifications.read"],
+			messageChannelIds: [],
+			sendDelayMs: 900,
+		}),
 		ensureRpcConnection: async () => undefined,
 		sendRpcCommand: async (cmd: string) => {
 			if (cmd === "AUTHORIZE") {
