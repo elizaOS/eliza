@@ -73,20 +73,30 @@ const HERO_PALETTES: readonly HeroPalette[] = [
   },
 ] as const;
 
-function trimPackagePrefix(value: string): string {
+function trimPackagePrefix(value: string | null | undefined): string {
+  if (typeof value !== "string") return "";
   return value
     .replace(/^@[^/]+\//, "")
     .replace(/^(app|plugin)-/i, "")
     .trim();
 }
 
-export function getAppHeroDisplayLabel(app: AppHeroArtworkSource): string {
+export function getAppHeroDisplayLabel(
+  app: AppHeroArtworkSource | null | undefined,
+): string {
+  if (!app || typeof app !== "object") return "";
   return trimPackagePrefix(app.displayName ?? app.name);
 }
 
-export function getAppHeroMonogram(app: AppHeroArtworkSource): string {
+export function getAppHeroMonogram(
+  app: AppHeroArtworkSource | null | undefined,
+): string {
+  if (!app || typeof app !== "object") return "?";
   const label = trimPackagePrefix(app.displayName ?? app.name);
   const words = label.split(/[\s._/-]+/).filter(Boolean);
+  if (words.length === 1) {
+    return (words[0].slice(0, 2).toUpperCase() || "?").slice(0, 2);
+  }
   const initials = words
     .slice(0, 2)
     .map((word) => word[0]?.toUpperCase() ?? "")
@@ -94,9 +104,12 @@ export function getAppHeroMonogram(app: AppHeroArtworkSource): string {
   return (initials || label.slice(0, 2).toUpperCase() || "?").slice(0, 2);
 }
 
-export function getAppHeroThemeKey(app: AppHeroArtworkSource): AppHeroThemeKey {
+export function getAppHeroThemeKey(
+  app: AppHeroArtworkSource | null | undefined,
+): AppHeroThemeKey {
+  if (!app || typeof app !== "object") return "app";
   const blob = [
-    app.name,
+    app.name ?? "",
     app.displayName ?? "",
     app.category ?? "",
     app.description ?? "",
@@ -129,8 +142,9 @@ export function getAppHeroThemeKey(app: AppHeroArtworkSource): AppHeroThemeKey {
   return "app";
 }
 
-function getHeroPalette(name: string): HeroPalette {
-  return HERO_PALETTES[hashString(name) % HERO_PALETTES.length];
+function getHeroPalette(name: string | null | undefined): HeroPalette {
+  const safeName = typeof name === "string" ? name : "app";
+  return HERO_PALETTES[hashString(safeName) % HERO_PALETTES.length];
 }
 
 function getSeededOffset(
@@ -348,17 +362,20 @@ function renderThemeMotif(
   }
 }
 
-export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
-  const palette = getHeroPalette(app.name);
-  const theme = getAppHeroThemeKey(app);
-  const seed = hashString(app.name);
+export function createGeneratedAppHeroSvg(
+  app?: AppHeroArtworkSource | null,
+): string {
+  const safeApp = app && typeof app === "object" ? app : { name: "app" };
+  const palette = getHeroPalette(safeApp.name);
+  const theme = getAppHeroThemeKey(safeApp);
+  const seed = hashString(safeApp.name || "app");
   const gridOffsetX = 16 + (seed % 14);
   const gridOffsetY = 10 + ((seed >> 4) % 10);
   const radialX = 18 + (seed % 44);
   const radialY = 10 + ((seed >> 6) % 30);
   const arcTilt = (seed % 24) - 12;
   const motif = renderThemeMotif(theme, seed, palette);
-  const title = escapeXmlText(getAppHeroDisplayLabel(app));
+  const title = escapeXmlText(getAppHeroDisplayLabel(safeApp));
 
   // The app card already renders the display name as a small label below
   // the hero. Baking the name into the generated SVG produced a duplicate
