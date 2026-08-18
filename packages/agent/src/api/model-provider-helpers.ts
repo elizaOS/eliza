@@ -15,6 +15,9 @@ import {
 import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { resolveModelsCacheDir } from "../config/paths.ts";
 
+export const DEFAULT_OPENROUTER_FETCH_TIMEOUT_MS = 10_000;
+export const DEFAULT_ANTHROPIC_CATALOG_FETCH_TIMEOUT_MS = 10_000;
+
 type ModelOption = {
   id: string;
   name: string;
@@ -398,6 +401,7 @@ export async function fetchAnthropicModels(
     if (apiKey) headers["x-api-key"] = apiKey;
     const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
       headers,
+      signal: AbortSignal.timeout(DEFAULT_ANTHROPIC_CATALOG_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
@@ -498,6 +502,7 @@ export async function fetchOpenRouterModels(
   const [chatRes, embedRes] = await Promise.all([
     fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
       headers,
+      signal: AbortSignal.timeout(DEFAULT_OPENROUTER_FETCH_TIMEOUT_MS),
     }).catch((error) => {
       // error-policy:J4 the combined catalog can remain partially available.
       logger.warn(
@@ -505,15 +510,16 @@ export async function fetchOpenRouterModels(
       );
       return null;
     }),
-    fetch("https://openrouter.ai/api/v1/embeddings/models", { headers }).catch(
-      (error) => {
-        // error-policy:J4 the combined catalog can remain partially available.
-        logger.warn(
-          `[model-catalog] OpenRouter embedding catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return null;
-      },
-    ),
+    fetch("https://openrouter.ai/api/v1/embeddings/models", {
+      headers,
+      signal: AbortSignal.timeout(DEFAULT_OPENROUTER_FETCH_TIMEOUT_MS),
+    }).catch((error) => {
+      // error-policy:J4 the combined catalog can remain partially available.
+      logger.warn(
+        `[model-catalog] OpenRouter embedding catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }),
   ]);
 
   const models: CachedModel[] = [];
