@@ -7,7 +7,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchTrajectoryDetail,
+  fetchTrajectoryExportWithFetch,
   fetchTrajectoryList,
+  fetchTrajectoryListWithFetch,
+  fetchTrajectoryDetailWithFetch,
+  purgeTrajectoryWithFetch,
+  TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
+  TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS,
+  TRAJECTORY_LIST_FETCH_TIMEOUT_MS,
+  TRAJECTORY_PURGE_FETCH_TIMEOUT_MS,
   type TrajectoryDetail,
   type TrajectoryListResult,
 } from "./api-client.js";
@@ -247,5 +255,108 @@ describe("readJson error path", () => {
     await expect(fetchTrajectoryList()).rejects.toThrow(
       "[trajectory-logger] 503 Service Unavailable: Trajectories service not available",
     );
+  });
+});
+
+function stallUntilAborted(): typeof fetch {
+  return ((_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected trajectory abort signal");
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    })) as typeof fetch;
+}
+
+describe("trajectory-logger request deadlines", () => {
+  it("keeps a documented budget per hop", () => {
+    expect(TRAJECTORY_LIST_FETCH_TIMEOUT_MS).toBe(15_000);
+    expect(TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS).toBe(15_000);
+    expect(TRAJECTORY_PURGE_FETCH_TIMEOUT_MS).toBe(15_000);
+    expect(TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it("aborts a stalled list GET at the injected deadline", async () => {
+    await expect(
+      fetchTrajectoryListWithFetch({}, stallUntilAborted(), 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("aborts a stalled detail GET at the injected deadline", async () => {
+    await expect(
+      fetchTrajectoryDetailWithFetch("traj-000", {}, stallUntilAborted(), 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("aborts a stalled purge DELETE at the injected deadline", async () => {
+    await expect(
+      purgeTrajectoryWithFetch("traj-000", {}, stallUntilAborted(), 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("aborts a stalled export GET at the injected deadline", async () => {
+    await expect(
+      fetchTrajectoryExportWithFetch("traj-000", {}, stallUntilAborted(), 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("still honors a caller abort signal on list", async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(
+      fetchTrajectoryListWithFetch(
+        { signal: ctrl.signal },
+        stallUntilAborted(),
+        1_000,
+      ),
+    ).rejects.toBeTruthy();
+  });
+
+  it("surfaces a provider error from a completed purge DELETE", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response("nope", { status: 503, statusText: "Service Unavailable" });
+    await expect(
+      purgeTrajectoryWithFetch("traj-000", {}, fetchImpl, 1_000),
+    ).rejects.toThrow("purgeTrajectory failed: 503 Service Unavailable");
+  });
+
+  it("uses the injected fetch for a successful list GET", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      if (init?.signal) signals.push(init.signal);
+      return new Response(JSON.stringify(LIST_PAYLOAD), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const result = await fetchTrajectoryListWithFetch({}, fetchImpl, 1_000);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(result.total).toBe(2);
+  });
+
+  it("uses the injected fetch for a successful export GET", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      if (init?.signal) signals.push(init.signal);
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "application/zip" },
+      });
+    };
+    const blob = await fetchTrajectoryExportWithFetch(
+      "traj-000",
+      {},
+      fetchImpl,
+      1_000,
+    );
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(blob.size).toBe(3);
   });
 });

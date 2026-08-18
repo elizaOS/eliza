@@ -98,52 +98,77 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function fetchTrajectoryList(
-  options: { limit?: number; signal?: AbortSignal } = {},
+/** List GET — same 15s Fal #21205 family. Independent hop. */
+export const TRAJECTORY_LIST_FETCH_TIMEOUT_MS = 15_000;
+/** Detail GET — independent hop, own 15s deadline. */
+export const TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS = 15_000;
+/** Purge DELETE — independent hop, own 15s deadline. */
+export const TRAJECTORY_PURGE_FETCH_TIMEOUT_MS = 15_000;
+/** Export GET — independent hop, own 15s deadline. */
+export const TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS = 15_000;
+
+export function composeTrajectoryFetchSignal(
+  caller: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return caller ? AbortSignal.any([caller, deadline]) : deadline;
+}
+
+export async function fetchTrajectoryListWithFetch(
+  options: { limit?: number; signal?: AbortSignal },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TRAJECTORY_LIST_FETCH_TIMEOUT_MS,
 ): Promise<TrajectoryListResult> {
   const limit = options.limit ?? 10;
-  const res = await fetch(`/api/trajectories?limit=${limit}`, {
+  const res = await fetchImpl(`/api/trajectories?limit=${limit}`, {
     headers: { Accept: "application/json" },
-    signal: options.signal,
+    signal: composeTrajectoryFetchSignal(options.signal, timeoutMs),
   });
   return readJson<TrajectoryListResult>(res);
 }
 
-export async function fetchTrajectoryDetail(
+export async function fetchTrajectoryDetailWithFetch(
   id: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
 ): Promise<TrajectoryDetail> {
-  const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
+  const res = await fetchImpl(`/api/trajectories/${encodeURIComponent(id)}`, {
     headers: { Accept: "application/json" },
-    signal: options.signal,
+    signal: composeTrajectoryFetchSignal(options.signal, timeoutMs),
   });
   return readJson<TrajectoryDetail>(res);
 }
 
-/**
- * Soft-purge a single trajectory. The server route is wired by the training
- * plugin; if it returns 404 the caller surfaces "not available" rather than
- * silently failing.
- */
-export async function purgeTrajectory(id: string): Promise<void> {
-  const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
+export async function purgeTrajectoryWithFetch(
+  id: string,
+  options: { signal?: AbortSignal },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TRAJECTORY_PURGE_FETCH_TIMEOUT_MS,
+): Promise<void> {
+  const res = await fetchImpl(`/api/trajectories/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { Accept: "application/json" },
+    signal: composeTrajectoryFetchSignal(options.signal, timeoutMs),
   });
   if (!res.ok) {
     throw new Error(`purgeTrajectory failed: ${res.status} ${res.statusText}`);
   }
 }
 
-/**
- * Export a trajectory as a signed zip bundle. The server route returns the
- * archive as `application/zip` (with a `X-Eliza-Signature` header carrying the
- * detached signature). Caller is responsible for streaming the blob.
- */
-export async function fetchTrajectoryExport(id: string): Promise<Blob> {
-  const res = await fetch(
+export async function fetchTrajectoryExportWithFetch(
+  id: string,
+  options: { signal?: AbortSignal },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS,
+): Promise<Blob> {
+  const res = await fetchImpl(
     `/api/trajectories/${encodeURIComponent(id)}/export`,
-    { headers: { Accept: "application/zip" } },
+    {
+      headers: { Accept: "application/zip" },
+      signal: composeTrajectoryFetchSignal(options.signal, timeoutMs),
+    },
   );
   if (!res.ok) {
     throw new Error(
@@ -151,4 +176,41 @@ export async function fetchTrajectoryExport(id: string): Promise<Blob> {
     );
   }
   return res.blob();
+}
+
+export async function fetchTrajectoryList(
+  options: { limit?: number; signal?: AbortSignal } = {},
+): Promise<TrajectoryListResult> {
+  return fetchTrajectoryListWithFetch(options, globalThis.fetch);
+}
+
+export async function fetchTrajectoryDetail(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<TrajectoryDetail> {
+  return fetchTrajectoryDetailWithFetch(id, options, globalThis.fetch);
+}
+
+/**
+ * Soft-purge a single trajectory. The server route is wired by the training
+ * plugin; if it returns 404 the caller surfaces "not available" rather than
+ * silently failing.
+ */
+export async function purgeTrajectory(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  return purgeTrajectoryWithFetch(id, options, globalThis.fetch);
+}
+
+/**
+ * Export a trajectory as a signed zip bundle. The server route returns the
+ * archive as `application/zip` (with a `X-Eliza-Signature` header carrying the
+ * detached signature). Caller is responsible for streaming the blob.
+ */
+export async function fetchTrajectoryExport(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  return fetchTrajectoryExportWithFetch(id, options, globalThis.fetch);
 }
