@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type DocumentImageCompressionPlatform,
+  DocumentImageCompressionUnavailableError,
   type DocumentImageUploadFile,
   isDocumentImageFile,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
@@ -123,6 +124,77 @@ describe("documents-upload-image utilities", () => {
       );
       expect(result.optimized).toBe(false);
       expect(result.file).toBe(largeImageFile);
+    });
+
+    it("returns the exact original file for an expected decode failure", async () => {
+      const file = new File(
+        [new Uint8Array(MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1)],
+        "scan.png",
+        { type: "image/png", lastModified: 123 },
+      ) as DocumentImageUploadFile;
+      const mockPlatform: DocumentImageCompressionPlatform = {
+        isAvailable: () => true,
+        loadImageSource: async () => {
+          throw new DocumentImageCompressionUnavailableError("decode failed");
+        },
+        renderBlob: async () => new Blob(),
+      };
+
+      const result = await maybeCompressDocumentUploadImage(file, mockPlatform);
+      expect(result).toEqual({
+        file,
+        optimized: false,
+        originalSize: file.size,
+        optimizedSize: file.size,
+      });
+    });
+
+    it("returns the exact original file for an expected encode failure", async () => {
+      const file = new File(
+        [new Uint8Array(MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1)],
+        "scan.png",
+        { type: "image/png", lastModified: 123 },
+      ) as DocumentImageUploadFile;
+      const mockPlatform: DocumentImageCompressionPlatform = {
+        isAvailable: () => true,
+        loadImageSource: async () => ({
+          source: {} as CanvasImageSource,
+          width: 100,
+          height: 100,
+        }),
+        renderBlob: async () => {
+          throw new DocumentImageCompressionUnavailableError("encode failed");
+        },
+      };
+
+      const result = await maybeCompressDocumentUploadImage(file, mockPlatform);
+      expect(result.file).toBe(file);
+      expect(result.optimized).toBe(false);
+      expect(result.originalSize).toBe(file.size);
+      expect(result.optimizedSize).toBe(file.size);
+    });
+
+    it("does not disguise an unexpected platform failure", async () => {
+      const file = new File(
+        [new Uint8Array(MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1)],
+        "scan.png",
+        { type: "image/png" },
+      ) as DocumentImageUploadFile;
+      const mockPlatform: DocumentImageCompressionPlatform = {
+        isAvailable: () => true,
+        loadImageSource: async () => ({
+          source: {} as CanvasImageSource,
+          width: 100,
+          height: 100,
+        }),
+        renderBlob: async () => {
+          throw new TypeError("programming failure");
+        },
+      };
+
+      await expect(
+        maybeCompressDocumentUploadImage(file, mockPlatform),
+      ).rejects.toThrow("programming failure");
     });
   });
 });
