@@ -592,16 +592,23 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_UNAVAILABLE_FIRST_RUN" });
   };
 
+  const cloudOnlyDesktopRenderer =
+    typeof window !== "undefined" &&
+    (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
+      .__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
+
   if (
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
-    isViteDevUiShell() &&
-    isSameOriginProxyBase() &&
     !ctx?.persistedActiveServer &&
-    !ctx?.hadPriorFirstRun
+    !ctx?.hadPriorFirstRun &&
+    (cloudOnlyDesktopRenderer ||
+      (isViteDevUiShell() && isSameOriginProxyBase()))
   ) {
     routeToOfflineFirstRun(
-      "dev web shell has no saved backend target; skipping same-origin API proxy probe",
+      cloudOnlyDesktopRenderer
+        ? "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding"
+        : "dev web shell has no saved backend target; skipping same-origin API proxy probe",
     );
     return;
   }
@@ -620,10 +627,6 @@ export async function runPollingBackend(
   const restoredManagedCloud =
     ctx?.restoredActiveServer?.kind === "cloud" ||
     ctx?.persistedActiveServer?.kind === "cloud";
-  const cloudOnlyDesktopRenderer =
-    typeof window !== "undefined" &&
-    (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
-      .__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
   if (
     cloudOnlyDesktopRenderer &&
     restoredManagedCloud &&
