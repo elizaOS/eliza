@@ -1,7 +1,10 @@
 /**
- * Unit tests for `handleTextEmbedding`: the null-probe marker vector, usage
- * emission, and the throw paths (empty input, empty API response). The config,
- * events, tokenization, and `@google/genai` layers are mocked — no live call.
+ * Unit tests for `handleTextEmbedding`: the null-probe marker vector, the
+ * probe/write width contract (#22010 — both pinned to 768 so the runtime's
+ * probe-sized pgvector column matches every write), L2 normalization, usage
+ * emission, and the throw paths (empty input, empty/oversized API response).
+ * The config, events, tokenization, and `@google/genai` layers are mocked — no
+ * live call.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +30,7 @@ vi.mock("@elizaos/core", () => ({
 
 vi.mock("../utils/config", () => ({
   createGoogleGenAI: mocks.createGoogleGenAI,
-  getEmbeddingModel: vi.fn(() => "text-embedding-004"),
+  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
 }));
 
 vi.mock("../utils/events", () => ({
@@ -51,8 +54,10 @@ describe("Google GenAI embeddings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.countTokens.mockResolvedValue(5);
+    // gemini-embedding-001 honours outputDimensionality:768 and returns a
+    // 768-length (un-normalized) vector for that request.
     mocks.embedContent.mockResolvedValue({
-      embeddings: [{ values: [0.1, 0.2, 0.3] }],
+      embeddings: [{ values: Array(768).fill(0.5) }],
     });
     mocks.createGoogleGenAI.mockReturnValue({
       models: {
@@ -76,11 +81,7 @@ describe("Google GenAI embeddings", () => {
 
     const embedding = await handleTextEmbedding(runtime, "hello");
 
-    expect(embedding).toEqual([0.1, 0.2, 0.3]);
-    expect(mocks.embedContent).toHaveBeenCalledWith({
-      model: "text-embedding-004",
-      contents: "hello",
-    });
+    expect(embedding).toHaveLength(768);
     expect(mocks.emitModelUsageEvent).toHaveBeenCalledWith(
       runtime,
       "TEXT_EMBEDDING",
@@ -90,6 +91,63 @@ describe("Google GenAI embeddings", () => {
         completionTokens: 0,
         totalTokens: 5,
       },
+    );
+  });
+
+  it("pins outputDimensionality to the probe width so the write matches the sized column (#22010)", async () => {
+    // Regression for #22010: the default model gemini-embedding-001 emits 3072
+    // dims by default, but the runtime sizes its pgvector column from the 768
+    // init probe. The real request MUST constrain the width to 768 or every
+    // memory write fails with "expected 768 dimensions, not 3072".
+    const probe = await handleTextEmbedding(createRuntime(), null);
+    const embedding = await handleTextEmbedding(createRuntime(), "hello");
+
+    expect(mocks.embedContent).toHaveBeenCalledWith({
+      model: "gemini-embedding-001",
+      contents: "hello",
+      config: { outputDimensionality: 768 },
+    });
+    // The probe (which sizes the column) and a real write agree on width.
+    expect(embedding).toHaveLength(probe.length);
+    expect(embedding).toHaveLength(768);
+  });
+
+  it("L2-normalizes the returned vector to unit length", async () => {
+    // Google does not pre-normalize sub-3072 outputs; the handler renormalizes
+    // so vectors stay cosine-comparable like the native 768-dim model did.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(2) }],
+    });
+
+    const embedding = await handleTextEmbedding(createRuntime(), "hello");
+
+    const norm = Math.sqrt(
+      embedding.reduce((acc, value) => acc + value * value, 0),
+    );
+    expect(norm).toBeCloseTo(1, 10);
+    // Every component of a uniform vector normalizes to 1/sqrt(768).
+    expect(embedding[0]).toBeCloseTo(1 / Math.sqrt(768), 10);
+  });
+
+  it("fails closed when the provider returns a width other than the probe (no mismatched write)", async () => {
+    // Adversarial: a provider ignoring outputDimensionality and returning 3072
+    // must not be written into the 768-sized column; the handler throws instead.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(3072).fill(0.01) }],
+    });
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      "returned 3072 dimensions",
+    );
+  });
+
+  it("rejects a zero-magnitude embedding that cannot be normalized", async () => {
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(0) }],
+    });
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      "zero-magnitude embedding",
     );
   });
 

@@ -4,8 +4,12 @@
  * A `null`/empty-object input is treated as an initialization probe and answered
  * with a fixed 768-length marker vector so the runtime can size its embedding
  * column without a network call; real text is truncated to the model's ~8192
- * token limit, embedded, and reported via `emitModelUsageEvent`. Throws on empty
- * text and on an empty API response rather than fabricating a vector.
+ * token limit, embedded, and reported via `emitModelUsageEvent`. Real requests
+ * pin `outputDimensionality` to the same 768 width as the probe and L2-normalize
+ * the result, because the default `gemini-embedding-001` otherwise emits its
+ * 3072-dim default and every write would fail the probe-sized column (#22010).
+ * Throws on empty text, on an empty API response, and on a width that disagrees
+ * with the probe rather than fabricating or misfitting a vector.
  *
  * A 404 / NOT_FOUND from the provider (e.g. a decommissioned model id like
  * `text-embedding-004` on the current `v1beta` route) fails CLOSED with one
@@ -25,10 +29,41 @@ const TEXT_EMBEDDING_MODEL_TYPE = ((
   ElizaCore as { ModelType?: Record<string, string> }
 ).ModelType?.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
 
+/**
+ * Target embedding width for both the init probe and every real write. Chosen
+ * to match the historical/native default so an existing 768-wide pgvector
+ * column keeps working after the default model moved to `gemini-embedding-001`
+ * (which otherwise emits 3072). `gemini-embedding-001` accepts an
+ * `outputDimensionality` in {768, 1536, 3072}; 768 is Google's supported
+ * reduced width.
+ */
+const EMBEDDING_DIMENSIONS = 768;
+
 function createInitProbeVector(): number[] {
-  const vector = Array(768).fill(0);
+  const vector = Array(EMBEDDING_DIMENSIONS).fill(0);
   vector[0] = 0.1;
   return vector;
+}
+
+/**
+ * L2-normalize an embedding so its Euclidean norm is 1. Google returns
+ * sub-3072 `outputDimensionality` vectors un-normalized, so callers that expect
+ * cosine-comparable unit vectors (as the native 768-dim `text-embedding-004`
+ * produced) must renormalize. A zero vector cannot be normalized and is
+ * rejected upstream as an empty/degenerate response.
+ */
+function l2Normalize(vector: number[]): number[] {
+  let sumSquares = 0;
+  for (const value of vector) {
+    sumSquares += value * value;
+  }
+  const norm = Math.sqrt(sumSquares);
+  if (norm === 0) {
+    throw new Error(
+      "Google GenAI API returned a zero-magnitude embedding that cannot be normalized",
+    );
+  }
+  return vector.map((value) => value / norm);
 }
 
 function extractText(
@@ -86,12 +121,31 @@ export async function handleTextEmbedding(
     const response = await genAI.models.embedContent({
       model: embeddingModelName,
       contents: text,
+      // Pin the output width to the same size as the init probe so the value
+      // written matches the pgvector column the runtime sized from the probe.
+      // Without this, `gemini-embedding-001` returns its 3072-dim default and
+      // every write fails against the 768-wide column (#22010).
+      config: { outputDimensionality: EMBEDDING_DIMENSIONS },
     });
 
-    const embedding = response.embeddings?.[0]?.values || [];
-    if (embedding.length === 0) {
+    const rawEmbedding = response.embeddings?.[0]?.values || [];
+    if (rawEmbedding.length === 0) {
       throw new Error("Google GenAI API returned no embedding");
     }
+
+    // Fail CLOSED on a width that disagrees with the probe rather than writing a
+    // mismatched vector into a column the runtime already sized from the probe.
+    if (rawEmbedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Google embedding model "${embeddingModelName}" returned ${rawEmbedding.length} dimensions, ` +
+          `but the runtime sized its embedding column at ${EMBEDDING_DIMENSIONS} (the init-probe width). ` +
+          `Set GOOGLE_EMBEDDING_MODEL to a model whose output matches, or align the requested outputDimensionality.`,
+      );
+    }
+
+    // Google does not pre-normalize sub-3072 outputs; renormalize so the vector
+    // is unit-length and cosine-comparable like the native 768-dim model.
+    const embedding = l2Normalize(rawEmbedding);
 
     const promptTokens = await countTokens(text);
 
