@@ -24,9 +24,9 @@ import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 declare module "./client-base" {
   interface ElizaClient {
-    getWorkflowStatus(): Promise<WorkflowStatusResponse>;
+    getWorkflowStatus(timeoutMs?: number): Promise<WorkflowStatusResponse>;
     getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
-    listWorkflowDefinitions(): Promise<WorkflowDefinition[]>;
+    listWorkflowDefinitions(timeoutMs?: number): Promise<WorkflowDefinition[]>;
     createWorkflowDefinition(
       request: WorkflowDefinitionWriteRequest,
     ): Promise<WorkflowDefinition>;
@@ -81,11 +81,19 @@ declare module "./client-base" {
 // Implementations
 // ---------------------------------------------------------------------------
 
+/** Workflow status GET — existing 10s REST budget, independent hop. */
+export const WORKFLOW_STATUS_FETCH_TIMEOUT_MS = 10_000;
+/** Workflow list GET — existing 10s REST budget, independent hop. */
+export const WORKFLOW_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 ElizaClient.prototype.getWorkflowStatus = async function (
   this: ElizaClient,
+  timeoutMs: number = WORKFLOW_STATUS_FETCH_TIMEOUT_MS,
 ): Promise<WorkflowStatusResponse> {
   return workflowSurfaceClient(this).fetch<WorkflowStatusResponse>(
     "/api/workflow/status",
+    undefined,
+    { timeoutMs },
   );
 };
 
@@ -100,10 +108,11 @@ ElizaClient.prototype.getWorkflowDefinition = async function (
 
 ElizaClient.prototype.listWorkflowDefinitions = async function (
   this: ElizaClient,
+  timeoutMs: number = WORKFLOW_LIST_FETCH_TIMEOUT_MS,
 ): Promise<WorkflowDefinition[]> {
   const res = await workflowSurfaceClient(this).fetch<{
     workflows: WorkflowDefinition[];
-  }>("/api/workflow/workflows");
+  }>("/api/workflow/workflows", undefined, { timeoutMs });
   return res.workflows ?? [];
 };
 
