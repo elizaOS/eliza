@@ -55,6 +55,10 @@ import {
 import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
 import { HomeScreen } from "./HomeScreen";
 import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
+import {
+  consumeNotificationCenterOpenRequest,
+  requestNotificationCenterOpen,
+} from "./notification-center-open-request";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -66,6 +70,9 @@ afterEach(() => {
   vi.useRealTimers();
   __resetNotificationStoreForTests();
   __resetHomeDismissalsForTests();
+  while (consumeNotificationCenterOpenRequest() !== null) {
+    // Home consumes this one-shot intent; drain only if a failed test did not.
+  }
   navigateDeepLink.mockClear();
 });
 
@@ -318,6 +325,50 @@ describe("HomeScreen", () => {
     const apps = screen.getByTestId("home-apps-scroll");
     expect(apps.parentElement?.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
+  });
+
+  it("opens the empty notification center from a warm shell request", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const list = screen.getByTestId("home-notification-list");
+    const empty = screen.getByTestId("notifications-empty");
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(empty.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => {
+      requestNotificationCenterOpen();
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+  });
+
+  it("consumes a retained cold-launch request after Home mounts without replaying it", () => {
+    __setHydratedForTests(true);
+    requestNotificationCenterOpen();
+
+    const firstMount = render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBeNull();
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
+
+    firstMount.unmount();
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBe("true");
   });
 
   it("keeps apps available when the empty notification band is expanded", () => {

@@ -654,12 +654,15 @@ export interface NotificationsHomeCenterProps {
   shadeLayoutTargetRef?: RefObject<HTMLElement | null>;
   /** Reports when an explicit expansion occupies the inline home layout. */
   onShadeOccupancyChange?: (occupiesHome: boolean) => void;
+  /** Monotonic shell request that visibly opens this destination once. */
+  openRequestId?: number | null;
 }
 
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
   onShadeOccupancyChange,
+  openRequestId,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
@@ -673,6 +676,7 @@ export function NotificationsHomeCenter({
   // conflating those states hid every widget whenever a notification existed.
   const [shadeOccupiesHome, setShadeOccupiesHome] = useState(false);
   const [shadeOpenProgress, setShadeOpenProgress] = useState(1);
+  const lastHandledOpenRequestIdRef = useRef<number | null>(null);
   useEffect(() => {
     onShadeOccupancyChange?.(shadeOccupiesHome);
   }, [onShadeOccupancyChange, shadeOccupiesHome]);
@@ -2496,6 +2500,20 @@ export function NotificationsHomeCenter({
     cancelPullCancellation();
     setPullPx(0);
   }, [cancelAllStackFolds, cancelPullCancellation, inboxEmpty, setPullPx]);
+
+  useEffect(() => {
+    if (
+      openRequestId === null ||
+      openRequestId === undefined ||
+      lastHandledOpenRequestIdRef.current === openRequestId
+    ) {
+      return;
+    }
+    lastHandledOpenRequestIdRef.current = openRequestId;
+    // This effect follows the empty-inbox reset above, so a notification tap
+    // overrides the ordinary collapsed empty state after Home has mounted.
+    beginProgrammaticShadeOpen();
+  }, [beginProgrammaticShadeOpen, openRequestId]);
 
   // Build stable rested and expanded projections. During a downward pull,
   // lower-priority groups reveal under the finger while already-visible

@@ -22,6 +22,7 @@ import {
   initPushRegistration,
   refreshPushRegistrationAuthority,
 } from "../../state/notifications/push-registration";
+import { requestNotificationCenterOpen } from "./notification-center-open-request";
 
 /**
  * Boots data ingress independently of the paintable app shell. Startup, auth,
@@ -44,6 +45,7 @@ export function NotificationsShellBoot(): null {
     // Capacitor may synchronously replay a retained cold-launch tap from
     // addListener(), so reversing this order would drop that first event.
     const onOpen = () => {
+      requestNotificationCenterOpen();
       setTab("chat");
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
