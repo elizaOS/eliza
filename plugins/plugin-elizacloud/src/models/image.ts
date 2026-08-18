@@ -62,9 +62,26 @@ export async function handleImageGeneration(
       }
     }
 
-    const result = typedData.images.map((img: { url?: string; image?: string }) => ({
-      url: img.url ?? img.image ?? "",
-    }));
+    // Fail closed, matching the sibling handlers in this package: video/audio
+    // throw "...returned no video/audio URL" and image-description throws on an
+    // empty completion. A request that asked for >=1 image but got back no
+    // entries, or an entry that carries neither a `url` nor a base64 `image`
+    // (partial/failed/moderated generation), is a failure — never fabricate a
+    // healthy-looking `{ url: "" }` for the IMAGE slot (elizaOS/eliza#21985).
+    const images = typedData.images;
+    if (!Array.isArray(images) || images.length === 0) {
+      throw new Error("Eliza Cloud image generation returned no images");
+    }
+    const result = images.map((img: { url?: string; image?: string }) => {
+      const url = [img.url, img.image].find(
+        (candidate): candidate is string =>
+          typeof candidate === "string" && candidate.trim() !== "",
+      );
+      if (!url) {
+        throw new Error("Eliza Cloud image generation returned no image URL");
+      }
+      return { url };
+    });
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
