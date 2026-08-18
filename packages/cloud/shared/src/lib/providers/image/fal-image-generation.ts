@@ -3,6 +3,7 @@ import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
 const FAL_IMAGE_DOWNLOAD_TIMEOUT_MS = 30_000;
+const FAL_IMAGE_GENERATION_TIMEOUT_MS = 5 * 60_000;
 const FAL_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -53,8 +54,14 @@ async function readImageWithLimit(response: Response): Promise<Uint8Array> {
   return bytes;
 }
 
-async function imageUrlToGeneratedImage(url: string, text = ""): Promise<GeneratedImage> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS) });
+async function imageUrlToGeneratedImage(
+  url: string,
+  text = "",
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<GeneratedImage> {
+  const response = await fetchImpl(url, {
+    signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`fal image download failed: ${response.status}`);
   }
@@ -81,7 +88,12 @@ function extractFalImageUrl(payload: Record<string, unknown>): { url: string; te
   return { url, text };
 }
 
-export async function generateFalImage(request: ImageGenRequest): Promise<GeneratedImage> {
+/** Runs Fal's synchronous generation request with a job-sized deadline. */
+export async function generateFalImageWithFetch(
+  request: ImageGenRequest,
+  fetchImpl: typeof fetch,
+  generationTimeoutMs = FAL_IMAGE_GENERATION_TIMEOUT_MS,
+): Promise<GeneratedImage> {
   const apiKey = request.apiKeys.FAL_KEY ?? request.apiKeys.FAL_API_KEY;
   if (!apiKey) {
     throw new Error(getAiProviderConfigurationError());
@@ -90,7 +102,7 @@ export async function generateFalImage(request: ImageGenRequest): Promise<Genera
   // Overridable for deterministic tests (same convention as OPENROUTER_BASE_URL
   // and the queue client's FAL_QUEUE_BASE_URL).
   const baseUrl = (request.apiKeys.FAL_RUN_BASE_URL ?? "https://fal.run").replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/${request.model}`, {
+  const response = await fetchImpl(`${baseUrl}/${request.model}`, {
     method: "POST",
     headers: {
       Authorization: `Key ${apiKey}`,
@@ -102,6 +114,7 @@ export async function generateFalImage(request: ImageGenRequest): Promise<Genera
       ...(request.aspectRatio ? { aspect_ratio: request.aspectRatio } : {}),
       ...(request.size ? { image_size: request.size } : {}),
     }),
+    signal: AbortSignal.timeout(generationTimeoutMs),
   });
 
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -111,7 +124,11 @@ export async function generateFalImage(request: ImageGenRequest): Promise<Genera
   }
 
   const { url, text } = extractFalImageUrl(payload);
-  return await imageUrlToGeneratedImage(url, text);
+  return await imageUrlToGeneratedImage(url, text, fetchImpl);
+}
+
+export async function generateFalImage(request: ImageGenRequest): Promise<GeneratedImage> {
+  return generateFalImageWithFetch(request, globalThis.fetch);
 }
 
 export const falImageProvider: ImageProvider = {
