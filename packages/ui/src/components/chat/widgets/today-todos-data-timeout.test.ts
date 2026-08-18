@@ -1,70 +1,57 @@
-/**
- * Behavioral today-todos JSON deadline. Executes getTodayTodosJsonWithFetch
- * under abort — not a source-grep of today-todos-data.ts.
- */
-import { describe, expect, it, vi } from "vitest";
+/** Verifies today-card todos reads use the bounded canonical UI client. */
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("../../../api", () => ({
-	client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 vi.mock("../../../api/app-shell-capabilities", () => ({
-	supportsFullAppShellRoutes: () => true,
+  supportsFullAppShellRoutes: () => true,
 }));
 
 import {
-	TODAY_TODOS_JSON_TIMEOUT_MS,
-	getTodayTodosJsonWithFetch,
+  fetchTodayTodos,
+  TODAY_TODOS_JSON_TIMEOUT_MS,
 } from "./today-todos-data";
 
-const URL = "http://test.local/api/lifeops/todos";
-
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected today-todos abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
-}
-
 describe("Today todos JSON deadline", () => {
-	it("keeps a documented UI JSON budget", () => {
-		expect(TODAY_TODOS_JSON_TIMEOUT_MS).toBe(15_000);
-	});
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-	it("aborts a stalled todos GET at the injected deadline", async () => {
-		await expect(
-			getTodayTodosJsonWithFetch(URL, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
+  it("keeps a documented UI JSON budget", () => {
+    expect(TODAY_TODOS_JSON_TIMEOUT_MS).toBe(15_000);
+  });
 
-	it("surfaces a provider error from a completed todos GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
 
-		await expect(
-			getTodayTodosJsonWithFetch(URL, fetchImpl, 1_000),
-		).rejects.toThrow("503");
-	});
+    await expect(fetchTodayTodos()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+  });
 
-	it("uses the injected fetch for a successful todos GET", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({ todos: [] });
-		};
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(new Error("Todos request failed (503)"));
 
-		const body = await getTodayTodosJsonWithFetch<{ todos: unknown[] }>(
-			URL,
-			fetchImpl,
-			1_000,
-		);
+    await expect(fetchTodayTodos()).rejects.toThrow("503");
+  });
 
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(body.todos).toEqual([]);
-	});
+  it("uses the bounded client path for a successful todos GET", async () => {
+    clientFetch.mockResolvedValueOnce({ todos: [] });
+
+    await expect(fetchTodayTodos()).resolves.toEqual([]);
+    expect(clientFetch).toHaveBeenCalledWith("/api/lifeops/todos", undefined, {
+      timeoutMs: TODAY_TODOS_JSON_TIMEOUT_MS,
+    });
+  });
 });

@@ -116,27 +116,26 @@ export function overdueCount(todos: TodayTodo[], now: number): number {
 /** Today-card todos GET is a short UI read — same 15s family as TodosView. */
 export const TODAY_TODOS_JSON_TIMEOUT_MS = 15_000;
 
-export async function getTodayTodosJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
+type TodayTodosApiClient = {
+  fetch: (
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ) => Promise<unknown>;
+};
+
+export async function fetchTodayTodosWithClient(
+  apiClient: TodayTodosApiClient,
   timeoutMs: number = TODAY_TODOS_JSON_TIMEOUT_MS,
-): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
+): Promise<TodayTodo[]> {
+  const body = await apiClient.fetch("/api/lifeops/todos", undefined, {
+    timeoutMs,
   });
-  if (!response.ok) {
-    throw new Error(`Todos request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
+  return parseTodayTodos(body);
 }
 
 export async function fetchTodayTodos(): Promise<TodayTodo[]> {
-  const body = await getTodayTodosJsonWithFetch<unknown>(
-    `${client.getBaseUrl()}/api/lifeops/todos`,
-    globalThis.fetch,
-  );
-  return parseTodayTodos(body);
+  return fetchTodayTodosWithClient(client);
 }
 
 /**
@@ -145,17 +144,14 @@ export async function fetchTodayTodos(): Promise<TodayTodo[]> {
  * caller roll the optimistic completion back.
  */
 export async function completeTodayTodo(id: string): Promise<void> {
-  const response = await fetch(
-    `${client.getBaseUrl()}/api/lifeops/occurrences/${encodeURIComponent(id)}/complete`,
+  await client.fetch(
+    `/api/lifeops/occurrences/${encodeURIComponent(id)}/complete`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: "{}",
     },
+    { timeoutMs: TODAY_TODOS_JSON_TIMEOUT_MS },
   );
-  if (!response.ok) {
-    throw new Error(`Complete todo failed (${response.status})`);
-  }
 }
 
 /** Shallow content equality so an unchanged poll doesn't re-render the card. */
