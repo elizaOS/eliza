@@ -14,6 +14,24 @@ import {
   validateContentPackManifest,
 } from "@elizaos/shared";
 
+/** Pack manifest GET is a short UI read — same 15s family as BuildBadge. */
+export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+
+export async function getContentPackManifestJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
 export class ContentPackLoadError extends Error {
   constructor(
     message: string,
@@ -40,11 +58,10 @@ export async function loadContentPackFromUrl(
 
   let raw: unknown;
   try {
-    const res = await fetch(manifestUrl);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    raw = await res.json();
+    raw = await getContentPackManifestJsonWithFetch(
+      manifestUrl,
+      globalThis.fetch,
+    );
   } catch (err) {
     throw new ContentPackLoadError(
       `Failed to fetch pack manifest from ${manifestUrl}`,
