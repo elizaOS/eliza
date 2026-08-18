@@ -1,6 +1,6 @@
 /**
  * Per-framework coding-agent settings panel — the tabbed configuration surface
- * (elizaOS, Pi Agent, OpenCode, Claude, Codex) for auth, model, and
+ * (elizaOS, Pi Agent, Claude, Codex) for auth, model, and
  * approval-preset settings. Fills the `@elizaos/ui` settings-section slot and
  * composes AgentTabsSection, GlobalPrefsSection, LlmProviderSection,
  * ModelConfigSection, and GitHubConnectionCard. Preferences persist through the
@@ -31,6 +31,7 @@ import {
   ENV_PREFIX,
   FALLBACK_MODELS,
   type LlmProvider,
+  loadCodingAgentPrefs,
   type ModelOption,
 } from "./coding-agent-settings-shared";
 import { GitHubConnectionCard } from "./GitHubConnectionCard";
@@ -94,43 +95,7 @@ export function CodingAgentSettingsSection() {
 
         const env = (cfg.env ?? {}) as Record<string, string>;
         const cloud = (cfg.cloud ?? {}) as Record<string, string>;
-        const loaded: Record<string, string> = {};
-        // Store cloud API key for reference in cloud mode
-        if (cloud.apiKey) {
-          loaded._CLOUD_API_KEY = cloud.apiKey;
-        }
-        for (const agent of ["CLAUDE", "CODEX", "OPENCODE"] as const) {
-          const prefix = `ELIZA_${agent}`;
-          if (env[`${prefix}_MODEL_POWERFUL`]) {
-            loaded[`${prefix}_MODEL_POWERFUL`] =
-              env[`${prefix}_MODEL_POWERFUL`];
-          }
-          if (env[`${prefix}_MODEL_FAST`]) {
-            loaded[`${prefix}_MODEL_FAST`] = env[`${prefix}_MODEL_FAST`];
-          }
-        }
-        for (const k of [
-          "ELIZA_DEFAULT_APPROVAL_PRESET",
-          "ELIZA_AGENT_SELECTION_STRATEGY",
-          "ELIZA_DEFAULT_AGENT_TYPE",
-          "ELIZA_SCRATCH_RETENTION",
-          "ELIZA_CODING_DIRECTORY",
-          "ELIZA_LLM_PROVIDER",
-        ] as const) {
-          if (env[k]) loaded[k] = env[k];
-        }
-        // API keys — load presence indicators (masked)
-        for (const key of [
-          "ANTHROPIC_API_KEY",
-          "OPENAI_API_KEY",
-          "ANTHROPIC_BASE_URL",
-          "OPENAI_BASE_URL",
-          "ELIZA_OPENCODE_API_KEY",
-          "ELIZA_OPENCODE_BASE_URL",
-          "ELIZA_OPENCODE_LOCAL",
-        ] as const) {
-          if (env[key]) loaded[key] = env[key];
-        }
+        const loaded = loadCodingAgentPrefs(env, cloud);
         setPrefs(loaded);
 
         const models: Record<string, ModelOption[]> = {};

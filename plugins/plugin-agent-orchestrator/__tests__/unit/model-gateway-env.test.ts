@@ -126,6 +126,7 @@ const RAW_ANTHROPIC_KEY = "sk-ant-api-raw-DO-NOT-LEAK";
 const RAW_CODEX_KEY = "sk-raw-codex-DO-NOT-LEAK";
 const RAW_CEREBRAS_KEY = "csk-raw-cerebras-DO-NOT-LEAK";
 const RAW_ELIZA_CODE_KEY = "csk-raw-eliza-code-DO-NOT-LEAK";
+const RAW_LEGACY_OPENCODE_KEY = "csk-raw-opencode-DO-NOT-LEAK";
 const RAW_CLAUDE_OAUTH = "sk-ant-oat01-raw-oauth-DO-NOT-LEAK";
 
 // Every env var the tests touch, saved/restored around each test. The bogus
@@ -140,6 +141,7 @@ const MANAGED_ENV_KEYS = [
   "CODEX_API_KEY",
   "CEREBRAS_API_KEY",
   "ELIZA_CODE_API_KEY",
+  "ELIZA_OPENCODE_API_KEY",
   "ELIZA_E2E_CEREBRAS_API_KEY",
   "CLAUDE_CODE_OAUTH_TOKEN",
   "OPENAI_BASE_URL",
@@ -198,7 +200,7 @@ function allLoggedText(logger: MockLogger): string {
 }
 
 async function spawnAndCaptureEnv(
-  agentType: "claude" | "codex",
+  agentType: "claude" | "codex" | "opencode",
 ): Promise<{ env: NodeJS.ProcessEnv; logger: MockLogger }> {
   const { runtime: rt, logger } = runtime();
   const service = new AcpService(rt);
@@ -221,6 +223,7 @@ function setRawProviderKeys(): void {
   process.env.CEREBRAS_API_KEY = RAW_CEREBRAS_KEY;
   // Forwarded to children via the broad ELIZA_ prefix rule:
   process.env.ELIZA_CODE_API_KEY = RAW_ELIZA_CODE_KEY;
+  process.env.ELIZA_OPENCODE_API_KEY = RAW_LEGACY_OPENCODE_KEY;
 }
 
 function expectNoRawKeyInDump(env: NodeJS.ProcessEnv): void {
@@ -230,6 +233,7 @@ function expectNoRawKeyInDump(env: NodeJS.ProcessEnv): void {
   expect(dump).not.toContain(RAW_CODEX_KEY);
   expect(dump).not.toContain(RAW_CEREBRAS_KEY);
   expect(dump).not.toContain(RAW_ELIZA_CODE_KEY);
+  expect(dump).not.toContain(RAW_LEGACY_OPENCODE_KEY);
   expect(dump).not.toContain(RAW_CLAUDE_OAUTH);
 }
 
@@ -335,6 +339,7 @@ describe("applyModelGatewayEnv (pure env rewrite)", () => {
       "CODEX_API_KEY",
       "CEREBRAS_API_KEY",
       "ELIZA_CODE_API_KEY",
+      "ELIZA_OPENCODE_API_KEY",
       "ELIZA_E2E_CEREBRAS_API_KEY",
       "CLAUDE_CODE_OAUTH_TOKEN",
     ]);
@@ -439,6 +444,15 @@ describe("gateway mode OFF — byte-identical legacy env", () => {
       ELIZA_MODEL_GATEWAY_TOKEN: env.ELIZA_MODEL_GATEWAY_TOKEN,
     };
   }
+
+  it("migrates a stored opencode session to canonical provider env", async () => {
+    process.env.ELIZA_OPENCODE_API_KEY = RAW_LEGACY_OPENCODE_KEY;
+
+    const { env } = await spawnAndCaptureEnv("opencode");
+
+    expect(env.ELIZA_CODE_API_KEY).toBe(RAW_LEGACY_OPENCODE_KEY);
+    expect(env.ELIZA_OPENCODE_API_KEY).toBeUndefined();
+  });
 
   it("both vars unset: raw keys forward exactly as before, no base URLs injected", async () => {
     setRawProviderKeys();

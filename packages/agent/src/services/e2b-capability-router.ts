@@ -79,7 +79,7 @@ function truncateUtf8(text: string, maxBytes: number): string {
  */
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
-export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
+export type CodingAgentRunner = "claude-code" | "codex" | "elizaos";
 
 export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
 
@@ -90,7 +90,7 @@ type DisabledSandboxRunnerProvider = "cloudflare" | "rivet" | "vercel";
 const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
   "codex",
   "claude-code",
-  "opencode",
+  "elizaos",
 ];
 
 export interface E2BRemoteRunnerConfig {
@@ -333,7 +333,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   }
 }
 
-type CloudCodingAgent = "claude" | "codex" | "opencode";
+type CloudCodingAgent = "claude" | "codex" | "elizaos";
 
 type CloudCodingContainerSession = {
   containerId: string;
@@ -1350,17 +1350,28 @@ function agentRunnersSetting(
       ? DEFAULT_SANDBOX_AGENT_RUNNERS
       : [];
   }
-  return value
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => item.length > 0)
-    .map(toCodingAgentRunner);
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => item.length > 0)
+        .map(toCodingAgentRunner),
+    ),
+  ];
 }
 
 function toCodingAgentRunner(value: string): CodingAgentRunner {
   if (value === "codex") return "codex";
   if (value === "claude" || value === "claude-code") return "claude-code";
-  if (value === "opencode" || value === "open-code") return "opencode";
+  if (
+    value === "elizaos" ||
+    value === "eliza-code" ||
+    value === "opencode" ||
+    value === "open-code"
+  ) {
+    return "elizaos";
+  }
   throw new Error(`Unsupported sandbox agent runner: ${value}`);
 }
 

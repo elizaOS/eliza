@@ -22,15 +22,22 @@ function clearBridge() {
 afterEach(clearBridge);
 
 describe("isMultiAccountAgentType", () => {
-  it("is true for pool-rotated coding agents (claude/codex + opencode→cerebras)", () => {
-    for (const t of ["claude", "codex", "opencode", "CLAUDE", "Codex"]) {
+  it("is true for pool-rotated coding agents (claude/codex + eliza-code→cerebras)", () => {
+    for (const t of [
+      "claude",
+      "codex",
+      "elizaos",
+      "opencode",
+      "CLAUDE",
+      "Codex",
+    ]) {
       expect(isMultiAccountAgentType(t)).toBe(true);
     }
   });
   it("is false for runtime/local agents and providers without a coding CLI", () => {
-    // elizaos/pi-agent authenticate via their own backend; z.ai/kimi/glm have
+    // pi-agent authenticates via its own backend; z.ai/kimi/glm have
     // no first-party coding CLI to spawn.
-    for (const t of ["elizaos", "pi-agent", "zai", "glm", "kimi", ""]) {
+    for (const t of ["pi-agent", "zai", "glm", "kimi", ""]) {
       expect(isMultiAccountAgentType(t)).toBe(false);
     }
   });
@@ -98,7 +105,7 @@ describe("selectCodingAccount", () => {
       envPatch: { CLAUDE_CODE_OAUTH_TOKEN: "t" },
     }));
     (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = { select };
-    expect(await selectCodingAccount("elizaos", {})).toBeNull();
+    expect(await selectCodingAccount("pi-agent", {})).toBeNull();
     expect(select).not.toHaveBeenCalled();
   });
 

@@ -118,6 +118,16 @@ describe("parseModelConfigArgs", () => {
 				body: { target: "coding", backend: "eliza-code", model: "eliza-1" },
 			},
 		);
+		expect(
+			parseModelConfigArgs(parsedModel("coding opencode legacy-model")),
+		).toEqual({
+			kind: "write",
+			body: {
+				target: "coding",
+				backend: "eliza-code",
+				model: "legacy-model",
+			},
+		});
 	});
 
 	it("returns usage errors for malformed config subcommands", () => {

@@ -192,7 +192,7 @@ describe("resolveCodingBackend precedence", () => {
       settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
     });
     const r = resolveCodingBackend({ runtime, plannerGuess: "claude" });
-    expect(r).toEqual({ agentType: "opencode", source: "pin" });
+    expect(r).toEqual({ agentType: "elizaos", source: "pin" });
   });
 
   it("5. planner guess used when nothing more authoritative applies", () => {
@@ -273,7 +273,7 @@ describe("resolveCodingBackend operator allow lock-list", () => {
         explicit: "codex",
         plannerGuess: "claude",
       }),
-    ).toBeUndefined();
+    ).toEqual({ agentType: "elizaos", source: "pin" });
   });
 
   it("fails closed when the configured allow-list normalizes to no known backends", () => {

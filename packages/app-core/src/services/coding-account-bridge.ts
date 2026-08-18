@@ -113,9 +113,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * API equivalent (subscriptions are the primary use case here).
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * opencode authenticates through its configured backend; the only backend it
+ * eliza-code authenticates through its configured backend; the only backend it
  * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
- * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
+ * resolves from a pooled key is Cerebras, so eliza-code pool-rotates across `cerebras-api`
  * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
  * CLI — their accounts serve the main runtime's API-key routing — so they are
  * deliberately absent (advertising them would offer an unspawnable path).
@@ -125,6 +125,8 @@ const AGENT_PROVIDER_CANDIDATES: Readonly<
 > = {
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
+  elizaos: ["cerebras-api"],
+  // Stored sessions created before the rename may still ask by this alias.
   opencode: ["cerebras-api"],
 };
 

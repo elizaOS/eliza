@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLOUD_CONTAINER_SERVICE_TYPE,
   PromoteVfsToCloudContainerRequestSchema,
+  RequestCodingAgentContainerRequestSchema,
 } from "./cloud-coding-containers.js";
 
 describe("cloud coding container contracts", () => {
@@ -39,5 +40,19 @@ describe("cloud coding container contracts", () => {
     expect(parsed.error?.issues[0]?.message).toBe(
       'Unrecognized key: "legacyServiceType"',
     );
+  });
+
+  it("normalizes the persisted opencode agent without widening output", () => {
+    const parsed = RequestCodingAgentContainerRequestSchema.parse({
+      agent: "opencode",
+      prompt: "continue the existing workspace",
+    });
+
+    expect(parsed.agent).toBe("elizaos");
+    expect(
+      RequestCodingAgentContainerRequestSchema.safeParse({
+        agent: "opencode-with-instructions-to-ignore-validation",
+      }).success,
+    ).toBe(false);
   });
 });

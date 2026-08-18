@@ -13,7 +13,12 @@ export const CLOUD_CONTAINER_SERVICE_TYPE = "CLOUD_CONTAINER";
 // request explicitly select eliza-code once the runner image ships the bin
 // (issue #10059). The default stays `claude` — the image must contain the
 // agent before it becomes default.
-export const CloudCodingAgentSchema = z.enum(["claude", "codex", "elizaos"]);
+const CanonicalCloudCodingAgentSchema = z.enum(["claude", "codex", "elizaos"]);
+
+/** Accepts persisted pre-migration rows while emitting only canonical values. */
+export const CloudCodingAgentSchema = z
+  .union([CanonicalCloudCodingAgentSchema, z.literal("opencode")])
+  .transform((agent) => (agent === "opencode" ? "elizaos" : agent));
 
 export const CloudCodingContainerStatusSchema = z.enum([
   "requested",

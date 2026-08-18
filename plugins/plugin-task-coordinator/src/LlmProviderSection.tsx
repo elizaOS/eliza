@@ -106,6 +106,31 @@ export function LlmProviderSection({
           </SettingsControls.Field>
           <SettingsControls.Field>
             <SettingsControls.FieldLabel>
+              {t("codingagentsettingssection.ElizaCodeApiKey", {
+                defaultValue: "eliza-code API Key",
+              })}
+            </SettingsControls.FieldLabel>
+            <SettingsControls.Input
+              variant="compact"
+              type="password"
+              value={prefs.ELIZA_CODE_API_KEY || ""}
+              onChange={(e) => setPref("ELIZA_CODE_API_KEY", e.target.value)}
+            />
+          </SettingsControls.Field>
+          <SettingsControls.Field>
+            <SettingsControls.FieldLabel>
+              {t("codingagentsettingssection.ElizaCodeBaseUrl", {
+                defaultValue: "eliza-code Base URL",
+              })}
+            </SettingsControls.FieldLabel>
+            <SettingsControls.Input
+              variant="compact"
+              value={prefs.ELIZA_CODE_BASE_URL || ""}
+              onChange={(e) => setPref("ELIZA_CODE_BASE_URL", e.target.value)}
+            />
+          </SettingsControls.Field>
+          <SettingsControls.Field>
+            <SettingsControls.FieldLabel>
               {t("codingagentsettingssection.OpenaiApiKey", {
                 defaultValue: "OpenAI API Key",
               })}

@@ -376,15 +376,20 @@ describe("POST /api/models/config coding writes", () => {
     expect(body).toMatchObject({ applied: true, restart: false });
   });
 
-  it("rejects the removed opencode backend", async () => {
-    const { ctx, json } = makeHarness("POST", {
+  it("normalizes a stale opencode client write to eliza-code", async () => {
+    const { ctx, config, json } = makeHarness("POST", {
       target: "coding",
       backend: "opencode",
       model: "cerebras/gpt-oss-120b",
     });
     await handleModelConfigRoutes(ctx as never);
-    const { status } = responseOf(json);
-    expect(status).toBe(400);
+    const { body } = responseOf(json);
+    expect(body).toMatchObject({ applied: true, restart: false });
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    >;
+    expect(env.ELIZA_ELIZAOS_MODEL_POWERFUL).toBe("cerebras/gpt-oss-120b");
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {

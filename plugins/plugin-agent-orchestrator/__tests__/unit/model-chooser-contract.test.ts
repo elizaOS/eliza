@@ -1,7 +1,6 @@
 /**
- * Gap (J): sub-agent model + auth selection is dispersed across `buildEnv`
- * (private, in acp-service.ts) and `buildOpencodeAcpEnv` / `buildOpencodeSpawnConfig`
- * (opencode-config.ts) and was never contract-tested as a single resolved tuple.
+ * Sub-agent model and auth selection is contract-tested as a resolved tuple
+ * through the production `AcpService.buildEnv` spawn seam.
  *
  * For a spawn, the runtime must resolve, deterministically, the tuple of:
  *   (provider, model, auth/env keys INJECTED, keys DROPPED)
@@ -14,11 +13,7 @@
  * This file is a CONTRACT/snapshot guard over that resolved tuple, exercised two
  * ways so it covers the actual production code paths (no reimplementation):
  *
- *  1. The OPENCODE provider/model matrix via the EXPORTED pure functions
- *     `buildOpencodeAcpEnv` / `buildOpencodeSpawnConfig` across auth modes
- *     (api-key · cloud · cerebras · local · user-config · none).
- *
- *  2. The Claude / Codex / opencode / elizaos / pi-agent CREDENTIAL-DROP +
+ * The Claude / Codex / legacy opencode / elizaos / pi-agent CREDENTIAL-DROP +
  *     INJECTION matrix through the smallest exported seam that reaches the
  *     private `buildEnv`: a real `AcpService.spawnSession` whose native transport
  *     is mocked, capturing the exact env handed to the subprocess (the same seam
@@ -136,10 +131,6 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { AcpService } from "../../src/services/acp-service.js";
-import {
-  buildOpencodeAcpEnv,
-  buildOpencodeSpawnConfig,
-} from "../../src/services/opencode-config.js";
 
 // ---------------------------------------------------------------------------
 // Pooled-account bridge helpers (drives oauth/api-key auth mode on spawn).
@@ -201,7 +192,7 @@ const AUTH_KEYS = [
   "OPENAI_MODEL",
   "CODEX_HOME",
   "CEREBRAS_API_KEY",
-  "OPENCODE_MODEL",
+  "ELIZA_CODE_API_KEY",
 ] as const;
 
 /** Project a captured env down to (injected auth keys present, of-interest keys absent). */
@@ -254,137 +245,7 @@ afterEach(() => {
 });
 
 // ===========================================================================
-// 1. OPENCODE provider/model/auth contract — pure exported resolver.
-// ===========================================================================
-
-describe("model-chooser contract: opencode provider/model resolution (pure)", () => {
-  // Each case asserts the FULL resolved tuple (provider, model, smallModel) for
-  // a given auth mode. Regression guard on which backend opencode targets.
-  const settingsRuntime = (settings: Record<string, string | undefined> = {}) =>
-    ({ getSetting: vi.fn((key: string) => settings[key]) }) as never;
-
-  it("cerebras (api-key) → cerebras provider + Gemma default", () => {
-    const config = buildOpencodeSpawnConfig(settingsRuntime(), {
-      // sealed synthetic env (env !== process.env disables config-file fallback)
-      CEREBRAS_API_KEY: "csk-pooled",
-    });
-    expect(config).not.toBeNull();
-    expect({
-      provider: config?.providerId,
-      label: config?.providerLabel,
-      model: config?.model,
-      smallModel: config?.smallModel,
-    }).toEqual({
-      provider: "cerebras",
-      label: "Cerebras",
-      model: "cerebras/gemma-4-31b",
-      smallModel: undefined,
-    });
-    const parsed = JSON.parse(config?.configContent ?? "{}");
-    expect(parsed.provider.cerebras.npm).toBe("@ai-sdk/cerebras");
-    expect(parsed.provider.cerebras.options.baseURL).toBe(
-      "https://api.cerebras.ai/v1",
-    );
-    expect(parsed.provider.cerebras.options.apiKey).toBe("csk-pooled");
-  });
-
-  it("local (opt-in) → eliza-local OpenAI-compatible provider, no key leaked", () => {
-    const config = buildOpencodeSpawnConfig(settingsRuntime(), {
-      ELIZA_OPENCODE_LOCAL: "1",
-      ELIZA_OPENCODE_BASE_URL: "http://localhost:11434/v1",
-      ELIZA_OPENCODE_MODEL_POWERFUL: "eliza-1-4b",
-    });
-    expect({
-      provider: config?.providerId,
-      model: config?.model,
-    }).toEqual({ provider: "eliza-local", model: "eliza-local/eliza-1-4b" });
-    const parsed = JSON.parse(config?.configContent ?? "{}");
-    expect(parsed.provider["eliza-local"].npm).toBe(
-      "@ai-sdk/openai-compatible",
-    );
-    expect(parsed.provider["eliza-local"].options.baseURL).toBe(
-      "http://localhost:11434/v1",
-    );
-    // No api key configured → none placed in options (no accidental key leak).
-    expect(parsed.provider["eliza-local"].options.apiKey).toBeUndefined();
-  });
-
-  it("user-config (subscription default) → bare model passthrough, provider 'user'", () => {
-    const config = buildOpencodeSpawnConfig(settingsRuntime(), {
-      ELIZA_OPENCODE_MODEL_POWERFUL: "anthropic/claude-sonnet-4-5",
-      ELIZA_OPENCODE_MODEL_FAST: "openai/gpt-4.1-mini",
-    });
-    expect({
-      provider: config?.providerId,
-      model: config?.model,
-      smallModel: config?.smallModel,
-    }).toEqual({
-      provider: "user",
-      model: "anthropic/claude-sonnet-4-5",
-      smallModel: "openai/gpt-4.1-mini",
-    });
-  });
-
-  it("vault:// api key is NOT used as a provider key (no unresolved-pointer leak)", () => {
-    const config = buildOpencodeSpawnConfig(settingsRuntime(), {
-      ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-      ELIZA_OPENCODE_API_KEY: "vault://ELIZA_OPENCODE_API_KEY",
-      CEREBRAS_API_KEY: "csk-real",
-      ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
-    });
-    expect(config?.providerId).toBe("cerebras");
-    const parsed = JSON.parse(config?.configContent ?? "{}");
-    expect(parsed.provider.cerebras.options.apiKey).toBe("csk-real");
-    expect(JSON.stringify(parsed)).not.toContain("vault://");
-  });
-
-  it("no provider + no model → null (single-account fallback, nothing forced)", () => {
-    expect(buildOpencodeSpawnConfig(settingsRuntime(), {})).toBeNull();
-  });
-
-  it("an overrideModel wins over the configured powerful model", () => {
-    const config = buildOpencodeSpawnConfig(
-      settingsRuntime(),
-      { CEREBRAS_API_KEY: "csk-pooled" },
-      "llama-3.3-70b",
-    );
-    expect(config?.model).toBe("cerebras/llama-3.3-70b");
-  });
-});
-
-describe("model-chooser contract: buildOpencodeAcpEnv stamps resolved model into env", () => {
-  const settingsRuntime = (settings: Record<string, string | undefined> = {}) =>
-    ({ getSetting: vi.fn((key: string) => settings[key]) }) as never;
-
-  it("injects OPENCODE_CONFIG_CONTENT + OPENCODE_MODEL for a resolved cerebras spawn", () => {
-    const result = buildOpencodeAcpEnv(settingsRuntime(), {
-      CEREBRAS_API_KEY: "csk-pooled",
-    });
-    expect(result.config?.providerId).toBe("cerebras");
-    expect(result.env.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
-    expect(result.env.OPENCODE_CONFIG_CONTENT).toBe(
-      result.config?.configContent,
-    );
-    // Spawn hardening flags are always present.
-    expect(result.env.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
-    expect(result.env.OPENCODE_DISABLE_TERMINAL_TITLE).toBe("1");
-  });
-
-  it("ignores pre-supplied OPENCODE_CONFIG_CONTENT and regenerates from resolved auth", () => {
-    const result = buildOpencodeAcpEnv(settingsRuntime(), {
-      OPENCODE_CONFIG_CONTENT: '{"model":"preset/model"}',
-      CEREBRAS_API_KEY: "csk-pooled",
-    });
-    expect(result.config?.providerId).toBe("cerebras");
-    expect(result.env.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
-    expect(result.env.OPENCODE_CONFIG_CONTENT).toBe(
-      result.config?.configContent,
-    );
-  });
-});
-
-// ===========================================================================
-// 2. Claude/Codex/opencode/elizaos/pi-agent credential-drop + injection
+// Claude/Codex/opencode/elizaos/pi-agent credential-drop + injection
 //    matrix through the real spawnSession -> private buildEnv seam.
 // ===========================================================================
 
@@ -399,7 +260,9 @@ async function resolveSpawnAuth(input: {
   parentEnv?: Record<string, string | undefined>;
 }): Promise<{ injected: Record<string, string>; dropped: string[] }> {
   if (input.selection !== undefined) {
-    installBridge({ [input.agentType]: input.selection });
+    const canonicalAgent =
+      input.agentType === "opencode" ? "elizaos" : input.agentType;
+    installBridge({ [canonicalAgent]: input.selection });
   }
   let projection!: { injected: Record<string, string>; dropped: string[] };
   const hermeticEnv = Object.fromEntries(
@@ -516,8 +379,8 @@ describe("model-chooser contract: codex auth resolution", () => {
   });
 });
 
-describe("model-chooser contract: opencode auth resolution", () => {
-  it("cerebras pooled (api-key) — injects CEREBRAS_API_KEY and resolves OPENCODE_MODEL=cerebras/…", async () => {
+describe("model-chooser contract: legacy opencode auth resolution", () => {
+  it("normalizes to eliza-code and injects the pooled CEREBRAS_API_KEY", async () => {
     const { injected } = await resolveSpawnAuth({
       agentType: "opencode",
       selection: {
@@ -530,18 +393,16 @@ describe("model-chooser contract: opencode auth resolution", () => {
       },
     });
     expect(injected.CEREBRAS_API_KEY).toBe("cb-key-pooled");
-    // The opencode env builder resolves the cerebras provider/model from the key.
-    expect(injected.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
   });
 });
 
-describe("model-chooser contract: elizaos + pi-agent are single-auth (bridge NOT consulted)", () => {
-  // These authenticate through their own backend, so the pool/credential-drop
+describe("model-chooser contract: pi-agent is single-auth (bridge NOT consulted)", () => {
+  // Pi Agent authenticates through its own backend, so the pool/credential-drop
   // machinery must be inert — no injected coding-account secrets, no drops based
   // on agent-type branches that only apply to claude/codex/opencode.
-  for (const agentType of ["elizaos", "pi-agent"] as const) {
+  for (const agentType of ["pi-agent"] as const) {
     it(`${agentType} — no pooled account selected, parent api keys pass through unmodified`, async () => {
-      // Even if a bridge is installed for OTHER agent types, an elizaos/pi-agent
+      // Even if a bridge is installed for OTHER agent types, a pi-agent
       // spawn must not pull a coding-account credential.
       installBridge({
         claude: {
@@ -671,7 +532,7 @@ describe("model-chooser contract: resolved-tuple snapshot matrix", () => {
       "claude/api-key": ["ANTHROPIC_API_KEY"],
       "codex/subscription": ["CODEX_HOME"],
       "codex/api-key": ["OPENAI_API_KEY"],
-      "opencode/cerebras": ["CEREBRAS_API_KEY", "OPENCODE_MODEL"],
+      "opencode/cerebras": ["CEREBRAS_API_KEY"],
       "elizaos/native": ["ANTHROPIC_API_KEY"],
     });
 

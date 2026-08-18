@@ -425,7 +425,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       "https://cloud.example/remote-runner",
     );
     expect(config.remoteHttpToken).toBe("token");
-    expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
+    expect(config.agentRunners).toEqual(["codex", "claude-code", "elizaos"]);
   });
 
   it("resolves Eliza Cloud API-backed provisioning settings", () => {
@@ -493,7 +493,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
     );
     expect(config.remoteHttpToken).toBe("token");
-    expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
+    expect(config.agentRunners).toEqual(["codex", "claude-code", "elizaos"]);
   });
 
   it("keeps Vercel, Cloudflare, and Rivet as disabled direct providers", () => {
@@ -515,6 +515,17 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
 
     expect(config.agentRunners).toEqual(["claude-code", "codex"]);
+  });
+
+  it("canonicalizes and deduplicates legacy eliza-code runner aliases", () => {
+    const config = resolveE2BRemoteRunnerConfig(
+      makeRuntime({
+        ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
+        ELIZA_SANDBOX_AGENT_RUNNERS: "opencode,open-code,eliza-code,elizaos",
+      }),
+    );
+
+    expect(config.agentRunners).toEqual(["elizaos"]);
   });
 
   it("reports structured unavailable when credentials are missing", async () => {
@@ -609,7 +620,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         remoteHttpBaseUrl: "http://home.local:2468",
         remoteAccessUrl:
           "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
-        agentRunners: ["codex", "opencode"],
+        agentRunners: ["codex", "elizaos"],
       }),
       new FakeFactory(),
     );
@@ -682,7 +693,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
             apiKey: undefined,
             remoteHttpBaseUrl: server.baseUrl,
             remoteHttpToken: "token",
-            agentRunners: ["codex", "claude-code", "opencode"],
+            agentRunners: ["codex", "claude-code", "elizaos"],
           }),
         );
 
@@ -742,7 +753,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           apiKey: undefined,
           cloudApiBaseUrl: server.baseUrl,
           cloudApiToken: "cloud-key",
-          agentRunners: ["codex", "claude-code", "opencode"],
+          agentRunners: ["codex", "claude-code", "elizaos"],
         }),
       );
 
@@ -773,7 +784,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           environmentVars: {
             HOST: "0.0.0.0",
             ELIZA_CODING_WORKSPACE: "/workspace",
-            ELIZA_SANDBOX_AGENT_RUNNERS: "codex,claude-code,opencode",
+            ELIZA_SANDBOX_AGENT_RUNNERS: "codex,claude-code,elizaos",
           },
         },
       });

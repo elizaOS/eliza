@@ -221,8 +221,9 @@ describe("coding account selection helpers", () => {
     };
 
     expect(isMultiAccountAgentType("claude")).toBe(true);
-    expect(isMultiAccountAgentType("elizaos")).toBe(false);
-    await expect(selectCodingAccount("elizaos")).resolves.toBeNull();
+    expect(isMultiAccountAgentType("elizaos")).toBe(true);
+    expect(isMultiAccountAgentType("pi-agent")).toBe(false);
+    await expect(selectCodingAccount("pi-agent")).resolves.toBeNull();
     const picked = await selectCodingAccount("claude", {
       sessionKey: "task-1",
       strategy: "least-used",

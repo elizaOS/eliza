@@ -36,6 +36,7 @@ export const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
 	eliza: "eliza-code",
 	"eliza-code": "eliza-code",
 	elizaos: "eliza-code",
+	opencode: "eliza-code",
 };
 
 /**

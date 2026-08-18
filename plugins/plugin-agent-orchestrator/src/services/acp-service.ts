@@ -68,6 +68,7 @@ import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
+import { applyElizaCodeProviderEnv } from "./eliza-code-provider-env.js";
 import {
   buildGitIdentityEnvPatch,
   resolveGitIdentityConfig,
@@ -4492,6 +4493,12 @@ export class AcpService extends Service {
         continue;
       }
       env[canonicalForwardedEnvKey(key)] = value;
+    }
+    if (
+      agentType &&
+      (normalizeTaskAgentAdapter(agentType) ?? agentType) === "elizaos"
+    ) {
+      applyElizaCodeProviderEnv(env);
     }
     if (model) {
       const normalizedModel =

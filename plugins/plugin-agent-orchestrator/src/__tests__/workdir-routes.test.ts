@@ -57,7 +57,9 @@ describe("task-agent adapter defaults", () => {
     expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("eliza-os")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("pi agent")).toBe("pi-agent");
-    expect(normalizeTaskAgentAdapter("open code")).toBe("opencode");
+    expect(normalizeTaskAgentAdapter("open code")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("opencode")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("eliza-code")).toBe("elizaos");
   });
 
   it("pins the settings default so planner guesses cannot override it", () => {
@@ -75,7 +77,7 @@ describe("task-agent adapter defaults", () => {
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi-agent";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
 
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 
   it("does not pin an adapter when selection strategy is dynamic", () => {
@@ -368,7 +370,7 @@ describe("resolvePinnedAdapter", () => {
 
   it("returns the configured adapter when default + fixed strategy", () => {
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 
   it("defaults to fixed strategy when the env var is unset", () => {
@@ -389,6 +391,6 @@ describe("resolvePinnedAdapter", () => {
 
   it("normalises case", () => {
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "OPENCODE";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    expect(resolvePinnedAdapter(undefined)).toBe("elizaos");
   });
 });

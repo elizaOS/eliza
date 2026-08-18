@@ -654,13 +654,23 @@ describe("/backend", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("rejects the removed opencode backend as unknown", async () => {
-		const fetchMock = vi.fn();
+	it("normalizes the legacy opencode backend alias", async () => {
+		const fetchMock = vi.fn(async () =>
+			jsonResponse({
+				applied: true,
+				restart: false,
+				keys: ["ELIZA_DEFAULT_AGENT_TYPE"],
+			}),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
-		expect(r.reply).toContain('Unknown coding backend "opencode"');
-		expect(fetchMock).not.toHaveBeenCalled();
+		const [call] = recordedCalls(fetchMock);
+		expect(call?.body).toEqual({
+			target: "coding",
+			defaultBackend: "eliza-code",
+		});
+		expect(r.reply).toContain("Default coding backend set to eliza");
 	});
 
 	it("passes the route's 400 validation error through verbatim", async () => {

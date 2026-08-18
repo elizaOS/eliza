@@ -481,14 +481,18 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     }
     return value.trim();
   };
-  const backend = optionalString("backend");
+  const normalizeLegacyBackend = (value: string | undefined) =>
+    value === "opencode" ? "eliza-code" : value;
+  const backend = normalizeLegacyBackend(optionalString("backend"));
   if (backend !== undefined && !CODING_BACKENDS.has(backend as CodingBackend)) {
     throw invalid(
       `Unknown backend "${backend}" (expected one of: ${[...CODING_BACKENDS].join(", ")})`,
       { backend },
     );
   }
-  const defaultBackend = optionalString("defaultBackend");
+  const defaultBackend = normalizeLegacyBackend(
+    optionalString("defaultBackend"),
+  );
   if (
     defaultBackend !== undefined &&
     !CODING_BACKENDS.has(defaultBackend as CodingBackend)

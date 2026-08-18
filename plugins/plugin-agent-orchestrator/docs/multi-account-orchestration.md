@@ -66,8 +66,8 @@ bridge**.
 - [x] The connect-accounts window (Settings → Accounts: `AddAccountDialog` OAuth / API-key / coding-plan-key flows, `AccountList`, `RotationStrategyPicker`) pre-exists and is the surface for linking multiple accounts of each type.
 
 ## Known constraints / follow-ups
-- **OpenCode pool-rotates across Cerebras accounts only.** OpenCode resolves a pooled key for exactly one backend — Cerebras (`CEREBRAS_API_KEY`, see `buildOpencodeSpawnConfig`) — so `opencode` is a multi-account selector type mapped to `cerebras-api`: it least-used-rotates across linked Cerebras accounts (the bridge injects the selected `CEREBRAS_API_KEY`, which OpenCode's config reads) and no-ops when none are linked (Eliza Cloud / single-key setups are unchanged). OpenCode's other backends (Eliza Cloud, local, user-configured opencode.json) are not pooled. Precedence: a `CEREBRAS_API_KEY` runtime **setting** still wins over a pooled injection — pooling is authoritative only when no single key is configured.
-- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`) and OpenCode's provider config — there is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
+- **eliza-code pool-rotates across Cerebras accounts.** The `elizaos` selector type maps to `cerebras-api` and least-used-rotates across linked Cerebras accounts. The bridge injects the selected `CEREBRAS_API_KEY`; stored `opencode` agent names normalize to `elizaos` before selection. It no-ops when none are linked, preserving the single-key fallback.
+- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`). There is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
 
 ## Quality bar
 - No regression when zero accounts are linked (bridge returns null → today's behavior).

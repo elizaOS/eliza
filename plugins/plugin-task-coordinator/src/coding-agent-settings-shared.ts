@@ -135,6 +135,9 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   eliza: "elizaos",
   "eliza os": "elizaos",
   elizaos: "elizaos",
+  "eliza-code": "elizaos",
+  opencode: "elizaos",
+  "open code": "elizaos",
   "openai codex": "codex",
   pi: "pi-agent",
   "pi agent": "pi-agent",
@@ -142,6 +145,46 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   claude: "claude",
   codex: "codex",
 };
+
+const ELIZA_CODE_PROVIDER_KEYS = ["API_KEY", "BASE_URL", "LOCAL"] as const;
+
+/** Loads settings with canonical eliza-code keys winning over legacy values. */
+export function loadCodingAgentPrefs(
+  env: Record<string, string>,
+  cloud: Record<string, string>,
+): Record<string, string> {
+  const loaded: Record<string, string> = {};
+  if (cloud.apiKey) loaded._CLOUD_API_KEY = cloud.apiKey;
+
+  for (const agent of ["ELIZAOS", "CLAUDE", "CODEX"] as const) {
+    const prefix = `ELIZA_${agent}`;
+    for (const suffix of ["MODEL_POWERFUL", "MODEL_FAST"] as const) {
+      const key = `${prefix}_${suffix}`;
+      if (env[key]) loaded[key] = env[key];
+    }
+  }
+  for (const key of [
+    "ELIZA_DEFAULT_APPROVAL_PRESET",
+    "ELIZA_AGENT_SELECTION_STRATEGY",
+    "ELIZA_DEFAULT_AGENT_TYPE",
+    "ELIZA_SCRATCH_RETENTION",
+    "ELIZA_CODING_DIRECTORY",
+    "ELIZA_LLM_PROVIDER",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "OPENAI_BASE_URL",
+  ] as const) {
+    if (env[key]) loaded[key] = env[key];
+  }
+  for (const suffix of ELIZA_CODE_PROVIDER_KEYS) {
+    const canonicalKey = `ELIZA_CODE_${suffix}`;
+    const legacyKey = `ELIZA_OPENCODE_${suffix}`;
+    const value = env[canonicalKey] || env[legacyKey];
+    if (value) loaded[canonicalKey] = value;
+  }
+  return loaded;
+}
 
 export const ENV_PREFIX: Record<AgentTab, string> = {
   elizaos: "ELIZA_ELIZAOS",
