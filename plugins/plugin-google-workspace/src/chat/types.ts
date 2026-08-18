@@ -2,7 +2,7 @@
  * Type definitions for the Google Chat plugin.
  */
 
-import type { Service } from "@elizaos/core";
+import { type Service, truncateWellFormed } from "@elizaos/core";
 
 /** Maximum message length for Google Chat */
 export const MAX_GOOGLE_CHAT_MESSAGE_LENGTH = 4000;
@@ -340,8 +340,9 @@ export function splitMessageForGoogleChat(
       }
     }
 
-    chunks.push(remaining.slice(0, breakPoint).trimEnd());
-    remaining = remaining.slice(breakPoint).trimStart();
+    const head = truncateWellFormed(remaining, breakPoint);
+    chunks.push(head.trimEnd());
+    remaining = remaining.slice(head.length).trimStart();
   }
 
   return chunks;
