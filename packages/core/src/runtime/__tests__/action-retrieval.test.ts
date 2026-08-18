@@ -859,6 +859,27 @@ describe("action catalogue and retrieval", () => {
 		]);
 	});
 
+	// Stage-1 recall candidates must resolve to the MEMORY umbrella: the
+	// classifier emits RECALL_MEMORY for "who is X" recalls, and when the name
+	// resolved to nothing the turn paid a full extra planner round to
+	// rediscover MEMORY op:search (live sol-dev 2026-08-17/18,
+	// gate=resolved-to-no-runtime-action).
+	it("hints memory-recall candidates at the MEMORY umbrella", () => {
+		for (const candidate of [
+			"RECALL_MEMORY",
+			"RECALL_MEMORIES",
+			"MEMORY_RECALL",
+			"MEMORY_SEARCH",
+			"SEARCH_MEMORIES",
+			"CHECK_MEMORY",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["MEMORY"]);
+		}
+		expect(parentAliasesForCandidateAction("recall memory")).toEqual([
+			"MEMORY",
+		]);
+	});
+
 	it("hints reminder candidates at OWNER_REMINDERS and TRIGGER", () => {
 		for (const candidate of [
 			"ADD_REMINDER",

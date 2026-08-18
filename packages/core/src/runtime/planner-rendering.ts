@@ -206,19 +206,55 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
 }
 
 /**
+ * When a tool result carries BOTH a text projection and a `data` payload,
+ * the rendered `data:` section is capped to this many characters (head +
+ * `[N chars truncated]` marker + tail via {@link truncateToolResultText}).
+ *
+ * Why: `text` is the projection the action authored FOR the model; `data`
+ * is the machine payload, and for recall-shaped actions it duplicates the
+ * text at full fidelity. Live sol-dev 2026-08-18 (trajectories ipd1zs /
+ * rv6oxq / 5m6ir4): one MEMORY_SEARCH result rendered a ~5 KB `text` plus a
+ * ~46 KB pretty-printed `data` blob (`data.memories` + `data.durableMemories`
+ * carrying every hit's full text), ballooning the post-search planner call
+ * from ~18K to ~36-37K prompt tokens and the evaluator render to ~50K. Every
+ * recall turn paid that twice — 10-25s of pure duplicated-serialization
+ * latency at fable per-call speeds.
+ *
+ * The cap keeps small structured payloads (ids, URLs, workspace handles the
+ * planner chains on) fully intact and truncates only pathological dumps.
+ * Results with NO text projection still render `data` in full — that is the
+ * documented fallback role, unchanged. The trajectory itself always archives
+ * the complete `data`; only the model-bound wire shape is capped.
+ */
+export const MAX_RENDERED_DATA_CHARS_WITH_TEXT = 4_000;
+
+/**
  * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
  * conventions: prefer `result.text`, fall back to a JSON serialization of
  * `data`/`error` only when no text projection exists. Strict-grammar
  * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
  * the tool turn, and this preserves byte-stability when text is consistent.
+ *
+ * When both `text` and `data` are present, the `data:` section is capped at
+ * {@link MAX_RENDERED_DATA_CHARS_WITH_TEXT} — see that constant for the
+ * live-incident rationale.
  */
 export function toolMessageContent(result: PlannerToolResult): string {
 	const parts: string[] = [];
-	if (typeof result.text === "string" && result.text.trim().length > 0) {
+	const hasText =
+		typeof result.text === "string" && result.text.trim().length > 0;
+	if (hasText && typeof result.text === "string") {
 		parts.push(`text: ${result.text.trim()}`);
 	}
 	if (result.data && Object.keys(result.data).length > 0) {
-		parts.push(`data: ${stringifyForModel(result.data)}`);
+		const serialized = stringifyForModel(result.data);
+		parts.push(
+			`data: ${
+				hasText
+					? truncateToolResultText(serialized, MAX_RENDERED_DATA_CHARS_WITH_TEXT)
+					: serialized
+			}`,
+		);
 	}
 	if (result.error) {
 		const errMsg =
