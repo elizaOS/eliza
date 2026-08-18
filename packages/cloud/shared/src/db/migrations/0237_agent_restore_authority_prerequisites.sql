@@ -32,9 +32,12 @@ DO $$ BEGIN
       FOREIGN KEY ("activation_backup_id", "organization_id", "id")
       REFERENCES "agent_sandbox_backups"
         ("id", "catalog_organization_id", "catalog_agent_id")
-      ON DELETE RESTRICT;
+      ON DELETE RESTRICT NOT VALID;
   END IF;
 END $$;
+--> statement-breakpoint
+ALTER TABLE "agent_sandboxes" VALIDATE CONSTRAINT
+  "agent_sandboxes_activation_backup_authority_fkey";
 --> statement-breakpoint
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname =
@@ -45,6 +48,9 @@ DO $$ BEGIN
       FOREIGN KEY ("activation_consent_head_backup_id", "organization_id", "id")
       REFERENCES "agent_sandbox_backups"
         ("id", "catalog_organization_id", "catalog_agent_id")
-      ON DELETE RESTRICT;
+      ON DELETE RESTRICT NOT VALID;
   END IF;
 END $$;
+--> statement-breakpoint
+ALTER TABLE "agent_sandboxes" VALIDATE CONSTRAINT
+  "agent_sandboxes_activation_consent_backup_authority_fkey";

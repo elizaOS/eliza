@@ -172,6 +172,14 @@ function leaseInsert(
 }
 
 describe("0237-0245 restore and vault foundation migrations", () => {
+  test("installs activation backup tenant FKs with deferred validation", () => {
+    const prerequisites = MIGRATIONS[0];
+    expect(prerequisites.match(/ON DELETE RESTRICT NOT VALID;/g)).toHaveLength(2);
+    expect(prerequisites.match(/ALTER TABLE "agent_sandboxes" VALIDATE CONSTRAINT/g)).toHaveLength(
+      2,
+    );
+  });
+
   test("captures raw-renewal database time only after both reproof locks", () => {
     const guard = MIGRATIONS[MIGRATION_NAMES.indexOf("0244_agent_backup_restore_lease_guard")];
     expect(guard).toBeDefined();
