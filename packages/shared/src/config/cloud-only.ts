@@ -4,13 +4,18 @@
  * cloud-login proxy, so an explicit desktop `cloud` runtime mode wins over the
  * dev / injected-backend fall-throughs.
  */
-export function shouldUseCloudOnlyBranding(options: {
-  isDev: boolean;
-  injectedApiBase?: string | null;
-  isNativePlatform?: boolean;
-  nativeRuntimeMode?: string | null;
-  desktopRuntimeMode?: string | null;
-}): boolean {
+export function shouldUseCloudOnlyBranding(
+  options?: {
+    isDev?: boolean;
+    injectedApiBase?: string | null;
+    isNativePlatform?: boolean;
+    nativeRuntimeMode?: string | null;
+    desktopRuntimeMode?: string | null;
+  } | null,
+): boolean {
+  if (!options || typeof options !== "object") {
+    return true;
+  }
   // An explicit desktop "cloud" runtime mode forces cloud-only regardless of
   // dev mode or an injected loopback backend. The desktop shell deliberately
   // runs cloud-only and keeps the loopback agent solely as the cloud-login
