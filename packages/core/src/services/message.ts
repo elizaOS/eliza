@@ -10702,14 +10702,30 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 
 const LEGACY_CODING_WORK_VERB_PATTERN =
 	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+// Add-family verbs are everyday mutation words ("add a reminder", "delete the
+// weather app"), so they pair ONLY with strong code artifacts — never the
+// legacy artifact set whose app/site/page tokens belong to view and app
+// management asks. Live gap 2026-08-18: "yo can u add a lil one-line
+// description to the readme in my <name> repo and put up a pr" carried
+// repo+pr artifacts but no legacy verb; no deterministic coding candidate
+// fired and Stage-1 answered ["simple"] from stale room history, fabricating
+// "a PR is up".
+const ADD_FAMILY_CODING_VERB_PATTERN =
+	/\b(?:add|append|insert|rename|remove|delete)\b/giu;
 const LEGACY_CODING_ARTIFACT_PATTERN =
 	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
 const CODING_OPERATION_VERB_PATTERN =
 	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+// Repo-submission verbs pair ONLY with the strong code artifacts: "put up a
+// pr", "push a branch", "open a pull request". "open" lives here and NOT in
+// the legacy verb set because anchored to pr/repo/branch it is unambiguous,
+// while "open the app/page" is view navigation.
+const REPO_SUBMIT_VERB_PATTERN =
+	/\b(?:put\s+up|open|submit|push|raise|file)\b/giu;
 const REVIEW_WORK_VERB_PATTERN =
 	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
 const STRONG_CODE_ARTIFACT_PATTERN =
-	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci|readme|changelog)\b/giu;
 const EXPANDED_WORK_ARTIFACT_PATTERN =
 	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
 const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
@@ -10777,6 +10793,22 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		hasNearbyTerms(
 			normalized,
 			REVIEW_WORK_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Submission verbs anchored to strong code artifacts: "put up a pr",
+		// "push the branch", "open a pull request".
+		hasNearbyTerms(
+			normalized,
+			REPO_SUBMIT_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Add-family mutations anchored to strong code artifacts: "add a line
+		// to the readme", "rename the branch", "delete the stale commit".
+		hasNearbyTerms(
+			normalized,
+			ADD_FAMILY_CODING_VERB_PATTERN,
 			STRONG_CODE_ARTIFACT_PATTERN,
 			160,
 		) ||
