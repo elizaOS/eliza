@@ -165,6 +165,12 @@ describe("shared runtime long-term transcript context", () => {
   test("a contradicted claim cannot outrank the latest authoritative search artifact", () => {
     const history = [
       {
+        id: "question",
+        role: "user" as const,
+        content: "Find the NubsCarson Tessera GitHub project.",
+        createdAt: 0,
+      },
+      {
         id: "wrong",
         role: "assistant" as const,
         content: "Tessera is a generic scraper.",
@@ -186,10 +192,7 @@ describe("shared runtime long-term transcript context", () => {
       },
     ];
 
-    const projected = sharedRuntimeModelHistoryMessages(
-      history,
-      "How does the corrected project work?",
-    );
+    const projected = sharedRuntimeModelHistoryMessages(history, "How does Tessera work?");
     const encoded = JSON.stringify(projected);
     expect(encoded).toContain("untrusted_public_web_search_result");
     expect(encoded).toContain("origin guard and credential relay");
@@ -217,6 +220,63 @@ describe("shared runtime long-term transcript context", () => {
     );
 
     expect(projected.some((message) => message.role === "tool")).toBe(false);
+  });
+
+  test("assistant-prose term stuffing cannot select unrelated grounding", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        {
+          id: "weather-question",
+          role: "user",
+          content: "What is the weather in San Francisco?",
+        },
+        {
+          id: "weather",
+          role: "assistant",
+          content: "Bitcoin markets cryptocurrency price blockchain wallet investment.",
+          grounding: {
+            kind: "web_search",
+            query: "San Francisco weather",
+            provider: "exa",
+            text: "Foggy, 55F.",
+            observedAt: 1,
+            truncated: false,
+          },
+        },
+      ],
+      "What about Bitcoin markets?",
+    );
+
+    expect(projected.some((message) => message.role === "tool")).toBe(false);
+  });
+
+  test("trusted preceding user terms can recall a structured grounding artifact", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        {
+          id: "project-question",
+          role: "user",
+          content: "Find the ARC resource proxy maintained by NubsCarson.",
+        },
+        {
+          id: "project",
+          role: "assistant",
+          content: "Here is what I found.",
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson GitHub repository",
+            provider: "parallel",
+            text: "Tessera validates ARC resources through an origin guard.",
+            observedAt: 1,
+            truncated: false,
+          },
+        },
+      ],
+      "How does the ARC resource proxy validate requests?",
+    );
+
+    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+    expect(JSON.stringify(projected)).toContain("origin guard");
   });
 
   test("keeps recent turns and recalls an older preference with its reply", () => {

@@ -194,7 +194,13 @@ function selectedGroundingIndices(
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
-    const trustedWords = groundingWords(`${message.content}\n${grounding.query}`);
+    let precedingUserQuery = "";
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      if (history[cursor].role !== "user") continue;
+      precedingUserQuery = history[cursor].content;
+      break;
+    }
+    const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
     const immediate = index === history.length - 1;
@@ -279,7 +285,9 @@ function meaningfulWords(text: string): Set<string> {
 function relevanceScore(query: Set<string>, message: SharedRuntimeHistoryMessageLike): number {
   if (query.size === 0) return 0;
   const grounding = parseSharedPublicWebGrounding(message.grounding);
-  const words = meaningfulWords(`${message.content}\n${grounding?.query ?? ""}`);
+  const words = meaningfulWords(
+    message.role === "assistant" && grounding ? grounding.query : message.content,
+  );
   let overlap = 0;
   for (const word of query) {
     if (words.has(word)) overlap += 1;
