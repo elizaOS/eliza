@@ -17,3 +17,28 @@ export class LifeOpsServiceError extends Error {
     this.name = "LifeOpsServiceError";
   }
 }
+
+export function isLifeOpsServiceError(
+  error: unknown,
+): error is LifeOpsServiceError {
+  return (
+    error instanceof LifeOpsServiceError ||
+    (error instanceof Error &&
+      error.name === "LifeOpsServiceError" &&
+      typeof (error as unknown as { status: unknown }).status === "number")
+  );
+}
+
+export function toLifeOpsServiceError(
+  error: unknown,
+  fallbackStatus = 500,
+): LifeOpsServiceError {
+  if (isLifeOpsServiceError(error)) return error;
+  if (error instanceof Error) {
+    return new LifeOpsServiceError(fallbackStatus, error.message);
+  }
+  if (typeof error === "string") {
+    return new LifeOpsServiceError(fallbackStatus, error);
+  }
+  return new LifeOpsServiceError(fallbackStatus, "An unknown error occurred");
+}
