@@ -52,6 +52,39 @@ describe("redactSensitiveText (pattern detection)", () => {
 		);
 	});
 
+	it("masks the common JSON credential spellings (W10 pattern-library sync)", () => {
+		// Both implementations compile this same JSON-fields alternation; the
+		// snake_case forms are separate alternatives because case-insensitive
+		// matching does not bridge the underscore.
+		for (const [key, value] of [
+			["clientSecret", "client-secret-value-123"],
+			["client_secret", "client-snake-secret-value-123"],
+			["sessionKey", "session-secret-value-123"],
+			["session_key", "session-snake-secret-value-123"],
+			["authToken", "auth-secret-value-123"],
+			["auth_token", "auth-snake-secret-value-123"],
+			["botToken", "bot-secret-value-123"],
+			["bot_token", "bot-snake-secret-value-123"],
+			["connectionString", "Server=db;Pwd=hunter2w10"],
+			["connection_string", "Server=db;Pwd=hunter2snake"],
+			["access_token", "access-secret-value-123"],
+			["refresh_token", "refresh-secret-value-123"],
+			["webhookUrl", "https://discord.test/api/webhooks/9/hook-secret-a"],
+			["webhook_url", "https://discord.test/api/webhooks/9/hook-secret-b"],
+		]) {
+			const out = redactSensitiveText(`{"${key}":"${value}"}`);
+			expect(out, key).not.toContain(value);
+		}
+	});
+
+	it("does not mask plural or lookalike JSON keys", () => {
+		// The closing quote after the alternation is the boundary: a pluralized
+		// or merely similar key must not fold into the credential set.
+		const benign =
+			'{"sessionKeys":"ab-cd","session_keys":"ef-gh","monkey":"see","authored":"by-me","connection_strings":"docs"}';
+		expect(redactSensitiveText(benign)).toBe(benign);
+	});
+
 	it("redacts credentials embedded in URI userinfo", () => {
 		const httpsUrl = "https://admin:hunter2hunter2@host.example.com/private";
 		const postgresUrl =
