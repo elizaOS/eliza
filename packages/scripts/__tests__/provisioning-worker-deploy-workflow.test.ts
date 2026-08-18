@@ -19,6 +19,31 @@ const services = [
   ),
 ];
 
+interface WorkflowStep {
+  env?: Record<string, string>;
+  name?: string;
+  "timeout-minutes"?: number;
+  uses?: string;
+  with?: Record<string, string>;
+}
+
+interface WorkflowJob {
+  env?: Record<string, string>;
+  steps?: WorkflowStep[];
+}
+
+const parsedWorkflow = Bun.YAML.parse(workflow) as {
+  jobs?: Record<string, WorkflowJob>;
+};
+
+function deployStep(name: string): WorkflowStep {
+  const found = parsedWorkflow.jobs?.deploy?.steps?.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!found) throw new Error(`Missing deploy step: ${name}`);
+  return found;
+}
+
 describe("provisioning worker deployment contract", () => {
   it("routes both jobs only to the healthy Hetzner fleet", () => {
     expect(
@@ -60,6 +85,144 @@ describe("provisioning worker deployment contract", () => {
     );
   });
 
+  it("runs canonical migrations from the exact SHA before any SSH mutation", () => {
+    const checkout = workflow.indexOf(
+      "- name: Checkout exact deployment source for migration gate",
+    );
+    const verify = workflow.indexOf("- name: Verify exact migration source");
+    const migration = workflow.indexOf(
+      "- name: Run exact-SHA canonical database migrations",
+    );
+    const firstSsh = workflow.indexOf(
+      "- name: Ensure host prereqs (Node 24, swap, bunx symlink)",
+    );
+    const restart = workflow.indexOf('sudo systemctl restart "$SYSTEMD_UNIT"');
+
+    expect(checkout).toBeGreaterThan(-1);
+    expect(verify).toBeGreaterThan(checkout);
+    expect(migration).toBeGreaterThan(verify);
+    expect(firstSsh).toBeGreaterThan(migration);
+    expect(restart).toBeGreaterThan(firstSsh);
+    expect(workflow).toContain(
+      "ref: $" + "{{ needs.determine-env.outputs.deployment_sha }}",
+    );
+    expect(workflow).toContain(
+      "EXPECTED_DEPLOY_SHA: $" +
+        "{{ needs.determine-env.outputs.deployment_sha }}",
+    );
+    expect(workflow).toContain(
+      '[ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {',
+    );
+    expect(workflow).toContain("bun run db:cloud:migrate");
+  });
+
+  it("fails closed on missing protected DB authority and uses the pinned toolchain", () => {
+    const migrationGate = workflow.slice(
+      workflow.indexOf(
+        "- name: Checkout exact deployment source for migration gate",
+      ),
+      workflow.indexOf(
+        "- name: Ensure host prereqs (Node 24, swap, bunx symlink)",
+      ),
+    );
+
+    expect(migrationGate).toContain(
+      "Protected DATABASE_URL is required before provisioning-worker deploy",
+    );
+    expect(migrationGate).toContain('node-version: "24.15.0"');
+    expect(migrationGate).toContain('bun-version: "1.3.14"');
+    expect(migrationGate).toContain(
+      "bun install --frozen-lockfile --no-save --ignore-scripts",
+    );
+    expect(workflow).toContain("timeout-minutes: 95");
+  });
+
+  it("scopes protected values away from checkout, setup, and install actions", () => {
+    const secretNames = [
+      "DEPLOY_HOST",
+      "DEPLOY_SSH_KEY",
+      "HEADSCALE_API_KEY",
+      "CONTAINERS_SSH_KEY",
+      "SANDBOX_REGISTRY_REDIS_URL",
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
+    ];
+    const deployJob = parsedWorkflow.jobs?.deploy;
+    expect(deployJob).toBeDefined();
+    for (const name of secretNames) {
+      expect(deployJob?.env?.[name]).toBeUndefined();
+    }
+
+    for (const name of [
+      "Checkout exact deployment source for migration gate",
+      "Verify exact migration source",
+      "Setup Node for migration gate",
+      "Setup Bun for migration gate",
+      "Install exact migration dependencies",
+    ]) {
+      const step = deployStep(name);
+      for (const secretName of secretNames) {
+        expect(step.env?.[secretName]).toBeUndefined();
+      }
+    }
+
+    const migration = deployStep("Run exact-SHA canonical database migrations");
+    expect(Object.keys(migration.env ?? {})).toEqual(["DATABASE_URL"]);
+    expect(migration.env?.DATABASE_URL).toContain("secrets.DATABASE_URL");
+    expect(migration.env?.DATABASE_URL).not.toContain("env.DATABASE_URL");
+
+    const validate = deployStep(
+      "Validate canonical deploy configuration and shared secrets",
+    );
+    for (const name of [
+      "DEPLOY_HOST",
+      "DEPLOY_SSH_KEY",
+      "HEADSCALE_API_KEY",
+      "DATABASE_URL",
+    ]) {
+      expect(validate.env?.[name]).toContain("secrets.");
+    }
+    expect(validate.env?.CONTAINERS_SSH_KEY).toBeUndefined();
+    expect(validate.env?.SECRETS_MASTER_KEY).toBeUndefined();
+
+    const remoteDeploy = deployStep("Deploy and restart worker");
+    for (const name of [
+      "HEADSCALE_API_KEY",
+      "CONTAINERS_SSH_KEY",
+      "SANDBOX_REGISTRY_REDIS_URL",
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
+    ]) {
+      expect(remoteDeploy.env?.[name]).toContain("secrets.");
+    }
+    expect(remoteDeploy.env?.DEPLOY_SSH_KEY).toBeUndefined();
+    expect(remoteDeploy.with?.key).toContain(
+      "secrets.ELIZA_PROVISIONING_SSH_KEY",
+    );
+  });
+
+  it("bounds every pre-SSH step below the enclosing deployment fence", () => {
+    const expectedBounds = new Map<string, number>([
+      ["Validate canonical deploy configuration and shared secrets", 2],
+      ["Checkout exact deployment source for migration gate", 5],
+      ["Verify exact migration source", 1],
+      ["Setup Node for migration gate", 5],
+      ["Setup Bun for migration gate", 5],
+      ["Install exact migration dependencies", 10],
+      ["Run exact-SHA canonical database migrations", 10],
+    ]);
+    let totalPreSshMinutes = 0;
+    for (const [name, expectedMinutes] of expectedBounds) {
+      const bound = deployStep(name)["timeout-minutes"];
+      expect(bound).toBe(expectedMinutes);
+      totalPreSshMinutes += bound ?? 0;
+    }
+
+    expect(totalPreSshMinutes).toBe(38);
+    expect(workflow).toContain("timeout-minutes: 95");
+    expect(totalPreSshMinutes + 5 + 40 + 5).toBeLessThan(95);
+  });
+
   it("reports the resolved branch and immutable deployment SHA in both Discord receipts", () => {
     const receipt = [
       "description: |",
@@ -86,7 +249,7 @@ describe("provisioning worker deployment contract", () => {
       workflow.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
-    expect(workflow).toContain("timeout-minutes: 55");
+    expect(workflow).toContain("timeout-minutes: 95");
   });
 
   it("regenerates before deploy and self-heals both services", () => {
@@ -107,7 +270,7 @@ describe("provisioning worker deployment contract", () => {
     // the GitHub environment VARIABLE through the SSH env passthrough into the
     // skip-empty EnvironmentFile reconcile loop.
     expect(workflow).toContain(
-      "WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}",
+      "WARM_POOL_ENABLED: $" + "{{ vars.WARM_POOL_ENABLED }}",
     );
     expect(workflow).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
     expect(workflow).toContain('"WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \\');
