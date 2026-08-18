@@ -168,7 +168,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
-  it("records completed-action navigation without requiring a WebSocket client", async () => {
+  it("best-effort delivers completed-action navigation before its acknowledgement", async () => {
     const { ctx, json, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
       "calendar",
       {
@@ -181,7 +181,14 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).not.toHaveBeenCalled();
-    expect(broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "seeker-rest-client",
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "calendar",
+        viewPath: null,
+      }),
+    );
     expect(getCurrentViewState()).toMatchObject({
       viewId: "calendar",
       source: "agent",
