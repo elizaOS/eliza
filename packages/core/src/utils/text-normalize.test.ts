@@ -11,6 +11,7 @@
  * `null` and a whitespace-only string are not.
  */
 
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { flattenTextValues, toMultilineText } from "./text-normalize";
 
@@ -115,11 +116,74 @@ describe("flattenTextValues", () => {
 		});
 	});
 
+	describe("dates", () => {
+		const timestamp = "2026-01-01T00:00:00.000Z";
+		const date = new Date(timestamp);
+
+		it("renders a Date as a deterministic ISO-8601 fragment", () => {
+			expect(flattenTextValues(date)).toEqual([timestamp]);
+		});
+
+		it("preserves Dates nested in arrays and object properties", () => {
+			expect(flattenTextValues(["created", date])).toEqual([
+				"created",
+				timestamp,
+			]);
+			expect(flattenTextValues({ createdAt: date })).toEqual([
+				`createdAt: ${timestamp}`,
+			]);
+		});
+
+		it("renders an invalid Date without throwing", () => {
+			expect(flattenTextValues(new Date(Number.NaN))).toEqual(["Invalid Date"]);
+		});
+
+		it("recognizes Dates created in another JavaScript realm", () => {
+			const crossRealmDate = runInNewContext(
+				`new Date(${JSON.stringify(timestamp)})`,
+			) as Date;
+
+			expect(crossRealmDate instanceof Date).toBe(false);
+			expect(flattenTextValues(crossRealmDate)).toEqual([timestamp]);
+		});
+
+		it("uses intrinsic Date operations instead of overridden methods", () => {
+			class MisleadingDate extends Date {
+				override getTime(): number {
+					throw new Error("overridden getTime must not run");
+				}
+
+				override toISOString(): string {
+					return "spoofed ISO value";
+				}
+
+				override toString(): string {
+					return "spoofed string value";
+				}
+			}
+
+			expect(flattenTextValues(new MisleadingDate(timestamp))).toEqual([
+				timestamp,
+			]);
+			expect(flattenTextValues(new MisleadingDate(Number.NaN))).toEqual([
+				"Invalid Date",
+			]);
+		});
+
+		it("does not trust a spoofed Date toStringTag", () => {
+			expect(
+				flattenTextValues({
+					[Symbol.toStringTag]: "Date",
+					value: "kept",
+				}),
+			).toEqual(["value: kept"]);
+		});
+	});
+
 	describe("non-plain objects have no enumerable own entries and are dropped", () => {
-		// Worth pinning: these coerce to nothing rather than to their toString(),
-		// so a Date or Map handed to prompt assembly vanishes without an error.
+		// Map and Set do not have a canonical prompt representation, so they retain
+		// the existing empty-object behavior rather than relying on their toString().
 		it.each([
-			["a Date", new Date("2026-01-01T00:00:00.000Z")],
 			["a Map", new Map([["k", "v"]])],
 			["a Set", new Set(["a"])],
 		])("drops %s", (_label, value) => {
