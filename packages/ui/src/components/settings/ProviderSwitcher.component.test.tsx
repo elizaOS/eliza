@@ -12,7 +12,10 @@ import {
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProviderSwitcher } from "./ProviderSwitcher";
+import {
+  ProviderSwitcher,
+  reconcileProviderEntriesWithServingAxes,
+} from "./ProviderSwitcher";
 
 const selection = vi.hoisted(() => ({
   cloudCallsDisabled: false,
@@ -240,5 +243,45 @@ describe("ProviderSwitcher", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "cloud panel" }));
     expect(selection.handleSelectCloud).toHaveBeenCalled();
+  });
+
+  it("uses the live external serving source for Active provider labels", () => {
+    const entries = [
+      {
+        id: "__local__",
+        icon: Cpu,
+        label: "Local",
+        category: "local" as const,
+        status: { tone: "ok" as const, label: "Ready" },
+        current: true,
+      },
+      {
+        id: "cerebras",
+        icon: KeyRound,
+        label: "Cerebras",
+        category: "key" as const,
+        status: { tone: "ok" as const, label: "Ready" },
+        current: false,
+      },
+    ];
+
+    const displayed = reconcileProviderEntriesWithServingAxes(entries, {
+      runtime: "local",
+      inference: "external",
+      combination: "external-inference",
+      inferenceFallback: false,
+      activeChatProvider: "cerebras",
+      activeChatEndpoint: "api.cerebras.ai",
+    });
+
+    expect(displayed.find((entry) => entry.id === "__local__")?.current).toBe(
+      false,
+    );
+    expect(displayed.find((entry) => entry.id === "__local__")?.status).toEqual(
+      { tone: "muted", label: "Available" },
+    );
+    expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
+      true,
+    );
   });
 });

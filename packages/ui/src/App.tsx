@@ -94,7 +94,6 @@ import {
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { ServingProviderChip } from "./components/composites/chat/ServingProviderChip";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -2031,9 +2030,6 @@ function ShellFoundationMount({
           open={controller.isOpen}
         >
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
-              <ServingProviderChip className="pointer-events-none text-muted-strong" />
-            </div>
             <div className="min-h-0 flex-1">
               <ChatSurface
                 messages={controller.messages}

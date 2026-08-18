@@ -658,6 +658,22 @@ describe("GET /api/models/config activeChat", () => {
     });
   });
 
+  it("reports explicit local Cerebras routing without a serviceRouting block", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {} as never,
+      processEnv: {
+        ELIZA_PROVIDER: "cerebras",
+        CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+  });
+
   it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
     const config = {
       serviceRouting: {

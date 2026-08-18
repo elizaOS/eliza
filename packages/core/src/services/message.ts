@@ -12934,10 +12934,20 @@ export class DefaultMessageService implements IMessageService {
 				() => this.processAttachments(runtime, attachments),
 			);
 			if (message.id) {
+				// API chat can pass a prompt-only clone whose text includes language
+				// or document guidance while the canonical user memory already exists.
+				// Attachment enrichment must update only the durable attachment view,
+				// not overwrite the stored user's words with those internal prompt
+				// instructions. Preserve the canonical persisted text when available.
+				const canonicalMessage = await runtime.getMemoryById(message.id);
+				const canonicalText = canonicalMessage?.content?.text;
 				await runtime.updateMemory({
 					id: message.id,
 					content: {
 						...message.content,
+						...(typeof canonicalText === "string"
+							? { text: canonicalText }
+							: {}),
 						attachments: sanitizeAttachmentsForStorage(
 							message.content.attachments,
 						),

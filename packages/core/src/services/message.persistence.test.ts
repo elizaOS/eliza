@@ -38,6 +38,7 @@ function augmentedText(userText: string): string {
 
 function makeRuntime() {
 	const createMemory = vi.fn(async () => CREATED_MESSAGE_ID);
+	const updateMemory = vi.fn(async () => true);
 	const queueEmbeddingGeneration = vi.fn(async () => undefined);
 	const runActionsByMode = vi.fn(async () => undefined);
 	const emitEvent = vi.fn(async () => undefined);
@@ -65,10 +66,11 @@ function makeRuntime() {
 		getService: vi.fn(() => null),
 		getMemoryById: vi.fn(async () => null),
 		createMemory,
+		updateMemory,
 		queueEmbeddingGeneration,
 		getParticipantUserState: vi.fn(async () => null),
 	} as unknown as IAgentRuntime;
-	return { runtime, createMemory, queueEmbeddingGeneration };
+	return { runtime, createMemory, updateMemory, queueEmbeddingGeneration };
 }
 
 describe("DefaultMessageService message persistence", () => {
@@ -109,6 +111,57 @@ describe("DefaultMessageService message persistence", () => {
 				content: expect.objectContaining({ text: userText }),
 			}),
 			"normal",
+		);
+	});
+
+	it("keeps canonical user text when attachment enrichment updates a prompt-only clone", async () => {
+		const service = new DefaultMessageService();
+		const { runtime, updateMemory } = makeRuntime();
+		(runtime.getSetting as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+		const canonicalText = "Read the attached file.";
+		const augmented = `${canonicalText}\n\n[Language instruction: Reply in natural English.]`;
+		(runtime.getMemoryById as ReturnType<typeof vi.fn>).mockResolvedValue({
+			id: CREATED_MESSAGE_ID,
+			agentId: AGENT_ID,
+			entityId: USER_ID,
+			roomId: ROOM_ID,
+			content: { text: canonicalText, source: "client_chat" },
+		});
+		vi.spyOn(service, "processAttachments").mockResolvedValue([
+			{
+				id: "upload-1",
+				url: "/api/media/example.txt",
+				contentType: "document",
+				text: "uploaded body",
+			},
+		]);
+		const message = {
+			entityId: USER_ID,
+			agentId: AGENT_ID,
+			roomId: ROOM_ID,
+			content: {
+				text: augmented,
+				source: "client_chat",
+				attachments: [
+					{
+						id: "upload-1",
+						url: "/api/media/example.txt",
+						contentType: "document",
+					},
+				],
+			},
+		} as Memory;
+
+		await service.handleMessage(runtime, message).catch(() => undefined);
+
+		expect(updateMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: CREATED_MESSAGE_ID,
+				content: expect.objectContaining({
+					text: canonicalText,
+					attachments: [expect.objectContaining({ text: "uploaded body" })],
+				}),
+			}),
 		);
 	});
 

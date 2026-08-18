@@ -583,6 +583,19 @@ export function resolveActiveChat(
         : undefined;
   } else if (llmText?.transport === "direct" && backend !== undefined) {
     provider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+  } else if (routing === null) {
+    // Legacy/local launches may configure plugin-openai directly from the
+    // environment without persisting a serviceRouting block. ELIZA_PROVIDER is
+    // itself plugin-openai's explicit routing selector, so it is stronger
+    // evidence than guessing from a base URL or credential presence. Preserve
+    // the cloud-proxy fall-through above: an unsigned Cloud route must still
+    // report no external brain and fall back locally.
+    const explicitProvider = resolveEffective(
+      config,
+      processEnv,
+      "ELIZA_PROVIDER",
+    )?.value.toLowerCase();
+    if (explicitProvider === "cerebras") provider = "cerebras";
   }
   const family =
     provider === "openai"
