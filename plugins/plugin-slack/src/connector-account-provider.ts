@@ -34,7 +34,41 @@ import { persistConnectorCredentialRefs } from "./connector-credential-refs";
 import { SLACK_SERVICE_NAME } from "./types";
 
 const SLACK_OAUTH_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
-const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+export const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+
+/** Slack token-exchange POST — same 15s Fal #21205 family as Discord OAuth. */
+export const SLACK_OAUTH_TIMEOUT_MS = 15_000;
+
+export interface SlackConnectorAccountProviderOptions {
+  fetchImpl?: typeof fetch;
+  oauthTimeoutMs?: number;
+}
+
+export async function exchangeSlackOAuthTokenWithFetch(
+  body: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = SLACK_OAUTH_TIMEOUT_MS,
+): Promise<SlackOAuthV2Response> {
+  const response = await fetchImpl(SLACK_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `Slack token exchange failed with ${response.status}: ${text}`,
+    );
+  }
+  const parsed = (await response.json()) as SlackOAuthV2Response;
+  if (!parsed.ok || !parsed.access_token) {
+    throw new Error(
+      `Slack token exchange returned an error: ${parsed.error ?? "unknown"}`,
+    );
+  }
+  return parsed;
+}
 
 const DEFAULT_BOT_SCOPES = [
   "app_mentions:read",
@@ -209,7 +243,10 @@ function mergeStoredAccountPatch(
 
 export function createSlackConnectorAccountProvider(
   runtime: IAgentRuntime,
+  options: SlackConnectorAccountProviderOptions = {},
 ): ConnectorAccountProvider {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const oauthTimeoutMs = options.oauthTimeoutMs ?? SLACK_OAUTH_TIMEOUT_MS;
   return {
     provider: SLACK_SERVICE_NAME,
     label: "Slack",
@@ -336,23 +373,11 @@ export function createSlackConnectorAccountProvider(
         redirect_uri: redirectUri,
       });
 
-      const response = await fetch(SLACK_OAUTH_TOKEN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: tokenParams.toString(),
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(
-          `Slack token exchange failed with ${response.status}: ${body}`,
-        );
-      }
-      const parsed = (await response.json()) as SlackOAuthV2Response;
-      if (!parsed.ok || !parsed.access_token) {
-        throw new Error(
-          `Slack token exchange returned an error: ${parsed.error ?? "unknown"}`,
-        );
-      }
+      const parsed = await exchangeSlackOAuthTokenWithFetch(
+        tokenParams.toString(),
+        fetchImpl,
+        oauthTimeoutMs,
+      );
 
       const teamId = parsed.team?.id;
       if (!teamId) {
