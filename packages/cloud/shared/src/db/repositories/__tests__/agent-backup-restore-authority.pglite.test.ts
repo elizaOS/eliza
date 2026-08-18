@@ -1199,6 +1199,69 @@ describe("strict restore catalogue authority", () => {
       targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
       expectedActivationReceiptSha256: RECEIPT_SHA,
     } as const;
+
+    const originalLeaseExpiry = acquired.authority.expiresAt;
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: new Date(acquired.lease.created_at.getTime() + 1) })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "expired while mutable authorities were revalidated",
+    );
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: originalLeaseExpiry })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+
+    await releaseAgentBackupRestoreLease(acquired.authority);
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    const takeover = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d053",
+      ownerId: "takeover-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d054",
+      leaseMs: 60_000,
+    });
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    expect(takeover.authority.restoreAttemptId).not.toBe(acquired.authority.restoreAttemptId);
+    expect(await dbWrite.select().from(agentBackupRestoreReceipts)).toHaveLength(0);
+    const [uncommittedAuthority] = await dbWrite
+      .select({ generation: agentBackupCatalogAuthorities.restore_generation })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    expect(uncommittedAuthority?.generation).toBe(0n);
+    const [uncommittedBackup] = await dbWrite
+      .select({
+        state: agentSandboxBackups.catalog_state,
+        generation: agentSandboxBackups.restore_generation,
+        receiptDigest: agentSandboxBackups.restore_receipt_digest,
+      })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+    expect(uncommittedBackup).toEqual({
+      state: "protected",
+      generation: null,
+      receiptDigest: null,
+    });
+
+    // Rewind only the adversarial fixture so the original exact-authority happy path remains proven.
+    await dbWrite
+      .delete(agentBackupRestoreLeases)
+      .where(eq(agentBackupRestoreLeases.id, takeover.authority.leaseId));
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: null })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
     const [finalFirst, finalReplay] = await Promise.all([
       commitAgentBackupRestore(finalInput),
       commitAgentBackupRestore(finalInput),

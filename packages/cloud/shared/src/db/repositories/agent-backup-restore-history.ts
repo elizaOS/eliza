@@ -311,6 +311,7 @@ export async function authorizeAgentActivationDispatch(
 
 export interface RecordAgentVaultKeySeedReceiptInput {
   receiptId: string;
+  /** SHA-256 of the authenticated seeding result; the future coordinator verifies its payload. */
   receiptDigest: string;
   organizationId: string;
   agentId: string;
@@ -520,6 +521,7 @@ export async function recordAgentVaultKeySeedReceipt(
 
 export interface CommitAgentBackupRestoreInput {
   receiptId: string;
+  /** SHA-256 of the authenticated restore result; the future coordinator verifies its payload. */
   receiptDigest: string;
   organizationId: string;
   agentId: string;
@@ -682,6 +684,33 @@ export async function commitAgentBackupRestore(
     ) {
       conflict("Final restore chain differs from source, seed, or activation publication");
     }
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, seed.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, seed.organization_id),
+          eq(agentBackupRestoreLeases.agent_id, seed.agent_id),
+          eq(agentBackupRestoreLeases.backup_id, seed.backup_id),
+          eq(agentBackupRestoreLeases.restore_attempt_id, seed.restore_attempt_id),
+          eq(agentBackupRestoreLeases.owner_id, seed.lease_owner_id),
+          eq(agentBackupRestoreLeases.generation, seed.lease_fencing_token),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !lease ||
+      lease.released_at !== null ||
+      lease.operation_id !== seed.operation_id ||
+      lease.activation_generation !== seed.source_activation_generation ||
+      lease.lifecycle_revision !== seed.source_lifecycle_revision ||
+      lease.expected_manifest_sha256 !== seed.manifest_sha256 ||
+      lease.catalog_epoch !== authority.catalog_revision
+    ) {
+      conflict("Final restore lost its exact live restore lease");
+    }
     const [sandbox] = await tx
       .select()
       .from(agentSandboxes)
@@ -710,8 +739,11 @@ export async function commitAgentBackupRestore(
     ) {
       conflict("Final restore lost exact current sandbox activation authority");
     }
-    const nextGeneration = authority.restore_generation + 1n;
     const verifiedAt = await readPostLockDatabaseNow(tx);
+    if (lease.expires_at.getTime() <= verifiedAt.getTime()) {
+      conflict("Final restore lease expired while mutable authorities were revalidated");
+    }
+    const nextGeneration = authority.restore_generation + 1n;
     const [receipt] = await tx
       .insert(agentBackupRestoreReceipts)
       .values({
