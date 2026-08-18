@@ -19,7 +19,11 @@ vi.mock("../utils/eliza-globals", () => ({
   getElizaApiToken: () => elizaGlobalsMock.token,
 }));
 
-import { reportComposerActivity } from "./report-composer-activity";
+import {
+  COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS,
+  postComposerActivityWithFetch,
+  reportComposerActivity,
+} from "./report-composer-activity";
 
 const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
 
@@ -63,6 +67,7 @@ describe("reportComposerActivity (#14679)", () => {
     });
     expect(body).not.toHaveProperty("text");
     expect(body).not.toHaveProperty("draft");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("reports a cleared draft reason", () => {
@@ -108,5 +113,65 @@ describe("reportComposerActivity (#14679)", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+function stallUntilAborted(): typeof fetch {
+  return ((_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected composer abort signal");
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    })) as typeof fetch;
+}
+
+const composerArgs = {
+  base: "http://localhost:31337",
+  token: "test-token",
+  report: {
+    activity: "typing_paused" as const,
+    surface: "chat_overlay",
+    conversationId: "conversation-1",
+    draftLength: 17,
+    idleForMs: 2000,
+    occurredAt: "2026-06-01T12:00:02.000Z",
+  },
+};
+
+describe("composer-activity request deadline", () => {
+  it("keeps a documented composer-report budget", () => {
+    expect(COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it("aborts a stalled composer POST at the injected deadline", async () => {
+    await expect(
+      postComposerActivityWithFetch(composerArgs, stallUntilAborted(), 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("surfaces a provider error from a completed composer POST", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response("nope", { status: 503, statusText: "Service Unavailable" });
+    await expect(
+      postComposerActivityWithFetch(composerArgs, fetchImpl, 1_000),
+    ).rejects.toThrow("POST /api/interactions/composer returned HTTP 503");
+  });
+
+  it("uses the injected fetch for a successful composer POST", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      if (init?.signal) signals.push(init.signal);
+      return new Response("{}", { status: 200 });
+    };
+    const res = await postComposerActivityWithFetch(
+      composerArgs,
+      fetchImpl,
+      1_000,
+    );
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(res.ok).toBe(true);
   });
 });
