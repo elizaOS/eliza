@@ -75,12 +75,16 @@ export const twitterEnvSchema = z.object({
 export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
 /**
- * Parse safe integer with a default value.
+ * Parse safe integer with a default value. Negative values fall back to the
+ * default like NaN does: every numeric TWITTER_* setting (intervals, retry
+ * limit, tweet length, follower counts) is a magnitude, and a negative
+ * interval survives getRandomInterval's min < max guard only to collapse the
+ * scheduler's setTimeout delay to ~0, defeating the posting-rate limiter.
  */
 function safeParseInt(value: string | undefined, defaultValue: number): number {
   if (!value) return defaultValue;
   const parsed = parseInt(value, 10);
-  return Number.isNaN(parsed) ? defaultValue : parsed;
+  return Number.isNaN(parsed) || parsed < 0 ? defaultValue : parsed;
 }
 
 /**
