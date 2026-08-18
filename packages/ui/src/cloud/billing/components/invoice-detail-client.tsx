@@ -8,7 +8,9 @@
 import { BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
+import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { InvoiceDto } from "../types";
 
@@ -27,6 +29,20 @@ const DATE_FORMAT: Intl.DateTimeFormatOptions = {
 export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+
+  // Invoice PDF / hosted-invoice URLs are Stripe-relayed wire values — only
+  // absolute http(s) may open, and always with the opener severed.
+  const openInvoiceUrl = (url: string) => {
+    if (!isSafeNavigationUrl(url)) {
+      toast.error(
+        t("cloud.invoiceDetail.invalidInvoiceUrl", {
+          defaultValue: "Invoice link is not a valid URL",
+        }),
+      );
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const formattedDate = new Date(invoice.created_at).toLocaleDateString(
     "en-US",
@@ -85,8 +101,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   variant="ghost"
                   type="button"
                   onClick={() =>
-                    invoice.invoice_pdf &&
-                    window.open(invoice.invoice_pdf, "_blank")
+                    invoice.invoice_pdf && openInvoiceUrl(invoice.invoice_pdf)
                   }
                   className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
@@ -102,7 +117,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   type="button"
                   onClick={() =>
                     invoice.hosted_invoice_url &&
-                    window.open(invoice.hosted_invoice_url, "_blank")
+                    openInvoiceUrl(invoice.hosted_invoice_url)
                   }
                   className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >

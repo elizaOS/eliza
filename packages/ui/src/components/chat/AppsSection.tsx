@@ -226,14 +226,25 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
         const targetUrl = result.launchUrl ?? app.launchUrl;
         if (targetUrl) {
           try {
-            await openExternalUrl(targetUrl);
-            setActionNotice(
-              t("appsview.OpenedInNewTab", {
-                name: app.displayName ?? app.name,
-              }),
-              "success",
-              2600,
-            );
+            // launchUrl is a wire value — a rejected target (helper returns
+            // false) shows the same visible failure notice as a blocked popup.
+            if (await openExternalUrl(targetUrl)) {
+              setActionNotice(
+                t("appsview.OpenedInNewTab", {
+                  name: app.displayName ?? app.name,
+                }),
+                "success",
+                2600,
+              );
+            } else {
+              setActionNotice(
+                t("appsview.PopupBlockedOpen", {
+                  name: app.displayName ?? app.name,
+                }),
+                "error",
+                4200,
+              );
+            }
           } catch {
             // error-policy:J4 popup blocked — surfaced as an action notice
             setActionNotice(

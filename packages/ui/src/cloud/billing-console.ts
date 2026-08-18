@@ -22,6 +22,8 @@ export function cloudBillingConsoleUrl(cloudApiBase?: string): string {
 }
 
 /** Open the billing console on the current platform. */
-export function openCloudBillingConsole(cloudApiBase?: string): Promise<void> {
+export function openCloudBillingConsole(
+  cloudApiBase?: string,
+): Promise<boolean> {
   return openExternalUrl(cloudBillingConsoleUrl(cloudApiBase));
 }

@@ -56,7 +56,9 @@ vi.mock("../../state/app-store", () => ({
   ) => selector({ t: (_key, vars) => String(vars?.defaultValue ?? _key) }),
 }));
 vi.mock("../../utils", () => ({
-  navigatePreOpenedWindow: vi.fn(),
+  // The helper reports whether the navigation was accepted; the dialog drops
+  // to its error step on `false`.
+  navigatePreOpenedWindow: vi.fn(() => true),
   preOpenWindow: vi.fn(() => ({ close: vi.fn() })),
 }));
 vi.mock("../../utils/clipboard", () => ({ copyTextToClipboard: vi.fn() }));

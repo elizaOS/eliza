@@ -45,6 +45,7 @@ import {
   closeExternalBrowser,
   confirmDesktopAction,
   isCloudStatusAuthenticated,
+  isSafeNavigationUrl,
   navigatePreOpenedWindow,
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
@@ -920,7 +921,7 @@ export function useCloudState({
         // handlers (e.g. Tails' Tor Browser flatpak when Tor has not
         // bootstrapped, or any environment where xdg-open silently fails)
         // open without crashing but never surface a usable window.
-        if (resp.browserUrl) {
+        if (resp.browserUrl && isSafeNavigationUrl(resp.browserUrl)) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
           if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
@@ -942,6 +943,20 @@ export function useCloudState({
           }
         } else {
           closePrePoppedWindow();
+          if (resp.browserUrl) {
+            // The login URL is a wire value assigned to a same-origin
+            // pre-opened popup / named window — a non-http(s) target fails
+            // closed and tears the attempt down with a visible error, like a
+            // failed login start.
+            setElizaCloudLoginError(
+              "The login link returned by the server is not a valid URL.",
+            );
+            removeCloudAuthMessageListener();
+            elizaCloudLoginBusyRef.current = false;
+            setElizaCloudLoginBusy(false);
+            completeLogin();
+            return loginCompletion;
+          }
         }
 
         let pollInFlight = false;

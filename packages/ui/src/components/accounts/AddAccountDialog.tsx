@@ -464,7 +464,18 @@ export function AddAccountDialog({
         }
         subscribeToFlow(flow.sessionId);
         if (opensWindow) {
-          navigatePreOpenedWindow(win, flow.authUrl);
+          // The authUrl is a wire value navigated into a same-origin
+          // pre-opened popup — a rejected target surfaces the dialog's
+          // visible error state instead of navigating.
+          if (!navigatePreOpenedWindow(win, flow.authUrl)) {
+            setErrorMessage(
+              t("accounts.add.oauth.invalidAuthUrl", {
+                defaultValue:
+                  "The sign-in link returned by the server is not a valid URL.",
+              }),
+            );
+            setStep("error");
+          }
         }
       } catch (err) {
         // error-policy:J4 Enrollment failures remain visible and retryable in the dialog.
