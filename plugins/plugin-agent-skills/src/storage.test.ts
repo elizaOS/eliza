@@ -97,6 +97,8 @@ const windowsCanonicalizationEntries: Array<[label: string, entryName: string]> 
 		["lowercase reserved device stem", "nul.md"],
 		["reserved device name as directory segment", "com1/escape.txt"],
 		["reserved device name LPT", "lpt9/escape.txt"],
+		["reserved device name COM with superscript digit", "COM¹.txt"],
+		["reserved device name LPT with superscript digit", "lpt³/escape.txt"],
 	];
 
 describe("zip entry path validation", () => {
@@ -172,6 +174,42 @@ describe("zip entry path validation", () => {
 		await memStore.loadFromZip("demo", zip);
 		expect(await memStore.loadSkillContent("demo")).toBe("# demo skill");
 		expect(await memStore.loadFile("demo", "scripts/run.sh")).toBe("echo hi");
+	});
+
+	it("keeps an existing installation intact when a replacement package is unsafe", async () => {
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# original", "original.txt": "keep" }),
+		);
+
+		await expect(
+			fsStore.saveFromZip(
+				"demo",
+				makeZip({ "SKILL.md": "# replacement", "COM².txt": "unsafe" }),
+			),
+		).rejects.toMatchObject({ code: "SKILL_ZIP_ENTRY_UNSAFE" });
+
+		expect(await fsStore.loadSkillContent("demo")).toBe("# original");
+		expect(fs.readFileSync(path.join(basePath, "demo", "original.txt"), "utf-8")).toBe(
+			"keep",
+		);
+	});
+
+	it("atomically replaces the complete installed package", async () => {
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# original", "obsolete.txt": "old" }),
+		);
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# replacement", "current.txt": "new" }),
+		);
+
+		expect(await fsStore.loadSkillContent("demo")).toBe("# replacement");
+		expect(fs.existsSync(path.join(basePath, "demo", "obsolete.txt"))).toBe(false);
+		expect(fs.readFileSync(path.join(basePath, "demo", "current.txt"), "utf-8")).toBe(
+			"new",
+		);
 	});
 
 	it("skips directory entries without rejecting the archive", async () => {
@@ -306,6 +344,25 @@ describe("filesystem path containment", () => {
 		expect(fs.existsSync(path.join(basePath, "escape.txt"))).toBe(false);
 	});
 
+	it("validates every package path before creating a partial skill", async () => {
+		await expect(
+			store.saveSkill({
+				slug: "demo",
+				files: new Map([
+					[
+						"SKILL.md",
+						{ path: "SKILL.md", content: "# demo", isText: true },
+					],
+					[
+						"../../escape.txt",
+						{ path: "../../escape.txt", content: "payload", isText: true },
+					],
+				]),
+			}),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
+	});
+
 	it("refuses to save a package whose slug escapes the base directory", async () => {
 		await expect(
 			store.saveSkill({
@@ -332,6 +389,176 @@ describe("filesystem path containment", () => {
 		expect(fs.existsSync(basePath)).toBe(true);
 	});
 
+	it("refuses traversal through every public filesystem read/list path", async () => {
+		const secretDir = path.join(outerDir, "secret-skill");
+		fs.mkdirSync(secretDir);
+		fs.writeFileSync(path.join(secretDir, "SKILL.md"), "outside");
+		fs.writeFileSync(path.join(outerDir, "secret.txt"), "TOPSECRET");
+		fs.mkdirSync(path.join(basePath, "demo"));
+
+		await expect(store.hasSkill("../secret-skill")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		await expect(
+			store.loadSkillContent("../secret-skill"),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		await expect(
+			store.loadFile("demo", "../../secret.txt"),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		await expect(store.listFiles("demo", "../..")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		expect(() => store.getSkillPath("../secret-skill")).toThrow(
+			/escapes the skill directory/,
+		);
+	});
+
+	it.each(["NUL", "com1.txt", "LPT²", "demo.", "demo ", "name:stream"])(
+		"rejects the non-portable storage slug %s across public operations",
+		async (slug) => {
+			expect(() => store.getSkillPath(slug)).toThrow(/escapes the skill directory/);
+			await expect(store.hasSkill(slug)).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadSkillContent(slug)).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.listFiles(slug)).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.deleteSkill(slug)).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(
+				store.saveSkill({
+					slug,
+					files: new Map([
+						["SKILL.md", { path: "SKILL.md", content: "# x", isText: true }],
+					]),
+				}),
+			).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"omits pre-existing non-portable directory aliases from listings",
+		async () => {
+			for (const slug of ["NUL", "com1.txt", "demo.", "demo ", "name:stream"]) {
+				const dir = path.join(basePath, slug);
+				fs.mkdirSync(dir);
+				fs.writeFileSync(path.join(dir, "SKILL.md"), "# unsafe alias");
+			}
+			fs.mkdirSync(path.join(basePath, "portable-skill"));
+			fs.writeFileSync(
+				path.join(basePath, "portable-skill", "SKILL.md"),
+				"# portable",
+			);
+
+			expect(await store.listSkills()).toEqual(["portable-skill"]);
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"rejects reads, writes, lists, and deletes through a child symlink",
+		async () => {
+			const outside = path.join(outerDir, "outside");
+			fs.mkdirSync(outside);
+			fs.writeFileSync(path.join(outside, "SKILL.md"), "outside");
+			fs.symlinkSync(outside, path.join(basePath, "linked"), "dir");
+
+			await expect(store.hasSkill("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadSkillContent("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadFile("linked", "SKILL.md")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.listFiles("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(
+				store.saveSkill({
+					slug: "linked",
+					files: new Map([
+						[
+							"SKILL.md",
+							{ path: "SKILL.md", content: "changed", isText: true },
+						],
+					]),
+				}),
+			).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+			await expect(store.deleteSkill("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			expect(fs.readFileSync(path.join(outside, "SKILL.md"), "utf8")).toBe(
+				"outside",
+			);
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"rejects symlinks that cross into a sibling skill inside the storage root",
+		async () => {
+			const firstDir = path.join(basePath, "first");
+			const secondDir = path.join(basePath, "second");
+			fs.mkdirSync(firstDir);
+			fs.mkdirSync(secondDir);
+			fs.writeFileSync(path.join(secondDir, "SKILL.md"), "sibling secret");
+			fs.writeFileSync(path.join(secondDir, "secret.txt"), "TOPSECRET");
+			fs.symlinkSync(
+				path.join(secondDir, "SKILL.md"),
+				path.join(firstDir, "SKILL.md"),
+				"file",
+			);
+			fs.symlinkSync(secondDir, path.join(firstDir, "linked"), "dir");
+
+			await expect(store.loadSkillContent("first")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.hasSkill("first")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadFile("first", "linked/secret.txt")).rejects.toMatchObject(
+				{ code: "SKILL_PATH_TRAVERSAL" },
+			);
+			await expect(store.listFiles("first", "linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			expect(await store.listSkills()).toEqual(["second"]);
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"replaces a skill without following a stored child symlink",
+		async () => {
+			const outside = path.join(outerDir, "outside");
+			const skillDir = path.join(basePath, "demo");
+			fs.mkdirSync(outside);
+			fs.mkdirSync(skillDir);
+			fs.symlinkSync(outside, path.join(skillDir, "linked"), "dir");
+
+			await store.saveSkill({
+				slug: "demo",
+				files: new Map([
+					[
+						"linked/nested/file.txt",
+						{
+							path: "linked/nested/file.txt",
+							content: "payload",
+							isText: true,
+						},
+					],
+				]),
+			});
+			expect(fs.existsSync(path.join(outside, "nested"))).toBe(false);
+			expect(
+				fs.readFileSync(path.join(skillDir, "linked", "nested", "file.txt"), "utf8"),
+			).toBe("payload");
+		},
+	);
+
 	it("still deletes a real skill directory", async () => {
 		await store.saveSkill({
 			slug: "demo",
@@ -347,4 +574,5 @@ describe("filesystem path containment", () => {
 		expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
 		expect(await store.deleteSkill("demo")).toBe(false);
 	});
+
 });
