@@ -32,3 +32,22 @@ export const API_KEY_PREFIX_HINTS: Readonly<Record<string, ApiKeyPrefixHint>> =
     DEEPSEEK_API_KEY: { prefix: "sk-", label: "DeepSeek" },
     MOONSHOT_API_KEY: { prefix: "sk-", label: "Kimi / Moonshot" },
   };
+
+export function getApiKeyPrefixHint(
+  key: string | null | undefined,
+): ApiKeyPrefixHint | undefined {
+  if (typeof key !== "string") return undefined;
+  return API_KEY_PREFIX_HINTS[key.trim()];
+}
+
+export function matchesApiKeyPrefixHint(
+  key: string | null | undefined,
+  value: string | null | undefined,
+): boolean {
+  const hint = getApiKeyPrefixHint(key);
+  if (!hint) return true;
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return trimmed.startsWith(hint.prefix);
+}
