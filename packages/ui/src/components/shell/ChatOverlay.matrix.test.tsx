@@ -619,7 +619,7 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     expect(detent()).toBe("full");
   });
 
-  it("steps full to half from the terminal touch track when WebKit loses the pointer release", () => {
+  it("steps full to half from the terminal touch track when WebKit loses the pointer release", async () => {
     const impacts = armHaptics();
     render(<ChatOverlay controller={makeController()} />);
     openToHalf();
@@ -627,41 +627,157 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     expect(detent()).toBe("full");
 
     const g = grabber();
-    fireEvent.touchStart(g, { touches: [{ clientY: 300 }] });
-    fireEvent.touchMove(g, { touches: [{ clientY: 560 }] });
-    fireEvent.touchEnd(g, { changedTouches: [{ clientY: 560 }] });
+    fireEvent.touchStart(g, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.touchMove(g, { touches: [{ clientX: 200, clientY: 560 }] });
+    fireEvent.touchEnd(g, {
+      changedTouches: [{ clientX: 200, clientY: 560 }],
+    });
+    await frame();
 
     expect(detent()).toBe("half");
     expect(impacts.length).toBe(3);
   });
 
-  it("does not double-step when pointer release settles before touchend", () => {
+  it("does not double-step when pointer release settles before touchend", async () => {
+    const impacts = armHaptics();
     render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     flick(grabber(), 400, 300); // half → full
     expect(detent()).toBe("full");
 
     const g = grabber();
-    fireEvent.touchStart(g, { touches: [{ clientY: 300 }] });
+    fireEvent.touchStart(g, { touches: [{ clientX: 200, clientY: 300 }] });
     flick(g, 300, 560); // pointer authority: full → half
     expect(detent()).toBe("half");
-    fireEvent.touchEnd(g, { changedTouches: [{ clientY: 560 }] });
+    fireEvent.touchEnd(g, {
+      changedTouches: [{ clientX: 200, clientY: 560 }],
+    });
+    await frame();
 
     expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
   });
 
-  it("ignores terminal touch fallback below the pull floor and outside full", () => {
+  it("does not double-step when touchend fallback settles before a late pointer release", async () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.pointerDown(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 61,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.touchStart(g, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.pointerMove(g, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 61,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.touchMove(g, { touches: [{ clientX: 200, clientY: 560 }] });
+    fireEvent.touchEnd(g, {
+      changedTouches: [{ clientX: 200, clientY: 560 }],
+    });
+    await frame();
+    expect(detent()).toBe("half");
+
+    fireEvent.pointerUp(g, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 61,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await frame();
+
+    expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
+  });
+
+  it("recovers a valid touch track after a no-move pointercancel leaves full", async () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.pointerDown(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 62,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.touchStart(g, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.touchMove(g, { touches: [{ clientX: 200, clientY: 560 }] });
+    fireEvent.touchEnd(g, {
+      changedTouches: [{ clientX: 200, clientY: 560 }],
+    });
+    // WebKit's pointer pipeline delivered no move, so its cancellation cannot
+    // make the detent decision. The completed TouchEvent track remains valid.
+    fireEvent.pointerCancel(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 62,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    expect(detent()).toBe("full");
+    await frame();
+
+    expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
+  });
+
+  it("ignores a horizontal-dominant lost-pointer terminal touch track", async () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.touchStart(g, { touches: [{ clientX: 100, clientY: 300 }] });
+    fireEvent.touchMove(g, { touches: [{ clientX: 400, clientY: 560 }] });
+    fireEvent.touchEnd(g, {
+      changedTouches: [{ clientX: 400, clientY: 560 }],
+    });
+    await frame();
+
+    expect(detent()).toBe("full");
+    expect(impacts.length).toBe(2);
+  });
+
+  it("ignores terminal touch fallback below the pull floor and outside full", async () => {
     render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     const halfGrabber = grabber();
-    fireEvent.touchStart(halfGrabber, { touches: [{ clientY: 300 }] });
-    fireEvent.touchEnd(halfGrabber, { changedTouches: [{ clientY: 560 }] });
+    fireEvent.touchStart(halfGrabber, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchEnd(halfGrabber, {
+      changedTouches: [{ clientX: 200, clientY: 560 }],
+    });
+    await frame();
     expect(detent()).toBe("half");
 
     flick(grabber(), 400, 300); // half → full
     const fullGrabber = grabber();
-    fireEvent.touchStart(fullGrabber, { touches: [{ clientY: 300 }] });
-    fireEvent.touchEnd(fullGrabber, { changedTouches: [{ clientY: 330 }] });
+    fireEvent.touchStart(fullGrabber, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchEnd(fullGrabber, {
+      changedTouches: [{ clientX: 200, clientY: 330 }],
+    });
+    await frame();
     expect(detent()).toBe("full");
   });
 });

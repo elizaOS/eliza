@@ -57,6 +57,7 @@ import {
   type NavigateViewDetail,
 } from "../../events";
 import {
+  HORIZONTAL_DOMINANCE_RATIO,
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
@@ -953,7 +954,7 @@ function SheetGrabber({
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
-  onTerminalTouchPullDown: () => void;
+  onTerminalTouchPullDown: () => boolean;
   binding: PullGestureBinding;
   breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
@@ -967,12 +968,21 @@ function SheetGrabber({
   locked?: boolean;
 }): React.JSX.Element {
   const disabled = pilled || locked;
-  const touchStartYRef = React.useRef<number | null>(null);
-  const touchLastYRef = React.useRef<number | null>(null);
-  const resetTouchTrack = React.useCallback(() => {
-    touchStartYRef.current = null;
-    touchLastYRef.current = null;
+  const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const touchLastRef = React.useRef<{ x: number; y: number } | null>(null);
+  const terminalFallbackCommittedRef = React.useRef(false);
+  const terminalFallbackFrameRef = React.useRef<number | null>(null);
+  const cancelTerminalFallback = React.useCallback(() => {
+    if (terminalFallbackFrameRef.current != null) {
+      cancelAnimationFrame(terminalFallbackFrameRef.current);
+      terminalFallbackFrameRef.current = null;
+    }
   }, []);
+  const resetTouchTrack = React.useCallback(() => {
+    touchStartRef.current = null;
+    touchLastRef.current = null;
+  }, []);
+  React.useEffect(() => cancelTerminalFallback, [cancelTerminalFallback]);
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -1010,44 +1020,82 @@ function SheetGrabber({
       // primary touch authority; the terminal TouchEvent below is only the
       // guarded recovery when WebKit loses that captured pointer release.
       onTouchStart={(e) => {
+        cancelTerminalFallback();
+        terminalFallbackCommittedRef.current = false;
         if (e.touches.length !== 1) {
           resetTouchTrack();
           return;
         }
-        const y = e.touches[0]?.clientY ?? null;
-        touchStartYRef.current = y;
-        touchLastYRef.current = y;
+        const touch = e.touches[0];
+        if (!touch) return;
+        const point = { x: touch.clientX, y: touch.clientY };
+        touchStartRef.current = point;
+        touchLastRef.current = point;
       }}
       onTouchMove={(e) => {
-        if (e.touches.length !== 1) return;
-        touchLastYRef.current = e.touches[0]?.clientY ?? touchLastYRef.current;
+        if (e.touches.length !== 1) {
+          resetTouchTrack();
+          return;
+        }
+        const touch = e.touches[0];
+        if (touch)
+          touchLastRef.current = { x: touch.clientX, y: touch.clientY };
       }}
-      onTouchCancel={resetTouchTrack}
+      onTouchCancel={() => {
+        cancelTerminalFallback();
+        resetTouchTrack();
+      }}
       onTouchEnd={(e) => {
         if (e.cancelable) e.preventDefault();
-        const startY = touchStartYRef.current;
-        const endY =
-          e.changedTouches[0]?.clientY ?? touchLastYRef.current ?? startY;
+        const start = touchStartRef.current;
+        const changed = e.changedTouches[0];
+        const end = changed
+          ? { x: changed.clientX, y: changed.clientY }
+          : (touchLastRef.current ?? start);
         resetTouchTrack();
+        if (!start || !end) return;
+        const travelX = Math.abs(end.x - start.x);
+        const travelY = end.y - start.y;
         if (
-          startY != null &&
-          endY != null &&
-          endY - startY >= INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX
+          travelY >= INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX &&
+          travelX < Math.abs(travelY) * HORIZONTAL_DOMINANCE_RATIO
         ) {
           // WKWebView/XCUITest can preserve the terminal TouchEvent after its
-          // captured pointer release was lost. This is a fallback only: the
-          // parent checks the synchronous resting mode, so a normal pointerup
-          // that already stepped FULL→HALF cannot step a second time here.
-          onTerminalTouchPullDown();
+          // captured pointer release was lost. Reconcile one frame later so a
+          // co-delivered pointer terminal remains primary regardless of which
+          // DOM terminal event arrived first. If no pointer terminal arrives,
+          // the fallback commits exactly once; a late pointer terminal is then
+          // converted to cancel/reset below instead of settling twice.
+          cancelTerminalFallback();
+          terminalFallbackFrameRef.current = requestAnimationFrame(() => {
+            terminalFallbackFrameRef.current = null;
+            // Reconcile the resulting live detent, not the mere arrival of a
+            // pointer terminal. A successful pointer release already moved the
+            // mode and this callback no-ops; a stale/no-move pointercancel that
+            // left FULL must not suppress the valid TouchEvent track.
+            terminalFallbackCommittedRef.current = onTerminalTouchPullDown();
+          });
         }
       }}
       {...binding}
-      onPointerDown={(event) => {
+      onPointerDown={(e) => {
         // This handle is a complete gesture owner. In the shell it can sit over
         // a broad home/notification pull surface, whose native listener runs
         // independently of React; do not let this press seed both systems.
-        event.stopPropagation();
-        binding.onPointerDown(event);
+        e.stopPropagation();
+        cancelTerminalFallback();
+        terminalFallbackCommittedRef.current = false;
+        binding.onPointerDown(e);
+      }}
+      onPointerUp={(e) => {
+        if (terminalFallbackCommittedRef.current) binding.onPointerCancel(e);
+        else binding.onPointerUp(e);
+      }}
+      onPointerCancel={(e) => {
+        binding.onPointerCancel(e);
+      }}
+      onLostPointerCapture={(e) => {
+        binding.onLostPointerCapture(e);
       }}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
@@ -5223,17 +5271,22 @@ export function ChatOverlay({
     maximizeFromPull,
   ]);
 
-  const stepFullToHalfFromInterruptedTouch = React.useCallback(() => {
+  const stepFullToHalfFromInterruptedTouch = React.useCallback((): boolean => {
     if (
       pinnedOpen ||
       pilled ||
       pillCommittedMidDragRef.current ||
       modeRef.current !== "full"
     ) {
-      return;
+      return false;
     }
+    // A terminal TouchEvent fallback can commit before a late PointerEvent.
+    // Publish the landing synchronously so that late pointer cancellation
+    // settles toward HALF and cannot repeat the FULL release decision.
+    modeRef.current = "half";
     inputRef.current?.blur();
     goToDetent("half");
+    return true;
   }, [pinnedOpen, pilled, goToDetent]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
