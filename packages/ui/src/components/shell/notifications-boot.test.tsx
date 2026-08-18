@@ -49,11 +49,13 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   const pendingRequestId = peekNotificationCenterOpenRequest();
   if (pendingRequestId !== null) {
     acknowledgeNotificationCenterOpenRequest(pendingRequestId);
   }
   vi.clearAllMocks();
+  mocks.localTap.mockResolvedValue(undefined);
 });
 
 mocks.onBaseUrlChange.mockReturnValue(mocks.unsubscribeBase);
@@ -64,6 +66,58 @@ describe("notification boot boundaries", () => {
     expect(container.innerHTML).toBe("");
     expect(mocks.init).toHaveBeenCalledOnce();
     await waitFor(() => expect(mocks.localTap).toHaveBeenCalledOnce());
+  });
+
+  it("retries a transient native tap bridge failure while boot remains mounted", async () => {
+    vi.useFakeTimers();
+    mocks.localTap
+      .mockRejectedValueOnce(new Error("bridge not ready"))
+      .mockResolvedValueOnce(undefined);
+
+    render(<NotificationsDataBoot />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.localTap).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(mocks.localTap).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds native tap bridge retries and cancels pending work on unmount", async () => {
+    vi.useFakeTimers();
+    mocks.localTap.mockRejectedValue(new Error("bridge unavailable"));
+
+    const { unmount } = render(<NotificationsDataBoot />);
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(mocks.localTap).toHaveBeenCalledTimes(2);
+
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(mocks.localTap).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after the bounded native tap bridge retry budget", async () => {
+    vi.useFakeTimers();
+    mocks.localTap.mockRejectedValue(new Error("bridge unavailable"));
+
+    render(<NotificationsDataBoot />);
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(mocks.localTap).toHaveBeenCalledTimes(3);
   });
 
   it("boots native push, then routes notification-center ingress to chat", async () => {

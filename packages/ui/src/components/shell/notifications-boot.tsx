@@ -25,6 +25,8 @@ import {
 } from "../../state/notifications/push-registration";
 import { goHome } from "../../state/shell-surface-store";
 
+const LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS = [250, 1_000] as const;
+
 /**
  * Boots data ingress independently of the paintable app shell. Startup, auth,
  * and first-run gates can keep AppContent on a full-screen surface while the
@@ -39,14 +41,41 @@ export function NotificationsDataBoot(): null {
     // so install the listener here: a tap that launches into LoginView must be
     // retained by the canonical navigator instead of waiting for the signed-in
     // shell (which may never mount during this process lifetime).
-    void initLocalNotificationTapRouting().catch((error: unknown) => {
-      // error-policy:J1 native notification tap registration is a transport
-      // boundary; a later top-level remount may retry after the bridge recovers.
-      logger.error(
-        { src: "local-notification-tap", error },
-        "[local-notification-tap] failed to register native tap routing",
-      );
-    });
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryIndex = 0;
+
+    const registerTapRouting = async (): Promise<void> => {
+      try {
+        await initLocalNotificationTapRouting();
+      } catch (error: unknown) {
+        // error-policy:J1 native notification tap registration is a transport
+        // boundary; retry briefly while this app-lifetime owner remains mounted.
+        if (cancelled) return;
+        const retryDelay = LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS[retryIndex];
+        if (retryDelay === undefined) {
+          logger.error(
+            { src: "local-notification-tap", error },
+            "[local-notification-tap] exhausted native tap routing retries",
+          );
+          return;
+        }
+        retryIndex += 1;
+        logger.warn(
+          { src: "local-notification-tap", error, retryDelay },
+          "[local-notification-tap] retrying native tap routing",
+        );
+        retryTimer = setTimeout(() => {
+          void registerTapRouting();
+        }, retryDelay);
+      }
+    };
+
+    void registerTapRouting();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, []);
   return null;
 }
