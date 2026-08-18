@@ -468,6 +468,24 @@ export async function reserveAgentBackupOperationInTransaction(
   validateReservationInput(input);
   const payloadDigest = await sha256Hex(canonicalReservationPayload(input));
 
+  // Replay joins the global lock order operation-backup -> sandbox ->
+  // catalogue-authority, matching recordCapturedAgentBackupManifest (backup
+  // before sandbox) so a replayed reserve cannot AB-BA a concurrent capture.
+  // A missing row is safe: authority locking serializes repository creates
+  // before the insert below is attempted.
+  await tx
+    .select({ id: agentSandboxBackups.id })
+    .from(agentSandboxBackups)
+    .where(
+      and(
+        eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
+        eq(agentSandboxBackups.catalog_agent_id, input.agentId),
+        eq(agentSandboxBackups.backup_operation_id, input.operationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+
   const [sandbox] = await tx
     .select({
       id: agentSandboxes.id,
@@ -612,21 +630,6 @@ export async function reserveAgentBackupOperationInTransaction(
     }
   }
 
-  // Replay must join the global backup -> catalogue-authority lock order used
-  // by restore, vault binding, and GC. A missing row is safe: authority locking
-  // serializes repository creates before the insert below is attempted.
-  await tx
-    .select({ id: agentSandboxBackups.id })
-    .from(agentSandboxBackups)
-    .where(
-      and(
-        eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
-        eq(agentSandboxBackups.catalog_agent_id, input.agentId),
-        eq(agentSandboxBackups.backup_operation_id, input.operationId),
-      ),
-    )
-    .for("update")
-    .limit(1);
   const reservationAuthority = await createAndLockCatalogAuthority(
     tx,
     input.organizationId,

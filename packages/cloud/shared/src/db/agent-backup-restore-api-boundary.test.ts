@@ -97,7 +97,7 @@ describe("dormant restore API boundary", () => {
       source.indexOf("export async function reserveAgentBackupOperationInTransaction"),
       source.indexOf("export async function claimDueAgentBackupOperations"),
     );
-    const replayLock = reservation.indexOf("Replay must join the global backup");
+    const replayLock = reservation.indexOf("Replay joins the global lock order operation-backup");
     const replayBackup = reservation.indexOf(".from(agentSandboxBackups)", replayLock);
     const replayOperation = reservation.indexOf(
       "eq(agentSandboxBackups.backup_operation_id",
