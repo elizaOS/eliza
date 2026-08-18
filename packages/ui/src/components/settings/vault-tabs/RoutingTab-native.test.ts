@@ -64,7 +64,7 @@ describe("RoutingTab save rawRequest native transport", () => {
     const request = vi.fn<AgentRequestTransport["request"]>(
       async (_url, init, ctx) => {
         const ms = ctx?.timeoutMs ?? 10;
-        await new Promise<never>((_, reject) => {
+        return new Promise<never>((_, reject) => {
           const timer = setTimeout(() => {
             reject(
               Object.assign(new Error(`Request timed out after ${ms}ms`), {
