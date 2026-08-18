@@ -1,7 +1,9 @@
 /**
- * CLI / device login page (public). After the Steward session resolves, POSTs
- * to /api/auth/cli-session/:id/complete to mint an API key for the waiting CLI
- * / Remote device pairing, then posts a completion message to the opener.
+ * CLI / device login page (public). After the Steward session resolves, the
+ * page asks for an explicit confirmation naming the requesting client; only
+ * that gesture POSTs to /api/auth/cli-session/:id/complete to mint an API key
+ * for the waiting CLI / Remote device pairing. A bare clicked link must never
+ * mint a key on its own. On completion the page posts a message to the opener.
  */
 
 import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
@@ -31,15 +33,17 @@ type CompletionState =
   | { status: "completing" }
   | { status: "redirecting" }
   | { status: "success"; apiKeyPrefix: string }
+  | { status: "cancelled" }
   | { status: "error"; errorMessage: string };
 
 type PageState =
   | { status: "initializing" }
-  | { status: "loading" }
   | { status: "waiting_auth" }
+  | { status: "confirm" }
   | { status: "completing" }
   | { status: "redirecting" }
   | { status: "success"; apiKeyPrefix: string }
+  | { status: "cancelled" }
   | { status: "error"; errorMessage: string };
 
 type PanelTone = "accent" | "danger" | "success";
@@ -78,6 +82,24 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
     return url.toString();
   } catch (error) {
     void error;
+    return null;
+  }
+}
+
+/**
+ * Human-readable label for the client that launched this CLI-login flow, shown
+ * on the confirmation interstitial. Only the sanitized `returnTo` origin is
+ * available pre-completion, so the label is its host (with port); null when
+ * the flow carries no return target (bare CLI deep link).
+ */
+function describeCliLoginClient(returnTo: string | null): string | null {
+  if (!returnTo) return null;
+  try {
+    return new URL(returnTo).host;
+  } catch (error) {
+    void error;
+    // error-policy:J3 a pre-sanitized returnTo cannot fail to parse; fail
+    // closed to the generic client description rather than a broken label.
     return null;
   }
 }
@@ -138,7 +160,10 @@ function getPageState({
   if (completion.status !== "idle") return completion;
   if (!ready) return { status: "initializing" };
   if (!authenticated) return { status: "waiting_auth" };
-  return { status: "loading" };
+  // Authenticated with a live session id: hold on the confirmation
+  // interstitial. Minting the API key requires the explicit Authorize gesture
+  // — never fire on page load (a clicked link must not mint on its own).
+  return { status: "confirm" };
 }
 
 function CliLoginPanel({
@@ -198,6 +223,11 @@ export default function CliLoginPage() {
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
   });
+  // The session id the user explicitly authorized via the interstitial.
+  // Keyed by id so a swapped ?session= link must be re-confirmed.
+  const [confirmedSessionId, setConfirmedSessionId] = useState<string | null>(
+    null,
+  );
   const lastSessionId = useRef(sessionId);
   const completionFiredRef = useRef(false);
 
@@ -211,6 +241,9 @@ export default function CliLoginPage() {
     if (lastSessionId.current === sessionId) return;
     lastSessionId.current = sessionId;
     completionFiredRef.current = false;
+    // Consent is for one presentation of one session link. Clear it on every
+    // transition so an A -> B -> A URL swap cannot reuse the earlier gesture.
+    setConfirmedSessionId(null);
     setCompletion({ status: "idle" });
   }, [sessionId]);
 
@@ -229,8 +262,12 @@ export default function CliLoginPage() {
     });
   }, [sessionId]);
 
+  // Completion fires ONLY after the explicit Authorize gesture on the
+  // interstitial (confirmedSessionId === sessionId) — never on page load, so a
+  // bare clicked cli-login link cannot mint an API key on its own.
   useEffect(() => {
     if (!sessionId || !ready || !authenticated) return;
+    if (confirmedSessionId !== sessionId) return;
     if (completionFiredRef.current) return;
     completionFiredRef.current = true;
     const activeSessionId = sessionId;
@@ -296,7 +333,7 @@ export default function CliLoginPage() {
       clearTimeout(timeout);
       if (!completionFiredRef.current) abort.abort();
     };
-  }, [authenticated, launchReturnTo, ready, sessionId, t]);
+  }, [authenticated, confirmedSessionId, launchReturnTo, ready, sessionId, t]);
 
   const pageState = getPageState({
     authenticated,
@@ -309,11 +346,12 @@ export default function CliLoginPage() {
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
   const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
 
-  // No "CLI Authentication" interstitial: when the user isn't signed in yet,
-  // forward straight to the Steward login. `returnTo` brings the browser back
-  // here once authenticated, where the session auto-completes. Guarded per
-  // session via sessionStorage so a login page that bounces back without
-  // establishing a session falls back to a manual button instead of looping.
+  // No pre-auth interstitial: when the user isn't signed in yet, forward
+  // straight to the Steward login. `returnTo` brings the browser back here
+  // once authenticated, where the confirmation interstitial waits for the
+  // explicit Authorize gesture. Guarded per session via sessionStorage so a
+  // login page that bounces back without establishing a session falls back to
+  // a manual button instead of looping.
   const autoSignInKey = sessionId
     ? `eliza-cloud-cli-login-autosignin:${sessionId}`
     : null;
@@ -339,22 +377,85 @@ export default function CliLoginPage() {
     navigate(signInHref, { replace: true });
   }, [pageState.status, autoSignInKey, autoSignInTried, signInHref, navigate]);
 
-  if (pageState.status === "initializing" || pageState.status === "loading") {
+  if (pageState.status === "initializing") {
     return (
       <CliLoginPanel
-        description={
-          pageState.status === "initializing"
-            ? t("cloud.cliLogin.initializing", {
-                defaultValue: "Initializing authentication",
-              })
-            : t("cloud.cliLogin.preparing", {
-                defaultValue: "Preparing authentication",
-              })
-        }
+        description={t("cloud.cliLogin.initializing", {
+          defaultValue: "Initializing authentication",
+        })}
         icon={Loader2}
         iconClassName="animate-spin"
         title={t("cloud.cliLogin.loading", { defaultValue: "Loading..." })}
         tone="accent"
+      />
+    );
+  }
+
+  if (pageState.status === "confirm") {
+    const clientLabel = describeCliLoginClient(launchReturnTo);
+    return (
+      <CliLoginPanel
+        actions={
+          <>
+            <Button
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+              onClick={() => setConfirmedSessionId(sessionId)}
+            >
+              {t("cloud.cliLogin.authorizeAction", {
+                defaultValue: "Authorize",
+              })}
+            </Button>
+            <Button
+              className="w-full h-11"
+              onClick={() => setCompletion({ status: "cancelled" })}
+              variant="outline"
+            >
+              {t("cloud.cliLogin.cancelAction", { defaultValue: "Cancel" })}
+            </Button>
+          </>
+        }
+        description={
+          clientLabel
+            ? t("cloud.cliLogin.confirmDescriptionNamed", {
+                client: clientLabel,
+                defaultValue: `"${clientLabel}" is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.`,
+              })
+            : t("cloud.cliLogin.confirmDescription", {
+                defaultValue:
+                  "A command-line application is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.",
+              })
+        }
+        icon={Key}
+        title={t("cloud.cliLogin.confirmTitle", {
+          defaultValue: "Authorize CLI Sign-In?",
+        })}
+        tone="accent"
+      />
+    );
+  }
+
+  if (pageState.status === "cancelled") {
+    return (
+      <CliLoginPanel
+        actions={
+          <Button
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            onClick={() => window.close()}
+          >
+            {t("cloud.cliLogin.closeWindow", {
+              defaultValue: "Close window",
+            })}
+          </Button>
+        }
+        description={t("cloud.cliLogin.cancelledDescription", {
+          defaultValue:
+            "No API key was created and the requesting app was not granted access.",
+        })}
+        icon={AlertCircle}
+        title={t("cloud.cliLogin.cancelledTitle", {
+          defaultValue: "Sign-In Cancelled",
+        })}
+        tone="danger"
       />
     );
   }
