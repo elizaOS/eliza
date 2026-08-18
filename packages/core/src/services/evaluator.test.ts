@@ -522,6 +522,61 @@ describe("EvaluatorService", () => {
 		expect(useModel.mock.calls[3]?.[1]).toHaveProperty("responseSchema");
 	});
 
+	it("renders action results bounded (text projection, not the raw data payload)", async () => {
+		// Live sol-dev 2026-08-18: state.data.actionResults carried a full
+		// MEMORY_SEARCH ActionResult whose data.memories/durableMemories
+		// duplicated every hit's complete text; the old raw stringify pushed the
+		// merged post-turn evaluator call to ~50-52K prompt tokens on every
+		// recall turn. The prompt must render the bounded text projection and
+		// must NOT serialize the data payload.
+		const runtime = makeRuntime();
+		runtime.registerEvaluator({
+			name: "gamma",
+			description: "gamma section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract gamma.",
+			parse: (output) => output as never,
+			processors: [
+				{ name: "storeGamma", process: async () => ({ success: true }) },
+			],
+		});
+
+		const hugeDataMarker = "FULL_HIT_TEXT_ONLY_IN_DATA";
+		const actionResult = {
+			success: true,
+			text: "Showing all 7 match(es) found in the scanned window.",
+			data: {
+				actionName: "MEMORY_SEARCH",
+				memories: Array.from({ length: 17 }, (_, i) => ({
+					id: `id-${i}`,
+					text: `${hugeDataMarker} ${"detail ".repeat(300)}`,
+				})),
+			},
+		};
+
+		const useModel = vi.fn(async (_modelType, params) => {
+			const prompt = String(params.messages?.[0]?.content ?? "");
+			// The bounded text projection is present…
+			expect(prompt).toContain("MEMORY_SEARCH - succeeded");
+			expect(prompt).toContain("Showing all 7 match(es)");
+			// …and the raw data payload is NOT serialized into the prompt.
+			expect(prompt).not.toContain(hugeDataMarker);
+			return { gamma: { ok: true } };
+		});
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: { actionResults: [actionResult] },
+			text: "",
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(result.skipped).toBe(false);
+		expect(result.errors).toEqual([]);
+	});
+
 	it("trims oversized shared provider context and still calls the model", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];

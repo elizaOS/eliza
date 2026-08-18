@@ -313,7 +313,12 @@ describe("toolMessageContent — data cap when a text projection exists", () => 
 	});
 
 	it("renders data in full when there is NO text projection (documented fallback role)", () => {
-		const bigPayload = { rows: Array.from({ length: 200 }, (_, i) => `row ${i} ${"y".repeat(100)}`) };
+		const bigPayload = {
+			rows: Array.from(
+				{ length: 200 },
+				(_, i) => `row ${i} ${"y".repeat(100)}`,
+			),
+		};
 		const rendered = toolMessageContent({
 			success: true,
 			data: bigPayload,

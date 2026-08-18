@@ -251,7 +251,10 @@ export function toolMessageContent(result: PlannerToolResult): string {
 		parts.push(
 			`data: ${
 				hasText
-					? truncateToolResultText(serialized, MAX_RENDERED_DATA_CHARS_WITH_TEXT)
+					? truncateToolResultText(
+							serialized,
+							MAX_RENDERED_DATA_CHARS_WITH_TEXT,
+						)
 					: serialized
 			}`,
 		);
