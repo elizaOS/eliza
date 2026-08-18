@@ -7,7 +7,7 @@
  * documented input token limit (2,048 for the default `gemini-embedding-001`,
  * 8,192 for the larger-window `gemini-embedding-2`) via
  * `getEmbeddingInputTokenLimit`, embedded, and reported via
- * `emitModelUsageEvent`. Real requests
+ * `emitModelUsageEvent` as soon as the billed provider call returns. Real requests
  * pin `outputDimensionality` to the same 768 width as the probe and L2-normalize
  * the result, because the default `gemini-embedding-001` otherwise emits its
  * 3072-dim default and every write would fail the probe-sized column (#22010).
@@ -214,6 +214,30 @@ async function truncateToEmbeddingTokenLimit(
   return { text: truncatedText, tokens: verifiedTokens, truncated: true };
 }
 
+/** Report an already-billed call without allowing telemetry to decide its outcome. */
+async function reportEmbeddingUsage(
+  runtime: IAgentRuntime,
+  text: string,
+  embeddingModelName: string,
+  promptTokens: number,
+): Promise<void> {
+  try {
+    await emitModelUsageEvent(runtime, TEXT_EMBEDDING_MODEL_TYPE, text, {
+      promptTokens,
+      completionTokens: 0,
+      totalTokens: promptTokens,
+    });
+  } catch (error) {
+    // error-policy:J7 diagnostics must not kill the loop — a telemetry failure
+    // cannot mask the embedding result or later validation.
+    runtime.reportError(
+      "GoogleGenAI.embeddingUsage",
+      error instanceof Error ? error : new Error(String(error)),
+      { model: embeddingModelName },
+    );
+  }
+}
+
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
@@ -265,6 +289,16 @@ export async function handleTextEmbedding(
       config: { outputDimensionality: EMBEDDING_DIMENSIONS },
     });
 
+    // The provider billed this call when it returned. Reuse the exact token
+    // count already required for the input-limit gate, before validation can
+    // reject the returned vector (#22102).
+    await reportEmbeddingUsage(
+      runtime,
+      text,
+      embeddingModelName,
+      bounded.tokens,
+    );
+
     const rawEmbedding = response.embeddings?.[0]?.values || [];
     if (rawEmbedding.length === 0) {
       throw new Error("Google GenAI API returned no embedding");
@@ -291,17 +325,6 @@ export async function handleTextEmbedding(
     // Google does not pre-normalize sub-3072 outputs; renormalize so the vector
     // is unit-length and cosine-comparable like the native 768-dim model.
     const embedding = l2Normalize(rawEmbedding);
-
-    // The exact provider count that admitted this request is also the only
-    // accurate usage value. The local characters/4 helper is telemetry-only
-    // and must never overwrite provider-boundary evidence.
-    const promptTokens = bounded.tokens;
-
-    emitModelUsageEvent(runtime, TEXT_EMBEDDING_MODEL_TYPE, text, {
-      promptTokens,
-      completionTokens: 0,
-      totalTokens: promptTokens,
-    });
 
     logger.log(`Got embedding with length ${embedding.length}`);
     return embedding;
