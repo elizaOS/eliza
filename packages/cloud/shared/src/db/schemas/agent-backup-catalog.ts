@@ -431,23 +431,10 @@ export const agentBackupRestoreOperations = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    attempt_authority_fk: foreignKey({
-      name: "agent_backup_restore_operations_attempt_authority_fkey",
-      columns: [table.organization_id, table.restore_attempt_id],
-      foreignColumns: [
-        agentBackupRestoreLeases.organization_id,
-        agentBackupRestoreLeases.restore_attempt_id,
-      ],
-    }).onDelete("restrict"),
-    fence_authority_fk: foreignKey({
-      name: "agent_backup_restore_operations_fence_authority_fkey",
-      columns: [table.organization_id, table.backup_id, table.lease_generation],
-      foreignColumns: [
-        agentBackupRestoreLeases.organization_id,
-        agentBackupRestoreLeases.backup_id,
-        agentBackupRestoreLeases.generation,
-      ],
-    }).onDelete("restrict"),
+    // The two composite FKs onto agent_backup_restore_leases live in migration
+    // 0251 only. Their targets are unique INDEXES on that table, and pushSchema
+    // emits foreign keys before indexes, so declaring them here would break
+    // every pushSchema-based suite while the real migration applies cleanly.
     catalog_authority_fk: foreignKey({
       name: "agent_backup_restore_operations_catalog_authority_fkey",
       columns: [table.organization_id, table.agent_id],
