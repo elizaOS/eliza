@@ -20,7 +20,7 @@
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createGoogleGenAI, getEmbeddingModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
@@ -49,18 +49,30 @@ function createInitProbeVector(): number[] {
  * L2-normalize an embedding so its Euclidean norm is 1. Google returns
  * sub-3072 `outputDimensionality` vectors un-normalized, so callers that expect
  * cosine-comparable unit vectors (as the native 768-dim `text-embedding-004`
- * produced) must renormalize. A zero vector cannot be normalized and is
- * rejected upstream as an empty/degenerate response.
+ * produced) must renormalize. A non-finite component (a `NaN`/`±Infinity`
+ * slipping through a transport/SDK bug) or a zero-magnitude vector cannot yield
+ * a unit vector, so each is rejected here with its own typed error rather than
+ * returning a silently-corrupt embedding a downstream store could persist.
  */
 function l2Normalize(vector: number[]): number[] {
   let sumSquares = 0;
   for (const value of vector) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError(
+        "Google GenAI API returned a non-finite embedding component that cannot be normalized",
+        {
+          code: "EMBEDDING_NON_FINITE",
+          context: { dimensions: vector.length },
+        },
+      );
+    }
     sumSquares += value * value;
   }
   const norm = Math.sqrt(sumSquares);
   if (norm === 0) {
-    throw new Error(
+    throw new ElizaError(
       "Google GenAI API returned a zero-magnitude embedding that cannot be normalized",
+      { code: "EMBEDDING_ZERO_MAGNITUDE" },
     );
   }
   return vector.map((value) => value / norm);
@@ -136,10 +148,18 @@ export async function handleTextEmbedding(
     // Fail CLOSED on a width that disagrees with the probe rather than writing a
     // mismatched vector into a column the runtime already sized from the probe.
     if (rawEmbedding.length !== EMBEDDING_DIMENSIONS) {
-      throw new Error(
+      throw new ElizaError(
         `Google embedding model "${embeddingModelName}" returned ${rawEmbedding.length} dimensions, ` +
-          `but the runtime sized its embedding column at ${EMBEDDING_DIMENSIONS} (the init-probe width). ` +
-          `Set GOOGLE_EMBEDDING_MODEL to a model whose output matches, or align the requested outputDimensionality.`,
+          `but the init probe pinned the embedding width to ${EMBEDDING_DIMENSIONS}. ` +
+          `Set GOOGLE_EMBEDDING_MODEL to a model whose output matches the ${EMBEDDING_DIMENSIONS}-dim probe.`,
+        {
+          code: "EMBEDDING_DIMENSION_MISMATCH",
+          context: {
+            model: embeddingModelName,
+            returnedDimensions: rawEmbedding.length,
+            expectedDimensions: EMBEDDING_DIMENSIONS,
+          },
+        },
       );
     }
 
@@ -160,6 +180,13 @@ export async function handleTextEmbedding(
   } catch (error) {
     // error-policy:J2 context-adding rethrow — never fabricate a vector; the
     // provider failure surfaces to the caller (#9324: throw, never fabricate).
+    // Our own typed failures (width mismatch, non-finite/zero magnitude) are
+    // already actionable — rethrow them as-is so a value like a "returned 404
+    // dimensions" mismatch is never re-bucketed by the 404 message probe below.
+    if (error instanceof ElizaError) {
+      logger.error(`Error generating embedding: ${error.message}`);
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     // Fail CLOSED on a 404 / NOT_FOUND with one clear, model-named error rather
     // than propagating the raw SDK 404 on every subsequent call. This is the

@@ -2,7 +2,8 @@
  * Unit tests for `handleTextEmbedding`: the null-probe marker vector, the
  * probe/write width contract (#22010 — both pinned to 768 so the runtime's
  * probe-sized pgvector column matches every write), L2 normalization, usage
- * emission, and the throw paths (empty input, empty/oversized API response).
+ * emission, and the typed fail-closed throw paths (empty input, empty API
+ * response, width mismatch, zero-magnitude, and non-finite components).
  * The config, events, tokenization, and `@google/genai` layers are mocked — no
  * live call.
  */
@@ -17,6 +18,23 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class ElizaError extends Error {
+    code?: string;
+    context?: Record<string, unknown>;
+    constructor(
+      message: string,
+      options?: {
+        code?: string;
+        cause?: unknown;
+        context?: Record<string, unknown>;
+      },
+    ) {
+      super(message, { cause: options?.cause });
+      this.name = "ElizaError";
+      this.code = options?.code;
+      this.context = options?.context;
+    }
+  },
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
@@ -148,6 +166,33 @@ describe("Google GenAI embeddings", () => {
 
     await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
       "zero-magnitude embedding",
+    );
+  });
+
+  it("fails closed on a non-finite component instead of returning an all-NaN unit vector", async () => {
+    // A NaN slipping through a transport/SDK bug would leave norm = NaN, so a
+    // bare `norm === 0` guard never fires and an all-NaN "unit" vector escapes.
+    // pgvector accepts NaN literals, so it would store silently and corrupt
+    // similarity ordering; the handler must reject the vector instead.
+    const poisoned = Array(768).fill(0.5);
+    poisoned[7] = Number.NaN;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: poisoned }],
+    });
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      "non-finite embedding component",
+    );
+
+    // Infinity is analogous (norm = Infinity), and must also fail closed.
+    const infinite = Array(768).fill(0.5);
+    infinite[7] = Number.POSITIVE_INFINITY;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: infinite }],
+    });
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      "non-finite embedding component",
     );
   });
 
