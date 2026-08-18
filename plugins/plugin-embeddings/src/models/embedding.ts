@@ -361,14 +361,7 @@ export async function handleBatchTextEmbeddingWithFetch(
     return truncate(text.trim());
   });
 
-  return requestEmbeddings(
-    runtime,
-    prepared,
-    embeddingDimension,
-    undefined,
-    fetchImpl,
-    timeoutMs
-  );
+  return requestEmbeddings(runtime, prepared, embeddingDimension, undefined, fetchImpl, timeoutMs);
 }
 
 export async function handleBatchTextEmbedding(
