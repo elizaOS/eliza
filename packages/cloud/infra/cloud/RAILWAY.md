@@ -59,6 +59,11 @@ This gate proves only the GitHub migration authority. Do not enable `enforce`
 until an operator has provisioned an independent staging Railway PostgreSQL
 service, role, volume, backup/PITR policy, and restore drill, and has separately
 proved that the staging Hyperdrive origin produces the same reviewed identity.
+The migration role must also be able to execute
+`pg_catalog.pg_control_system()`; verify that capability in `report` mode and
+grant only that function privilege if the managed provider does not expose it
+to the role by default. The preflight connection forces PostgreSQL read-only
+mode and applies five-second connection, statement, and query timeouts.
 The repository cannot infer Railway service/volume or backup state from a
 PostgreSQL connection, and `report` mode is not evidence that those protected
 resources exist.

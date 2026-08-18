@@ -105,11 +105,16 @@ jobs:
       - name: Run migrations
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
         run: |
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
+          bun --conditions=eliza-source packages/cloud/scripts/admin/preflight-database-identity.ts
           bun run db:cloud:migrate
 
       - name: Notify Discord (Success)

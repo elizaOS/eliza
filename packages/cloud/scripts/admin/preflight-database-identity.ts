@@ -263,6 +263,7 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
     connectionTimeoutMillis: 5_000,
     statement_timeout: 5_000,
     query_timeout: 5_000,
+    options: "-c default_transaction_read_only=on",
     application_name: "eliza-database-identity-preflight",
     ...(ssl ? { ssl } : {}),
   };
