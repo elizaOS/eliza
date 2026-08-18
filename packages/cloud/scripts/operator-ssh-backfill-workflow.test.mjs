@@ -13,6 +13,7 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain('expected_ref="refs/heads/');
     expect(workflow).toContain('actual_count" != "$EXPECTED_HOST_COUNT"');
     expect(workflow).toContain("Unsupported environment and target-class combination");
+    expect(workflow).toContain("apps-host-key-inspection:production");
   });
 
   test("requires independently pinned host keys and never weakens verification", () => {
@@ -21,7 +22,20 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain("StrictHostKeyChecking=yes");
     expect(workflow).not.toContain("StrictHostKeyChecking=no");
     expect(workflow).not.toContain("StrictHostKeyChecking=accept-new");
-    expect(workflow).not.toContain("ssh-keyscan");
+    expect(workflow.match(/ssh-keyscan/g) ?? []).toHaveLength(1);
+  });
+
+  test("isolates the apps-private pin bootstrap behind a pinned bastion and encryption", () => {
+    const inspection = workflow.slice(
+      workflow.indexOf("Inspect apps-private host keys through pinned control host"),
+      workflow.indexOf("Add operator key idempotently"),
+    );
+    expect(inspection).toContain("StrictHostKeyChecking=yes");
+    expect(inspection).toContain('ssh-keygen -F "$host"');
+    expect(inspection).toContain("openssl enc -aes-256-cbc -pbkdf2 -salt");
+    expect(inspection).toContain("operator-backfill-private-pins.enc");
+    expect(inspection).toContain("retention-days: 1");
+    expect(inspection).not.toContain("authorized_keys");
   });
 
   test("performs only an additive idempotent authorized_keys update", () => {
@@ -35,6 +49,7 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain("addresses remain undisclosed");
     expect(workflow).toContain("failed for one undisclosed target");
     expect(workflow).toContain('2>"$ssh_error_path"');
+    expect(workflow).toContain('ProxyCommand=$proxy_command');
     expect(workflow).not.toContain('echo "$host"');
     expect(workflow).not.toContain('echo "$PROVISIONING_SSH_KEY"');
     expect(workflow).not.toContain('echo "$CONTAINERS_SSH_KEY"');
