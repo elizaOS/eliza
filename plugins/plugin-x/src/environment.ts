@@ -76,11 +76,16 @@ export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
 /**
  * Parse safe integer with a default value.
+ * Rejects negative values (falls back to defaultValue) alongside NaN: every
+ * caller feeds a count, length, or interval, none of which is ever valid
+ * negative, and a negative interval reaching getRandomInterval's
+ * min/max comparison would produce a near-zero/negative setTimeout delay,
+ * defeating a posting-rate limiter.
  */
 function safeParseInt(value: string | undefined, defaultValue: number): number {
   if (!value) return defaultValue;
   const parsed = parseInt(value, 10);
-  return Number.isNaN(parsed) ? defaultValue : parsed;
+  return Number.isNaN(parsed) || parsed < 0 ? defaultValue : parsed;
 }
 
 /**
