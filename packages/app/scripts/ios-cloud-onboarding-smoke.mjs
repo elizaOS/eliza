@@ -418,9 +418,12 @@ async function runMode({ udid, appId, mode, privateKey }) {
         `iOS cloud onboarding ${mode} completed with ok=false: ${JSON.stringify(result)}`,
       );
     }
-    if (result.firstRunPostCount !== 1) {
+    // Direct Cloud agent bases serve chat, not the app-shell setup endpoint.
+    // Durable local completion plus the authenticated Cloud server are the
+    // authority; any /api/first-run POST would target a guaranteed 404.
+    if (result.firstRunPostCount !== 0) {
       throw new Error(
-        `iOS cloud onboarding ${mode} expected exactly one /api/first-run POST, got ${result.firstRunPostCount}`,
+        `iOS cloud onboarding ${mode} expected no /api/first-run POST, got ${result.firstRunPostCount}`,
       );
     }
     if (mode === "tap" && result.signInGreetingVisible !== true) {
