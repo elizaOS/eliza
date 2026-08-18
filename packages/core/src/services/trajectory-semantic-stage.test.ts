@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { RecordedStage } from "../runtime/trajectory-recorder";
+import { RECORDED_STAGE_KINDS } from "../runtime/trajectory-stage-kind";
 import {
 	parseTrajectorySemanticStage,
 	parseTrajectorySemanticStages,
@@ -73,6 +74,15 @@ describe("trajectory semantic stages", () => {
 		expect(parseTrajectorySemanticStages(undefined)).toBeUndefined();
 	});
 
+	it("accepts every stage kind from the runtime's canonical vocabulary", () => {
+		const semantic = recordedStageToSemanticStage(toolSearchStage);
+		for (const kind of RECORDED_STAGE_KINDS) {
+			expect(parseTrajectorySemanticStage({ ...semantic, kind }).kind).toBe(
+				kind,
+			);
+		}
+	});
+
 	it.each([
 		["unknown schema", { schemaVersion: 2 }],
 		["unknown stage kind", { kind: "retrieval" }],
@@ -116,6 +126,31 @@ describe("trajectory semantic stages", () => {
 			parseTrajectorySemanticStages(
 				Array.from({ length: 251 }, () => semantic),
 			),
+		).toThrow(/semantic stage is invalid/i);
+	});
+
+	it("applies node and byte budgets across the complete stage array", () => {
+		const semantic = recordedStageToSemanticStage(toolSearchStage);
+		expect(() =>
+			parseTrajectorySemanticStages([
+				{ ...semantic, stageId: "duplicate" },
+				{ ...semantic, stageId: "duplicate" },
+			]),
+		).toThrow(/semantic stage is invalid/i);
+
+		const largePayload = {
+			model: Object.fromEntries(
+				Array.from({ length: 10 }, (_, index) => [
+					`field-${index}`,
+					"x".repeat(60_000),
+				]),
+			),
+		};
+		expect(() =>
+			parseTrajectorySemanticStages([
+				{ ...semantic, stageId: "large-1", payload: largePayload },
+				{ ...semantic, stageId: "large-2", payload: largePayload },
+			]),
 		).toThrow(/semantic stage is invalid/i);
 	});
 });

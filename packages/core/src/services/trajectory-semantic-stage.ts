@@ -5,10 +5,11 @@
  */
 
 import { ElizaError } from "../errors";
-import type {
-	RecordedStage,
-	RecordedStageKind,
-} from "../runtime/trajectory-recorder";
+import type { RecordedStage } from "../runtime/trajectory-recorder";
+import {
+	RECORDED_STAGE_KINDS,
+	type RecordedStageKind,
+} from "../runtime/trajectory-stage-kind";
 import type { JsonValue } from "../types/primitives";
 import { asRecord } from "../utils/type-guards";
 import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
@@ -20,6 +21,8 @@ const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_NODES = 5_000;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS = 64 * 1024;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
+const TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES = 1024 * 1024;
+const utf8Encoder = new TextEncoder();
 
 const SEMANTIC_STAGE_KEYS = new Set([
 	"schemaVersion",
@@ -43,16 +46,7 @@ const SEMANTIC_STAGE_PAYLOAD_KEYS = new Set([
 	"factsAndRelationships",
 ]);
 
-const RECORDED_STAGE_KINDS = new Set<RecordedStageKind>([
-	"messageHandler",
-	"planner",
-	"tool",
-	"toolSearch",
-	"evaluation",
-	"subPlanner",
-	"compaction",
-	"factsAndRelationships",
-]);
+const RECORDED_STAGE_KIND_SET = new Set<string>(RECORDED_STAGE_KINDS);
 
 /** A bounded, transport-safe semantic stage attached to a trajectory step. */
 export interface TrajectorySemanticStageRecord {
@@ -124,7 +118,11 @@ function optionalNonNegativeInteger(
 
 function isJsonValue(
 	value: unknown,
-	state: { seen: WeakSet<object>; nodes: number },
+	state: {
+		seen: WeakSet<object>;
+		nodes: number;
+		remainingBytes: number;
+	},
 	depth = 0,
 ): value is JsonValue {
 	state.nodes += 1;
@@ -134,13 +132,22 @@ function isJsonValue(
 	) {
 		return false;
 	}
+	const serializedScalarBytes = (scalar: string | number | boolean | null) =>
+		utf8Encoder.encode(JSON.stringify(scalar)).byteLength;
 	if (value === null || typeof value === "boolean") {
-		return true;
+		state.remainingBytes -= serializedScalarBytes(value);
+		return state.remainingBytes >= 0;
 	}
 	if (typeof value === "string") {
-		return value.length <= TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS;
+		if (value.length > TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS) return false;
+		state.remainingBytes -= serializedScalarBytes(value);
+		return state.remainingBytes >= 0;
 	}
-	if (typeof value === "number") return Number.isFinite(value);
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) return false;
+		state.remainingBytes -= serializedScalarBytes(value);
+		return state.remainingBytes >= 0;
+	}
 	if (typeof value !== "object") return false;
 	if (state.seen.has(value)) return false;
 	state.seen.add(value);
@@ -154,11 +161,24 @@ function isJsonValue(
 	if (prototype !== Object.prototype && prototype !== null) return false;
 	const record = asRecord(value);
 	if (!record || Object.keys(record).length > 200) return false;
-	const valid = Object.values(record).every((entry) =>
-		isJsonValue(entry, state, depth + 1),
-	);
+	const valid = Object.entries(record).every(([key, entry]) => {
+		state.remainingBytes -= serializedScalarBytes(key) + 1;
+		return state.remainingBytes >= 0 && isJsonValue(entry, state, depth + 1);
+	});
 	state.seen.delete(value);
 	return valid;
+}
+
+function createSemanticStageValidationState(): {
+	seen: WeakSet<object>;
+	nodes: number;
+	remainingBytes: number;
+} {
+	return {
+		seen: new WeakSet(),
+		nodes: 0,
+		remainingBytes: TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES,
+	};
 }
 
 /** Convert the established runtime recorder stage into the shared envelope. */
@@ -194,12 +214,25 @@ export function recordedStageToSemanticStage(
 export function recordedStagesToSemanticStages(
 	stages: readonly RecordedStage[],
 ): TrajectorySemanticStageRecord[] {
-	return stages.map(recordedStageToSemanticStage);
+	return (
+		parseTrajectorySemanticStages(stages.map(recordedStageToSemanticStage)) ??
+		[]
+	);
 }
 
 /** Validate one untrusted persisted semantic-stage envelope. */
 export function parseTrajectorySemanticStage(
 	value: unknown,
+): TrajectorySemanticStageRecord {
+	return parseTrajectorySemanticStageWithState(
+		value,
+		createSemanticStageValidationState(),
+	);
+}
+
+function parseTrajectorySemanticStageWithState(
+	value: unknown,
+	validationState: ReturnType<typeof createSemanticStageValidationState>,
 ): TrajectorySemanticStageRecord {
 	const record = asRecord(value);
 	if (!record) throw invalidSemanticStage("stage");
@@ -212,7 +245,7 @@ export function parseTrajectorySemanticStage(
 	const stageId = requiredStageId(record.stageId, "stageId");
 	if (
 		typeof record.kind !== "string" ||
-		!RECORDED_STAGE_KINDS.has(record.kind as RecordedStageKind)
+		!RECORDED_STAGE_KIND_SET.has(record.kind)
 	) {
 		throw invalidSemanticStage("kind", record.kind);
 	}
@@ -240,7 +273,7 @@ export function parseTrajectorySemanticStage(
 	if (
 		!payload ||
 		!hasOnlyKeys(payload, SEMANTIC_STAGE_PAYLOAD_KEYS) ||
-		!isJsonValue(payload, { seen: new WeakSet(), nodes: 0 })
+		!isJsonValue(payload, validationState)
 	) {
 		throw invalidSemanticStage("payload");
 	}
@@ -267,5 +300,17 @@ export function parseTrajectorySemanticStages(
 	if (value.length > TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
 		throw invalidSemanticStage("semanticStages.length", value.length);
 	}
-	return value.map(parseTrajectorySemanticStage);
+	const validationState = createSemanticStageValidationState();
+	const stageIds = new Set<string>();
+	return value.map((stage) => {
+		const parsed = parseTrajectorySemanticStageWithState(
+			stage,
+			validationState,
+		);
+		if (stageIds.has(parsed.stageId)) {
+			throw invalidSemanticStage("stageId.duplicate", parsed.stageId);
+		}
+		stageIds.add(parsed.stageId);
+		return parsed;
+	});
 }
