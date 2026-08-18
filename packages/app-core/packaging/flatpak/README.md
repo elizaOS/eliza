@@ -95,9 +95,13 @@ flatpak install --user flathub org.freedesktop.Sdk//25.08
 # Build the store variant.
 ELIZA_BUILD_VARIANT=store bun run build:flatpak
 
-# Or call flatpak-builder directly.
+# For the Flathub-equivalent build, install org.flatpak.Builder once and use
+# its flathub-build wrapper. This also mirrors AppStream media into the local
+# repository exactly as Flathub's repository linter requires.
+flatpak install --user flathub org.flatpak.Builder
 cd packages/app-core/packaging/flatpak
-flatpak-builder --user --install --force-clean build-dir ai.elizaos.App.yml
+flatpak run --command=flathub-build org.flatpak.Builder \
+  --install ai.elizaos.App.yml
 
 # Run both the package entrypoint and its normal desktop command.
 flatpak run ai.elizaos.App --version

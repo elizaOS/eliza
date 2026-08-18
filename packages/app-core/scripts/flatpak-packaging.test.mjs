@@ -133,12 +133,14 @@ test("Linux acceptance lints and launches the installed Flatpak", () => {
   assert.match(workflow, /ai\.elizaos\.App start/);
   assert.match(workflow, /\/api\/health/);
   assert.match(workflow, /"ready":true/);
-  assert.match(workflow, /--install --repo=repo/);
   assert.match(
     workflow,
-    /--mirror-screenshots-url=https:\/\/dl\.flathub\.org\/media/,
+    /flatpak run --command=flathub-build org\.flatpak\.Builder[\s\S]*--install ai\.elizaos\.App\.yml/,
   );
-  assert.doesNotMatch(workflow, /--compose-url-policy/);
+  assert.doesNotMatch(
+    workflow,
+    /sudo apt-get install --yes[^\n]*flatpak-builder/,
+  );
 });
 
 test("AppStream release and repository URLs match the packaged CLI", () => {

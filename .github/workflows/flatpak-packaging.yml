@@ -39,11 +39,10 @@ jobs:
       - name: Install Flatpak tooling
         run: |
           sudo apt-get update
-          sudo apt-get install --yes appstream flatpak flatpak-builder
+          sudo apt-get install --yes flatpak
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive --or-update flathub \
-            org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 \
             org.flatpak.Builder
 
       - name: Verify pinned packaging inputs
@@ -59,11 +58,9 @@ jobs:
 
       - name: Build Flathub manifest without network
         working-directory: packages/app-core/packaging/flatpak
-        run: |
-          flatpak-builder --user --disable-rofiles-fuse --force-clean \
-            --install --repo=repo \
-            --mirror-screenshots-url=https://dl.flathub.org/media \
-            build-dir ai.elizaos.App.yml
+        run: >-
+          flatpak run --command=flathub-build org.flatpak.Builder
+          --install ai.elizaos.App.yml
 
       - name: Exercise installed entrypoint
         run: |
@@ -73,7 +70,7 @@ jobs:
             ai.elizaos.App start >flatpak-start.log 2>&1 &
           app_pid=$!
           trap 'kill "$app_pid" 2>/dev/null || true; cat flatpak-start.log' EXIT
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:3000/api/health >flatpak-health.json; then
               break
             fi
