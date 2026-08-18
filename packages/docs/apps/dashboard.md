@@ -174,7 +174,7 @@ The `PermissionsSection` component manages system permission grants for native p
 
 #### 9. Agent Export / Import
 
-- **Export** -- opens a modal that estimates export size (memories, entities, rooms, worlds, tasks), requires an encryption password (minimum 4 characters), and optionally includes logs. Downloads as a single encrypted file.
+- **Export** -- opens a modal that estimates export size (memories, entities, rooms, worlds, tasks), requires an encryption password (minimum 12 characters), and optionally includes logs. Downloads as a single encrypted file.
 - **Import** -- opens a modal to select an `.eliza-agent` file and enter the decryption password used during export.
 
 <Warning>

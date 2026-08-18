@@ -124,6 +124,24 @@ export interface StewardVerifyOptions {
 
 export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 
+/**
+ * Clock-skew allowance between the Steward issuer and this verifier. Steward
+ * mints access tokens at exactly STEWARD_ACCESS_TOKEN_TTL_SECONDS, so the
+ * acceptance ceiling below adds a small margin — a freshly minted token read
+ * against a slightly-ahead issuer clock must not be rejected, while a token
+ * claiming a materially longer lifetime still fails closed.
+ */
+const STEWARD_VERIFY_CLOCK_SKEW_SECONDS = 5 * 60;
+
+/**
+ * Maximum remaining lifetime a presented Steward token may claim. jose
+ * enforces `exp` only when the claim exists, so a token minted without one
+ * would never expire; requiring the claim and capping its horizon bounds a
+ * leaked token's usefulness. Mirrors the service-jwt verifier.
+ */
+const MAX_STEWARD_TOKEN_TTL_SECONDS =
+  STEWARD_ACCESS_TOKEN_TTL_SECONDS + STEWARD_VERIFY_CLOCK_SKEW_SECONDS;
+
 // Cache the encoded secret keyed by raw value, so repeated requests with the
 // same secret skip the TextEncoder allocation. Bounded at one entry — secrets
 // don't rotate on every request, and a stale entry just costs one re-encode.
@@ -368,6 +386,16 @@ async function verifyStewardTokenWithoutCaches(input: {
   const { payload } = await jwtVerify(input.token, input.secret, {
     algorithms: ["HS256"],
   });
+
+  if (typeof payload.exp !== "number") {
+    logger.warn("[StewardClient] Rejected token without an exp claim");
+    return null;
+  }
+  if (payload.exp * 1000 - Date.now() > MAX_STEWARD_TOKEN_TTL_SECONDS * 1000) {
+    logger.warn("[StewardClient] Rejected token whose TTL exceeds the Steward maximum");
+    return null;
+  }
+
   const claims = extractClaims(payload);
 
   if (!claims.userId) {
