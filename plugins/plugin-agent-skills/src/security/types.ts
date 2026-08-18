@@ -50,7 +50,7 @@ export interface SkillScanOptions {
 
 export function truncateEvidence(evidence: string, maxLen = 120): string {
 	if (evidence.length <= maxLen) return evidence;
-	return `${evidence.slice(0, maxLen)}…`;
+	return `${evidence.slice(0, Math.max(0, maxLen - 1))}…`;
 }
 
 /** Line-level rule: matches per-line, fires at most once per file. */
