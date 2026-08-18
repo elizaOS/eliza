@@ -5,8 +5,7 @@
  * depend on this list being complete (#14751: a partition missing here leaves
  * its media references invisible to the sweep) — must paginate each partition
  * to exhaustion rather than truncate at one bounded page (a truncated sweep
- * makes the GC delete still-referenced media), and must skip embedding
- * materialization (the sweep reads content/metadata only).
+ * makes the GC delete still-referenced media).
  */
 
 import { describe, expect, it } from "vitest";
@@ -80,24 +79,5 @@ describe("AgentRuntime.getAllMemories", () => {
 
 		expect(requestedOffsets).toEqual([0, 10000, 20000]);
 		expect(all).toHaveLength(20007);
-	});
-
-	it("asks the adapter to skip embedding materialization during the sweep", async () => {
-		const runtime = new AgentRuntime({
-			character: { name: "get-all-memories-embedding-test" } as Character,
-		});
-		const seenIncludeEmbedding: unknown[] = [];
-		runtime.registerDatabaseAdapter({
-			getMemories: async (params: { includeEmbedding?: boolean }) => {
-				seenIncludeEmbedding.push(params.includeEmbedding);
-				return [];
-			},
-		} as unknown as IDatabaseAdapter);
-
-		await runtime.getAllMemories();
-
-		// One call per partition; every one must opt out of the embedding join.
-		expect(seenIncludeEmbedding).toHaveLength(5);
-		expect(new Set(seenIncludeEmbedding)).toEqual(new Set([false]));
 	});
 });

@@ -11252,10 +11252,6 @@ ${section_end}`;
 					tableName,
 					limit: GET_ALL_MEMORIES_PAGE_SIZE,
 					offset,
-					// The sweep reads content/metadata only; skipping the embedding
-					// column avoids materializing a vector per row (both first-party
-					// adapters honor this; others may ignore it per the contract).
-					includeEmbedding: false,
 				});
 				allMemories.push(...memories);
 				if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break;
