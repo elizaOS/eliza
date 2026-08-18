@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS "agent_vault_key_seed_receipts" (
     ("organization_id", "restore_attempt_id"),
   CONSTRAINT "agent_vault_key_seed_receipts_receipt_authority_unique" UNIQUE
     ("id", "organization_id", "agent_id", "restore_attempt_id",
-      "target_activation_generation", "receipt_digest"),
+      "backup_id", "operation_id", "source_activation_generation",
+      "source_lifecycle_revision", "manifest_sha256", "target_activation_generation",
+      "receipt_digest"),
   CONSTRAINT "agent_vault_key_seed_receipts_lease_authority_fkey" FOREIGN KEY
     ("lease_id", "organization_id", "agent_id", "backup_id", "restore_attempt_id",
       "lease_owner_id", "lease_fencing_token") REFERENCES "agent_backup_restore_leases"

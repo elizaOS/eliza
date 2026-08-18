@@ -1072,6 +1072,7 @@ export const agentSandboxBackups = pgTable(
       table.id,
       table.catalog_organization_id,
       table.catalog_agent_id,
+      table.backup_operation_id,
       table.lifecycle_generation,
       table.lifecycle_revision,
       table.manifest_digest,

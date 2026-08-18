@@ -119,13 +119,13 @@ async function insertReceiptChain(database: PGlite): Promise<void> {
       '${BOOT}', '${RECEIPT}'
     );
     INSERT INTO agent_backup_restore_receipts (
-      id, organization_id, agent_id, restore_attempt_id, backup_id,
+      id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
       source_activation_generation, source_lifecycle_revision, manifest_sha256,
       seed_receipt_id, seed_receipt_digest, target_activation_generation,
       activation_purpose, activation_publication_id, activation_receipt_sha256,
       restore_generation, receipt_digest
     ) VALUES (
-      '${FINAL}', '${ORG}', '${AGENT}', '${ATTEMPT}', '${BACKUP}', '${SOURCE}', 7,
+      '${FINAL}', '${ORG}', '${AGENT}', '${ATTEMPT}', '${BACKUP}', '${OPERATION}', '${SOURCE}', 7,
       '${SHA}', '${SEED}', '${RECEIPT}', '${TARGET}', 'restore', '${PUBLICATION}',
       '${RECEIPT}', 1, '${SHA}'
     );
@@ -209,14 +209,141 @@ describe("0246-0250 immutable restore history migrations", () => {
       await insertReceiptChain(database);
       await expect(
         database.exec(`INSERT INTO agent_backup_restore_receipts (
-          id, organization_id, agent_id, restore_attempt_id, backup_id,
+          id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
           source_activation_generation, source_lifecycle_revision, manifest_sha256,
           seed_receipt_id, seed_receipt_digest, target_activation_generation,
           activation_purpose, activation_publication_id, activation_receipt_sha256,
           restore_generation, receipt_digest) VALUES (
-          gen_random_uuid(), '${ORG}', '${AGENT}', gen_random_uuid(), '${BACKUP}', '${SOURCE}',
+          gen_random_uuid(), '${ORG}', '${AGENT}', gen_random_uuid(), '${BACKUP}', '${OPERATION}', '${SOURCE}',
           7, '${SHA}', '${SEED}', '${RECEIPT}', '${TARGET}', 'wake', '${PUBLICATION}',
           '${RECEIPT}', 2, '${SHA}')`),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+
+  test.each([
+    ["backup", "00000000-0000-4000-8000-00000000b005", 7, SHA],
+    ["source generation", "00000000-0000-4000-8000-00000000b105", 7, SHA],
+    ["source revision", SOURCE, 9, SHA],
+    ["manifest", SOURCE, 7, "d".repeat(64)],
+  ])(
+    "rejects a final receipt whose seed splices a different %s authority",
+    async (_, source, revision, manifest) => {
+      const database = await databaseWithFoundation();
+      const backupB = "00000000-0000-4000-8000-00000000b006";
+      const operationB = "00000000-0000-4000-8000-00000000b007";
+      const attemptB = "00000000-0000-4000-8000-00000000b008";
+      const leaseB = "00000000-0000-4000-8000-00000000b009";
+      const fenceB = "00000000-0000-4000-8000-00000000b010";
+      const targetB = "00000000-0000-4000-8000-00000000b011";
+      const publicationB = "00000000-0000-4000-8000-00000000b012";
+      const seedB = "00000000-0000-4000-8000-00000000b013";
+      const finalB = "00000000-0000-4000-8000-00000000b014";
+      try {
+        await applyMigrations(database);
+        await insertReceiptChain(database);
+        const history = await database.query<{ id: string }>(
+          `SELECT id FROM agent_node_incarnation_histories WHERE node_incarnation = '${BOOT}'`,
+        );
+        await database.exec(`
+        INSERT INTO agent_sandbox_backups VALUES
+          ('${backupB}', '${ORG}', '${AGENT}', '${operationB}', '${source}', ${revision},
+            '${manifest}', '${VAULT}', '${RECEIPT}');
+        INSERT INTO agent_activation_publications (
+          id, organization_id, agent_id, activation_generation, lifecycle_revision,
+          purpose, backup_id, backup_manifest_sha256, activation_receipt,
+          activation_receipt_sha256, container_id, node_history_id, docker_node_record_id,
+          node_id, node_incarnation, image_digest, token_sha256, funding_revision
+        ) VALUES (
+          '${publicationB}', '${ORG}', '${AGENT}', '${targetB}', 10, 'restore', '${backupB}',
+          '${manifest}', '{}', '${RECEIPT}', '${"e".repeat(64)}', '${history.rows[0]?.id}',
+          '${NODE}', 'node-a', '${BOOT}', 'sha256:${SHA}', '${SHA}', 1
+        );
+        INSERT INTO agent_backup_restore_leases VALUES
+          ('${leaseB}', '${ORG}', '${AGENT}', '${BACKUP}', '${attemptB}', 'owner-b', '${fenceB}');
+        INSERT INTO agent_vault_key_seed_receipts (
+          id, organization_id, agent_id, restore_attempt_id, lease_id, lease_owner_id,
+          lease_fencing_token, lease_expires_at, backup_id, operation_id,
+          source_activation_generation, source_lifecycle_revision, manifest_sha256,
+          vault_key_generation_id, vault_key_authority_receipt_digest,
+          target_activation_generation, node_history_id, docker_node_record_id,
+          node_incarnation, receipt_digest
+        ) VALUES (
+          '${seedB}', '${ORG}', '${AGENT}', '${attemptB}', '${leaseB}', 'owner-b', '${fenceB}',
+          NOW() + INTERVAL '10 minutes', '${BACKUP}', '${OPERATION}', '${SOURCE}', 7,
+          '${SHA}', '${VAULT}', '${RECEIPT}', '${targetB}', '${history.rows[0]?.id}', '${NODE}',
+          '${BOOT}', '${RECEIPT}'
+        );
+      `);
+        await expect(
+          database.exec(`INSERT INTO agent_backup_restore_receipts (
+        id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
+        source_activation_generation, source_lifecycle_revision, manifest_sha256,
+        seed_receipt_id, seed_receipt_digest, target_activation_generation,
+        activation_purpose, activation_publication_id, activation_receipt_sha256,
+        restore_generation, receipt_digest) VALUES (
+        '${finalB}', '${ORG}', '${AGENT}', '${attemptB}', '${backupB}', '${operationB}', '${source}', ${revision},
+        '${manifest}', '${seedB}', '${RECEIPT}', '${targetB}', 'restore', '${publicationB}',
+        '${RECEIPT}', 2, '${SHA}')`),
+        ).rejects.toThrow();
+      } finally {
+        await database.close();
+      }
+    },
+  );
+
+  test("rejects a final receipt whose publication belongs to another backup", async () => {
+    const database = await databaseWithFoundation();
+    const backupB = "00000000-0000-4000-8000-00000000c006";
+    const operationB = "00000000-0000-4000-8000-00000000c007";
+    const attemptB = "00000000-0000-4000-8000-00000000c008";
+    const leaseB = "00000000-0000-4000-8000-00000000c009";
+    const fenceB = "00000000-0000-4000-8000-00000000c010";
+    const seedB = "00000000-0000-4000-8000-00000000c013";
+    const finalB = "00000000-0000-4000-8000-00000000c014";
+    const sourceB = "00000000-0000-4000-8000-00000000c005";
+    const manifestB = "d".repeat(64);
+    try {
+      await applyMigrations(database);
+      await insertReceiptChain(database);
+      const history = await database.query<{ id: string }>(
+        `SELECT id FROM agent_node_incarnation_histories WHERE node_incarnation = '${BOOT}'`,
+      );
+      await database.exec(`
+        INSERT INTO agent_sandbox_backups VALUES
+          ('${backupB}', '${ORG}', '${AGENT}', '${operationB}', '${sourceB}', 9,
+            '${manifestB}', '${VAULT}', '${RECEIPT}');
+        INSERT INTO agent_vault_key_backup_bindings VALUES
+          ('${ORG}', '${AGENT}', '${backupB}', '${operationB}', '${sourceB}', 9,
+            '${manifestB}', '${VAULT}', '${RECEIPT}');
+        INSERT INTO agent_backup_restore_leases VALUES
+          ('${leaseB}', '${ORG}', '${AGENT}', '${backupB}', '${attemptB}', 'owner-c', '${fenceB}');
+        INSERT INTO agent_vault_key_seed_receipts (
+          id, organization_id, agent_id, restore_attempt_id, lease_id, lease_owner_id,
+          lease_fencing_token, lease_expires_at, backup_id, operation_id,
+          source_activation_generation, source_lifecycle_revision, manifest_sha256,
+          vault_key_generation_id, vault_key_authority_receipt_digest,
+          target_activation_generation, node_history_id, docker_node_record_id,
+          node_incarnation, receipt_digest
+        ) VALUES (
+          '${seedB}', '${ORG}', '${AGENT}', '${attemptB}', '${leaseB}', 'owner-c', '${fenceB}',
+          NOW() + INTERVAL '10 minutes', '${backupB}', '${operationB}', '${sourceB}', 9,
+          '${manifestB}', '${VAULT}', '${RECEIPT}', '${TARGET}', '${history.rows[0]?.id}',
+          '${NODE}', '${BOOT}', '${RECEIPT}'
+        );
+      `);
+      await expect(
+        database.exec(`INSERT INTO agent_backup_restore_receipts (
+        id, organization_id, agent_id, restore_attempt_id, backup_id, operation_id,
+        source_activation_generation, source_lifecycle_revision, manifest_sha256,
+        seed_receipt_id, seed_receipt_digest, target_activation_generation,
+        activation_purpose, activation_publication_id, activation_receipt_sha256,
+        restore_generation, receipt_digest) VALUES (
+        '${finalB}', '${ORG}', '${AGENT}', '${attemptB}', '${backupB}', '${operationB}', '${sourceB}', 9,
+        '${manifestB}', '${seedB}', '${RECEIPT}', '${TARGET}', 'restore', '${PUBLICATION}',
+        '${RECEIPT}', 2, '${SHA}')`),
       ).rejects.toThrow();
     } finally {
       await database.close();

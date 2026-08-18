@@ -617,7 +617,8 @@ export async function commitAgentBackupRestore(
       return { receipt: concurrentReceipt, replayed: true };
     }
     if (
-      !backup?.lifecycle_generation ||
+      !backup?.backup_operation_id ||
+      !backup.lifecycle_generation ||
       backup.lifecycle_revision === null ||
       !backup.manifest_digest ||
       (backup.catalog_state !== "protected" && backup.catalog_state !== "retained")
@@ -752,6 +753,7 @@ export async function commitAgentBackupRestore(
         agent_id: input.agentId,
         restore_attempt_id: input.restoreAttemptId,
         backup_id: backup.id,
+        operation_id: backup.backup_operation_id,
         source_activation_generation: backup.lifecycle_generation,
         source_lifecycle_revision: backup.lifecycle_revision,
         manifest_sha256: backup.manifest_digest,

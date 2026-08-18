@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS "agent_activation_publications" (
     ("organization_id", "agent_id", "activation_generation"),
   CONSTRAINT "agent_activation_publications_receipt_authority_unique" UNIQUE
     ("id", "organization_id", "agent_id", "activation_generation", "purpose",
-      "activation_receipt_sha256"),
+      "backup_id", "backup_manifest_sha256", "activation_receipt_sha256"),
   CONSTRAINT "agent_activation_publications_node_history_fkey" FOREIGN KEY
     ("node_history_id", "docker_node_record_id", "node_incarnation") REFERENCES
     "agent_node_incarnation_histories" ("id", "docker_node_record_id", "node_incarnation")
