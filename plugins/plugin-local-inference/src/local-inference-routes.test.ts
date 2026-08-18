@@ -203,6 +203,55 @@ function makeJsonResponse(): http.ServerResponse & {
 	return res;
 }
 
+function makeSseResponse(): http.ServerResponse & { body: () => string } {
+	let body = "";
+	const res = {
+		statusCode: 200,
+		setHeader: vi.fn(),
+		writeHead: vi.fn((statusCode: number) => {
+			res.statusCode = statusCode;
+			return res;
+		}),
+		write: vi.fn((chunk: unknown) => {
+			body += String(chunk);
+			return true;
+		}),
+		end: vi.fn(() => res),
+		body: () => body,
+	} as unknown as http.ServerResponse & { body: () => string };
+	return res;
+}
+
+describe("GET /api/local-inference/downloads/stream", () => {
+	it("includes active model state in the initial snapshot", async () => {
+		serviceMock.setActiveState({
+			modelId: null,
+			loadedAt: null,
+			status: "idle",
+			loadedContextSize: null,
+			loadedCacheTypeK: null,
+			loadedCacheTypeV: null,
+			loadedGpuLayers: null,
+		});
+		const req = makeJsonRequest("GET", "/api/local-inference/downloads/stream");
+		const res = makeSseResponse();
+
+		await expect(handleLocalInferenceRoutes(req, res)).resolves.toBe(true);
+		req.emit("close");
+
+		const firstData = res
+			.body()
+			.split("\n")
+			.find((line) => line.startsWith("data: "));
+		expect(firstData).toBeDefined();
+		expect(JSON.parse(firstData?.slice(6) ?? "{}")).toMatchObject({
+			type: "snapshot",
+			downloads: [],
+			active: { modelId: null, status: "idle" },
+		});
+	});
+});
+
 function writeInstalledModel(id: string): string {
 	const root = path.join(tempStateDir ?? "", "local-inference");
 	const modelPath = path.join(

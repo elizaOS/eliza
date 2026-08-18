@@ -1576,17 +1576,24 @@ export async function handleLocalInferenceRoutes(
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
 		});
-		const interval = setInterval(() => {
+		const writeSnapshot = async (): Promise<void> => {
 			writeSse(res, {
 				type: "snapshot",
-				downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
+				downloads: [...activeDownloads.values()].map(({ job }) => ({
+					...job,
+				})),
+				active: await getLocalInferenceActiveSnapshot(),
+			});
+		};
+		const interval = setInterval(() => {
+			void writeSnapshot().catch((error: unknown) => {
+				logger.warn(
+					`[local-inference] failed to write download snapshot: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			});
 		}, 1000);
 		interval.unref();
-		writeSse(res, {
-			type: "snapshot",
-			downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
-		});
+		await writeSnapshot();
 		req.on("close", () => clearInterval(interval));
 		return true;
 	}
