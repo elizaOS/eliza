@@ -116,6 +116,9 @@ function resolveNoteIndex(
   value: string,
 ): number {
   const target = normalizedLookup(value);
+  if (!target) {
+    throw lookupError("NOTES_NOT_FOUND", selector, value, []);
+  }
   const exact = notes
     .map((note, index) => ({ index, note }))
     .filter(({ note }) => normalizedLookup(note.title) === target);
