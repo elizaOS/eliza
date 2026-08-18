@@ -159,24 +159,40 @@ async function truncateToEmbeddingTokenLimit(
 
   let low = 0;
   let high = boundaries.length - 1;
-  let acceptedTokens = 0;
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
     const candidate = text.slice(0, boundaries[middle]);
     const tokens = await providerTokenCount(genAI, model, candidate);
     if (tokens <= limit) {
       low = middle;
-      acceptedTokens = tokens;
     } else {
       high = middle - 1;
     }
   }
 
   const truncatedText = text.slice(0, boundaries[low]);
-  if (low > 0 && acceptedTokens === 0) {
-    acceptedTokens = await providerTokenCount(genAI, model, truncatedText);
+  // Prefix token counts are not a mathematically monotone contract for a
+  // subword tokenizer: appending text can retokenize the preceding suffix.
+  // Binary search is therefore only a fast way to find a conservative
+  // candidate, not proof of maximality. Re-measure the exact returned prefix
+  // so tokenizer changes or a non-monotone/mock implementation can never let
+  // an over-limit request reach embedContent.
+  const verifiedTokens = await providerTokenCount(genAI, model, truncatedText);
+  if (verifiedTokens > limit || !truncatedText.trim()) {
+    throw new ElizaError(
+      "Google tokenizer could not produce a non-empty embedding prefix within the model limit",
+      {
+        code: "EMBEDDING_TOKEN_LIMIT_UNSATISFIABLE",
+        context: {
+          model,
+          limit,
+          candidateTokens: verifiedTokens,
+          candidateCodePoints: low,
+        },
+      },
+    );
   }
-  return { text: truncatedText, tokens: acceptedTokens, truncated: true };
+  return { text: truncatedText, tokens: verifiedTokens, truncated: true };
 }
 
 export async function handleTextEmbedding(

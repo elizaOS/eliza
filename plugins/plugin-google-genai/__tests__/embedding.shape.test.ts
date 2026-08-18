@@ -277,6 +277,59 @@ describe("Google GenAI embeddings", () => {
     expect(passed.contents).toBe("!".repeat(2_048));
   });
 
+  it("truncates only at Unicode code-point boundaries", async () => {
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: Array.from(contents).length,
+      }),
+    );
+    const oversized = "😀".repeat(3_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(Array.from(passed.contents)).toHaveLength(2_048);
+    expect(passed.contents).toBe("😀".repeat(2_048));
+    expect(passed.contents.endsWith("😀")).toBe(true);
+  });
+
+  it("stays safe when prefix token counts are non-monotone", async () => {
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        // A contrived merge discontinuity: the 1,500-character prefix costs
+        // more than longer neighboring prefixes. The search may conservatively
+        // stop early, but the exact prefix sent must still be measured <= 2,048.
+        totalTokens: contents.length === 1_500 ? 2_500 : contents.length,
+      }),
+    );
+
+    await handleTextEmbedding(createRuntime(), "n".repeat(3_000));
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(passed.contents).toBe("n".repeat(1_499));
+  });
+
+  it("fails closed if re-measuring the selected prefix exceeds the limit", async () => {
+    const callsByContents = new Map<string, number>();
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => {
+        const calls = (callsByContents.get(contents) ?? 0) + 1;
+        callsByContents.set(contents, calls);
+        return {
+          totalTokens:
+            contents.length === 2_048 && calls > 1 ? 2_049 : contents.length,
+        };
+      },
+    );
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "x".repeat(3_000)),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_TOKEN_LIMIT_UNSATISFIABLE",
+    });
+    expect(mocks.embedContent).not.toHaveBeenCalled();
+  });
+
   it("does NOT truncate a gemini-embedding-2 override to the smaller 2,048 limit for the same input", async () => {
     // The same provider-tokenized input that exceeds the default model's 2,048
     // limit remains below gemini-embedding-2's 8,192-token window.
