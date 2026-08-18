@@ -40,10 +40,17 @@ app.post("/*", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const body = (await c.req.json()) as {
-      pod_name?: string;
-      service?: string;
-    };
+    let body: { pod_name?: string; service?: string };
+    try {
+      body = (await c.req.json()) as {
+        pod_name?: string;
+        service?: string;
+      };
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const subject =
       typeof body.pod_name === "string" ? body.pod_name.trim() : "";
     if (!subject) {
