@@ -79,7 +79,19 @@ describe("App standalone chat-overlay wiring", () => {
     expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
     expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
-    expect(foundation).toContain("if (useWebChatPanel && shellIsOpen)");
+    expect(foundation).toContain(
+      "if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen))",
+    );
+    expect(foundation).toContain(
+      "const firstRunPinnedOpen = firstRunComplete === false;",
+    );
+    expect(foundation).toContain(
+      "if (!useWebChatPanel || !firstRunPinnedOpen || shellIsOpen) return;",
+    );
+    expect(foundation).toContain("controller?.open();");
+    expect(foundation).toContain(
+      "useWebChatPanel && (shellIsOpen || firstRunPinnedOpen)",
+    );
     expect(foundation).toContain("<ChatOverlayMount");
     expect(foundation).toContain("onPilledChange={closeWebChatWhenPilled}");
     expect(foundation).toContain("onStateChange={syncNativeSurfaceState}");
