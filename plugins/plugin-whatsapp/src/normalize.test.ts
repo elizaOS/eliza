@@ -142,4 +142,38 @@ describe("text chunking", () => {
     expect(truncated.isWellFormed()).toBe(true);
     expect(truncated).toBe("xxxx...");
   });
+
+  it("chunkWhatsAppText fails closed on a one-code-unit limit instead of looping forever", () => {
+    // A single code unit can never hold half of an astral character, so no
+    // limit of 1 can guarantee a non-empty well-formed chunk on every input.
+    expect(() => chunkWhatsAppText(`${"x".repeat(10)}\u{1F600}`, { limit: 1 })).toThrow(
+      /limit must be a finite number/
+    );
+  });
+
+  it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "chunkWhatsAppText fails closed on limit %p",
+    (limit) => {
+      expect(() => chunkWhatsAppText("hello world", { limit })).toThrow(
+        /limit must be a finite number/
+      );
+    }
+  );
+
+  it("chunkWhatsAppText makes progress and stays well-formed at the minimum supported limit", () => {
+    // limit: 2 is the smallest bound that can ever hold one astral character
+    // whole. Every produced chunk must be non-empty, within the limit,
+    // well-formed, and the chunks must rejoin losslessly.
+    const text = `\u{1F600}\u{1F601}\u{1F602}`;
+
+    const chunks = chunkWhatsAppText(text, { limit: 2 });
+
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeGreaterThan(0);
+      expect(chunk.length).toBeLessThanOrEqual(2);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(chunks.join("")).toBe(text);
+  });
 });
