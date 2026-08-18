@@ -324,14 +324,22 @@ export function normalizeGmailSearchQueryMatches(
       return true;
     }
     if (tokenBody.startsWith("{") && tokenBody.endsWith("}")) {
-      const groupMembers = tokenBody
+      const rawGroupMembers = tokenBody
         .slice(1, -1)
         .trim()
         .split(/\s+/)
         .map((entry) => entry.trim())
         .filter(Boolean);
+      // Gmail brace groups are already implicit disjunctions. A redundant
+      // uppercase OR inside the group is syntax, not a search term: treating it
+      // as a bare substring makes `{from:alice OR from:bob}` match unrelated
+      // messages containing "or". Preserve lowercase `or` as an ordinary term,
+      // consistent with the top-level uppercase-only operator contract.
+      const groupMembers = rawGroupMembers.filter((entry) => entry !== "OR");
       if (groupMembers.length === 0) {
-        return true;
+        // Preserve the historical empty-brace behavior, but an all-OR group is
+        // analogous to an all-OR top-level query and must match nothing.
+        return rawGroupMembers.length === 0 ? true : isNegated;
       }
       const groupMatched = groupMembers.some((entry) => matchesToken(entry));
       return isNegated ? !groupMatched : groupMatched;

@@ -183,6 +183,16 @@ describe("normalizeGmailSearchQueryMatches — standalone OR", () => {
     expect(normalizeGmailSearchQueryMatches(query, fromAlice)).toBe(false);
   });
 
+  it("treats redundant uppercase OR inside brace groups as syntax, not a substring", () => {
+    const query = "{from:alice OR from:bob}";
+    expect(normalizeGmailSearchQueryMatches(query, fromBob)).toBe(true);
+    expect(normalizeGmailSearchQueryMatches(query, fromAlice)).toBe(true);
+    // Carol's address contains `corp`, so the old bare-OR substring fallback
+    // incorrectly matched this unrelated message through the group's `some`.
+    expect(normalizeGmailSearchQueryMatches(query, fromCarol)).toBe(false);
+    expect(normalizeGmailSearchQueryMatches("{OR}", fromBob)).toBe(false);
+  });
+
   it("treats lowercase 'or' as a plain search term (Gmail requires uppercase OR)", () => {
     const orText = gmailMessage({
       id: "m7",
