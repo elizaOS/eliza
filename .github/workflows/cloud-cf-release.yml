@@ -118,6 +118,13 @@ jobs:
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          # Explicit activation boundary for #21594. `off` performs no query;
+          # `report` emits only SHA-256 receipts and never blocks; `enforce`
+          # fails closed against both protected nonsecret authority digests.
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
         run: |
@@ -135,6 +142,7 @@ jobs:
             source_args+=(--force)
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          bun --conditions=eliza-source packages/cloud/scripts/admin/preflight-database-identity.ts
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------

@@ -37,6 +37,29 @@ The `operator` service (Pepr Kubernetes operator) and the kind cluster under
 [`local/`](./local/) are **local development only** — nothing in production
 runs on Kubernetes.
 
+### Database identity activation boundary
+
+The migration job owns a read-only PostgreSQL identity preflight immediately
+before schema mutation. It hashes the physical PostgreSQL system identifier and
+the environment/cluster/role/database tuple; raw connection strings, hosts,
+roles, and database names are never written to logs. Protected environment
+variables control activation:
+
+- `DATABASE_IDENTITY_GATE_MODE=off` is the default and performs no query.
+- `report` emits nonsecret SHA-256 cluster and authority receipts without
+  blocking a release. Operators use this only to prepare and review a cutover.
+- `enforce` requires both `DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256` and
+  `DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256` and fails before migrations on
+  any mismatch.
+
+This gate proves only the GitHub migration authority. Do not enable `enforce`
+until an operator has provisioned an independent staging Railway PostgreSQL
+service, role, volume, backup/PITR policy, and restore drill, and has separately
+proved that the staging Hyperdrive origin produces the same reviewed identity.
+The repository cannot infer Railway service/volume or backup state from a
+PostgreSQL connection, and `report` mode is not evidence that those protected
+resources exist.
+
 Steward (the auth provider) runs **embedded in the Worker**: `bootstrap-app.ts`
 mounts the embedded handler at `/steward*`
 (`packages/cloud/api/src/steward/embedded.ts`); the `STEWARD_*` secrets in
