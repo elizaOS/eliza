@@ -7,7 +7,13 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -169,6 +175,80 @@ function createAnalyzer(repoRoot, candidateFiles) {
   const declarations = new Map();
   const namespaceImports = new Map();
   const moduleEdges = new Map();
+  const runtimeExports = new Map();
+  let workspacePackages;
+
+  function localWorkspacePackages() {
+    if (workspacePackages) return workspacePackages;
+    workspacePackages = new Map();
+    function visit(directory) {
+      if (!existsSync(directory)) return;
+      const manifest = path.join(directory, "package.json");
+      if (existsSync(manifest)) {
+        const name = JSON.parse(readFileSync(manifest, "utf8")).name;
+        if (typeof name === "string") workspacePackages.set(name, directory);
+      }
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory() || SKIP_PATH.test(entry.name)) continue;
+        visit(path.join(directory, entry.name));
+      }
+    }
+    visit(path.join(root, "packages"));
+    visit(path.join(root, "plugins"));
+    return workspacePackages;
+  }
+
+  function sourceCondition(value) {
+    if (typeof value === "string") return value;
+    if (!value || typeof value !== "object") return undefined;
+    if ("eliza-source" in value) return sourceCondition(value["eliza-source"]);
+    return (
+      sourceCondition(value.types) ??
+      sourceCondition(value.import) ??
+      sourceCondition(value.default)
+    );
+  }
+
+  function localWorkspaceSource(specifier) {
+    if (!specifier.startsWith("@elizaos/")) return undefined;
+    const segments = specifier.split("/");
+    const packageName = segments.slice(0, 2).join("/");
+    const subpath = segments.slice(2).join("/");
+    const packageRoot = localWorkspacePackages().get(packageName);
+    if (!packageRoot) return undefined;
+    const manifest = JSON.parse(
+      readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+    );
+    const exports = manifest.exports;
+    const key = subpath ? `./${subpath}` : ".";
+    let target = exports?.[key];
+    if (target === undefined && exports && typeof exports === "object") {
+      for (const [pattern, value] of Object.entries(exports)) {
+        if (!pattern.includes("*")) continue;
+        const [prefix, suffix] = pattern.split("*");
+        if (!key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+        const match = key.slice(prefix.length, key.length - suffix.length);
+        const resolved = sourceCondition(value);
+        if (resolved) target = resolved.replaceAll("*", match);
+        break;
+      }
+    }
+    const relative =
+      typeof target === "string" ? target : sourceCondition(target);
+    if (relative) {
+      const candidate = path.resolve(packageRoot, relative);
+      if (existsSync(candidate)) return candidate;
+    }
+    for (const candidate of subpath
+      ? [
+          path.join(packageRoot, "src", `${subpath}.ts`),
+          path.join(packageRoot, "src", subpath, "index.ts"),
+        ]
+      : [path.join(packageRoot, "src", "index.ts")]) {
+      if (existsSync(candidate)) return candidate;
+    }
+    return undefined;
+  }
 
   function source(file) {
     const canonical = canonicalFile(file);
@@ -190,6 +270,12 @@ function createAnalyzer(repoRoot, candidateFiles) {
     const key = `${containingFile}\0${specifier}`;
     if (resolutions.has(key)) return resolutions.get(key);
     const cleanSpecifier = specifier.replace(/[?#].*$/, "");
+    const workspaceSource = localWorkspaceSource(cleanSpecifier);
+    if (workspaceSource) {
+      const canonical = canonicalFile(workspaceSource);
+      resolutions.set(key, canonical);
+      return canonical;
+    }
     const optionCandidates = compilerOptionsFor(
       containingFile,
       root,
@@ -197,10 +283,14 @@ function createAnalyzer(repoRoot, candidateFiles) {
     );
     let resolved;
     for (const options of optionCandidates) {
+      const customConditions = [
+        ...(options.customConditions ?? []),
+        "eliza-source",
+      ];
       resolved = ts.resolveModuleName(
         cleanSpecifier,
         containingFile,
-        options,
+        { ...options, customConditions: [...new Set(customConditions)] },
         ts.sys,
       ).resolvedModule?.resolvedFileName;
       if (resolved) break;
@@ -364,11 +454,45 @@ function createAnalyzer(repoRoot, candidateFiles) {
 
   function mocksInFile(parsed) {
     const mocks = [];
+    const mockIdentifiers = new Set(["mock"]);
+    const bunTestNamespaces = new Set();
+    for (const statement of parsed.statements) {
+      if (
+        !ts.isImportDeclaration(statement) ||
+        !isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== "bun:test"
+      )
+        continue;
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        bunTestNamespaces.add(bindings.name.text);
+      } else if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          if ((element.propertyName?.text ?? element.name.text) === "mock") {
+            mockIdentifiers.add(element.name.text);
+          }
+        }
+      }
+    }
     function visit(node) {
+      const receiver =
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.expression
+          : undefined;
+      const recognizedReceiver =
+        (receiver &&
+          ts.isIdentifier(receiver) &&
+          mockIdentifiers.has(receiver.text)) ||
+        (receiver &&
+          ts.isPropertyAccessExpression(receiver) &&
+          receiver.name.text === "mock" &&
+          ts.isIdentifier(receiver.expression) &&
+          bunTestNamespaces.has(receiver.expression.text));
       if (
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.expression.getText(parsed) === "mock" &&
+        recognizedReceiver &&
         node.expression.name.text === "module" &&
         node.arguments.length >= 2 &&
         isStringLiteral(node.arguments[0])
@@ -444,7 +568,7 @@ function createAnalyzer(repoRoot, candidateFiles) {
     return names;
   }
 
-  function directDynamicImportBindingNames(node) {
+  function directDynamicImportBindingNames(node, parsed) {
     let current = node;
     let awaited = false;
     while (
@@ -457,8 +581,39 @@ function createAnalyzer(repoRoot, candidateFiles) {
       if (ts.isAwaitExpression(current.parent)) awaited = true;
       current = current.parent;
     }
-    // `import(...).then(...)` accesses the Promise contract, not a module export.
-    if (!awaited) return [];
+    if (!awaited) {
+      const property = current.parent;
+      const call = property?.parent;
+      if (
+        property &&
+        ts.isPropertyAccessExpression(property) &&
+        property.expression === current &&
+        property.name.text === "then" &&
+        call &&
+        ts.isCallExpression(call) &&
+        call.expression === property
+      ) {
+        const callback = unwrap(call.arguments[0]);
+        if (
+          callback &&
+          (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
+        ) {
+          const parameter = callback.parameters[0]?.name;
+          if (parameter && ts.isObjectBindingPattern(parameter)) {
+            return parameter.elements
+              .filter((element) => !element.dotDotDotToken)
+              .map((element) =>
+                propertyName(element.propertyName ?? element.name),
+              )
+              .filter((name) => name !== undefined);
+          }
+          if (parameter && ts.isIdentifier(parameter)) {
+            return namespaceMemberNames(callback, parameter.text);
+          }
+        }
+      }
+      return [];
+    }
     if (
       current.parent &&
       ts.isPropertyAccessExpression(current.parent) &&
@@ -476,7 +631,78 @@ function createAnalyzer(repoRoot, candidateFiles) {
         .map((element) => propertyName(element.propertyName ?? element.name))
         .filter((name) => name !== undefined);
     }
+    if (
+      current.parent &&
+      ts.isVariableDeclaration(current.parent) &&
+      ts.isIdentifier(current.parent.name)
+    ) {
+      return namespaceMemberNames(parsed, current.parent.name.text);
+    }
     return [];
+  }
+
+  function runtimeExportNames(file, visiting = new Set()) {
+    if (!file) return new Set();
+    const cached = runtimeExports.get(file);
+    if (cached) return cached;
+    if (visiting.has(file)) return new Set();
+    visiting.add(file);
+    const names = new Set();
+    for (const statement of source(file).statements) {
+      if (ts.isExportAssignment(statement)) {
+        names.add("default");
+      } else if (ts.isExportDeclaration(statement)) {
+        if (statement.isTypeOnly) continue;
+        if (
+          statement.exportClause &&
+          ts.isNamedExports(statement.exportClause)
+        ) {
+          for (const element of statement.exportClause.elements) {
+            if (!element.isTypeOnly) names.add(element.name.text);
+          }
+        } else if (
+          statement.moduleSpecifier &&
+          isStringLiteral(statement.moduleSpecifier)
+        ) {
+          const target = resolve(statement.moduleSpecifier.text, file);
+          for (const name of runtimeExportNames(target, visiting)) {
+            if (name !== "default") names.add(name);
+          }
+        }
+      } else {
+        const modifiers = ts.canHaveModifiers(statement)
+          ? ts.getModifiers(statement)
+          : undefined;
+        if (
+          !modifiers?.some(
+            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+          )
+        ) {
+          continue;
+        }
+        if (
+          modifiers.some(
+            (modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword,
+          )
+        ) {
+          names.add("default");
+        } else if (
+          (ts.isFunctionDeclaration(statement) ||
+            ts.isClassDeclaration(statement)) &&
+          statement.name
+        ) {
+          names.add(statement.name.text);
+        } else if (ts.isVariableStatement(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (ts.isIdentifier(declaration.name))
+              names.add(declaration.name.text);
+          }
+        }
+      }
+    }
+    visiting.delete(file);
+    runtimeExports.set(file, names);
+    return names;
   }
 
   function moduleEdgesFor(file) {
@@ -498,9 +724,11 @@ function createAnalyzer(repoRoot, candidateFiles) {
       if (specifier) {
         const target = resolve(specifier, file);
         const names = ts.isCallExpression(node)
-          ? directDynamicImportBindingNames(node)
+          ? directDynamicImportBindingNames(node, parsed)
           : importBindingNames(node, parsed);
         edges.push({
+          exportAll:
+            ts.isExportDeclaration(node) && node.exportClause === undefined,
           names,
           target,
         });
@@ -514,19 +742,44 @@ function createAnalyzer(repoRoot, candidateFiles) {
 
   function reachableBindings(testFile, targets) {
     const required = new Map([...targets].map((target) => [target, new Set()]));
-    const visited = new Set();
+    const demands = new Map();
+    const processedDemands = new Map();
+    const initialized = new Set();
     const queue = [canonicalFile(testFile)];
+    demands.set(queue[0], new Set());
     while (queue.length > 0) {
       const file = queue.shift();
-      if (visited.has(file) || !SOURCE_EXTENSION.test(file)) continue;
-      visited.add(file);
+      if (!SOURCE_EXTENSION.test(file)) continue;
+      const demanded = demands.get(file) ?? new Set();
+      const processed = processedDemands.get(file) ?? new Set();
+      const newDemands = [...demanded].filter((name) => !processed.has(name));
+      const firstVisit = !initialized.has(file);
+      if (!firstVisit && newDemands.length === 0) continue;
+      initialized.add(file);
+      for (const name of newDemands) processed.add(name);
+      processedDemands.set(file, processed);
       for (const edge of moduleEdgesFor(file)) {
+        const edgeNames = edge.exportAll
+          ? newDemands.filter((name) =>
+              runtimeExportNames(edge.target).has(name),
+            )
+          : edge.names;
+        if (edge.exportAll && edgeNames.length === 0) continue;
         if (required.has(edge.target)) {
-          for (const name of edge.names) {
+          for (const name of edgeNames) {
             required.get(edge.target).add(name);
           }
-        } else if (edge.target && !visited.has(edge.target)) {
-          queue.push(edge.target);
+        } else if (edge.target) {
+          const targetDemands = demands.get(edge.target) ?? new Set();
+          let changed = false;
+          for (const name of edgeNames) {
+            if (!targetDemands.has(name)) {
+              targetDemands.add(name);
+              changed = true;
+            }
+          }
+          demands.set(edge.target, targetDemands);
+          if (!initialized.has(edge.target) || changed) queue.push(edge.target);
         }
       }
     }
@@ -637,7 +890,7 @@ function createAnalyzer(repoRoot, candidateFiles) {
     for (const file of candidateFiles.sort(compareText)) {
       if (!TEST_FILE.test(file)) continue;
       const text = readFileSync(file, "utf8");
-      if (!text.includes("mock.module")) continue;
+      if (!/\.module\s*\(/.test(text)) continue;
       testCount += 1;
       const result = auditTest(file);
       mockCount += result.mockCount;

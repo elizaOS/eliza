@@ -25,7 +25,13 @@ after(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture({ factory, production, directive = "", prelude = "" }) {
+function fixture({
+  factory,
+  production,
+  directive = "",
+  prelude = "",
+  load = 'await import("./consumer");',
+}) {
   const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
   roots.push(root);
   const packageRoot = path.join(root, "packages", "fixture");
@@ -48,7 +54,7 @@ function fixture({ factory, production, directive = "", prelude = "" }) {
   const testFile = path.join(packageRoot, "src", "consumer.test.ts");
   writeFileSync(
     testFile,
-    `import { mock } from "bun:test";\n${prelude}\n${directive}\nmock.module("@fixture/dependency", ${factory});\nawait import("./consumer");\n`,
+    `import { mock } from "bun:test";\n${prelude}\n${directive}\nmock.module("@fixture/dependency", ${factory});\n${load}\n`,
   );
   const files = [
     testFile,
@@ -143,6 +149,9 @@ test("tracks direct destructured and property bindings from dynamic imports", ()
   for (const production of [
     'const { bound } = await import("@fixture/dependency"); export { bound };\n',
     'export const value = (await import("@fixture/dependency")).bound;\n',
+    'const dependency = await import("@fixture/dependency"); export const value = dependency.bound;\n',
+    'export const value = import("@fixture/dependency").then(({ bound }) => bound);\n',
+    'export const value = import("@fixture/dependency").then((dependency) => dependency.bound);\n',
   ]) {
     const report = fixture({ factory: "() => ({})", production });
     assert.match(report.findings[0], /\[missing-export\].*bound/);
@@ -156,6 +165,57 @@ test("tracks namespace property access", () => {
       'import * as dependency from "@fixture/dependency"; export const value = dependency.bound;\n',
   });
   assert.match(report.findings[0], /\[missing-export\].*bound/);
+});
+
+test("recognizes aliased and namespace bun:test mock callees", () => {
+  for (const [prelude, receiver] of [
+    ['import { mock as bunMock } from "bun:test";', "bunMock"],
+    ['import * as bunTest from "bun:test";', "bunTest.mock"],
+  ]) {
+    const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
+    roots.push(root);
+    const sourceRoot = path.join(root, "packages", "fixture", "src");
+    mkdirSync(sourceRoot, { recursive: true });
+    writeFileSync(
+      path.join(root, "packages", "fixture", "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { moduleResolution: "Bundler" } }),
+    );
+    writeFileSync(
+      path.join(sourceRoot, "dependency.ts"),
+      "export const bound = 1;\n",
+    );
+    writeFileSync(
+      path.join(sourceRoot, "consumer.ts"),
+      'import { bound } from "./dependency"; export { bound };\n',
+    );
+    const testFile = path.join(sourceRoot, "consumer.test.ts");
+    writeFileSync(
+      testFile,
+      `${prelude}\n${receiver}.module("./dependency", () => ({}));\nawait import("./consumer");\n`,
+    );
+    const report = auditMockModuleExports(root, [
+      testFile,
+      path.join(sourceRoot, "dependency.ts"),
+      path.join(sourceRoot, "consumer.ts"),
+    ]);
+    assert.match(report.findings[0], /\[missing-export\].*bound/);
+  }
+});
+
+test("propagates only demanded names through export-star barrels", () => {
+  const missing = fixture({
+    factory: "() => ({ unbound: 2 })",
+    production: 'export * from "@fixture/dependency";\n',
+    load: 'const { bound } = await import("./consumer"); void bound;',
+  });
+  assert.match(missing.findings[0], /\[missing-export\].*bound/);
+
+  const irrelevant = fixture({
+    factory: "() => ({ bound: 1 })",
+    production: 'export * from "@fixture/dependency";\n',
+    load: 'const { bound } = await import("./consumer"); void bound;',
+  });
+  assert.deepEqual(irrelevant.findings, []);
 });
 
 test("tracks default imports and named re-export aliases", () => {
@@ -232,4 +292,58 @@ test("fails fast when an internal workspace resolves outside the audited tree", 
     () => auditMockModuleExports(root, [testFile]),
     /resolves outside the repository.*frozen in-repository Bun install/,
   );
+});
+
+test("resolves internal workspace exports through their source condition", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
+  roots.push(root);
+  const workspace = path.join(root, "packages", "internal");
+  const sourceRoot = path.join(root, "packages", "fixture", "src");
+  mkdirSync(path.join(workspace, "src"), { recursive: true });
+  mkdirSync(path.join(workspace, "dist"), { recursive: true });
+  mkdirSync(path.join(root, "node_modules", "@elizaos"), { recursive: true });
+  mkdirSync(sourceRoot, { recursive: true });
+  writeFileSync(
+    path.join(workspace, "package.json"),
+    JSON.stringify({
+      name: "@elizaos/internal",
+      exports: {
+        ".": {
+          types: "./dist/index.d.ts",
+          "eliza-source": { types: "./src/index.ts" },
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    path.join(workspace, "src", "index.ts"),
+    "export const bound = 1;\n",
+  );
+  writeFileSync(
+    path.join(workspace, "dist", "index.d.ts"),
+    "export declare const bound = 1;\n",
+  );
+  symlinkSync(
+    workspace,
+    path.join(root, "node_modules", "@elizaos", "internal"),
+  );
+  writeFileSync(
+    path.join(root, "packages", "fixture", "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { moduleResolution: "Bundler" } }),
+  );
+  writeFileSync(
+    path.join(sourceRoot, "consumer.ts"),
+    'import { bound } from "@elizaos/internal"; export { bound };\n',
+  );
+  const testFile = path.join(sourceRoot, "consumer.test.ts");
+  writeFileSync(
+    testFile,
+    'import { mock } from "bun:test";\nmock.module("@elizaos/internal", () => ({}));\nawait import("./consumer");\n',
+  );
+  const report = auditMockModuleExports(root, [
+    testFile,
+    path.join(sourceRoot, "consumer.ts"),
+    path.join(workspace, "src", "index.ts"),
+  ]);
+  assert.match(report.findings[0], /\[missing-export\].*bound/);
 });
