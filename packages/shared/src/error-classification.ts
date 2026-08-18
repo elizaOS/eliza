@@ -7,8 +7,21 @@
  */
 
 export function formatUncaughtError(error: unknown): string {
+  if (error === null || error === undefined) {
+    return "";
+  }
   if (error instanceof Error) {
     return error.stack ?? error.message;
+  }
+  if (typeof error === "object") {
+    const stack = (error as { stack?: unknown }).stack;
+    if (typeof stack === "string" && stack.trim().length > 0) {
+      return stack;
+    }
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
   }
   return String(error);
 }
