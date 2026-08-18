@@ -576,6 +576,31 @@ describe("secret redaction", () => {
     expect(logs).toContain("postgres://***@db.internal:5432/app");
   });
 
+  it("scrubs the common JSON credential spellings from string values (W10)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        payload:
+          '{"clientSecret":"client-secret-value-123","sessionKey":"session-secret-value-123","authToken":"auth-secret-value-123","botToken":"123456:bot-secret-value-abc","connectionString":"Server=db;Pwd=hunter2w10","access_token":"access-secret-value-123","refresh_token":"refresh-secret-value-123","webhookUrl":"https://discord.test/api/webhooks/9/hook-secret-a","webhook_url":"https://discord.test/api/webhooks/9/hook-secret-b"}',
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    for (const secret of [
+      "client-secret-value-123",
+      "session-secret-value-123",
+      "auth-secret-value-123",
+      "bot-secret-value-abc",
+      "hunter2w10",
+      "access-secret-value-123",
+      "refresh-secret-value-123",
+      "hook-secret-a",
+      "hook-secret-b",
+    ]) {
+      expect(logs).not.toContain(secret);
+    }
+  });
+
   it("scrubs credential patterns from the Error headline message (W5-026)", () => {
     const logger = redactLogger();
     logger.error(
@@ -635,6 +660,100 @@ describe("secret redaction", () => {
     const logs = recentLogs();
     expect(logs).not.toContain("sk-proxy-hidden-secret");
     expect(logs).toContain("[REDACTED: redaction failed]");
+  });
+});
+
+/**
+ * JSON-mode sink hygiene (W10 logger group): the redacted clone must carry no
+ * executable serializer hooks — a hostile own-property toJSON re-runs when a
+ * sink JSON-stringifies the clone and would reconstitute the very secrets the
+ * walk just masked — and creation/child bindings must be redacted before they
+ * become Adze meta, which Adze emits verbatim on every JSON line.
+ * LOG_JSON_FORMAT is read at module load, so each case boots a fresh module
+ * instance and restores the variable afterwards; observable surfaces are the
+ * ring buffer and Adze's own JSON console lines.
+ */
+describe("JSON mode sink hygiene", () => {
+  const withJsonMode = async (
+    run: (fresh: typeof import("./logger")) => void,
+  ): Promise<void> => {
+    const previous = process.env.LOG_JSON_FORMAT;
+    process.env.LOG_JSON_FORMAT = "true";
+    try {
+      vi.resetModules();
+      run(await import("./logger"));
+    } finally {
+      if (previous === undefined) delete process.env.LOG_JSON_FORMAT;
+      else process.env.LOG_JSON_FORMAT = previous;
+      vi.resetModules();
+      // Re-seat Adze's global setup in the default pretty format so the
+      // JSON-mode module instance cannot contaminate later tests.
+      await import("./logger");
+    }
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("drops a hostile toJSON so serialization cannot reconstitute secrets", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-tojson-resurrected-secret";
+      const hostile = {
+        apiKey: secret,
+        note: "kept",
+        toJSON: () => ({ apiKey: secret, marker: "resurrected" }),
+      };
+      fresh.createLogger({ level: "trace" }).info(hostile, "ctx");
+
+      const logs = fresh.recentLogs();
+      expect(logs).not.toContain(secret);
+      expect(logs).not.toContain("resurrected");
+      // The non-hook remainder of the payload still serializes.
+      expect(logs).toContain('"note":"kept"');
+      // Adze's own JSON console line is clean as well.
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(secret);
+      expect(printed).not.toContain("resurrected");
+    });
+  });
+
+  it("drops serializer hooks in nested objects and array elements", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-nested-hook-secret";
+      const hookedFn = Object.assign(() => {}, { toJSON: () => secret });
+      fresh.createLogger({ level: "trace" }).info(
+        {
+          nested: { hook: { toJSON: () => secret }, ok: 1 },
+          list: [{ toJSON: () => secret }, hookedFn],
+        },
+        "ctx",
+      );
+
+      const logs = fresh.recentLogs();
+      expect(logs).not.toContain(secret);
+      expect(logs).toContain('"ok":1');
+      // Bare function array elements collapse to null, matching JSON.stringify.
+      expect(logs).toContain("null");
+    });
+  });
+
+  it("redacts creation and child bindings before they become Adze meta", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-child-binding-secret";
+      const logger = fresh.createLogger({ level: "trace", token: secret });
+      logger.info("parent-line");
+      logger.child({ apiKey: secret, requestId: "r-1" }).info("child-line");
+
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(secret);
+      expect(printed).toContain("[REDACTED]");
+      // Non-secret bindings survive onto the JSON lines.
+      expect(printed).toContain("r-1");
+    });
   });
 });
 

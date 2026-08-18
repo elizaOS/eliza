@@ -193,3 +193,45 @@ describe("passwd/passphrase credential names (W5-027)", () => {
     expect(redacted.env.LOG_LEVEL).toBe("info");
   });
 });
+
+/**
+ * W10: concatenated all-caps `*KEY` names (MASTERKEY/SIGNINGKEY/SSHKEY/
+ * ENCRYPTIONKEY) have no separator for the boundary rules and no lowercase
+ * predecessor for the camelCase rule, and bare `AUTH` is itself a credential
+ * name. Both are covered by closed rules so key-suffix and auth-prefix
+ * lookalikes stay non-sensitive.
+ */
+describe("concatenated KEY names and bare AUTH (W10)", () => {
+  it("classifies concatenated all-caps *KEY names as sensitive", () => {
+    for (const key of [
+      "MASTERKEY",
+      "SIGNINGKEY",
+      "SSHKEY",
+      "ENCRYPTIONKEY",
+      "masterkey",
+      "wallet.SIGNINGKEY",
+    ]) {
+      expect(isSensitiveConfigKey(key), key).toBe(true);
+    }
+  });
+
+  it("classifies bare AUTH as sensitive without touching auth lookalikes", () => {
+    expect(isSensitiveConfigKey("AUTH")).toBe(true);
+    expect(isSensitiveConfigKey("auth")).toBe(true);
+    expect(isSensitiveConfigKey("service.auth")).toBe(true);
+    for (const key of ["OAUTH", "oauth", "author", "AUTHORITY"]) {
+      expect(isSensitiveConfigKey(key), key).toBe(false);
+    }
+  });
+
+  it("redacts a stored MASTERKEY through GET /api/config", () => {
+    const redacted = redactConfigSecrets({
+      env: {
+        MASTERKEY: "concatenated-master-secret",
+        LOG_LEVEL: "info",
+      },
+    }) as { env: Record<string, unknown> };
+    expect(redacted.env.MASTERKEY).toBe("[REDACTED]");
+    expect(redacted.env.LOG_LEVEL).toBe("info");
+  });
+});

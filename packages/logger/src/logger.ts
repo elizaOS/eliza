@@ -448,7 +448,7 @@ const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
   // ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
   String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
   // JSON fields.
-  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
+  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|sessionKey|authToken|botToken|connectionString|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
   // CLI flags (space-separated and --flag=value forms).
   String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
   // Authorization headers (see core for the full grammar rationale: Basic
@@ -572,9 +572,14 @@ function redactSensitiveLogText(text: string): string {
  * caller's live objects (previously a shallow copy let the redactor overwrite
  * nested credentials in place, corrupting e.g. a provider config mid-use).
  * String values are pattern-scrubbed for credential shapes at every depth.
- * Cycles and over-depth payloads collapse to a marker instead of recursing
- * forever. Buffer/TypedArray/DataView/ArrayBuffer values collapse to a
- * size-only marker — JSON would otherwise serialize the raw bytes verbatim
+ * Function-valued properties are dropped from the clone: they are executable
+ * serializer hooks (toJSON/valueOf/toString), and a copied hook re-runs when a
+ * sink JSON-stringifies the clone, able to reconstitute the very secrets the
+ * walk just masked — JSON.stringify drops function props anyway, so omission
+ * matches serialization semantics. Cycles and over-depth payloads collapse
+ * to a marker instead of recursing forever. Buffer/TypedArray/DataView/
+ * ArrayBuffer values collapse to a size-only marker — JSON would otherwise
+ * serialize the raw bytes verbatim
  * (`{"type":"Buffer","data":[...]}`) under an innocent-looking key. Error
  * instances keep their name/message/stack shape (Adze renders
  * it) with message and stack scrubbed — thrown errors routinely interpolate
@@ -605,7 +610,12 @@ function redactLogValue(
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => redactLogValue(item, seen, depth + 1));
+    // Function elements collapse to null (matching JSON.stringify semantics)
+    // so no executable serializer hook survives the clone — see
+    // redactOwnPropertiesInto for why hooks must never be copied.
+    return value.map((item) =>
+      typeof item === "function" ? null : redactLogValue(item, seen, depth + 1),
+    );
   }
 
   // Binary payloads carry raw bytes that JSON serializes verbatim
@@ -658,11 +668,13 @@ function redactOwnPropertiesInto(
       continue;
     }
     try {
-      target[key] = redactLogValue(
-        (source as Record<string, unknown>)[key],
-        seen,
-        depth,
-      );
+      const entry = (source as Record<string, unknown>)[key];
+      // Function-valued properties are executable serializer hooks: a copied
+      // toJSON/valueOf/toString re-runs when a sink serializes the clone and
+      // can reconstitute the very secrets the walk just masked. JSON.stringify
+      // omits function props anyway, so the clone drops them outright.
+      if (typeof entry === "function") continue;
+      target[key] = redactLogValue(entry, seen, depth);
     } catch {
       // error-policy:J7 logging must never break the runtime; a throwing
       // getter fails closed on this one key, never emits the raw value.
@@ -1324,7 +1336,22 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     levels: customLevelConfig,
   };
 
-  return chain.meta(metaBase).seal(globalConfig);
+  // Creation/child bindings bypass the per-call redaction in adaptArgs — Adze
+  // emits the merged meta verbatim on every line — so scrub the bindings here:
+  // logger.child({ apiKey }) must not print the key on each subsequent line.
+  let safeMeta: Record<string, unknown>;
+  try {
+    safeMeta = redactLogValue(metaBase, new WeakSet<object>(), 0) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    // error-policy:J7 logging must never break the runtime; an unwalkable
+    // bindings payload degrades to a marker, never emits unredacted (W5-028).
+    safeMeta = { redactionError: REDACTION_FAILED_VALUE };
+  }
+
+  return chain.meta(safeMeta).seal(globalConfig);
 }
 
 /**
