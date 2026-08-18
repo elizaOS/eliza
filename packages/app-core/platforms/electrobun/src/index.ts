@@ -31,6 +31,7 @@ import {
   findViewMenuEntryById,
   parseSettingsWindowAction,
   parseViewWindowAction,
+  resolveDesktopWorkspaceWindowOptions,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
@@ -2124,6 +2125,11 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      const workspaceOptions = resolveDesktopWorkspaceWindowOptions(action);
+      if (workspaceOptions) {
+        void getDesktopManager().openAppWindow(workspaceOptions);
+        return true;
+      }
       // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
       // its own window via the same app-window path detached surfaces use.
       // Checked before the generic `new-window:` surface branch because that
