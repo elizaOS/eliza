@@ -1216,6 +1216,7 @@ export async function handleViewsRoutes(
     // recovers the switch when this best-effort delivery misses).
     const shouldTargetCompletedAction =
       body?.delivery === "completed-action" && Boolean(originatingClientId);
+    let completedActionDelivered = false;
     if (
       reportedSource !== "user" &&
       (!callerOwnedDelivery || shouldTargetCompletedAction)
@@ -1238,6 +1239,10 @@ export async function handleViewsRoutes(
           originatingClientId,
           frame,
         );
+        completedActionDelivered =
+          shouldTargetCompletedAction &&
+          typeof delivered === "number" &&
+          delivered > 0;
         if (
           !shouldTargetCompletedAction &&
           (delivered === undefined || delivered <= 0)
@@ -1264,6 +1269,7 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
     });
     return true;
   }

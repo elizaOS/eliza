@@ -407,12 +407,18 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("targets app-chat navigation to the client that sent the turn", async () => {
 			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => ({ ok: true, completedActionDelivered: true }),
+			} as Response);
 			const action = createViewsAction({
 				client: clientFor(REGISTRY),
 				hasOwnerAccess: vi.fn(async () => true),
 			});
 
-			await action.handler(
+			const result = await action.handler(
 				{ agentId: "agent-1" } as never,
 				{
 					...message("open calendar"),
@@ -434,6 +440,7 @@ describe("view switching — VIEWS action resolver", () => {
 				clientId: "seeker-client",
 				delivery: "completed-action",
 			});
+			expect(result?.values).toMatchObject({ completedActionDelivered: true });
 		});
 
 		it("resolves an explicit view option without verb parsing", async () => {

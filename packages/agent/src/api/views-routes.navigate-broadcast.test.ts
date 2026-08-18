@@ -195,7 +195,26 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     });
     expect(json).toHaveBeenCalledWith(
       ctx.res,
-      expect.objectContaining({ ok: true, viewId: "calendar" }),
+      expect.objectContaining({
+        ok: true,
+        viewId: "calendar",
+        completedActionDelivered: false,
+      }),
+    );
+  });
+
+  it("reports when the originating renderer accepted completed-action delivery", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
+      clientId: "seeker-rest-client",
+      delivery: "completed-action",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ completedActionDelivered: true }),
     );
     expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
       json.mock.invocationCallOrder[0],
