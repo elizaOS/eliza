@@ -69,6 +69,9 @@ describe("e2e _helpers isLocalTarget", () => {
     expect(
       sameOriginBrowserHeaders({ Origin: "https://attacker.example" }),
     ).toEqual({ Origin: "https://attacker.example" });
+    expect(
+      sameOriginBrowserHeaders({ origin: "https://attacker.example" }),
+    ).toEqual({ origin: "https://attacker.example" });
   });
 
   test("does not add Origin to ordinary API helper requests", async () => {

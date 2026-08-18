@@ -47,6 +47,9 @@ export function url(path: string): string {
 export function sameOriginBrowserHeaders(
   headers: Record<string, string> = {},
 ): Record<string, string> {
+  if (Object.keys(headers).some((name) => name.toLowerCase() === "origin")) {
+    return { ...headers };
+  }
   return {
     Origin: new URL(getBaseUrl()).origin,
     ...headers,
