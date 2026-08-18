@@ -64,7 +64,8 @@ resource "hcloud_network" "apps" {
   # renames so the legacy `eliza-apps-staging` left over from the pre-shared
   # layout doesn't show as a diff. Operators can rename via Console (cosmetic).
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -91,7 +92,8 @@ resource "hcloud_volume" "tenant_db_data" {
   # in-place rename. Ignoring keeps the post-migration plan a true no-op so the
   # operator's verification gate ("plan should be clean") is honest.
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -142,10 +144,11 @@ resource "hcloud_server" "tenant_db" {
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename
-  # via Hetzner Console without TF drift; user_data + image swaps re-apply only
-  # on `terraform apply -replace=hcloud_server.tenant_db`.
+  # via Hetzner Console without TF drift. user_data + image swaps require the
+  # separately reviewed guarded replacement procedure in README.md.
   lifecycle {
-    ignore_changes = [user_data, image, name, ssh_keys]
+    prevent_destroy = true
+    ignore_changes  = [user_data, image, name, ssh_keys]
   }
 }
 

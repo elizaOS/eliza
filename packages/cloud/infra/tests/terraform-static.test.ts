@@ -55,6 +55,24 @@ function readK8sTerraform(file: string): string {
   return readFileSync(join(K8S_TERRAFORM_DIR, file), "utf-8");
 }
 
+function terraformResource(source: string, type: string, name: string): string {
+  const declaration = `resource "${type}" "${name}"`;
+  const declarationStart = source.indexOf(declaration);
+  expect(declarationStart).toBeGreaterThanOrEqual(0);
+
+  const blockStart = source.indexOf("{", declarationStart);
+  expect(blockStart).toBeGreaterThan(declarationStart);
+
+  let depth = 0;
+  for (let index = blockStart; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") depth -= 1;
+    if (depth === 0) return source.slice(blockStart + 1, index);
+  }
+
+  throw new Error(`Unclosed Terraform resource: ${type}.${name}`);
+}
+
 describe("Terraform redis-rest deployment", () => {
   const main = readK8sTerraform("main.tf");
 
@@ -159,46 +177,57 @@ describe("Persistent Hetzner resource safeguards", () => {
   );
 
   test("protects and backs up persistent control-plane servers", () => {
-    const server = controlPlane.match(
-      /resource "hcloud_server" "control_plane" \{([\s\S]*?)\n\}/,
-    )?.[1];
+    const server = terraformResource(
+      controlPlane,
+      "hcloud_server",
+      "control_plane",
+    );
 
-    expect(server).toBeDefined();
     expect(server).toContain("backups            = true");
     expect(server).toContain("delete_protection  = true");
     expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
   });
 
   test("attaches every control plane to its protected private network", () => {
-    const network = controlPlane.match(
-      /resource "hcloud_network" "data_plane" \{([\s\S]*?)\n\}/,
-    )?.[1];
-    const attachment = controlPlane.match(
-      /resource "hcloud_server_network" "control_plane" \{([\s\S]*?)\n\}/,
-    )?.[1];
+    const network = terraformResource(
+      controlPlane,
+      "hcloud_network",
+      "data_plane",
+    );
+    const attachment = terraformResource(
+      controlPlane,
+      "hcloud_server_network",
+      "control_plane",
+    );
 
     expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
     expect(attachment).toContain("for_each = hcloud_server.control_plane");
-    expect(attachment).toContain("server_id  = each.value.id");
-    expect(attachment).toContain("network_id = hcloud_network.data_plane.id");
+    expect(attachment).toContain("server_id = each.value.id");
+    expect(attachment).toContain(
+      "subnet_id = hcloud_network_subnet.data_plane.id",
+    );
+    expect(attachment).not.toContain("network_id =");
   });
 
   test("protects and backs up the shared tenant database failure domain", () => {
-    const network = appsShared.match(
-      /resource "hcloud_network" "apps" \{([\s\S]*?)\n\}/,
-    )?.[1];
-    const volume = appsShared.match(
-      /resource "hcloud_volume" "tenant_db_data" \{([\s\S]*?)\n\}/,
-    )?.[1];
-    const server = appsShared.match(
-      /resource "hcloud_server" "tenant_db" \{([\s\S]*?)\n\}/,
-    )?.[1];
+    const network = terraformResource(appsShared, "hcloud_network", "apps");
+    const volume = terraformResource(
+      appsShared,
+      "hcloud_volume",
+      "tenant_db_data",
+    );
+    const server = terraformResource(appsShared, "hcloud_server", "tenant_db");
 
     expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
     expect(volume).toContain("delete_protection = true");
+    expect(volume).toContain("prevent_destroy = true");
     expect(server).toContain("backups            = true");
     expect(server).toContain("delete_protection  = true");
     expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
   });
 });
 

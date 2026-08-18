@@ -23,7 +23,8 @@ resource "hcloud_network" "data_plane" {
   # Same convention as the apps-shared module: ignore Hetzner-side renames so
   # legacy names left over from out-of-band creation don't show as drift.
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -82,17 +83,20 @@ resource "hcloud_server" "control_plane" {
   #
   # OPS NOTE: changes to cloud-init/bootstrap.yaml.tftpl (nginx vhost, cert
   # generation, git clone retry, etc.) are no-ops on already-provisioned VMs
-  # because user_data is in ignore_changes. To roll a bootstrap fix onto an
-  # existing CP, run `terraform taint hcloud_server.control_plane["<idx>"]`
-  # then `apply` — recreates the VM, losing local state (headscale DB,
-  # TLS certs, /opt/eliza checkout). Plan that ahead of the apply.
+  # because user_data is in ignore_changes. Replacing an existing CP also
+  # requires a separately reviewed maintenance change that temporarily removes
+  # prevent_destroy; the replacement loses Headscale DB, TLS certificates, and
+  # the /opt/eliza checkout. Preserve and verify state before that apply.
   lifecycle {
+    prevent_destroy = true
     ignore_changes = [
-      user_data,   # bootstrap runs once at first boot
-      image,       # updating image rebuilds — explicit `terraform taint` to opt in
-      name,        # legacy VMs may not follow the env-prefixed naming convention; renaming is out of band
-      ssh_keys,    # operator key rotations don't recreate the box (keys are baked into authorized_keys at boot)
-      server_type, # cross-arch flips (cax21 ARM ↔ cpx32 x86) are ForceNew, not in-place; would wipe headscale + TLS-cert state on adopt-existing-vm import. Resize must go through `terraform taint` or out-of-band `hcloud server change-type` before plan/apply.
+      user_data, # bootstrap runs once at first boot
+      image,     # updating image rebuilds; use the guarded replacement procedure in README.md
+      name,      # legacy VMs may not follow the env-prefixed naming convention; renaming is out of band
+      ssh_keys,  # operator key rotations don't recreate the box (keys are baked into authorized_keys at boot)
+      # Cross-architecture flips are ForceNew, not in-place. Use the guarded
+      # replacement procedure or an independently reviewed out-of-band resize.
+      server_type,
     ]
   }
 }
@@ -103,8 +107,8 @@ resource "hcloud_server" "control_plane" {
 resource "hcloud_server_network" "control_plane" {
   for_each = hcloud_server.control_plane
 
-  server_id  = each.value.id
-  network_id = hcloud_network.data_plane.id
+  server_id = each.value.id
+  subnet_id = hcloud_network_subnet.data_plane.id
 }
 
 resource "cloudflare_dns_record" "control_plane" {
