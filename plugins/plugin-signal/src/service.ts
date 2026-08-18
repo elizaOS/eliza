@@ -12,6 +12,9 @@
  * `MAX_SIGNAL_MESSAGE_LENGTH` before dispatch. Auto-reply is off by default:
  * inbound messages are persisted and announced, but the agent only responds when
  * `SIGNAL_AUTO_REPLY=true`; sends otherwise come from LifeOps or explicit callers.
+ * When auto-reply is on, one-on-one DMs are gated by the account's `dm` policy
+ * (default `pairing` through the core PairingService — see `dm-policy.ts`)
+ * before the agent turn runs.
  *
  * Multi-account setups instantiate one client, event stream, and connector
  * registration per account resolved from `accounts.ts`.
@@ -51,7 +54,13 @@ import {
   normalizeAccountId as normalizeSignalAccountId,
   type ResolvedSignalAccount,
   resolveDefaultSignalAccountId,
+  resolveSignalAccount,
 } from "./accounts";
+import {
+  checkSignalDmAccess,
+  resolveSignalDmPolicy,
+  type SignalDmAccessDecision,
+} from "./dm-policy";
 import {
   createSignalEventStream,
   parseSignalEventData,
@@ -1469,14 +1478,67 @@ export class SignalService extends Service implements ISignalService {
     // enabled — default-off prevents the runtime from speaking on the user's
     // behalf to real Signal contacts.
     if (autoReply) {
-      await this.processMessage(memory, room, msg.sender, msg.groupId, normalizedAccountId);
-      return;
+      // One-on-one DMs are gated by the account's advertised `dm` policy
+      // (default `pairing` via the core PairingService handshake — see
+      // dm-policy.ts) before the agent turn runs. The memory above is still
+      // ingested and announced either way, so a blocked sender stays visible
+      // in history without ever reaching the agent.
+      const dmAccess: SignalDmAccessDecision = isGroupMessage
+        ? { allowed: true }
+        : await this.checkDmAccess(msg.sender, normalizedAccountId);
+      if (dmAccess.allowed) {
+        await this.processMessage(memory, room, msg.sender, msg.groupId, normalizedAccountId);
+        return;
+      }
+      this.runtime.logger.debug(
+        { src: "plugin:signal", accountId: normalizedAccountId, sender: msg.sender },
+        "Signal DM blocked by dm policy"
+      );
+      if (dmAccess.replyMessage) {
+        try {
+          await this.sendMessage(msg.sender, dmAccess.replyMessage, {
+            accountId: normalizedAccountId,
+          });
+        } catch (error) {
+          // error-policy:J1 the inbound handler is the transport boundary: a
+          // failed pairing reply is logged with context and the sender stays
+          // blocked; they can retry on their next message.
+          this.runtime.logger.warn(
+            {
+              src: "plugin:signal",
+              accountId: normalizedAccountId,
+              sender: msg.sender,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to deliver Signal DM pairing reply"
+          );
+        }
+      }
     }
 
     await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       runtime: this.runtime,
       message: memory,
       source: "signal",
+    });
+  }
+
+  /**
+   * Resolve the DM access decision for one inbound sender from the account's
+   * advertised `dm` config (`enabled`, `policy`, `allowFrom`). Unknown policy
+   * values fail closed to `pairing` at the resolver.
+   */
+  private async checkDmAccess(sender: string, accountId: string): Promise<SignalDmAccessDecision> {
+    const dmConfig = resolveSignalAccount(this.runtime, accountId).config.dm;
+    if (dmConfig?.enabled === false) {
+      return { allowed: false };
+    }
+    const contact = this.getCachedContact(sender, accountId);
+    return checkSignalDmAccess(this.runtime, {
+      policy: resolveSignalDmPolicy(dmConfig?.policy),
+      senderId: sender,
+      allowFrom: dmConfig?.allowFrom,
+      username: contact ? getSignalContactDisplayName(contact) : undefined,
     });
   }
 

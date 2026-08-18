@@ -96,6 +96,8 @@ export interface SignalMultiAccountConfig {
   account?: string;
   httpUrl?: string;
   authDir?: string;
+  /** Base DM access policy, inherited by every account unless overridden */
+  dm?: SignalDmConfig;
   /** Per-account configuration overrides */
   accounts?: Record<string, SignalAccountConfig>;
 }
@@ -137,6 +139,7 @@ function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig
     account: characterSignal?.account,
     httpUrl: characterSignal?.httpUrl,
     authDir: characterSignal?.authDir,
+    dm: characterSignal?.dm,
     accounts: characterSignal?.accounts,
   };
 }
