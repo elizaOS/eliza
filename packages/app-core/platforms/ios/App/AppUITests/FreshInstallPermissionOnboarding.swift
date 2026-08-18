@@ -36,3 +36,44 @@ func driveFreshInstallPermissionOnboarding(
 
     return .blocked
 }
+
+/// Reconciles the same dialog after renderer readiness. The renderer probe can
+/// become visible one animation frame before the native-hosted web dialog
+/// mounts, so an immediate `.absent` result is not authoritative while the
+/// expected interaction surface is also absent.
+@discardableResult
+func driveFreshInstallPermissionOnboardingAfterRendererReady(
+    dialogIsPresent: () -> Bool,
+    skipIsHittable: () -> Bool,
+    interactionIsReady: () -> Bool,
+    tapSkip: () -> Void,
+    waitForNextPoll: () -> Void,
+    maxMountPolls: Int = 20,
+    maxDismissPolls: Int = 10
+) -> FreshInstallPermissionOnboardingResult {
+    if dialogIsPresent() {
+        return driveFreshInstallPermissionOnboarding(
+            dialogIsPresent: dialogIsPresent,
+            skipIsHittable: skipIsHittable,
+            tapSkip: tapSkip,
+            waitForNextPoll: waitForNextPoll,
+            maxPolls: maxDismissPolls
+        )
+    }
+
+    for _ in 0..<max(1, maxMountPolls) {
+        if interactionIsReady() { return .absent }
+        waitForNextPoll()
+        if dialogIsPresent() {
+            return driveFreshInstallPermissionOnboarding(
+                dialogIsPresent: dialogIsPresent,
+                skipIsHittable: skipIsHittable,
+                tapSkip: tapSkip,
+                waitForNextPoll: waitForNextPoll,
+                maxPolls: maxDismissPolls
+            )
+        }
+    }
+
+    return .absent
+}
