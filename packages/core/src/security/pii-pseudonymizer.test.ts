@@ -5,7 +5,7 @@
  * boundary/prefix safety, and salt determinism vs unlinkability. Deterministic.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	GazetteerEntityRecognizer,
 	RegexEntityRecognizer,
@@ -353,5 +353,18 @@ describe("compileReplacer", () => {
 		};
 		const out = "call AT&T today".replace(regex, (m) => map.get(m) as string);
 		expect(out).toBe("call Globex today");
+	});
+
+	it("fails closed when no cryptographically secure random source exists (W5-032)", () => {
+		// The session salt seeds surrogate minting; a Math.random() fallback
+		// would make session pseudonyms reproducible by an observer.
+		vi.stubGlobal("crypto", undefined);
+		try {
+			expect(() => new PseudonymSession()).toThrow(
+				/cryptographically secure random source/,
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

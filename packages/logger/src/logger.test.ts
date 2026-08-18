@@ -533,6 +533,109 @@ describe("secret redaction", () => {
     expect(() => logger.info(cyclic, "ctx")).not.toThrow();
     expect(recentLogs()).toContain("[Circular]");
   });
+
+  it("masks webhook, connection-string, and concatenated key shapes (W5-026)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        webhookUrl: "https://discord.test/api/webhooks/111/hook-token-here",
+        connectionString: "Server=db;User=u;Pwd=hunter2",
+        MASTERKEY: "v-master-concat",
+        SIGNINGKEY: "v-signing-concat",
+        SSHKEY: "v-ssh-concat",
+        ENCRYPTIONKEY: "v-encryption-concat",
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    for (const secret of [
+      "hook-token-here",
+      "hunter2",
+      "v-master-concat",
+      "v-signing-concat",
+      "v-ssh-concat",
+      "v-encryption-concat",
+    ]) {
+      expect(logs).not.toContain(secret);
+    }
+  });
+
+  it("scrubs credential-shaped string values under neutral keys (W5-026)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        url: "postgres://user:supersecretpassword@db.internal:5432/app",
+        payload: '{"apiKey":"sk-neutral-key-value-12345"}',
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).not.toContain("supersecretpassword");
+    expect(logs).not.toContain("sk-neutral-key-value-12345");
+    // The non-secret remainder of the value survives the mask.
+    expect(logs).toContain("postgres://***@db.internal:5432/app");
+  });
+
+  it("scrubs credential patterns from the Error headline message (W5-026)", () => {
+    const logger = redactLogger();
+    logger.error(
+      new Error(
+        "request to https://x.test/?key=AIzaSyD4iE4fZa1234567890abcdef failed",
+      ),
+    );
+    const logs = recentLogs();
+    expect(logs).not.toContain("AIzaSyD4iE4fZa1234567890abcdef");
+    expect(logs).toContain("request to https://x.test/");
+  });
+
+  it("leaves ordinary prose strings untouched (W5-026 false-positive guard)", () => {
+    const logger = redactLogger();
+    logger.info(
+      { status: "connection retried twice", note: "all systems nominal" },
+      "plain headline",
+    );
+    const logs = recentLogs();
+    expect(logs).toContain("connection retried twice");
+    expect(logs).toContain("all systems nominal");
+    expect(logs).toContain("plain headline");
+  });
+
+  it("fails closed per key when a property getter throws (W5-028)", () => {
+    const logger = redactLogger();
+    const booby: Record<string, unknown> = { apiKey: "sk-booby-trap-secret" };
+    Object.defineProperty(booby, "lazy", {
+      enumerable: true,
+      get() {
+        throw new Error("lazy getter exploded");
+      },
+    });
+
+    expect(() => logger.info(booby, "ctx")).not.toThrow();
+    const logs = recentLogs();
+    // The sibling credential is still masked, the throwing key degrades to a
+    // marker, and the raw object never reaches the ring.
+    expect(logs).not.toContain("sk-booby-trap-secret");
+    expect(logs).toContain("[REDACTED: redaction failed]");
+  });
+
+  it("fails closed when the object cannot be walked at all (W5-028)", () => {
+    const logger = redactLogger();
+    const unwalkable = new Proxy(
+      { apiKey: "sk-proxy-hidden-secret" },
+      {
+        ownKeys() {
+          throw new Error("ownKeys exploded");
+        },
+      },
+    );
+
+    expect(() =>
+      logger.info(unwalkable as Record<string, unknown>, "ctx"),
+    ).not.toThrow();
+    const logs = recentLogs();
+    expect(logs).not.toContain("sk-proxy-hidden-secret");
+    expect(logs).toContain("[REDACTED: redaction failed]");
+  });
 });
 
 /**

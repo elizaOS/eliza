@@ -5,9 +5,12 @@
  * `success`/`progress` levels. Redacts sensitive fields with a deep-walk
  * redactor that deep-clones log context objects (callers keep their live
  * objects unmutated) and masks every value under a credential-named key at any
- * nesting depth, matched case-insensitively. String messages are passed through
- * unredacted — value-shape scanning of free text is `@elizaos/core`'s
- * security/redact.ts job, which the model-bound sinks apply downstream. Keeps
+ * nesting depth, matched case-insensitively. String values — object properties,
+ * headline messages, and Error message/stack — are additionally scrubbed for
+ * credential shapes (API keys, Bearer tokens, URI userinfo, PEM blocks) with
+ * the pattern library mirrored from `@elizaos/core`'s security/redact.ts,
+ * because this process's ring buffer, file sinks, and WS stream have no
+ * downstream scrubber. Keeps
  * an in-memory ring buffer with real-time listeners for WebSocket streaming,
  * and lazily opens optional file sinks (`output.log`, `prompts.log`,
  * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
@@ -309,6 +312,12 @@ const serverId =
 // ============================================================================
 
 const REDACTED_VALUE = "[REDACTED]";
+/**
+ * Marker substituted when the redactor itself fails on a value. Logging must
+ * never break the runtime, but it must fail CLOSED — never emit the original
+ * unredacted payload (W5-028).
+ */
+const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]";
 /** Bound on recursion so a pathological payload cannot hang the process. */
 const MAX_REDACT_DEPTH = 8;
 
@@ -334,6 +343,10 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
   "credential",
   "authorization",
   "sessionkey",
+  // A webhook URL is a full post credential (Discord/Slack); covered by the
+  // /api/config classifier and core's policy, so it belongs here too.
+  "webhook",
+  "connectionstring",
 ];
 
 /** Whole-key names (normalized) too generic for substring matching. */
@@ -387,6 +400,10 @@ function isSensitiveLogKey(key: string): boolean {
   // Generic `*key` forms (encryptionKey, masterKey, sshKey, OPENAI_KEY) need a
   // word boundary before "key" so monkey/turnkey/hotkey stay visible.
   if (/(?:^|[_\-. ])key$/i.test(key) || /[a-z]Key$/.test(key)) return true;
+  // Separator-free all-caps concatenations (MASTERKEY, SSHKEY, SIGNINGKEY,
+  // ENCRYPTIONKEY) have no boundary for the rule above; a closed suffix set on
+  // the normalized name catches them without opening `key$` to lookalikes.
+  if (/(?:master|signing|ssh|encryption)key$/.test(normalized)) return true;
   // Same boundary treatment for the exact names in suffixed form
   // (sessionCookie, SESSION_JWT, x-bearer).
   if (
@@ -398,39 +415,181 @@ function isSensitiveLogKey(key: string): boolean {
   return false;
 }
 
+// ----------------------------------------------------------------------------
+// Credential-shape text scanning (string values, headlines, Error messages)
+// ----------------------------------------------------------------------------
+
+// RFC 9110 grammar fragments for the Authorization patterns, mirroring core.
+const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
+const HTTP_BWS_PATTERN = String.raw`[ \t]*`;
+const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`;
+const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`;
+const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:${HTTP_BWS_PATTERN},${HTTP_BWS_PATTERN}(?:${HTTP_AUTH_PARAM_PATTERN})?)*`;
+const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
+
+/**
+ * Credential-shaped value patterns, mirrored verbatim from `@elizaos/core`'s
+ * security/redact.ts DEFAULT_REDACT_PATTERNS — this leaf package cannot import
+ * core, so the two copies must be kept in sync by hand. Applied to every
+ * string that reaches the log sinks (object values, trailing args, headline
+ * messages, Error message/stack). The shapes require an assignment context or
+ * a known token prefix — no entropy heuristics — so ordinary prose does not
+ * false-positive, while credentials interpolated into free text are caught.
+ */
+const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+  // ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
+  String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
+  // JSON fields.
+  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
+  // CLI flags (space-separated and --flag=value forms).
+  String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
+  // Authorization headers (see core for the full grammar rationale: Basic
+  // first so trailing `=` reads as token68 padding; extension schemes use the
+  // complete token/quoted-string grammar; malformed assignment tails fail
+  // toward masking rather than leaking a likely credential into diagnostics).
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
+  String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+  // URI userinfo (database URLs, curl arguments, remotes carrying passwords).
+  String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
+  // PEM blocks.
+  String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
+  // Common token prefixes.
+  String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
+  String.raw`\b(csk-[A-Za-z0-9_-]{8,})\b`,
+  String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
+  // Case-sensitive on purpose: ordinary words beginning with "Asia" must not
+  // fold into the AWS credential-identifier shape.
+  String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
+  String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
+  String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
+  String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
+  String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
+  String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
+  String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
+  String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
+  String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
+  String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+];
+
+function parseSensitiveTextPattern(raw: string): RegExp | null {
+  const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+  try {
+    if (match) {
+      const flags = match[2].includes("g") ? match[2] : `${match[2]}g`;
+      return new RegExp(match[1], flags);
+    }
+    return new RegExp(raw, "gi");
+  } catch {
+    // error-policy:J3 a mirrored pattern that no longer compiles is excluded
+    // from the detector set rather than breaking logger module load.
+    return null;
+  }
+}
+
+// Compiled once at module load; String.prototype.replace resets a global
+// regex's lastIndex before each call, so the shared array is safe to reuse.
+const SENSITIVE_TEXT_REGEXPS: readonly RegExp[] = SENSITIVE_TEXT_PATTERNS.map(
+  parseSensitiveTextPattern,
+).filter((re): re is RegExp => Boolean(re));
+
+const SENSITIVE_TEXT_MIN_LENGTH = 18;
+const SENSITIVE_TEXT_KEEP_START = 6;
+const SENSITIVE_TEXT_KEEP_END = 4;
+
+/** Mask a matched credential, keeping short affixes for diagnostics. */
+function maskSensitiveToken(token: string): string {
+  if (token.length < SENSITIVE_TEXT_MIN_LENGTH) {
+    return "***";
+  }
+  const start = token.slice(0, SENSITIVE_TEXT_KEEP_START);
+  const end = token.slice(-SENSITIVE_TEXT_KEEP_END);
+  return `${start}…${end}`;
+}
+
+function redactSensitiveLogMatch(match: string, groups: string[]): string {
+  if (match.includes("PRIVATE KEY-----")) {
+    return "***";
+  }
+  const filteredGroups = groups.filter(
+    (value) => typeof value === "string" && value.length > 0,
+  );
+  const token = filteredGroups[filteredGroups.length - 1] ?? match;
+  // URI userinfo includes an account identifier; do not preserve its prefix,
+  // and anchor the rewrite to the userinfo span so a first-occurrence replace
+  // cannot corrupt the scheme (mirrors core's redactMatch).
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
+    return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@");
+  }
+  const masked = maskSensitiveToken(token);
+  if (token === match) {
+    return masked;
+  }
+  // Credential patterns capture the secret at the match tail; splice that
+  // position directly so identical bytes earlier in the match are untouched.
+  const tailIndex = match.length - token.length;
+  if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+    return `${match.slice(0, tailIndex)}${masked}`;
+  }
+  // Replacer function: `masked` keeps token affixes verbatim, and a string
+  // replacement would re-expand `$&`/`$$` sequences from the secret itself.
+  return match.replace(token, () => masked);
+}
+
+/**
+ * Scrub credential-shaped values from free text reaching the log sinks.
+ * Pattern sweep only — secrets-map literal redaction stays in core, which owns
+ * the character configuration.
+ */
+function redactSensitiveLogText(text: string): string {
+  if (!text) {
+    return text;
+  }
+  let next = text;
+  for (const pattern of SENSITIVE_TEXT_REGEXPS) {
+    next = next.replace(pattern, (...args: string[]) =>
+      redactSensitiveLogMatch(args[0], args.slice(1, args.length - 2)),
+    );
+  }
+  return next;
+}
+
 /**
  * Deep-clone a log argument, masking every value under a credential-named key
  * at any depth. The clone is what gets logged, so redaction never mutates the
  * caller's live objects (previously a shallow copy let the redactor overwrite
  * nested credentials in place, corrupting e.g. a provider config mid-use).
+ * String values are pattern-scrubbed for credential shapes at every depth.
  * Cycles and over-depth payloads collapse to a marker instead of recursing
  * forever. Error instances keep their name/message/stack shape (Adze renders
- * it) but their own enumerable properties — axios-style `err.config.headers`
- * and the like — are walked and masked.
+ * it) with message and stack scrubbed — thrown errors routinely interpolate
+ * the offending secret — and their own enumerable properties (axios-style
+ * `err.config.headers`) are walked and masked.
  */
 function redactLogValue(
   value: unknown,
   seen: WeakSet<object>,
   depth: number,
 ): unknown {
+  if (typeof value === "string") return redactSensitiveLogText(value);
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
   seen.add(value);
 
   if (value instanceof Error) {
-    const clone = new Error(value.message);
+    const clone = new Error(redactSensitiveLogText(value.message));
     clone.name = value.name;
-    if (value.stack) clone.stack = value.stack;
+    if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
     if (value.cause !== undefined) {
       clone.cause = redactLogValue(value.cause, seen, depth + 1);
     }
     const target = clone as unknown as Record<string, unknown>;
-    for (const [key, entry] of Object.entries(value)) {
-      target[key] = isSensitiveLogKey(key)
-        ? REDACTED_VALUE
-        : redactLogValue(entry, seen, depth + 1);
-    }
+    redactOwnPropertiesInto(value, target, seen, depth + 1);
     return clone;
   }
 
@@ -458,21 +617,60 @@ function redactLogValue(
   // ever emits own enumerable properties anyway, and walking them here masks
   // credentials stashed on config/response wrappers (axios-style).
   const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    result[key] = isSensitiveLogKey(key)
-      ? REDACTED_VALUE
-      : redactLogValue(entry, seen, depth + 1);
-  }
+  redactOwnPropertiesInto(value, result, seen, depth + 1);
   return result;
 }
 
-/** Redact every object in a trailing-args list; strings pass through. */
+/**
+ * Walk `source`'s own enumerable keys into `target`, masking credential-named
+ * keys and recursing into the rest. Uses Object.keys plus a per-key read
+ * rather than Object.entries so one throwing getter (lazy ORM/REST-client
+ * payloads, Proxies) degrades to a per-key marker instead of throwing the
+ * whole walk — which would fail open and unmask every sibling credential
+ * (W5-028).
+ */
+function redactOwnPropertiesInto(
+  source: object,
+  target: Record<string, unknown>,
+  seen: WeakSet<object>,
+  depth: number,
+): void {
+  for (const key of Object.keys(source)) {
+    if (isSensitiveLogKey(key)) {
+      target[key] = REDACTED_VALUE;
+      continue;
+    }
+    try {
+      target[key] = redactLogValue(
+        (source as Record<string, unknown>)[key],
+        seen,
+        depth,
+      );
+    } catch {
+      // error-policy:J7 logging must never break the runtime; a throwing
+      // getter fails closed on this one key, never emits the raw value.
+      target[key] = REDACTION_FAILED_VALUE;
+    }
+  }
+}
+
+/**
+ * Redact every argument in a trailing-args list: strings are pattern-scrubbed,
+ * objects deep-walked. A walk failure on any argument fails closed to the
+ * redaction-failed marker rather than propagating (or leaking) the raw value.
+ */
 function redactTrailingArgs(args: readonly unknown[]): unknown[] {
-  return args.map((arg) =>
-    arg !== null && typeof arg === "object"
-      ? redactLogValue(arg, new WeakSet<object>(), 0)
-      : arg,
-  );
+  return args.map((arg) => {
+    if (typeof arg === "string") return redactSensitiveLogText(arg);
+    if (arg === null || typeof arg !== "object") return arg;
+    try {
+      return redactLogValue(arg, new WeakSet<object>(), 0);
+    } catch {
+      // error-policy:J7 logging must never break the runtime; fail closed so
+      // an unwalkable payload is marked, never emitted unredacted (W5-028).
+      return REDACTION_FAILED_VALUE;
+    }
+  });
 }
 
 // ============================================================================
@@ -1208,7 +1406,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     };
 
     /**
-     * Safely redact sensitive data from an object (browser version)
+     * Safely redact sensitive data from an object (browser version).
+     * Fails closed: a redactor failure must never emit the caller's original
+     * object — identified secrets would reach the sinks in cleartext (W5-028).
      */
     const safeRedact = (
       obj: Record<string, unknown>,
@@ -1219,10 +1419,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
           unknown
         >;
       } catch {
-        // error-policy:J7 logging must never break the runtime; a redactor
-        // failure degrades to the unredacted object, matching the historical
-        // fast-redact fallback behavior.
-        return obj;
+        // error-policy:J7 logging must never break the runtime; the failure
+        // degrades to a marker object, not the unredacted original.
+        return { redactionError: REDACTION_FAILED_VALUE };
       }
     };
 
@@ -1233,19 +1432,24 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     ): unknown[] => {
       // `msg` is typed string but runtime callers pass objects in that slot;
       // fold it into the trailing args so objects always hit the redactor.
+      const cleanMsg =
+        typeof msg === "string" ? redactSensitiveLogText(msg) : msg;
       if (typeof obj === "string") {
-        const rest = msg !== undefined ? [msg, ...args] : args;
-        return [obj, ...redactTrailingArgs(rest)];
+        const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+        return [redactSensitiveLogText(obj), ...redactTrailingArgs(rest)];
       }
       if (obj instanceof Error) {
-        const rest = msg !== undefined ? [msg, ...args] : args;
-        return [obj.message, ...redactTrailingArgs(rest)];
+        const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+        return [
+          redactSensitiveLogText(obj.message),
+          ...redactTrailingArgs(rest),
+        ];
       }
       // Redact sensitive data from objects
       const redactedObj = safeRedact(obj);
-      if (msg !== undefined) {
+      if (cleanMsg !== undefined) {
         // Browser is always pretty mode - format as compact single line
-        const formatted = formatPrettyLog(redactedObj, msg, false);
+        const formatted = formatPrettyLog(redactedObj, cleanMsg, false);
         return [formatted, ...redactTrailingArgs(args)];
       }
       // No message - format context only
@@ -1367,6 +1571,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   /**
    * Safely redact sensitive data from an object.
    * Deep-clones first so redaction never mutates the caller's live objects.
+   * Fails closed: a redactor failure must never emit the caller's original
+   * object — identified secrets would reach the sinks in cleartext (W5-028).
    */
   const safeRedact = (
     obj: Record<string, unknown>,
@@ -1377,10 +1583,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         unknown
       >;
     } catch {
-      // error-policy:J7 logging must never break the runtime; a redactor
-      // failure degrades to the unredacted object, matching the historical
-      // fast-redact fallback behavior.
-      return obj;
+      // error-policy:J7 logging must never break the runtime; the failure
+      // degrades to a marker object, not the unredacted original.
+      return { redactionError: REDACTION_FAILED_VALUE };
     }
   };
 
@@ -1399,29 +1604,36 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     // String first argument - no context object. `msg` is typed string but
     // runtime callers do pass objects in that slot; fold it into the trailing
     // args so anything object-shaped still goes through the redactor.
+    const cleanMsg =
+      typeof msg === "string" ? redactSensitiveLogText(msg) : msg;
     if (typeof obj === "string") {
-      const rest = msg !== undefined ? [msg, ...args] : args;
-      return [obj, ...redactTrailingArgs(rest)];
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+      return [redactSensitiveLogText(obj), ...redactTrailingArgs(rest)];
     }
     // Error object - the wrapper must be redacted too: error instances can
-    // carry credentials on enumerable properties (request config, headers).
+    // carry credentials on enumerable properties (request config, headers),
+    // and the headline message itself can interpolate the offending secret.
     if (obj instanceof Error) {
       const errorWrapper = safeRedact({ error: obj });
-      const rest = msg !== undefined ? [msg, ...args] : args;
-      return [obj.message, errorWrapper, ...redactTrailingArgs(rest)];
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+      return [
+        redactSensitiveLogText(obj.message),
+        errorWrapper,
+        ...redactTrailingArgs(rest),
+      ];
     }
 
     // Object (context) - redact sensitive data
     const redactedObj = safeRedact(obj);
 
-    if (msg !== undefined) {
+    if (cleanMsg !== undefined) {
       // Pretty mode: format as compact single line
       if (!raw) {
-        const formatted = formatPrettyLog(redactedObj, msg, raw);
+        const formatted = formatPrettyLog(redactedObj, cleanMsg, raw);
         return [formatted, ...redactTrailingArgs(args)];
       }
       // JSON mode: keep structured object for machine parsing
-      return [msg, redactedObj, ...redactTrailingArgs(args)];
+      return [cleanMsg, redactedObj, ...redactTrailingArgs(args)];
     }
 
     // No message provided - just context object

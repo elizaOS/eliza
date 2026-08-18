@@ -44,6 +44,7 @@
  */
 
 import type { PiiPseudonymAssignment } from "../types/model.js";
+import { BufferUtils } from "../utils/buffer.js";
 import {
 	compileReplacer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
@@ -154,15 +155,10 @@ export class PseudonymMapIntegrityError extends Error {
 }
 
 function randomSalt(): string {
-	const bytes = new Uint8Array(16);
-	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
-	if (typeof cryptoObj?.getRandomValues === "function") {
-		cryptoObj.getRandomValues(bytes);
-	} else {
-		for (let i = 0; i < bytes.length; i += 1) {
-			bytes[i] = Math.floor(Math.random() * 256);
-		}
-	}
+	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): the salt
+	// seeds deterministic pseudonym minting, so a predictable Math.random()
+	// fallback would let an observer reproduce corpus surrogates.
+	const bytes = BufferUtils.randomBytes(16);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
