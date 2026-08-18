@@ -155,9 +155,10 @@ describe("default Eliza voice", () => {
     }
   });
 
-  test("credits the people who actually built it", () => {
+  test("credits its makers and stays open source", () => {
     const identity = `${character.system}\n${character.bio.join("\n")}`.toLowerCase();
-    for (const name of ["shaw", "nubs", "shad0w", "elizaos"]) {
+    // The persona now attributes the org rather than individual handles.
+    for (const name of ["eliza research", "elizaos"]) {
       expect(identity).toContain(name);
     }
     expect(identity).toContain("github.com/elizaos/eliza");
