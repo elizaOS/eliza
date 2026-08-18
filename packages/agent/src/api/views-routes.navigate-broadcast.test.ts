@@ -197,6 +197,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       ctx.res,
       expect.objectContaining({ ok: true, viewId: "calendar" }),
     );
+    expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
+      json.mock.invocationCallOrder[0],
+    );
   });
 
   it("delivers app-chat navigation only to its originating client", async () => {
