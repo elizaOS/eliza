@@ -1,7 +1,7 @@
 /**
- * Behavioral coding-agent settings deadlines. Executes
- * getCodingAgentsPreflightWithFetch and postCodingAgentsAuthWithFetch
- * under abort — not a source-grep. Separate 15s hop budgets.
+ * Coding-agent settings deadlines through the canonical ElizaClient seam.
+ * Native Android/iOS bridges discard RequestInit.signal; timeoutMs on
+ * rawRequest is the context that reaches Agent.request.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ vi.mock("@elizaos/ui/api", () => ({
     getConfig: async () => ({ env: {}, cloud: {} }),
     fetchModels: async () => null,
     updateConfig: async () => undefined,
+    rawRequest: async () => new Response(null, { status: 204 }),
   },
 }));
 
@@ -31,84 +32,99 @@ vi.mock("./ModelConfigSection", () => ({ ModelConfigSection: () => null }));
 import {
   CODING_AGENTS_AUTH_FETCH_TIMEOUT_MS,
   CODING_AGENTS_PREFLIGHT_FETCH_TIMEOUT_MS,
-  getCodingAgentsPreflightWithFetch,
-  postCodingAgentsAuthWithFetch,
+  getCodingAgentsPreflightWithClient,
+  postCodingAgentsAuthWithClient,
 } from "./CodingAgentSettingsSection";
 
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected coding-agents abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
-}
-
-describe("coding-agent settings independent request deadlines", () => {
+describe("coding-agent settings client deadlines", () => {
   it("keeps a documented 15s budget per hop", () => {
     expect(CODING_AGENTS_PREFLIGHT_FETCH_TIMEOUT_MS).toBe(15_000);
     expect(CODING_AGENTS_AUTH_FETCH_TIMEOUT_MS).toBe(15_000);
   });
 
-  it("aborts a stalled preflight GET at its own deadline", async () => {
+  it("forwards the preflight deadline and unmount signal on rawRequest", async () => {
+    const rawRequest = vi.fn(async () => {
+      throw new DOMException("The operation timed out", "TimeoutError");
+    });
+    const unmount = new AbortController();
+
     await expect(
-      getCodingAgentsPreflightWithFetch(stallUntilAborted(), 10),
+      getCodingAgentsPreflightWithClient({ rawRequest }, 3210, unmount.signal),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/api/coding-agents/preflight",
+      { signal: unmount.signal },
+      { allowNonOk: true, timeoutMs: 3210 },
+    );
   });
 
   it("surfaces a provider error from a completed preflight GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-    const response = await getCodingAgentsPreflightWithFetch(fetchImpl, 1_000);
+    const rawRequest = vi.fn(async () => new Response("nope", { status: 503 }));
+
+    const response = await getCodingAgentsPreflightWithClient(
+      { rawRequest },
+      1_000,
+    );
     expect(response.ok).toBe(false);
     expect(response.status).toBe(503);
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/api/coding-agents/preflight",
+      undefined,
+      { allowNonOk: true, timeoutMs: 1_000 },
+    );
   });
 
-  it("uses the injected fetch for a successful preflight GET", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json([{ adapter: "claude", installed: true }]);
-    };
-    const response = await getCodingAgentsPreflightWithFetch(fetchImpl, 1_000);
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
+  it("uses the client seam for a successful preflight GET", async () => {
+    const rawRequest = vi.fn(async () =>
+      Response.json([{ adapter: "claude", installed: true }]),
+    );
+
+    const response = await getCodingAgentsPreflightWithClient(
+      { rawRequest },
+      1_000,
+    );
     expect(response.ok).toBe(true);
+    await expect(response.json()).resolves.toEqual([
+      { adapter: "claude", installed: true },
+    ]);
   });
 
-  it("aborts a stalled auth POST at its own deadline", async () => {
+  it("forwards the auth POST deadline on rawRequest", async () => {
+    const rawRequest = vi.fn(async () => {
+      throw new DOMException("The operation timed out", "TimeoutError");
+    });
+
     await expect(
-      postCodingAgentsAuthWithFetch("claude", stallUntilAborted(), 10),
+      postCodingAgentsAuthWithClient("claude", { rawRequest }, 4321),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/api/coding-agents/auth/claude",
+      { method: "POST" },
+      { allowNonOk: true, timeoutMs: 4321 },
+    );
   });
 
   it("surfaces a provider error from a completed auth POST", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-    const response = await postCodingAgentsAuthWithFetch(
+    const rawRequest = vi.fn(async () => new Response("nope", { status: 503 }));
+
+    const response = await postCodingAgentsAuthWithClient(
       "claude",
-      fetchImpl,
+      { rawRequest },
       1_000,
     );
     expect(response.ok).toBe(false);
     expect(response.status).toBe(503);
   });
 
-  it("uses the injected fetch for a successful auth POST", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({ launched: true });
-    };
-    const response = await postCodingAgentsAuthWithFetch(
+  it("uses the client seam for a successful auth POST", async () => {
+    const rawRequest = vi.fn(async () => Response.json({ launched: true }));
+
+    const response = await postCodingAgentsAuthWithClient(
       "claude",
-      fetchImpl,
+      { rawRequest },
       1_000,
     );
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
     expect(response.ok).toBe(true);
+    await expect(response.json()).resolves.toEqual({ launched: true });
   });
 });

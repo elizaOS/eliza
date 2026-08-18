@@ -42,27 +42,36 @@ import { ModelConfigSection } from "./ModelConfigSection";
 export const CODING_AGENTS_PREFLIGHT_FETCH_TIMEOUT_MS = 15_000;
 export const CODING_AGENTS_AUTH_FETCH_TIMEOUT_MS = 15_000;
 
-export async function getCodingAgentsPreflightWithFetch(
-  fetchImpl: typeof fetch,
+type CodingAgentsApiClient = {
+  rawRequest: (
+    path: string,
+    init?: RequestInit,
+    options?: { allowNonOk?: boolean; timeoutMs?: number },
+  ) => Promise<Response>;
+};
+
+export async function getCodingAgentsPreflightWithClient(
+  apiClient: CodingAgentsApiClient,
   timeoutMs: number = CODING_AGENTS_PREFLIGHT_FETCH_TIMEOUT_MS,
   unmountSignal?: AbortSignal,
 ): Promise<Response> {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  const signal = unmountSignal
-    ? AbortSignal.any([unmountSignal, timeout])
-    : timeout;
-  return fetchImpl("/api/coding-agents/preflight", { signal });
+  return apiClient.rawRequest(
+    "/api/coding-agents/preflight",
+    unmountSignal ? { signal: unmountSignal } : undefined,
+    { allowNonOk: true, timeoutMs },
+  );
 }
 
-export async function postCodingAgentsAuthWithFetch(
+export async function postCodingAgentsAuthWithClient(
   agent: string,
-  fetchImpl: typeof fetch,
+  apiClient: CodingAgentsApiClient,
   timeoutMs: number = CODING_AGENTS_AUTH_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
-  return fetchImpl(`/api/coding-agents/auth/${agent}`, {
-    method: "POST",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  return apiClient.rawRequest(
+    `/api/coding-agents/auth/${agent}`,
+    { method: "POST" },
+    { allowNonOk: true, timeoutMs },
+  );
 }
 
 function AgentAdvancedSettingsDisclosure({
@@ -106,8 +115,8 @@ export function CodingAgentSettingsSection() {
           client.getConfig(),
           client.fetchModels("anthropic", false).catch(() => null),
           client.fetchModels("openai", false).catch(() => null),
-          getCodingAgentsPreflightWithFetch(
-            globalThis.fetch,
+          getCodingAgentsPreflightWithClient(
+            client,
             CODING_AGENTS_PREFLIGHT_FETCH_TIMEOUT_MS,
             controller.signal,
           )
@@ -303,9 +312,7 @@ export function CodingAgentSettingsSection() {
 
   const refreshPreflight = useCallback(async () => {
     try {
-      const preflightRes = await getCodingAgentsPreflightWithFetch(
-        globalThis.fetch,
-      );
+      const preflightRes = await getCodingAgentsPreflightWithClient(client);
       if (!preflightRes.ok) return null;
       const results = await preflightRes.json();
       if (!Array.isArray(results)) return null;
@@ -346,7 +353,7 @@ export function CodingAgentSettingsSection() {
       setAuthInProgress(agent);
       setAuthResult(null);
       try {
-        const res = await postCodingAgentsAuthWithFetch(agent, globalThis.fetch);
+        const res = await postCodingAgentsAuthWithClient(agent, client);
         if (!res.ok) {
           setAuthResult({
             agent,
