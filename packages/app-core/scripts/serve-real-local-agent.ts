@@ -17,6 +17,10 @@ import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 import { publishBoundDeviceE2ePort } from "./lib/device-e2e-port-advertisement.ts";
+import {
+  deviceE2eEmbeddingPlugin,
+  resolveDeviceE2eModelCall,
+} from "./device-e2e-model-fixtures.ts";
 
 const deviceE2eUploadImageRoute = {
   ...backgroundUploadImageRoute,
@@ -24,9 +28,6 @@ const deviceE2eUploadImageRoute = {
   name: "device-e2e-upload-image",
 };
 
-const STREAM_E2E_REPLY =
-  "STREAM_E2E_OK The dashboard receives this reply through the real model callback, runtime message loop, HTTP SSE route, browser parser, and React transcript. " +
-  "Each chunk is intentionally small and evenly paced so the browser lane can measure token-to-paint latency, frame cadence, layout stability, and DOM identity while the visible answer grows.";
 const GENERATED_REGISTRY_URL =
   "https://plugins.eliza.app/generated-registry.json";
 const CLOUD_API_PROBE_URL = "https://api.eliza.app/api/v1";
@@ -203,27 +204,11 @@ async function main(): Promise<void> {
   const configEnv = useIsolatedConfigEnv("eliza-device-e2e-host-agent-");
   const proxy = createDeterministicModelPlugin({
     stream: deterministicStream,
-    resolve(call) {
-      if (
-        process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1" &&
-        call.modelType === ModelType.TEXT_LARGE
-      ) {
-        return { message: "Digest ready" };
-      }
-      if (call.modelType !== ModelType.RESPONSE_HANDLER) return null;
-      const args = {
-        shouldRespond: "RESPOND",
-        contexts: ["simple"],
-        intents: ["chat"],
-        replyText: STREAM_E2E_REPLY,
-        candidateActionNames: [],
-        facts: [],
-        relationships: [],
-        addressedTo: [],
-        emotion: "none",
-      };
-      return JSON.stringify(args);
-    },
+    resolve: (call) =>
+      resolveDeviceE2eModelCall(
+        call,
+        process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1",
+      ),
   });
   const mediaRoutesPlugin = {
     name: "device-e2e-media-routes",
@@ -246,7 +231,12 @@ async function main(): Promise<void> {
   }
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
-    plugins: [proxy, mediaRoutesPlugin, ...workflowPlugins],
+    plugins: [
+      proxy,
+      deviceE2eEmbeddingPlugin,
+      mediaRoutesPlugin,
+      ...workflowPlugins,
+    ],
   });
   if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY === "1") {
     const rubyHighUrl = process.env.RUBY_HIGH_URL?.trim();

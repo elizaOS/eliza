@@ -59,6 +59,14 @@ bun run --cwd packages/app test:e2e:android:lifecycle:reboot
 bun run --cwd packages/app test:e2e:android:routes
 ```
 
+Focused slices used by the retained device-CI shell scripts run through
+`scripts/android-playwright-e2e.mjs`. Like the full orchestrator, they print a
+final `bundle:` line and accept `--output <dir>` after the package command; the
+bundle is finalized before a failing slice exits non-zero.
+Passing bundles require the installed renderer's full 40-character commit to
+equal the runner's Git `HEAD`, plus decodable inline JPEG and H.264 MP4 proof;
+matching build IDs or filename extensions alone are not sufficient.
+
 ## Prerequisites (env)
 
 - Android SDK with `adb`, `emulator`, and a system image. The harness resolves
@@ -138,6 +146,12 @@ The scheduled and `ci:device`-label-gated Android job in
    the device bundle. Missing bundles are upload failures, not warnings, and
    artifact names include the Actions run ID and attempt to keep reruns
    distinct.
+
+Before the probe sweep, the runner launches the exact installed APK and retains
+a short preflight MP4/JPG pair. The full route recording starts before the
+Playwright probes, so passing bundles contain the tested flow while a later
+emulator disconnect still leaves renderable installed-build media alongside
+the failed summary, JUnit, and logs.
 
 Artifacts are written under
 `packages/app/test-results/android-onboarding-to-home/`:

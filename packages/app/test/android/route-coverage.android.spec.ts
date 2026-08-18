@@ -55,6 +55,15 @@ const UNIQUE_ROUTES = ROUTES.filter((r) => {
 // (workers=1), but a single render hiccup must not abort the rest of the sweep.
 test.describe("android route coverage (real backend)", () => {
   test.beforeAll(async ({ page }) => {
+    // This sweep intentionally includes developer-only product routes such as
+    // /orchestrator. Install the persisted switch at document start, before a
+    // view mounts and the surface-realm broker protects shell-owned storage.
+    // The following reload then lets the module-level developer-mode snapshot
+    // observe the same value a user-controlled shell setting would persist.
+    await page.addInitScript(() => {
+      localStorage.setItem("eliza:developerMode", "1");
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForShellReady(page);
   });
 

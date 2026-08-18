@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const RENDERER_MANIFEST = "eliza-renderer-build.json";
+const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
 
 function execText(command, args, options = {}) {
   try {
@@ -82,14 +83,46 @@ export function compareRendererBuildIds({
   fresh,
   installed,
   label = "iOS app",
+  expectedCommit,
 }) {
   if (installed.buildId !== fresh.buildId) {
     throw new Error(
       `${label} renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} - stale UI install.`,
     );
   }
+  const freshCommit = fresh.commit ?? null;
+  const installedCommit = installed.commit ?? null;
+  if (
+    freshCommit !== null &&
+    installedCommit !== null &&
+    freshCommit !== installedCommit
+  ) {
+    throw new Error(
+      `${label} renderer commit ${installedCommit} != freshly built ${freshCommit} - inconsistent build stamp.`,
+    );
+  }
+  if (expectedCommit != null) {
+    if (!FULL_GIT_SHA.test(expectedCommit)) {
+      throw new Error("Expected iOS renderer git commit is not a full SHA-1.");
+    }
+    if (!FULL_GIT_SHA.test(freshCommit ?? "")) {
+      throw new Error("Fresh iOS renderer manifest has no full commit SHA.");
+    }
+    if (!FULL_GIT_SHA.test(installedCommit ?? "")) {
+      throw new Error(`${label} renderer manifest has no full commit SHA.`);
+    }
+    if (
+      freshCommit.toLowerCase() !== expectedCommit.toLowerCase() ||
+      installedCommit.toLowerCase() !== expectedCommit.toLowerCase()
+    ) {
+      throw new Error(
+        `${label} renderer commit ${installedCommit} and fresh commit ${freshCommit} must both match HEAD ${expectedCommit}.`,
+      );
+    }
+  }
   return {
     buildId: fresh.buildId,
+    commit: installedCommit,
     builtAt: fresh.builtAt ?? null,
   };
 }
@@ -128,12 +161,26 @@ export function assertIosAppRendererFresh({
   rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST,
   label = "iOS app",
   log = () => {},
+  expectedCommit = execText("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    optional: true,
+  }),
 }) {
   const freshManifest = freshRendererManifestPath({ repoRoot, rendererDist });
   const installedManifest = rendererManifestPathFromAppPath(appPath);
   const fresh = readRendererManifest(freshManifest, "freshly built");
   const installed = readRendererManifest(installedManifest, label);
-  const result = compareRendererBuildIds({ fresh, installed, label });
+  if (!expectedCommit) {
+    throw new Error(
+      `Cannot establish expected git commit for ${label}; exact-head evidence is unavailable.`,
+    );
+  }
+  const result = compareRendererBuildIds({
+    fresh,
+    installed,
+    label,
+    expectedCommit,
+  });
   log(
     `renderer build stamp OK for ${label}: ${String(result.buildId).slice(0, 12)}${result.builtAt ? ` built ${result.builtAt}` : ""}`,
   );
@@ -145,6 +192,7 @@ export function assertCandidateIosAppRendererFresh({
   bundleId,
   repoRoot,
   log,
+  expectedCommit,
 }) {
   assertIosAppPathMatchesBundleId({ appPath, bundleId });
   return assertIosAppRendererFresh({
@@ -152,6 +200,7 @@ export function assertCandidateIosAppRendererFresh({
     repoRoot,
     label: `candidate ${bundleId}`,
     log,
+    expectedCommit,
   });
 }
 
@@ -160,6 +209,7 @@ export function assertInstalledIosAppRendererFresh({
   bundleId,
   repoRoot,
   log,
+  expectedCommit,
 }) {
   const appPath = execText(
     "xcrun",
@@ -176,5 +226,6 @@ export function assertInstalledIosAppRendererFresh({
     repoRoot,
     label: `installed ${bundleId}`,
     log,
+    expectedCommit,
   });
 }

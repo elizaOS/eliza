@@ -13,6 +13,9 @@ import {
 } from "../scripts/lib/android-device.mjs";
 import { compareAndroidRendererBuildIds } from "../scripts/lib/android-renderer-stamp.mjs";
 
+const CURRENT_COMMIT = "a".repeat(40);
+const STALE_COMMIT = "b".repeat(40);
+
 describe("Android renderer stamp decisions", () => {
   it("requires a build when dist has no renderer stamp", () => {
     expect(androidDistNeedsBuild({ freshStamp: null })).toMatchObject({
@@ -26,10 +29,10 @@ describe("Android renderer stamp decisions", () => {
       androidDistNeedsBuild({
         freshStamp: {
           buildId: "same",
-          commit: "abc123",
+          commit: CURRENT_COMMIT,
           capacitorTarget: "ios",
         },
-        headCommit: "abc123",
+        headCommit: CURRENT_COMMIT,
       }),
     ).toMatchObject({
       build: true,
@@ -42,14 +45,14 @@ describe("Android renderer stamp decisions", () => {
       androidDistNeedsBuild({
         freshStamp: {
           buildId: "same",
-          commit: "111111111111",
+          commit: STALE_COMMIT,
           capacitorTarget: "android",
         },
-        headCommit: "222222222222",
+        headCommit: CURRENT_COMMIT,
       }),
     ).toMatchObject({
       build: true,
-      reason: expect.stringContaining("dist commit=111111111111"),
+      reason: expect.stringContaining(`dist commit=${STALE_COMMIT}`),
     });
   });
 
@@ -58,18 +61,33 @@ describe("Android renderer stamp decisions", () => {
       androidDistNeedsBuild({
         freshStamp: {
           buildId: "same",
-          commit: "abcdef123456",
+          commit: CURRENT_COMMIT,
           capacitorTarget: "android",
         },
-        headCommit: "abcdef1234567890",
+        headCommit: CURRENT_COMMIT,
       }),
     ).toEqual({ build: false, reason: "dist renderer stamp is usable" });
+  });
+
+  it("rejects abbreviated or missing Android dist commits", () => {
+    for (const commit of [null, CURRENT_COMMIT.slice(0, 12)]) {
+      expect(
+        androidDistNeedsBuild({
+          freshStamp: {
+            buildId: "same",
+            commit,
+            capacitorTarget: "android",
+          },
+          headCommit: CURRENT_COMMIT,
+        }),
+      ).toMatchObject({ build: true });
+    }
   });
 
   it("installs when the device has no readable installed stamp", () => {
     expect(
       androidInstallDecision({
-        freshStamp: { buildId: "fresh" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
         installedStamp: null,
       }),
     ).toMatchObject({
@@ -81,8 +99,8 @@ describe("Android renderer stamp decisions", () => {
   it("installs when the installed buildId differs from fresh dist", () => {
     expect(
       androidInstallDecision({
-        freshStamp: { buildId: "fresh" },
-        installedStamp: { buildId: "old" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+        installedStamp: { buildId: "old", commit: STALE_COMMIT },
       }),
     ).toEqual({
       install: true,
@@ -90,22 +108,43 @@ describe("Android renderer stamp decisions", () => {
     });
   });
 
-  it("skips install when installed and fresh buildIds match", () => {
+  it("skips install only when installed buildId and full commit match", () => {
     expect(
       androidInstallDecision({
-        freshStamp: { buildId: "fresh" },
-        installedStamp: { buildId: "fresh" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+        installedStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
       }),
     ).toEqual({
       install: false,
-      reason: "installed buildId matches fresh fresh",
+      reason: "installed buildId and commit match fresh fresh",
     });
+  });
+
+  it("installs when equal buildIds carry a stale or malformed commit", () => {
+    for (const commit of [null, CURRENT_COMMIT.slice(0, 12), STALE_COMMIT]) {
+      expect(
+        androidInstallDecision({
+          freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+          installedStamp: { buildId: "fresh", commit },
+        }),
+      ).toMatchObject({ install: true });
+    }
+  });
+
+  it("refuses install decisions from a stale fresh renderer stamp", () => {
+    expect(() =>
+      androidInstallDecision({
+        freshStamp: { buildId: "fresh", commit: STALE_COMMIT },
+        installedStamp: null,
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toThrow(/does not match expected HEAD/);
   });
 
   it("requires an APK rebuild when the packaged stamp is missing", () => {
     expect(
       androidApkNeedsBuild({
-        freshStamp: { buildId: "fresh" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
         apkStamp: null,
       }),
     ).toMatchObject({
@@ -117,8 +156,8 @@ describe("Android renderer stamp decisions", () => {
   it("requires an APK rebuild when the packaged buildId differs from fresh dist", () => {
     expect(
       androidApkNeedsBuild({
-        freshStamp: { buildId: "fresh" },
-        apkStamp: { buildId: "old" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+        apkStamp: { buildId: "old", commit: STALE_COMMIT },
       }),
     ).toEqual({
       build: true,
@@ -126,16 +165,37 @@ describe("Android renderer stamp decisions", () => {
     });
   });
 
-  it("accepts an APK whose packaged buildId matches fresh dist", () => {
+  it("accepts an APK whose packaged buildId and full commit match fresh dist", () => {
     expect(
       androidApkNeedsBuild({
-        freshStamp: { buildId: "fresh" },
-        apkStamp: { buildId: "fresh" },
+        freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+        apkStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
       }),
     ).toEqual({
       build: false,
-      reason: "APK buildId matches fresh fresh",
+      reason: "APK buildId and commit match fresh fresh",
     });
+  });
+
+  it("rebuilds when equal APK buildIds carry a stale or malformed commit", () => {
+    for (const commit of [null, CURRENT_COMMIT.slice(0, 12), STALE_COMMIT]) {
+      expect(
+        androidApkNeedsBuild({
+          freshStamp: { buildId: "fresh", commit: CURRENT_COMMIT },
+          apkStamp: { buildId: "fresh", commit },
+        }),
+      ).toMatchObject({ build: true });
+    }
+  });
+
+  it("refuses APK decisions from a stale fresh renderer stamp", () => {
+    expect(() =>
+      androidApkNeedsBuild({
+        freshStamp: { buildId: "fresh", commit: STALE_COMMIT },
+        apkStamp: null,
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toThrow(/does not match expected HEAD/);
   });
 
   it("rejects a packaged APK whose renderer buildId differs from fresh dist", () => {

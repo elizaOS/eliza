@@ -95,6 +95,17 @@ export default async function globalSetup() {
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
+    "android.permission.READ_SMS",
+    "android.permission.SEND_SMS",
+    "android.permission.RECEIVE_SMS",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.READ_CONTACTS",
+    "android.permission.WRITE_CONTACTS",
+    "android.permission.CALL_PHONE",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.READ_CALL_LOG",
+    "android.permission.WRITE_CALL_LOG",
   ]) {
     adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
   }

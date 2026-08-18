@@ -106,10 +106,14 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      # android-e2e.mjs owns the whole lane inside the emulator session. The
-      # explicit host probe set is limited to onboarding, route rendering, and
-      # the native-plugin bridge: local-agent, destructive lifecycle, launcher
-      # soak, and voice specs have separate hardware prerequisites.
+      # Build before launching QEMU. The full native/web build saturates the
+      # hosted runner for several minutes and made the emulator disappear before
+      # the route sweep on otherwise healthy exact-head APKs.
+      - name: Build exact-head Android APK
+        run: bun run --cwd packages/app build:android
+
+      # android-e2e.mjs owns install, exact renderer-stamp verification, host
+      # lifecycle, and the explicit onboarding/route/native-bridge probe set.
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -118,7 +122,7 @@ jobs:
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+          script: node packages/app/scripts/android-e2e.mjs --skip-build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
 
       - name: Upload Android device bundle
         if: always()
@@ -160,6 +164,11 @@ jobs:
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_EVENT_NAME" \
             > "$ELIZA_DEVICE_BUNDLE_ROOT/ios/logs/workflow-bootstrap.txt"
 
+      # The simulator build compiles the MTP native artifact from the canonical
+      # pinned llama.cpp fork. Avoid cloning unrelated large submodules.
+      - name: Initialize iOS native inference source
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -178,6 +187,15 @@ jobs:
       # package chains before the runner's internal Vite/Capacitor build.
       - name: Build Vite config package deps
         run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+
+      # npm's Darwin static probes are x86-only and can stall under Rosetta on
+      # hosted arm64 runners. Native Homebrew probes keep evidence validation
+      # deterministic and provide both ffmpeg frame decode and ffprobe metadata.
+      - name: Install native media probes
+        run: |
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          echo "ELIZA_FFMPEG_BIN=$(brew --prefix)/bin/ffmpeg" >> "$GITHUB_ENV"
+          echo "ELIZA_FFPROBE_BIN=$(brew --prefix)/bin/ffprobe" >> "$GITHUB_ENV"
 
       # ios-e2e.mjs owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.

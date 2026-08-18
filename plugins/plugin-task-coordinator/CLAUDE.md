@@ -51,7 +51,12 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 - **`import "./register-slots.js"`** — activates the slot-registry fills below (the `@elizaos/ui` empty-slot defaults). Without this import the UI renders empty slots.
 
-The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the app shell through the standard **view manifest** in `src/index.ts` (`bundlePath` + `componentExport`), NOT via `registerAppShellPage` — this plugin registers no app-shell pages.
+The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) keep the
+standard **view manifest** in `src/index.ts` (`bundlePath` +
+`componentExport`) for web/desktop hosts. `register.ts` also contributes lazy
+`registerAppShellPage` loaders so signed native clients can mount the same
+components without executing agent-served JavaScript, which native policy
+rejects.
 
 ## Layout
 
@@ -59,7 +64,7 @@ The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the ap
 src/
   index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
   orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
-  register.ts                      Slot import side effect
+  register.ts                      Signed app-shell page loaders + slot import side effect
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   CodingAgentTasksPanel.interact.ts  View-bundle `interact` capability handler (split for Fast-Refresh compat)

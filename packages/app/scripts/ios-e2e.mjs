@@ -1,19 +1,11 @@
 #!/usr/bin/env node
-// iOS end-to-end orchestrator (macOS only — uses `xcrun simctl`). Mirrors
-// android-e2e.mjs for the iOS Simulator. The iOS WebView (WKWebView) is not
-// CDP-drivable like Android, so there is no Playwright route-coverage sweep;
-// instead this proves the device-level real paths and fails LOUDLY:
-//   1. A simulator is booted (boots one if needed).
-//   2. The app is built when requested, then explicitly installed even when a
-//      prebuilt --app-path is supplied.
-//   3. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
-//   4. Local route: on-device agent + smallest model + real chat round-trip
-//      (mobile-local-chat-smoke ios full-bun path).
-//   5. (optional) Cloud route: real provisioning probe.
-//
-// Flags: --device <name|udid>  --app-path <App.app>  --skip-build
-//        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+/**
+ * Orchestrates iOS Simulator build, install, auth, local-chat, and optional
+ * cloud verification into one exact-head evidence bundle. Recording begins
+ * before the selected app-verification legs so the walkthrough shows the
+ * behavior under test rather than a post-test relaunch.
+ */
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,12 +33,15 @@ import {
   finalizeDeviceE2eBundle,
   finishBundleStep,
   formatFailureForensicsBlock,
+  getDeviceE2eBundleFinalizationError,
   recordBundleArtifact,
+  recordBundleRunnerFailure,
   runBundledCommand,
   setBundleBuild,
   setBundleDevice,
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
+import { normalizedImageDifference } from "./lib/device-image.mjs";
 import { acquireDeviceLease } from "./lib/device-lease.mjs";
 import {
   assertCandidateIosAppRendererFresh,
@@ -54,12 +49,12 @@ import {
 } from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { findLatestBuiltIosSimulatorApp } from "./lib/ios-simulator-app-product.mjs";
+import { startIosSimulatorVideo } from "./lib/ios-simulator-capture.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const flags = parseIosE2eArgs(process.argv);
 const log = (m) => console.log(`[ios-e2e] ${m}`);
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readAppIdentity() {
   const configPath = path.join(appDir, "app.config.ts");
@@ -149,30 +144,64 @@ function captureSimulatorScreenshot(bundle, udid) {
   return outPath;
 }
 
-async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
-  const outPath = path.join(bundle.rawDir, "ios-final.mov");
-  const recorder = spawn(
-    "xcrun",
-    [
-      "simctl",
-      "io",
-      udid,
-      "recordVideo",
-      "--codec",
-      "h264",
-      "--force",
-      outPath,
-    ],
-    { stdio: "ignore" },
+async function recordSimulatorVideo(bundle, udid, appId, loadedScreenPath) {
+  const recording = startIosSimulatorVideo({
+    target: udid,
+    artifactDir: bundle.rawDir,
+    filename: "ios-final.mp4",
+    log,
+  });
+  const readinessPath = path.join(bundle.rawDir, "ios-walkthrough-ready.png");
+  const readinessReport = path.join(
+    bundle.reportsDir,
+    "ios-walkthrough-readiness.json",
   );
-  await delay(Math.max(1, durationSeconds) * 1000);
-  recorder.kill("SIGINT");
-  await Promise.race([
-    new Promise((resolve) => recorder.once("close", resolve)),
-    delay(5_000),
-  ]);
-  if (!fs.existsSync(outPath)) return null;
-  return outPath;
+  const threshold = 0.04;
+  const timeoutMs = 20_000;
+  const startedAt = Date.now();
+  try {
+    // A static Simulator screen can be encoded as one 0.067s frame. Relaunch
+    // the real app, then keep recording until its pixels match the already
+    // captured loaded state. This rejects black/splash-only videos while
+    // bounding readiness independently of codec validation.
+    trySimctl(["terminate", udid, appId]);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    simctl(["launch", udid, appId]);
+    let difference = Number.POSITIVE_INFINITY;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      simctl(["io", udid, "screenshot", "--type=png", readinessPath]);
+      difference = await normalizedImageDifference(
+        loadedScreenPath,
+        readinessPath,
+      );
+      log(`walkthrough readiness visual difference=${difference.toFixed(4)}`);
+      if (difference <= threshold) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        fs.writeFileSync(
+          readinessReport,
+          `${JSON.stringify(
+            {
+              result: "passed",
+              normalizedDifference: difference,
+              threshold,
+              elapsedMs: Date.now() - startedAt,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        recordBundleArtifact(bundle, readinessReport, "log");
+        return await recording.stop();
+      }
+    }
+    throw new Error(
+      `iOS walkthrough did not reach the loaded reference screen within ${timeoutMs}ms (difference=${difference.toFixed(4)}, threshold=${threshold})`,
+    );
+  } catch (error) {
+    await recording.stop();
+    throw error;
+  }
 }
 
 function captureSimulatorLog(bundle, udid, appId) {
@@ -233,7 +262,7 @@ function ensureSimulatorBooted(deviceName) {
   return udid;
 }
 
-function installBuiltSimulatorApp(udid, appId) {
+function installBuiltSimulatorApp(udid, appId, expectedCommit) {
   const appPath = flags.appPath ?? findLatestBuiltIosSimulatorApp();
   if (!appPath) {
     throw new Error(
@@ -246,6 +275,7 @@ function installBuiltSimulatorApp(udid, appId) {
     bundleId: appId,
     repoRoot,
     log,
+    expectedCommit,
   });
   trySimctl(["terminate", udid, appId]);
   trySimctl(["uninstall", udid, appId]);
@@ -260,6 +290,7 @@ function installBuiltSimulatorApp(udid, appId) {
     bundleId: appId,
     repoRoot,
     log,
+    expectedCommit,
   });
 }
 
@@ -329,7 +360,11 @@ function runStep(bundle, step, { udid, appId, urlScheme }) {
     case "install": {
       const installStep = startBundleStep(bundle, step.label);
       try {
-        const stamp = installBuiltSimulatorApp(udid, appId);
+        const stamp = installBuiltSimulatorApp(
+          udid,
+          appId,
+          bundle.expectedCommit,
+        );
         const approval = ensureSimulatorSchemeApproval(udid, appId, urlScheme);
         if (approval.changed) {
           log(
@@ -416,10 +451,12 @@ async function main() {
   });
   let finalResult = "failed";
   let finalError = null;
+  let finalizationError = null;
   let lease = null;
   let udid = null;
   let appId = null;
   let urlScheme = null;
+  let testedFlowRecording = null;
 
   try {
     const steps = planIosE2eSteps(flags);
@@ -446,21 +483,48 @@ async function main() {
 
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
+      if (step.verification && !testedFlowRecording) {
+        testedFlowRecording = startIosSimulatorVideo({
+          target: udid,
+          artifactDir: bundle.rawDir,
+          filename: "ios-tested-flow.mp4",
+          log,
+        });
+      }
       runStep(bundle, step, { udid, appId, urlScheme });
+    }
+    if (testedFlowRecording) {
+      const recording = testedFlowRecording;
+      testedFlowRecording = null;
+      const videoPath = await recording.stop();
+      if (!videoPath) {
+        throw new Error("iOS tested-flow recording did not finalize");
+      }
+      recordBundleArtifact(bundle, videoPath, "video");
     }
     finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");
   } catch (error) {
     finalError = error;
-    throw error;
+    recordBundleRunnerFailure(bundle, error);
   } finally {
-    if (udid && appId) {
+    if (testedFlowRecording) {
+      const recording = testedFlowRecording;
+      testedFlowRecording = null;
       try {
-        recordBundleArtifact(
-          bundle,
-          captureSimulatorScreenshot(bundle, udid),
-          "screenshot",
+        const videoPath = await recording.stop();
+        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      } catch (error) {
+        bundle.warnings.push(
+          `iOS tested-flow recording finalization failed: ${error?.message ?? error}`,
         );
+      }
+    }
+    if (udid && appId) {
+      let loadedScreenPath = null;
+      try {
+        loadedScreenPath = captureSimulatorScreenshot(bundle, udid);
+        recordBundleArtifact(bundle, loadedScreenPath, "screenshot");
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(
@@ -468,8 +532,19 @@ async function main() {
         );
       }
       try {
-        const video = await recordSimulatorVideo(bundle, udid);
-        if (video) recordBundleArtifact(bundle, video, "video");
+        if (loadedScreenPath) {
+          const video = await recordSimulatorVideo(
+            bundle,
+            udid,
+            appId,
+            loadedScreenPath,
+          );
+          if (video) recordBundleArtifact(bundle, video, "video");
+        } else {
+          bundle.warnings.push(
+            "final iOS video failed: loaded reference screenshot is unavailable",
+          );
+        }
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(
@@ -490,16 +565,40 @@ async function main() {
       }
     }
     if (udid && appId) {
-      clearIosSmokeDefaults({ udid, bundleId: appId, log });
+      try {
+        clearIosSmokeDefaults({ udid, bundleId: appId, log });
+      } catch (error) {
+        bundle.warnings.push(
+          `iOS smoke-default cleanup failed: ${error?.message ?? error}`,
+        );
+      }
     }
-    lease?.release();
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    try {
+      lease?.release();
+    } catch (error) {
+      bundle.warnings.push(
+        `iOS simulator lease release failed: ${error?.message ?? error}`,
+      );
+    }
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult, {
+      sourceDirs: flags.artifactSources,
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+    finalizationError = getDeviceE2eBundleFinalizationError(bundle);
     if (finalError) {
       const block = formatFailureForensicsBlock(bundle, finalError);
       if (block) process.stderr.write(`\n${block}`);
     }
     log(`bundle: ${bundleRoot}`);
   }
+  if (finalError) throw finalError;
+  if (finalizationError) throw finalizationError;
 }
 main().catch((error) => {
   console.error(`[ios-e2e] FAILED: ${error?.message ?? error}`);

@@ -5,8 +5,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { isFinalizedMp4, isRenderableVideo } from "./device-video.mjs";
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const RECORDING_CLOSE_TIMEOUT_MS = 15_000;
+const RECORDING_KILL_TIMEOUT_MS = 5_000;
 
 function isNonEmptyFile(filePath) {
   try {
@@ -140,6 +142,9 @@ export function startIosSimulatorVideo({
   artifactDir,
   filename = "recording.mov",
   log = () => {},
+  spawnProcess = spawn,
+  closeTimeoutMs = RECORDING_CLOSE_TIMEOUT_MS,
+  killTimeoutMs = RECORDING_KILL_TIMEOUT_MS,
 }) {
   if (!artifactDir) {
     throw new Error("artifactDir is required for iOS simulator video");
@@ -147,11 +152,41 @@ export function startIosSimulatorVideo({
   fs.mkdirSync(artifactDir, { recursive: true });
   const localPath = path.join(artifactDir, filename);
   fs.rmSync(localPath, { force: true });
-  const child = spawn(
+  const child = spawnProcess(
     "xcrun",
-    ["simctl", "io", target, "recordVideo", localPath],
+    [
+      "simctl",
+      "io",
+      target,
+      "recordVideo",
+      "--codec",
+      "h264",
+      "--force",
+      localPath,
+    ],
     { stdio: ["ignore", "ignore", "pipe"] },
   );
+  let didClose = false;
+  const childClosed = new Promise((resolve) => {
+    child.once("close", () => {
+      didClose = true;
+      resolve(true);
+    });
+  });
+  const waitForClose = async (timeoutMs) => {
+    if (didClose) return true;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (closed) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(closed);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      childClosed.then(() => finish(true));
+    });
+  };
   let stderr = "";
   child.stderr?.on("data", (chunk) => {
     stderr += chunk.toString();
@@ -165,14 +200,37 @@ export function startIosSimulatorVideo({
     localPath,
     child,
     async stop() {
-      if (child.exitCode === null) child.kill("SIGINT");
-      await Promise.race([
-        new Promise((resolve) => child.once("close", resolve)),
-        delay(3_000),
-      ]);
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGINT");
+      }
+      let closed = await waitForClose(closeTimeoutMs);
+      if (!closed) {
+        log(
+          `iOS simulator recorder did not close after SIGINT; escalating for ${target}`,
+        );
+        child.kill("SIGTERM");
+        closed = await waitForClose(killTimeoutMs);
+      }
+      if (!closed) {
+        child.kill("SIGKILL");
+        closed = await waitForClose(killTimeoutMs);
+      }
+      if (!closed) {
+        log(`iOS simulator recorder never closed for ${target}`);
+        return null;
+      }
       if (!isNonEmptyFile(localPath)) {
         if (stderr.trim())
           log(`iOS simulator recording stderr: ${stderr.trim()}`);
+        return null;
+      }
+      const extension = path.extname(localPath).toLowerCase();
+      const isRenderable =
+        extension === ".mp4"
+          ? isFinalizedMp4(localPath)
+          : isRenderableVideo(localPath);
+      if (!isRenderable) {
+        log(`iOS simulator recording is not renderable: ${localPath}`);
         return null;
       }
       log(`wrote iOS simulator recording: ${localPath}`);

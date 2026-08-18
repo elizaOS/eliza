@@ -40,12 +40,19 @@ export function parseIosE2eArgs(argv) {
   const has = (flag) => argv.includes(flag);
   const val = (flag) => {
     const i = argv.indexOf(flag);
-    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+    const value = i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+    return value && !value.startsWith("--") ? value : undefined;
   };
   return {
     device: val("--device"),
     appPath: val("--app-path"),
     output: val("--output"),
+    artifactSources: argv.flatMap((arg, index) => {
+      const value = argv[index + 1];
+      return arg === "--artifact-source" && value && !value.startsWith("--")
+        ? [value]
+        : [];
+    }),
     skipBuild: has("--skip-build"),
     skipAuth: has("--skip-auth"),
     skipLocalChat: has("--skip-local-chat"),

@@ -39,6 +39,7 @@ describe("parseIosE2eArgs", () => {
       device: undefined,
       appPath: undefined,
       output: undefined,
+      artifactSources: [],
       skipBuild: false,
       skipAuth: false,
       skipLocalChat: false,
@@ -62,7 +63,7 @@ describe("parseIosE2eArgs", () => {
     expect(f.noWait).toBe(true);
   });
 
-  it("captures --device, --app-path, and --output values", () => {
+  it("captures output, app, device, and repeatable artifact-source values", () => {
     const f = parseIosE2eArgs([
       "--device",
       "iPhone 15",
@@ -70,15 +71,29 @@ describe("parseIosE2eArgs", () => {
       "/tmp/App.app",
       "--output",
       "/tmp/evidence",
+      "--artifact-source",
+      "/tmp/recording.mp4",
+      "--artifact-source",
+      "/tmp/external-logs",
     ]);
     expect(f.device).toBe("iPhone 15");
     expect(f.appPath).toBe("/tmp/App.app");
     expect(f.output).toBe("/tmp/evidence");
+    expect(f.artifactSources).toEqual([
+      "/tmp/recording.mp4",
+      "/tmp/external-logs",
+    ]);
   });
 
   it("does not read past the end of argv for a trailing value flag", () => {
     const f = parseIosE2eArgs(["--device"]);
     expect(f.device).toBeUndefined();
+  });
+
+  it("does not consume another flag as an artifact source value", () => {
+    const f = parseIosE2eArgs(["--artifact-source", "--skip-build"]);
+    expect(f.artifactSources).toEqual([]);
+    expect(f.skipBuild).toBe(true);
   });
 });
 

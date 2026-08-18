@@ -7,10 +7,15 @@
  * process exits non-zero, and prepares inline-friendly evidence files for PR
  * comments without sending new output to the retired repo evidence tree.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import {
+  isFinalizedMp4,
+  isRenderableJpeg,
+  resolveMediaProbeBinary,
+} from "./device-video.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -18,6 +23,7 @@ const INLINE_EXTENSIONS = new Set([".jpg", ".jpeg", ".mp4"]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov"]);
 const LOG_EXTENSIONS = new Set([".log", ".txt", ".json", ".jsonl"]);
+const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
 
 function timestampId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
@@ -80,6 +86,7 @@ function slugifyStepName(name) {
 
 function walkFiles(root) {
   if (!root || !fs.existsSync(root)) return [];
+  if (isFile(root)) return [root];
   const files = [];
   const stack = [root];
   while (stack.length > 0) {
@@ -103,10 +110,6 @@ function walkFiles(root) {
   return files;
 }
 
-function shellAvailable(cmd) {
-  return spawnSync(cmd, ["-version"], { stdio: "ignore" }).status === 0;
-}
-
 function convertPngToJpg(src, dest) {
   if (process.platform === "darwin") {
     const sips = spawnSync(
@@ -116,14 +119,15 @@ function convertPngToJpg(src, dest) {
     );
     if (sips.status === 0 && isNonEmptyFile(dest)) return true;
   }
-  if (shellAvailable("ffmpeg")) {
+  const ffmpegBinary = resolveMediaProbeBinary();
+  if (ffmpegBinary) {
     // `-update 1` is required to write a single still to a fixed (non-pattern)
     // filename: without it the image2 muxer demands a `%d` sequence pattern and
     // older ffmpeg builds treat the missing pattern as a fatal error (non-zero
     // exit, no file). Newer builds only warn, so the flag keeps the conversion
     // deterministic across ffmpeg versions on the CI runners.
     const ffmpeg = spawnSync(
-      "ffmpeg",
+      ffmpegBinary,
       ["-y", "-i", src, "-frames:v", "1", "-update", "1", "-q:v", "2", dest],
       { stdio: "ignore" },
     );
@@ -166,9 +170,10 @@ function convertPngToJpgWithSharp(src, dest) {
 }
 
 function remuxMovToMp4(src, dest) {
-  if (!shellAvailable("ffmpeg")) return false;
+  const ffmpegBinary = resolveMediaProbeBinary();
+  if (!ffmpegBinary) return false;
   const result = spawnSync(
-    "ffmpeg",
+    ffmpegBinary,
     ["-y", "-i", src, "-c", "copy", "-movflags", "+faststart", dest],
     { stdio: "ignore" },
   );
@@ -184,6 +189,40 @@ export function defaultDeviceE2eOutputDir({ appDir, lane, date = new Date() }) {
   return path.join(appDir, "device-e2e-output", `${lane}-${timestampId(date)}`);
 }
 
+export function resolveBundleExpectedCommit(
+  appDir,
+  { execFileSync: execFileSyncDep = execFileSync } = {},
+) {
+  try {
+    const commit = execFileSyncDep("git", ["rev-parse", "HEAD"], {
+      cwd: appDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return FULL_GIT_SHA.test(commit) ? commit.toLowerCase() : null;
+  } catch {
+    // error-policy:J3 A bundle without repository authority fails validation.
+    return null;
+  }
+}
+
+export function assertExactBundleCommit(actual, expected, label = "build") {
+  const actualCommit = typeof actual === "string" ? actual.trim() : "";
+  const expectedCommit = typeof expected === "string" ? expected.trim() : "";
+  if (!FULL_GIT_SHA.test(expectedCommit)) {
+    throw new Error("expected git commit is missing or is not a full SHA-1");
+  }
+  if (!FULL_GIT_SHA.test(actualCommit)) {
+    throw new Error(`${label}.commit is missing or is not a full SHA-1`);
+  }
+  if (actualCommit.toLowerCase() !== expectedCommit.toLowerCase()) {
+    throw new Error(
+      `${label}.commit ${actualCommit} does not match expected HEAD ${expectedCommit}`,
+    );
+  }
+  return actualCommit.toLowerCase();
+}
+
 export function createDeviceE2eBundle({
   appDir,
   lane,
@@ -191,6 +230,7 @@ export function createDeviceE2eBundle({
   startedAt = new Date(),
   device = {},
   build = {},
+  expectedCommit = resolveBundleExpectedCommit(appDir),
 }) {
   const root = path.resolve(
     outputDir ?? defaultDeviceE2eOutputDir({ appDir, lane, date: startedAt }),
@@ -205,10 +245,14 @@ export function createDeviceE2eBundle({
     lane,
     device,
     build,
+    expectedCommit,
     steps: [],
     artifacts: [],
     warnings: [],
+    validationErrors: [],
+    result: "running",
     _activeStep: null,
+    _finalizationError: null,
   };
   ensureDir(root);
   writeJson(path.join(root, "summary.json"), buildSummary(bundle, "running"));
@@ -254,8 +298,19 @@ export function failureDirForStep(bundle, step) {
 }
 
 export function recordBundleArtifact(bundle, filePath, kind, step = null) {
-  const absolute = path.resolve(filePath);
-  if (!isFile(absolute)) return null;
+  const sourcePath = path.resolve(filePath);
+  if (!isFile(sourcePath)) return null;
+  const sourceRelative = path.relative(bundle.root, sourcePath);
+  const isExternal =
+    sourceRelative === ".." ||
+    sourceRelative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(sourceRelative);
+  let absolute = sourcePath;
+  if (isExternal) {
+    const destinationDir = kind === "log" ? bundle.logsDir : bundle.rawDir;
+    absolute = uniquePath(destinationDir, path.basename(sourcePath));
+    fs.copyFileSync(sourcePath, absolute);
+  }
   const artifact = {
     kind,
     path: absolute,
@@ -320,12 +375,26 @@ export function appendRunnerLog(bundle, chunk) {
   fs.appendFileSync(path.join(bundle.logsDir, "runner.log"), chunk);
 }
 
+export function recordBundleRunnerFailure(bundle, error) {
+  const message = error?.message ?? error;
+  appendRunnerLog(bundle, `runner failure: ${message}\n`);
+  const activeStep = bundle._activeStep;
+  if (activeStep?.status === "running") {
+    finishBundleStep(bundle, activeStep, "failed", error);
+    return activeStep;
+  }
+  const existingFailure = bundle.steps.find((step) => step.status === "failed");
+  if (existingFailure) return existingFailure;
+  const step = startBundleStep(bundle, "runner failure");
+  return finishBundleStep(bundle, step, "failed", error);
+}
+
 export function runBundledCommand(
   bundle,
   name,
   cmd,
   args,
-  { cwd, env = {}, onFailure } = {},
+  { cwd, env = {}, onFailure, timeoutMs } = {},
 ) {
   const step = startBundleStep(bundle, name);
   const result = spawnSync(cmd, args, {
@@ -333,6 +402,7 @@ export function runBundledCommand(
     env: { ...process.env, ...env },
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
+    timeout: timeoutMs,
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
@@ -345,23 +415,17 @@ export function runBundledCommand(
     appendRunnerLog(bundle, stderr);
   }
   const ok = result.status === 0;
-  const failure = ok
-    ? null
-    : `${cmd} ${args.join(" ")} ${
-        result.status === null
-          ? "terminated by signal"
-          : `exited with ${result.status}`
-      }`;
+  const timedOut = result.error?.code === "ETIMEDOUT";
+  const outcome = timedOut
+    ? `timed out after ${timeoutMs}ms`
+    : result.status === null
+      ? `terminated by signal${result.signal ? ` ${result.signal}` : ""}`
+      : `exited with code ${result.status}`;
+  const failure = ok ? null : `${cmd} ${args.join(" ")} ${outcome}`;
   if (!ok && onFailure) onFailure(step, failure);
   finishBundleStep(bundle, step, ok ? "passed" : "failed", failure);
   if (!ok) {
-    throw new Error(
-      `${cmd} ${args.join(" ")} ${
-        result.status === null
-          ? "terminated by signal"
-          : `exited with code ${result.status}`
-      }`,
-    );
+    throw new Error(`${cmd} ${args.join(" ")} ${outcome}`);
   }
   return result;
 }
@@ -391,6 +455,21 @@ export function prepareInlineArtifacts(bundle) {
   for (const artifact of [...bundle.artifacts]) {
     const ext = path.extname(artifact.path).toLowerCase();
     if (INLINE_EXTENSIONS.has(ext)) {
+      if (ext === ".mp4" && !isFinalizedMp4(artifact.path)) {
+        bundle.warnings.push(
+          `could not publish unfinalized MP4 inline: ${artifact.path}`,
+        );
+        continue;
+      }
+      if (
+        (ext === ".jpg" || ext === ".jpeg") &&
+        !isRenderableJpeg(artifact.path)
+      ) {
+        bundle.warnings.push(
+          `could not publish unrenderable JPEG inline: ${artifact.path}`,
+        );
+        continue;
+      }
       const dest = uniquePath(bundle.inlineDir, path.basename(artifact.path));
       if (path.resolve(artifact.path) !== path.resolve(dest)) {
         fs.copyFileSync(artifact.path, dest);
@@ -461,7 +540,7 @@ function buildSummary(bundle, result) {
     startedAt: bundle.startedAt,
     finishedAt: new Date().toISOString(),
     device: bundle.device,
-    build: bundle.build,
+    build: { ...bundle.build, expectedCommit: bundle.expectedCommit },
     steps: bundle.steps.map((step) => ({
       name: step.name,
       status: step.status,
@@ -478,22 +557,98 @@ function buildSummary(bundle, result) {
       sizeBytes: artifact.sizeBytes,
     })),
     warnings: bundle.warnings,
+    validationErrors: bundle.validationErrors,
     result,
   };
 }
 
-export function finalizeDeviceE2eBundle(bundle, result) {
+function hasInlineArtifact(bundle, extensions) {
+  return bundle.artifacts.some((artifact) => {
+    const relativePath = artifact.relativePath.replaceAll(path.sep, "/");
+    const extension = path.extname(artifact.path).toLowerCase();
+    return (
+      relativePath.startsWith("inline/") &&
+      extensions.has(extension) &&
+      (extension === ".mp4"
+        ? isFinalizedMp4(artifact.path)
+        : isRenderableJpeg(artifact.path))
+    );
+  });
+}
+
+function validateRequiredEvidence(bundle, requiredEvidence) {
+  const findings = [];
+  if (
+    requiredEvidence.buildId &&
+    (typeof bundle.build.buildId !== "string" ||
+      bundle.build.buildId.trim().length === 0)
+  ) {
+    findings.push("build.buildId is missing");
+  }
+  if (requiredEvidence.commit) {
+    try {
+      assertExactBundleCommit(
+        bundle.build.commit,
+        bundle.expectedCommit,
+        "build",
+      );
+    } catch (error) {
+      findings.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (
+    requiredEvidence.inlineScreenshot &&
+    !hasInlineArtifact(bundle, new Set([".jpg", ".jpeg"]))
+  ) {
+    findings.push("inline JPG screenshot is missing");
+  }
+  if (
+    requiredEvidence.inlineVideo &&
+    !hasInlineArtifact(bundle, new Set([".mp4"]))
+  ) {
+    findings.push("inline MP4 walkthrough is missing");
+  }
+  if (
+    requiredEvidence.logs &&
+    !walkFiles(bundle.logsDir).some(isNonEmptyFile)
+  ) {
+    findings.push("logs/ has no non-empty log");
+  }
+  return findings;
+}
+
+export function getDeviceE2eBundleFinalizationError(bundle) {
+  return bundle._finalizationError;
+}
+
+export function finalizeDeviceE2eBundle(
+  bundle,
+  result,
+  { sourceDirs = [], requiredEvidence = {} } = {},
+) {
   collectBundleArtifacts(bundle, [
     bundle.rawDir,
     bundle.logsDir,
     bundle.reportsDir,
     path.join(bundle.root, "test-results"),
+    ...sourceDirs,
   ]);
   prepareInlineArtifacts(bundle);
-  writeBundleJunit(bundle, result);
+  bundle.validationErrors = validateRequiredEvidence(bundle, requiredEvidence);
+  let effectiveResult = result;
+  bundle._finalizationError = null;
+  if (result === "passed" && bundle.validationErrors.length > 0) {
+    const message = `device evidence bundle is incomplete: ${bundle.validationErrors.join("; ")}`;
+    const step = startBundleStep(bundle, "validate evidence bundle");
+    finishBundleStep(bundle, step, "failed", message);
+    effectiveResult = "failed";
+    bundle._finalizationError = new Error(message);
+  }
+  bundle.result = effectiveResult;
+  writeBundleJunit(bundle, effectiveResult);
   writeJson(
     path.join(bundle.root, "summary.json"),
-    buildSummary(bundle, result),
+    buildSummary(bundle, effectiveResult),
   );
   return bundle.root;
 }

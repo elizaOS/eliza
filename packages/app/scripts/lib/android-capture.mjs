@@ -6,8 +6,27 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveAdb } from "./android-device.mjs";
+import { isFinalizedMp4 } from "./device-video.mjs";
+
+export { isFinalizedMp4 } from "./device-video.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function stopAndroidScreenrecordProcess({
+  signal,
+  isRunning,
+  wait = delay,
+  timeoutMs = 15_000,
+  pollMs = 500,
+}) {
+  signal();
+  const exitDeadline = Date.now() + timeoutMs;
+  while (Date.now() < exitDeadline) {
+    if (!isRunning()) return true;
+    await wait(pollMs);
+  }
+  return !isRunning();
+}
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -18,47 +37,6 @@ function isNonEmptyFile(filePath) {
     return fs.statSync(filePath).size > 0;
   } catch {
     return false;
-  }
-}
-
-export function isFinalizedMp4(filePath) {
-  if (!isNonEmptyFile(filePath)) return false;
-
-  const fd = fs.openSync(filePath, "r");
-  try {
-    const fileSize = fs.fstatSync(fd).size;
-    const header = Buffer.alloc(16);
-    let offset = 0;
-    let sawFileType = false;
-    let sawMovie = false;
-
-    while (offset + 8 <= fileSize) {
-      const bytesRead = fs.readSync(fd, header, 0, 16, offset);
-      if (bytesRead < 8) return false;
-
-      const size32 = header.readUInt32BE(0);
-      const type = header.toString("ascii", 4, 8);
-      let boxSize = size32;
-      let headerSize = 8;
-      if (size32 === 1) {
-        if (bytesRead < 16) return false;
-        const size64 = header.readBigUInt64BE(8);
-        if (size64 > BigInt(Number.MAX_SAFE_INTEGER)) return false;
-        boxSize = Number(size64);
-        headerSize = 16;
-      } else if (size32 === 0) {
-        boxSize = fileSize - offset;
-      }
-
-      if (boxSize < headerSize || offset + boxSize > fileSize) return false;
-      if (type === "ftyp") sawFileType = true;
-      if (type === "moov") sawMovie = true;
-      offset += boxSize;
-    }
-
-    return sawFileType && sawMovie && offset === fileSize;
-  } finally {
-    fs.closeSync(fd);
   }
 }
 
@@ -108,26 +86,33 @@ export async function startAndroidScreenRecord({
     localPath,
     remotePath,
     async stop() {
-      spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
-        stdio: "ignore",
-      });
       // Keep the adb shell transport alive while the device encoder handles
-      // SIGINT and appends the trailing moov atom. Signaling the local adb
-      // process here can hang up screenrecord before finalization.
-      const exitDeadline = Date.now() + 15_000;
-      while (Date.now() < exitDeadline) {
-        const pid = spawnSync(
-          adb,
-          ["-s", serial, "shell", "pidof", "screenrecord"],
-          { encoding: "utf8" },
-        );
-        if (!pid.stdout || pid.stdout.trim() === "") break;
+      // one SIGINT and appends the trailing moov atom. Repeated SIGINTs can
+      // interrupt that flush; signaling the local adb process can instead hang
+      // up screenrecord before finalization.
+      const exited = await stopAndroidScreenrecordProcess({
+        signal: () =>
+          spawnSync(
+            adb,
+            ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
+            { stdio: "ignore" },
+          ),
+        isRunning: () => {
+          const pid = spawnSync(
+            adb,
+            ["-s", serial, "shell", "pidof", "screenrecord"],
+            { encoding: "utf8" },
+          );
+          return Boolean(pid.stdout?.trim());
+        },
+      });
+      if (!exited) {
+        log(`Android screenrecord did not exit after SIGINT: ${remotePath}`);
         spawnSync(
           adb,
-          ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
+          ["-s", serial, "shell", "pkill", "-TERM", "screenrecord"],
           { stdio: "ignore" },
         );
-        await delay(500);
       }
       if (recorder.exitCode === null) {
         await Promise.race([
@@ -136,19 +121,25 @@ export async function startAndroidScreenRecord({
         ]);
       }
       if (recorder.exitCode === null) recorder.kill("SIGTERM");
+      spawnSync(adb, ["-s", serial, "shell", "sync"], { stdio: "ignore" });
       // Belt over the pid check: require the remote file size to hold steady
-      // across consecutive samples so a mid-flush pull can never grab a
+      // across four consecutive samples so a mid-flush pull can never grab a
       // truncated file (covers a transient pidof miss or the exit-wait
       // timing out above).
       let settledSize = -1;
-      for (let i = 0; i < 10; i += 1) {
+      let stableSamples = 0;
+      for (let i = 0; i < 16; i += 1) {
         const stat = spawnSync(
           adb,
           ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
           { encoding: "utf8" },
         );
         const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
-        if (Number.isFinite(size) && size > 0 && size === settledSize) break;
+        stableSamples =
+          Number.isFinite(size) && size > 0 && size === settledSize
+            ? stableSamples + 1
+            : 0;
+        if (stableSamples >= 3) break;
         settledSize = Number.isFinite(size) ? size : -1;
         await delay(500);
       }
@@ -313,6 +304,7 @@ export function captureAndroidScreenshot({
   artifactDir,
   filename = "screenshot.png",
   log = () => {},
+  timeoutMs = 10_000,
 }) {
   if (!serial) throw new Error("serial is required for Android screenshot");
   if (!artifactDir) {
@@ -321,7 +313,9 @@ export function captureAndroidScreenshot({
 
   ensureDir(artifactDir);
   const localPath = path.join(artifactDir, filename);
-  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"]);
+  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
+    timeout: timeoutMs,
+  });
   if (result.status !== 0 || !result.stdout?.length) {
     const detail = result.stderr?.toString("utf8").trim();
     throw new Error(
@@ -343,6 +337,7 @@ export function captureAndroidLogcat({
   filename = "logcat.txt",
   lines = 500,
   log = () => {},
+  timeoutMs = 10_000,
 }) {
   if (!serial) throw new Error("serial is required for Android logcat");
   if (!artifactDir)
@@ -353,7 +348,7 @@ export function captureAndroidLogcat({
   const result = spawnSync(
     adb,
     ["-s", serial, "logcat", "-d", "-t", String(lines)],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: timeoutMs },
   );
   fs.writeFileSync(
     localPath,

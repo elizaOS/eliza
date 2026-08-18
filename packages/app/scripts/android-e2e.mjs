@@ -41,8 +41,10 @@ import {
   finalizeDeviceE2eBundle,
   finishBundleStep,
   formatFailureForensicsBlock,
+  getDeviceE2eBundleFinalizationError,
   parseOutputDirArg,
   recordBundleArtifact,
+  recordBundleRunnerFailure,
   runBundledCommand,
   setBundleBuild,
   setBundleDevice,
@@ -60,6 +62,7 @@ const val = (flag, fb) => {
   return i >= 0 ? process.argv[i + 1] : fb;
 };
 const log = (m) => console.log(`[android-e2e] ${m}`);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // These lists are intentionally explicit. The hosted x86_64 emulator must not
 // accidentally inherit a new local-runtime, destructive lifecycle, or voice
@@ -88,10 +91,6 @@ const SMOKE_MODEL = {
   ),
 };
 
-// On-device voice (STT/TTS) GGUFs the voice-selftest needs alongside the chat
-// model. Unlike the chat smoke model these are not auto-downloaded by the
-// harness; they live in the host's local-inference cache. Defaults match where
-// the desktop runtime stores them; override per env for CI.
 const VOICE_MODELS = (() => {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
   const asrDir =
@@ -100,61 +99,48 @@ const VOICE_MODELS = (() => {
   const ttsDir =
     process.env.ELIZA_ANDROID_TTS_MODEL_DIR ??
     path.join(home, ".local/state/eliza/local-inference/models/omnivoice");
-  const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  const deviceRoot =
+    "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
   return [
     {
       host: path.join(asrDir, "eliza-1-asr.gguf"),
-      dev: `${dev}/asr/eliza-1-asr.gguf`,
+      device: `${deviceRoot}/asr/eliza-1-asr.gguf`,
     },
     {
       host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"),
-      dev: `${dev}/asr/eliza-1-asr-mmproj.gguf`,
+      device: `${deviceRoot}/asr/eliza-1-asr-mmproj.gguf`,
     },
     {
       host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),
-      dev: `${dev}/tts/omnivoice-base-q4_k_m.gguf`,
+      device: `${deviceRoot}/tts/omnivoice-base-q4_k_m.gguf`,
     },
     {
       host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"),
-      dev: `${dev}/tts/omnivoice-tokenizer-q4_k_m.gguf`,
+      device: `${deviceRoot}/tts/omnivoice-tokenizer-q4_k_m.gguf`,
     },
   ];
 })();
 
-// Stage the ASR/TTS GGUFs the voice round-trip needs. Idempotent (skips files
-// already present at the right size, so it no-ops on a real device that already
-// carries them), and never the failure point — if the host cache lacks them we
-// log and move on so voice-selftest fails loudly with the real "ASR assets
-// missing" rather than a push error. Emulators are root (ensureEmulatorPermissive
-// ran), so the push into the app data dir succeeds.
 function stageVoiceModels(adb, serial) {
-  const toStage = VOICE_MODELS.filter((m) => {
-    if (!fs.existsSync(m.host)) return false;
+  const missing = VOICE_MODELS.filter((model) => !fs.existsSync(model.host));
+  if (missing.length > 0) {
+    log(
+      `voice models absent from host cache (${missing.map((model) => path.basename(model.host)).join(", ")}); the voice test will report the device gap`,
+    );
+    return;
+  }
+  const toStage = VOICE_MODELS.filter((model) => {
     const probe = spawnSync(
       adb,
-      ["-s", serial, "shell", "stat", "-c", "%s", m.dev],
-      {
-        encoding: "utf8",
-      },
+      ["-s", serial, "shell", "stat", "-c", "%s", model.device],
+      { encoding: "utf8" },
     );
-    return (probe.stdout ?? "").trim() !== String(fs.statSync(m.host).size);
+    return (probe.stdout ?? "").trim() !== String(fs.statSync(model.host).size);
   });
-  const missingHost = VOICE_MODELS.filter((m) => !fs.existsSync(m.host));
-  if (missingHost.length > 0) {
-    log(
-      `voice models: ${missingHost.length}/${VOICE_MODELS.length} absent from the host cache ` +
-        `(${missingHost.map((m) => path.basename(m.host)).join(", ")}) — skipping voice-model staging; ` +
-        `voice-selftest will report the real on-device gap. Set ELIZA_ANDROID_ASR_MODEL_DIR / ELIZA_ANDROID_TTS_MODEL_DIR.`,
-    );
-    return;
-  }
-  if (toStage.length === 0) {
-    log("voice models already staged on device.");
-    return;
-  }
-  const devModels =
+  if (toStage.length === 0) return;
+  const deviceRoot =
     "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
-  spawnSync(
+  execFileSync(
     adb,
     [
       "-s",
@@ -162,23 +148,17 @@ function stageVoiceModels(adb, serial) {
       "shell",
       "mkdir",
       "-p",
-      `${devModels}/asr`,
-      `${devModels}/tts`,
+      `${deviceRoot}/asr`,
+      `${deviceRoot}/tts`,
     ],
-    {
-      stdio: "ignore",
-    },
+    { stdio: "ignore" },
   );
-  for (const m of toStage) {
-    log(`staging voice model ${path.basename(m.host)}…`);
-    const res = spawnSync(adb, ["-s", serial, "push", m.host, m.dev], {
+  for (const model of toStage) {
+    execFileSync(adb, ["-s", serial, "push", model.host, model.device], {
       stdio: "inherit",
     });
-    if (res.status !== 0) {
-      throw new Error(`adb push ${m.host} exited with code ${res.status}`);
-    }
   }
-  spawnSync(
+  execFileSync(
     adb,
     [
       "-s",
@@ -187,21 +167,19 @@ function stageVoiceModels(adb, serial) {
       "chmod",
       "-R",
       "755",
-      `${devModels}/asr`,
-      `${devModels}/tts`,
+      `${deviceRoot}/asr`,
+      `${deviceRoot}/tts`,
     ],
-    {
-      stdio: "ignore",
-    },
+    { stdio: "ignore" },
   );
-  log(`voice models staged for on-device ASR/TTS (${toStage.length} pushed).`);
 }
 
-function run(bundle, name, cmd, args, env = {}) {
+function run(bundle, name, cmd, args, env = {}, options = {}) {
   return runBundledCommand(bundle, name, cmd, args, {
     cwd: appDir,
     env,
     onFailure: (step, error) => captureAndroidFailure(bundle, step, error),
+    ...options,
   });
 }
 
@@ -320,7 +298,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
 
   let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
   let apkStamp = readApkRendererStamp(apk);
-  let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+  let apkDecision = androidApkNeedsBuild({
+    freshStamp,
+    apkStamp,
+    expectedCommit: headCommit,
+  });
   if (apkDecision.build) {
     if (skipBuild) {
       throw new Error(
@@ -338,7 +320,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
       }
       apk = resolveApk(process.env.ELIZA_ANDROID_APK);
       apkStamp = readApkRendererStamp(apk);
-      apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+      apkDecision = androidApkNeedsBuild({
+        freshStamp,
+        apkStamp,
+        expectedCommit: headCommit,
+      });
     }
   }
   if (apkDecision.build) {
@@ -351,7 +337,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
   const installedStamp = readInstalledRendererStamp(adb, serial, { log });
   const installDecision = forceBuild
     ? { install: true, reason: "--force-build/--build requested" }
-    : androidInstallDecision({ freshStamp, installedStamp });
+    : androidInstallDecision({
+        freshStamp,
+        installedStamp,
+        expectedCommit: headCommit,
+      });
   if (installDecision.install) {
     log(`${installDecision.reason} — installing ${apk}`);
     const step = startBundleStep(bundle, "install Android APK");
@@ -369,15 +359,15 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
     // the already-validated local `apkStamp` and no `adb pull` readback of the
     // whole APK is needed.
     setBundleBuild(bundle, {
-      buildId: apkStamp?.buildId ?? freshStamp.buildId,
-      commit: apkStamp?.commit ?? freshStamp.commit ?? null,
+      buildId: apkStamp.buildId,
+      commit: apkStamp.commit ?? null,
     });
     return;
   }
 
   setBundleBuild(bundle, {
-    buildId: installedStamp?.buildId ?? freshStamp.buildId,
-    commit: installedStamp?.commit ?? freshStamp.commit ?? null,
+    buildId: installedStamp.buildId,
+    commit: installedStamp.commit ?? null,
   });
   log(`${installDecision.reason} — skipping APK install.`);
 }
@@ -404,6 +394,56 @@ function ensureSmokeModelCached() {
   return dest;
 }
 
+async function captureAndroidPreflightEvidence(bundle, adb, serial) {
+  const step = startBundleStep(bundle, "capture Android preflight evidence");
+  let recording = null;
+  try {
+    execFileSync(
+      adb,
+      ["-s", serial, "shell", "monkey", "-p", "ai.elizaos.app", "1"],
+      { stdio: "ignore" },
+    );
+    recording = await startAndroidScreenRecord({
+      adb,
+      serial,
+      artifactDir: bundle.rawDir,
+      filename: "android-preflight.mp4",
+      remotePath: `/sdcard/eliza-android-preflight-${process.pid}.mp4`,
+      log,
+    });
+    await delay(3_000);
+    recordBundleArtifact(
+      bundle,
+      captureAndroidScreenshot({
+        adb,
+        serial,
+        artifactDir: bundle.rawDir,
+        filename: "android-preflight.png",
+        log,
+      }),
+      "screenshot",
+      step,
+    );
+    const videoPath = await recording.stop();
+    recording = null;
+    if (!videoPath) {
+      throw new Error("Android preflight recording did not finalize");
+    }
+    recordBundleArtifact(bundle, videoPath, "video", step);
+    finishBundleStep(bundle, step, "passed");
+  } catch (error) {
+    if (recording) {
+      try {
+        await recording.stop();
+      } catch {
+        // error-policy:J6 The original preflight failure remains authoritative.
+      }
+    }
+    failAndroidStep(bundle, step, error);
+    throw error;
+  }
+}
+
 async function main() {
   const bundle = createDeviceE2eBundle({
     appDir,
@@ -415,6 +455,7 @@ async function main() {
   let lease = null;
   let finalResult = "failed";
   let finalError = null;
+  let finalizationError = null;
   let routeRecording = null;
   let hostAgent = null;
 
@@ -547,6 +588,8 @@ async function main() {
       }
     }
 
+    await captureAndroidPreflightEvidence(bundle, adb, serial);
+
     if (!has("--skip-local-chat")) {
       const modelPath = ensureSmokeModelCached();
       log("local route: on-device agent + smallest model + real chat…");
@@ -618,6 +661,7 @@ async function main() {
               "test-results",
               "android",
             ),
+            ELIZA_ANDROID_PARENT_RECORDING: "1",
             ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
               bundle.reportsDir,
               "android-playwright.junit.xml",
@@ -631,10 +675,12 @@ async function main() {
               "android-playwright-html",
             ),
           },
+          { timeoutMs: 20 * 60_000 },
         );
       } finally {
-        const videoPath = await routeRecording.stop();
+        const recording = routeRecording;
         routeRecording = null;
+        const videoPath = await recording.stop();
         if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
       }
     }
@@ -684,10 +730,19 @@ async function main() {
     log("ALL ANDROID E2E PASSED ✅");
   } catch (error) {
     finalError = error;
+    recordBundleRunnerFailure(bundle, error);
   } finally {
     if (routeRecording) {
-      const videoPath = await routeRecording.stop();
-      if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      const recording = routeRecording;
+      routeRecording = null;
+      try {
+        const videoPath = await recording.stop();
+        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      } catch (error) {
+        bundle.warnings.push(
+          `Android route recording finalization failed: ${error?.message ?? error}`,
+        );
+      }
     }
     if (hostAgent) {
       const step = startBundleStep(bundle, "stop deterministic host agent");
@@ -704,6 +759,25 @@ async function main() {
       }
     }
     if (adb && serial) {
+      if (has("--skip-route-coverage")) {
+        try {
+          const finalRecording = await startAndroidScreenRecord({
+            adb,
+            serial,
+            artifactDir: bundle.rawDir,
+            filename: "android-final.mp4",
+            remotePath: `/sdcard/eliza-android-final-${process.pid}.mp4`,
+            log,
+          });
+          await delay(3_000);
+          const videoPath = await finalRecording.stop();
+          if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+        } catch (error) {
+          bundle.warnings.push(
+            `final Android video failed: ${error?.message ?? error}`,
+          );
+        }
+      }
       try {
         recordBundleArtifact(
           bundle,
@@ -741,8 +815,23 @@ async function main() {
         );
       }
     }
-    lease?.release();
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    try {
+      lease?.release();
+    } catch (error) {
+      bundle.warnings.push(
+        `Android device lease release failed: ${error?.message ?? error}`,
+      );
+    }
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult, {
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+    finalizationError = getDeviceE2eBundleFinalizationError(bundle);
     if (finalError) {
       const block = formatFailureForensicsBlock(bundle, finalError);
       if (block) process.stderr.write(`\n${block}`);
@@ -750,6 +839,7 @@ async function main() {
     log(`bundle: ${bundleRoot}`);
   }
   if (finalError) throw finalError;
+  if (finalizationError) throw finalizationError;
 }
 
 main().catch((error) => {

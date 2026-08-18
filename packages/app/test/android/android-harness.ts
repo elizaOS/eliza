@@ -1,9 +1,8 @@
-// Playwright fixtures + helpers for driving the real on-device Capacitor
-// WebView via Playwright's Android driver (`_android`). Unlike the browser
-// ui-smoke suite (which mocks every /api route in a desktop Chromium), this
-// runs against the ACTUAL app installed on the emulator/device, talking to the
-// real on-device agent. There is no webServer and no network mocking — the
-// assertions exercise real render + real backend.
+/**
+ * Provides Playwright fixtures for the installed Capacitor WebView on a real
+ * Android target. The harness drives the actual app and backend without a web
+ * server or network mocks, while preserving privileged shell navigation.
+ */
 import {
   type AndroidDevice,
   type AndroidWebView,
@@ -414,13 +413,17 @@ export async function waitForShellReady(
 
 /**
  * Client-side SPA navigation. Capacitor's WebView has no server-side fallback
- * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. We drive
- * the app's own router via the History API instead, exactly like a user tap.
+ * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. Dispatch
+ * the public shell navigation event used by agent actions and deep links; raw
+ * History writes correctly fail once a sandboxed view realm is foregrounded.
  */
 export async function gotoRoute(page: Page, routePath: string): Promise<void> {
   await page.evaluate((path: string) => {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewPath: path },
+      }),
+    );
   }, routePath);
 }
 

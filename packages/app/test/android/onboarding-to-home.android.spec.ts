@@ -74,12 +74,15 @@ test.describe
       // The device-side remote port must reach the host's deterministic agent.
       adbReverse(adbBin, serial, DEVICE_REMOTE_PORT, HOST_AGENT_PORT);
 
-      const recording = await startAndroidScreenRecord({
-        serial,
-        artifactDir: ARTIFACT_DIR,
-        filename: "onboarding-to-home.mp4",
-        remotePath: "/sdcard/eliza-onboarding-to-home.mp4",
-      });
+      const recording =
+        process.env.ELIZA_ANDROID_PARENT_RECORDING === "1"
+          ? null
+          : await startAndroidScreenRecord({
+              serial,
+              artifactDir: ARTIFACT_DIR,
+              filename: "onboarding-to-home.mp4",
+              remotePath: "/sdcard/eliza-onboarding-to-home.mp4",
+            });
 
       try {
         // The command clears Android app data before launch, so both WebView
@@ -171,6 +174,7 @@ test.describe
         } else {
           const stubReply = await sendChatAndReadReply(page, {
             label: "android-onboarding",
+            challengeToken: "STREAM_E2E_OK",
           });
           expect(
             stubReply,
@@ -182,7 +186,7 @@ test.describe
           });
         }
       } finally {
-        const videoPath = await recording.stop();
+        const videoPath = await recording?.stop();
         if (videoPath) {
           await testInfo.attach("onboarding walkthrough video", {
             path: videoPath,
