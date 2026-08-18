@@ -71,7 +71,7 @@ function headersWithoutAuthorization(headersInit?: HeadersInit): Headers {
 }
 
 /** Viem aborts the underlying HTTP request when this network deadline expires. */
-const WALLET_RPC_FETCH_TIMEOUT_MS = 4000;
+export const WALLET_RPC_FETCH_TIMEOUT_MS = 4000;
 
 function isRetryableManagedRpcStatus(status: number): boolean {
   return (
@@ -328,6 +328,12 @@ export class WalletProvider {
                   return await fetch(fallbackRpcUrl, {
                     ...init,
                     headers: headersWithoutAuthorization(init?.headers),
+                    signal: init?.signal
+                      ? AbortSignal.any([
+                          init.signal,
+                          AbortSignal.timeout(WALLET_RPC_FETCH_TIMEOUT_MS),
+                        ])
+                      : AbortSignal.timeout(WALLET_RPC_FETCH_TIMEOUT_MS),
                   });
                 } catch (error) {
                   logger.warn(
@@ -338,6 +344,12 @@ export class WalletProvider {
                   return await fetch(fallbackRpcUrl, {
                     ...init,
                     headers: headersWithoutAuthorization(init?.headers),
+                    signal: init?.signal
+                      ? AbortSignal.any([
+                          init.signal,
+                          AbortSignal.timeout(WALLET_RPC_FETCH_TIMEOUT_MS),
+                        ])
+                      : AbortSignal.timeout(WALLET_RPC_FETCH_TIMEOUT_MS),
                   });
                 }
               }
