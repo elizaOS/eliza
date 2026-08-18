@@ -132,22 +132,23 @@ function buildSchemaForParams(
   return { schema, hints, values, setKeys };
 }
 
+/** Credential reveal is a short UI POST — same 15s family as BuildBadge. */
+const API_KEY_REVEAL_TIMEOUT_MS = 15_000;
+
 async function revealSecret(
   pluginId: string,
   key: string,
 ): Promise<string | null> {
   try {
-    const res = await fetch(
+    const json = await client.fetch<{ value?: unknown }>(
       `/api/plugins/${encodeURIComponent(pluginId)}/reveal`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({ key }),
       },
+      { timeoutMs: API_KEY_REVEAL_TIMEOUT_MS },
     );
-    if (!res.ok) return null;
-    const json = (await res.json()) as { value?: string | null };
-    return typeof json.value === "string" ? json.value : null;
+    return typeof json?.value === "string" ? json.value : null;
   } catch {
     // error-policy:J4 null is the typed "cannot reveal" signal — the masked
     // field stays masked and the user can retry; never fabricate a value.
