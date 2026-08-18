@@ -50,7 +50,15 @@ app.post("/", async (c) => {
 
   try {
     user = await requireUserOrApiKey(c);
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
     validated = provisionWalletSchema.parse(body);
     const clientAddress = validated.clientAddress.toLowerCase();
 
