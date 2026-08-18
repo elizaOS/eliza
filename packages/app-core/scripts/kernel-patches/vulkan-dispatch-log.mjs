@@ -4,6 +4,7 @@
  * tuning the Vulkan kernel patches.
  */
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 
 const DISPATCH_RE = /ggml_vk_dispatch_pipeline\(([^,\s)]+)/g;
 const MUL_MAT_RE =
@@ -143,7 +144,10 @@ function usage() {
   ].join("\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const files = process.argv.slice(2);
   if (files.length < 1 || files.length > 2) {
     console.error(usage());

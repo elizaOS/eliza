@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * CLI wrapper for the cloud deploy freshness guard (#14083).
  *
@@ -20,6 +21,7 @@
  * fetched, ancestry is reported as `null` and the guard deploys (fail-open).
  */
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 import { execFileSync } from "../../scripts/lib/spawn-sync-captured.mjs";
 
 import {
@@ -228,7 +230,10 @@ async function main() {
 }
 
 // Only run when invoked directly (not when imported by tests).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((err) => {
     // Even an unexpected crash must fail-open: log and deploy.
     console.error(

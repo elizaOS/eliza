@@ -47,7 +47,7 @@
  */
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseDocument } from "yaml";
 import {
   atomicWriteJsonSync,
@@ -1007,7 +1007,10 @@ function main() {
 
 export { buildInventory };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     main();
   } catch (error) {
