@@ -149,6 +149,25 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).not.toContain("||");
   });
 
+  test("builds the renderer against the staging Cloud origin, and never retargets production", () => {
+    // The renderer resolves its Cloud base at BUILD time from
+    // VITE_ELIZA_CLOUD_BASE (ui/src/platform/ios-runtime.ts) and otherwise
+    // defaults to production. The job-level ELIZAOS_CLOUD_BASE_URL never
+    // reaches Vite, so without this wiring the staging bundle drives
+    // production while holding a staging bearer (#18076).
+    expect(
+      stagingStep("Build app renderer bundle").env?.VITE_ELIZA_CLOUD_BASE,
+    ).toBe("$" + "{{ env.ELIZAOS_CLOUD_BASE_URL }}");
+
+    // The production lane must stay on its default origin: retargeting it
+    // would point a production key at staging.
+    const productionBuild = workflow.jobs?.["cloud-live"]?.steps?.find(
+      (candidate) => candidate.name === "Build app renderer bundle",
+    );
+    expect(productionBuild).toBeDefined();
+    expect(productionBuild?.env?.VITE_ELIZA_CLOUD_BASE).toBeUndefined();
+  });
+
   test("stays opt-in on schedule until the staging key is provisioned", () => {
     expect(stagingJob?.if).toContain("ELIZA_CLOUD_STAGING_LIVE_READY");
     expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
