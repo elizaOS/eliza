@@ -643,7 +643,8 @@ async function handleLocalTranscriptsRoute(
   }
 
   if (!pathname.startsWith("/api/transcripts/")) return null;
-  const id = decodeURIComponent(pathname.slice("/api/transcripts/".length));
+  const id = decodePathSegment(pathname.slice("/api/transcripts/".length));
+  if (id === null) return json({ error: "malformed URL encoding" }, 400);
   if (!id || id.includes("/")) return null;
 
   if (method === "GET") {
@@ -832,9 +833,11 @@ function handleLocalMemoriesRoute(
   }
 
   if (pathname.startsWith("/api/memories/by-entity/")) {
-    const entityId = decodeURIComponent(
+    const entityId = decodePathSegment(
       pathname.slice("/api/memories/by-entity/".length),
     );
+    if (entityId === null)
+      return json({ error: "malformed URL encoding" }, 400);
     if (!entityId) return json({ error: "Missing entity identifier." }, 400);
     const limit = Math.min(
       Math.max(
@@ -932,7 +935,11 @@ async function handleBrowserWorkspaceTabRoute(
   );
   if (!match) return null;
 
-  const tabId = decodeURIComponent(match[1]).trim();
+  const decodedTabId = decodePathSegment(match[1] ?? "");
+  if (decodedTabId === null) {
+    return json({ error: "malformed URL encoding" }, 400);
+  }
+  const tabId = decodedTabId.trim();
   const action = match[2] ?? null;
   const store = readBrowserWorkspaceStore();
   const index = store.tabs.findIndex((tab) => tab.id === tabId);
@@ -1486,6 +1493,17 @@ function emptyWalletTradingProfile(url: URL): Record<string, unknown> {
     tokenBreakdown: [],
     recentSwaps: [],
   };
+}
+
+function decodePathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted path segments: a lone "%" or "%ZZ" makes
+    // decodeURIComponent throw URIError, which escapes this fetch kernel
+    // as an unhandled 500. Malformed encoding is client input.
+    return null;
+  }
 }
 
 function json(data: unknown, status = 200): Response {
@@ -3364,9 +3382,12 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "GET" && pathname.startsWith("/api/documents/")) {
     if (pathname.endsWith("/fragments")) {
-      const documentId = decodeURIComponent(
+      const documentId = decodePathSegment(
         pathname.slice("/api/documents/".length, -"/fragments".length),
       );
+      if (documentId === null) {
+        return json({ error: "malformed URL encoding" }, 400);
+      }
       return json({ documentId, fragments: [], count: 0 });
     }
     return json({ error: "Document not found" }, 404);
@@ -3629,7 +3650,8 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/local-inference\/downloads\/([^/]+)$/,
   );
   if (downloadMatch) {
-    const modelId = decodeURIComponent(downloadMatch[1]);
+    const modelId = decodePathSegment(downloadMatch[1] ?? "");
+    if (modelId === null) return json({ error: "malformed URL encoding" }, 400);
     const job = downloads.get(modelId);
     if (method === "GET") {
       return job ? json({ job }) : json({ error: "Download not found" }, 404);
@@ -3746,7 +3768,8 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/local-inference\/installed\/([^/]+)(?:\/verify)?$/,
   );
   if (installedMatch) {
-    const id = decodeURIComponent(installedMatch[1]);
+    const id = decodePathSegment(installedMatch[1] ?? "");
+    if (id === null) return json({ error: "malformed URL encoding" }, 400);
     const installed = await listInstalledModels();
     const model = installed.find((entry) => entry.id === id);
     if (!model) return json({ error: "Model not found" }, 404);
@@ -3802,7 +3825,10 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/conversations\/([^/]+)\/messages(?:\/stream|\/truncate)?$/,
   );
   if (messageMatch) {
-    const conversationId = decodeURIComponent(messageMatch[1]);
+    const conversationId = decodePathSegment(messageMatch[1] ?? "");
+    if (conversationId === null) {
+      return json({ error: "malformed URL encoding" }, 400);
+    }
     const store = readStore();
     const conversation = store.conversations.find(
       (entry) => entry.id === conversationId,
@@ -3885,7 +3911,10 @@ export async function handleIosLocalAgentRequest(
 
   const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
   if (conversationMatch) {
-    const conversationId = decodeURIComponent(conversationMatch[1]);
+    const conversationId = decodePathSegment(conversationMatch[1] ?? "");
+    if (conversationId === null) {
+      return json({ error: "malformed URL encoding" }, 400);
+    }
     const store = readStore();
     const index = store.conversations.findIndex(
       (entry) => entry.id === conversationId,
