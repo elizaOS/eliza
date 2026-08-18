@@ -38,7 +38,9 @@ permissions:
 jobs:
   smoke:
     name: ${{ inputs.suite }}
-    if: inputs.suite != 'dedicated'
+    # cleanup_only is an exclusive destructive-recovery mode. Never run an
+    # unrelated live suite under the same dispatch, regardless of suite input.
+    if: ${{ !inputs.cleanup_only && inputs.suite != 'dedicated' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -100,7 +102,7 @@ jobs:
 
   dedicated:
     name: Managed dedicated staging canary
-    if: inputs.suite == 'all' || inputs.suite == 'dedicated'
+    if: inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'
     runs-on: ubuntu-24.04
     environment: staging
     # Serialize this live lifecycle even when an `all` run overlaps a
@@ -116,6 +118,10 @@ jobs:
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
       CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
       CLOUD_DEDICATED_CANARY_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
+      # Conditional identity checks and lifecycle locking first shipped here.
+      # Cleanup-only may run from a newer workflow branch, so bind it to this
+      # minimum deployed API contract instead of incorrectly requiring HEAD.
+      CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA: aada8198bc10045c8c841ea4d6dab974ac2a3319
       # Keep this identical to App Live's accepted repository-secret contract.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
     steps:
@@ -278,23 +284,14 @@ jobs:
           deployed_commit="$(
             bun -e '
               import { readFileSync } from "node:fs";
-              import { validateManagedDedicatedCanaryEvidence } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
+              import {
+                validateManagedDedicatedCanaryCleanupEvidence,
+                validateManagedDedicatedCanaryEvidence,
+              } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
               const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
               const cleanupOnly = process.env.EXPECTED_CLEANUP_ONLY === "true";
               const errors = cleanupOnly
-                ? [
-                    evidence.verdict === "pass" ? null : "cleanup_only_verdict_not_pass",
-                    evidence.recovery?.requested === true ? null : "cleanup_only_not_requested",
-                    evidence.recovery?.match === "one" ? null : "cleanup_only_match_not_one",
-                    evidence.recovery?.performed === "accepted" ? null : "cleanup_only_not_accepted",
-                    evidence.recovery?.confirmed === true ? null : "cleanup_only_not_confirmed",
-                    evidence.capacity?.createdAgents === 0 ? null : "cleanup_only_created_agent",
-                    evidence.capacity?.chatRequests === 0 ? null : "cleanup_only_chat_request",
-                    evidence.path?.successfulPaths === 0 ? null : "cleanup_only_path_executed",
-                    evidence.cleanup?.status === "passed" ? null : "cleanup_only_cleanup_not_passed",
-                    evidence.cleanup?.possibleOrphan === false ? null : "cleanup_only_orphan_possible",
-                    evidence.failure === null ? null : "cleanup_only_failure_present",
-                  ].filter(Boolean)
+                ? validateManagedDedicatedCanaryCleanupEvidence(evidence)
                 : validateManagedDedicatedCanaryEvidence(evidence);
               const expectedRecoveryRequested =
                 process.env.EXPECTED_RECOVERY_REQUESTED === "true";
@@ -327,6 +324,16 @@ jobs:
               echo "::error::Staging deploy does not contain this canary's expected source commit."
               exit 1
             fi
+          else
+            minimum_cleanup_api_sha="${CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA:-}"
+            if [[ -z "$minimum_cleanup_api_sha" ]] || ! git cat-file -e "${minimum_cleanup_api_sha}^{commit}" 2>/dev/null; then
+              echo "::error::Required cleanup API contract commit is absent from this repository checkout."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"; then
+              echo "::error::Staging deploy predates the conditional cleanup API contract."
+              exit 1
+            fi
           fi
 
           bun -e '
@@ -335,6 +342,7 @@ jobs:
             const t = evidence.timingsMs;
             console.log("### Managed dedicated staging canary");
             console.log("");
+            console.log("- operation: `" + evidence.operation + "`");
             console.log("- deployed commit: `" + evidence.deployedCommit + "`");
             console.log("- tier: `" + evidence.path.observedTier + "`");
             console.log("- paths: `" + evidence.path.successfulPaths + "/2`");
@@ -362,7 +370,7 @@ jobs:
   shared-staging-onboarding:
     name: Shared staging onboarding
     needs: smoke
-    if: ${{ always() && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
+    if: ${{ always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 20

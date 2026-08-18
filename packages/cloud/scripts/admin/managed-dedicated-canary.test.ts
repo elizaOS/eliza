@@ -9,6 +9,7 @@ import {
   runManagedDedicatedCanary,
   validateManagedDedicatedCanaryArtifact,
   validateManagedDedicatedCanaryEvidence,
+  validateManagedDedicatedCleanupEvidence,
 } from "./managed-dedicated-canary";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -384,6 +385,7 @@ describe("managed dedicated canary", () => {
     const { fixture, evidence } = await runFixture();
 
     expect(evidence.verdict).toBe("pass");
+    expect(evidence.operation).toBe("canary");
     expect(evidence.deployedCommit).toBe(DEPLOYED_COMMIT);
     expect(evidence.path).toMatchObject({
       requestedTier: "dedicated-always",
@@ -512,6 +514,7 @@ describe("managed dedicated canary", () => {
 
   test("cleanup-only requires an exact stale-canary suffix before network access", async () => {
     const { fixture, evidence } = await runFixture({}, { cleanupOnly: true });
+    expect(evidence.operation).toBe("cleanup-only");
     expect(evidence.failure).toEqual({
       phase: "config",
       code: "invalid_stale_canary_suffix",
@@ -593,6 +596,7 @@ describe("managed dedicated canary", () => {
     );
 
     expect(evidence.verdict).toBe("pass");
+    expect(evidence.operation).toBe("canary");
     expect(evidence.failure).toBeNull();
     expect(evidence.capacity.createdAgents).toBe(1);
     expect(evidence.recovery).toEqual({
@@ -634,6 +638,7 @@ describe("managed dedicated canary", () => {
     );
 
     expect(evidence.verdict).toBe("pass");
+    expect(evidence.operation).toBe("cleanup-only");
     expect(evidence.failure).toBeNull();
     expect(evidence.capacity.createdAgents).toBe(0);
     expect(evidence.capacity.chatRequests).toBe(0);
@@ -649,6 +654,10 @@ describe("managed dedicated canary", () => {
       possibleOrphan: false,
     });
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(validateManagedDedicatedCleanupEvidence(evidence)).toEqual([]);
+    expect(validateManagedDedicatedCanaryEvidence(evidence)).toContain(
+      "wrong_operation",
+    );
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
       {
         method: "DELETE",
@@ -657,6 +666,37 @@ describe("managed dedicated canary", () => {
     ]);
     expect(fixture.calls.filter((call) => call.method === "POST")).toHaveLength(
       0,
+    );
+  });
+
+  test("cleanup-only validation rejects full-canary work and contradictory evidence", async () => {
+    const { evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: STALE_SUFFIX, cleanupOnly: true },
+    );
+    const created = structuredClone(evidence);
+    created.capacity.createdAgents = 1;
+    const pathExecuted = structuredClone(evidence);
+    pathExecuted.path.successfulPaths = 1;
+    const timedCreate = structuredClone(evidence);
+    timedCreate.timingsMs.create = 0;
+    const wrongMode = structuredClone(evidence);
+    wrongMode.operation = "canary";
+
+    expect(validateManagedDedicatedCleanupEvidence(created)).toContain(
+      "cleanup_created_agent",
+    );
+    expect(validateManagedDedicatedCleanupEvidence(pathExecuted)).toContain(
+      "cleanup_live_path_executed",
+    );
+    expect(validateManagedDedicatedCleanupEvidence(timedCreate)).toContain(
+      "unexpected_timing_create",
+    );
+    expect(validateManagedDedicatedCleanupEvidence(wrongMode)).toContain(
+      "wrong_operation",
     );
   });
 
@@ -1220,7 +1260,8 @@ describe("managed dedicated canary", () => {
     );
     expect(
       validateManagedDedicatedCanaryEvidence({
-        schemaVersion: 2,
+        schemaVersion: 3,
+        operation: "canary",
         verdict: "pass",
         deployedCommit: DEPLOYED_COMMIT,
         path: {
