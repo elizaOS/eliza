@@ -104,19 +104,17 @@ describe("deferred plugin boot ordering", () => {
     );
   });
 
-  it("pre-registers blocking core dependencies before concurrent runtime service startup", () => {
+  it("runs the blocking core initialization seam before post-runtime services", () => {
     const body = extractInitializeRuntimeServicesBody(elizaSource);
-    const conditionalIndex = body.indexOf("if (blockDeferredPluginImports)");
-    const conditionalEnd = body.indexOf("\n    }", conditionalIndex);
     const coreWaveIndex = body.indexOf(
-      "await preregisterCorePluginsInDependencyWaves({",
+      "await initializeBlockingCoreRuntimeForBoot({",
     );
-    const initializeIndex = body.indexOf("await initializeCoreRuntime()");
+    const credentialStoreStartIndex = body.indexOf(
+      "await ensureConnectorCredentialStoreStarted()",
+    );
 
-    expect(conditionalIndex).toBeGreaterThan(-1);
-    expect(conditionalEnd).toBeGreaterThan(conditionalIndex);
-    expect(coreWaveIndex).toBeGreaterThan(conditionalEnd);
-    expect(initializeIndex).toBeGreaterThan(coreWaveIndex);
+    expect(coreWaveIndex).toBeGreaterThan(-1);
+    expect(credentialStoreStartIndex).toBeGreaterThan(coreWaveIndex);
   });
 
   it("waits for the scheduling runner before Personal Assistant boot jobs use it", () => {

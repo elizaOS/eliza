@@ -16,6 +16,10 @@ import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  initializeBlockingCoreRuntimeForBoot,
+  preregisterCorePluginsInDependencyWaves,
+} from "./blocking-core-boot.ts";
 import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
@@ -74,10 +78,7 @@ import {
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
-import {
-  applyHostActionOwnership,
-  registerFallbackActionIfAbsent,
-} from "./runtime-action-ownership.ts";
+import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
@@ -3475,88 +3476,11 @@ async function registerSqlPluginWithRecovery(
   await initializeDatabaseAdapter(runtime, config);
 }
 
-const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
-]);
-
-async function preregisterCorePluginsInDependencyWaves(args: {
-  runtime: AgentRuntime;
-  resolvedPlugins: RuntimeResolvedPlugin[];
-  alreadyPreRegistered: Set<string>;
-  label?: string;
-  abortSignal?: AbortSignal;
-}): Promise<void> {
-  const pending = new Map<string, RuntimeResolvedPlugin>();
-  for (const name of CORE_PLUGINS) {
-    if (args.alreadyPreRegistered.has(name)) continue;
-    const resolved = args.resolvedPlugins.find((p) => p.name === name);
-    if (!resolved) {
-      logger.debug(
-        `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
-      );
-      continue;
-    }
-    pending.set(name, resolved);
-  }
-
-  const registered = new Set(args.alreadyPreRegistered);
-  const context = args.label ? `${args.label}: ` : "";
-
-  const registerOne = async (
-    name: string,
-    resolved: RuntimeResolvedPlugin,
-  ): Promise<void> => {
-    try {
-      args.abortSignal?.throwIfAborted();
-      const regStart = Date.now();
-      logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(
-        applyHostActionOwnership(args.runtime, resolved.plugin),
-      );
-      registered.add(name);
-      logger.debug(
-        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-      );
-    } catch (err) {
-      if (args.abortSignal?.aborted) throw err;
-      registered.add(name);
-      logger.warn(
-        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-      );
-    } finally {
-      pending.delete(name);
-    }
-  };
-
-  while (pending.size > 0) {
-    args.abortSignal?.throwIfAborted();
-    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
-    for (const [name, resolved] of pending) {
-      const declaredDependencies = resolved.plugin.dependencies ?? [];
-      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
-      const dependencies = [...declaredDependencies, ...bootDependencies];
-      const hasPendingDependency = dependencies.some(
-        (dependency) => pending.has(dependency) && !registered.has(dependency),
-      );
-      if (!hasPendingDependency) {
-        ready.push([name, resolved]);
-      }
-    }
-
-    const wave = ready.length > 0 ? ready : Array.from(pending);
-    await Promise.all(
-      wave.map(([name, resolved]) => registerOne(name, resolved)),
-    );
-    // Yield to the event loop between waves so the bound HTTP server can serve
-    // /api/health and other I/O between CPU-bound wave registrations, instead
-    // of starving it until every wave finishes. Mirrors the deferred
-    // static-import yield above; pure scheduling, every plugin still registers
-    // in the same wave order.
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
-}
+const REQUIRED_BLOCKING_CORE_PLUGINS = new Set(
+  Object.entries(BLOCKING_STATIC_PLUGIN_LOADERS)
+    .filter(([, loader]) => loader.required)
+    .map(([packageName]) => packageName),
+);
 
 export {
   buildCharacterFromConfig,
@@ -5510,12 +5434,6 @@ export async function startEliza(
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
-    if (blockDeferredPluginImports) {
-      // In block-deferred mode the Discord/GitHub plugins register here (not in
-      // runDeferredBoot), so join the env-var lookups before this wave.
-      await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
-    }
-
     // Every core plugin selected by the blocking resolver must be registered
     // before runtime.initialize(). Feature plugins selected by an app manifest
     // are constructor plugins and may resolve a core service in their start
@@ -5524,18 +5442,20 @@ export async function startEliza(
     // phases: it was removed from the runtime constructor by PREREGISTER_PLUGINS
     // but never registered here, while the deferred resolver correctly
     // excluded it as already owned by the blocking phase.
-    await preregisterCorePluginsInDependencyWaves({
+    await initializeBlockingCoreRuntimeForBoot({
+      blockDeferredPluginImports,
       runtime,
       resolvedPlugins,
-      alreadyPreRegistered: new Set<string>([
-        "@elizaos/plugin-sql",
-        "@elizaos/plugin-local-inference",
-      ]),
-      label: "blocking",
+      requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
+      waitForBlockingEnvironment: async () => {
+        // In block-deferred mode the Discord/GitHub plugins register here (not
+        // in runDeferredBoot), so join the env-var lookups before this wave.
+        await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
+      },
+      initializeCoreRuntime,
+      ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
     bootTimer.lap("register-core-plugin-waves");
-
-    await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
     await ensureConnectorCredentialStoreStarted();
     bootTimer.lap("svc:connector-credential-store-start");
