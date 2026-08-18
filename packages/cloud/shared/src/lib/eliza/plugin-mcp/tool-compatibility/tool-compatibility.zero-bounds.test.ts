@@ -25,6 +25,52 @@ const describeOf = (compat: ReturnType<typeof compatFor>, schema: JSONSchema7): 
   String(compat.transformToolSchema(schema).description ?? "");
 
 describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22118)", () => {
+  describe("provider-wide collection boundary", () => {
+    it("does not duplicate a supported additionalProperties keyword into OpenAI prose", () => {
+      const out = compatFor("gpt-4o").transformToolSchema({
+        type: "object",
+        description: "Search the web",
+        additionalProperties: false,
+      });
+
+      expect(out.additionalProperties).toBe(false);
+      expect(out.description).toBe("Search the web");
+    });
+
+    it("preserves stripped Anthropic additionalProperties values without inversion", () => {
+      const anthropic = compatFor("claude-sonnet-4");
+      const closed = anthropic.transformToolSchema({
+        type: "object",
+        description: "Root",
+        additionalProperties: false,
+      });
+      expect(closed.additionalProperties).toBeUndefined();
+      expect(closed.description).toBe("Root. Only use the specified properties");
+
+      const typed = anthropic.transformToolSchema({
+        type: "object",
+        description: "Root",
+        additionalProperties: { type: "string" },
+      });
+      expect(typed.additionalProperties).toBeUndefined();
+      expect(typed.description).toContain('"additionalProperties":{"type":"string"}');
+      expect(typed.description).not.toContain("Only use the specified properties");
+    });
+
+    it("does not coerce malformed Anthropic patterns into misleading prose", () => {
+      const malformed = {
+        type: "string",
+        description: "Root",
+        pattern: { source: "^[a-z]+$" },
+      } as unknown as JSONSchema7;
+      const out = compatFor("claude-sonnet-4").transformToolSchema(malformed);
+
+      expect(out.pattern).toEqual({ source: "^[a-z]+$" });
+      expect(out.description).toBe("Root");
+      expect(out.description).not.toContain("[object Object]");
+    });
+  });
+
   describe("google formatter", () => {
     const google = () => compatFor("gemini-2.0-flash");
 
@@ -77,6 +123,20 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain(">= -1 items");
       expect(text).not.toContain("<= 1.5 items");
       expect(text).not.toContain("multiple of 0");
+    });
+
+    it("identifies non-finite numeric values instead of JSON-coercing them to null", () => {
+      const schema = {
+        type: "number",
+        minimum: Number.POSITIVE_INFINITY,
+        maximum: Number.NaN,
+      } as unknown as JSONSchema7;
+      const text = describeOf(google(), schema);
+
+      expect(text).toContain('"minimum":"[non-finite number: Infinity]"');
+      expect(text).toContain('"maximum":"[non-finite number: NaN]"');
+      expect(text).not.toContain('"minimum":null');
+      expect(text).not.toContain('"maximum":null');
     });
 
     it("preserves a stripped closed-object constraint", () => {
@@ -171,6 +231,20 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain("at least -1 properties");
       expect(text).not.toContain("at most 1.5 properties");
       expect(text).not.toContain("multiple of -2");
+    });
+
+    it("identifies non-finite numeric values instead of JSON-coercing them to null", () => {
+      const schema = {
+        type: "number",
+        exclusiveMinimum: Number.NEGATIVE_INFINITY,
+        multipleOf: Number.NaN,
+      } as unknown as JSONSchema7;
+      const text = describeOf(reasoning(), schema);
+
+      expect(text).toContain('"exclusiveMinimum":"[non-finite number: -Infinity]"');
+      expect(text).toContain('"multipleOf":"[non-finite number: NaN]"');
+      expect(text).not.toContain('"exclusiveMinimum":null');
+      expect(text).not.toContain('"multipleOf":null');
     });
 
     it("keeps empty enums in the unrendered tail and renders non-empty enums exactly", () => {

@@ -124,7 +124,9 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     if (rules.length > 0) parts.push(`IMPORTANT: ${rules.join(", ")}`);
     if (unrendered.length > 0) {
       parts.push(
-        JSON.stringify(Object.fromEntries(unrendered.map((key) => [key, constraints[key]]))),
+        this.stringifyConstraints(
+          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
+        ),
       );
     }
 

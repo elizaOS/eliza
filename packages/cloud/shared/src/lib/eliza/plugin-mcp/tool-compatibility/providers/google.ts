@@ -76,7 +76,9 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     if (rules.length > 0) parts.push(`Constraints: ${rules.join("; ")}`);
     if (unrendered.length > 0) {
       parts.push(
-        JSON.stringify(Object.fromEntries(unrendered.map((key) => [key, constraints[key]]))),
+        this.stringifyConstraints(
+          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
+        ),
       );
     }
 
