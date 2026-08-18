@@ -18,8 +18,10 @@ import {
   type PlaceSearchRequest,
   placePageSchema,
   placeRefSchema,
+  placeSearchRequestSchema,
   type RoutePlan,
   type RoutePlanRequest,
+  routePlanRequestSchema,
   routePlanSchema,
 } from "./types.js";
 
@@ -214,19 +216,21 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   }
 
   async searchPlaces(request: PlaceSearchRequest): Promise<PlacePage> {
-    if (!request.query.trim() || request.query.length > 500) {
-      throw new MapsError("Place search requires a valid query.", {
+    const parsed = placeSearchRequestSchema.safeParse(request);
+    if (!parsed.success)
+      throw new MapsError("Place search request is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        cause: parsed.error,
       });
-    }
+    const validated = parsed.data;
     const url = new URL("/places/search", this.baseOrigin);
-    url.searchParams.set("query", request.query.trim());
-    if (request.cursor) url.searchParams.set("cursor", request.cursor);
-    if (request.limit !== undefined)
-      url.searchParams.set("limit", String(request.limit));
-    if (request.near) {
-      url.searchParams.set("latitude", String(request.near.latitude));
-      url.searchParams.set("longitude", String(request.near.longitude));
+    url.searchParams.set("query", validated.query);
+    if (validated.cursor) url.searchParams.set("cursor", validated.cursor);
+    if (validated.limit !== undefined)
+      url.searchParams.set("limit", String(validated.limit));
+    if (validated.near) {
+      url.searchParams.set("latitude", String(validated.near.latitude));
+      url.searchParams.set("longitude", String(validated.near.longitude));
     }
     const page = await this.request(url, { method: "GET" }, placePageSchema);
     for (const place of page.places) this.assertPlaceProvider(place, "search");
@@ -258,9 +262,16 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   }
 
   async planRoute(request: RoutePlanRequest): Promise<RoutePlan> {
+    const parsed = routePlanRequestSchema.safeParse(request);
+    if (!parsed.success)
+      throw new MapsError("Route request is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+        cause: parsed.error,
+      });
+    const validated = parsed.data;
     for (const [endpoint, place] of [
-      ["origin", request.origin],
-      ["destination", request.destination],
+      ["origin", validated.origin],
+      ["destination", validated.destination],
     ] as const) {
       if (place.provider !== this.id && place.provider !== "coordinates") {
         throw new MapsError(
@@ -282,7 +293,7 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(request),
+        body: JSON.stringify(validated),
       },
       routePlanSchema,
     );
@@ -292,9 +303,48 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         context: { adapterId: this.id, responseProvider: route.provider },
       });
     }
-    this.assertPlaceProvider(route.origin, "route origin");
-    this.assertPlaceProvider(route.destination, "route destination");
+    this.assertRouteEndpointProvider(
+      route.origin,
+      validated.origin,
+      "route origin",
+    );
+    this.assertRouteEndpointProvider(
+      route.destination,
+      validated.destination,
+      "route destination",
+    );
     return route;
+  }
+
+  private assertRouteEndpointProvider(
+    response: PlaceRef,
+    request: PlaceRef,
+    surface: string,
+  ): void {
+    if (request.provider !== "coordinates") {
+      this.assertPlaceProvider(response, surface);
+      return;
+    }
+    if (response.provider === this.id) return;
+    if (
+      response.provider === "coordinates" &&
+      response.providerPlaceId === request.providerPlaceId &&
+      response.coordinates.latitude === request.coordinates.latitude &&
+      response.coordinates.longitude === request.coordinates.longitude
+    ) {
+      return;
+    }
+    throw new MapsError(
+      "Maps route response substituted a coordinate-owned endpoint.",
+      {
+        code: "MAPS_MALFORMED_RESPONSE",
+        context: {
+          adapterId: this.id,
+          responseProvider: response.provider,
+          surface,
+        },
+      },
+    );
   }
 
   private assertPlaceProvider(place: PlaceRef, surface: string): void {

@@ -241,8 +241,35 @@ export class MapsService extends Service {
         },
       });
     }
-    assertProviderPlace(route.origin, adapter, "route origin");
-    assertProviderPlace(route.destination, adapter, "route destination");
+    for (const [surface, response, requestPlace] of [
+      ["route origin", route.origin, normalized.origin],
+      ["route destination", route.destination, normalized.destination],
+    ] as const) {
+      if (requestPlace.provider !== "coordinates") {
+        assertProviderPlace(response, adapter, surface);
+        continue;
+      }
+      if (response.provider === adapter.id) continue;
+      if (
+        response.provider === "coordinates" &&
+        response.providerPlaceId === requestPlace.providerPlaceId &&
+        response.coordinates.latitude === requestPlace.coordinates.latitude &&
+        response.coordinates.longitude === requestPlace.coordinates.longitude
+      ) {
+        continue;
+      }
+      throw new MapsError(
+        "Maps provider substituted a coordinate-owned route endpoint.",
+        {
+          code: "MAPS_MALFORMED_RESPONSE",
+          context: {
+            adapterId: adapter.id,
+            responseProvider: response.provider,
+            surface,
+          },
+        },
+      );
+    }
     return route;
   }
 

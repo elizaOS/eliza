@@ -1,34 +1,31 @@
 /** Registers the maps service and discoverable maps action family. */
 
-import type { Action, Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { mapsAction } from "./action.js";
+import { bindPromotedMapsSaveHandler, mapsAction } from "./action.js";
 import { MapsService } from "./service.js";
 
-const promotedMapsActions = promoteSubactionsToActions(mapsAction).map(
-  (action): Action => {
-    if (action.name === "MAPS_SAVE") {
-      return {
-        ...action,
-        tags: [
-          "domain:maps",
-          "capability:write",
-          "effect:idempotent",
-          "effect:receipt-required",
-        ],
-      };
-    }
-    if (action.name === "MAPS") return action;
-    return { ...action, tags: ["domain:maps", "capability:read"] };
-  },
-);
+const promotedMapsActions = promoteSubactionsToActions(mapsAction);
+for (const action of promotedMapsActions) {
+  if (action.name === "MAPS_SAVE") {
+    bindPromotedMapsSaveHandler(action);
+    action.tags = [
+      "domain:maps",
+      "capability:write",
+      "effect:idempotent",
+      "effect:receipt-required",
+    ];
+  } else if (action.name !== "MAPS") {
+    action.tags = ["domain:maps", "capability:read"];
+  }
+}
 
 export const mapsPlugin: Plugin = {
   name: "maps",
   description:
     "Provider-neutral place search, routes, saved places, sharing, and navigation handoffs.",
   services: [MapsService],
-  actions: promotedMapsActions,
+  actions: [...promotedMapsActions],
 };
 
 export default mapsPlugin;

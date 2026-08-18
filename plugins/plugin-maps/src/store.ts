@@ -9,6 +9,7 @@ import {
   ChannelType,
   createUniqueUuid,
   type IAgentRuntime,
+  InMemoryDatabaseAdapter,
   type Memory,
   type MemoryMetadata,
   MemoryType,
@@ -214,6 +215,7 @@ function mutation(request: SavePlaceRequest): {
 function replay(
   operation: SavedPlaceOperation,
   expectedDigest: string,
+  state: SavedPlaceState,
 ): SavePlaceResult {
   if (operation.requestDigest !== expectedDigest) {
     throw new MapsError(
@@ -224,12 +226,18 @@ function replay(
       },
     );
   }
+  const currentSavedPlace =
+    state.savedPlaces.find((place) => place.id === operation.result.id) ?? null;
   return {
     savedPlace: operation.result,
     replayed: true,
     commitId: operation.mutationId,
     committedAt: operation.committedAt,
     idempotencyKey: operation.idempotencyKey,
+    currentlyApplied:
+      currentSavedPlace !== null &&
+      JSON.stringify(currentSavedPlace) === JSON.stringify(operation.result),
+    currentSavedPlace,
   };
 }
 
@@ -252,6 +260,9 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
     assertCasStorage(this.runtime);
     await ensureNamespace(this.runtime);
     const normalized = mutation(request);
+    if (!(this.runtime.adapter instanceof InMemoryDatabaseAdapter)) {
+      return this.saveWithCas(request, normalized);
+    }
     const lockKey = `${this.runtime.agentId}:${request.ownerEntityId}`;
     const locks = processLocks();
     const prior = locks.get(lockKey) ?? Promise.resolve();
@@ -315,7 +326,7 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
       const prior = state?.operations.find(
         (operation) => operation.idempotencyKey === normalized.idempotencyKey,
       );
-      if (prior) return replay(prior, normalized.requestDigest);
+      if (prior && state) return replay(prior, normalized.requestDigest, state);
 
       const committedAt = nextCommittedAt(state);
       const mutationId = randomUUID() as UUID;
@@ -369,7 +380,12 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
         );
         if (!persistedOperation) continue;
         if (persistedOperation.mutationId !== mutationId) {
-          return replay(persistedOperation, normalized.requestDigest);
+          if (!persisted) continue;
+          return replay(
+            persistedOperation,
+            normalized.requestDigest,
+            persisted,
+          );
         }
       } else {
         const result = await this.runtime.adapter.compareAndSwapDocument({
@@ -396,6 +412,8 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
         commitId: mutationId,
         committedAt,
         idempotencyKey: normalized.idempotencyKey,
+        currentlyApplied: true,
+        currentSavedPlace: savedPlace,
       };
     }
     throw new MapsError("Saved-place persistence remained contended.", {

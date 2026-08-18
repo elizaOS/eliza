@@ -56,6 +56,23 @@ export const placePageSchema = z
   })
   .strict();
 
+export const placeSearchRequestSchema = z
+  .object({
+    query: boundedText(500),
+    near: coordinatesSchema.optional(),
+    cursor: boundedText(2_048).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+export const routePlanRequestSchema = z
+  .object({
+    origin: placeRefSchema,
+    destination: placeRefSchema,
+    travelMode: travelModeSchema,
+  })
+  .strict();
+
 export type Coordinates = z.infer<typeof coordinatesSchema>;
 export type PlaceRef = z.infer<typeof placeRefSchema>;
 export type TravelMode = z.infer<typeof travelModeSchema>;
@@ -90,4 +107,8 @@ export interface SavePlaceResult {
   commitId: string;
   committedAt: string;
   idempotencyKey: string;
+  /** False when this historical operation was superseded by a later update. */
+  currentlyApplied: boolean;
+  /** Current durable state for the same resource, if it still exists. */
+  currentSavedPlace: SavedPlace | null;
 }

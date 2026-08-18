@@ -21,9 +21,16 @@ Saved places are stored in one deterministic, agent-private canonical document
 per owner. The document uses the runtime adapter's compare-and-swap contract to
 atomically bind current resources to an immutable operation-key ledger. Each
 committed mutation receives a unique commit ID and timestamp; retries replay the
-original result, while reuse of a key for different input is permanently
-rejected. Provider credentials are never placed in URLs, action results, logs,
-diagnostics, or saved-place records.
+original result and separately report whether a later mutation superseded it.
+Current-state retries use explicit no-op receipts. Historical replays expose the
+current resource as a typed unsuccessful action result without an effect
+receipt, so they never claim that the old desired state was re-committed. Reuse
+of a key for different input is permanently rejected. Provider credentials are
+never placed in URLs, action results, logs, diagnostics, or saved-place records.
+
+The `MAPS` umbrella is read-only at execution time. Persistent saves must route
+through `MAPS_SAVE`, whose write, idempotency, and receipt-required tags keep
+runtime settlement enforcement attached to every mutation.
 
 ## Adapter contract
 

@@ -3,8 +3,10 @@
 import {
   type ActionParameters,
   AgentRuntime,
+  type Content,
   createCharacter,
   InMemoryDatabaseAdapter,
+  isPromotedSubactionVirtual,
   type Memory,
   normalizeEffectReceipts,
   tagsRequireEffectReceipts,
@@ -12,7 +14,7 @@ import {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
-import type { MapsProviderAdapter } from "./adapter.js";
+import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
 import { mapsPlugin } from "./plugin.js";
 import { MAPS_SERVICE_TYPE, MapsService } from "./service.js";
 
@@ -76,7 +78,12 @@ async function invoke(
   parameters: ActionParameters,
   entityId = OWNER_ID,
 ) {
-  const actionResult = await mapsAction.handler(
+  const selected =
+    parameters.action === "save"
+      ? mapsPlugin.actions?.find((action) => action.name === "MAPS_SAVE")
+      : mapsAction;
+  if (!selected) throw new Error("MAPS action is not registered");
+  const actionResult = await selected.handler(
     runtime,
     message(entityId),
     undefined,
@@ -140,10 +147,29 @@ describe("MapsService and MAPS action", () => {
       "MAPS_SHARE",
       "MAPS_NAVIGATE",
     ]) {
-      expect(actions.get(name)?.tags).toContain("capability:read");
-      expect(actions.get(name)?.tags).not.toContain("capability:write");
-      expect(actions.get(name)?.tags).not.toContain("effect:idempotent");
+      const action = actions.get(name);
+      if (!action) throw new Error(`${name} is not registered`);
+      expect(action.tags).toContain("capability:read");
+      expect(action.tags).not.toContain("capability:write");
+      expect(action.tags).not.toContain("effect:idempotent");
+      expect(isPromotedSubactionVirtual(action)).toBe(true);
     }
+    const saveAction = actions.get("MAPS_SAVE");
+    if (!saveAction) throw new Error("MAPS_SAVE is not registered");
+    expect(isPromotedSubactionVirtual(saveAction)).toBe(true);
+  });
+
+  it("keeps direct umbrella execution read-only", async () => {
+    for (const action of ["save", "SAVE", " save "]) {
+      const direct = await mapsAction.handler(runtime, message(), undefined, {
+        parameters: { action, placeId: "home-1" },
+      });
+      expect(direct).toMatchObject({
+        success: false,
+        error: "MAPS_SAVE_REQUIRED",
+      });
+    }
+    expect(await service.listSavedPlaces(OWNER_ID)).toEqual([]);
   });
 
   it("validates action selection without rejecting unresolved planner calls", async () => {
@@ -235,6 +261,7 @@ describe("MapsService and MAPS action", () => {
     };
     const first = await invoke(runtime, options.parameters);
     const replay = await invoke(runtime, options.parameters);
+    const secondReplay = await invoke(runtime, options.parameters);
     expect(first.effectReceipts?.[0]).toMatchObject({ outcome: "applied" });
     expect(replay.effectReceipts?.[0]).toMatchObject({
       outcome: "noop",
@@ -243,12 +270,106 @@ describe("MapsService and MAPS action", () => {
     expect(first.userFacingEffectReceiptIds).toEqual([
       first.effectReceipts?.[0]?.receiptId,
     ]);
+    expect(replay.effectReceipts?.[0]?.observedAt).not.toBe(
+      first.effectReceipts?.[0]?.observedAt,
+    );
+    expect(replay.data?.committedAt).toBe(first.data?.committedAt);
+    expect(replay.data?.commitId).toBe(first.data?.commitId);
+    expect(secondReplay.effectReceipts?.[0]).toMatchObject({
+      outcome: "noop",
+      idempotency: { replayed: true, key: "action-save-home" },
+    });
+    expect(secondReplay.effectReceipts?.[0]?.receiptId).not.toBe(
+      replay.effectReceipts?.[0]?.receiptId,
+    );
     expect(() =>
       normalizeEffectReceipts([
         ...(first.effectReceipts ?? []),
         ...(replay.effectReceipts ?? []),
+        ...(secondReplay.effectReceipts ?? []),
       ]),
     ).not.toThrow();
+  });
+
+  it("settles the promoted MAPS_SAVE action through the runtime receipt boundary", async () => {
+    const saveAction = mapsPlugin.actions?.find(
+      (action) => action.name === "MAPS_SAVE",
+    );
+    if (!saveAction) throw new Error("MAPS_SAVE is not registered");
+    const priorMode = saveAction.mode;
+    saveAction.mode = "ALWAYS_AFTER";
+    runtime.actions.length = 0;
+    runtime.actions.push(saveAction);
+    const callback = vi.fn(async (_content: Content) => []);
+    const saveMessage = {
+      ...message(),
+      content: {
+        text: "save home",
+        placeId: "home-1",
+        label: "Settled home",
+        idempotencyKey: "settlement-save-home",
+      },
+    };
+    try {
+      await runtime.runActionsByMode("ALWAYS_AFTER", saveMessage, {} as never, {
+        callback,
+      });
+      expect(callback).toHaveBeenCalledOnce();
+      expect(callback.mock.calls[0]?.[0]).toMatchObject({
+        text: "Saved Settled home.",
+        effectReceiptIds: [expect.stringMatching(/^maps:save:/)],
+      });
+
+      callback.mockClear();
+      await runtime.runActionsByMode("ALWAYS_AFTER", saveMessage, {} as never, {
+        callback,
+      });
+      expect(callback).toHaveBeenCalledOnce();
+      expect(callback.mock.calls[0]?.[0]).toMatchObject({
+        text: "Settled home was already saved.",
+        effectReceiptIds: [expect.stringMatching(/:replay:[0-9a-f-]+$/)],
+      });
+
+      callback.mockClear();
+      await runtime.runActionsByMode(
+        "ALWAYS_AFTER",
+        { ...message(), content: { text: "save somewhere" } },
+        {} as never,
+        { callback },
+      );
+      expect(callback).toHaveBeenCalledOnce();
+      expect(callback.mock.calls[0]?.[0]).toMatchObject({
+        text: expect.stringContaining("Which place should I save?"),
+      });
+      expect(callback.mock.calls[0]?.[0]).not.toHaveProperty(
+        "effectReceiptIds",
+      );
+
+      callback.mockClear();
+      await runtime.runActionsByMode(
+        "ALWAYS_AFTER",
+        {
+          ...message(),
+          content: {
+            text: "save impossible",
+            name: "Impossible",
+            latitude: 91,
+            longitude: 0,
+          },
+        },
+        {} as never,
+        { callback },
+      );
+      expect(callback).toHaveBeenCalledOnce();
+      expect(callback.mock.calls[0]?.[0]).toMatchObject({
+        text: expect.stringContaining("Coordinates are outside"),
+      });
+      expect(callback.mock.calls[0]?.[0]).not.toHaveProperty(
+        "effectReceiptIds",
+      );
+    } finally {
+      saveAction.mode = priorMode;
+    }
   });
 
   it("rejects reuse of one idempotency key for a different place", async () => {
@@ -297,6 +418,7 @@ describe("MapsService and MAPS action", () => {
     expect(second.replayed).toBe(false);
     expect(replayA).toMatchObject({
       replayed: true,
+      currentlyApplied: false,
       commitId: first.commitId,
       committedAt: first.committedAt,
       savedPlace: { label: "Home A" },
@@ -306,6 +428,26 @@ describe("MapsService and MAPS action", () => {
     expect(await service.listSavedPlaces(OWNER_ID)).toMatchObject([
       { label: "Home B" },
     ]);
+
+    const staleAction = await invoke(runtime, {
+      action: "save",
+      placeId: "home-1",
+      label: "Home A",
+      idempotencyKey: "key-a",
+    });
+    expect(staleAction).toMatchObject({
+      success: false,
+      error: "MAPS_IDEMPOTENCY_SUPERSEDED",
+      data: {
+        replayed: true,
+        currentlyApplied: false,
+        currentSavedPlace: { label: "Home B" },
+      },
+    });
+    expect(staleAction.effectReceipts).toBeUndefined();
+    expect(staleAction.userFacingText).toContain(
+      "current saved label is Home B",
+    );
 
     const actionA = await invoke(runtime, {
       action: "save",
@@ -383,6 +525,87 @@ describe("MapsService and MAPS action", () => {
     ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
   });
 
+  it("rejects coordinate endpoint substitution in service and HTTP adapter", async () => {
+    const coordinateOrigin = {
+      ...home,
+      provider: "coordinates",
+      providerPlaceId: "coordinates:34.05,-118.24",
+    };
+    const coordinateDestination = {
+      ...office,
+      provider: "coordinates",
+      providerPlaceId: "coordinates:34.06,-118.25",
+    };
+    const substitutions = [
+      {
+        origin: {
+          ...coordinateOrigin,
+          coordinates: { ...coordinateOrigin.coordinates, latitude: 35.05 },
+        },
+        destination: coordinateDestination,
+      },
+      {
+        origin: coordinateOrigin,
+        destination: {
+          ...coordinateDestination,
+          providerPlaceId: "coordinates:substituted",
+        },
+      },
+    ];
+
+    for (const substituted of substitutions) {
+      const substitutingAdapter: MapsProviderAdapter = {
+        ...adapter,
+        async planRoute(request) {
+          return {
+            provider: adapter.id,
+            routeId: "substituted-route",
+            ...request,
+            ...substituted,
+            distanceMeters: 100,
+            durationSeconds: 10,
+            warnings: [],
+          };
+        },
+      };
+      const substitutingService = new MapsService(runtime);
+      substitutingService.registerAdapter(substitutingAdapter, true);
+      await expect(
+        substitutingService.planRoute({
+          origin: coordinateOrigin,
+          destination: coordinateDestination,
+          travelMode: "drive",
+        }),
+      ).rejects.toMatchObject({ code: "MAPS_MALFORMED_RESPONSE" });
+
+      const httpAdapter = new JsonMapsHttpAdapter({
+        id: "contract-maps",
+        connectionId: "conn_coordinate_binding_123",
+        baseUrl: "https://coordinate-binding.example.test",
+        testTransport: {
+          fetchImpl: vi.fn(async () =>
+            Response.json({
+              provider: "contract-maps",
+              routeId: "substituted-route",
+              ...substituted,
+              travelMode: "drive",
+              distanceMeters: 100,
+              durationSeconds: 10,
+              warnings: [],
+            }),
+          ),
+        },
+      });
+      await expect(
+        httpAdapter.planRoute({
+          origin: coordinateOrigin,
+          destination: coordinateDestination,
+          travelMode: "drive",
+        }),
+      ).rejects.toMatchObject({ code: "MAPS_MALFORMED_RESPONSE" });
+    }
+  });
+
   it("plans routes and produces non-effectful geo share/navigation handoffs", async () => {
     const route = await invoke(runtime, {
       action: "route",
@@ -393,6 +616,25 @@ describe("MapsService and MAPS action", () => {
     expect(route).toMatchObject({
       success: true,
       data: { route: { routeId: "route-1", travelMode: "walk" } },
+    });
+    const coordinateRoute = await invoke(runtime, {
+      action: "route",
+      originName: "Coordinate origin",
+      originLatitude: 34.05,
+      originLongitude: -118.24,
+      destinationName: "Coordinate destination",
+      destinationLatitude: 34.06,
+      destinationLongitude: -118.25,
+    });
+    expect(coordinateRoute).toMatchObject({
+      success: true,
+      data: {
+        route: {
+          provider: "contract-maps",
+          origin: { provider: "coordinates" },
+          destination: { provider: "coordinates" },
+        },
+      },
     });
 
     const share = await invoke(runtime, { action: "share", placeId: "home-1" });

@@ -1,5 +1,6 @@
 /** Implements the MAPS umbrella and its promoted place, route, save, share, and navigation actions. */
 
+import { randomUUID } from "node:crypto";
 import type {
   Action,
   ActionResult,
@@ -29,6 +30,9 @@ const MAPS_SUBACTIONS = [
   "navigate",
 ] as const;
 type MapsSubaction = (typeof MAPS_SUBACTIONS)[number];
+const MAPS_SAVE_VIRTUAL_EXECUTION = Symbol(
+  "plugin-maps.promoted-save-execution",
+);
 
 type Params = Record<string, unknown> & { action?: MapsSubaction };
 
@@ -199,6 +203,27 @@ async function execute(
 ): Promise<ActionResult> {
   const params = parameters(message, options);
   const action = normalizeAction(params.action) ?? "place";
+  if (
+    action === "save" &&
+    !(
+      options as HandlerOptions & {
+        [MAPS_SAVE_VIRTUAL_EXECUTION]?: boolean;
+      }
+    )?.[MAPS_SAVE_VIRTUAL_EXECUTION]
+  ) {
+    return result(
+      action,
+      {
+        success: false,
+        text: "Saving places requires the receipt-enforced MAPS_SAVE action.",
+        userFacingText:
+          "Saving places requires the receipt-enforced MAPS_SAVE action.",
+        error: "MAPS_SAVE_REQUIRED",
+        data: { actionName: "MAPS", action: "save" },
+      },
+      callback,
+    );
+  }
   const service = getMapsService(runtime);
   try {
     switch (action) {
@@ -404,9 +429,37 @@ async function execute(
           label: text(params.label),
           idempotencyKey: text(params.idempotencyKey),
         });
-        const observedAt = saved.committedAt;
+        if (saved.replayed && !saved.currentlyApplied) {
+          const userFacingText = `${saved.savedPlace.label} was saved previously, but that state was superseded; the current saved label is ${saved.currentSavedPlace?.label ?? "no longer available"}.`;
+          return result(
+            action,
+            {
+              success: false,
+              text: userFacingText,
+              userFacingText,
+              verifiedUserFacing: true,
+              error: "MAPS_IDEMPOTENCY_SUPERSEDED",
+              data: {
+                actionName: "MAPS",
+                action,
+                replayed: true,
+                commitId: saved.commitId,
+                committedAt: saved.committedAt,
+                savedPlace: saved.savedPlace,
+                currentlyApplied: false,
+                currentSavedPlace: saved.currentSavedPlace,
+              },
+            },
+            callback,
+          );
+        }
+        const observedAt = saved.replayed
+          ? new Date(
+              Math.max(Date.now(), Date.parse(saved.committedAt) + 1),
+            ).toISOString()
+          : saved.committedAt;
         const receiptId = saved.replayed
-          ? `maps:save:${saved.commitId}:replay`
+          ? `maps:save:${saved.commitId}:replay:${randomUUID()}`
           : `maps:save:${saved.commitId}`;
         const idempotencyKey = saved.idempotencyKey;
         const effect: EffectReceipt = saved.replayed
@@ -418,7 +471,9 @@ async function execute(
               idempotency: { key: idempotencyKey, replayed: true },
               observedAt,
               outcome: "noop",
-              reason: "Reused the previously committed saved place.",
+              reason: saved.currentlyApplied
+                ? "Reused the previously committed saved place."
+                : "Replayed a historical save that a later mutation superseded.",
             }
           : {
               receiptId,
@@ -431,11 +486,13 @@ async function execute(
               commit: {
                 kind: "durable",
                 id: saved.commitId,
-                committedAt: observedAt,
+                committedAt: saved.committedAt,
               },
             };
         const userFacingText = saved.replayed
-          ? `${saved.savedPlace.label} was already saved.`
+          ? saved.currentlyApplied
+            ? `${saved.savedPlace.label} was already saved.`
+            : `${saved.savedPlace.label} was saved previously; the current saved label is ${saved.currentSavedPlace?.label ?? "no longer available"}.`
           : `Saved ${saved.savedPlace.label}.`;
         return result(
           action,
@@ -449,6 +506,10 @@ async function execute(
               action,
               savedPlace: saved.savedPlace,
               replayed: saved.replayed,
+              commitId: saved.commitId,
+              committedAt: saved.committedAt,
+              currentlyApplied: saved.currentlyApplied,
+              currentSavedPlace: saved.currentSavedPlace,
             },
             effectReceipts: [effect],
             userFacingEffectReceiptIds: [receiptId],
@@ -527,8 +588,8 @@ export const mapsAction: Action = {
   contexts: ["location", "travel", "productivity"],
   routingHint:
     "Use MAPS_PLACE for place/address lookup, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SHARE for a geo share link, and MAPS_NAVIGATE for a navigation handoff.",
-  // The umbrella spans both reads and writes, so effect capability tags live
-  // on operation-specific promoted actions in plugin.ts.
+  // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
+  // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
   parameters: [
     {
@@ -691,3 +752,22 @@ export const mapsAction: Action = {
   },
   handler: execute,
 };
+
+/** Marks only the promoted save virtual's delegated execution as writable. */
+export function bindPromotedMapsSaveHandler(action: Action): void {
+  const promotedHandler = action.handler;
+  action.handler = (runtime, message, state, options, callback, responses) => {
+    const marked = {
+      ...(options ?? {}),
+      [MAPS_SAVE_VIRTUAL_EXECUTION]: true,
+    } as HandlerOptions;
+    return promotedHandler(
+      runtime,
+      message,
+      state,
+      marked,
+      callback,
+      responses,
+    );
+  };
+}

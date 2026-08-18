@@ -315,6 +315,58 @@ describe("JsonMapsHttpAdapter provider contract", () => {
     expect(route).toMatchObject({ routeId: "route-1", durationSeconds: 900 });
   });
 
+  it("accepts coordinate route endpoints without weakening provider binding", async () => {
+    const coordinate = {
+      ...place,
+      provider: "coordinates",
+      providerPlaceId: "coordinates:37.77,-122.42",
+    };
+    const route = await adapter.planRoute({
+      origin: coordinate,
+      destination: { ...coordinate, name: "Coordinate destination" },
+      travelMode: "drive",
+    });
+    expect(route).toMatchObject({
+      provider: "contract-maps",
+      origin: { provider: "contract-maps" },
+      destination: { provider: "contract-maps" },
+    });
+  });
+
+  it("rejects malformed direct adapter requests before outbound I/O", async () => {
+    const transport = vi.fn(async () => Response.json({}));
+    const strictAdapter = new JsonMapsHttpAdapter({
+      id: "strict-maps",
+      connectionId: "conn_strict_boundary_1234",
+      baseUrl: "https://maps-strict.example.test",
+      testTransport: { fetchImpl: transport },
+    });
+    for (const request of [
+      { query: "park", near: { latitude: Number.NaN, longitude: 0 } },
+      { query: "park", near: { latitude: 91, longitude: 0 } },
+      { query: "park", cursor: "" },
+      { query: "park", limit: 0 },
+      { query: "park", limit: 101 },
+    ]) {
+      await expectCode(
+        strictAdapter.searchPlaces(request as never),
+        "MAPS_INVALID_INPUT",
+      );
+    }
+    await expectCode(
+      strictAdapter.planRoute({
+        origin: {
+          ...place,
+          coordinates: { latitude: Number.NaN, longitude: 0 },
+        },
+        destination: place,
+        travelMode: "hover" as never,
+      }),
+      "MAPS_INVALID_INPUT",
+    );
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   it("classifies empty or non-JSON error bodies from status before parsing", async () => {
     const responses = [
       new Response(null, { status: 429, headers: { "retry-after": "2" } }),
