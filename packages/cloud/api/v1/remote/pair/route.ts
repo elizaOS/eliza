@@ -17,8 +17,10 @@
  */
 
 import { Hono } from "hono";
-import { deriveRemotePairingCodeVerifier } from "@/db/crypto/remote-pairing-code";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import {
+  deriveRemotePairingCodeVerifier,
+  isRemotePairingUuid,
+} from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -79,13 +81,8 @@ app.post("/", async (c) => {
     if (!agentId) {
       return c.json({ success: false, error: "agentId is required" }, 400);
     }
-
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      agentId,
-      user.organization_id,
-    );
-    if (!sandbox || sandbox.user_id !== user.id) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
+    if (!isRemotePairingUuid(agentId)) {
+      return c.json({ success: false, error: "agentId must be a UUID" }, 400);
     }
 
     const code = generatePairingCode();
@@ -93,12 +90,17 @@ app.post("/", async (c) => {
     const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_SECONDS * 1000);
     const tokenHash = await deriveRemotePairingCodeVerifier(
       pairingSecret,
-      sessionId,
+      {
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentId,
+        sessionId,
+      },
       code,
       expiresAt,
     );
 
-    const session = await remoteSessionsRepository.create({
+    const session = await remoteSessionsRepository.createPendingForOwnedAgent({
       id: sessionId,
       organization_id: user.organization_id,
       user_id: user.id,
@@ -107,6 +109,9 @@ app.post("/", async (c) => {
       requester_identity: user.id,
       pairing_token_hash: tokenHash,
     });
+    if (!session) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     c.header(
       "Cache-Control",

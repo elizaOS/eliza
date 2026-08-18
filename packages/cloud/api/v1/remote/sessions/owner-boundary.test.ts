@@ -20,22 +20,16 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: ownerId, organization_id: organizationId },
 }));
-const findByIdAndOrg = mock();
-const findByIdAndOwner = mock();
-const listActiveByAgent = mock();
+const listActiveByOwnedAgent = mock();
 const revoke = mock();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
-mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: { findByIdAndOrg },
-}));
 mock.module("@/db/repositories/remote-sessions", () => ({
   remoteSessionsRepository: {
-    findByIdAndOwner,
-    listActiveByAgent,
+    listActiveByOwnedAgent,
     revoke,
   },
 }));
@@ -49,12 +43,9 @@ app.route("/api/v1/remote/sessions/:id/revoke", revokeRoute);
 
 describe("remote session owner boundaries", () => {
   beforeEach(() => {
-    findByIdAndOrg.mockReset();
-    findByIdAndOwner.mockReset();
-    listActiveByAgent.mockReset();
+    listActiveByOwnedAgent.mockReset();
     revoke.mockReset();
-    findByIdAndOrg.mockResolvedValue({ id: agentId, user_id: ownerId });
-    listActiveByAgent.mockResolvedValue([]);
+    listActiveByOwnedAgent.mockResolvedValue([]);
   });
 
   test("lists sessions through organization and authenticated-owner scope", async () => {
@@ -63,7 +54,7 @@ describe("remote session owner boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(listActiveByAgent).toHaveBeenCalledWith(
+    expect(listActiveByOwnedAgent).toHaveBeenCalledWith(
       agentId,
       organizationId,
       ownerId,
@@ -71,30 +62,33 @@ describe("remote session owner boundaries", () => {
   });
 
   test("hides another same-organization user's agent sessions", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      id: agentId,
-      user_id: "55555555-5555-4555-8555-555555555555",
-    });
+    listActiveByOwnedAgent.mockResolvedValue(undefined);
 
     const response = await app.request(
       `/api/v1/remote/sessions?agentId=${agentId}`,
     );
 
     expect(response.status).toBe(404);
-    expect(listActiveByAgent).not.toHaveBeenCalled();
+    expect(listActiveByOwnedAgent).toHaveBeenCalledWith(
+      agentId,
+      organizationId,
+      ownerId,
+    );
   });
 
-  test("looks up and revokes a session through authenticated-owner scope", async () => {
+  test("revokes a session through one atomic authenticated-owner operation", async () => {
     const active = {
       id: sessionId,
       status: "active",
       ended_at: null,
     };
-    findByIdAndOwner.mockResolvedValue(active);
     revoke.mockResolvedValue({
-      ...active,
-      status: "revoked",
-      ended_at: new Date("2026-08-18T20:00:00.000Z"),
+      alreadyEnded: false,
+      session: {
+        ...active,
+        status: "revoked",
+        ended_at: new Date("2026-08-18T20:00:00.000Z"),
+      },
     });
 
     const response = await app.request(
@@ -103,16 +97,32 @@ describe("remote session owner boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(findByIdAndOwner).toHaveBeenCalledWith(
-      sessionId,
-      organizationId,
-      ownerId,
-    );
     expect(revoke).toHaveBeenCalledWith(sessionId, organizationId, ownerId);
   });
 
+  test("reports a repeated revocation as idempotent success", async () => {
+    revoke.mockResolvedValue({
+      alreadyEnded: true,
+      session: {
+        id: sessionId,
+        status: "revoked",
+        ended_at: new Date("2026-08-18T20:00:00.000Z"),
+      },
+    });
+
+    const response = await app.request(
+      `/api/v1/remote/sessions/${sessionId}/revoke`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: sessionId, status: "revoked", alreadyEnded: true },
+    });
+  });
+
   test("does not reveal or revoke another owner's session", async () => {
-    findByIdAndOwner.mockResolvedValue(undefined);
+    revoke.mockResolvedValue(undefined);
 
     const response = await app.request(
       `/api/v1/remote/sessions/${sessionId}/revoke`,
@@ -120,6 +130,6 @@ describe("remote session owner boundaries", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(revoke).not.toHaveBeenCalled();
+    expect(revoke).toHaveBeenCalledWith(sessionId, organizationId, ownerId);
   });
 });

@@ -6,7 +6,6 @@
  */
 
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -26,19 +25,14 @@ app.get("/", async (c) => {
       );
     }
 
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      agentId,
-      user.organization_id,
-    );
-    if (!sandbox || sandbox.user_id !== user.id) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
-
-    const sessions = await remoteSessionsRepository.listActiveByAgent(
+    const sessions = await remoteSessionsRepository.listActiveByOwnedAgent(
       agentId,
       user.organization_id,
       user.id,
     );
+    if (!sessions) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     return c.json({
       success: true,
