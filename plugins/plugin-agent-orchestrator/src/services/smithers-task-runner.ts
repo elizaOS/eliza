@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ElizaError } from "@elizaos/core";
 import type {
@@ -205,11 +205,54 @@ export function resolveTaskDbPath(tenantId: string, taskId: string): string {
 }
 
 /**
+ * Resolve one persistent PGlite database beneath the configured storage root.
+ * PGlite is an embedded single-process database: separate Smithers workers
+ * cannot safely open the same directory concurrently. The durable identifiers
+ * keep retries of one run on the same database while isolating unrelated
+ * tenant, task, and run subprocesses.
+ */
+export function resolveTaskPgliteDataDir(
+  dataRoot: string,
+  tenantId: string,
+  taskId: string,
+  runId: string,
+): string {
+  if (dataRoot.trim().length === 0) {
+    throw new ElizaError("Smithers PGlite data root is required", {
+      code: "SMITHERS_DB_DATA_DIR_REQUIRED",
+    });
+  }
+  if (tenantId.trim().length === 0) {
+    throw new ElizaError("Smithers task tenant id is required", {
+      code: "SMITHERS_TASK_TENANT_REQUIRED",
+    });
+  }
+  if (taskId.trim().length === 0) {
+    throw new ElizaError("Smithers task id is required", {
+      code: "SMITHERS_TASK_ID_REQUIRED",
+      context: { tenantId },
+    });
+  }
+  if (runId.trim().length === 0) {
+    throw new ElizaError("Smithers task run id is required", {
+      code: "SMITHERS_TASK_RUN_ID_REQUIRED",
+      context: { tenantId, taskId },
+    });
+  }
+  return resolve(
+    dataRoot,
+    pathSegment(tenantId, "tenant"),
+    pathSegment(taskId, "task"),
+    pathSegment(runId, "run"),
+  );
+}
+
+/**
  * Resolve the Smithers storage backend configuration from environment variables.
  *
  * SMITHERS_DB_PROVIDER: "sqlite" (default) | "postgres" | "pglite"
  * SMITHERS_DB_URL:      PostgreSQL connection string (used when provider = "postgres")
- * SMITHERS_DB_DATA_DIR: PGlite data directory (used when provider = "pglite")
+ * SMITHERS_DB_DATA_DIR: PGlite data root (used when provider = "pglite")
  *
  * The resolved config is threaded through the subprocess payload so the layer
  * selection runs inside the subprocess script string.
@@ -530,7 +573,27 @@ export async function runTaskWithSmithers(
   const dbPath = resolveTaskDbPath(spec.tenantId, spec.taskId);
   await mkdir(dirname(dbPath), { recursive: true });
   const agents = Math.max(1, spec.parallelAgents ?? 1);
-  const dbConfig = resolveSmithersDbConfig();
+  const configuredDb = resolveSmithersDbConfig();
+  let dbConfig = configuredDb;
+  if (configuredDb.provider === "pglite") {
+    if (!configuredDb.dataDir) {
+      throw new ElizaError("Smithers PGlite data root is required", {
+        code: "SMITHERS_DB_DATA_DIR_REQUIRED",
+        context: { provider: configuredDb.provider },
+      });
+    }
+    const dataDir = resolveTaskPgliteDataDir(
+      configuredDb.dataDir,
+      spec.tenantId,
+      spec.taskId,
+      spec.runId,
+    );
+    dbConfig = {
+      ...configuredDb,
+      dataDir,
+    };
+    await mkdir(dataDir, { recursive: true });
+  }
   const tenantNamespace = createHash("sha256")
     .update(spec.tenantId)
     .digest("hex")
