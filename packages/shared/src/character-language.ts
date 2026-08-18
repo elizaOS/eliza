@@ -30,8 +30,12 @@ export function addLanguageRule(
   system: string,
   language: CharacterLanguage,
 ): string {
-  const rule = LANGUAGE_REPLY_RULES[language];
-  return `${system} ${rule}`;
+  const normLang = normalizeCharacterLanguage(language);
+  const rule =
+    LANGUAGE_REPLY_RULES[normLang] ??
+    LANGUAGE_REPLY_RULES[DEFAULT_CHARACTER_LANGUAGE];
+  const prefix = typeof system === "string" ? system.trim() : "";
+  return prefix ? `${prefix} ${rule}` : rule;
 }
 
 export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {

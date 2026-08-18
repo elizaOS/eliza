@@ -5,7 +5,11 @@
  * non-string input. Pure string logic, no mocks.
  */
 import { describe, expect, it } from "vitest";
-import { normalizeCharacterLanguage } from "./character-language";
+import {
+  addLanguageRule,
+  LANGUAGE_REPLY_RULES,
+  normalizeCharacterLanguage,
+} from "./character-language";
 
 /**
  * `normalizeCharacterLanguage` is on the eager renderer path (the i18n keyword
@@ -51,5 +55,35 @@ describe("normalizeCharacterLanguage", () => {
     expect(normalizeCharacterLanguage(undefined)).toBe("en");
     expect(normalizeCharacterLanguage(42)).toBe("en");
     expect(normalizeCharacterLanguage({})).toBe("en");
+  });
+});
+
+describe("addLanguageRule", () => {
+  it("appends language reply rule to existing system prompt", () => {
+    const result = addLanguageRule("You are a helpful assistant.", "en");
+    expect(result).toBe(
+      `You are a helpful assistant. ${LANGUAGE_REPLY_RULES.en}`,
+    );
+  });
+
+  it("normalizes language alias before appending rule", () => {
+    const resultZh = addLanguageRule("You are helpful.", "zh-Hans" as never);
+    expect(resultZh).toBe(`You are helpful. ${LANGUAGE_REPLY_RULES["zh-CN"]}`);
+
+    const resultKo = addLanguageRule("You are helpful.", "ko-KR" as never);
+    expect(resultKo).toBe(`You are helpful. ${LANGUAGE_REPLY_RULES.ko}`);
+  });
+
+  it("falls back to English rule when language is unknown or invalid", () => {
+    const result = addLanguageRule("You are helpful.", "unknown-lang" as never);
+    expect(result).toBe(`You are helpful. ${LANGUAGE_REPLY_RULES.en}`);
+  });
+
+  it("returns rule without leading space when system prompt is empty or whitespace", () => {
+    expect(addLanguageRule("", "es")).toBe(LANGUAGE_REPLY_RULES.es);
+    expect(addLanguageRule("   ", "es")).toBe(LANGUAGE_REPLY_RULES.es);
+    expect(addLanguageRule(null as unknown as string, "es")).toBe(
+      LANGUAGE_REPLY_RULES.es,
+    );
   });
 });
