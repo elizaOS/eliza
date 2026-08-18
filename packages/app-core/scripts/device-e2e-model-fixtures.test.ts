@@ -7,6 +7,7 @@
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
+  deviceE2eEmbeddingPlugin,
   resolveDeviceE2eModelCall,
   STREAM_E2E_REPLY,
 } from "./device-e2e-model-fixtures.ts";
@@ -24,6 +25,14 @@ function call(
 }
 
 describe("device-e2e host model fixtures", () => {
+  it("provides the embedding boundary required by real-runtime recall", async () => {
+    const handler = deviceE2eEmbeddingPlugin.models?.TEXT_EMBEDDING;
+    expect(handler).toBeTypeOf("function");
+    const embedding = await handler?.({} as never, null);
+    expect(embedding).toHaveLength(384);
+    expect(embedding?.[0]).toBe(1);
+  });
+
   it("answers the conversation-title side call before the chat response", () => {
     expect(
       resolveDeviceE2eModelCall(

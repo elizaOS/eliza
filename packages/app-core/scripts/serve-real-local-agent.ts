@@ -14,7 +14,10 @@ import { backgroundUploadImageRoute } from "../../agent/src/api/background-route
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
-import { resolveDeviceE2eModelCall } from "./device-e2e-model-fixtures.ts";
+import {
+  deviceE2eEmbeddingPlugin,
+  resolveDeviceE2eModelCall,
+} from "./device-e2e-model-fixtures.ts";
 
 const deviceE2eUploadImageRoute = {
   ...backgroundUploadImageRoute,
@@ -219,7 +222,12 @@ async function main(): Promise<void> {
   }
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
-    plugins: [proxy, mediaRoutesPlugin, ...workflowPlugins],
+    plugins: [
+      proxy,
+      deviceE2eEmbeddingPlugin,
+      mediaRoutesPlugin,
+      ...workflowPlugins,
+    ],
   });
   if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY === "1") {
     const rubyHighUrl = process.env.RUBY_HIGH_URL?.trim();
