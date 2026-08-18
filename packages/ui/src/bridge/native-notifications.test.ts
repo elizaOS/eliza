@@ -270,11 +270,35 @@ describe("showNativeNotification (iOS fallback)", () => {
         title: "Reminder",
         body: "Time to stretch",
         priority: "normal",
+        deepLink: "/apps/scheduled",
         deepLinkOnTap: "elizaos://apps/scheduled",
       },
     });
     expect(intent?.payload.timeIso).toBe(intent?.issuedAtIso);
     expect(Number.isNaN(Date.parse(intent?.issuedAtIso ?? ""))).toBe(false);
+  });
+
+  it("withholds both fallback tap payloads for an unsafe route", async () => {
+    platform.value = "ios";
+    const receiveIntent = vi.fn(async (_intent: ElizaIntentArg) => ({
+      accepted: true,
+      reason: "scheduled",
+    }));
+    plugins.ElizaIntent = { receiveIntent };
+
+    await showNativeNotification({
+      id: "ios-unsafe-fallback",
+      title: "Reminder",
+      priority: "normal",
+      deepLink: "javascript:alert(1)",
+    });
+
+    expect(receiveIntent.mock.calls[0]?.[0]?.payload).not.toHaveProperty(
+      "deepLink",
+    );
+    expect(receiveIntent.mock.calls[0]?.[0]?.payload).not.toHaveProperty(
+      "deepLinkOnTap",
+    );
   });
 });
 

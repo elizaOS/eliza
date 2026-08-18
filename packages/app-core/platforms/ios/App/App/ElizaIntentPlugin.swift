@@ -65,12 +65,14 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("scheduleAlarm requires timeIso, title, body")
             return
         }
+        let deepLink = call.getString("deepLink")
         let deepLinkOnTap = call.getString("deepLinkOnTap")
 
         scheduleNotification(
             timeIso: timeIso,
             title: title,
             body: body,
+            deepLink: deepLink,
             deepLinkOnTap: deepLinkOnTap
         ) { result, errorMessage in
             if let errorMessage = errorMessage {
@@ -83,15 +85,15 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// Schedule a local `UNNotification`.
     ///
-    /// `deepLinkOnTap` is stashed in `UNNotificationContent.userInfo` under
-    /// the literal key `deepLinkOnTap`. When the user taps the notification,
-    /// `AppDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:)`
-    /// reads that key and calls `UIApplication.shared.open(URL(string:))` so
-    /// the app routes to the right surface (e.g. `elizaos://chat/<convoId>`).
+    /// Capacitor's notification delegate rebuilds the action payload from
+    /// `cap_extra`, while AppDelegate consumes `deepLinkOnTap` if it remains the
+    /// active delegate. Store both representations so either legitimate iOS
+    /// delivery path reaches the same validated app destination.
     private func scheduleNotification(
         timeIso: String,
         title: String,
         body: String,
+        deepLink: String?,
         deepLinkOnTap: String?,
         completion: @escaping ([String: Any]?, String?) -> Void
     ) {
@@ -118,12 +120,14 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             content.title = title
             content.body = body
             content.sound = .default
-            if let deepLinkOnTap, !deepLinkOnTap.isEmpty {
-                // userInfo carries the deep-link URL to the AppDelegate's
-                // notification-response handler. Stored as a plain string so
-                // the JSON round-trip through Apple's notification storage
-                // doesn't drop it.
-                content.userInfo = ["deepLinkOnTap": deepLinkOnTap]
+            // @capacitor/local-notifications maps only cap_extra back to
+            // notification.extra for retained ActionPerformed delivery.
+            let userInfo = ElizaNotificationTapPayload.userInfo(
+                deepLink: deepLink,
+                deepLinkOnTap: deepLinkOnTap
+            )
+            if !userInfo.isEmpty {
+                content.userInfo = userInfo
             }
 
             let trigger = ElizaNotificationTriggerPolicy.trigger(
@@ -146,6 +150,9 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
                 ]
                 if let deepLinkOnTap {
                     result["deepLinkOnTap"] = deepLinkOnTap
+                }
+                if let deepLink {
+                    result["deepLink"] = deepLink
                 }
                 completion(result, nil)
             }
@@ -170,11 +177,13 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("\(kind) intent missing timeIso/title/body")
                 return
             }
+            let deepLink = payload["deepLink"] as? String
             let deepLinkOnTap = payload["deepLinkOnTap"] as? String
             scheduleNotification(
                 timeIso: timeIso,
                 title: title,
                 body: body,
+                deepLink: deepLink,
                 deepLinkOnTap: deepLinkOnTap
             ) { result, errorMessage in
                 if let errorMessage = errorMessage {

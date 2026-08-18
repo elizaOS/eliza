@@ -48,6 +48,32 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         XCTAssertEqual(calendar?.repeats, false)
     }
 
+    func testFallbackNotificationPayloadSupportsCapacitorAndAppDelegateTaps() throws {
+        let userInfo = ElizaNotificationTapPayload.userInfo(
+            deepLink: "/notifications",
+            deepLinkOnTap: "elizaos://notifications"
+        )
+        let extra = try XCTUnwrap(userInfo["cap_extra"] as? [String: String])
+
+        XCTAssertEqual(extra, ["deepLink": "/notifications"])
+        XCTAssertEqual(
+            userInfo["deepLinkOnTap"] as? String,
+            "elizaos://notifications"
+        )
+        XCTAssertTrue(
+            ElizaNotificationTapPayload.userInfo(
+                deepLink: nil,
+                deepLinkOnTap: nil
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            ElizaNotificationTapPayload.userInfo(
+                deepLink: "//attacker.example/notifications",
+                deepLinkOnTap: "javascript:alert(1)"
+            ).isEmpty
+        )
+    }
+
     func testControlCenterGalleryListsElizaControls() throws {
         guard #available(iOS 18.0, *) else {
             throw XCTSkip("Control Center controls are iOS 18+ only")
