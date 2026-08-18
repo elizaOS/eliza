@@ -22,6 +22,44 @@ export interface ComposerActivityReport {
   occurredAt?: string;
 }
 
+/** Composer-activity report POST — same 15s Fal #21205 family. */
+const COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS = 15_000;
+
+async function postComposerActivity(args: {
+  base: string;
+  token?: string | null;
+  report: ComposerActivityReport;
+}): Promise<void> {
+  const report = args.report;
+  const res = await fetch(`${args.base}/api/interactions/composer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
+    },
+    body: JSON.stringify({
+      activity: report.activity,
+      surface: report.surface,
+      ...(report.conversationId
+        ? { conversationId: report.conversationId }
+        : {}),
+      draftLength: report.draftLength,
+      ...(report.idleForMs !== undefined
+        ? { idleForMs: report.idleForMs }
+        : {}),
+      ...(report.reason ? { reason: report.reason } : {}),
+      occurredAt: report.occurredAt ?? new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/interactions/composer returned HTTP ${res.status}`,
+    );
+  }
+  await res.arrayBuffer();
+}
+
 /** Report composer lifecycle metadata to the agent without blocking input. */
 export function reportComposerActivity(report: ComposerActivityReport): void {
   try {
@@ -29,26 +67,7 @@ export function reportComposerActivity(report: ComposerActivityReport): void {
     if (!base || typeof fetch === "undefined") return;
     if (!supportsFullAppShellRoutes(base)) return;
     const token = getElizaApiToken();
-    void fetch(`${base}/api/interactions/composer`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        activity: report.activity,
-        surface: report.surface,
-        ...(report.conversationId
-          ? { conversationId: report.conversationId }
-          : {}),
-        draftLength: report.draftLength,
-        ...(report.idleForMs !== undefined
-          ? { idleForMs: report.idleForMs }
-          : {}),
-        ...(report.reason ? { reason: report.reason } : {}),
-        occurredAt: report.occurredAt ?? new Date().toISOString(),
-      }),
-    }).catch((err) => {
+    void postComposerActivity({ base, token, report }).catch((err) => {
       // error-policy:J7 telemetry write must not break typing; warn keeps a dead
       // reporting endpoint observable in the browser console.
       logger.warn(

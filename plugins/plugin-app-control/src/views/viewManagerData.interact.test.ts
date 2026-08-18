@@ -117,7 +117,10 @@ describe("interact() error paths", () => {
 		await expect(interact("open-view", { viewId: "ghost" })).rejects.toThrow(
 			'View "ghost" not found',
 		);
-		expect(fetchMock).toHaveBeenCalledWith("/api/views");
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/views",
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
 		expect(
 			fetchMock.mock.calls.some((c) => String(c[0]).includes("/navigate")),
 		).toBe(false);

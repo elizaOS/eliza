@@ -49,7 +49,6 @@ import { useAgentElement } from "../../agent-surface";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
-import type { ElizaClient } from "../../api/client-base";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -75,19 +74,6 @@ const CATEGORY_ORDER: VaultEntryCategory[] = [
   "session",
   "system",
 ];
-
-/** Ordinary REST budget for GET /api/secrets/inventory (vault inventory list). */
-export const VAULT_INVENTORY_LIST_RAW_REQUEST_TIMEOUT_MS = 10_000;
-
-export async function rawRequestVaultInventoryList(
-  timeoutMs: number = VAULT_INVENTORY_LIST_RAW_REQUEST_TIMEOUT_MS,
-  api: Pick<ElizaClient, "rawRequest"> = client,
-): Promise<Response> {
-  return api.rawRequest("/api/secrets/inventory", undefined, {
-    allowNonOk: true,
-    timeoutMs,
-  });
-}
 
 const CATEGORY_INPUT_OPTIONS: Array<{
   value: VaultEntryCategory;
@@ -192,9 +178,9 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await rawRequestVaultInventoryList();
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as { entries: VaultEntryMeta[] };
+      const body = await client.fetch<{ entries: VaultEntryMeta[] }>(
+        "/api/secrets/inventory",
+      );
       setInternalEntries(body.entries);
     } catch (err) {
       // Boundary translation: surface fetch / parse errors to the panel

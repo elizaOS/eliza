@@ -17,10 +17,12 @@
  * pipeline owns ASR/text/TTS while this harness remains observable on-device.
  */
 
+import { ElizaClient } from "../api";
 import {
   getElizaVoicePlugin,
   getTalkModePlugin,
 } from "../bridge/native-plugins";
+import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import {
   type JniAttributedTurn,
   type JniCompletedPcmTurn,
@@ -84,6 +86,8 @@ const MAX_RECENT = 20;
 let installed = false;
 let pipeline: JniVoicePipeline | null = null;
 const recentTurns: JniVoiceTurnSummary[] = [];
+let handoffController: AbortController | null = null;
+const pendingHandoffs = new Set<Promise<void>>();
 
 function recordTurn(turn: JniAttributedTurn): void {
   recentTurns.push({
@@ -108,26 +112,93 @@ function float32ToBase64(pcm: Float32Array): string {
   return btoa(binary);
 }
 
+const JNI_VOICE_PCM_TURN_TIMEOUT_MS = 15_000;
+const localAgentClient = new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+
+async function drainResponseBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    try {
+      await response.body?.cancel(signal.reason);
+    } catch {
+      // error-policy:J6 the lifecycle abort is authoritative; failure to cancel
+      // an already-detached response body must not replace its abort reason.
+    }
+  }
+  signal.throwIfAborted();
+  if (!response.body) {
+    return;
+  }
+  const reader = response.body.getReader();
+  const cancel = () => {
+    // error-policy:J5 the awaiting read below observes the same cancellation
+    // through signal.throwIfAborted; cancellation rejection needs no second path.
+    void reader.cancel(signal.reason).catch(() => {});
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    while (!(await reader.read()).done) {
+      signal.throwIfAborted();
+    }
+    signal.throwIfAborted();
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
+  }
+}
+
 async function forwardCompletedPcmTurnToLocalAgent(
   turn: JniCompletedPcmTurn,
+  lifecycleSignal: AbortSignal,
 ): Promise<void> {
-  const res = await fetch("/api/voice/native-pcm-turn", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      turnId: turn.turnId,
-      pcm: float32ToBase64(turn.audio.pcm),
-      sampleRate: turn.audio.sampleRate,
-      signal: turn.signal,
-    }),
-  });
-  if (!res.ok) {
-    // error-policy:J6 best-effort error detail — the throw carries the status
-    const detail = await res.text().catch(() => "");
-    throw new Error(
-      `[JniVoiceHarness] native PCM turn handoff failed (${res.status}): ${detail}`,
+  lifecycleSignal.throwIfAborted();
+  const controller = new AbortController();
+  const abort = () => controller.abort(lifecycleSignal.reason);
+  lifecycleSignal.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new DOMException("Native PCM handoff timed out", "TimeoutError"),
     );
+  }, JNI_VOICE_PCM_TURN_TIMEOUT_MS);
+
+  try {
+    const response = await localAgentClient.rawRequest(
+      "/api/voice/native-pcm-turn",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          turnId: turn.turnId,
+          pcm: float32ToBase64(turn.audio.pcm),
+          sampleRate: turn.audio.sampleRate,
+          signal: turn.signal,
+        }),
+        signal: controller.signal,
+      },
+      { timeoutMs: JNI_VOICE_PCM_TURN_TIMEOUT_MS },
+    );
+    await drainResponseBody(response, controller.signal);
+  } catch (error) {
+    controller.signal.throwIfAborted();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    lifecycleSignal.removeEventListener("abort", abort);
   }
+}
+
+function forwardCompletedPcmTurn(turn: JniCompletedPcmTurn): Promise<void> {
+  const controller = handoffController;
+  if (!controller) return Promise.resolve();
+  const handoff = forwardCompletedPcmTurnToLocalAgent(turn, controller.signal);
+  pendingHandoffs.add(handoff);
+  void handoff.then(
+    () => pendingHandoffs.delete(handoff),
+    () => pendingHandoffs.delete(handoff),
+  );
+  return handoff;
 }
 
 function pipelineOptionsForHarness(
@@ -135,7 +206,7 @@ function pipelineOptionsForHarness(
 ): JniVoicePipelineOptions {
   const forward =
     options.forwardCompletedPcmTurns !== false
-      ? forwardCompletedPcmTurnToLocalAgent
+      ? forwardCompletedPcmTurn
       : undefined;
   return {
     ...options,
@@ -164,12 +235,45 @@ export function installJniVoiceHarness(
 ): JniVoiceControl {
   const control: JniVoiceControl = {
     async start() {
-      return getPipeline(options).start();
+      const p = getPipeline(options);
+      if (!p.isRunning) {
+        handoffController?.abort(
+          new DOMException("JNI voice harness restarted", "AbortError"),
+        );
+        handoffController = new AbortController();
+      }
+      try {
+        const result = await p.start();
+        if (!result.started) {
+          handoffController?.abort(
+            new DOMException("JNI voice harness did not start", "AbortError"),
+          );
+          handoffController = null;
+        }
+        return result;
+      } catch (error) {
+        handoffController?.abort(error);
+        handoffController = null;
+        throw error;
+      }
     },
     async stop() {
       const p = getPipeline(options);
       const framesSent = p.framesSent;
-      await p.stop();
+      handoffController?.abort(
+        new DOMException("JNI voice harness stopped", "AbortError"),
+      );
+      const flushController = new AbortController();
+      handoffController = flushController;
+      try {
+        await p.stop();
+        await Promise.allSettled([...pendingHandoffs]);
+      } finally {
+        flushController.abort(
+          new DOMException("JNI voice harness stopped", "AbortError"),
+        );
+        if (handoffController === flushController) handoffController = null;
+      }
       return { stopped: true, framesSent };
     },
     async status() {

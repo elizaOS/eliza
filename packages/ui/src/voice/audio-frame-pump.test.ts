@@ -10,10 +10,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import type {
   TalkModeAudioFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
+import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import { AudioFramePump } from "./audio-frame-pump";
 
 interface SentBatch {
@@ -80,12 +82,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body)) as SentBatch;
       sent.push(body);
       const framesReceived = sent.reduce((n, b) => n + b.frames.length, 0);
-      return {
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: async () => ({ ok: true, framesReceived, turnsObserved: 0 }),
-      } as Response;
+      return Response.json({ ok: true, framesReceived, turnsObserved: 0 });
     }),
   );
 });
@@ -138,13 +135,11 @@ describe("AudioFramePump", () => {
     await pump.start();
     // 49 frames trips MAX_BATCH_FRAMES → an immediate (non-final) POST.
     for (let i = 0; i < 49; i++) emit(frame(i));
-    // Let the queued flush microtask settle.
-    await Promise.resolve();
-    await Promise.resolve();
+    // Stop waits for the already-queued cap flush before its final flush.
+    await pump.stop();
     expect(sent.length).toBeGreaterThanOrEqual(1);
     expect(sent[0].frames.length).toBe(49);
     expect(sent[0].flush).toBe(false);
-    await pump.stop();
     expect(pump.framesAcked).toBe(49);
   });
 
@@ -155,5 +150,43 @@ describe("AudioFramePump", () => {
     await pump.stop();
     emit(frame(100));
     expect(sent.flatMap((b) => b.frames).length).toBe(0);
+  });
+});
+
+describe("audio-frame-pump request deadline", () => {
+  it("aborts the production batch POST at its 15-second client deadline", async () => {
+    vi.useFakeTimers();
+    let requestUrl: string | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((input, init) => {
+        requestUrl = String(input);
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal)
+            throw new Error("expected audio-frame-pump abort signal");
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      }),
+    );
+
+    const { plugin, emit } = makeFakePlugin();
+    const pump = new AudioFramePump(plugin);
+    await pump.start();
+    emit(frame(0));
+    const result = pump.stop().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(await Promise.race([result, Promise.resolve("pending")])).toBe(
+      "pending",
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(result).resolves.toMatchObject({ kind: "timeout" });
+    expect(requestUrl).toBe(
+      `${MOBILE_LOCAL_AGENT_API_BASE}/api/voice/audio-frames`,
+    );
   });
 });

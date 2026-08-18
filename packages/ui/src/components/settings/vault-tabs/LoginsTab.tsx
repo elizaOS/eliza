@@ -12,7 +12,6 @@ import { useAgentElement } from "../../../agent-surface";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
-import type { ElizaClient } from "../../../api/client-base";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -34,19 +33,6 @@ const SOURCE_PILL_CLASS: Record<SavedLoginSource, string> = {
   "1password": "border-status-info/40 bg-status-info/10 text-status-info",
   bitwarden: "border-warn/40 bg-warn/10 text-warn",
 };
-
-/** Ordinary REST budget for GET /api/secrets/logins (vault Logins tab list). */
-export const VAULT_LOGINS_LIST_RAW_REQUEST_TIMEOUT_MS = 10_000;
-
-export async function rawRequestVaultLoginsList(
-  timeoutMs: number = VAULT_LOGINS_LIST_RAW_REQUEST_TIMEOUT_MS,
-  api: Pick<ElizaClient, "rawRequest"> = client,
-): Promise<Response> {
-  return api.rawRequest("/api/secrets/logins", undefined, {
-    allowNonOk: true,
-    timeoutMs,
-  });
-}
 
 function relativeAge(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "—";
@@ -178,12 +164,10 @@ export function LoginsTab() {
     setError(null);
     setLogins(null);
     try {
-      const res = await rawRequestVaultLoginsList();
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as {
+      const json = await client.fetch<{
         logins: SavedLogin[];
         failures?: SavedLoginsListFailure[];
-      };
+      }>("/api/secrets/logins");
       setLogins(json.logins);
       setFailures(json.failures ?? []);
       const domains = json.logins

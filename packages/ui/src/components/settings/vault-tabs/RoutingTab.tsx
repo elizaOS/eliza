@@ -20,7 +20,6 @@ import { useAgentElement } from "../../../agent-surface";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
-import type { ElizaClient } from "../../../api/client-base";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -43,25 +42,6 @@ import type {
   VaultEntryMeta,
   VaultTabNavigate,
 } from "./types";
-
-/** Ordinary REST budget for PUT /api/secrets/routing (vault Routing tab save). */
-export const VAULT_ROUTING_SAVE_RAW_REQUEST_TIMEOUT_MS = 10_000;
-
-export async function rawRequestVaultRoutingSave(
-  config: RoutingConfig,
-  timeoutMs: number = VAULT_ROUTING_SAVE_RAW_REQUEST_TIMEOUT_MS,
-  api: Pick<ElizaClient, "rawRequest"> = client,
-): Promise<Response> {
-  return api.rawRequest(
-    "/api/secrets/routing",
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ config }),
-    },
-    { allowNonOk: true, timeoutMs },
-  );
-}
 
 export interface RoutingTabProps {
   config: RoutingConfig;
@@ -240,9 +220,14 @@ export function RoutingTab(props: RoutingTabProps) {
       setSaving(true);
       setError(null);
       try {
-        const res = await rawRequestVaultRoutingSave(next);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { config: RoutingConfig };
+        const body = await client.fetch<{ config: RoutingConfig }>(
+          "/api/secrets/routing",
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ config: next }),
+          },
+        );
         onConfigChange(body.config);
       } catch (err) {
         setError(

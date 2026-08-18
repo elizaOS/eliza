@@ -12,7 +12,7 @@ import {
 	useViewEvent,
 	VIEW_EVENTS,
 } from "@elizaos/ui/events";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	type ViewManagerSnapshot,
 	ViewManagerSpatialView,
@@ -31,21 +31,35 @@ export function ViewManagerView() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [openingViewId, setOpeningViewId] = useState<string | null>(null);
+	const listControllerRef = useRef<AbortController | null>(null);
 
 	const fetchViews = useCallback(async () => {
+		listControllerRef.current?.abort();
+		const controller = new AbortController();
+		listControllerRef.current = controller;
 		setLoading(true);
 		setError(null);
 		try {
-			setViews(await fetchViewEntries());
+			const nextViews = await fetchViewEntries(undefined, controller.signal);
+			if (listControllerRef.current === controller) setViews(nextViews);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load views");
+			if (!controller.signal.aborted) {
+				setError(err instanceof Error ? err.message : "Failed to load views");
+			}
 		} finally {
-			setLoading(false);
+			if (listControllerRef.current === controller) {
+				listControllerRef.current = null;
+				setLoading(false);
+			}
 		}
 	}, []);
 
 	useEffect(() => {
 		void fetchViews();
+		return () => {
+			listControllerRef.current?.abort();
+			listControllerRef.current = null;
+		};
 	}, [fetchViews]);
 	useViewEvent(VIEW_EVENTS.PLUGIN_RELOADED, () => {
 		void fetchViews();

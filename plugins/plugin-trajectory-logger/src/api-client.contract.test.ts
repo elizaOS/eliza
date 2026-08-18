@@ -7,7 +7,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchTrajectoryDetail,
+  fetchTrajectoryExport,
   fetchTrajectoryList,
+  purgeTrajectory,
   type TrajectoryDetail,
   type TrajectoryListResult,
 } from "./api-client.js";
@@ -156,6 +158,7 @@ function stubOkFetch(payload: unknown): void {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -248,4 +251,103 @@ describe("readJson error path", () => {
       "[trajectory-logger] 503 Service Unavailable: Trajectories service not available",
     );
   });
+});
+
+function stallUntilAborted(): typeof fetch {
+  return ((_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected trajectory abort signal");
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    })) as typeof fetch;
+}
+
+describe("trajectory-logger request deadlines", () => {
+  function installShortDeadline(): number[] {
+    const budgets: number[] = [];
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      budgets.push(milliseconds);
+      return nativeTimeout(10);
+    });
+    return budgets;
+  }
+
+  const requests = [
+    ["list", () => fetchTrajectoryList()],
+    ["detail", () => fetchTrajectoryDetail("traj-000")],
+    ["purge", () => purgeTrajectory("traj-000")],
+    ["export", () => fetchTrajectoryExport("traj-000")],
+  ] as const;
+
+  it.each(requests)(
+    "aborts a stalled %s request at 15s",
+    async (_name, request) => {
+      const budgets = installShortDeadline();
+      vi.stubGlobal("fetch", stallUntilAborted());
+
+      await expect(request()).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(budgets).toEqual([15_000]);
+    },
+  );
+
+  it("still honors a caller abort signal on list", async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    vi.stubGlobal("fetch", stallUntilAborted());
+    await expect(
+      fetchTrajectoryList({ signal: ctrl.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("surfaces a provider error from a completed purge DELETE", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("nope", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
+      ),
+    );
+    await expect(purgeTrajectory("traj-000")).rejects.toThrow(
+      "purgeTrajectory failed: 503 Service Unavailable",
+    );
+  });
+
+  it.each([
+    ["list", () => fetchTrajectoryList()],
+    ["purge", () => purgeTrajectory("traj-000")],
+    ["export", () => fetchTrajectoryExport("traj-000")],
+  ] as const)(
+    "keeps the deadline armed while the %s body stalls",
+    async (_name, request) => {
+      installShortDeadline();
+      vi.stubGlobal("fetch", (async (_input, init) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("expected trajectory abort signal");
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener(
+                "abort",
+                () => controller.error(signal.reason),
+                { once: true },
+              );
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as typeof fetch);
+
+      await expect(request()).rejects.toMatchObject({ name: "TimeoutError" });
+    },
+  );
 });
