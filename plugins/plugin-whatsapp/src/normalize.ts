@@ -5,6 +5,8 @@
  * by the runtime service, message adapters, and account resolution.
  */
 
+import { truncateWellFormed } from "@elizaos/core";
+
 /**
  * WhatsApp text chunk limit
  */
@@ -277,10 +279,13 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
     };
   }
 
-  // Hard break at limit
+  // Hard break at limit -- truncateWellFormed backs off one unit instead of
+  // slicing through a surrogate pair (e.g. a long emoji run with no
+  // whitespace/newline/sentence break inside the search area).
+  const chunk = truncateWellFormed(text, limit);
   return {
-    chunk: text.slice(0, limit),
-    remainder: text.slice(limit),
+    chunk,
+    remainder: text.slice(chunk.length),
   };
 }
 
@@ -323,7 +328,7 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  return `${truncateWellFormed(text, maxLength - 3)}...`;
 }
 
 /**

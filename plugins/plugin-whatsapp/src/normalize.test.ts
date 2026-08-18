@@ -115,4 +115,31 @@ describe("text chunking", () => {
     expect(truncateText("short", 20)).toBe("short");
     expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
   });
+
+  it("chunkWhatsAppText keeps a surrogate pair (emoji) intact at the hard-break fallback", () => {
+    // No whitespace/newlines/sentence breaks in range, so splitAtBreakPoint
+    // falls through to the hard break at `limit`. A naive slice(0, 4096)
+    // would cut between the emoji's high and low surrogate.
+    const text = `${"x".repeat(4095)}\u{1F600}${"y".repeat(10)}`;
+
+    const chunks = chunkWhatsAppText(text);
+
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("truncateText keeps a surrogate pair (emoji) intact instead of splitting it", () => {
+    // maxLength - 3 (ellipsis reserve) lands right after the emoji's high
+    // surrogate; a naive slice(0, maxLength - 3) would strand it.
+    const text = `xxxx\u{1F600}zzzzz`;
+
+    const truncated = truncateText(text, 8);
+
+    expect(truncated.length).toBeLessThanOrEqual(8);
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated).toBe("xxxx...");
+  });
 });
