@@ -39,6 +39,7 @@ import {
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
+import { isRepresentableMs } from "./time-range.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -2226,9 +2227,16 @@ export function createScheduledTaskRunner(
         await persist(task);
         return { kind: "fired", task };
       case "retry": {
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000,
-        ).toISOString();
+        // `retryAfterMinutes` is connector-supplied and schema-unbounded; a
+        // huge value would push the park-back instant past the JS Date range
+        // and make `toISOString()` throw AFTER the row was atomically claimed
+        // to `"fired"`, stranding it. Settle terminally instead of stranding.
+        const nextAttemptMs =
+          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000;
+        if (!isRepresentableMs(nextAttemptMs)) {
+          return failTerminal(task, decision.reason, failure.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch retry ${attempt + 1}/${MAX_DISPATCH_RETRIES_PER_STEP} in ${decision.retryAfterMinutes}m (${decision.reason})`;
@@ -2264,9 +2272,19 @@ export function createScheduledTaskRunner(
           return failTerminal(task, decision.reason, decision.message);
         }
         const { nextLadderIndex, nextStep } = next;
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000,
-        ).toISOString();
+        // `delayMinutes` is schema-valid but unbounded (schema.ts had no
+        // upper limit); guard the park-back instant against the Date range so
+        // a claimed row settles terminally instead of throwing while stranded
+        // in `"fired"`.
+        const nextAttemptMs =
+          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000;
+        if (!isRepresentableMs(nextAttemptMs)) {
+          if (decision.kind === "surface_degraded") {
+            recordConnectorDegradation(task, decision, fireAtIso);
+          }
+          return failTerminal(task, decision.reason, decision.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
