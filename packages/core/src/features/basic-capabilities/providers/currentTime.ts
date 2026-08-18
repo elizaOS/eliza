@@ -1,13 +1,28 @@
 /**
  * The CURRENT_TIME provider: injects the current date and time into the prompt
- * in several formats (ISO, unix, date-only, time-only, day-of-week, and a human
- * readable full form), resolved against the sending client's IANA timezone
- * when available, then the agent's TIMEZONE setting, then the runtime host's
- * IANA timezone. Turn-local time keeps relative dates aligned with the device
- * the user is actively using while direct API callers remain local-time safe.
- * Text content comes from the centralized CURRENT_TIME provider spec.
+ * with the USER's local wall-clock as the primary rendering.
+ *
+ * Timezone resolution for the rendered user time, in priority order:
+ *   1. the sender's stored profile timezone (Entity.metadata.userProfile —
+ *      explicit operator-set values and values learned from conversation by
+ *      the fact extractor; see advanced-capabilities/user-profile.ts)
+ *   2. the sending client's device timezone hint (content.metadata.uiTimeZone)
+ *   3. the agent's TIMEZONE setting
+ *   4. none — the timezone is rendered as honestly UNKNOWN, with the server
+ *      clock clearly labeled as the server's. The runtime host's timezone is
+ *      NEVER presented as the user's wall-clock: on a UTC host that turned
+ *      "what time is it" into UTC-as-local plus model-side timezone
+ *      arithmetic ("8:35pm in brooklyn" when it was 4:35pm EDT).
+ *
+ * `resolveMessageTimeZone` keeps its original device→setting→host precedence:
+ * it feeds trigger/schedule humanization where the host zone is a safe final
+ * fallback for formatting, and scheduling math itself runs on instants.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import {
+	getSenderUserProfile,
+	type UserProfileContext,
+} from "../../advanced-capabilities/user-profile.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -73,6 +88,59 @@ export function resolveMessageTimeZone(
 	);
 }
 
+/** How the user's timezone was resolved for this turn. */
+export type UserTimeZoneOrigin =
+	| "profile"
+	| "device"
+	| "agent-setting"
+	| "unknown";
+
+/**
+ * Resolve the USER's timezone for prompt rendering. Unlike
+ * `resolveMessageTimeZone`, this never silently falls back to the host zone:
+ * an unknown user timezone is returned as null so the prompt can say so.
+ */
+export async function resolveUserTimeZone(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<{
+	timeZone: string | null;
+	origin: UserTimeZoneOrigin;
+	profile: UserProfileContext | null;
+}> {
+	const profile = await getSenderUserProfile(runtime, message);
+	if (profile?.timezone) {
+		return { timeZone: profile.timezone, origin: "profile", profile };
+	}
+	const device = clientTimeZone(message);
+	if (device) {
+		return { timeZone: device, origin: "device", profile };
+	}
+	const configured = validTimeZone(runtime.getSetting("TIMEZONE"));
+	if (configured) {
+		return { timeZone: configured, origin: "agent-setting", profile };
+	}
+	return { timeZone: null, origin: "unknown", profile };
+}
+
+function formatInZone(now: Date, timeZone: string) {
+	const humanReadable = new Intl.DateTimeFormat("en-US", {
+		timeZone,
+		dateStyle: "full",
+		timeStyle: "long",
+	}).format(now);
+	const dateOnly = now.toLocaleDateString("en-CA", { timeZone });
+	const timeOnly = now.toLocaleTimeString("en-GB", {
+		timeZone,
+		hour12: false,
+	});
+	const dayOfWeek = new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		timeZone,
+	}).format(now);
+	return { humanReadable, dateOnly, timeOnly, dayOfWeek };
+}
+
 /**
  * Current time provider function that retrieves the current date and time
  * in various formats for use in time-based operations or responses.
@@ -93,34 +161,48 @@ export const currentTimeProvider: Provider = {
 
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
-		const timeZone = resolveMessageTimeZone(_runtime, _message);
-
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
 
-		const options = {
-			timeZone,
-			dateStyle: "full" as const,
-			timeStyle: "long" as const,
-		};
-		const humanReadable = new Intl.DateTimeFormat("en-US", options).format(now);
+		const userResolution = await resolveUserTimeZone(_runtime, _message);
+		const userTimeZone = userResolution.timeZone;
+		const userLocation = userResolution.profile?.location ?? null;
 
-		const dateOnly = now.toLocaleDateString("en-CA", { timeZone });
-		const timeOnly = now.toLocaleTimeString("en-GB", {
+		// The zone the date/time fields below are computed in. When the user's
+		// zone is known it IS the user zone; otherwise fields fall back to the
+		// message-resolution zone (device→setting→host) for value consumers,
+		// while the rendered text labels that clock as the server's, not the
+		// user's.
+		const timeZone =
+			userTimeZone ?? resolveMessageTimeZone(_runtime, _message);
+		const { humanReadable, dateOnly, timeOnly, dayOfWeek } = formatInZone(
+			now,
 			timeZone,
-			hour12: false,
-		});
-		const dayOfWeek = new Intl.DateTimeFormat("en-US", {
-			weekday: "long",
-			timeZone,
-		}).format(now);
+		);
 
-		const contextText = `# Current Time
+		let contextText: string;
+		if (userTimeZone) {
+			const originLabel =
+				userResolution.origin === "profile"
+					? "from user profile"
+					: userResolution.origin === "device"
+						? "from user's device"
+						: "from agent settings";
+			contextText = `# Current Time
+- User's local time: ${humanReadable}
 - Date: ${dateOnly}
-- Time: ${timeOnly} ${timeZone}
+- Time: ${timeOnly} ${userTimeZone}
 - Day: ${dayOfWeek}
-- Full: ${humanReadable}
-- ISO: ${isoTimestamp}`;
+- User timezone: ${userTimeZone} (${originLabel})${userLocation ? `\n- User location: ${userLocation}` : ""}
+- ISO (UTC): ${isoTimestamp}
+The local time above is ALREADY the user's wall-clock time. When mentioning the time to the user, state it as-is. Never perform timezone conversion or arithmetic in your reply.`;
+		} else {
+			contextText = `# Current Time
+- User timezone: unknown (do not guess; if local time matters, ask the user where they are)
+- Server time: ${humanReadable} (${timeZone} — the SERVER's clock, not the user's)
+- ISO (UTC): ${isoTimestamp}
+Do not present the server time as the user's local time, and never attempt timezone arithmetic in your reply.`;
+		}
 
 		return {
 			text: contextText,
@@ -130,6 +212,9 @@ export const currentTimeProvider: Provider = {
 				dayOfWeek: dayOfWeek,
 				unixTimestamp: unixTimestamp,
 				timeZone,
+				userTimeZone: userTimeZone ?? undefined,
+				userTimeZoneOrigin: userResolution.origin,
+				userLocation: userLocation ?? undefined,
 			},
 			data: {
 				iso: isoTimestamp,
@@ -139,6 +224,9 @@ export const currentTimeProvider: Provider = {
 				humanReadable: humanReadable,
 				unixTimestamp: unixTimestamp,
 				timeZone,
+				userTimeZone,
+				userTimeZoneOrigin: userResolution.origin,
+				userLocation,
 			},
 		};
 	},
