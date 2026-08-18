@@ -576,11 +576,14 @@ declare module "./client-base" {
     cleanupEmptyConversations(options?: {
       keepId?: string;
     }): Promise<{ deleted: string[] }>;
-    getDocumentStats(): Promise<DocumentStats>;
+    getDocumentStats(timeoutMs?: number): Promise<DocumentStats>;
     getDocumentFacetCounts(
       options?: DocumentListOptions,
     ): Promise<DocumentFacetCountsResponse>;
-    listDocuments(options?: DocumentListOptions): Promise<DocumentsResponse>;
+    listDocuments(
+      options?: DocumentListOptions,
+      timeoutMs?: number,
+    ): Promise<DocumentsResponse>;
     getDocument(documentId: string): Promise<{ document: DocumentDetail }>;
     updateDocument(
       documentId: string,
@@ -1426,17 +1429,28 @@ ElizaClient.prototype.cleanupEmptyConversations = async function (
   });
 };
 
-ElizaClient.prototype.getDocumentStats = async function (this: ElizaClient) {
-  return this.fetch("/api/documents/stats");
+/** Document stats GET — existing 10s REST budget, independent hop. */
+export const DOCUMENT_STATS_FETCH_TIMEOUT_MS = 10_000;
+/** Document list GET — existing 10s REST budget, independent hop. */
+export const DOCUMENT_LIST_FETCH_TIMEOUT_MS = 10_000;
+
+ElizaClient.prototype.getDocumentStats = async function (
+  this: ElizaClient,
+  timeoutMs: number = DOCUMENT_STATS_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/documents/stats", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.listDocuments = async function (
   this: ElizaClient,
   options?,
+  timeoutMs: number = DOCUMENT_LIST_FETCH_TIMEOUT_MS,
 ) {
   const params = buildDocumentListParams(options);
   const query = params.toString();
-  return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
+  return this.fetch(`/api/documents${query ? `?${query}` : ""}`, undefined, {
+    timeoutMs,
+  });
 };
 
 ElizaClient.prototype.getDocumentFacetCounts = async function (
