@@ -1779,6 +1779,27 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByText("Hydrated alert")).toBeTruthy();
   });
 
+  it("opens an empty shade once for each new shell request id", () => {
+    __setHydratedForTests(true);
+    const { rerender } = render(<NotificationsHomeCenter openRequestId={1} />);
+    const list = screen.getByTestId("home-notification-list");
+    const empty = screen.getByTestId("notifications-empty");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+
+    collapseShade();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    rerender(<NotificationsHomeCenter openRequestId={1} />);
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    rerender(<NotificationsHomeCenter openRequestId={2} />);
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+  });
+
   it("ignores a chat pull release over the notification area", () => {
     seedTriage();
     render(
