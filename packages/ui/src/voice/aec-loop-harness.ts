@@ -308,12 +308,7 @@ async function fetchLocalTts(
     },
     { timeoutMs: AEC_LOOP_TTS_TIMEOUT_MS },
   );
-  return readAudioBody(
-    response,
-    "tts",
-    signal,
-    AEC_LOOP_TTS_TIMEOUT_MS,
-  );
+  return readAudioBody(response, "tts", signal, AEC_LOOP_TTS_TIMEOUT_MS);
 }
 
 /** Best-effort native Documents sink (Capacitor Filesystem when present). */
@@ -385,10 +380,7 @@ async function runAecLoop(
     const bootDeadline = Date.now() + 300_000;
     for (;;) {
       try {
-        statusBefore = await getJson(
-          "/api/voice/audio-frames/status",
-          signal,
-        );
+        statusBefore = await getJson("/api/voice/audio-frames/status", signal);
         break;
       } catch (err) {
         // error-policy:J4 boot poll — retry until the deadline, then rethrow
@@ -399,11 +391,7 @@ async function runAecLoop(
     }
 
     log("arm aec-capture");
-    await postJson(
-      "/api/voice/aec-capture",
-      { arm: true, maxSeconds },
-      signal,
-    );
+    await postJson("/api/voice/aec-capture", { arm: true, maxSeconds }, signal);
 
     log("getUserMedia (OS AEC disabled)");
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -552,10 +540,7 @@ async function runAecLoop(
       { frames: [], flush: true },
       signal,
     );
-    const statusAfter = await getJson(
-      "/api/voice/audio-frames/status",
-      signal,
-    );
+    const statusAfter = await getJson("/api/voice/audio-frames/status", signal);
     await postJson("/api/voice/aec-capture", { disarm: true }, signal);
     const aecCapture = await getJson("/api/voice/aec-capture", signal);
 
