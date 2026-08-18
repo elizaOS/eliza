@@ -195,6 +195,15 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
 	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
 	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	// "write X and run it" asks: stage-1 invents EXEC/EXECUTE spellings the
+	// simile table does not carry; unresolved, the planner ran toolless and
+	// answered with unexecuted code (live 2026-08-17: a "run this python
+	// one-liner" ask returned the code, never the output).
+	EXEC_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXECUTE_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXEC: ["SHELL", "TERMINAL_SHELL"],
+	RUN_SCRIPT: ["SHELL", "TERMINAL_SHELL"],
+	RUN_PYTHON: ["SHELL", "TERMINAL_SHELL"],
 	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
 	// umbrella and plugin-todos' TODO parent. Deployments load one or the
 	// other; the resolver keeps whichever is registered. Without these the
@@ -245,6 +254,36 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
 	ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
 	WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+	// Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
+	// invents CODE_*/PR spellings for repo asks ("add a one-line description to
+	// the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
+	// tj-79876bf0f950e8): CODE_EDIT resolved to nothing while CODE_PR_CREATE's
+	// CREATE token tripped the view heuristic into VIEWS, so the planner surface
+	// carried no coding tool and the turn ended on a bare re-ack — the promised
+	// PR never started. TASKS owns repo work end-to-end (clone, commits, push,
+	// PR), so the intent hint routes there; admission still passes through
+	// appendIfAllowed's role/context gates.
+	CODE_EDIT: ["TASKS"],
+	CODE_CHANGE: ["TASKS"],
+	CODE_WRITE: ["TASKS"],
+	EDIT_CODE: ["TASKS"],
+	WRITE_CODE: ["TASKS"],
+	CODE_FIX: ["TASKS"],
+	FIX_CODE: ["TASKS"],
+	FIX_BUG: ["TASKS"],
+	CODE_PR_CREATE: ["TASKS"],
+	CREATE_PR: ["TASKS"],
+	OPEN_PR: ["TASKS"],
+	SUBMIT_PR: ["TASKS"],
+	PR_CREATE: ["TASKS"],
+	PULL_REQUEST: ["TASKS"],
+	CREATE_PULL_REQUEST: ["TASKS"],
+	OPEN_PULL_REQUEST: ["TASKS"],
+	GITHUB_PR: ["TASKS"],
+	UPDATE_REPO_README: ["TASKS"],
+	GITHUB_ISSUE_FIX: ["TASKS"],
+	COMMIT_CHANGES: ["TASKS"],
+	CREATE_BRANCH: ["TASKS"],
 	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
 	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
 	FINANCE: ["OWNER_FINANCES"],

@@ -801,6 +801,36 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	// Observed coding/repo inventions route to the TASKS coding umbrella. Keep
+	// this mapping explicit: generic CODE, PR, COMMIT, and BRANCH tokens are
+	// ambiguous and must not admit the coding surface on their own.
+	it("routes observed coding candidates to TASKS without broad token guessing", () => {
+		for (const candidate of [
+			"CODE_EDIT",
+			"CODE_PR_CREATE",
+			"CREATE_PR",
+			"OPEN_PULL_REQUEST",
+			"FIX_BUG",
+			"UPDATE_REPO_README",
+			"GITHUB_ISSUE_FIX",
+			"COMMIT_CHANGES",
+			"CREATE_BRANCH",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["TASKS"]);
+		}
+		for (const unrelatedCandidate of [
+			"SCAN_QR_CODE",
+			"READ_ERROR_CODE",
+			"BANK_BRANCH",
+			"PUBLIC_RELATIONS_PR",
+			"COMMITMENT_STATUS",
+		]) {
+			expect(parentAliasesForCandidateAction(unrelatedCandidate)).not.toContain(
+				"TASKS",
+			);
+		}
+	});
+
 	// Habit/reminder-shaped invented names must hint the owner-life umbrella AND
 	// the TRIGGER scheduler, so deployments without plugin-personal-assistant
 	// keep the only real scheduled-work capability on the planner surface.
