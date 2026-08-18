@@ -47,7 +47,15 @@ export function recordMissingRuntimeDependency(
   missingRequired: Set<string>,
   missingOptional: Set<string>,
 ): void {
-  (entry.required ? missingRequired : missingOptional).add(entry.name);
+  if (entry.required) {
+    missingOptional.delete(entry.name);
+    missingRequired.add(entry.name);
+    return;
+  }
+
+  if (!missingRequired.has(entry.name)) {
+    missingOptional.add(entry.name);
+  }
 }
 
 export type ResolvedPackage = {

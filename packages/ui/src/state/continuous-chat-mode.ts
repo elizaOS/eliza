@@ -1,3 +1,7 @@
+/**
+ * Resolves persisted voice mode and the native-appliance bootstrap request.
+ * URL input is untrusted and cannot enable capture without a native host.
+ */
 export type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
 
 export function normalizeContinuousChatMode(

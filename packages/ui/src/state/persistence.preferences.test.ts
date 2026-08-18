@@ -81,6 +81,12 @@ describe("shell preference persistence", () => {
     expect(loadContinuousChatMode()).toBe("off");
   });
 
+  it("does not trust a malformed desktop bridge marker from a public page", () => {
+    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = null as never;
+    window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    expect(loadContinuousChatMode()).toBe("off");
+  });
+
   it("exposes the designed defaults for a fresh device", () => {
     expect(loadHomeTimeWidgetHidden()).toBe(false);
     expect(loadPersistedFirstRunComplete()).toBe(false);

@@ -78,6 +78,29 @@ describe("recordMissingRuntimeDependency", () => {
     expect([...required]).toEqual(["hard-dependency"]);
     expect([...optional]).toEqual(["optional-peer"]);
   });
+
+  it("keeps required classification regardless of queue traversal order", () => {
+    for (const requiredFirst of [true, false]) {
+      const required = new Set<string>();
+      const optional = new Set<string>();
+      const entries = requiredFirst
+        ? [
+            { name: "shared-dependency", required: true },
+            { name: "shared-dependency", required: false },
+          ]
+        : [
+            { name: "shared-dependency", required: false },
+            { name: "shared-dependency", required: true },
+          ];
+
+      for (const entry of entries) {
+        recordMissingRuntimeDependency(entry, required, optional);
+      }
+
+      expect([...required]).toEqual(["shared-dependency"]);
+      expect([...optional]).toEqual([]);
+    }
+  });
 });
 
 function writeManifest(
