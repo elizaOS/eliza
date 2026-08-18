@@ -1,14 +1,14 @@
 /**
- * Local device-e2e host-agent process helper. Chooses an exclusive API port,
- * spawns the real local agent (or a caller-supplied command), waits for health,
- * and returns a stop handle used by iOS/Android device lanes.
+ * Local device-e2e host-agent process helper. The child binds port 0 and
+ * atomically advertises the live socket, avoiding probe-then-release races;
+ * explicit caller ports remain strict. The helper waits for health and returns
+ * the stop handle used by iOS/Android device lanes.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
+import { waitForAdvertisedPort } from "../../../scripts/e2e-ports.mjs";
 
-export const DEFAULT_HOST_AGENT_PORT = 31338;
 export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
 export const DEFAULT_READY_ATTEMPTS = 90;
@@ -121,48 +121,6 @@ export function hostAgentApiBase(port, host = DEFAULT_HOST_AGENT_HOST) {
   return `http://${host}:${port}`;
 }
 
-export async function isPortAvailable(port, host = DEFAULT_HOST_AGENT_HOST) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.once("listening", () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, host);
-  });
-}
-
-export async function chooseHostAgentPort({
-  preferredPort = DEFAULT_HOST_AGENT_PORT,
-  requestedPort = null,
-  host = DEFAULT_HOST_AGENT_HOST,
-} = {}) {
-  if (requestedPort !== null && requestedPort !== undefined) {
-    const port = parsePort(requestedPort, "host-agent port");
-    if (!(await isPortAvailable(port, host))) {
-      throw new Error(`Requested host-agent port ${port} is already in use.`);
-    }
-    return port;
-  }
-
-  const preferred = parsePort(preferredPort, "host-agent preferred port");
-  if (await isPortAvailable(preferred, host)) return preferred;
-
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.once("listening", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : null;
-      server.close(() => {
-        if (typeof port === "number") resolve(port);
-        else reject(new Error("Unable to allocate a free host-agent port."));
-      });
-    });
-    server.listen(0, host);
-  });
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -243,8 +201,6 @@ export async function startDeviceE2eHostAgent({
   repoRoot,
   artifactDir,
   requestedPort = null,
-  preferredPort = process.env.ELIZA_IOS_HOST_AGENT_PORT ??
-    DEFAULT_HOST_AGENT_PORT,
   host = DEFAULT_HOST_AGENT_HOST,
   readyAttempts,
   readyDelayMs,
@@ -271,20 +227,25 @@ export async function startDeviceE2eHostAgent({
     env: process.env,
   });
 
-  const port = await chooseHostAgentPort({
-    preferredPort,
-    requestedPort,
-    host,
-  });
-  const apiBase = hostAgentApiBase(port, host);
+  const explicitPort =
+    requestedPort === null || requestedPort === undefined
+      ? null
+      : parsePort(requestedPort, "host-agent port");
   fs.mkdirSync(artifactDir, { recursive: true });
   const logPath = path.join(artifactDir, "host-agent.log");
+  const portFile = path.join(
+    artifactDir,
+    `.host-agent-port-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
+  fs.rmSync(portFile, { force: true });
   const logFd = fs.openSync(logPath, "w");
   const child = spawn(command, args, {
     cwd: repoRoot,
     env: {
       ...env,
-      ELIZA_API_PORT: String(port),
+      ELIZA_API_PORT: String(explicitPort ?? 0),
+      ELIZA_API_STRICT_PORT: "1",
+      ELIZA_E2E_PORT_FILE: portFile,
       ELIZA_PAIRING_DISABLED: "1",
     },
     stdio: ["ignore", logFd, logFd],
@@ -310,6 +271,7 @@ export async function startDeviceE2eHostAgent({
         } catch {
           // error-policy:J6 log fd may already be closed by the platform
         }
+        fs.rmSync(portFile, { force: true });
         resolve();
       };
 
@@ -350,8 +312,25 @@ export async function startDeviceE2eHostAgent({
     signalHandlers.set(signal, handler);
     process.once(signal, handler);
   }
+  const removeSignalHandlers = () => {
+    for (const [signal, handler] of signalHandlers) {
+      process.off(signal, handler);
+    }
+  };
 
   try {
+    const port = await Promise.race([
+      waitForAdvertisedPort(portFile, { child }),
+      new Promise((_, reject) => {
+        child.once("error", reject);
+      }),
+    ]);
+    if (explicitPort !== null && port !== explicitPort) {
+      throw new Error(
+        `Host agent advertised port ${port}, expected explicit port ${explicitPort}.`,
+      );
+    }
+    const apiBase = hostAgentApiBase(port, host);
     log?.(`starting host agent at ${apiBase} (log: ${logPath})`);
     await waitForHealth({
       apiBase,
@@ -362,23 +341,21 @@ export async function startDeviceE2eHostAgent({
       delayMs: resolvedReady.readyDelayMs,
       log,
     });
+    return {
+      apiBase,
+      port,
+      logPath,
+      pid: child.pid,
+      async stop() {
+        removeSignalHandlers();
+        await stop();
+        log?.(`stopped host agent at ${apiBase}`);
+      },
+    };
   } catch (error) {
     // error-policy:J2 stop child then rethrow readiness/spawn failure
+    removeSignalHandlers();
     await stop();
     throw error;
   }
-
-  return {
-    apiBase,
-    port,
-    logPath,
-    pid: child.pid,
-    async stop() {
-      for (const [signal, handler] of signalHandlers) {
-        process.off(signal, handler);
-      }
-      await stop();
-      log?.(`stopped host agent at ${apiBase}`);
-    },
-  };
 }

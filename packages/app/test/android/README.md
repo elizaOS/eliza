@@ -125,12 +125,12 @@ bun run --cwd packages/app test:e2e:android:routes
 The scheduled and `ci:device`-label-gated Android job in
 `.github/workflows/device-e2e.yml` is a load-bearing x86_64 host-emulator lane:
 
-1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on host
-   `127.0.0.1:31337` with pairing disabled and deterministic model handlers.
+1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on a
+   kernel-assigned host port with pairing disabled and deterministic model handlers.
 2. Boot/install the WebView-debuggable APK on the Android emulator.
 3. Run `test/android/onboarding-to-home.android.spec.ts` with
    `ELIZA_ANDROID_BACKEND=host`, so global setup wires `adb reverse
-   tcp:31337 -> host:31337`.
+   device `tcp:31337` to the selected host port.
 4. Hard-gate the explicit host-safe set: remote onboarding, route rendering,
    and the native `ElizaSystem` plugin bridge. A newly added Android spec does
    not enter this set implicitly.

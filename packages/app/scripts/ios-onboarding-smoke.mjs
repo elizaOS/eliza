@@ -16,10 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertLiveReply } from "../test/liveness-contract.mjs";
-import {
-  DEFAULT_HOST_AGENT_PORT,
-  startDeviceE2eHostAgent,
-} from "./lib/host-agent.mjs";
+import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import { assertIosMixedContentSmokeResult } from "./lib/ios-mixed-content-smoke-contract.mjs";
 import {
   assertCandidateIosAppRendererFresh,
@@ -48,7 +45,6 @@ const MIXED_CONTENT_REQUEST_KEY = "eliza:ios-mixed-content-smoke:request";
 const MIXED_CONTENT_RESULT_KEY = "eliza:ios-mixed-content-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
-const DEFAULT_HOST_AGENT_PORT_STRING = String(DEFAULT_HOST_AGENT_PORT);
 
 const has = (flag) => process.argv.includes(flag);
 const val = (flag, fallback = null) => {
@@ -481,10 +477,8 @@ async function main() {
     : await startDeviceE2eHostAgent({
         repoRoot,
         artifactDir: resultDir,
-        requestedPort: val("--host-agent-port"),
-        preferredPort:
-          process.env.ELIZA_IOS_HOST_AGENT_PORT ??
-          DEFAULT_HOST_AGENT_PORT_STRING,
+        requestedPort:
+          val("--host-agent-port") ?? process.env.ELIZA_IOS_HOST_AGENT_PORT,
         log,
       });
   apiBase = apiBase ?? hostAgent.apiBase;

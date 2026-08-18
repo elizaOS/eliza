@@ -28,10 +28,7 @@ import {
   evaluateVoiceSelfTestReport,
   resolveVoiceSelfTestPollPolicy,
 } from "./ios-voice-selftest-lib.mjs";
-import {
-  DEFAULT_HOST_AGENT_PORT,
-  startDeviceE2eHostAgent,
-} from "./lib/host-agent.mjs";
+import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -51,7 +48,6 @@ const ONBOARDING_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const ONBOARDING_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const VOICE_REQUEST_KEY = "eliza:ios-voice-selftest:request";
 const VOICE_RESULT_KEY = "eliza:ios-voice-selftest:result";
-const DEFAULT_HOST_AGENT_PORT_STRING = String(DEFAULT_HOST_AGENT_PORT);
 
 const has = (flag) => process.argv.includes(flag);
 const val = (flag, fallback = null) => {
@@ -426,10 +422,8 @@ async function main() {
     : await startDeviceE2eHostAgent({
         repoRoot,
         artifactDir: resultDir,
-        requestedPort: val("--host-agent-port"),
-        preferredPort:
-          process.env.ELIZA_IOS_HOST_AGENT_PORT ??
-          DEFAULT_HOST_AGENT_PORT_STRING,
+        requestedPort:
+          val("--host-agent-port") ?? process.env.ELIZA_IOS_HOST_AGENT_PORT,
         log,
       });
   apiBase = apiBase ?? hostAgent.apiBase;
