@@ -14,6 +14,25 @@ import {
   validateContentPackManifest,
 } from "@elizaos/shared";
 
+/** Manifest reads are short UI requests and must not stall pack loading. */
+export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+
+/** Fetch and fully consume one manifest within a single request/body deadline. */
+export async function getContentPackManifestJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
 export class ContentPackLoadError extends Error {
   constructor(
     message: string,
@@ -40,12 +59,12 @@ export async function loadContentPackFromUrl(
 
   let raw: unknown;
   try {
-    const res = await fetch(manifestUrl);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    raw = await res.json();
+    raw = await getContentPackManifestJsonWithFetch(
+      manifestUrl,
+      globalThis.fetch,
+    );
   } catch (err) {
+    // error-policy:J2 add manifest URL context while preserving the fetch failure.
     throw new ContentPackLoadError(
       `Failed to fetch pack manifest from ${manifestUrl}`,
       source,
@@ -88,6 +107,7 @@ export async function loadContentPackFromFiles(
   try {
     raw = JSON.parse(await packFile.text());
   } catch (err) {
+    // error-policy:J2 add local-pack context while preserving the parse failure.
     throw new ContentPackLoadError(
       "Failed to parse pack.json",
       { kind: "file", path: "local-folder" },
