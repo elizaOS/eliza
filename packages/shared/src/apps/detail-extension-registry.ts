@@ -28,13 +28,40 @@ export function registerDetailExtension(
   detailPanelId: string,
   component: AppDetailExtensionComponent,
 ): void {
+  if (
+    typeof detailPanelId !== "string" ||
+    !detailPanelId.trim() ||
+    !component
+  ) {
+    return;
+  }
   DETAIL_EXTENSION_COMPONENTS.set(detailPanelId, component);
 }
 
-export function getAppDetailExtension(
-  app: RegistryAppInfo,
+/** Unregister a detail-panel extension component by panel id. */
+export function unregisterDetailExtension(detailPanelId: string): boolean {
+  if (typeof detailPanelId !== "string") return false;
+  return DETAIL_EXTENSION_COMPONENTS.delete(detailPanelId);
+}
+
+/** Clear all registered detail extension components. */
+export function clearDetailExtensionRegistry(): void {
+  DETAIL_EXTENSION_COMPONENTS.clear();
+}
+
+/** Directly retrieve a registered detail extension component by panel id. */
+export function getDetailExtension(
+  detailPanelId: string,
 ): AppDetailExtensionComponent | null {
+  if (typeof detailPanelId !== "string") return null;
+  return DETAIL_EXTENSION_COMPONENTS.get(detailPanelId) ?? null;
+}
+
+export function getAppDetailExtension(
+  app: RegistryAppInfo | null | undefined,
+): AppDetailExtensionComponent | null {
+  if (!app || typeof app !== "object") return null;
   const detailPanelId = app.uiExtension?.detailPanelId;
   if (!detailPanelId) return null;
-  return DETAIL_EXTENSION_COMPONENTS.get(detailPanelId) ?? null;
+  return getDetailExtension(detailPanelId);
 }
