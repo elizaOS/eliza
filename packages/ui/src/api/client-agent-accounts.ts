@@ -12,6 +12,9 @@ import type {
 import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
 
+/** Accounts list GET — existing 10s REST budget, independent hop. */
+export const ACCOUNTS_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 export type AccountStrategy = ServiceRouteAccountStrategy;
 
 export type {
@@ -58,7 +61,7 @@ export interface AccountOAuthStartResult {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listAccounts(): Promise<AccountsListResponse>;
+    listAccounts(timeoutMs?: number): Promise<AccountsListResponse>;
     createApiKeyAccount(
       providerId: LinkedAccountProviderId,
       body: { label: string; apiKey: string },
@@ -102,11 +105,16 @@ declare module "./client-base" {
   }
 }
 
-ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
+ElizaClient.prototype.listAccounts = async function (
+  this: ElizaClient,
+  timeoutMs: number = ACCOUNTS_LIST_FETCH_TIMEOUT_MS,
+) {
   // The agent is a separate process on an operator-controlled host, so its
   // reply is untrusted input: validate the shape once here rather than letting
   // a malformed provider list surface as undefined fields in the panel.
-  const response = await this.fetch<unknown>("/api/accounts");
+  const response = await this.fetch<unknown>("/api/accounts", undefined, {
+    timeoutMs,
+  });
   return parseAccountsListResponse(response);
 };
 
