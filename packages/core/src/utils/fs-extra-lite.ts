@@ -29,7 +29,8 @@ export async function pathExists(target: string): Promise<boolean> {
 // untyped property access continues to typecheck. New callers should pass T.
 // biome-ignore lint/suspicious/noExplicitAny: fs-extra contract compatibility
 export async function readJson<T = any>(file: string): Promise<T> {
-	return JSON.parse(await fsp.readFile(file, "utf8")) as T;
+	const contents = await fsp.readFile(file, "utf8");
+	return JSON.parse(contents.replace(/^\uFEFF/, "")) as T;
 }
 
 export async function writeJson(
@@ -38,10 +39,13 @@ export async function writeJson(
 	options?: { spaces?: number },
 ): Promise<void> {
 	// fs-extra (via jsonfile) always terminates the document with a newline.
-	await fsp.writeFile(
-		file,
-		`${JSON.stringify(value, null, options?.spaces)}\n`,
-	);
+	const serialized = JSON.stringify(value, null, options?.spaces);
+	if (serialized === undefined) {
+		throw new TypeError(
+			`Converting ${typeof value} value to JSON is not supported`,
+		);
+	}
+	await fsp.writeFile(file, `${serialized}\n`);
 }
 
 export async function ensureDir(dir: string): Promise<void> {
