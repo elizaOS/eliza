@@ -1,9 +1,11 @@
 /**
  * Steward session glue for the app-hosted cloud auth/login pages. Handles the
- * JWT → HttpOnly cookie sync, the one-time OAuth `code`/`#token` consumption,
- * the server-side nonce exchange, and the cookie-backed refresh — selecting the
- * correct auth endpoint per browser host (so previews and third-party app
- * integrations call their own API worker, never mixing tenants).
+ * JWT → HttpOnly cookie sync, the one-time OAuth `code` consumption, the
+ * legacy credential-link stripping (`?token=` / `#token=` are never consumed —
+ * a clicked link must never plant a session), the server-side nonce exchange,
+ * and the cookie-backed refresh — selecting the correct auth endpoint per
+ * browser host (so previews and third-party app integrations call their own
+ * API worker, never mixing tenants).
  */
 
 import {
@@ -175,34 +177,39 @@ export function consumeStewardCodeFromQuery(): string | null {
 }
 
 /**
- * Parse Steward tokens from the URL hash fragment (legacy rollout fallback). The
- * hash never reaches the server. Strips it after reading. Null when no
- * `#token=` is present so the caller can fall through to `?token=`.
+ * Legacy `#token=` / `#refreshToken=` hash links are never consumed (a clicked
+ * link must never plant a session — the same login-CSRF rule that removed the
+ * `?token=` query path). Strip the credential params from the address bar
+ * immediately so no token lingers in history, copy/paste, or the reach of
+ * third-party scripts booting with the page. Non-credential hash params are
+ * preserved. Returns true when anything was stripped.
  */
-export function consumeStewardTokensFromHash(): {
-  token: string;
-  refreshToken: string | null;
-} | null {
-  if (typeof window === "undefined") return null;
+export function stripLegacyTokenHashFromAddressBar(): boolean {
+  if (typeof window === "undefined") return false;
   const stewardWindow = window as Window & { __stewardOAuthHash?: string };
   const snapshotted = stewardWindow.__stewardOAuthHash;
   const hash = snapshotted || window.location.hash;
+  if (!hash || hash.length < 2) return false;
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  let stripped = false;
+  for (const key of ["token", "refreshToken"] as const) {
+    if (params.has(key)) {
+      params.delete(key);
+      stripped = true;
+    }
+  }
+  if (!stripped) return false;
   if (snapshotted) {
     delete stewardWindow.__stewardOAuthHash;
-  }
-  if (!hash || hash.length < 2) return null;
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const token = params.get("token");
-  if (!token) return null;
-  const refreshToken = params.get("refreshToken");
-  if (!snapshotted) {
+  } else {
+    const nextHash = params.toString();
     window.history.replaceState(
       null,
       "",
-      `${window.location.pathname}${window.location.search}`,
+      `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ""}`,
     );
   }
-  return { token, refreshToken };
+  return true;
 }
 
 /**

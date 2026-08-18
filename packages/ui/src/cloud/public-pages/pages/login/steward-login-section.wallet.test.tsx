@@ -29,7 +29,7 @@ const providerFlags = vi.hoisted(() => ({ siwe: false, siws: false }));
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: () => Promise.resolve({}),
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),

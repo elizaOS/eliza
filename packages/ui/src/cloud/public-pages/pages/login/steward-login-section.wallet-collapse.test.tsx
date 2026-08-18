@@ -91,7 +91,7 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: vi.fn(),
   recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
