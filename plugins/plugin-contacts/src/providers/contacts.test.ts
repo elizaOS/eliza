@@ -116,4 +116,82 @@ describe("androidContacts provider", () => {
     });
     expect(result.values).not.toHaveProperty("contactsError");
   });
+
+  it("normalizes missing phoneNumbers and emailAddresses to empty arrays", async () => {
+    const contacts = [
+      {
+        id: "2",
+        lookupKey: "bob",
+        displayName: "Bob",
+        phoneNumbers: undefined as unknown as string[],
+        emailAddresses: undefined as unknown as string[],
+        starred: false,
+      },
+      {
+        id: "3",
+        lookupKey: "carol",
+        displayName: "Carol",
+        phoneNumbers: null as unknown as string[],
+        emailAddresses: null as unknown as string[],
+        starred: false,
+      },
+      {
+        id: "4",
+        lookupKey: "dave",
+        displayName: "Dave",
+        starred: false,
+      } as unknown as Record<string, unknown>,
+    ];
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    const data = result.data as {
+      contacts: { id: string; phones: string[]; emails: string[] }[];
+    };
+    expect(data.contacts).toHaveLength(3);
+    for (const entry of data.contacts) {
+      expect(Array.isArray(entry.phones)).toBe(true);
+      expect(Array.isArray(entry.emails)).toBe(true);
+      expect(entry.phones).toEqual([]);
+      expect(entry.emails).toEqual([]);
+    }
+    expect(result.text).not.toContain("undefined");
+  });
+
+  it("normalizes missing id and displayName to empty strings", async () => {
+    const contacts = [
+      {
+        lookupKey: "no-id",
+        displayName: undefined as unknown as string,
+        phoneNumbers: ["+15550000000"],
+        emailAddresses: ["x@example.com"],
+        starred: false,
+      } as unknown as Record<string, unknown>,
+      {
+        id: undefined as unknown as string,
+        lookupKey: "no-name",
+        phoneNumbers: [],
+        emailAddresses: [],
+        starred: false,
+      } as unknown as Record<string, unknown>,
+    ];
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    const data = result.data as {
+      contacts: { id: string; displayName: string }[];
+    };
+    expect(data.contacts[0]?.displayName).toBe("");
+    expect(data.contacts[1]?.id).toBe("");
+  });
 });

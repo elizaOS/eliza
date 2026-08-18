@@ -30,10 +30,10 @@ interface AndroidContactEntry {
 
 function toEntry(contact: ContactSummary): AndroidContactEntry {
   return {
-    id: contact.id,
-    displayName: contact.displayName,
-    phones: contact.phoneNumbers,
-    emails: contact.emailAddresses,
+    id: contact.id ?? "",
+    displayName: contact.displayName ?? "",
+    phones: Array.isArray(contact.phoneNumbers) ? contact.phoneNumbers : [],
+    emails: Array.isArray(contact.emailAddresses) ? contact.emailAddresses : [],
     starred: Boolean(contact.starred),
   };
 }
