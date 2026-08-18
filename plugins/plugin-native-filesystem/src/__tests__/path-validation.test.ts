@@ -160,4 +160,35 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 			rmSync(outside, { recursive: true, force: true });
 		}
 	});
+
+	it("rejects writes through a symlinked target file pointing outside the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			const victim = path.join(outside, "victim.txt");
+			await writeFile(victim, "original");
+			// A symlink whose final component escapes the root: the parent dir is
+			// inside the workspace, but writeFile() would follow the link and clobber
+			// the external file if only the parent were validated.
+			symlinkSync(victim, path.join(tempRoot, "link.txt"), "file");
+
+			await expect(
+				bridge.write("link.txt", "PWNED-outside-root"),
+			).rejects.toThrow(/escapes workspace root/);
+			// The guard must fire before writeFile touches the target: the external
+			// file is left untouched.
+			await expect(readFile(victim, "utf8")).resolves.toBe("original");
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("overwrites an ordinary existing in-root file without tripping the guard", async () => {
+		await bridge.write("notes/keep.txt", "v1");
+		await bridge.write("notes/keep.txt", "v2");
+		const onDisk = await readFile(
+			path.join(tempRoot, "notes", "keep.txt"),
+			"utf8",
+		);
+		expect(onDisk).toBe("v2");
+	});
 });
