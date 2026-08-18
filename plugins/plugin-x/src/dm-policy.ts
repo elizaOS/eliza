@@ -6,7 +6,12 @@
  * otherwise drive the agent's reply loop over DMs). Mirrors the Telegram
  * connector's `dm-policy.ts` semantics.
  */
-import { checkPairingAllowed, type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  checkPairingAllowed,
+  type IAgentRuntime,
+  isInAllowlist,
+  logger,
+} from "@elizaos/core";
 
 /** DM gating modes accepted by `TWITTER_DM_POLICY`. */
 export type TwitterDmPolicy = "open" | "pairing" | "allowlist" | "disabled";
@@ -58,9 +63,8 @@ export interface TwitterDmAccessDecision {
  * Evaluate one DM sender against the resolved DM policy. Only the `pairing`
  * branch is stateful: it delegates to the core PairingService, which replies
  * with a one-time code at most once per request TTL per sender. `allowlist`
- * denies here because the connector has no static DM allowlist of its own —
- * approved senders live in the core pairing allowlist, which the `pairing`
- * branch consults first.
+ * consults the same core allowlist without creating a request or sending a
+ * pairing code.
  */
 export async function checkTwitterDmAccess(
   runtime: IAgentRuntime,
@@ -76,8 +80,12 @@ export async function checkTwitterDmAccess(
     return { allowed: true };
   }
 
-  if (policy === "disabled" || policy === "allowlist") {
+  if (policy === "disabled") {
     return { allowed: false };
+  }
+
+  if (policy === "allowlist") {
+    return { allowed: await isInAllowlist(runtime, "x", senderId) };
   }
 
   const pairing = await checkPairingAllowed(runtime, {

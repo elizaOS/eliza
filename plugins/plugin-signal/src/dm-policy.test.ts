@@ -277,6 +277,33 @@ describe("SignalService DM policy enforcement", () => {
     expect(pairingService.upsertRequest).not.toHaveBeenCalled();
   });
 
+  it("honors flat dmPolicy and allowFrom at the base and account compatibility surfaces", async () => {
+    for (const signalSettings of [
+      { dmPolicy: "open" },
+      { dmPolicy: "allowlist", allowFrom: ["+15550001111"] },
+      { accounts: { default: { dmPolicy: "open" } } },
+      {
+        dmPolicy: "disabled",
+        accounts: {
+          default: { dmPolicy: "allowlist", allowFrom: ["+15550001111"] },
+        },
+      },
+    ]) {
+      const { service, processMessage, pairingService } = makeService({
+        signalSettings,
+      });
+
+      await (
+        service as unknown as {
+          handleIncomingMessage: (msg: SignalMessage, accountId?: string) => Promise<void>;
+        }
+      ).handleIncomingMessage(inbound);
+
+      expect(processMessage).toHaveBeenCalledTimes(1);
+      expect(pairingService.upsertRequest).not.toHaveBeenCalled();
+    }
+  });
+
   it("does not gate group messages", async () => {
     const { service, processMessage, pairingService } = makeService({});
 

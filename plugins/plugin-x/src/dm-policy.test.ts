@@ -77,17 +77,30 @@ describe("checkTwitterDmAccess", () => {
     expect(pairingService.isAllowed).not.toHaveBeenCalled();
   });
 
-  it("denies silently under disabled and allowlist policies", async () => {
+  it("denies silently under the disabled policy", async () => {
     const { runtime, pairingService } = makePairingRuntime();
 
-    for (const policy of ["disabled", "allowlist"] as const) {
-      const access = await checkTwitterDmAccess(runtime, {
-        policy,
-        senderId: "42",
-      });
-      expect(access).toEqual({ allowed: false });
-    }
+    const access = await checkTwitterDmAccess(runtime, {
+      policy: "disabled",
+      senderId: "42",
+    });
+    expect(access).toEqual({ allowed: false });
     expect(pairingService.isAllowed).not.toHaveBeenCalled();
+  });
+
+  it("consults the core allowlist without issuing a pairing code", async () => {
+    const { runtime, pairingService } = makePairingRuntime({
+      pairingAllowed: true,
+    });
+
+    const access = await checkTwitterDmAccess(runtime, {
+      policy: "allowlist",
+      senderId: "42",
+    });
+
+    expect(access).toEqual({ allowed: true });
+    expect(pairingService.isAllowed).toHaveBeenCalledWith("x", "42");
+    expect(pairingService.upsertRequest).not.toHaveBeenCalled();
   });
 
   it("admits a pairing-approved sender without a reply", async () => {

@@ -130,19 +130,29 @@ export function telegramFileIdFromRef(url: string | undefined): string | null {
  * `getFileLink` URL carrying the bot token — rethrow with only the failure
  * code so a failed download can never write the credential to a log sink.
  */
+function sanitizedTelegramFileError(error: unknown): ElizaError {
+  const fetchCode =
+    error instanceof Error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "unknown";
+  const cause = new Error(`Telegram media fetch failed (${fetchCode})`);
+  cause.name = error instanceof Error ? error.name : "MediaFetchError";
+  return new ElizaError("Telegram file download failed", {
+    code: "TELEGRAM_FILE_DOWNLOAD_FAILED",
+    cause,
+    context: { fetchCode },
+  });
+}
+
 async function resolveTelegramFileBytes(
   url: string,
 ): Promise<ResolvedAttachmentBytes> {
   try {
     return await resolveAttachmentBytes(url);
   } catch (error) {
-    // error-policy:J2 preserve the failure class/code, drop the token-bearing
-    // URL from the message and cause before it reaches connector log sinks.
-    const code =
-      error instanceof Error && "code" in error
-        ? String((error as { code?: unknown }).code)
-        : "unknown";
-    throw new Error(`Telegram file download failed (${code})`);
+    // error-policy:J2 Preserve a sanitized transport classification without
+    // retaining the token-bearing URL in the message, cause, or context.
+    throw sanitizedTelegramFileError(error);
   }
 }
 
@@ -463,7 +473,14 @@ export class MessageManager {
   private async fetchTelegramFileBytes(
     fileId: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    const fileLink = await this.bot.telegram.getFileLink(fileId);
+    let fileLink: URL;
+    try {
+      fileLink = await this.bot.telegram.getFileLink(fileId);
+    } catch (error) {
+      // error-policy:J2 Apply the same credential-safe boundary to Bot API
+      // lookup failures, whose client error details are not trusted as safe.
+      throw sanitizedTelegramFileError(error);
+    }
     return resolveTelegramFileBytes(fileLink.toString());
   }
 
@@ -574,7 +591,7 @@ export class MessageManager {
         {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing document",
       );
@@ -665,7 +682,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing PDF document",
       );
@@ -715,7 +732,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing text document",
       );

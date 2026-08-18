@@ -12,7 +12,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
-import { TwitterDirectMessageClient } from "./direct-messages";
+import { isGroupDmEvent, TwitterDirectMessageClient } from "./direct-messages";
 import type { TwitterClientState } from "./types";
 
 function authenticatedTwitterClient(
@@ -48,6 +48,24 @@ function deferred<T>() {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("X DM conversation classification", () => {
+  it("recognizes current MessageCreate group IDs without participant_ids", () => {
+    expect(
+      isGroupDmEvent({
+        dm_conversation_id: "1582103724607971328",
+        event_type: "MessageCreate",
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps current one-to-one IDs and unknown shapes behind the DM gate", () => {
+    expect(isGroupDmEvent({ dm_conversation_id: "42-9001" })).toBe(false);
+    expect(isGroupDmEvent({ dm_conversation_id: "unexpected-shape" })).toBe(
+      false,
+    );
+  });
 });
 
 describe("TwitterDirectMessageClient", () => {

@@ -13,12 +13,23 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
 
-const { resolveAttachmentBytesMock } = vi.hoisted(() => ({
-  resolveAttachmentBytesMock: vi.fn(),
-}));
+const { loggerErrorMock, loggerWarnMock, resolveAttachmentBytesMock } =
+  vi.hoisted(() => ({
+    loggerErrorMock: vi.fn(),
+    loggerWarnMock: vi.fn(),
+    resolveAttachmentBytesMock: vi.fn(),
+  }));
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return { ...actual, resolveAttachmentBytes: resolveAttachmentBytesMock };
+  return {
+    ...actual,
+    logger: {
+      ...actual.logger,
+      error: loggerErrorMock,
+      warn: loggerWarnMock,
+    },
+    resolveAttachmentBytes: resolveAttachmentBytesMock,
+  };
 });
 
 function createManager() {
@@ -229,6 +240,34 @@ describe("MessageManager malformed payload handling", () => {
       } as never),
     ).resolves.toEqual({ processedContent: "", attachments: [] });
     expect(useModel).toHaveBeenCalled();
+  });
+
+  it("never writes a token-bearing media fetch failure into connector logs", async () => {
+    loggerErrorMock.mockClear();
+    loggerWarnMock.mockClear();
+    const getFileLink = vi.fn(
+      async () =>
+        new URL("https://api.telegram.org/file/bot123:SECRET/photos/p1.jpg"),
+    );
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      new Error(
+        "Failed to fetch media from https://api.telegram.org/file/bot123:SECRET/photos/p1.jpg",
+      ),
+    );
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      { agentId: "agent-1", useModel: vi.fn() } as never,
+    );
+
+    await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
+    } as never);
+
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain("SECRET");
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain("SECRET");
   });
 
   it("persists a token-free capability reference and feeds the vision model inline bytes", async () => {

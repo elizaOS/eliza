@@ -87,6 +87,20 @@ function compareEventIds(left: string, right: string): number {
   }
 }
 
+/**
+ * X stopped returning `participant_ids` on MessageCreate events in June 2025.
+ * Current one-to-one conversation IDs are the two participant IDs joined by a
+ * hyphen; group conversation IDs are a single numeric snowflake. Retain the
+ * old participant-array check for compatible API responses, but fail closed
+ * to one-to-one when an identifier has an unknown shape.
+ */
+export function isGroupDmEvent(event: DirectMessageEvent): boolean {
+  if ((event.participant_ids?.length ?? 0) > 2) return true;
+  const conversationId = event.dm_conversation_id?.trim() ?? "";
+  if (/^\d{1,19}-\d{1,19}$/.test(conversationId)) return false;
+  return /^\d{15,19}$/.test(conversationId);
+}
+
 export class TwitterDirectMessageClient {
   private isRunning = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -342,7 +356,7 @@ export class TwitterDirectMessageClient {
     const senderId = event.sender_id;
     const username = user?.username ?? senderId;
     const displayName = user?.name ?? username;
-    const isGroup = (event.participant_ids?.length ?? 0) > 2;
+    const isGroup = isGroupDmEvent(event);
 
     // DM access policy gate: a one-on-one X DM from an unpaired sender must
     // not reach the agent's reply loop. The default `pairing` policy routes

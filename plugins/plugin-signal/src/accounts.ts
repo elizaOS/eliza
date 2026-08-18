@@ -77,6 +77,10 @@ export interface SignalAccountConfig {
   reactionAllowlist?: Array<string | number>;
   /** DM configuration */
   dm?: SignalDmConfig;
+  /** Compatibility alias from the public SignalConfig surface. */
+  dmPolicy?: SignalDmConfig["policy"];
+  /** Compatibility alias from the public SignalConfig surface. */
+  allowFrom?: Array<string | number>;
   /** Group configuration */
   group?: SignalGroupConfig;
   /** Whether to ignore group messages */
@@ -98,6 +102,10 @@ export interface SignalMultiAccountConfig {
   authDir?: string;
   /** Base DM access policy, inherited by every account unless overridden */
   dm?: SignalDmConfig;
+  /** Compatibility alias from the public SignalConfig surface. */
+  dmPolicy?: SignalDmConfig["policy"];
+  /** Compatibility alias from the public SignalConfig surface. */
+  allowFrom?: Array<string | number>;
   /** Per-account configuration overrides */
   accounts?: Record<string, SignalAccountConfig>;
 }
@@ -140,6 +148,8 @@ function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig
     httpUrl: characterSignal?.httpUrl,
     authDir: characterSignal?.authDir,
     dm: characterSignal?.dm,
+    dmPolicy: characterSignal?.dmPolicy,
+    allowFrom: characterSignal?.allowFrom,
     accounts: characterSignal?.accounts,
   };
 }
@@ -225,10 +235,20 @@ function mergeSignalAccountConfig(runtime: IAgentRuntime, accountId: string): Si
 
   // Merge order: env defaults < base config < account config
   // Filter undefined values to prevent them from overwriting defined values
+  const normalizedDm = filterDefined({
+    policy: multiConfig.dmPolicy,
+    allowFrom: multiConfig.allowFrom,
+    ...filterDefined(multiConfig.dm ?? {}),
+    ...(accountConfig.dmPolicy !== undefined ? { policy: accountConfig.dmPolicy } : {}),
+    ...(accountConfig.allowFrom !== undefined ? { allowFrom: accountConfig.allowFrom } : {}),
+    ...filterDefined(accountConfig.dm ?? {}),
+  });
+
   return {
     ...filterDefined(envConfig),
     ...filterDefined(baseConfig),
     ...filterDefined(accountConfig),
+    ...(Object.keys(normalizedDm).length > 0 ? { dm: normalizedDm } : {}),
   };
 }
 
