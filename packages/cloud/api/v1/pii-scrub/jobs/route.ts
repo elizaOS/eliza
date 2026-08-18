@@ -60,7 +60,15 @@ export function createPiiScrubJobsRoute(
   app.post("/", async (c) => {
     try {
       const user = await dependencies.requireUserOrApiKeyWithOrg(c);
-      const body = enqueueSchema.parse(await c.req.json());
+      let rawBody: unknown;
+      try {
+        rawBody = await c.req.json();
+      } catch {
+        // error-policy:J3 untrusted request body — malformed JSON is caller
+        // error (400), not failureResponse(SyntaxError) → 500.
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      const body = enqueueSchema.parse(rawBody);
       const job = await dependencies.enqueuePiiScrubBatch({
         organizationId: user.organization_id,
         userId: user.id,
