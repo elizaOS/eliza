@@ -3,8 +3,11 @@
  * `gemini-embedding-001`; overridable via `GOOGLE_EMBEDDING_MODEL`).
  * A `null`/empty-object input is treated as an initialization probe and answered
  * with a fixed 768-length marker vector so the runtime can size its embedding
- * column without a network call; real text is truncated to the model's ~8192
- * token limit, embedded, and reported via `emitModelUsageEvent`. Real requests
+ * column without a network call; real text is truncated to the model's
+ * documented input token limit (2,048 for the default `gemini-embedding-001`,
+ * 8,192 for the larger-window `gemini-embedding-2`) via
+ * `getEmbeddingInputTokenLimit`, embedded, and reported via
+ * `emitModelUsageEvent`. Real requests
  * pin `outputDimensionality` to the same 768 width as the probe and L2-normalize
  * the result, because the default `gemini-embedding-001` otherwise emits its
  * 3072-dim default and every write would fail the probe-sized column (#22010).
@@ -18,10 +21,16 @@
  * to the next TEXT_EMBEDDING provider (or disables embedding generation), so a
  * misconfigured model id can no longer produce an infinite 404 retry spam.
  */
+
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { createGoogleGenAI, getEmbeddingModel } from "../utils/config";
+import type { GoogleGenAI } from "@google/genai";
+import {
+  createGoogleGenAI,
+  getEmbeddingInputTokenLimit,
+  getEmbeddingModel,
+} from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
@@ -114,6 +123,78 @@ function extractText(
   );
 }
 
+async function providerTokenCount(
+  genAI: GoogleGenAI,
+  model: string,
+  contents: string,
+): Promise<number> {
+  const response = await genAI.models.countTokens({ model, contents });
+  const total = response.totalTokens;
+  if (typeof total !== "number" || !Number.isSafeInteger(total) || total < 0) {
+    throw new ElizaError("Google token counter returned an invalid total", {
+      code: "EMBEDDING_TOKEN_COUNT_INVALID",
+      context: { model, totalTokens: total },
+    });
+  }
+  return total;
+}
+
+async function truncateToEmbeddingTokenLimit(
+  genAI: GoogleGenAI,
+  model: string,
+  text: string,
+  limit: number,
+): Promise<{ text: string; tokens: number; truncated: boolean }> {
+  const fullTokens = await providerTokenCount(genAI, model, text);
+  if (fullTokens <= limit) {
+    return { text, tokens: fullTokens, truncated: false };
+  }
+
+  const boundaries = [0];
+  for (let index = 0; index < text.length; ) {
+    const point = text.codePointAt(index);
+    index += point !== undefined && point > 0xffff ? 2 : 1;
+    boundaries.push(index);
+  }
+
+  let low = 0;
+  let high = boundaries.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = text.slice(0, boundaries[middle]);
+    const tokens = await providerTokenCount(genAI, model, candidate);
+    if (tokens <= limit) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  const truncatedText = text.slice(0, boundaries[low]);
+  // Prefix token counts are not a mathematically monotone contract for a
+  // subword tokenizer: appending text can retokenize the preceding suffix.
+  // Binary search is therefore only a fast way to find a conservative
+  // candidate, not proof of maximality. Re-measure the exact returned prefix
+  // so tokenizer changes or a non-monotone/mock implementation can never let
+  // an over-limit request reach embedContent.
+  const verifiedTokens = await providerTokenCount(genAI, model, truncatedText);
+  if (verifiedTokens > limit || !truncatedText.trim()) {
+    throw new ElizaError(
+      "Google tokenizer could not produce a non-empty embedding prefix within the model limit",
+      {
+        code: "EMBEDDING_TOKEN_LIMIT_UNSATISFIABLE",
+        context: {
+          model,
+          limit,
+          candidateTokens: verifiedTokens,
+          candidateCodePoints: low,
+        },
+      },
+    );
+  }
+  return { text: truncatedText, tokens: verifiedTokens, truncated: true };
+}
+
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
@@ -139,16 +220,22 @@ export async function handleTextEmbedding(
   const embeddingModelName = getEmbeddingModel(runtime);
   logger.debug(`[TEXT_EMBEDDING] Using model: ${embeddingModelName}`);
 
-  // Truncate to stay within embedding model token limits (~4 chars per token)
-  const maxChars = 8_192 * 4;
-  if (text.length > maxChars) {
-    logger.warn(
-      `[Google GenAI] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8192 tokens`,
-    );
-    text = text.slice(0, maxChars);
-  }
+  const tokenLimit = getEmbeddingInputTokenLimit(embeddingModelName);
 
   try {
+    const bounded = await truncateToEmbeddingTokenLimit(
+      genAI,
+      embeddingModelName,
+      text,
+      tokenLimit,
+    );
+    if (bounded.truncated) {
+      logger.warn(
+        `[Google GenAI] Embedding input has more than ${tokenLimit} tokens for model "${embeddingModelName}"; truncated with the provider tokenizer to ${bounded.tokens} tokens`,
+      );
+    }
+    text = bounded.text;
+
     const response = await genAI.models.embedContent({
       model: embeddingModelName,
       contents: text,

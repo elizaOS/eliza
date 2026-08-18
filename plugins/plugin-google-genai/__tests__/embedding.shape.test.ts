@@ -14,9 +14,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   countTokens: vi.fn(),
+  countEmbeddingTokens: vi.fn(),
   createGoogleGenAI: vi.fn(),
   embedContent: vi.fn(),
   emitModelUsageEvent: vi.fn(),
+  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
 }));
 
 vi.mock("@elizaos/core", async () => {
@@ -38,10 +40,18 @@ vi.mock("@elizaos/core", async () => {
   };
 });
 
-vi.mock("../utils/config", () => ({
-  createGoogleGenAI: mocks.createGoogleGenAI,
-  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
-}));
+vi.mock("../utils/config", async () => {
+  // Use the real per-model input-token-limit resolver so the truncation
+  // boundary tests exercise the actual gemini-embedding-001 (2048) vs
+  // gemini-embedding-2 (8192) map, not a re-declared stub that could drift.
+  const actual =
+    await vi.importActual<typeof import("../utils/config")>("../utils/config");
+  return {
+    createGoogleGenAI: mocks.createGoogleGenAI,
+    getEmbeddingModel: mocks.getEmbeddingModel,
+    getEmbeddingInputTokenLimit: actual.getEmbeddingInputTokenLimit,
+  };
+});
 
 vi.mock("../utils/events", () => ({
   emitModelUsageEvent: mocks.emitModelUsageEvent,
@@ -63,7 +73,13 @@ function createRuntime(): IAgentRuntime {
 describe("Google GenAI embeddings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-001");
     mocks.countTokens.mockResolvedValue(5);
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: Math.ceil(contents.length / 4),
+      }),
+    );
     // gemini-embedding-001 honours outputDimensionality:768 and returns a
     // 768-length (un-normalized) vector for that request.
     mocks.embedContent.mockResolvedValue({
@@ -71,6 +87,7 @@ describe("Google GenAI embeddings", () => {
     });
     mocks.createGoogleGenAI.mockReturnValue({
       models: {
+        countTokens: mocks.countEmbeddingTokens,
         embedContent: mocks.embedContent,
       },
     });
@@ -237,6 +254,128 @@ describe("Google GenAI embeddings", () => {
       code: "EMBEDDING_NON_FINITE",
       context: { dimensions: 768, index: 7 },
     });
+  });
+
+  it("uses the provider tokenizer to truncate adversarial one-character tokens to the default model limit", async () => {
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-001");
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: contents.length,
+      }),
+    );
+    const oversized = "!".repeat(3_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+    const passed = mocks.embedContent.mock.calls[0][0] as {
+      model: string;
+      contents: string;
+    };
+    expect(passed.model).toBe("gemini-embedding-001");
+    expect(passed.contents.length).toBe(2_048);
+    expect(passed.contents).toBe("!".repeat(2_048));
+  });
+
+  it("truncates only at Unicode code-point boundaries", async () => {
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: Array.from(contents).length,
+      }),
+    );
+    const oversized = "😀".repeat(3_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(Array.from(passed.contents)).toHaveLength(2_048);
+    expect(passed.contents).toBe("😀".repeat(2_048));
+    expect(passed.contents.endsWith("😀")).toBe(true);
+  });
+
+  it("stays safe when prefix token counts are non-monotone", async () => {
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        // A contrived merge discontinuity: the 1,500-character prefix costs
+        // more than longer neighboring prefixes. The search may conservatively
+        // stop early, but the exact prefix sent must still be measured <= 2,048.
+        totalTokens: contents.length === 1_500 ? 2_500 : contents.length,
+      }),
+    );
+
+    await handleTextEmbedding(createRuntime(), "n".repeat(3_000));
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(passed.contents).toBe("n".repeat(1_499));
+  });
+
+  it("fails closed if re-measuring the selected prefix exceeds the limit", async () => {
+    const callsByContents = new Map<string, number>();
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => {
+        const calls = (callsByContents.get(contents) ?? 0) + 1;
+        callsByContents.set(contents, calls);
+        return {
+          totalTokens:
+            contents.length === 2_048 && calls > 1 ? 2_049 : contents.length,
+        };
+      },
+    );
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "x".repeat(3_000)),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_TOKEN_LIMIT_UNSATISFIABLE",
+    });
+    expect(mocks.embedContent).not.toHaveBeenCalled();
+  });
+
+  it("does NOT truncate a gemini-embedding-2 override to the smaller 2,048 limit for the same input", async () => {
+    // The same provider-tokenized input that exceeds the default model's 2,048
+    // limit remains below gemini-embedding-2's 8,192-token window.
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-2");
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: contents.length,
+      }),
+    );
+    const input = "a".repeat(3_000);
+
+    await handleTextEmbedding(createRuntime(), input);
+
+    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+    const passed = mocks.embedContent.mock.calls[0][0] as {
+      model: string;
+      contents: string;
+    };
+    expect(passed.model).toBe("gemini-embedding-2");
+    expect(passed.contents.length).toBe(3_000);
+  });
+
+  it("truncates an unmapped override to the safe 2,048-token default limit", async () => {
+    // An override id not present in the limit map falls back to the safe 2,048
+    // limit rather than inheriting the larger model's window.
+    mocks.getEmbeddingModel.mockReturnValue("some-unknown-embedding-model");
+    mocks.countEmbeddingTokens.mockImplementation(
+      async ({ contents }: { contents: string }) => ({
+        totalTokens: contents.length,
+      }),
+    );
+    const oversized = "b".repeat(3_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(passed.contents.length).toBe(2_048);
+  });
+
+  it("fails closed when the provider tokenizer returns no valid token total", async () => {
+    mocks.countEmbeddingTokens.mockResolvedValue({});
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({ code: "EMBEDDING_TOKEN_COUNT_INVALID" });
+    expect(mocks.embedContent).not.toHaveBeenCalled();
   });
 
   it("throws for empty embedding input before creating a client", async () => {
