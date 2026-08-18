@@ -27,7 +27,7 @@ function stallUntilAborted(): typeof fetch {
 describe("Google OAuth request deadlines", () => {
   it("aborts a stalled token exchange at the injected deadline", async () => {
     await expect(
-      exchangeAuthorizationCodeWithFetch(TOKEN_ARGS, stallUntilAborted(), 10),
+      exchangeAuthorizationCodeWithFetch(TOKEN_ARGS, stallUntilAborted(), 10)
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -36,7 +36,7 @@ describe("Google OAuth request deadlines", () => {
       new Response("invalid_grant", { status: 400, statusText: "Bad Request" });
 
     await expect(exchangeAuthorizationCodeWithFetch(TOKEN_ARGS, fetchImpl, 1_000)).rejects.toThrow(
-      "invalid_grant",
+      "invalid_grant"
     );
   });
 
@@ -57,7 +57,7 @@ describe("Google OAuth request deadlines", () => {
 
   it("aborts a stalled userinfo request at the injected deadline", async () => {
     await expect(
-      fetchGoogleUserInfoWithFetch("access-token", stallUntilAborted(), 10),
+      fetchGoogleUserInfoWithFetch("access-token", stallUntilAborted(), 10)
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -66,7 +66,7 @@ describe("Google OAuth request deadlines", () => {
       new Response("", { status: 429, statusText: "Too Many Requests" });
 
     await expect(fetchGoogleUserInfoWithFetch("access-token", fetchImpl, 1_000)).rejects.toThrow(
-      "429",
+      "429"
     );
   });
 
