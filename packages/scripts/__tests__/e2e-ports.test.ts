@@ -54,6 +54,14 @@ describe("advertisePort / waitForAdvertisedPort", () => {
     );
   });
 
+  it("rejects partial numeric content instead of truncating it", async () => {
+    const portFile = path.join(dir, "partial.port");
+    writeFileSync(portFile, "31338junk\n", "utf8");
+    await expect(waitForAdvertisedPort(portFile)).rejects.toThrow(
+      /does not contain a port/,
+    );
+  });
+
   it("rejects on timeout when nothing advertises", async () => {
     const portFile = path.join(dir, "never.port");
     await expect(

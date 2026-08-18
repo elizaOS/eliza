@@ -52,9 +52,13 @@ export async function waitForAdvertisedPort(
 ) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if (child && child.exitCode !== null) {
+    if (child && (child.exitCode !== null || child.signalCode !== null)) {
       throw new Error(
-        `waitForAdvertisedPort: child exited with code ${child.exitCode} before advertising a port (${portFile})`,
+        `waitForAdvertisedPort: child exited with ${
+          child.exitCode !== null
+            ? `code ${child.exitCode}`
+            : `signal ${child.signalCode}`
+        } before advertising a port (${portFile})`,
       );
     }
     let raw = null;
@@ -66,7 +70,8 @@ export async function waitForAdvertisedPort(
       // treated as a result, and timeout/child-exit surface as errors.
     }
     if (raw !== null) {
-      const port = Number.parseInt(raw.trim(), 10);
+      const value = raw.trim();
+      const port = /^\d+$/.test(value) ? Number.parseInt(value, 10) : NaN;
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
         throw new Error(
           `waitForAdvertisedPort: ${portFile} does not contain a port: ${JSON.stringify(raw)}`,
