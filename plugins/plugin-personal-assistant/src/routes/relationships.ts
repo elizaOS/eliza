@@ -146,13 +146,18 @@ export async function handleRelationshipRoutes(
     /^\/api\/lifeops\/relationships\/([^/]+)\/retire$/,
   );
   if (method === "POST" && retireMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const relationshipId = decodeURIComponent(retireMatch[1] ?? "");
+    const relationshipId = ctx.decodePathComponent(
+      retireMatch[1] ?? "",
+      res,
+      "relationship id",
+    );
+    if (relationshipId === null) return true;
     if (!relationshipId) {
       ctx.error(res, "relationship id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const body = await readJsonBody<{ reason?: unknown }>(req, res);
     if (!body) return true;
     await store.retire(relationshipId, asString(body.reason, "manual_retire"));
@@ -163,13 +168,18 @@ export async function handleRelationshipRoutes(
   // PATCH /api/lifeops/relationships/:id
   const patchMatch = pathname.match(/^\/api\/lifeops\/relationships\/([^/]+)$/);
   if (method === "PATCH" && patchMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const relationshipId = decodeURIComponent(patchMatch[1] ?? "");
+    const relationshipId = ctx.decodePathComponent(
+      patchMatch[1] ?? "",
+      res,
+      "relationship id",
+    );
+    if (relationshipId === null) return true;
     if (!relationshipId) {
       ctx.error(res, "relationship id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const existing = await store.get(relationshipId);
     if (!existing) {
       ctx.error(res, "relationship not found", 404);
@@ -202,13 +212,18 @@ export async function handleRelationshipRoutes(
     /^\/api\/lifeops\/relationships\/([^/]+)$/,
   );
   if (method === "GET" && getOneMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const relationshipId = decodeURIComponent(getOneMatch[1] ?? "");
+    const relationshipId = ctx.decodePathComponent(
+      getOneMatch[1] ?? "",
+      res,
+      "relationship id",
+    );
+    if (relationshipId === null) return true;
     if (!relationshipId) {
       ctx.error(res, "relationship id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const relationship = await store.get(relationshipId);
     if (!relationship) {
       ctx.error(res, "relationship not found", 404);
