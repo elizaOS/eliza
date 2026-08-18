@@ -3,10 +3,15 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  __resetPendingWebSocketsForTests,
   applyCors,
   CORS_ALLOWED_HEADERS,
   isAuthorized,
   isServerTokenAuthorized,
+  MAX_PENDING_WEBSOCKETS_PER_PEER,
+  pendingWebSocketCount,
+  releasePendingWebSocket,
+  tryAcquirePendingWebSocket,
 } from "../../src/api/server-helpers-auth";
 
 class HeaderCapture extends http.ServerResponse {
@@ -308,5 +313,51 @@ describe("SSE query-token auth (?token= for EventSource)", () => {
       { Accept: "text/event-stream", Authorization: `Bearer ${API_TOKEN}` },
     );
     expect(isAuthorized(req)).toBe(true);
+  });
+});
+
+describe("unauthenticated WebSocket pending-socket bounds (W5-015)", () => {
+  afterEach(() => {
+    __resetPendingWebSocketsForTests();
+  });
+
+  it("admits pre-auth sockets up to the per-peer cap, then refuses", () => {
+    for (let i = 0; i < MAX_PENDING_WEBSOCKETS_PER_PEER; i++) {
+      expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    }
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(
+      MAX_PENDING_WEBSOCKETS_PER_PEER,
+    );
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(false);
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(
+      MAX_PENDING_WEBSOCKETS_PER_PEER,
+    );
+  });
+
+  it("tracks caps independently per peer", () => {
+    for (let i = 0; i < MAX_PENDING_WEBSOCKETS_PER_PEER; i++) {
+      expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    }
+    expect(tryAcquirePendingWebSocket("198.51.100.7")).toBe(true);
+  });
+
+  it("releases slots back down to zero and tolerates over-release", () => {
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(1);
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(0);
+    // Releasing a peer with no held slots is a no-op, not a negative count.
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(0);
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+  });
+
+  it("buckets a missing peer address under the shared unknown key", () => {
+    expect(tryAcquirePendingWebSocket(undefined)).toBe(true);
+    expect(pendingWebSocketCount(null)).toBe(1);
+    releasePendingWebSocket(undefined);
+    expect(pendingWebSocketCount(undefined)).toBe(0);
   });
 });

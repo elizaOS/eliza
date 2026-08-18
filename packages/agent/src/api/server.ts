@@ -1320,10 +1320,13 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
+  releasePendingWebSocket as _releasePendingWebSocket,
   resolveBoundaryRole as _resolveBoundaryRole,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
+  tryAcquirePendingWebSocket as _tryAcquirePendingWebSocket,
+  WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
 
 // Importing the artifact share-viewer scheme self-registers its resolver with
@@ -1365,6 +1368,8 @@ const resolveTerminalRunRejection = _resolveTerminalRunRejection;
 const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
 const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
+const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
+const releasePendingWebSocket = _releasePendingWebSocket;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
 
@@ -4131,18 +4136,45 @@ export async function startApiServer(opts?: {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
         return;
       }
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        // Attach an 'error' listener IMMEDIATELY — before emit('connection')
-        // runs the (long) connection handler that only attaches its own error
-        // listener near the end. A client that RSTs in that window otherwise
-        // emits an unhandled 'error' on the ws and crashes the process.
-        ws.on("error", (err: unknown) => {
-          logger.warn(
-            `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+      // W5-015: an upgrade without handshake credentials is allowed so the
+      // client can authenticate post-open, but concurrent pre-auth sockets
+      // are capped per peer — an unbounded accept was a remote FD-exhaustion
+      // DoS. The slot releases when the socket authenticates or closes (see
+      // the connection handler), or in the catch below if the upgrade fails.
+      let pendingWsPeer: string | null | undefined;
+      if (!isWebSocketAuthorized(request, wsUrl)) {
+        const peer = request.socket.remoteAddress ?? null;
+        if (!tryAcquirePendingWebSocket(peer)) {
+          rejectWebSocketUpgrade(
+            socket,
+            401,
+            "Too many unauthenticated WebSocket connections",
           );
+          return;
+        }
+        pendingWsPeer = peer;
+      }
+      try {
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          // Attach an 'error' listener IMMEDIATELY — before emit('connection')
+          // runs the (long) connection handler that only attaches its own error
+          // listener near the end. A client that RSTs in that window otherwise
+          // emits an unhandled 'error' on the ws and crashes the process.
+          ws.on("error", (err: unknown) => {
+            logger.warn(
+              `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+            );
+          });
+          wss.emit("connection", ws, request);
         });
-        wss.emit("connection", ws, request);
-      });
+      } catch (upgradeErr) {
+        // error-policy:J2 release the reserved pre-auth slot, then rethrow
+        // unchanged into the outer boundary handler.
+        if (pendingWsPeer !== undefined) {
+          releasePendingWebSocket(pendingWsPeer);
+        }
+        throw upgradeErr;
+      }
     } catch (err) {
       logger.error(
         `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
@@ -4171,6 +4203,38 @@ export async function startApiServer(opts?: {
     }
 
     let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+
+    // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
+    // peer. It releases on post-open authentication or on close — whichever
+    // comes first — and a socket that never authenticates is closed when the
+    // grace period expires, so a silent peer can no longer pin a file
+    // descriptor indefinitely. The peer is captured now so the release keys
+    // on the same bucket even if the socket is already torn down.
+    const pendingWsPeer = request.socket?.remoteAddress ?? null;
+    let pendingSlotHeld = !isAuthenticated;
+    const releasePendingSlot = () => {
+      if (!pendingSlotHeld) return;
+      pendingSlotHeld = false;
+      releasePendingWebSocket(pendingWsPeer);
+    };
+    let authGraceTimer: NodeJS.Timeout | null = null;
+    const clearAuthGraceTimer = () => {
+      if (authGraceTimer) {
+        clearTimeout(authGraceTimer);
+        authGraceTimer = null;
+      }
+    };
+    if (!isAuthenticated) {
+      authGraceTimer = setTimeout(() => {
+        authGraceTimer = null;
+        logger.warn(
+          "[eliza-api] closing WebSocket that did not authenticate within the grace period",
+        );
+        ws.close(1008, "Unauthorized");
+      }, WS_AUTH_GRACE_TIMEOUT_MS);
+      // A stuck pre-auth socket must not hold the process open on shutdown.
+      authGraceTimer.unref?.();
+    }
 
     // Optional reconnect cursor: a client that tracks the highest buffered
     // event sequence it has applied can pass it back as `?lastEventId=` so the
@@ -4300,6 +4364,8 @@ export async function startApiServer(opts?: {
             tokenMatches(expected, msg.token.trim())
           ) {
             isAuthenticated = true;
+            clearAuthGraceTimer();
+            releasePendingSlot();
             ws.send(JSON.stringify({ type: "auth-ok" }));
             activateAuthenticatedConnection();
           } else {
@@ -4474,6 +4540,8 @@ export async function startApiServer(opts?: {
     });
 
     ws.on("close", () => {
+      clearAuthGraceTimer();
+      releasePendingSlot();
       wsClients.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
@@ -4493,6 +4561,8 @@ export async function startApiServer(opts?: {
       logger.error(
         `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );
+      clearAuthGraceTimer();
+      releasePendingSlot();
       wsClients.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up PTY subscriptions on error too

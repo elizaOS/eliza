@@ -8,6 +8,10 @@
  *    boot phase) for callers that fail the trusted-local check.
  *  - W1-011: the device-bridge WS path fails closed (HTTP 404) when the
  *    bridge cannot be attached, instead of skipping WS auth unconditionally.
+ *  - W5-015: unauthenticated /ws sockets are bounded — a per-peer cap on
+ *    concurrent pre-auth upgrades and a post-open auth grace period that
+ *    closes sockets which never authenticate — while the post-open token
+ *    flow keeps working.
  * Boots the real `startApiServer` on an ephemeral loopback port with an
  * explicit API token; a remote caller is simulated with a non-loopback
  * X-Forwarded-For, which the trusted-local classifier treats as untrusted.
@@ -17,8 +21,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import WebSocket from "ws";
 import { startApiServer } from "./server.ts";
+import {
+  __resetPendingWebSocketsForTests,
+  MAX_PENDING_WEBSOCKETS_PER_PEER,
+  pendingWebSocketCount,
+  WS_AUTH_GRACE_TIMEOUT_MS,
+} from "./server-helpers-auth.ts";
 
 // The gate contract under test lives in server.ts. The cloud plugin's own
 // handler is NOT exercised here: under the source-alias test environment the
@@ -214,4 +225,114 @@ describe("device-bridge WS upgrade gate (W1-011)", () => {
     );
     expect(raw.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
   }, 120_000);
+});
+
+describe("unauthenticated /ws bounds (W5-015)", () => {
+  beforeEach(() => {
+    __resetPendingWebSocketsForTests();
+  });
+
+  function openUnauthenticatedWs(port: number): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      ws.once("open", () => resolve(ws));
+      ws.once("error", reject);
+    });
+  }
+
+  function waitForClose(ws: WebSocket, timeoutMs: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("timed out waiting for the server close")),
+        timeoutMs,
+      );
+      ws.once("close", (code: number) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+  }
+
+  /** Waits for a specific frame type, ignoring the interleaved status/replay. */
+  function waitForFrame(ws: WebSocket, type: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`timed out waiting for ${type}`)),
+        5_000,
+      );
+      ws.on("message", (data: unknown) => {
+        const msg = JSON.parse(String(data)) as { type?: string };
+        if (msg.type === type) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+  }
+
+  it("closes a socket that never authenticates after the grace period", async () => {
+    const baseUrl = await bootServer();
+    const port = Number(new URL(baseUrl).port);
+    const ws = await openUnauthenticatedWs(port);
+    expect(pendingWebSocketCount("127.0.0.1")).toBe(1);
+
+    const code = await waitForClose(ws, WS_AUTH_GRACE_TIMEOUT_MS + 8_000);
+    expect(code).toBe(1008);
+    // The pre-auth slot is released once the closed socket is reaped.
+    await vi.waitFor(() => {
+      expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+    });
+  }, 30_000);
+
+  it("keeps the post-open token auth flow working past the grace period", async () => {
+    const baseUrl = await bootServer();
+    const port = Number(new URL(baseUrl).port);
+    const ws = await openUnauthenticatedWs(port);
+
+    const authOk = waitForFrame(ws, "auth-ok");
+    ws.send(JSON.stringify({ type: "auth", token: API_TOKEN }));
+    await authOk;
+    // Authentication released the pre-auth slot.
+    expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+
+    // Wait out the grace period: an authenticated socket must survive it.
+    await new Promise((resolve) =>
+      setTimeout(resolve, WS_AUTH_GRACE_TIMEOUT_MS + 1_500),
+    );
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+
+    const pong = waitForFrame(ws, "pong");
+    ws.send(JSON.stringify({ type: "ping" }));
+    await pong;
+    ws.close();
+    await vi.waitFor(() => {
+      expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+    });
+  }, 30_000);
+
+  it("caps concurrent unauthenticated upgrades per peer", async () => {
+    const baseUrl = await bootServer();
+    const port = Number(new URL(baseUrl).port);
+    const sockets: WebSocket[] = [];
+    try {
+      for (let i = 0; i < MAX_PENDING_WEBSOCKETS_PER_PEER; i++) {
+        sockets.push(await openUnauthenticatedWs(port));
+      }
+      expect(pendingWebSocketCount("127.0.0.1")).toBe(
+        MAX_PENDING_WEBSOCKETS_PER_PEER,
+      );
+
+      // The next credential-less upgrade from the same peer is refused at the
+      // handshake instead of pinning another file descriptor forever.
+      await expect(openUnauthenticatedWs(port)).rejects.toThrow(/401/);
+      expect(pendingWebSocketCount("127.0.0.1")).toBe(
+        MAX_PENDING_WEBSOCKETS_PER_PEER,
+      );
+    } finally {
+      for (const ws of sockets) ws.close();
+    }
+    await vi.waitFor(() => {
+      expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+    });
+  }, 30_000);
 });

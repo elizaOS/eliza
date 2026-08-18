@@ -6,9 +6,23 @@
  * vision) with the right URL, headers, and request-body shape; input is
  * validated before any network call; and no direct Eliza Cloud fetch provider is
  * exposed. Deterministic: `fetch` is stubbed with a fake that records calls and
- * replays canned responses — no live models or network.
+ * replays canned responses — no live models or network. The Ollama vision
+ * suite additionally stubs core's `fetchRemoteMedia` to prove image URLs go
+ * through the SSRF-guarded, byte-capped fetcher (W5-020).
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const fetchRemoteMediaMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
+  };
+});
+
+import { VISION_IMAGE_MAX_BYTES } from "@elizaos/core";
 import { ElizaSchema } from "../config/zod-schema";
 import {
   type AudioGenerationProvider,
@@ -480,5 +494,101 @@ describe("media vision provider input validation", () => {
         },
       ],
     });
+  });
+});
+
+/**
+ * W5-020: the Ollama vision provider must resolve `imageUrl` through core's
+ * SSRF-guarded `fetchRemoteMedia` under a hard byte cap — never a raw,
+ * unbounded fetch.
+ */
+describe("Ollama vision image fetching (W5-020)", () => {
+  beforeEach(() => {
+    fetchRemoteMediaMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubOllamaFetch(calls: FetchCall[]): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        if (href.endsWith("/api/tags")) {
+          return Response.json({ models: [{ name: "llava" }] });
+        }
+        if (href.endsWith("/api/chat")) {
+          return Response.json({ message: { content: "a cat" } });
+        }
+        throw new Error(`unexpected fetch: ${href}`);
+      }),
+    );
+  }
+
+  it("fetches imageUrl through the guarded fetcher with the vision byte cap", async () => {
+    const calls: FetchCall[] = [];
+    stubOllamaFetch(calls);
+    fetchRemoteMediaMock.mockResolvedValue({
+      buffer: Buffer.from([1, 2, 3]),
+      contentType: "image/jpeg",
+      fileName: "cat.jpg",
+    });
+
+    const provider = createVisionProvider(
+      { mode: "own-key", provider: "ollama", ollama: {} },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.analyze({
+      imageUrl: "https://example.com/cat.jpg",
+      prompt: "describe",
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { description: "a cat" },
+    });
+    expect(fetchRemoteMediaMock).toHaveBeenCalledTimes(1);
+    const options = fetchRemoteMediaMock.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(options.url).toBe("https://example.com/cat.jpg");
+    expect(options.maxBytes).toBe(VISION_IMAGE_MAX_BYTES);
+    // The fetched bytes reach Ollama as base64 image input.
+    const chatCall = calls.find((call) => call.url.endsWith("/api/chat"));
+    expect(chatCall?.body.messages).toMatchObject([{ images: ["AQID"] }]);
+  });
+
+  it("fails closed when the guarded fetch rejects, before calling Ollama", async () => {
+    const calls: FetchCall[] = [];
+    stubOllamaFetch(calls);
+    fetchRemoteMediaMock.mockRejectedValue(new Error("SSRF blocked"));
+
+    const provider = createVisionProvider(
+      { mode: "own-key", provider: "ollama", ollama: {} },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.analyze({
+      imageUrl: "http://192.168.1.1/internal.jpg",
+      prompt: "describe",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Failed to fetch image");
+    expect(
+      calls.find((call) => call.url.endsWith("/api/chat")),
+    ).toBeUndefined();
   });
 });

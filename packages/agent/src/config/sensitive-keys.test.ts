@@ -161,3 +161,35 @@ describe("URL-shaped and misc secret keys (W1-021)", () => {
     expect(redacted.env.LOG_LEVEL).toBe("info");
   });
 });
+
+/**
+ * W5-027: the classifier must cover the `passwd`/`passphrase` credential
+ * names that the logger and core policies already treat as secret — a stored
+ * `WALLET_PASSPHRASE` must never be served back in cleartext by /api/config.
+ */
+describe("passwd/passphrase credential names (W5-027)", () => {
+  it("classifies passwd and passphrase names as sensitive", () => {
+    for (const key of [
+      "passwd",
+      "PASSWD",
+      "db.passwd",
+      "passphrase",
+      "PASSPHRASE",
+      "WALLET_PASSPHRASE",
+      "walletPassphrase",
+    ]) {
+      expect(isSensitiveConfigKey(key), key).toBe(true);
+    }
+  });
+
+  it("redacts a stored WALLET_PASSPHRASE through GET /api/config", () => {
+    const redacted = redactConfigSecrets({
+      env: {
+        WALLET_PASSPHRASE: "correct horse battery staple",
+        LOG_LEVEL: "info",
+      },
+    }) as { env: Record<string, unknown> };
+    expect(redacted.env.WALLET_PASSPHRASE).toBe("[REDACTED]");
+    expect(redacted.env.LOG_LEVEL).toBe("info");
+  });
+});

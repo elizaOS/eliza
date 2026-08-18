@@ -12,7 +12,13 @@
  * - "own-key" mode uses the user's own API keys
  */
 
-import { logger } from "@elizaos/core";
+import {
+  fetchRemoteMedia,
+  logger,
+  nodeLookupFn,
+  nodePinnedFetch,
+  VISION_IMAGE_MAX_BYTES,
+} from "@elizaos/core";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -1164,22 +1170,20 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
     // Ollama uses a different format for vision - images must be base64
     let imageData = options.imageBase64;
     if (!imageData && options.imageUrl) {
-      // Fetch the image and convert to base64
+      // Fetch the image through the SSRF-guarded fetcher (DNS-pinned, private
+      // ranges blocked) with a hard byte cap, then convert to base64 (W5-020).
       try {
-        const imageResponse = await fetchWithTimeout(
-          options.imageUrl,
-          {},
-          120_000,
-        );
-        if (!imageResponse.ok) {
-          return {
-            success: false,
-            error: `Failed to fetch image: ${imageResponse.statusText}`,
-          };
-        }
-        const buffer = await imageResponse.arrayBuffer();
-        imageData = Buffer.from(buffer).toString("base64");
+        const { buffer } = await fetchRemoteMedia({
+          url: options.imageUrl,
+          maxBytes: VISION_IMAGE_MAX_BYTES,
+          timeoutMs: 120_000,
+          lookupFn: nodeLookupFn,
+          pinnedFetchImpl: nodePinnedFetch,
+        });
+        imageData = buffer.toString("base64");
       } catch (err) {
+        // error-policy:J1 the provider boundary returns a structured failure
+        // result instead of throwing.
         return {
           success: false,
           error: `Failed to fetch image: ${err instanceof Error ? err.message : String(err)}`,

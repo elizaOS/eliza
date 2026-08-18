@@ -38,6 +38,7 @@ const AGENT_ID = "55555555-5555-4555-8555-555555555555";
 const MANAGED_ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
+  "ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS",
   "ELIZA_CLOUD_AGENT_ID",
   "WAIFU_ELIZA_CLOUD_AGENT_ID",
   "ELIZAOS_CLOUD_BASE_URL",
@@ -278,7 +279,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows the explicit local-provider relay for loopback and local-Docker peers", async () => {
+  it("allows the explicit local-provider relay for loopback and allowlisted Docker-gateway peers", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
         new Response(
@@ -332,11 +333,11 @@ describe("handleStandaloneCloudPairRoute", () => {
       }),
     );
 
-    // Local-Docker deployments publish the port on the host's loopback, so
-    // inside the container the TCP peer is the bridge gateway — a private
-    // address, not 127.0.0.1. That supported flow must keep working.
+    // W5-016: private-range peers are NO LONGER admitted by default. The
+    // local-Docker flow (port published on the host loopback, so the in-container
+    // peer is the bridge gateway) requires the explicit CIDR allowlist.
     fetchMock.mockClear();
-    const dockerHarness = fakeRes();
+    const dockerDefaultHarness = fakeRes();
     await handleStandaloneCloudPairRoute(
       fakeReq({
         pathname: "/pair",
@@ -345,10 +346,62 @@ describe("handleStandaloneCloudPairRoute", () => {
         proto: "http",
         ip: "172.17.0.1",
       }),
-      dockerHarness.res,
+      dockerDefaultHarness.res,
     );
-    expect(dockerHarness.status()).toBe(200);
-    expect(fetchMock).toHaveBeenCalled();
+    expect(dockerDefaultHarness.status()).toBe(421);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS = "172.17.0.0/16";
+    try {
+      fetchMock.mockClear();
+      const dockerHarness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=pair-token",
+          host: "127.0.0.1:43123",
+          proto: "http",
+          ip: "172.17.0.1",
+        }),
+        dockerHarness.res,
+      );
+      expect(dockerHarness.status()).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+
+      // Dual-stack sockets report IPv4 peers in IPv4-mapped spelling.
+      fetchMock.mockClear();
+      const mappedHarness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=pair-token",
+          host: "127.0.0.1:43123",
+          proto: "http",
+          ip: "::ffff:172.17.0.1",
+        }),
+        mappedHarness.res,
+      );
+      expect(mappedHarness.status()).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+
+      // The allowlist admits ONLY its ranges — other LAN/VPC peers stay out.
+      fetchMock.mockClear();
+      const lanHarness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=pair-token",
+          host: "127.0.0.1:43123",
+          proto: "http",
+          ip: "192.168.1.10",
+        }),
+        lanHarness.res,
+      );
+      expect(lanHarness.status()).toBe(421);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS;
+    }
 
     fetchMock.mockClear();
     const publicHarness = fakeRes();
