@@ -27,6 +27,22 @@ describe.each([
 });
 
 describe("dev-ui Vite runtime", () => {
+  it("keeps renderer-only mobile topology out of the host API child", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+    const viteEnv = source.indexOf(
+      "function startVite() {\n  const childEnv = createDevChildEnv(process.env);",
+    );
+    const apiEnv = source.indexOf(
+      "const childEnv = createApiChildEnv(process.env);",
+      viteEnv + 1,
+    );
+
+    expect(source).toContain('"VITE_ELIZA_IOS_RUNTIME_MODE"');
+    expect(source).toContain('"VITE_ELIZA_MOBILE_RUNTIME_MODE"');
+    expect(viteEnv).toBeGreaterThan(-1);
+    expect(apiEnv).toBeGreaterThan(viteEnv);
+  });
+
   it("uses the validated package-manager Node instead of a PATH shim", () => {
     const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
 
