@@ -97,12 +97,21 @@ function isPortraitScreenOrientation(): boolean {
   return true;
 }
 
-function getPhysicalScreenExtent(): number {
+export function getPhysicalScreenVerticalExtent(): number {
   const portrait = isPortraitScreenOrientation();
-  const primary = portrait ? window.screen?.height : window.screen?.width;
-  if (typeof primary === "number" && primary > 0) return primary;
-  const fallback = portrait ? window.screen?.width : window.screen?.height;
-  return typeof fallback === "number" && fallback > 0 ? fallback : 0;
+  const width = window.screen?.width;
+  const height = window.screen?.height;
+  const dimensions = [width, height].filter(
+    (value): value is number => typeof value === "number" && value > 0,
+  );
+  if (dimensions.length === 0) return 0;
+
+  // WebKit is inconsistent about whether Screen.width/height rotate with the
+  // device. Some releases keep portrait dimensions in landscape (932x430),
+  // while Capacitor on current Simulator reports the rotated pair (430x932).
+  // The physical vertical extent is the long axis in portrait and the short
+  // axis in landscape regardless of which property currently owns that axis.
+  return portrait ? Math.max(...dimensions) : Math.min(...dimensions);
 }
 
 /**
@@ -160,11 +169,10 @@ export function measureStandaloneBottomGap(): number {
       : (document.documentElement?.clientHeight ?? 0);
   if (layoutHeight <= 0) return 0;
 
-  // The TRUE physical screen extent for the current orientation. iOS can keep
-  // `screen.height` as the portrait long side in landscape, so use
-  // `screen.width` there; otherwise a normal landscape viewport looks like a
-  // giant keyboard shortfall and freezes a stale portrait reclaim.
-  const screenExtent = getPhysicalScreenExtent();
+  // The TRUE physical screen extent for the current orientation. iOS may keep
+  // portrait screen dimensions in landscape or swap width/height as it rotates,
+  // so select the physical long/short axis rather than a named property.
+  const screenExtent = getPhysicalScreenVerticalExtent();
   if (screenExtent <= 0) return 0;
 
   // KEYBOARD-OPEN GUARD (the r-kbd regression): the resting reclaim measures

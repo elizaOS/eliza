@@ -80,6 +80,7 @@ import {
 } from "../../os-intent/host";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
+  getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   shouldInstallStandaloneBottomReclaim,
@@ -2687,10 +2688,7 @@ export function ChatOverlay({
       );
       let screenKeyboard = 0;
       if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {
-        const screenHeight =
-          typeof window.screen?.height === "number" && window.screen.height > 0
-            ? window.screen.height
-            : 0;
+        const screenHeight = getPhysicalScreenVerticalExtent();
         const insetFromScreen =
           screenHeight > 0
             ? Math.max(0, screenHeight - vv.height - vv.offsetTop)

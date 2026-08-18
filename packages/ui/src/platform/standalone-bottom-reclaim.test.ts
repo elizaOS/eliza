@@ -217,6 +217,23 @@ describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-I
     expect(measureStandaloneBottomGap()).toBe(0);
   });
 
+  it("uses the short physical axis when screen dimensions rotate in landscape", () => {
+    // Current Capacitor Simulator swaps Screen.width/height with orientation.
+    // The landscape vertical extent is still the 430px short axis; blindly
+    // reading screen.width would see 932px, clamp a false 502px reclaim to
+    // 160px, and translate the bottom composer completely off-screen.
+    stubViewport({
+      layoutHeight: 430,
+      innerHeight: 430,
+      innerWidth: 932,
+      visualHeight: 430,
+      screenHeight: 430,
+      screenWidth: 932,
+      orientation: "landscape",
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
   it("is 0 (never negative) when the layout box exceeds screen.height (defensive)", () => {
     // Should not happen physically, but a layout box taller than the physical
     // screen must reclaim nothing, never a negative translate off-screen.
