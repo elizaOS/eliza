@@ -1250,7 +1250,17 @@ async function runCreateLegacy(
         params as Record<string, unknown>,
         [task, requestText(message)],
       );
-      if (createRequestedRepo && !route) {
+      // An explicitly-named repo outranks a keyword route: "put up a pr on
+      // my <name> repo" text-matches generic route entries ("pull request"),
+      // which silently steered repo asks into unrelated local checkouts and
+      // skipped provisioning (live 2026-08-18: sandbox asks ran inside the
+      // operator's own project worktrees).
+      if (createRequestedRepo && route) {
+        logger(runtime).info(
+          `[TASKS:create] explicit repo ${createRequestedRepo} outranks route ${route.id ?? route.workdir}; provisioning a clone`,
+        );
+      }
+      if (createRequestedRepo) {
         const createWorkspaceService = getCodingWorkspaceService(runtime);
         // A planner-supplied workdir binds a repo ask ONLY when the registry
         // tracks it (live 2026-08-18: the planner copied a stale workspace
@@ -1301,7 +1311,15 @@ async function runCreateLegacy(
       // injection never fires here. Re-attach the contract on the task text
       // itself; the helper is gated + idempotent so non-app tasks pass through.
       const taskWithRouteHints = augmentTaskWithDeployGuidance(
-        taskWithResolvedRoute(task, route, sessionWorkdir, swarmRoomMetadata),
+        // A provisioned clone is NOT the route's tree: carrying the route's
+        // id/instructions onto it would mislabel the workdir class and feed
+        // the child instructions about a checkout it is not in.
+        taskWithResolvedRoute(
+          task,
+          createProvisionedWorkspaceId ? undefined : route,
+          sessionWorkdir,
+          swarmRoomMetadata,
+        ),
         undefined,
         { monetized: pickBoolean(params, content, "appMonetized") === true },
       );
@@ -2432,7 +2450,12 @@ async function runSpawnAgent(
       params as Record<string, unknown>,
       [task, requestText(message)],
     );
-    if (requestedRepo && !effectiveRoute) {
+    if (requestedRepo && effectiveRoute) {
+      logger(runtime).info(
+        `[TASKS:spawn_agent] explicit repo ${requestedRepo} outranks route ${effectiveRoute.id ?? effectiveRoute.workdir}; provisioning a clone`,
+      );
+    }
+    if (requestedRepo) {
       const workspaceService = getCodingWorkspaceService(runtime);
       // Same registered-workdir contract as the create path: a planner
       // workdir only binds a repo ask when the registry tracks it.
@@ -2475,7 +2498,7 @@ async function runSpawnAgent(
     }
     const taskWithRouteHints = taskWithResolvedRoute(
       task,
-      effectiveRoute,
+      provisionedWorkspaceId ? undefined : effectiveRoute,
       effectiveWorkdir,
       swarmRoomMetadata,
     );
