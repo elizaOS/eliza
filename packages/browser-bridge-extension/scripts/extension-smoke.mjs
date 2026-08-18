@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Node smoke test for the Chrome build: verifies the dist/chrome artifacts
- * (manifest, bundles, host allowlist) and exercises the pairing/sync flow
- * against a stub agent HTTP server. Real build output, mocked agent.
+ * (manifest, bundles, host allowlist) and exercises pairing, sync, and a real
+ * DOM click against a stub agent HTTP server. Real browser/extension/page;
+ * only the agent API is mocked.
  */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -231,6 +232,7 @@ function createMockCompanion(origin, requestBody) {
 
 async function startMockAgentServer() {
   const requests = [];
+  let sessionCompleted = false;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     let body = "";
@@ -250,7 +252,7 @@ async function startMockAgentServer() {
     if (url.pathname === "/chat") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(
-        "<!doctype html><html><head><title>Eliza</title></head><body><h1>Eliza</h1><p>Mock app page for extension smoke tests.</p></body></html>",
+        '<!doctype html><html><head><title>Eliza</title></head><body><h1>Eliza</h1><p>Mock app page for extension smoke tests.</p><button id="smoke-action" onclick="this.dataset.clicked=\'yes\'">Run smoke action</button></body></html>',
       );
       return;
     }
@@ -352,9 +354,72 @@ async function startMockAgentServer() {
             metadata: {},
             updatedAt: nowIso(),
           },
-          session: null,
+          session:
+            firstTab && !sessionCompleted
+              ? {
+                  id: "session-smoke-test",
+                  agentId: companion.agentId,
+                  domain: "browser",
+                  subjectType: "smoke",
+                  subjectId: "smoke",
+                  visibilityScope: "private",
+                  contextPolicy: "private",
+                  workflowId: null,
+                  browser: companion.browser,
+                  companionId: companion.id,
+                  profileId: companion.profileId,
+                  windowId: firstTab.windowId,
+                  tabId: firstTab.tabId,
+                  title: "Chrome action smoke",
+                  status: "running",
+                  actions: [
+                    {
+                      id: "action-smoke-click",
+                      kind: "click",
+                      label: "Click the smoke button",
+                      browser: companion.browser,
+                      windowId: firstTab.windowId,
+                      tabId: firstTab.tabId,
+                      url: firstTab.url,
+                      selector: "#smoke-action",
+                      text: null,
+                      accountAffecting: false,
+                      requiresConfirmation: false,
+                      metadata: {},
+                    },
+                  ],
+                  currentActionIndex: 0,
+                  awaitingConfirmationForActionId: null,
+                  result: {},
+                  metadata: {},
+                  createdAt: nowIso(),
+                  updatedAt: nowIso(),
+                  finishedAt: null,
+                }
+              : null,
         }),
       );
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname ===
+        "/api/browser-bridge/companions/sessions/session-smoke-test/progress"
+    ) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname ===
+        "/api/browser-bridge/companions/sessions/session-smoke-test/complete"
+    ) {
+      sessionCompleted = true;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -464,6 +529,25 @@ async function runAutoPairAndSyncScenario(chromium) {
     if (syncRequests.length === 0) {
       throw new Error(
         "Expected the smoke test to hit the companion sync route at least once.",
+      );
+    }
+    await appPage.waitForFunction(
+      () => document.querySelector("#smoke-action")?.dataset.clicked === "yes",
+      undefined,
+      { timeout: 20_000 },
+    );
+    await appPage.waitForTimeout(250);
+    const progressRequest = mockServer.requests.find(
+      (request) =>
+        request.path.endsWith("/session-smoke-test/progress") &&
+        request.body?.result?.["action-smoke-click"]?.tagName === "button",
+    );
+    const completionRequest = mockServer.requests.find((request) =>
+      request.path.endsWith("/session-smoke-test/complete"),
+    );
+    if (!progressRequest || !completionRequest) {
+      throw new Error(
+        "Expected the real DOM click result and session completion callbacks.",
       );
     }
   } catch (error) {
