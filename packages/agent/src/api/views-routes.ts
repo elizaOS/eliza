@@ -1049,8 +1049,9 @@ export async function handleViewsRoutes(
   // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
   // the caller owns a narrower delivery channel. Realtime voice returns the
   // validated VIEWS result through its originating WebSocket session; normal app
-  // chat returns it in the completed stream action result. A global echo from
-  // either path would navigate unrelated browsers and devices.
+  // chat keeps the completed stream action result as its fallback and may also
+  // best-effort target the live originating renderer. A global echo from either
+  // path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -1207,9 +1208,18 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo when the client already navigated or when the caller owns a
-    // narrower delivery channel such as realtime voice or the app chat stream.
-    if (reportedSource !== "user" && !callerOwnedDelivery) {
+    // Realtime voice returns navigation through its own control channel. App
+    // chat normally has the completed action as a reliable fallback, but when
+    // its originating renderer still has a live WebSocket, deliver there now:
+    // the navigate frame is emitted before the action callback can claim
+    // "Opened …", while the later completed-action handoff remains a no-op (or
+    // recovers the switch when this best-effort delivery misses).
+    const shouldTargetCompletedAction =
+      body?.delivery === "completed-action" && Boolean(originatingClientId);
+    if (
+      reportedSource !== "user" &&
+      (!callerOwnedDelivery || shouldTargetCompletedAction)
+    ) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1228,7 +1238,10 @@ export async function handleViewsRoutes(
           originatingClientId,
           frame,
         );
-        if (delivered === undefined || delivered <= 0) {
+        if (
+          !shouldTargetCompletedAction &&
+          (delivered === undefined || delivered <= 0)
+        ) {
           error(
             res,
             `No connected view client "${originatingClientId}" is available for "${id}".`,
