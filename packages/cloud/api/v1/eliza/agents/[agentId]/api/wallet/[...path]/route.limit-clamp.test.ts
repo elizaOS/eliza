@@ -22,6 +22,7 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: "org-1",
 }));
 const getAgent = mock(async () => ({ id: "sandbox-agent-1" }));
+const listPendingApprovals = mock(async () => []);
 
 mock.module("@/db/helpers", () => ({
   dbWrite: { select: dbSelect },
@@ -46,7 +47,7 @@ mock.module("@/lib/services/steward-client", () => ({
       pendingApprovals: 0,
       recentTransactions: [],
     }),
-    listPendingApprovals: async () => [],
+    listPendingApprovals,
     listApprovals: async () => [],
     approveTransaction: async () => ({ ok: true, txId: "tx-1" }),
     denyTransaction: async () => ({}),
@@ -67,10 +68,10 @@ mock.module("@/lib/utils/logger", () => ({
 
 const { handleDirectWalletRequest } = await import("./route");
 
-function context(query: string) {
+function context(path: string, query: string) {
   return {
     req: {
-      url: `http://test.local/api/wallet/steward-tx-records${query}`,
+      url: `http://test.local/api/wallet/${path}${query}`,
     },
     json: (body: unknown, status?: number) =>
       Response.json(body, { status: status ?? 200 }),
@@ -79,10 +80,24 @@ function context(query: string) {
 
 async function txRecords(query: string) {
   const response = await handleDirectWalletRequest(
-    context(query),
+    context("steward-tx-records", query),
     Promise.resolve({
       agentId: "sandbox-agent-1",
       path: ["steward-tx-records"],
+    }),
+    "GET",
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()) as { limit: number; offset: number };
+}
+
+async function pendingApprovals(query: string) {
+  listPendingApprovals.mockClear();
+  const response = await handleDirectWalletRequest(
+    context("steward-pending-approvals", query),
+    Promise.resolve({
+      agentId: "sandbox-agent-1",
+      path: ["steward-pending-approvals"],
     }),
     "GET",
   );
@@ -133,5 +148,27 @@ describe("GET steward-tx-records limit/offset clamp", () => {
   test("unsafe-integer offset falls back to the default", async () => {
     const body = await txRecords("?offset=99999999999999999999999");
     expect(body.offset).toBe(0);
+  });
+});
+
+describe("GET steward-pending-approvals limit/offset clamp", () => {
+  test("passes canonical values to Steward and echoes them in the response", async () => {
+    const body = await pendingApprovals("?limit=7&offset=3");
+
+    expect(listPendingApprovals).toHaveBeenCalledWith("sandbox-agent-1", {
+      limit: 7,
+      offset: 3,
+    });
+    expect(body).toMatchObject({ limit: 7, offset: 3 });
+  });
+
+  test("does not forward malformed values to Steward", async () => {
+    const body = await pendingApprovals("?limit=1e2&offset=-5");
+
+    expect(listPendingApprovals).toHaveBeenCalledWith("sandbox-agent-1", {
+      limit: 50,
+      offset: 0,
+    });
+    expect(body).toMatchObject({ limit: 50, offset: 0 });
   });
 });
