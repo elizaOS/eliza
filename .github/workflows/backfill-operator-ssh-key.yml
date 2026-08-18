@@ -89,16 +89,8 @@ jobs:
           umask 077
           public_key_path="$RUNNER_TEMP/operator-backfill-public-key"
           printf '%s\n' "$OPERATOR_PUBLIC_KEY" > "$public_key_path"
-          line_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$public_key_path")"
-          [ "$line_count" -eq 1 ] || { echo "::error::APPS_OPERATOR_SSH_KEY must contain exactly one public key"; exit 1; }
-          description="$(ssh-keygen -E sha256 -lf "$public_key_path" 2>/dev/null)" || {
-            echo "::error::APPS_OPERATOR_SSH_KEY is not a valid OpenSSH public key"
-            exit 1
-          }
-          bits="$(awk '{print $1}' <<<"$description")"
-          key_type="$(awk '{print $NF}' <<<"$description")"
-          if [ "$bits" != 256 ] || [ "$key_type" != '(ED25519)' ]; then
-            echo "::error::APPS_OPERATOR_SSH_KEY must be one valid ED25519 public key"
+          if ! packages/cloud/scripts/admin/validate-operator-public-key.sh "$public_key_path"; then
+            echo "::error::APPS_OPERATOR_SSH_KEY must contain exactly one valid ED25519 public key"
             exit 1
           fi
 

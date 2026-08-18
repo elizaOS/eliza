@@ -8,6 +8,7 @@ const workflow = readFileSync(
   "utf8",
 );
 const installerPath = new URL("./admin/install-operator-public-key.sh", import.meta.url).pathname;
+const validatorPath = new URL("./admin/validate-operator-public-key.sh", import.meta.url).pathname;
 const operatorKey = "ssh-ed25519 AAAATESTONLYOPERATORKEY operator@test";
 
 function runInstaller(home) {
@@ -59,10 +60,7 @@ describe("operator SSH backfill workflow", () => {
   });
 
   test("validates a single wire-format ED25519 key with ssh-keygen", () => {
-    expect(workflow).toContain('ssh-keygen -E sha256 -lf "$public_key_path"');
-    expect(workflow).toContain('[ "$line_count" -eq 1 ]');
-    expect(workflow).toContain('[ "$bits" != 256 ]');
-    expect(workflow).toContain("[ \"$key_type\" != '(ED25519)' ]");
+    expect(workflow).toContain("packages/cloud/scripts/admin/validate-operator-public-key.sh");
     expect(workflow).not.toContain("[A-Za-z0-9+/]");
   });
 
@@ -80,6 +78,27 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain('2>"$ssh_error_path"');
     expect(workflow).toContain("ProxyCommand=$proxy_command");
     expect(workflow).not.toContain('echo "$host"');
+  });
+});
+
+describe("operator public-key validator", () => {
+  test("accepts one real ED25519 public key and rejects malformed or multiple keys", () => {
+    withTempHome((home) => {
+      const privatePath = join(home, "test-operator");
+      const generated = Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privatePath]);
+      expect(generated.exitCode).toBe(0);
+      const publicPath = `${privatePath}.pub`;
+      expect(Bun.spawnSync(["bash", validatorPath, publicPath]).exitCode).toBe(0);
+
+      const malformedPath = join(home, "malformed.pub");
+      writeFileSync(malformedPath, "ssh-ed25519 AAAATESTONLY malformed@test\n");
+      expect(Bun.spawnSync(["bash", validatorPath, malformedPath]).exitCode).not.toBe(0);
+
+      const multiplePath = join(home, "multiple.pub");
+      const valid = readFileSync(publicPath, "utf8");
+      writeFileSync(multiplePath, `${valid}${valid}`);
+      expect(Bun.spawnSync(["bash", validatorPath, multiplePath]).exitCode).not.toBe(0);
+    });
   });
 });
 
