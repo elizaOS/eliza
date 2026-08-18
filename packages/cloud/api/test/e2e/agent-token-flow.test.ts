@@ -28,6 +28,7 @@ import {
   exchangeApiKeyForSession,
   getBaseUrl,
   isServerReachable,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -126,7 +127,7 @@ describeE2E("Foundation: agent token flow", () => {
         description: "Foundation e2e test — created and revoked in afterAll.",
         rate_limit: 60,
       },
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
 
     expect(createRes.status).toBe(201);
