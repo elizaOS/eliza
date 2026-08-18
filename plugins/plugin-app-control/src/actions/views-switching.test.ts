@@ -443,6 +443,39 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.values).toMatchObject({ completedActionDelivered: true });
 		});
 
+		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => {
+					throw new SyntaxError("invalid JSON receipt");
+				},
+			} as Response);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "seeker-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {
