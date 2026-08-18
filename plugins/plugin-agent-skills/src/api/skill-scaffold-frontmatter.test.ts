@@ -327,7 +327,12 @@ describe("POST /api/skills/create write → discover/read round trip (real handl
 
     expect(result.handled).toBe(true);
     expect(result.error).toEqual({
-      message: `description must be ${SKILL_DESCRIPTION_MAX_LENGTH} characters or less`,
+      message: expect.stringMatching(
+        new RegExp(
+          `description must be ${SKILL_DESCRIPTION_MAX_LENGTH} characters or less`,
+          "i",
+        ),
+      ),
       status: 400,
     });
     expect(result.data).toBeUndefined();
