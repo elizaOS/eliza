@@ -174,7 +174,7 @@ second credential broker, and child trajectories retain their session join key.
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` to add progress reactions in `threaded` mode. |
 | `SMITHERS_DB_PROVIDER` | `sqlite` | Smithers task storage: `sqlite`, `postgres`, or `pglite`. |
 | `SMITHERS_DB_URL` | unset | Required PostgreSQL connection string when `SMITHERS_DB_PROVIDER=postgres`. |
-| `SMITHERS_DB_DATA_DIR` | unset | Required persistent data directory when `SMITHERS_DB_PROVIDER=pglite`. |
+| `SMITHERS_DB_DATA_DIR` | unset | Required persistent data root when `SMITHERS_DB_PROVIDER=pglite`; each durable tenant/task/run gets an isolated subdirectory because embedded PGlite directories cannot be shared by concurrent workers. |
 
 ### Native transport status
 

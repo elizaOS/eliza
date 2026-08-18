@@ -1,7 +1,11 @@
 /**
  * Verifies runTaskWithSmithers (durable Smithers-backed coding task).
- * Deterministic unit test of pure helpers; no runtime, no live model.
+ * Integration-backed test of the real Smithers subprocess and deterministic
+ * executor doubles; no runtime or live model.
  */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runTaskWithSmithers } from "../../src/services/smithers-task-runner";
 import type {
@@ -22,6 +26,7 @@ interface FakeOpts {
   malformedApproval?: boolean; // requestApproval returns a result missing `approved`
   throwOnTurnCall?: number; // throw a fatal error on the Nth runTurn call
   hangOnTurnCall?: number;
+  delayOnTurnMs?: number;
   abort?: { controller: AbortController; onCall: number }; // abort + hang on the Nth call
 }
 
@@ -63,6 +68,11 @@ class FakeExecutor implements TaskStepExecutor {
     if (this.opts.hangOnTurnCall && call >= this.opts.hangOnTurnCall) {
       await this.waitForCancellation(ctx);
     }
+    if (this.opts.delayOnTurnMs) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.opts.delayOnTurnMs),
+      );
+    }
     const done = this.opts.doneOnTurn
       ? (ctx.turn ?? 0) >= this.opts.doneOnTurn
       : false;
@@ -97,6 +107,42 @@ function spec(overrides: Partial<TaskRunSpec> = {}): TaskRunSpec {
 }
 
 describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
+  it(
+    "isolates concurrent PGlite workers beneath one configured data root",
+    async () => {
+      const dataRoot = await mkdtemp(
+        join(tmpdir(), "smithers-pglite-workers-"),
+      );
+      const previousProvider = process.env.SMITHERS_DB_PROVIDER;
+      const previousDataDir = process.env.SMITHERS_DB_DATA_DIR;
+      process.env.SMITHERS_DB_PROVIDER = "pglite";
+      process.env.SMITHERS_DB_DATA_DIR = dataRoot;
+      try {
+        const [first, second] = await Promise.all([
+          runTaskWithSmithers(
+            spec({ taskId: "concurrent-a", runId: "run-a" }),
+            new FakeExecutor({ doneOnTurn: 1, delayOnTurnMs: 250 }),
+          ),
+          runTaskWithSmithers(
+            spec({ taskId: "concurrent-b", runId: "run-b" }),
+            new FakeExecutor({ doneOnTurn: 1, delayOnTurnMs: 250 }),
+          ),
+        ]);
+        expect(first.status).toBe("completed");
+        expect(second.status).toBe("completed");
+      } finally {
+        if (previousProvider === undefined)
+          delete process.env.SMITHERS_DB_PROVIDER;
+        else process.env.SMITHERS_DB_PROVIDER = previousProvider;
+        if (previousDataDir === undefined)
+          delete process.env.SMITHERS_DB_DATA_DIR;
+        else process.env.SMITHERS_DB_DATA_DIR = previousDataDir;
+        await rm(dataRoot, { recursive: true, force: true });
+      }
+    },
+    TIMEOUT,
+  );
+
   it(
     "completes a single-turn task",
     async () => {
