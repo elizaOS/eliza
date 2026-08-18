@@ -84,3 +84,39 @@ export function installProcessSignalHandlers(options: {
     process.off("SIGTERM", shutdown);
   };
 }
+
+/**
+ * Dispose an embedded runtime when its desktop host disappears without giving
+ * the JavaScript main process a graceful quit event. Unix reparents the child
+ * to PID 1, so retaining the spawn-time parent PID turns that transition into
+ * the same lifecycle shutdown used for SIGTERM instead of leaving a listener
+ * and database process orphaned after the native launcher exits.
+ */
+export function installParentProcessExitHandler(options: {
+  lifecycle: AgentProcessLifecycle;
+  parentPid: number;
+  onError: (error: unknown) => void;
+  readParentPid?: () => number;
+  exit?: (code: number) => never;
+  pollIntervalMs?: number;
+}): () => void {
+  if (!Number.isSafeInteger(options.parentPid) || options.parentPid <= 1) {
+    throw new Error("Desktop parent PID must be an integer greater than 1");
+  }
+  const readParentPid = options.readParentPid ?? (() => process.ppid);
+  const exit = options.exit ?? process.exit;
+  let shutdownStarted = false;
+  const timer = setInterval(() => {
+    if (shutdownStarted || readParentPid() === options.parentPid) return;
+    shutdownStarted = true;
+    clearInterval(timer);
+    void options.lifecycle
+      .dispose("desktop parent exited")
+      .catch((error) => {
+        options.onError(error);
+      })
+      .then(() => exit(0));
+  }, options.pollIntervalMs ?? 250);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}

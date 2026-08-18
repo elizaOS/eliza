@@ -7,8 +7,10 @@
  * the local-inference service, and the UI bridge all read from.
  *
  * Resolution order (highest precedence first):
- *   1. `config.deploymentTarget.runtime` — the persisted first-run choice.
- *   2. (local only) `config.cloud.enabled === false` collapses `local` to
+ *   1. `ELIZA_ACTIVE_API_RUNTIME_MODE` — a host-owned per-process override
+ *      when a persisted target cannot serve this launch.
+ *   2. `config.deploymentTarget.runtime` — the persisted first-run choice.
+ *   3. (local only) `config.cloud.enabled === false` collapses `local` to
  *      `local-only`.
  *
  * The `RUNTIME_EXECUTION_MODE` env var family in
@@ -81,10 +83,21 @@ function parseRuntimeModeConfig(
  */
 export function resolveRuntimeMode(
   config: RuntimeModeConfigShape | null | undefined,
+  activeModeOverride?: string | null,
 ): RuntimeModeSnapshot {
   const deploymentTarget = normalizeDeploymentTargetConfig(
     config?.deploymentTarget,
   );
+  const normalizedOverride = activeModeOverride?.trim().toLowerCase();
+  if (normalizedOverride === "local" || normalizedOverride === "local-only") {
+    return {
+      mode: normalizedOverride,
+      deploymentTarget: deploymentTarget ?? null,
+      remoteApiBase: null,
+      remoteApiBaseError: null,
+      remoteAccessToken: null,
+    };
+  }
 
   if (deploymentTarget?.runtime === "remote") {
     const remoteApiBase = deploymentTarget.remoteApiBase?.trim() || null;
@@ -135,12 +148,18 @@ export function resolveRuntimeMode(
  * next request without a restart.
  */
 export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;
+  return resolveRuntimeMode(
+    parseRuntimeModeConfig(loadElizaConfig()),
+    process.env.ELIZA_ACTIVE_API_RUNTIME_MODE,
+  ).mode;
 }
 
 /** Disk-backed snapshot. */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig()));
+  return resolveRuntimeMode(
+    parseRuntimeModeConfig(loadElizaConfig()),
+    process.env.ELIZA_ACTIVE_API_RUNTIME_MODE,
+  );
 }
 
 /** True for both `local` and `local-only`. */
