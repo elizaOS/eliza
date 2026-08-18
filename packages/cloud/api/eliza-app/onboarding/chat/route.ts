@@ -24,6 +24,7 @@ import {
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
 import { publicElizaAppProvisioningPayload } from "@/lib/services/eliza-app/provisioning";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../internal/_auth";
@@ -222,9 +223,11 @@ async function resolvePlatformAccount(identity: {
 
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json().catch(() => {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       throw ValidationError("Invalid JSON body");
-    });
+    }
+    const body = decodedBody.value;
     const parsed = chatSchema.safeParse(body);
     if (!parsed.success) {
       throw ValidationError("Invalid request data", {

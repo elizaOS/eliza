@@ -4,6 +4,7 @@ import { type Address, isAddress } from "viem";
 import { dbWrite } from "@/db/helpers";
 import { agentIdentities } from "@/db/schemas/agent-identities";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   defaultRegistry,
@@ -48,7 +49,8 @@ export async function handleRegisterIdentity(
       });
     }
 
-    const body = (await c.req.json().catch(() => null)) as unknown;
+    const decodedBody = await decodeRequestJson(c.req);
+    const body: unknown = decodedBody.ok ? decodedBody.value : null;
     if (!isObject(body))
       return json(
         { success: false, error: "Invalid JSON body" },

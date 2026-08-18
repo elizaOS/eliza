@@ -18,6 +18,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SearchSchema = z.object({
@@ -31,15 +32,13 @@ app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch (error) {
-      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
-      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
-      if (!(error instanceof SyntaxError)) throw error;
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 SyntaxError is caller garbage; decodeRequestJson rethrows
+      // stream/decoder failures to the 500 boundary (#21685/#21690).
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const parsed = SearchSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(

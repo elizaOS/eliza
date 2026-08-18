@@ -15,6 +15,7 @@ import {
   extractHostedPage,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const extractRequestSchema = z.object({
@@ -35,15 +36,13 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch (error) {
-      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
-      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
-      if (!(error instanceof SyntaxError)) throw error;
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 SyntaxError is caller garbage; decodeRequestJson rethrows
+      // stream/decoder failures to the 500 boundary (#21685/#21690).
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const bodyResult = extractRequestSchema.safeParse(body);
 
     if (!bodyResult.success) {

@@ -15,6 +15,7 @@ import {
   hasGatewayProviderConfigured,
 } from "@/lib/providers/language-model";
 import { getCachedMergedModelCatalog } from "@/lib/services/model-catalog";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,15 +63,13 @@ app.post("/", async (c) => {
   try {
     await getCurrentUser(c).catch(() => null);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch (error) {
-      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
-      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
-      if (!(error instanceof SyntaxError)) throw error;
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 SyntaxError is caller garbage; decodeRequestJson rethrows
+      // stream/decoder failures to the 500 boundary (#21685/#21690).
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const modelIds =
       body && typeof body === "object" && !Array.isArray(body)
         ? (body as { modelIds?: unknown }).modelIds

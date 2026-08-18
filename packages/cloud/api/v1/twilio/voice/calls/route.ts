@@ -15,6 +15,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import {
   isValidE164,
@@ -77,13 +78,12 @@ app.post("/", async (c) => {
     );
   }
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
+  const decodedRawBody = await decodeRequestJson(c.req);
+  if (!decodedRawBody.ok) {
     // error-policy:J3 malformed JSON is rejected instead of becoming an empty call request.
     return c.json({ error: "Invalid JSON body", code: "invalid_request" }, 400);
   }
+  const rawBody = decodedRawBody.value as unknown;
   const parsed = StartCallBody.safeParse(rawBody);
   if (!parsed.success) {
     return c.json(

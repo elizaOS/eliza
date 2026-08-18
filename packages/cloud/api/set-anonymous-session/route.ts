@@ -26,6 +26,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { usersService } from "@/lib/services/users";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -55,13 +56,14 @@ app.post("/", async (c) => {
     return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
   }
 
-  let body: { sessionToken?: string };
-  try {
-    body = await c.req.json();
-  } catch (err) {
-    logger.error("[Set Session] Failed to parse request body:", err);
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // Syntax details are deliberately unavailable: decodeRequestJson discards
+    // them because engine diagnostics can quote sensitive request content.
+    logger.error("[Set Session] Failed to parse request body");
     return c.json({ error: "Invalid JSON body" }, 400);
   }
+  const body = decodedBody.value as { sessionToken?: string };
 
   const { sessionToken } = body;
   if (!sessionToken || typeof sessionToken !== "string") {

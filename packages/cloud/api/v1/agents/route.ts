@@ -37,6 +37,7 @@ import {
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -181,7 +182,9 @@ app.post("/", async (c) => {
     }
     const sync = requestedSync === "true";
 
-    const body = await c.req.json().catch(() => null);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) throw ValidationError("Invalid JSON body");
+    const body = decodedBody.value;
     if (!body) throw ValidationError("Invalid JSON body");
 
     const parsed = provisionSchema.safeParse(body);

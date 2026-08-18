@@ -15,9 +15,9 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
 import { createApiKeySchema } from "./schemas";
 
 const app = new Hono<AppEnv>();
@@ -62,7 +62,8 @@ app.post("/", async (c) => {
     const user = await requireUserWithOrg(c);
     // Guard a malformed/empty body to a 400 instead of a 500 — the ZodError
     // branch in the catch only handles bad FIELDS, not an unparseable body.
-    const body = await c.req.json().catch(() => null);
+    const decodedBody = await decodeRequestJson(c.req);
+    const body = decodedBody.ok ? decodedBody.value : null;
     if (!body || typeof body !== "object") {
       return c.json(
         {
