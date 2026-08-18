@@ -67,7 +67,15 @@ function clientIp(c: AppContext): string | undefined {
 app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const input = clientAuditSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const input = clientAuditSchema.parse(rawBody);
     const event = await getAuditDispatcher().emit({
       actor: { type: "user", id: user.id },
       action: input.action,
