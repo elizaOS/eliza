@@ -23,6 +23,7 @@ import {
   type VideoProcessingOptions,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
+import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import { BinaryResolver } from "./binaries";
 import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
@@ -237,7 +238,7 @@ export class VideoService extends IVideoService {
     }
 
     try {
-      const downloadOptions: Record<string, string | boolean> = {
+      const downloadOptions: YtDlpFlags = {
         verbose: true,
         output: outputFile,
         writeInfoJson: options?.writeInfoJson ?? true,
@@ -256,7 +257,7 @@ export class VideoService extends IVideoService {
         downloadOptions.format = "bestvideo[ext=mp4]/best[ext=mp4]/best";
       }
       if (options?.subtitles) {
-        downloadOptions.writeSubs = true;
+        downloadOptions.writeSub = true;
       }
       if (options?.embedSubs) {
         downloadOptions.embedSubs = true;

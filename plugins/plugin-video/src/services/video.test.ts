@@ -321,7 +321,7 @@ describe("VideoService deterministic behavior", () => {
       output: outputPath,
       writeInfoJson: false,
       format: "bestvideo",
-      writeSubs: true,
+      writeSub: true,
       embedSubs: true,
     });
   });
