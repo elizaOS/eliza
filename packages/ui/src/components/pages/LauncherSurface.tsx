@@ -109,12 +109,22 @@ export const LauncherSurface = React.memo(function LauncherSurface({
           }
           const targetUrl = result.launchUrl ?? entry.launchUrl;
           if (targetUrl) {
-            await openExternalUrl(targetUrl);
-            setActionNotice(
-              t("appsview.OpenedInNewTab", { name: entry.label }),
-              "success",
-              2600,
-            );
+            // launchUrl is a wire value — a rejected target (helper returns
+            // false) surfaces the launch-failed notice instead of a false
+            // "opened" success.
+            if (await openExternalUrl(targetUrl)) {
+              setActionNotice(
+                t("appsview.OpenedInNewTab", { name: entry.label }),
+                "success",
+                2600,
+              );
+            } else {
+              setActionNotice(
+                t("appsview.PopupBlockedOpen", { name: entry.label }),
+                "error",
+                4200,
+              );
+            }
             return;
           }
           if (run) {

@@ -25,6 +25,7 @@ import type {
 } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -840,8 +841,21 @@ export function VoiceProfileSection({
     setNotice(null);
     try {
       const { downloadUrl } = await profilesClient.exportAll();
-      if (downloadUrl && typeof window !== "undefined") {
-        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      // The downloadUrl is a wire value — a non-http(s) target fails closed
+      // and surfaces the export error state instead of opening.
+      if (downloadUrl) {
+        if (!isSafeNavigationUrl(downloadUrl)) {
+          setError(
+            t("voiceprofile.error.invalidExportUrl", {
+              defaultValue:
+                "The export link returned by the server is not a valid URL.",
+            }),
+          );
+          return;
+        }
+        if (typeof window !== "undefined") {
+          window.open(downloadUrl, "_blank", "noopener,noreferrer");
+        }
       }
       setNotice(
         t("voiceprofile.notice.exported", {

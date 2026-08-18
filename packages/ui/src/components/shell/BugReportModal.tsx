@@ -325,7 +325,17 @@ export function BugReportModal() {
           ok = false;
         }
         setCopied(ok);
-        await openExternalUrl(result.fallback);
+        // The fallback URL is a wire value — unlike `result.url` above it is
+        // not pre-normalized, so the central guard applies; a rejected target
+        // surfaces the modal's error state (the report stays on the clipboard).
+        if (!(await openExternalUrl(result.fallback))) {
+          setErrorMsg(
+            t("bugreportmodal.invalidFallbackUrl", {
+              defaultValue:
+                "The report link returned by the server is not a valid URL.",
+            }),
+          );
+        }
       }
     } catch (err) {
       setErrorMsg(
