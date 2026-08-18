@@ -65,10 +65,10 @@ app.post("/", async (c) => {
     let body: { modelIds?: unknown };
     try {
       body = (await c.req.json()) as { modelIds?: unknown };
-    } catch {
-      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
-      // bare JSON.parse. SyntaxError must be a caller 400, not the
-      // failureResponse 500 that treats it as an unexpected server fault.
+    } catch (error) {
+      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
+      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
+      if (!(error instanceof SyntaxError)) throw error;
       return c.json({ error: "Invalid JSON body" }, 400);
     }
     const modelIds = body.modelIds;
