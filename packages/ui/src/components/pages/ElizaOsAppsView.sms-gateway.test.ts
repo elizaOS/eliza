@@ -19,7 +19,9 @@ vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: () => null,
 }));
 
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
+  ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH,
   forwardAndroidSmsGateway,
   readAndroidSmsGatewayErrorDetail,
 } from "./ElizaOsAppsView";
@@ -47,6 +49,38 @@ describe("forwardAndroidSmsGateway", () => {
       forwardAndroidSmsGateway(incoming, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts while a completed error response body is still streaming", async () => {
+    const controller = new AbortController();
+    let bodyStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      bodyStarted = resolve;
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      const signal = init?.signal;
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(streamController) {
+              streamController.enqueue(new TextEncoder().encode("partial"));
+              bodyStarted?.();
+              signal?.addEventListener(
+                "abort",
+                () => streamController.error(signal.reason),
+                { once: true },
+              );
+            },
+          }),
+          { status: 502 },
+        ),
+      );
+    });
+
+    const pending = forwardAndroidSmsGateway(incoming, controller.signal);
+    await started;
+    controller.abort(new DOMException("superseded", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("surfaces the provider's structured diagnostic detail on a non-2xx reply", async () => {
@@ -117,5 +151,26 @@ describe("readAndroidSmsGatewayErrorDetail", () => {
       new Response("   ", { status: 500 }),
     );
     expect(detail).toBe("");
+  });
+
+  it("bounds an oversized structured diagnostic field", async () => {
+    const detail = await readAndroidSmsGatewayErrorDetail(
+      new Response(JSON.stringify({ reason: "x".repeat(2_000) }), {
+        status: 502,
+      }),
+    );
+    expect(detail.length).toBe(ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH);
+    expect(detail.endsWith("…")).toBe(true);
+  });
+
+  it("bounds oversized raw astral text without creating a lone surrogate", async () => {
+    const detail = await readAndroidSmsGatewayErrorDetail(
+      new Response("🙂".repeat(3_000), { status: 502 }),
+    );
+    expect(detail.length).toBeLessThanOrEqual(
+      ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH,
+    );
+    expect(detail.endsWith("…")).toBe(true);
+    expect(toWellFormedUnicode(detail)).toBe(detail);
   });
 });
