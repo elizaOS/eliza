@@ -72,6 +72,74 @@ function isModelCatalogProviders(
   );
 }
 
+/** View-switch report POST — same 15s Fal #21205 family. */
+export const SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS = 15_000;
+/** Shortcut report POST — independent hop, own 15s deadline. */
+export const SLASH_SHORTCUT_FETCH_TIMEOUT_MS = 15_000;
+
+export async function postViewSwitchReportWithFetch(
+  args: {
+    base: string;
+    token?: string | null;
+    viewId: string;
+    viewPath?: string;
+  },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const res = await fetchImpl(
+    `${args.base}/api/views/${encodeURIComponent(args.viewId)}/navigate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
+      },
+      body: JSON.stringify({
+        source: "user",
+        ...(args.viewPath ? { path: args.viewPath } : {}),
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/views/${args.viewId}/navigate returned HTTP ${res.status}`,
+    );
+  }
+  return res;
+}
+
+export async function postShortcutReportWithFetch(
+  args: {
+    base: string;
+    token?: string | null;
+    shortcutId: string;
+    context?: string;
+  },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = SLASH_SHORTCUT_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const res = await fetchImpl(`${args.base}/api/interactions/shortcut`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
+    },
+    body: JSON.stringify({
+      shortcutId: args.shortcutId,
+      ...(args.context ? { context: args.context } : {}),
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/interactions/shortcut returned HTTP ${res.status}`,
+    );
+  }
+  return res;
+}
+
 /**
  * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
  * fully guarded: a failure here must never break navigation. `source: "user"`
@@ -84,17 +152,10 @@ export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
     const token = getElizaApiToken();
-    void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        source: "user",
-        ...(viewPath ? { path: viewPath } : {}),
-      }),
-    }).catch((err) => {
+    void postViewSwitchReportWithFetch(
+      { base, token, viewId, viewPath },
+      globalThis.fetch,
+    ).catch((err) => {
       // error-policy:J7 telemetry write must not break navigation; warn keeps
       // a dead reporting endpoint observable in the console.
       logger.warn(
@@ -122,17 +183,10 @@ export function reportShortcutFired(
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
     const token = getElizaApiToken();
-    void fetch(`${base}/api/interactions/shortcut`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        shortcutId,
-        ...(context ? { context } : {}),
-      }),
-    }).catch((err) => {
+    void postShortcutReportWithFetch(
+      { base, token, shortcutId, context },
+      globalThis.fetch,
+    ).catch((err) => {
       // error-policy:J7 telemetry write must not break the shortcut; warn keeps
       // a dead reporting endpoint observable in the console.
       logger.warn(
