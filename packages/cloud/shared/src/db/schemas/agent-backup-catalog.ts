@@ -339,6 +339,15 @@ export const agentBackupRestoreLeases = pgTable(
       table.organization_id,
       table.restore_attempt_id,
     ),
+    receipt_authority_unique: unique("agent_backup_restore_leases_receipt_authority_unique").on(
+      table.id,
+      table.organization_id,
+      table.agent_id,
+      table.backup_id,
+      table.restore_attempt_id,
+      table.owner_id,
+      table.generation,
+    ),
     one_unreleased_uidx: uniqueIndex("agent_backup_restore_leases_one_unreleased_uidx")
       .on(table.organization_id, table.backup_id)
       .where(sql`${table.released_at} IS NULL`),
