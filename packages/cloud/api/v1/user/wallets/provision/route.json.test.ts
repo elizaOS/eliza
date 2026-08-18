@@ -1,12 +1,7 @@
-/**
- * POST /api/v1/user/wallets/provision untrusted JSON body contract.
- *
- * Hono 4.13 `c.req.json()` is a bare `JSON.parse`. The handler catch maps
- * SyntaxError through `failureResponse` to HTTP 500 instead of a caller 400.
- * Wallet provision must not run on client garbage.
- */
+/** Verifies wallet-provision JSON handling with deterministic identity and storage mocks. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { HonoRequest } from "hono/request";
 import type { ProvisionWalletParams } from "@/lib/services/server-wallets";
 
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
@@ -153,6 +148,22 @@ describe("POST /api/v1/user/wallets/provision JSON body", () => {
     expect(body.success).toBe(false);
     expect(body.error).toBe("Validation error");
     expect(provisionServerWallet).not.toHaveBeenCalled();
+  });
+
+  test("preserves non-syntax request decoding failures as server errors", async () => {
+    const originalJson = HonoRequest.prototype.json;
+    HonoRequest.prototype.json = mock(async () => {
+      throw new Error("request stream failed");
+    }) as typeof HonoRequest.prototype.json;
+
+    try {
+      const res = await post(JSON.stringify(validBody));
+      expect(res.status).toBe(500);
+      expect(provisionServerWallet).not.toHaveBeenCalled();
+      expect(failureResponse).toHaveBeenCalled();
+    } finally {
+      HonoRequest.prototype.json = originalJson;
+    }
   });
 
   test("still provisions a canonical object body", async () => {

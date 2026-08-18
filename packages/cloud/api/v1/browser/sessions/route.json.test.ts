@@ -1,9 +1,6 @@
-/**
- * POST /api/v1/browser/sessions used to let c.req.json() throw into
- * failureResponse, which maps SyntaxError to 500. Malformed JSON is caller
- * error and must not create a hosted session.
- */
+/** Verifies browser-session JSON handling with deterministic auth and service mocks. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { HonoRequest } from "hono/request";
 
 const createHostedBrowserSession = mock(async () => ({
   id: "sess-1",
@@ -56,5 +53,24 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
     });
     expect(response.status).toBe(200);
     expect(createHostedBrowserSession).toHaveBeenCalled();
+  });
+
+  test("preserves non-syntax request decoding failures as server errors", async () => {
+    const originalJson = HonoRequest.prototype.json;
+    HonoRequest.prototype.json = mock(async () => {
+      throw new Error("request stream failed");
+    }) as typeof HonoRequest.prototype.json;
+
+    try {
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: "https://example.com" }),
+      });
+      expect(response.status).toBe(500);
+      expect(createHostedBrowserSession).not.toHaveBeenCalled();
+    } finally {
+      HonoRequest.prototype.json = originalJson;
+    }
   });
 });
