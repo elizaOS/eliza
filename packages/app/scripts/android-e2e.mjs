@@ -658,6 +658,7 @@ async function main() {
               "test-results",
               "android",
             ),
+            ELIZA_ANDROID_PARENT_RECORDING: "1",
             ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
               bundle.reportsDir,
               "android-playwright.junit.xml",

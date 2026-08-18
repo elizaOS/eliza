@@ -78,12 +78,15 @@ test.describe
         pageErrors.push(error.stack || error.message);
       });
 
-      const recording = await startAndroidScreenRecord({
-        serial,
-        artifactDir: ARTIFACT_DIR,
-        filename: "native-plugin-view-smoke.mp4",
-        remotePath: "/sdcard/eliza-native-plugin-view-smoke.mp4",
-      });
+      const recording =
+        process.env.ELIZA_ANDROID_PARENT_RECORDING === "1"
+          ? null
+          : await startAndroidScreenRecord({
+              serial,
+              artifactDir: ARTIFACT_DIR,
+              filename: "native-plugin-view-smoke.mp4",
+              remotePath: "/sdcard/eliza-native-plugin-view-smoke.mp4",
+            });
 
       try {
         await waitForShellReady(page);
@@ -207,7 +210,7 @@ test.describe
           contentType: "text/plain",
         });
 
-        const videoPath = await recording.stop();
+        const videoPath = await recording?.stop();
         if (videoPath) {
           await testInfo.attach("native plugin walkthrough video", {
             path: videoPath,

@@ -55,6 +55,13 @@ const UNIQUE_ROUTES = ROUTES.filter((r) => {
 // (workers=1), but a single render hiccup must not abort the rest of the sweep.
 test.describe("android route coverage (real backend)", () => {
   test.beforeAll(async ({ page }) => {
+    // This sweep intentionally includes developer-only product routes such as
+    // /orchestrator. Enable the same persisted switch a user controls, then
+    // reload so the module-level developer-mode snapshot sees it at boot.
+    await page.evaluate(() => {
+      localStorage.setItem("eliza:developerMode", "1");
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForShellReady(page);
   });
 

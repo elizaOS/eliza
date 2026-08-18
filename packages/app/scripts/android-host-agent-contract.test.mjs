@@ -44,6 +44,17 @@ const onboardingSpec = fs.readFileSync(
   ),
   "utf8",
 );
+const routeCoverageSpec = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "packages",
+    "app",
+    "test",
+    "android",
+    "route-coverage.android.spec.ts",
+  ),
+  "utf8",
+);
 const workflow = fs.readFileSync(
   path.join(repoRoot, ".github", "workflows", "device-e2e.yml"),
   "utf8",
@@ -132,6 +143,8 @@ describe("Android device-e2e host-agent contract", () => {
       iosRunner.indexOf("runStep(bundle, step", recordingStart),
     );
     expect(iosRunner).toContain('filename: "ios-tested-flow.mp4"');
+    expect(runner).toContain('ELIZA_ANDROID_PARENT_RECORDING: "1"');
+    expect(focusedRunner).toContain('ELIZA_ANDROID_PARENT_RECORDING: "1"');
   });
 
   it("navigates through the privileged shell event instead of raw view history", () => {
@@ -149,6 +162,15 @@ describe("Android device-e2e host-agent contract", () => {
 
   it("waits for the deterministic reply instead of accepting a late greeting", () => {
     expect(onboardingSpec).toContain('challengeToken: "STREAM_E2E_OK"');
+  });
+
+  it("enables developer mode before sweeping developer-only routes", () => {
+    expect(routeCoverageSpec).toContain(
+      'localStorage.setItem("eliza:developerMode", "1")',
+    );
+    expect(routeCoverageSpec).toContain(
+      'page.reload({ waitUntil: "domcontentloaded" })',
+    );
   });
 
   it("owns the image decoder imported by the Android route suite", () => {

@@ -206,6 +206,7 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
             "test-results",
             "android",
           ),
+          ELIZA_ANDROID_PARENT_RECORDING: "1",
           ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: path.join(
             bundle.root,
             "test-results",
