@@ -1,0 +1,188 @@
+{
+  "about": "Synthetic Telegram Desktop export fixture",
+  "personal_information": {
+    "user_id": 100,
+    "first_name": "Synthetic",
+    "last_name": "Owner"
+  },
+  "chats": {
+    "about": "Synthetic current chats",
+    "list": [
+      {
+        "name": "Synthetic Friend",
+        "type": "personal_chat",
+        "id": 200,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2024-08-01T00:00:00",
+            "date_unixtime": "1722470400",
+            "from": "Synthetic Friend",
+            "from_id": "user200",
+            "text": [
+              "hello ",
+              { "type": "bold", "text": "owner" }
+            ],
+            "text_entities": []
+          },
+          {
+            "id": 2,
+            "type": "message",
+            "date": "2024-08-02T00:00:00",
+            "date_unixtime": "1722556800",
+            "from": "Synthetic Owner",
+            "from_id": "user100",
+            "reply_to_message_id": 1,
+            "text": "hello back",
+            "text_entities": []
+          },
+          {
+            "id": 3,
+            "type": "service",
+            "date": "2024-08-03T00:00:00",
+            "date_unixtime": "1722643200",
+            "actor": "Synthetic Friend",
+            "actor_id": "user200",
+            "action": "phone_call",
+            "text": ""
+          },
+          {
+            "id": 4,
+            "type": "message",
+            "date": "2024-08-04T00:00:00",
+            "date_unixtime": "1722729600",
+            "from": "Synthetic Friend",
+            "from_id": "user200",
+            "photo": "photos/photo_1.jpg",
+            "photo_file_size": 12,
+            "text": "",
+            "text_entities": []
+          },
+          {
+            "id": 5,
+            "type": "deleted_message"
+          },
+          {
+            "id": 6,
+            "type": "message",
+            "date": "2024-06-01T00:00:00",
+            "date_unixtime": "1717200000",
+            "from": "Synthetic Friend",
+            "from_id": "user200",
+            "text": "outside the frozen cutoff",
+            "text_entities": []
+          },
+          {
+            "id": 7,
+            "type": "message",
+            "date": "2026-07-06T00:00:00",
+            "date_unixtime": "1783296000",
+            "from": "Synthetic Friend",
+            "from_id": "user200",
+            "text": "outside the frozen anchor",
+            "text_entities": []
+          },
+          {
+            "id": 8,
+            "type": "message",
+            "date": "2024-08-05T00:00:00",
+            "date_unixtime": "1722816000",
+            "from": "Synthetic Friend",
+            "from_id": "user200",
+            "file": "files/not-opened.pdf",
+            "file_size": 99,
+            "mime_type": "application/pdf",
+            "text": "caption retained without a fabricated attachment hash",
+            "text_entities": []
+          }
+        ]
+      },
+      {
+        "name": "Allowed Synthetic Group",
+        "type": "private_supergroup",
+        "id": 300,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2024-09-01T00:00:00",
+            "date_unixtime": "1725148800",
+            "from": "Group Member",
+            "from_id": "user201",
+            "text": "allowed group message",
+            "text_entities": []
+          },
+          {
+            "id": 2,
+            "type": "message",
+            "date": "2024-09-02T00:00:00",
+            "date_unixtime": "1725235200",
+            "from": "Synthetic Owner",
+            "from_id": "user100",
+            "reply_to_message_id": 1,
+            "text": "allowed group reply",
+            "text_entities": []
+          }
+        ]
+      },
+      {
+        "name": "Denied Synthetic Group",
+        "type": "public_supergroup",
+        "id": 301,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2024-09-03T00:00:00",
+            "date_unixtime": "1725321600",
+            "from": "Denied Member",
+            "from_id": "user202",
+            "text": "must not be collected",
+            "text_entities": []
+          }
+        ]
+      },
+      {
+        "name": "Allowed Synthetic Channel",
+        "type": "private_channel",
+        "id": 400,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2024-10-01T00:00:00",
+            "date_unixtime": "1727740800",
+            "author": "Synthetic Channel Author",
+            "text": "allowlisted channel post",
+            "text_entities": []
+          }
+        ]
+      },
+      {
+        "name": "Denied Synthetic Channel",
+        "type": "public_channel",
+        "id": 401,
+        "messages": [
+          {
+            "id": 1,
+            "type": "unsupported"
+          }
+        ]
+      },
+      {
+        "name": "Unsupported Synthetic Secret Chat",
+        "type": "secret_chat",
+        "id": 500,
+        "messages": [
+          { "id": 1, "type": "message" },
+          { "id": 2, "type": "service" }
+        ]
+      }
+    ]
+  },
+  "left_chats": {
+    "about": "Synthetic left chats",
+    "list": []
+  }
+}

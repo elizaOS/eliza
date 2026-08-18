@@ -62,6 +62,33 @@ apply, retain only counts and hashes in shared evidence, and prove idempotent
 re-apply plus stale-decision rejection against a protected snapshot before the
 issue is closed.
 
+## Telegram Desktop collector
+
+`collectTelegramDesktopExport` parses the machine-readable `result.json`
+created by Telegram Desktop's Settings → Advanced → Export Telegram data flow.
+It is offline-only: the collector does not accept GramJS clients,
+`StringSession` values, Telegram API credentials, or raw `tdata` directories.
+
+```ts
+import { collectTelegramDesktopExport } from "@elizaos/corpus-tools";
+
+const result = await collectTelegramDesktopExport({
+  exportPath: "data/raw/telegram/result.json",
+  ownerAccountId: "<numeric Telegram user id>",
+  outDir: "data",
+  allowedGroupPeerIds: ["<explicitly selected group id>"],
+  allowedChannelPeerIds: ["<explicitly selected channel id>"],
+});
+```
+
+DMs are admitted by default; groups and channels are denied unless their bare
+peer ids are allowlisted. Rows are bounded to the canonical corpus
+cutoff/anchor, identities include account + peer kind + peer id + message id,
+and monthly shards plus the manifest and aggregate summary are byte-stable on
+rerun. Service, deleted, secret-chat, and media-only records are counted but
+not fabricated into text messages. Export media paths are never opened, so
+metadata alone never produces an attachment SHA-256.
+
 ```bash
 bun run --cwd packages/corpus-tools test
 bun run --cwd packages/corpus-tools typecheck
