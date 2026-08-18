@@ -1190,7 +1190,6 @@ export function ChatOverlay({
   firstRunOpen = false,
   releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
-  onPilledChange,
   onDetentChange,
   initialMode = "input",
   requestedOpen,
@@ -1223,8 +1222,6 @@ export function ChatOverlay({
   releaseFirstRunToHalf?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
   onFirstRunReleaseHandled?: () => void;
-  /** Reports entry to and exit from the component's resting pill state. */
-  onPilledChange?: (pilled: boolean) => void;
   /** Reports the settled visible footprint to transparent desktop hosts. */
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   /** Initial resting shape for a host-owned compact window. */
