@@ -1572,6 +1572,25 @@ export class OrchestratorTaskService extends Service {
     }
   }
 
+  /** Mark a completed session's durable Smithers run link terminal in BOTH
+   *  stores (and supersede stale sibling copies), so boot recovery stops
+   *  "resuming" finished work. No-op for sessions without a link or whose
+   *  link is already terminal. */
+  private async completeSmithersRunLink(sessionId: string): Promise<void> {
+    const acp = this.acp();
+    if (!acp || typeof acp.getSession !== "function") return;
+    const session = await acp.getSession(sessionId);
+    const link = readSmithersDurableRunLink(session?.metadata);
+    if (!link || link.state === "completed" || link.state === "superseded") {
+      return;
+    }
+    await this.syncSmithersRunCopies(
+      acp,
+      { ...link, state: "completed" },
+      sessionId,
+    );
+  }
+
   private async syncSmithersRunCopies(
     acp: AcpService,
     activeLink: SmithersDurableRunLink,
@@ -1856,6 +1875,18 @@ export class OrchestratorTaskService extends Service {
         // the last leg (live 2026-08-17: two hello-validation runs). Push +
         // PR fire-and-forget; verification proceeds independently.
         void this.autoSubmitProvisionedWorkspace(taskId, sessionId);
+        // Terminalize the durable Smithers link. The original run path never
+        // wrote state:"completed" (only the boot-recovery path did), so every
+        // normally-completed task carried a pending/running link forever and
+        // earned a pointless boot "recovery" that re-ran the finished task
+        // against the user — and a recovery that failed (e.g. a reclaimed
+        // workspace) retried on every subsequent boot (live 2026-08-18).
+        void this.completeSmithersRunLink(sessionId).catch((err) => {
+          this.log("warn", "smithers link terminalization failed", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
         break;
       }
       case "error": {
