@@ -1716,21 +1716,44 @@ export function parseExplicitLocalDate(
   }
 
   const numericMatch = normalized.match(
-    /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/,
+    /\b(\d{1,2})([/-])(\d{1,2})(?:[/-](\d{2,4}))?\b/,
   );
   if (numericMatch) {
-    const yearRaw = numericMatch[3];
+    const yearRaw = numericMatch[4];
     const parsedYear =
       yearRaw === undefined
         ? localToday.year
         : yearRaw.length === 2
           ? 2000 + Number(yearRaw)
           : Number(yearRaw);
-    return {
-      year: parsedYear,
-      month: Number(numericMatch[1]),
-      day: Number(numericMatch[2]),
-    };
+    const month = Number(numericMatch[1]);
+    const day = Number(numericMatch[3]);
+    // A year-less dash pair alongside a named weekday ("friday 3-5") is a
+    // wall-clock time range, not a date — let the weekday branch below win
+    // (#21941).
+    const yearlessDashTimeRange =
+      yearRaw === undefined &&
+      numericMatch[2] === "-" &&
+      WEEKDAY_NAME_PATTERN.test(normalized);
+    // Range-check and round-trip through Date.UTC so impossible dates
+    // (month 25, Feb 30) fall through to the later branches instead of
+    // rolling over (#21941).
+    const candidate = new Date(Date.UTC(parsedYear, month - 1, day));
+    const isRealDate =
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31 &&
+      candidate.getUTCFullYear() === parsedYear &&
+      candidate.getUTCMonth() + 1 === month &&
+      candidate.getUTCDate() === day;
+    if (isRealDate && !yearlessDashTimeRange) {
+      return {
+        year: parsedYear,
+        month,
+        day,
+      };
+    }
   }
 
   const weekdayMatch = normalized.match(WEEKDAY_NAME_PATTERN);
