@@ -176,13 +176,20 @@ function normalizeDate(raw: string): string | null {
   // fallback, which is reserved for strings carrying a time component.
   const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
-    return new Date(
-      Date.UTC(
-        Number(isoMatch[1]),
-        Number(isoMatch[2]) - 1,
-        Number(isoMatch[3]),
-      ),
-    ).toISOString();
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const utc = new Date(Date.UTC(year, month - 1, day));
+    // Date.UTC silently rolls over out-of-range month/day (e.g. 2024-13-05 → 2025-01-05, 2024-02-31 → 2024-03-02).
+    // Validate the constructed UTC date matches the input to reject invalid calendar dates.
+    if (
+      utc.getUTCFullYear() !== year ||
+      utc.getUTCMonth() + 1 !== month ||
+      utc.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return utc.toISOString();
   }
   const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (usMatch) {
@@ -190,7 +197,16 @@ function normalizeDate(raw: string): string | null {
     const day = Number(usMatch[2]);
     const rawYear = Number(usMatch[3]);
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+    const utc = new Date(Date.UTC(year, month - 1, day));
+    // Validate rollover: month 13 → Jan next year, Feb 31 → Mar 2, etc. Must reject.
+    if (
+      utc.getUTCFullYear() !== year ||
+      utc.getUTCMonth() + 1 !== month ||
+      utc.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return utc.toISOString();
   }
   const native = Date.parse(trimmed);
   if (!Number.isFinite(native)) {
