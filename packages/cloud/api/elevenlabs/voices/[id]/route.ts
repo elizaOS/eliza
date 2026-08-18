@@ -196,7 +196,14 @@ async function __hono_PATCH(
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
     const voiceId = params.id;
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not nextJsonFromCaughtError(SyntaxError) → 500.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const parsed = updateVoiceBodySchema.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(
