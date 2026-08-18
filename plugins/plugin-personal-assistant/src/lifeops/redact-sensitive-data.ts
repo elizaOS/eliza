@@ -63,14 +63,14 @@ function isFullRedactKey(normalizedKey: string): boolean {
   return false;
 }
 
-function shortenSubject(value: string, max: number): string {
+export function shortenSubject(value: string, max: number): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}…`;
+  return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
-function shortenBody(value: string, max: number): string {
+export function shortenBody(value: string, max: number): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}… [+${value.length - max} chars]`;
+  return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}… [+${value.length - max} chars]`;
 }
 
 function redactEmailAddresses(value: string): string {
