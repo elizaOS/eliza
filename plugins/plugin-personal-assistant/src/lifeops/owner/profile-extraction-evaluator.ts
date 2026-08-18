@@ -223,16 +223,49 @@ const TRAVEL_UNTIL_PATTERN =
 function parseTravelReturnIso(phrase: string, now: Date): string | null {
   const trimmed = phrase.trim().replace(/[.,]+$/u, "");
   if (trimmed.length === 0) return null;
-  let parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) {
+  // Bare "Month Day" (e.g. "July 20") without a year: Date.parse("July 20") in V8
+  // returns a fixed placeholder year (2001) instead of NaN, so the NaN check never
+  // fires and the date is wrongly pushed to next year. Detect missing year explicitly.
+  const hasYear = /\b\d{4}\b/.test(trimmed);
+  let parsed: number;
+  if (!hasYear) {
+    // No year present — append current year before parsing.
     parsed = Date.parse(`${trimmed} ${now.getFullYear()}`);
-  }
-  if (Number.isNaN(parsed)) return null;
-  // A month/day that resolves to the past almost always means next year.
-  if (parsed < now.getTime()) {
-    const nextYear = Date.parse(`${trimmed} ${now.getFullYear() + 1}`);
-    if (Number.isNaN(nextYear) || nextYear < now.getTime()) return null;
-    parsed = nextYear;
+    if (Number.isNaN(parsed)) return null;
+    // If the current-year date is already in the past, try next year.
+    if (parsed < now.getTime()) {
+      const nextYear = Date.parse(`${trimmed} ${now.getFullYear() + 1}`);
+      if (!Number.isNaN(nextYear) && nextYear >= now.getTime()) {
+        parsed = nextYear;
+      } else if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) {
+        return null;
+      }
+    }
+  } else {
+    // Year present — parse directly, but normalize YYYY-MM-DD to local midnight
+    // for cross-timezone determinism (ECMA-262: YYYY-MM-DD is UTC midnight,
+    // while "July 20, 2026" is local midnight). The docstring lists both forms.
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const y = Number(isoMatch[1]);
+      const m = Number(isoMatch[2]);
+      const d = Number(isoMatch[3]);
+      // Construct as local midnight, then validate rollover like plugin-finances.
+      const local = new Date(y, m - 1, d);
+      if (
+        local.getFullYear() !== y ||
+        local.getMonth() + 1 !== m ||
+        local.getDate() !== d
+      ) {
+        return null;
+      }
+      parsed = local.getTime();
+    } else {
+      parsed = Date.parse(trimmed);
+      if (Number.isNaN(parsed)) return null;
+      // If year-bearing date is in the past, it is not a future travel return — reject.
+      if (parsed < now.getTime()) return null;
+    }
   }
   if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) return null;
   return new Date(parsed).toISOString();
