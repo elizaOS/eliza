@@ -7,6 +7,12 @@
  */
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
+import {
+  DEFAULT_CHATS_LIMIT,
+  DEFAULT_MESSAGES_LIMIT,
+  parseBlueBubblesLimit,
+  parseBlueBubblesOffset,
+} from "./bluebubbles-limit";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
@@ -44,38 +50,6 @@ function resolveService(state: BlueBubblesRouteState): BlueBubblesServiceLike | 
   }
   const raw = state.runtime.getService(BLUEBUBBLES_SERVICE_NAME);
   return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
-}
-
-const DEFAULT_CHATS_LIMIT = 100;
-const DEFAULT_MESSAGES_LIMIT = 50;
-const MAX_LIST_LIMIT = 500;
-
-function parseBlueBubblesLimit(raw: string | null, defaultValue: number): number | null {
-  if (raw === null || raw === "") {
-    return defaultValue;
-  }
-  if (!/^[1-9]\d*$/.test(raw)) {
-    return null;
-  }
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    return null;
-  }
-  return Math.min(parsed, MAX_LIST_LIMIT);
-}
-
-function parseBlueBubblesOffset(raw: string | null): number | null {
-  if (raw === null || raw === "") {
-    return 0;
-  }
-  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
-    return null;
-  }
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    return null;
-  }
-  return parsed;
 }
 
 export function resolveBlueBubblesWebhookPath(state: BlueBubblesRouteState): string {
