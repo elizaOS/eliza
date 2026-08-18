@@ -22,6 +22,15 @@ branch; it does not replace the merge-candidate admission check above.
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
 
+## Scheduled security analysis
+
+`codeql.yml` runs JavaScript/TypeScript CodeQL analysis only on its weekly
+schedule or by explicit manual dispatch. It deliberately has no `push` or
+`pull_request` trigger, so CodeQL cannot add work or checks to ordinary pull
+request updates. The extraction config excludes generated, vendored, research,
+example, OS-image, and documentation trees that previously exhausted runner
+memory while retaining product runtime, server, cloud, plugin, and script code.
+
 ## Specialized pull-request checks
 
 Several branch-scoped and path-scoped workflows run alongside the canonical CI

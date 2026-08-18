@@ -1,0 +1,53 @@
+name: CodeQL Scheduled
+
+# CodeQL is deliberately an off-PR lane. The repository's fast CI remains the
+# only pull-request build/test path; this scan runs weekly or by explicit
+# operator request and therefore cannot add a check to ordinary PR updates.
+on:
+  schedule:
+    - cron: "29 8 * * 6"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-scheduled-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    # Whole-repository JavaScript/TypeScript dataflow queries exceeded hosted
+    # runner memory before the extractor exclusions were introduced. Scheduled
+    # and manual runs are trusted and use the existing large Linux robot lane.
+    runs-on: [self-hosted, Linux, X64, hetzner-robot]
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Report disk before CodeQL
+        shell: bash
+        run: |
+          df -h
+          du -sh "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+          ram: 120000
+          threads: 8
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+        with:
+          category: /language:javascript-typescript

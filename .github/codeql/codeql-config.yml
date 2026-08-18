@@ -1,0 +1,42 @@
+name: elizaOS CodeQL
+
+# Keep the default security query suite while excluding generated, vendored,
+# and non-product trees from the interpreted-language database. These filters
+# act at extraction time, preventing the generated bundles that previously
+# exhausted runner memory from entering the database at all.
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/.next/**'
+  - '**/.next-build-*/**'
+  - '**/.turbo/**'
+  - '**/coverage/**'
+  - '**/out/**'
+  - '**/.venv/**'
+  - '**/venv/**'
+  - '**/site-packages/**'
+  - '**/storybook-static/**'
+  - '**/dist-mobile/**'
+  - '**/dist-mobile-ios/**'
+  - '**/playwright-report/**'
+  - '**/ios/App/App/public/**'
+  - '**/android/app/src/main/assets/public/**'
+  - '**/platforms/android/app/src/main/assets/public/**'
+  - '**/platforms/*/tmp/**'
+  - '**/*.min.js'
+
+  # Vendored toolchain and generated build cache, not authored application
+  # source. This was the single largest extractor/OOM contributor.
+  - packages/app-core/scripts/bun-riscv64/**
+
+  # Research/evaluation fixtures, reference apps, OS images, and documentation
+  # sites are not deployed elizaOS JavaScript/TypeScript runtime surfaces.
+  - packages/benchmarks/**
+  - packages/examples/**
+  - packages/os/**
+  - packages/docs/**
+  - packages/homepage/**
+
+  # Deliberately invalid TypeScript used to test syntax-failure reporting.
+  - packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts
