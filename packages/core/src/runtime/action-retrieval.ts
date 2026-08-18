@@ -282,6 +282,17 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	GITHUB_PR: ["TASKS"],
 	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
 	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
+	// Reminder-mutation inventions ("update my vitamins reminder" →
+	// TASKS_UPDATE_REMINDER, live 2026-08-18; the TASKS prefix fuzzy-matched
+	// VIEWS and the turn errored) bind to the reminder owners like the other
+	// reminder aliases above.
+	TASKS_UPDATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	UPDATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	CHANGE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	EDIT_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	FIX_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	REMINDER_UPDATE: ["OWNER_REMINDERS", "TRIGGER"],
+	RESCHEDULE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
 	FINANCE: ["OWNER_FINANCES"],
 	SPENDING: ["OWNER_FINANCES"],
 	SPENDING_SUMMARY: ["OWNER_FINANCES"],
@@ -1269,6 +1280,7 @@ const CODING_SURFACE_TOKENS = new Set([
 	"CODING",
 	"REPO",
 	"REPOSITORY",
+	"GIT",
 	"GITHUB",
 	"PR",
 	"COMMIT",
