@@ -28,6 +28,7 @@ mock.module("@/lib/auth/steward-client", () => ({
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  getRequestIp: () => undefined,
   RateLimitPresets: { STANDARD: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
