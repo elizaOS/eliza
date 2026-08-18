@@ -371,11 +371,14 @@ function parseUsdAmount(
   message: Pick<LifeOpsGmailMessageSummary, "subject" | "snippet">,
 ): number | null {
   const blob = `${message.subject} ${message.snippet}`;
-  const match = blob.match(/\$([0-9]+(?:\.[0-9]{1,2})?)/);
+  // Allow thousands separators inside the integer part so grouped amounts like
+  // "$1,234.56" are captured whole, then strip the commas before Number() —
+  // matching the CSV importer's readNumber normalization in payment-csv-import.ts.
+  const match = blob.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/);
   if (!match) {
     return null;
   }
-  const value = Number(match[1]);
+  const value = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(value) ? value : null;
 }
 
