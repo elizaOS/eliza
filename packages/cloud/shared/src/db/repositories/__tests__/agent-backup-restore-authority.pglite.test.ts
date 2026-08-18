@@ -1169,6 +1169,7 @@ describe("strict restore catalogue authority", () => {
       .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
       .from(agentBackupCatalogAuthorities)
       .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!epochBefore) throw new Error("Expected vault-created catalogue authority");
     await dbWrite
       .update(agentBackupCatalogAuthorities)
       .set({ catalog_revision: epochBefore.revision + 1n })

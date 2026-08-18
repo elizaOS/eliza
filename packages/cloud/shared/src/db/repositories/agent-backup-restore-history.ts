@@ -777,14 +777,11 @@ export async function commitAgentBackupRestore(
     // between publication and commit otherwise earns a receipt naming an
     // incarnation that no longer exists, which authorizeAgentActivationDispatch
     // already refuses to dispatch onto.
-    const history = await lockCurrentNodeHistory(tx, {
+    await lockCurrentNodeHistory(tx, {
       nodeRecordId: publication.docker_node_record_id,
       nodeId: publication.node_id,
       nodeIncarnation: publication.node_incarnation,
     });
-    if (history.id !== seed.node_history_id) {
-      conflict("Final restore target node incarnation changed since the vault seed");
-    }
     const verifiedAt = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= verifiedAt.getTime()) {
       conflict("Final restore lease expired while mutable authorities were revalidated");
