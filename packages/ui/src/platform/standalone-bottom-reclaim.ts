@@ -85,6 +85,20 @@ export const KEYBOARD_INTRUSION_THRESHOLD_PX = 140;
 let lastRestingGap = 0;
 
 function isPortraitScreenOrientation(): boolean {
+  const screenOrientationType = window.screen?.orientation?.type;
+  if (screenOrientationType?.startsWith("portrait")) return true;
+  if (screenOrientationType?.startsWith("landscape")) return false;
+
+  // Older iOS WebViews expose the physical rotation only through the legacy
+  // Window.orientation angle. Prefer it over a media query: CSS orientation is
+  // the viewport's aspect ratio, which can be portrait-shaped in iPad Split
+  // View while the physical screen remains landscape. Using that viewport
+  // shape to pick the screen axis fabricates a keyboard-sized shortfall.
+  const legacyAngle = (window as Window & { orientation?: number }).orientation;
+  if (typeof legacyAngle === "number" && Number.isFinite(legacyAngle)) {
+    return Math.abs(legacyAngle) % 180 === 0;
+  }
+
   const matchMedia = window.matchMedia;
   if (typeof matchMedia === "function") {
     return matchMedia("(orientation: portrait)").matches;
