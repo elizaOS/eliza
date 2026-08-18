@@ -21,6 +21,8 @@ export interface TrackedJob {
   startedAt: number;
 }
 
+export const DEFAULT_JOB_POLLER_FETCH_TIMEOUT_MS = 10_000;
+
 interface UseJobPollerOptions {
   intervalMs?: number;
   maxDurationMs?: number;
@@ -138,13 +140,16 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
           }
 
           try {
-            const res = await fetch(`/api/v1/jobs/${job.jobId}`);
+            const res = await fetch(`/api/v1/jobs/${job.jobId}`, {
+              signal: AbortSignal.timeout(DEFAULT_JOB_POLLER_FETCH_TIMEOUT_MS),
+            });
             if (!res.ok) {
               continue;
             }
 
             // error-policy:J3 parse-sanitize — non-JSON/empty body becomes null;
             // a missing status below simply skips this poll tick (continue).
+            // same signal still active through json()
             const data = await res.json().catch(() => null);
             const nextStatus = data?.data?.status as JobStatus | undefined;
             const nextError = data?.data?.error;
