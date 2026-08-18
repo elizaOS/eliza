@@ -3419,11 +3419,8 @@ export class OrchestratorTaskService extends Service {
     } catch (error) {
       // error-policy:J7 auto-submit is fire-and-forget from the event bridge;
       // failure is loud here and the user still gets the completion relay.
-      // Flatten newlines: the pretty transport truncates a warn message at
-      // the first newline, which swallowed the diff-gate's reason list.
-      const submitError = (
-        error instanceof Error ? error.message : String(error)
-      ).replace(/\s*\n\s*/g, " | ");
+      const submitError =
+        error instanceof Error ? error.message : String(error);
       this.log(
         "warn",
         `auto-submit of provisioned workspace failed (task=${taskId} session=${sessionId}): ${submitError}`,

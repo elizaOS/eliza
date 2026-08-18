@@ -1606,10 +1606,11 @@ export class AcpService extends Service {
           } catch (err) {
             // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
             // the sweep continues and retries next boot.
-            this.log("warn", "scratch GC: failed to remove dir", {
-              path,
-              error: errorMessage(err),
-            });
+            this.log(
+              "warn",
+              `scratch GC: failed to remove dir ${path}: ${errorMessage(err)}`,
+              { path, error: errorMessage(err) },
+            );
           }
         }),
       );
