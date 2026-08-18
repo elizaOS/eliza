@@ -68,8 +68,8 @@ The build script (`scripts/build.mjs`) injects two define constants into each bu
 `scripts/build.mjs` produces `dist/<kind>/manifest.json` at build time. Key manifest fields:
 
 - `permissions`: `tabs`, `storage`, `scripting`, `alarms`, `activeTab`, `declarativeNetRequest`, `declarativeNetRequestWithHostAccess`
-- `host_permissions` (default install): `https://eliza.how/*`, `https://*.eliza.how/*`, `https://eliza.dev/*`, `https://*.eliza.dev/*`
-- `optional_host_permissions`: `https://*/*`, `http://*/*` — granted at runtime per user confirmation
+- `host_permissions` (default install): loopback agent origins plus `https://eliza.how/*`, `https://*.eliza.how/*`, `https://eliza.dev/*`, `https://*.eliza.dev/*`
+- `optional_host_permissions`: `https://*/*`, `http://*/*` — granted explicitly through browser extension site-access controls
 - `content_security_policy`: `script-src 'self'; object-src 'self'` — no inline scripts, no `unsafe-eval`
 - Service worker: `background.js` (built from `entrypoints/background.ts`)
 - Content scripts at `document_idle`: `content.js` (page capture + DOM actions), injected only on allowlisted hosts
@@ -98,7 +98,9 @@ bun run --cwd packages/browser-bridge-extension test                    # unit t
 bun run --cwd packages/browser-bridge-extension test:unit               # vitest unit tests (src/)
 bun run --cwd packages/browser-bridge-extension test:smoke              # smoke-checks Chrome dist artifacts
 bun run --cwd packages/browser-bridge-extension test:smoke:firefox
+bun run --cwd packages/browser-bridge-extension test:smoke:firefox:real
 bun run --cwd packages/browser-bridge-extension test:smoke:safari
+bun run --cwd packages/browser-bridge-extension test:smoke:packages
 ```
 
 Output lands in `dist/chrome/` or `dist/safari/`. Load `dist/chrome/` as an unpacked extension in Chrome DevTools for local dev.

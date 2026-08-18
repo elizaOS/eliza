@@ -89,16 +89,6 @@ async function buildSafariWebExtension() {
   });
 }
 
-async function ensureSafariDevelopMenu() {
-  await run("defaults", [
-    "write",
-    "com.apple.Safari",
-    "IncludeDevelopMenu",
-    "-bool",
-    "true",
-  ]);
-}
-
 async function openSafariDeveloperSettings() {
   await runAppleScript(`
     tell application "${safariAppName}" to activate
@@ -145,58 +135,17 @@ async function readSafariDeveloperFlags() {
   };
 }
 
-async function clickSafariDeveloperCheckbox(label) {
-  await runAppleScript(`
-    tell application "System Events"
-      tell process "${safariAppName}"
-        tell window "${safariDeveloperWindowName}"
-          tell group 1 of group 1
-            click checkbox "${label}"
-          end tell
-        end tell
-      end tell
-    end tell
-  `);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-}
-
-async function ensureSafariDeveloperPrerequisites() {
+async function assertSafariDeveloperPrerequisites() {
   await openSafariDeveloperSettings();
-  let flags = await readSafariDeveloperFlags();
-  if (!flags.remoteAutomation) {
-    try {
-      await run("safaridriver", ["--enable"], {
-        cwd: extensionRoot,
-        timeoutMs: 10_000,
-      });
-    } catch {
-      throw new Error(
-        'Safari remote automation is disabled. Turn on "Allow remote automation" in Safari > Develop > Developer Settings, or run `safaridriver --enable` once in a local Terminal session, then rerun the Safari smoke test.',
-      );
-    }
-    flags = await readSafariDeveloperFlags();
-    if (!flags.remoteAutomation) {
-      throw new Error(
-        'Safari remote automation is still disabled. Turn on "Allow remote automation" in Safari > Develop > Developer Settings, then rerun the Safari smoke test.',
-      );
-    }
-  }
-  if (!flags.jsFromAppleEvents) {
-    await clickSafariDeveloperCheckbox("Allow JavaScript from Apple Events");
-    flags = await readSafariDeveloperFlags();
-  }
-  if (!flags.unsignedExtensions) {
-    await clickSafariDeveloperCheckbox("Allow unsigned extensions");
-    flags = await readSafariDeveloperFlags();
-  }
-  if (!flags.unsignedExtensions || flags.authPromptVisible) {
+  const flags = await readSafariDeveloperFlags();
+  if (
+    !flags.remoteAutomation ||
+    !flags.jsFromAppleEvents ||
+    !flags.unsignedExtensions ||
+    flags.authPromptVisible
+  ) {
     throw new Error(
-      'Safari blocked unsigned-extension automation with a local authentication prompt. Approve "Allow unsigned extensions" once in Safari > Develop > Developer Settings, then rerun `bun run test:smoke:safari`.',
-    );
-  }
-  if (!flags.jsFromAppleEvents) {
-    throw new Error(
-      'Safari still has "Allow JavaScript from Apple Events" turned off. Enable it in Safari > Develop > Developer Settings, then rerun the Safari smoke test.',
+      'Safari live smoke prerequisites are not enabled. Explicitly review and enable "Allow remote automation", "Allow unsigned extensions", and "Allow JavaScript from Apple Events" in Safari > Develop > Developer Settings, dismiss any authentication sheet, then rerun `bun run test:smoke:safari`. The test does not change these security-sensitive settings automatically.',
     );
   }
 }
@@ -516,8 +465,7 @@ async function resolveSafariPopupUrl(extensionKeys) {
 export async function main() {
   assertMacOs();
   await buildSafariWebExtension();
-  await ensureSafariDevelopMenu();
-  await ensureSafariDeveloperPrerequisites();
+  await assertSafariDeveloperPrerequisites();
   const extensionKeys = await installTemporarySafariExtension();
   if (extensionKeys.length === 0) {
     throw new Error(

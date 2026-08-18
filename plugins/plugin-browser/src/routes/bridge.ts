@@ -121,21 +121,26 @@ function getBrowserCompanionAuth(
   };
 }
 
+export function isBrowserAutoPairOriginAllowed(
+  originHeader: string,
+  requestOrigin: string,
+  isLoopback: boolean,
+): boolean {
+  if (!originHeader) {
+    return isLoopback;
+  }
+  return originHeader === requestOrigin;
+}
+
 function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
   const originHeader =
     typeof ctx.req.headers.origin === "string"
       ? ctx.req.headers.origin.trim()
       : "";
-  if (!originHeader) {
-    return requestIsLoopback(ctx);
-  }
-  if (originHeader === ctx.url.origin) {
-    return true;
-  }
-  return (
-    originHeader.startsWith("chrome-extension://") ||
-    originHeader.startsWith("moz-extension://") ||
-    originHeader.startsWith("safari-web-extension://")
+  return isBrowserAutoPairOriginAllowed(
+    originHeader,
+    ctx.url.origin,
+    requestIsLoopback(ctx),
   );
 }
 

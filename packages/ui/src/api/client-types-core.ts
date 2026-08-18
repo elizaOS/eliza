@@ -673,6 +673,8 @@ export interface ExtensionStatus {
   extensionPath: string | null;
   chromeBuildPath?: string | null;
   chromePackagePath?: string | null;
+  firefoxBuildPath?: string | null;
+  firefoxPackagePath?: string | null;
   safariWebExtensionPath?: string | null;
   safariAppPath?: string | null;
   safariPackagePath?: string | null;

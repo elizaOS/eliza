@@ -12,7 +12,11 @@ import {
   resolveBrowserBridgeReleaseVersion,
   versionedArtifactName,
 } from "./release-version.mjs";
-import { findFileWithExtension, run } from "./script-utils.mjs";
+import {
+  findFileWithExtension,
+  run,
+  writeSha256Sidecar,
+} from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
@@ -148,6 +152,9 @@ await run("ditto", [
   generatedProjectDir,
   versionedProjectZipPath,
 ]);
+await writeSha256Sidecar(artifactZipPath);
+await writeSha256Sidecar(versionedArtifactZipPath);
+await writeSha256Sidecar(versionedProjectZipPath);
 
 console.log(
   `Packaged Safari app ${metadata.releaseVersion} at ${artifactAppPath}`,

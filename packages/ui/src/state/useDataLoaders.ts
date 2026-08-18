@@ -978,6 +978,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         extensionPath: null,
         chromeBuildPath: null,
         chromePackagePath: null,
+        firefoxBuildPath: null,
+        firefoxPackagePath: null,
         safariWebExtensionPath: null,
         safariAppPath: null,
         safariPackagePath: null,

@@ -47,6 +47,44 @@ function tabOrigin(tab: Pick<RememberedTab, "url">): string | null {
   }
 }
 
+export function urlMatchesGrantedOrigins(
+  url: string,
+  grantedOrigins: readonly string[],
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  return grantedOrigins.some((rawPattern) => {
+    const pattern = rawPattern.trim().toLowerCase();
+    if (pattern === "<all_urls>" || pattern === "*://*/*") {
+      return true;
+    }
+    const match = /^(\*|https?|http):\/\/([^/]+)\/\*$/.exec(pattern);
+    if (!match) {
+      return false;
+    }
+    const [, scheme, hostPattern] = match;
+    if (scheme !== "*" && `${scheme}:` !== parsed.protocol) {
+      return false;
+    }
+    if (hostPattern === "*") {
+      return true;
+    }
+    if (hostPattern.startsWith("*.")) {
+      const domain = hostPattern.slice(2);
+      return hostname === domain || hostname.endsWith(`.${domain}`);
+    }
+    return hostname === hostPattern;
+  });
+}
+
 function isTrackingPaused(settings: BrowserBridgeSettings, now: Date): boolean {
   return (
     typeof settings.pauseUntil === "string" &&
@@ -58,12 +96,16 @@ function isTrackingPaused(settings: BrowserBridgeSettings, now: Date): boolean {
 function isAllowedBySiteAccess(
   tab: RememberedTab,
   settings: BrowserBridgeSettings,
+  grantedOrigins: readonly string[],
 ): boolean {
   if (tab.incognito && !settings.incognitoEnabled) {
     return false;
   }
   const origin = tabOrigin(tab);
   if (!origin) {
+    return false;
+  }
+  if (!urlMatchesGrantedOrigins(tab.url, grantedOrigins)) {
     return false;
   }
   const blockedOrigins = new Set(settings.blockedOrigins.map(normalizeOrigin));
@@ -132,6 +174,7 @@ export function selectTabsForSync(args: {
   snapshot: readonly RememberedTab[];
   settings: BrowserBridgeSettings | null;
   fallbackMaxRememberedTabs: number;
+  grantedOrigins: readonly string[];
   now?: Date;
 }): RememberedTab[] {
   const {
@@ -139,6 +182,7 @@ export function selectTabsForSync(args: {
     snapshot,
     settings,
     fallbackMaxRememberedTabs,
+    grantedOrigins,
     now = new Date(),
   } = args;
   if (
@@ -150,10 +194,10 @@ export function selectTabsForSync(args: {
   }
 
   const filteredPrevious = previous.filter((tab) =>
-    isAllowedBySiteAccess(tab, settings),
+    isAllowedBySiteAccess(tab, settings, grantedOrigins),
   );
   const filteredSnapshot = snapshot.filter((tab) =>
-    isAllowedBySiteAccess(tab, settings),
+    isAllowedBySiteAccess(tab, settings, grantedOrigins),
   );
 
   if (settings.trackingMode === "current_tab") {

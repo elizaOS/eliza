@@ -32,6 +32,7 @@ import {
   isValidApiBaseUrl,
   loadBackgroundState,
   loadCompanionConfig,
+  normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
   saveBackgroundState,
   saveCompanionConfig,
@@ -52,6 +53,7 @@ import {
   addWindowFocusListener,
   createAlarm,
   createTab,
+  executeContentScriptFiles,
   executeScriptInMainWorld,
   focusWindow,
   getAllWindows,
@@ -189,6 +191,7 @@ function companionAuthErrorMessage(error: RelayApiError): string {
 
 function readAutoPairResponsePayload(
   payload: unknown,
+  expectedApiBaseUrl: string,
 ): CompanionAutoPairResponse | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -200,7 +203,17 @@ function readAutoPairResponsePayload(
   if (!record.companion || typeof record.companion !== "object") {
     return null;
   }
-  const config = normalizeCompanionConfig(record.config);
+  const companion = record.companion as Record<string, unknown>;
+  const companionId =
+    typeof companion.id === "string" ? companion.id.trim() : "";
+  if (companion.browser !== __BROWSER_BRIDGE_KIND__ || !companionId) {
+    return null;
+  }
+  const config = normalizeAutoPairCompanionConfig(record.config, {
+    apiBaseUrl: expectedApiBaseUrl,
+    browser: __BROWSER_BRIDGE_KIND__,
+    companionId,
+  });
   if (!config) {
     return null;
   }
@@ -243,7 +256,7 @@ async function requestAutoPairFromBackground(
           `${response.status} ${response.statusText}`,
       };
     }
-    const data = readAutoPairResponsePayload(payload);
+    const data = readAutoPairResponsePayload(payload, apiBaseUrl);
     if (!data) {
       return {
         ok: false,
@@ -323,7 +336,7 @@ async function requestAutoPairFromTab(
       [apiBaseUrl, request],
     );
     if (result.ok && result.data) {
-      const data = readAutoPairResponsePayload(result.data);
+      const data = readAutoPairResponsePayload(result.data, apiBaseUrl);
       if (!data) {
         return {
           ok: false,
@@ -516,6 +529,7 @@ async function collectSnapshotTabs(
     previous: rememberedTabs,
     snapshot,
     settings,
+    grantedOrigins: await getGrantedOrigins(),
     fallbackMaxRememberedTabs: MAX_REMEMBERED_TABS,
   });
   await saveState();
@@ -534,6 +548,7 @@ async function captureFocusedPageContext(
     return [];
   }
   try {
+    await executeContentScriptFiles(tabId, ["content.js"]);
     const response = await sendTabMessage<ContentScriptResponse>(tabId, {
       type: "browser-bridge:capture-page",
     });
@@ -602,6 +617,7 @@ async function runContentAction(
   tabId: number,
   action: DomActionRequest,
 ): Promise<Record<string, unknown>> {
+  await executeContentScriptFiles(tabId, ["content.js"]);
   const response = await sendTabMessage<ContentScriptResponse>(tabId, {
     type: "browser-bridge:execute-dom-action",
     action,
@@ -732,6 +748,7 @@ async function executeAction(
       if (tabId === null) {
         throw new Error(`${action.kind} requires a target tab`);
       }
+      await executeContentScriptFiles(tabId, ["content.js"]);
       const response = await sendTabMessage<ContentScriptResponse>(tabId, {
         type: "browser-bridge:capture-page",
       });

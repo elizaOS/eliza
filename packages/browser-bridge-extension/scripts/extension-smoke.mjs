@@ -215,6 +215,7 @@ function createMockCompanion(origin, requestBody) {
 
 async function startMockAgentServer() {
   const requests = [];
+  let deliveredSession = false;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     let body = "";
@@ -225,10 +226,11 @@ async function startMockAgentServer() {
     requests.push({
       method: req.method ?? "GET",
       path: url.pathname,
+      headers: req.headers,
       body: jsonBody,
     });
 
-    if (url.pathname === "/chat") {
+    if (url.pathname === "/chat" || url.pathname === "/action-target") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(
         "<!doctype html><html><head><title>Eliza</title></head><body><h1>Eliza</h1><p>Mock app page for extension smoke tests.</p></body></html>",
@@ -333,9 +335,39 @@ async function startMockAgentServer() {
             metadata: {},
             updatedAt: nowIso(),
           },
-          session: null,
+          session: deliveredSession
+            ? null
+            : {
+                id: "session-smoke-test",
+                title: "Open smoke target",
+                browser: companion.browser,
+                profileId: companion.profileId,
+                tabId: null,
+                status: "running",
+                currentActionIndex: 0,
+                actions: [
+                  {
+                    id: "open-smoke-target",
+                    kind: "open",
+                    url: `${origin}/action-target`,
+                  },
+                ],
+                metadata: {},
+                createdAt: nowIso(),
+                updatedAt: nowIso(),
+              },
         }),
       );
+      deliveredSession = true;
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      (url.pathname.endsWith("/progress") || url.pathname.endsWith("/complete"))
+    ) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -448,6 +480,36 @@ async function runAutoPairAndSyncScenario(chromium) {
         "Expected the smoke test to hit the companion sync route at least once.",
       );
     }
+    if (
+      syncRequests[0]?.headers?.authorization !==
+        "Bearer lobr_smoke_pairing_token" ||
+      syncRequests[0]?.headers?.["x-browser-bridge-companion-id"] !==
+        "companion-smoke-test"
+    ) {
+      throw new Error("Expected authenticated companion sync headers");
+    }
+    await expectRequest(
+      mockServer.requests,
+      (request) =>
+        request.method === "POST" && request.path.endsWith("/complete"),
+      "session completion",
+    );
+    const progressRequest = mockServer.requests.find(
+      (request) =>
+        request.method === "POST" && request.path.endsWith("/progress"),
+    );
+    const completeRequest = mockServer.requests.find(
+      (request) =>
+        request.method === "POST" && request.path.endsWith("/complete"),
+    );
+    if (
+      progressRequest?.body?.metadata?.lastActionKind !== "open" ||
+      completeRequest?.body?.status !== "done"
+    ) {
+      throw new Error(
+        "Expected the real extension to complete the open action",
+      );
+    }
   } catch (error) {
     await saveFailureScreenshot(popupPage, "auto-pair-and-sync");
     throw error;
@@ -457,6 +519,17 @@ async function runAutoPairAndSyncScenario(chromium) {
     await session.close();
     await mockServer.close();
   }
+}
+
+async function expectRequest(requests, predicate, label, timeoutMs = 20_000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (requests.some(predicate)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
 }
 
 async function main() {

@@ -245,6 +245,28 @@ export function normalizeCompanionConfig(
   };
 }
 
+export function normalizeAutoPairCompanionConfig(
+  input: Partial<CompanionConfig> | null | undefined,
+  expected: {
+    apiBaseUrl: string;
+    browser: CompanionConfig["browser"];
+    companionId: string;
+  },
+): CompanionConfig | null {
+  const config = normalizeCompanionConfig(input);
+  const expectedApiBaseUrl = normalizeApiBaseUrl(expected.apiBaseUrl);
+  if (
+    !config ||
+    !expectedApiBaseUrl ||
+    config.apiBaseUrl !== expectedApiBaseUrl ||
+    config.browser !== expected.browser ||
+    config.companionId !== expected.companionId
+  ) {
+    return null;
+  }
+  return config;
+}
+
 export async function loadCompanionConfig(): Promise<CompanionConfig | null> {
   const stored = await storageGet<Partial<CompanionConfig>>(CONFIG_KEY);
   return normalizeCompanionConfig(stored);

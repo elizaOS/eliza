@@ -27,6 +27,7 @@ Once installed and paired, the extension:
 
 The extension ships with a scoped host allowlist instead of a blanket `<all_urls>` grant. The default-install hosts are:
 
+- `http://127.0.0.1/*` and `http://localhost/*` for the local agent API
 - `https://eliza.how/*` and subdomains
 - `https://eliza.dev/*` and subdomains
 
@@ -35,8 +36,9 @@ Content scripts and the wallet shim auto-inject only on these origins.
 **Optional hosts**
 
 If a user wants the agent to read or act on an additional site, the extension
-requests permission at runtime via `chrome.permissions.request`. An in-product
-approval prompt confirms the exact origin before any script is injected.
+uses the browser's extension site-access controls to grant the exact origin.
+The sync loop independently checks the browser's effective grants before it
+shares tab metadata, even when agent settings request all-site tracking.
 
 **Content Security Policy**
 
@@ -69,6 +71,8 @@ bun run --cwd packages/browser-bridge-extension build:chrome
 # Build and statically validate Firefox
 bun run --cwd packages/browser-bridge-extension build:firefox
 bun run --cwd packages/browser-bridge-extension test:smoke:firefox
+bun run --cwd packages/browser-bridge-extension test:smoke:firefox:real
+bun run --cwd packages/browser-bridge-extension test:smoke:packages
 
 # Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select dist/chrome/
 

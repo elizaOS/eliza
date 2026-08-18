@@ -7,6 +7,7 @@ import {
   candidateApiBaseUrlsFromTabs,
   DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
   isValidApiBaseUrl,
+  normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
 } from "./storage";
 
@@ -81,5 +82,49 @@ describe("normalizeCompanionConfig", () => {
       normalizeCompanionConfig({ ...baseConfig, apiBaseUrl: "   " })
         ?.apiBaseUrl,
     ).toBe(DEFAULT_BROWSER_BRIDGE_API_BASE_URL);
+  });
+});
+
+describe("normalizeAutoPairCompanionConfig", () => {
+  const config = {
+    apiBaseUrl: "http://127.0.0.1:31337",
+    companionId: "companion-1",
+    pairingToken: "token-1",
+    browser: "firefox" as const,
+  };
+
+  it("binds the returned token to the requested API, browser, and companion", () => {
+    expect(
+      normalizeAutoPairCompanionConfig(config, {
+        apiBaseUrl: config.apiBaseUrl,
+        browser: "firefox",
+        companionId: config.companionId,
+      }),
+    ).toMatchObject(config);
+
+    expect(
+      normalizeAutoPairCompanionConfig(
+        { ...config, apiBaseUrl: "https://attacker.example" },
+        {
+          apiBaseUrl: config.apiBaseUrl,
+          browser: "firefox",
+          companionId: config.companionId,
+        },
+      ),
+    ).toBeNull();
+    expect(
+      normalizeAutoPairCompanionConfig(config, {
+        apiBaseUrl: config.apiBaseUrl,
+        browser: "chrome",
+        companionId: config.companionId,
+      }),
+    ).toBeNull();
+    expect(
+      normalizeAutoPairCompanionConfig(config, {
+        apiBaseUrl: config.apiBaseUrl,
+        browser: "firefox",
+        companionId: "other-companion",
+      }),
+    ).toBeNull();
   });
 });

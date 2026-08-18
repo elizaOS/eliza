@@ -10,7 +10,11 @@ import {
   resolveBrowserBridgeReleaseVersion,
   versionedArtifactName,
 } from "./release-version.mjs";
-import { run } from "./script-utils.mjs";
+import {
+  normalizeTreeTimestamps,
+  run,
+  writeSha256Sidecar,
+} from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
@@ -33,11 +37,14 @@ await fs.mkdir(artifactsDir, { recursive: true });
 await fs.rm(artifactPath, { force: true });
 await fs.rm(versionedArtifactPath, { force: true });
 await fs.access(path.join(chromeDistDir, "manifest.json"));
+await normalizeTreeTimestamps(chromeDistDir);
 
-await run("zip", ["-qr", artifactPath, "chrome"], {
-  cwd: distDir,
+await run("zip", ["-Xqr", artifactPath, "."], {
+  cwd: chromeDistDir,
 });
 await fs.copyFile(artifactPath, versionedArtifactPath);
+await writeSha256Sidecar(artifactPath);
+await writeSha256Sidecar(versionedArtifactPath);
 
 console.log(
   `Packaged Chrome extension ${metadata.chromeVersionName} at ${artifactPath} and ${versionedArtifactPath}`,
