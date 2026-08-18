@@ -7461,7 +7461,6 @@
   "cloud.invoiceDetail.type": "Type",
   "cloud.invoiceDetail.oneTimePurchase": "One-Time Purchase",
   "cloud.invoiceDetail.paymentIntentId": "Payment Intent ID",
-  "cloud.invoiceDetail.invalidInvoiceUrl": "Invoice link is not a valid URL",
   "cloud.membersList.noMembers": "No members found",
   "cloud.membersList.unknown": "Unknown",
   "cloud.membersList.you": "You",
