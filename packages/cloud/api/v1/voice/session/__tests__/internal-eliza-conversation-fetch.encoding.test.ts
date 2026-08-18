@@ -91,7 +91,7 @@ describe("internal Eliza conversation stream path encoding", () => {
       method: "POST",
     });
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "Agent not found",
       code: "agent_not_found",
@@ -103,7 +103,7 @@ describe("internal Eliza conversation stream path encoding", () => {
       method: "POST",
     });
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "Agent not found",
       code: "agent_not_found",
@@ -117,7 +117,7 @@ describe("internal Eliza conversation stream path encoding", () => {
         method: "POST",
       });
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect((await response.json()) as unknown).toEqual({
         success: false,
         error: "invalid conversation path: malformed URL encoding",
       });
@@ -131,7 +131,7 @@ describe("internal Eliza conversation stream path encoding", () => {
         method: "POST",
       });
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect((await response.json()) as unknown).toEqual({
         success: false,
         error: "invalid conversation path: malformed URL encoding",
       });

@@ -51,7 +51,7 @@ describe("POST /api/v1/coding-containers/:containerId/sync encoding", () => {
   test("canonical container id still reaches the control-plane forward", async () => {
     const response = await postSync("ctr-1");
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       code: "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
       error: "Container control plane URL is not configured",
@@ -62,7 +62,7 @@ describe("POST /api/v1/coding-containers/:containerId/sync encoding", () => {
   test("canonical percent-encoded hyphen still decodes before forward", async () => {
     const response = await postSync("ctr%2D1");
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       code: "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
       error: "Container control plane URL is not configured",
@@ -84,7 +84,7 @@ describe("POST /api/v1/coding-containers/:containerId/sync encoding", () => {
     async (token) => {
       const response = await postSync(token, JSON.stringify({ nope: true }));
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect((await response.json()) as unknown).toEqual({
         success: false,
         error: "invalid container id: malformed URL encoding",
       });

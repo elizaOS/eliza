@@ -2,7 +2,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const listVisibleTunedModels = mock(async () => [{ id: "model-1" }]);
+const listVisibleTunedModels = mock(
+  async (_identity: unknown, _filter: { scope?: string }) => [
+    { id: "model-1" },
+  ],
+);
 const listVisibleAssignments = mock(async () => [{ id: "asg-1" }]);
 const resolveModelPreferences = mock(async () => ({
   modelPreferences: { should_respond: "model-1" },

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const createLifeOpsGithubReturnResponse = mock(
-  () => new Response("popup", { status: 200 }),
+  (_args: { postMessage: boolean }) => new Response("popup", { status: 200 }),
 );
 
 mock.module("@/lib/services/agent-github-return", () => ({

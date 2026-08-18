@@ -21,7 +21,7 @@ const VALID_BODY = JSON.stringify({
 function unusedDownstream(): typeof fetch {
   return (async () => {
     throw new Error("downstream fetch must not run on malformed encoding");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 }
 
 describe("local runtime conversation fetch encoding", () => {

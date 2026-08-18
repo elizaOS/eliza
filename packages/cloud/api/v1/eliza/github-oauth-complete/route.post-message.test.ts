@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const createLifeOpsGithubReturnResponse = mock(() => new Response("popup"));
+const createLifeOpsGithubReturnResponse = mock(
+  (_args: { postMessage: boolean }) => new Response("popup"),
+);
 const findByIdAndOrg = mock(async () => null);
 const connectAgent = mock(async () => ({ restarted: false }));
 const getConnection = mock(async () => null);

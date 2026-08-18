@@ -50,7 +50,7 @@ describe("GET /api/v1/oauth/callback/:provider encoding", () => {
       new Request(callbackUrl("not-a-provider")),
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "Unsupported provider",
     });
@@ -60,7 +60,7 @@ describe("GET /api/v1/oauth/callback/:provider encoding", () => {
   test("canonical provider still reaches intent lookup", async () => {
     const response = await app.fetch(new Request(callbackUrl("google")));
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "Unknown state token",
     });
@@ -70,7 +70,7 @@ describe("GET /api/v1/oauth/callback/:provider encoding", () => {
   test("canonical percent-encoded letter still decodes before lookup", async () => {
     const response = await app.fetch(new Request(callbackUrl("g%6Fogle")));
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "Unknown state token",
     });
@@ -82,7 +82,7 @@ describe("GET /api/v1/oauth/callback/:provider encoding", () => {
     async (token) => {
       const response = await app.fetch(new Request(callbackUrl(token)));
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect((await response.json()) as unknown).toEqual({
         success: false,
         error: "invalid provider: malformed URL encoding",
       });
@@ -95,7 +95,7 @@ describe("GET /api/v1/oauth/callback/:provider encoding", () => {
       new Request(callbackUrl("%"), { method: "POST" }),
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: "invalid provider: malformed URL encoding",
     });
