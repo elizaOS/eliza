@@ -620,6 +620,10 @@ describe("voice-session WS lifecycle", () => {
     expect(cartesia.sentText().replaceAll(" ", "")).toContain(
       "Notmuch.Goodtohearfromyou.",
     );
+
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
+    expect(cartesia.closed).toBe(true);
   });
 
   test("generates the call opener as a stable canonical system turn", async () => {
@@ -1675,7 +1679,7 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(JSON.stringify({ t: "barge_in" }));
     await flush();
     expect(client.controlTypes()).toContain("interrupted");
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
     // The interrupted turn reports usage (accounting stays accurate on barge-in),
     // emitted BEFORE the interrupted frame.
     const types = client.controlTypes();
@@ -1725,13 +1729,13 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
     expect(client.audioFrames).toHaveLength(audioBeforeInterruption);
 
     ink.emitTurn("turn.end", "wait");
     await flush();
     await flush();
-    expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(cartesia);
+    expect(FakeCartesiaSocket.instances.at(-1)).toBe(cartesia);
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
@@ -1789,7 +1793,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
-    expect(activeCartesia.closed).toBe(true);
+    expect(activeCartesia.closed).toBe(false);
   });
 
   test("interruption aborts the in-flight Eliza SSE fetch", async () => {
