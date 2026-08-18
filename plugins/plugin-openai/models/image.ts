@@ -242,4 +242,3 @@ export async function handleImageDescription(
     description: parseDescriptionFromResponse(content),
   };
 }
-

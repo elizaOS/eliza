@@ -111,4 +111,3 @@ describe("OpenAI image request deadlines", () => {
     ).resolves.toMatchObject({ title: "Bounded", description: "A sketch that finished." });
   });
 });
-

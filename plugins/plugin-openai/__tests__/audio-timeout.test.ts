@@ -118,4 +118,3 @@ describe("OpenAI audio request deadlines", () => {
     expect(new Uint8Array(audio)).toEqual(bytes);
   });
 });
-
