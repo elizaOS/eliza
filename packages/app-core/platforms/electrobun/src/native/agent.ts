@@ -345,9 +345,53 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
   childEnv.ELIZA_STATE_DIR = stateDir;
 }
 
+type DesktopChildActiveRuntimeMode = "local" | "local-only";
+
+function resolveDesktopChildConfigPath(
+  childEnv: Record<string, string>,
+): string {
+  const explicitConfigPath = normalizeEnvPath(childEnv.ELIZA_CONFIG_PATH);
+  if (explicitConfigPath) return explicitConfigPath;
+  const stateDir = resolveDesktopChildStateDir({
+    env: childEnv as NodeJS.ProcessEnv,
+  });
+  return joinPortable(
+    stateDir,
+    `${resolveDesktopChildNamespace(childEnv)}.json`,
+  );
+}
+
+export function resolveDesktopChildActiveRuntimeMode(
+  childEnv: Record<string, string>,
+  readConfig: (configPath: string) => string = (configPath) =>
+    fs.readFileSync(configPath, "utf8"),
+): DesktopChildActiveRuntimeMode {
+  if (
+    childEnv.ELIZA_ACTIVE_API_RUNTIME_MODE?.trim().toLowerCase() ===
+    "local-only"
+  ) {
+    return "local-only";
+  }
+
+  let rawConfig: string;
+  try {
+    rawConfig = readConfig(resolveDesktopChildConfigPath(childEnv));
+  } catch (error) {
+    // error-policy:J3 an absent first-run config explicitly selects the direct
+    // build's default local topology; every other read failure stays fatal.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "local";
+    throw error;
+  }
+  const parsed = JSON.parse(rawConfig) as {
+    cloud?: { enabled?: unknown };
+  };
+  return parsed.cloud?.enabled === false ? "local-only" : "local";
+}
+
 export function applyDesktopChildOwnershipEnv(
   childEnv: Record<string, string>,
   parentPid: number = process.pid,
+  readConfig?: (configPath: string) => string,
 ): void {
   if (!Number.isSafeInteger(parentPid) || parentPid <= 1) {
     throw new Error("Desktop parent PID must be an integer greater than 1");
@@ -355,7 +399,10 @@ export function applyDesktopChildOwnershipEnv(
   // AgentManager.start only runs after the desktop host has selected the
   // embedded runtime. Preserve the user's saved remote target on disk while
   // making the active API mode and process ownership truthful for this child.
-  childEnv.ELIZA_ACTIVE_API_RUNTIME_MODE = "local";
+  childEnv.ELIZA_ACTIVE_API_RUNTIME_MODE = resolveDesktopChildActiveRuntimeMode(
+    childEnv,
+    readConfig,
+  );
   childEnv.ELIZA_DESKTOP_PARENT_PID = String(parentPid);
 }
 

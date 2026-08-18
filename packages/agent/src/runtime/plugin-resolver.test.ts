@@ -207,6 +207,112 @@ describe("resolvePlugins manifest discovery", () => {
   }, 120_000);
 });
 
+describe("resolvePlugins install-record persistence", () => {
+  it("repairs the durable record without serializing an ephemeral host topology", async () => {
+    const previousCwd = process.cwd();
+    const previousConfigPath = process.env.ELIZA_CONFIG_PATH;
+    const previousPersistPath = process.env.ELIZA_PERSIST_CONFIG_PATH;
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const workspace = await mkdtemp(
+      path.join(tmpdir(), "eliza-plugin-persistence-projection-"),
+    );
+    const stateDir = path.join(workspace, "state");
+    const configPath = path.join(stateDir, "eliza.json");
+    const pluginName = "@thirdparty/plugin-install-repair-fixture";
+    const packageRoot = path.join(
+      workspace,
+      "node_modules",
+      "@thirdparty",
+      "plugin-install-repair-fixture",
+    );
+
+    try {
+      await mkdir(packageRoot, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(
+        path.join(packageRoot, "package.json"),
+        JSON.stringify({
+          name: pluginName,
+          version: "0.0.0-test",
+          type: "module",
+          exports: { ".": "./index.js" },
+        }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(packageRoot, "index.js"),
+        `export default { name: ${JSON.stringify(pluginName)}, description: "install repair fixture", services: [] };\n`,
+        "utf8",
+      );
+
+      const { CORE_PLUGINS } = await import("./core-plugins");
+      const persistedConfig: ElizaConfig = {
+        deploymentTarget: {
+          runtime: "remote",
+          provider: "remote",
+          remoteApiBase: "http://127.0.0.1:2250",
+        },
+        plugins: {
+          allow: [pluginName],
+          deny: [...CORE_PLUGINS],
+          installs: {
+            [pluginName]: {
+              source: "path",
+              installPath: path.join(workspace, "missing-install"),
+            },
+          },
+        },
+      };
+      const activeConfig = structuredClone(persistedConfig);
+      activeConfig.deploymentTarget = { runtime: "local" };
+
+      process.chdir(workspace);
+      process.env.ELIZA_CONFIG_PATH = configPath;
+      process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
+      process.env.ELIZA_STATE_DIR = stateDir;
+      await writeFile(
+        configPath,
+        `${JSON.stringify(persistedConfig, null, 2)}\n`,
+        "utf8",
+      );
+
+      const resolved = await resolvePlugins(activeConfig, {
+        quiet: true,
+        installRepairPersistenceConfig: persistedConfig,
+      });
+      const saved = JSON.parse(await fs.readFile(configPath, "utf8")) as {
+        deploymentTarget?: { runtime?: string; remoteApiBase?: string };
+        plugins?: {
+          installs?: Record<string, { source?: string; installPath?: string }>;
+        };
+      };
+
+      expect(resolved.map((plugin) => plugin.name)).toContain(pluginName);
+      expect(activeConfig.deploymentTarget.runtime).toBe("local");
+      expect(saved.deploymentTarget).toEqual({
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "http://127.0.0.1:2250",
+      });
+      expect(saved.plugins?.installs?.[pluginName]).toMatchObject({
+        source: "npm",
+        installPath: "",
+      });
+    } finally {
+      process.chdir(previousCwd);
+      if (previousConfigPath === undefined)
+        delete process.env.ELIZA_CONFIG_PATH;
+      else process.env.ELIZA_CONFIG_PATH = previousConfigPath;
+      if (previousPersistPath === undefined)
+        delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+      else process.env.ELIZA_PERSIST_CONFIG_PATH = previousPersistPath;
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
 describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
   // A configured model provider is first-turn capability: it must load in the
   // BLOCKING phase (before the runtime reports ready/canRespond), never the
