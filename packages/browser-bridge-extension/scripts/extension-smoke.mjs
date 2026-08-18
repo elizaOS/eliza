@@ -166,6 +166,24 @@ async function readText(page, selector) {
   return (await page.locator(selector).textContent()) ?? "";
 }
 
+async function waitForPopupSettled(page) {
+  await page.waitForFunction(() => {
+    const title = document.querySelector("#statusTitle")?.textContent ?? "";
+    const badge = document.querySelector("#statusBadge")?.textContent ?? "";
+    const primary = document.querySelector("#autoPair");
+    const primaryLabel = primary?.textContent?.trim() ?? "";
+    return (
+      title.trim().length > 0 &&
+      title !== "Loading extension state…" &&
+      title !== "Looking for Eliza in this browser" &&
+      badge !== "Loading" &&
+      primaryLabel.length > 0 &&
+      primary instanceof HTMLButtonElement &&
+      !primary.disabled
+    );
+  });
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -386,18 +404,7 @@ async function runPopupBootScenario(chromium) {
   const session = await launchExtensionContext(chromium);
   const popupPage = await openPopup(session.context, session.extensionId);
   try {
-    await popupPage.waitForFunction(() => {
-      const title = document.querySelector("#statusTitle")?.textContent ?? "";
-      const badge = document.querySelector("#statusBadge")?.textContent ?? "";
-      const primary =
-        document.querySelector("#autoPair")?.textContent?.trim() ?? "";
-      return (
-        title.trim().length > 0 &&
-        title !== "Loading extension state…" &&
-        badge !== "Loading" &&
-        primary.length > 0
-      );
-    });
+    await waitForPopupSettled(popupPage);
   } catch (error) {
     await saveFailureScreenshot(popupPage, "popup-boot");
     throw error;
@@ -415,6 +422,7 @@ async function runAutoPairAndSyncScenario(chromium) {
   const popupPage = await openPopup(session.context, session.extensionId);
 
   try {
+    await waitForPopupSettled(popupPage);
     await popupPage.waitForFunction(() => {
       const button = document.querySelector("#autoPair");
       return Boolean(
