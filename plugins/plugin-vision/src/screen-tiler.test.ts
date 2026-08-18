@@ -211,6 +211,35 @@ describe("tileScreenshot — full source coverage (regression #22125)", () => {
       expect(overlap).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it("never leaves a gap between vertically adjacent tiles", async () => {
+    // Transpose the formerly failing 5119px axis into the vertical direction.
+    // With floor(strideY), the third tile ends at row 3838 while the anchored
+    // last tile starts at row 3839, leaving source row 3838 uncovered.
+    const height = 5119;
+    const png = await makePng(64, height);
+    const tiles = await tileScreenshot(
+      { displayId: "cov-vertical", width: 64, height, pngBytes: png },
+      { maxEdge: 1280, overlapFraction: 0.12 },
+    );
+    const col0 = tiles.sort((a, b) => a.sourceY - b.sourceY);
+    expect(col0).toHaveLength(4);
+
+    const rowCovered = new Uint8Array(height);
+    for (const tile of col0) {
+      rowCovered.fill(1, tile.sourceY, tile.sourceY + tile.sourceH);
+    }
+    expect([...rowCovered].indexOf(0), "every source row is covered").toBe(-1);
+
+    for (let i = 1; i < col0.length; i += 1) {
+      const prev = expectPresent(col0[i - 1], `tile-${i - 1}-0`);
+      const cur = expectPresent(col0[i], `tile-${i}-0`);
+      const overlap = prev.sourceY + prev.sourceH - cur.sourceY;
+      expect(overlap, `vertical seam before tile ${i}`).toBeGreaterThanOrEqual(
+        0,
+      );
+    }
+  });
 });
 
 describe("tileScreenshot — degenerate axes and extraction bounds", () => {
