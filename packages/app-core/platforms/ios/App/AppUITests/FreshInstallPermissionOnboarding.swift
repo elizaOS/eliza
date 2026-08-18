@@ -22,6 +22,7 @@ func driveFreshInstallPermissionOnboarding(
 
     let pollCount = max(1, maxPolls)
     for _ in 0..<pollCount {
+        if !dialogIsPresent() { return .skipped }
         if skipIsHittable() {
             tapSkip()
             for _ in 0..<pollCount {
