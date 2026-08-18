@@ -44,13 +44,7 @@ app.patch("/", async (c) => {
       );
     }
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ success: false, error: "Invalid JSON body" }, 400);
-    }
+    const body = await c.req.json();
     const parsed = updateEmailSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(

@@ -39,18 +39,11 @@ app.put("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const elizaCharacter = rawBody as ElizaCharacter;
-    // Only array-valued document sources participate in character knowledge.
+    const elizaCharacter = (await c.req.json()) as ElizaCharacter;
+    // documents/knowledge come verbatim from the unvalidated request body; a
+    // non-array value (e.g. `knowledge: {}`) is not iterable and would 500 the
+    // update (#13637 class). Non-arrays contribute no document sources — this
+    // also keeps the knowledge column an array for downstream readers.
     const documentSources = [
       ...(Array.isArray(elizaCharacter.documents)
         ? elizaCharacter.documents

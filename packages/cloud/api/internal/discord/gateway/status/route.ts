@@ -1,4 +1,4 @@
-/** Handles internal cloud API internal discord gateway status route traffic with service-to-service auth. */
+// Handles internal cloud API internal discord gateway status route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { z } from "zod";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
@@ -51,14 +51,7 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ success: false, error: "Invalid JSON body" }, 400);
-    }
-    const body = ConnectionStatusUpdateSchema.parse(rawBody);
+    const body = ConnectionStatusUpdateSchema.parse(await c.req.json());
     const connection = await discordConnectionsRepository.updateStatus(
       body.connection_id,
       body.status,

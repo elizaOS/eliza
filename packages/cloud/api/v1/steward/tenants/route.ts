@@ -28,17 +28,7 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const body = rawBody as {
+    const body = (await c.req.json()) as {
       organizationId?: string;
       tenantName?: string;
     };

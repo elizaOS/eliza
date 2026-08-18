@@ -28,14 +28,7 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: ctx.error }, ctx.status);
     const { user, appId } = ctx;
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ success: false, error: "Invalid JSON body" }, 400);
-    }
-    const parsed = VerifySchema.safeParse(rawBody);
+    const parsed = VerifySchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
         {

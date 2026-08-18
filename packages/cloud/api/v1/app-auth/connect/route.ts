@@ -35,13 +35,7 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKey(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
+    const body = await c.req.json();
     const parsed = ConnectSchema.safeParse(body);
 
     if (!parsed.success) {

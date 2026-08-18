@@ -1,4 +1,4 @@
-/** Handles internal cloud API internal discord events route traffic with service-to-service auth. */
+// Handles internal cloud API internal discord events route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { routeDiscordEvent } from "@/lib/services/gateway-discord/event-router";
@@ -14,14 +14,7 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const payload = DiscordEventPayloadSchema.parse(rawBody);
+    const payload = DiscordEventPayloadSchema.parse(await c.req.json());
     const result = await routeDiscordEvent(payload);
     return c.json({ success: true, ...result });
   } catch (err) {

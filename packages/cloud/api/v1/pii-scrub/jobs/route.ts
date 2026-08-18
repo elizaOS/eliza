@@ -1,4 +1,4 @@
-/** Handles v1 cloud API PII scrub job enqueue traffic with route-local auth expectations. */
+// Handles v1 cloud API PII scrub job enqueue traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -60,14 +60,7 @@ export function createPiiScrubJobsRoute(
   app.post("/", async (c) => {
     try {
       const user = await dependencies.requireUserOrApiKeyWithOrg(c);
-      let rawBody: unknown;
-      try {
-        rawBody = await c.req.json();
-      } catch {
-        // error-policy:J3 malformed JSON is invalid request input.
-        return c.json({ error: "Invalid JSON body" }, 400);
-      }
-      const body = enqueueSchema.parse(rawBody);
+      const body = enqueueSchema.parse(await c.req.json());
       const job = await dependencies.enqueuePiiScrubBatch({
         organizationId: user.organization_id,
         userId: user.id,

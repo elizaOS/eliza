@@ -35,14 +35,7 @@ app.post("/", async (c) => {
     const authMs = performance.now() - authStartedAt;
 
     const validationStartedAt = performance.now();
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const body = messageSchema.parse(rawBody);
+    const body = messageSchema.parse(await c.req.json());
     const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {
       const [gatewayRouter, guildText, sharedWorker] = await Promise.all([
