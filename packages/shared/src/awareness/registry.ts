@@ -64,6 +64,26 @@ export class AwarenessRegistry {
     }
   }
 
+  unregister(id: string): boolean {
+    if (typeof id !== "string" || !this.contributorIds.has(id)) {
+      return false;
+    }
+    this.contributorIds.delete(id);
+    this.cache.delete(id);
+    const idx = this.contributors.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      this.contributors.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  clear(): void {
+    this.contributors.length = 0;
+    this.contributorIds.clear();
+    this.cache.clear();
+  }
+
   async composeSummary(runtime: IAgentRuntime): Promise<string> {
     const lines: string[] = [];
 
