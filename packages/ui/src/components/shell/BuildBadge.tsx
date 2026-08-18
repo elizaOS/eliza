@@ -23,8 +23,27 @@ import { useCallback, useEffect, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
 
-const BUILD_INFO_URL = "/build-info.json";
+export const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
+
+/** Build-info GET is a short UI read — same 15s family as useWeather. */
+export const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
+
+export async function getBuildInfoJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = BUILD_BADGE_JSON_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Build info request failed (${response.status})`);
+  }
+  return (await response.json()) as T;
+}
 
 interface BuildInfo {
   commit?: string;
@@ -293,9 +312,10 @@ export function BuildBadge() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(BUILD_INFO_URL, { cache: "no-store" });
-        if (!res.ok) return;
-        const info = (await res.json()) as BuildInfo;
+        const info = await getBuildInfoJsonWithFetch<BuildInfo>(
+          BUILD_INFO_URL,
+          globalThis.fetch,
+        );
         if (!cancelled) setLabel(toLabel(info));
       } catch {
         // Best-effort: no build info available (production builds without the
