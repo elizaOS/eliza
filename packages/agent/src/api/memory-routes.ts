@@ -36,6 +36,11 @@ import {
   getDocumentsService,
 } from "./documents-service-loader.ts";
 import { decodePathComponent } from "./server-helpers.ts";
+import {
+  finalizeSealedImport,
+  MEMORY_IMPORT_ID_CONFLICT,
+  stageSealedBatch,
+} from "./memory-import-staged.ts";
 
 export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
@@ -421,6 +426,26 @@ export function parseMemoryTableFilter(
   };
 }
 
+const SEALED_TRANSFER_CONFLICTS = new Set([
+  MEMORY_IMPORT_ID_CONFLICT,
+]);
+
+/** 409 for conflicts, 400 for everything typed, 500 only for the unknown. */
+function respondSealedTransferError(
+  error: MemoryRouteContext["error"],
+  res: MemoryRouteContext["res"],
+  err: unknown,
+): void {
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code: unknown }).code)
+      : undefined;
+  const message = err instanceof Error ? err.message : "sealed transfer failed";
+  if (code && SEALED_TRANSFER_CONFLICTS.has(code)) return error(res, message, 409);
+  if (code) return error(res, message, 400);
+  return error(res, message, 500);
+}
+
 export async function handleMemoryRoutes(
   ctx: MemoryRouteContext,
 ): Promise<boolean> {
@@ -451,6 +476,31 @@ export async function handleMemoryRoutes(
   }
 
   const resolvedAgentName = resolveAgentName(runtime, agentName);
+
+  // Round-3 sealed transfer endpoints run BEFORE ensureMemoryConnection: they
+  // must not create the agent's default DM scaffolding — the finalize step
+  // creates exactly the transferred scaffolding inside its own transaction.
+  if (method === "POST" && pathname === "/api/memory/transfer/stage") {
+    const rawStage = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawStage === null) return true;
+    try {
+      json(res, { ok: true, ...(await stageSealedBatch(runtime, rawStage)) });
+    } catch (err) {
+      respondSealedTransferError(error, res, err);
+    }
+    return true;
+  }
+  if (method === "POST" && pathname === "/api/memory/transfer/finalize") {
+    const rawFin = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawFin === null) return true;
+    try {
+      json(res, { ok: true, ...(await finalizeSealedImport(runtime, rawFin)) });
+    } catch (err) {
+      respondSealedTransferError(error, res, err);
+    }
+    return true;
+  }
+
   const { roomId, entityId } = await ensureMemoryConnection(
     runtime,
     resolvedAgentName,
