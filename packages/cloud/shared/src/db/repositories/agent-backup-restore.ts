@@ -17,7 +17,10 @@ import {
   parseAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { and, eq } from "drizzle-orm";
-import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
+import {
+  requireBoundedIdentity,
+  requireSha256Hex,
+} from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
 import {
@@ -41,18 +44,10 @@ import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const UINT64_MAX = 18_446_744_073_709_551_615n;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
     throw new Error(`${field} must be a canonical lowercase UUID`);
-  }
-  return value;
-}
-
-function requireSha256(value: string, field: string): string {
-  if (!SHA256_PATTERN.test(value)) {
-    throw new Error(`${field} must be a lowercase sha256 digest`);
   }
   return value;
 }
@@ -169,7 +164,7 @@ function validateInput(input: Readonly<AgentBackupRestoreSourceV3Input>): {
   requireUuid(input.backupId, "backupId");
   requireUuid(input.operationId, "operationId");
   requireUuid(input.sourceActivationGeneration, "sourceActivationGeneration");
-  requireSha256(input.expectedManifestSha256, "expectedManifestSha256");
+  requireSha256Hex(input.expectedManifestSha256, "expectedManifestSha256");
   requireUuid(input.restoreAttemptId, "restoreAttemptId");
   requireUuid(input.leaseId, "leaseId");
   requireBoundedIdentity(input.ownerId, "ownerId");
