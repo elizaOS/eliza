@@ -17,7 +17,8 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
-  it("rejects a history operation alias on the promoted create tool", async () => {
+  it("executes a declared history alias on the promoted create tool instead of stranding", async () => {
+    // New virtual-pin contract: explicit declared discriminators execute.
     const create = promoteSubactionsToActions(createTaskAction).find(
       (action) => action.name === "TASKS_CREATE",
     );
@@ -32,10 +33,7 @@ describe("TASKS:create", () => {
       callback(),
     );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Call TASKS_HISTORY"),
-    });
+    expect((result as { success?: boolean }).success).toBe(true);
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
