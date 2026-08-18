@@ -29,6 +29,8 @@ const ASSERTION_TTL_S = 3600;
 /** Refresh the access token slightly before it expires (60s skew). */
 const TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
 
+export const DEFAULT_FCM_FETCH_TIMEOUT_MS = 10_000;
+
 interface ServiceAccount {
   client_email: string;
   private_key: string;
@@ -178,6 +180,7 @@ export class FcmProvider implements PushProvider {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: params.toString(),
+      signal: AbortSignal.timeout(DEFAULT_FCM_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(
@@ -211,6 +214,7 @@ export class FcmProvider implements PushProvider {
         "content-type": "application/json",
       },
       body: this.buildMessageBody(token, message),
+      signal: AbortSignal.timeout(DEFAULT_FCM_FETCH_TIMEOUT_MS),
     });
     if (res.ok) return;
 
