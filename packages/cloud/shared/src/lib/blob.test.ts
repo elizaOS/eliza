@@ -1,5 +1,7 @@
-// Exercises uploadFromUrl's SSRF-guarded fetch and streamed byte cap with a
-// mocked safeFetch and an in-memory R2 binding. Deterministic, no network.
+/**
+ * Exercises uploadFromUrl's SSRF guard, deadline, and streamed byte cap with
+ * a mocked safeFetch and in-memory R2 binding. Deterministic, no network.
+ */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const safeFetchMock = vi.fn();
@@ -56,6 +58,7 @@ describe("uploadFromUrl", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     setRuntimeR2Bucket(null);
   });
 
@@ -83,6 +86,50 @@ describe("uploadFromUrl", () => {
     await expect(
       uploadFromUrl("http://169.254.169.254/latest/meta-data", { filename: "x.png" }),
     ).rejects.toThrow("Private or reserved IP addresses are not allowed");
+    expect(puts).toHaveLength(0);
+  });
+
+  test("aborts a remote fetch that does not settle before the deadline", async () => {
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
+      queueMicrotask(callback);
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+    safeFetchMock.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    await expect(
+      uploadFromUrl("https://images.example/hangs.png", { filename: "x.png" }),
+    ).rejects.toThrow("Remote blob fetch timed out after 15000ms");
+    expect(puts).toHaveLength(0);
+  });
+
+  test("keeps the deadline active while reading a stalled response body", async () => {
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
+      queueMicrotask(callback);
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+    safeFetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => controller.error(init.signal?.reason), {
+            once: true,
+          });
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    });
+
+    await expect(
+      uploadFromUrl("https://images.example/slow-body.png", { filename: "x.png" }),
+    ).rejects.toThrow("Remote blob fetch timed out after 15000ms");
     expect(puts).toHaveLength(0);
   });
 

@@ -165,6 +165,7 @@ export async function uploadBase64Image(
  * unbounded allocation before the payload lands on the public blob host.
  */
 const UPLOAD_FROM_URL_MAX_BYTES = 25 * 1024 * 1024;
+const UPLOAD_FROM_URL_TIMEOUT_MS = 15_000;
 
 /**
  * Reads a response body under a hard byte cap, cancelling the stream as soon
@@ -260,18 +261,30 @@ export async function uploadFromUrl(
   sourceUrl: string,
   options: BlobUploadOptions,
 ): Promise<BlobUploadResult> {
-  const response = await safeFetch(sourceUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new Error(`Remote blob fetch timed out after ${UPLOAD_FROM_URL_TIMEOUT_MS}ms`),
+    );
+  }, UPLOAD_FROM_URL_TIMEOUT_MS);
+  timeout.unref?.();
+
+  try {
+    const response = await safeFetch(sourceUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.statusText}`);
+    }
+
+    const buffer = await readResponseBodyWithCap(response, UPLOAD_FROM_URL_MAX_BYTES, sourceUrl);
+    const contentType = options.contentType || response.headers.get("content-type") || undefined;
+
+    return uploadToBlob(buffer, {
+      ...options,
+      contentType,
+    });
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const buffer = await readResponseBodyWithCap(response, UPLOAD_FROM_URL_MAX_BYTES, sourceUrl);
-  const contentType = options.contentType || response.headers.get("content-type") || undefined;
-
-  return uploadToBlob(buffer, {
-    ...options,
-    contentType,
-  });
 }
 
 /**
