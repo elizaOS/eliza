@@ -11,6 +11,8 @@
  */
 import { getElizacloudUrl } from "@/lib/api/client";
 
+export const DEFAULT_SIWS_FETCH_TIMEOUT_MS = 10_000;
+
 const BS58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -142,6 +144,7 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
     {
       method: "GET",
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(DEFAULT_SIWS_FETCH_TIMEOUT_MS),
     },
   );
   if (!nonceRes.ok) {
@@ -169,6 +172,7 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
       message,
       signature: bs58Encode(signatureBytes),
     }),
+    signal: AbortSignal.timeout(DEFAULT_SIWS_FETCH_TIMEOUT_MS),
   });
   if (!verifyRes.ok) {
     const detail = await verifyRes.text().catch(() => "");
