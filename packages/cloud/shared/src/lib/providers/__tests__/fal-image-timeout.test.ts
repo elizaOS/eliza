@@ -1,39 +1,49 @@
-/**
- * Proves Fal image provider fetch timeout (rank 8 clone of atlas/openai batches).
- * Both fetches now have AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS) matching download sibling.
- */
-import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+/** Exercises Fal generation and download deadlines through an injected fetch boundary. */
+import { describe, expect, it, mock } from "bun:test";
 
-const falPath = new URL("../image/fal-image-generation.ts", import.meta.url).pathname;
-const atlasPath = new URL("../image/atlascloud-image-generation.ts", import.meta.url).pathname;
-const sunoPath = new URL("../audio/suno-audio-generation.ts", import.meta.url).pathname;
+mock.module("../language-model", () => ({
+  getAiProviderConfigurationError: () => "missing provider configuration",
+}));
 
-describe("fal image fetch timeout — bounded provider", () => {
-  test("generation fetch has AbortSignal.timeout", () => {
-    const src = readFileSync(falPath, "utf8");
-    expect(src).toContain('fetch(`${baseUrl}/${request.model}`');
-    expect(src).toContain("signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS),");
-    const timeouts = (src.match(/AbortSignal\.timeout\(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS\)/g) || []).length;
-    expect(timeouts).toBeGreaterThanOrEqual(2); // download + generate
+const { generateFalImageWithFetch } = await import("../image/fal-image-generation");
+
+const request = {
+  model: "fal-ai/flux/dev",
+  prompt: "draw a bounded request",
+  apiKeys: { FAL_KEY: "test-key", FAL_RUN_BASE_URL: "https://fal.invalid" },
+};
+
+describe("Fal image request deadlines", () => {
+  it("aborts a stalled synchronous generation at the configured job deadline", async () => {
+    const fetchImpl: typeof fetch = async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("expected generation abort signal");
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+
+    await expect(generateFalImageWithFetch(request, fetchImpl, 10)).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
   });
 
-  test("download already bounded sibling proves intent", () => {
-    const src = readFileSync(falPath, "utf8");
-    expect(src).toContain("const response = await fetch(url, { signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS) });");
-  });
+  it("uses the injected fetch for both generation and image download", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      if (init?.signal) signals.push(init.signal);
+      if (signals.length === 1) {
+        return Response.json({ images: [{ url: "https://images.invalid/result.png" }] });
+      }
+      return new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "content-type": "image/png" },
+      });
+    };
 
-  test("no unbounded fetch remains in fal image provider", () => {
-    const src = readFileSync(falPath, "utf8");
-    const fetches = (src.match(/await fetch\(/g) || []).length;
-    const timeouts = (src.match(/AbortSignal\.timeout/g) || []).length;
-    expect(timeouts).toBe(fetches); // 2 == 2
-  });
+    const image = await generateFalImageWithFetch(request, fetchImpl, 1_000);
 
-  test("sibling correct — atlas and suno already bounded", () => {
-    const atlas = readFileSync(atlasPath, "utf8");
-    expect(atlas).toContain("AbortSignal.timeout");
-    const suno = readFileSync(sunoPath, "utf8");
-    expect(suno).toContain("AbortSignal.timeout");
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(image.mimeType).toBe("image/png");
+    expect(image.bytes).toEqual(new Uint8Array([1, 2, 3]));
   });
 });
