@@ -1,5 +1,6 @@
 // Persists remote sessions records for cloud services through the shared DB boundary.
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { isRemotePairingSessionCurrent } from "../crypto/remote-pairing-code";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type NewRemoteSession,
@@ -31,7 +32,7 @@ export class RemoteSessionsRepository {
   }
 
   async listActiveByAgent(agentId: string, orgId: string): Promise<RemoteSession[]> {
-    return dbRead
+    const rows = await dbRead
       .select()
       .from(remoteSessions)
       .where(
@@ -42,6 +43,10 @@ export class RemoteSessionsRepository {
         ),
       )
       .orderBy(desc(remoteSessions.created_at));
+    const nowMs = Date.now();
+    return rows.filter((row) =>
+      isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, nowMs),
+    );
   }
 
   async revoke(id: string, orgId: string): Promise<RemoteSession | undefined> {
