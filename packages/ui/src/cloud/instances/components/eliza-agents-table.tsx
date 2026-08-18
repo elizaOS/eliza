@@ -48,7 +48,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
   Boxes,
-  Cloud,
   ExternalLink,
   FileText,
   Loader2,
@@ -56,7 +55,6 @@ import {
   Pause,
   Play,
   Search,
-  Server,
   Sun,
   Trash2,
 } from "lucide-react";
@@ -66,6 +64,7 @@ import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
+import { getUserFacingAgentType } from "../lib/agent-type";
 import { parseAgentsResponse } from "../lib/data/eliza-agents";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
@@ -256,54 +255,25 @@ export function deriveAgentRow(
 /** The runtime label for one row, driven by a single precomputed `runtimeKind`
  * so the four kinds map to copy in one place rather than four `getRuntimeKind`
  * calls at the call site. */
-function RuntimeLabel({
-  runtimeKind,
+function AgentTypeLabel({
+  executionTier,
 }: {
-  runtimeKind: AgentRowViewModel["runtimeKind"];
+  executionTier: AgentListItemDto["executionTier"];
 }) {
-  const t = useT();
-  const label =
-    runtimeKind === "managed"
-      ? t("cloud.elizaAgentsTable.managedRuntime", {
-          defaultValue: "Managed runtime",
-        })
-      : runtimeKind === "shared"
-        ? t("cloud.elizaAgentsTable.sharedRuntime", {
-            defaultValue: "Shared runtime",
-          })
-        : runtimeKind === "sandbox"
-          ? t("cloud.elizaAgentsTable.cloudSandbox", {
-              defaultValue: "Cloud sandbox",
-            })
-          : t("cloud.elizaAgentsTable.notProvisioned", {
-              defaultValue: "Not provisioned",
-            });
-  return <span className="text-xs text-muted-strong">{label}</span>;
+  return (
+    <span className="text-xs text-muted-strong">
+      {getUserFacingAgentType(executionTier)}
+    </span>
+  );
 }
 
-/** Backing label (Docker / Shared / Sandbox) + short id, shared by the desktop
- * row and the mobile card. */
+/** Stable short id shared by the desktop row and mobile card. */
 function RowBackingMeta({ vm }: { vm: AgentRowViewModel }) {
-  const t = useT();
-  const { agent, isDocker } = vm;
+  const { agent } = vm;
   return (
-    <div className="flex items-center gap-2">
-      <span className="inline-flex items-center gap-1 text-2xs text-muted">
-        {isDocker ? (
-          <Server className="h-2.5 w-2.5" />
-        ) : (
-          <Cloud className="h-2.5 w-2.5" />
-        )}
-        {isDocker
-          ? t("cloud.elizaAgentsTable.docker", { defaultValue: "Docker" })
-          : agent.executionTier === "shared"
-            ? t("cloud.elizaAgentsTable.shared", { defaultValue: "Shared" })
-            : t("cloud.elizaAgentsTable.sandbox", { defaultValue: "Sandbox" })}
-      </span>
-      <span className="text-2xs text-muted font-mono tabular-nums">
-        {agent.id.slice(0, 8)}
-      </span>
-    </div>
+    <span className="text-2xs text-muted font-mono tabular-nums">
+      {agent.id.slice(0, 8)}
+    </span>
   );
 }
 
@@ -1148,8 +1118,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                   </Button>
                 </TableHead>
                 <TableHead className="text-xs-tight font-medium uppercase tracking-widest text-muted">
-                  {t("cloud.elizaAgentsTable.colRuntime", {
-                    defaultValue: "Runtime",
+                  {t("cloud.elizaAgentsTable.colType", {
+                    defaultValue: "Type",
                   })}
                 </TableHead>
                 <TableHead className="text-xs-tight font-medium uppercase tracking-widest text-muted">
@@ -1249,7 +1219,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       </TableCell>
 
                       <TableCell>
-                        <RuntimeLabel runtimeKind={vm.runtimeKind} />
+                        <AgentTypeLabel executionTier={sb.executionTier} />
                       </TableCell>
 
                       <TableCell>
@@ -1493,8 +1463,13 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Unnamed Agent",
                           })}
                       </a>
-                      <AgentCostBadge status={displayStatus} />
-                      <RowBackingMeta vm={vm} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <AgentCostBadge status={displayStatus} />
+                        <AgentTypeLabel executionTier={sb.executionTier} />
+                      </div>
+                      <div className="block">
+                        <RowBackingMeta vm={vm} />
+                      </div>
                     </div>
                     <StatusCell
                       displayStatus={displayStatus}

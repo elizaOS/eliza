@@ -1,5 +1,5 @@
 /**
- * ElizaAgentActions — start/stop/deactivate/reactivate/snapshot/upgrade/delete
+ * ElizaAgentActions — start/stop/deactivate/reactivate/upgrade/delete
  * controls on the agent detail page.
  *
  * **Upgrade to Dedicated** (shared-tier agents only, #15355) drives the whole
@@ -41,7 +41,6 @@ import {
   BrandCard,
 } from "@elizaos/ui/cloud-ui";
 import {
-  Camera,
   ExternalLink,
   Loader2,
   Moon,
@@ -200,8 +199,6 @@ export function ElizaAgentActions({
         url = `/api/v1/eliza/agents/${agentId}/resume`;
       } else if (action === "provision") {
         url = `/api/v1/eliza/agents/${agentId}/provision`;
-      } else if (action === "snapshot") {
-        url = `/api/v1/eliza/agents/${agentId}/snapshot`;
       } else if (action === "sleep") {
         url = `/api/v1/eliza/agents/${agentId}/sleep`;
       } else if (action === "wake") {
@@ -250,9 +247,6 @@ export function ElizaAgentActions({
           resume: t("cloud.containers.agentActions.resumeQueued", {
             defaultValue: "Agent resume queued",
           }),
-          snapshot: t("cloud.containers.agentActions.snapshotQueued", {
-            defaultValue: "Snapshot queued",
-          }),
           suspend: t("cloud.containers.agentActions.suspendQueued", {
             defaultValue: "Suspend queued",
           }),
@@ -297,9 +291,6 @@ export function ElizaAgentActions({
         }),
         resume: t("cloud.containers.agentActions.resumingSnapshot", {
           defaultValue: "Agent resuming from snapshot",
-        }),
-        snapshot: t("cloud.containers.agentActions.snapshotSaved", {
-          defaultValue: "Snapshot saved",
         }),
         suspend: t("cloud.containers.agentActions.suspended", {
           defaultValue: "Agent suspended (snapshot saved)",
@@ -605,24 +596,6 @@ export function ElizaAgentActions({
                 )}
                 {t("cloud.containers.agentActions.reactivate", {
                   defaultValue: "Reactivate Agent",
-                })}
-              </BrandButton>
-            )}
-
-            {isRunning && (
-              <BrandButton
-                variant="outline"
-                size="sm"
-                onClick={() => doAction("snapshot")}
-                disabled={!!loading || isBusy}
-              >
-                {loading === "snapshot" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Camera className="h-4 w-4" />
-                )}
-                {t("cloud.containers.agentActions.saveSnapshot", {
-                  defaultValue: "Save Snapshot",
                 })}
               </BrandButton>
             )}

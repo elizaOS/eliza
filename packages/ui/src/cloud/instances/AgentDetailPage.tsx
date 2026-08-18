@@ -12,24 +12,15 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
-import {
-  AlertCircle,
-  ArrowLeft,
-  Cloud,
-  ExternalLink,
-  Server,
-  Terminal,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, Cloud } from "lucide-react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentActions } from "./components/agent-actions";
-import { DockerLogsViewer } from "./components/docker-logs-viewer";
-import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
-import { ElizaAgentLogsViewer } from "./components/eliza-agent-logs-viewer";
 import { ElizaAgentTabs } from "./components/eliza-agent-tabs";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
+import { getUserFacingAgentType } from "./lib/agent-type";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
@@ -145,9 +136,8 @@ export default function AgentDetailPage() {
   // entirely — show an explicit $0.00/hr instead of a blank so the "stop the
   // burn" promise of deactivation is visible where the burn was shown.
   const isSleeping = agent.status === "sleeping";
-  const adminDetails = agent.adminDetails;
-  const isDockerBacked = adminDetails?.isDockerBacked ?? false;
   const showConnect = !!agent.webUiUrl && agent.status === "running";
+  const agentType = getUserFacingAgentType(agent.executionTier);
   const heartbeatPrimary = formatRelativeShort(agent.lastHeartbeatAt, t);
 
   return (
@@ -175,11 +165,7 @@ export default function AgentDetailPage() {
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           <div className="flex items-center justify-center w-12 h-12 border border-accent/25 bg-accent-subtle shrink-0">
-            {isDockerBacked ? (
-              <Server className="h-6 w-6 text-accent" />
-            ) : (
-              <Cloud className="h-6 w-6 text-accent" />
-            )}
+            <Cloud className="h-6 w-6 text-accent" />
           </div>
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -197,6 +183,12 @@ export default function AgentDetailPage() {
                   className={`inline-block size-1.5 rounded-full mr-1.5 ${dotColor}`}
                 />
                 {agent.status}
+              </Badge>
+              <Badge
+                variant="outline"
+                className="text-xs font-medium px-2 py-0.5"
+              >
+                {agentType}
               </Badge>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted">
@@ -341,202 +333,13 @@ export default function AgentDetailPage() {
           </section>
         )}
 
-        {adminDetails && isDockerBacked && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-accent" />
-              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
-                {t("cloud.agents.detail.infrastructure", {
-                  defaultValue: "Infrastructure",
-                })}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border">
-              <InfoCell
-                label={t("cloud.agents.detail.node", { defaultValue: "Node" })}
-                value={adminDetails.nodeId ?? "—"}
-                mono
-              />
-              <InfoCell
-                label={t("cloud.agents.detail.container", {
-                  defaultValue: "Container",
-                })}
-                value={adminDetails.containerName ?? "—"}
-                mono
-              />
-              <InfoCell
-                label={t("cloud.agents.detail.dockerImage", {
-                  defaultValue: "Docker Image",
-                })}
-                value={adminDetails.dockerImage ?? "—"}
-                mono
-              />
-              {adminDetails.headscaleIp && (
-                <InfoCell
-                  label={t("cloud.agents.detail.vpnIp", {
-                    defaultValue: "VPN IP",
-                  })}
-                  value={adminDetails.headscaleIp}
-                  mono
-                  accent="success"
-                />
-              )}
-              {adminDetails.bridgePort !== null && (
-                <InfoCell
-                  label={t("cloud.agents.detail.bridgePort", {
-                    defaultValue: "Bridge Port",
-                  })}
-                  value={String(adminDetails.bridgePort)}
-                  mono
-                />
-              )}
-              {adminDetails.webUiPort !== null && (
-                <InfoCell
-                  label={t("cloud.agents.detail.webUiPort", {
-                    defaultValue: "Web UI Port",
-                  })}
-                  value={String(adminDetails.webUiPort)}
-                  mono
-                />
-              )}
-            </div>
-          </section>
-        )}
-
-        {adminDetails?.sshCommand && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-accent" />
-              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
-                {t("cloud.agents.detail.sshAccess", {
-                  defaultValue: "SSH Access",
-                })}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 px-4 py-3 border border-border bg-card">
-                <Terminal className="h-4 w-4 text-status-success shrink-0" />
-                <code className="text-sm text-status-success font-mono flex-1">
-                  {adminDetails.sshCommand}
-                </code>
-              </div>
-              {adminDetails.bridgePort !== null && adminDetails.headscaleIp && (
-                <div className="flex items-center gap-3 px-4 py-3 border border-border bg-card">
-                  <Terminal className="h-4 w-4 text-accent shrink-0" />
-                  <code className="text-sm text-accent font-mono flex-1">
-                    {`curl http://${adminDetails.headscaleIp}:${adminDetails.bridgePort}/health`}
-                  </code>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {adminDetails && !isDockerBacked && agent.bridgeUrl && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-accent" />
-              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
-                {t("cloud.agents.detail.sandboxConnection", {
-                  defaultValue: "Sandbox Connection",
-                })}
-              </p>
-            </div>
-
-            <div className="border border-border bg-card px-4 py-3 flex items-start gap-3">
-              <span className="text-xs-tight uppercase tracking-widest text-muted shrink-0 pt-0.5">
-                {t("cloud.agents.detail.bridgeUrl", {
-                  defaultValue: "Bridge URL",
-                })}
-              </span>
-              <a
-                href={agent.bridgeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-txt hover:text-txt-strong flex items-center gap-1 transition-colors font-mono break-all"
-              >
-                {agent.bridgeUrl}
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
-            </div>
-          </section>
-        )}
-
         <ElizaAgentActions
           agentId={agent.id}
           executionTier={agent.executionTier}
           status={agent.status}
           webUiUrl={agent.webUiUrl}
         />
-
-        <ElizaAgentBackupsPanel
-          agentId={agent.id}
-          agentName={
-            agent.agentName ??
-            t("cloud.agents.detail.unnamedAgent", {
-              defaultValue: "Unnamed Agent",
-            })
-          }
-          status={agent.status}
-        />
-
-        <ElizaAgentLogsViewer
-          agentId={agent.id}
-          agentName={
-            agent.agentName ??
-            t("cloud.agents.detail.unnamedAgent", {
-              defaultValue: "Unnamed Agent",
-            })
-          }
-          status={agent.status}
-          showAdvancedHint={!!adminDetails && isDockerBacked}
-        />
-
-        {adminDetails &&
-          isDockerBacked &&
-          adminDetails.containerName &&
-          adminDetails.nodeId && (
-            <DockerLogsViewer
-              sandboxId={agent.id}
-              containerName={adminDetails.containerName}
-              nodeId={adminDetails.nodeId}
-            />
-          )}
       </ElizaAgentTabs>
-    </div>
-  );
-}
-
-function InfoCell({
-  label,
-  value,
-  mono = false,
-  accent,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  accent?: "success" | "neutral" | "orange";
-}) {
-  const valueColor =
-    accent === "success"
-      ? "text-status-success"
-      : accent === "orange"
-        ? "text-accent"
-        : "text-txt-strong";
-
-  return (
-    <div className="bg-card p-4 space-y-1 min-w-0">
-      <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
-        {label}
-      </p>
-      <p
-        className={`text-sm font-medium ${valueColor} break-all ${mono ? "font-mono" : ""}`}
-      >
-        {value}
-      </p>
     </div>
   );
 }
