@@ -42,6 +42,7 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
@@ -95,6 +96,10 @@ export interface RunSharedAgentTurnInput {
   originClientMessageId?: string;
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
+  /** Non-authoritative diagnostics observer; runtime failures never depend on it. */
+  onRuntimeTiming?: (receipt: SharedRuntimeTimingReceipt) => void;
+  /** Request correlation identity propagated from the HTTP ingress. */
+  traceId?: string;
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
   /**

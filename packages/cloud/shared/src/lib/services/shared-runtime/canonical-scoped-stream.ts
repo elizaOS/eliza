@@ -25,6 +25,8 @@ const STREAM_HEADERS = {
 } as const;
 
 export interface CanonicalScopedStreamRequest {
+  /** Standard request correlation identity resolved by the HTTP boundary. */
+  traceId?: string;
   /**
    * Tenancy-resolved agent supplied by the caller. Requiring this at the type
    * boundary prevents Worker callers from falling through to the legacy
@@ -116,6 +118,7 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      traceId: request.traceId,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

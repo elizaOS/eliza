@@ -40,6 +40,7 @@ type ConversationRequest =
       operation: "bridge";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
     }
@@ -47,6 +48,7 @@ type ConversationRequest =
       operation: "personal-bridge";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
     }
@@ -54,6 +56,7 @@ type ConversationRequest =
       operation: "stream";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
     }
@@ -61,6 +64,7 @@ type ConversationRequest =
       operation: "personal-stream";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
     }
@@ -1633,6 +1637,7 @@ export class SharedRuntimeConversation {
       ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
+          traceId: payload.traceId,
           executionCtx,
           historyStore,
           turnClaims,
@@ -1648,6 +1653,7 @@ export class SharedRuntimeConversation {
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        traceId: payload.traceId,
         executionCtx,
         historyStore,
         turnClaims,

@@ -62,6 +62,10 @@ import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
+import {
+  SharedRuntimeTimingCollector,
+  type SharedRuntimeTimingOutcome,
+} from "./shared-runtime-timing";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -419,13 +423,41 @@ async function executeSharedElizaRuntimeTurn(
   input: RunSharedAgentTurnInput & { agentKey: string; model: string },
   onStreamChunk?: (chunk: string) => void | Promise<void>,
 ): Promise<RunSharedAgentTurnResult> {
-  const turnStartedAt = performance.now();
+  const timing = new SharedRuntimeTimingCollector(
+    input.traceId ?? input.messageIds?.assistant ?? "unattributed",
+    input.history.length,
+  );
+  const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
+    try {
+      input.onRuntimeTiming?.(timing.receipt(outcome));
+    } catch (error) {
+      // error-policy:J7 diagnostics must not kill the loop — the observer is
+      // outside the authoritative response and persistence path.
+      logger.warn("[shared-eliza-runtime] timing observer failed", {
+        traceId: input.traceId ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+  try {
+    const result = await executeMeasuredSharedElizaRuntimeTurn(input, onStreamChunk, timing);
+    emitTiming("success");
+    return result;
+  } catch (error) {
+    emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
+    throw error;
+  }
+}
+
+async function executeMeasuredSharedElizaRuntimeTurn(
+  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+  onStreamChunk: ((chunk: string) => void | Promise<void>) | undefined,
+  timing: SharedRuntimeTimingCollector,
+): Promise<RunSharedAgentTurnResult> {
   await ensureEdgeStreamingContext();
-  const edgeContextReadyAt = performance.now();
+  timing.markEdgeContextReady();
   const adapter = new InMemoryDatabaseAdapter();
   let providerDispatched = false;
-  let providerDispatchedAt: number | null = null;
-  let providerFirstTextAt: number | null = null;
   let usage: SharedAgentTurnUsage | undefined;
   const model = getInteractiveCerebrasLanguageModel(input.model);
 
@@ -435,8 +467,8 @@ async function executeSharedElizaRuntimeTurn(
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
     if (!providerDispatched) {
       providerDispatched = true;
-      providerDispatchedAt = performance.now();
       await input.onProviderDispatch?.();
+      timing.markProviderDispatched();
     }
     const generation = {
       model,
@@ -479,14 +511,13 @@ async function executeSharedElizaRuntimeTurn(
                 ? (record.inputTextDelta ?? record.delta)
                 : undefined;
             if (chunk) {
-              providerFirstTextAt ??= performance.now();
               yield chunk;
             }
           }
           return;
         }
         for await (const chunk of result.textStream) {
-          providerFirstTextAt ??= performance.now();
+          if (chunk) timing.markProviderFirstText();
           yield chunk;
         }
       })();
@@ -518,7 +549,7 @@ async function executeSharedElizaRuntimeTurn(
     const result = await generateText({
       ...generation,
     });
-    providerFirstTextAt ??= performance.now();
+    if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
       return result.text;
@@ -570,9 +601,8 @@ async function executeSharedElizaRuntimeTurn(
     reminderPlugin,
     todoPlugin,
   });
-
   try {
-    const initializeStartedAt = performance.now();
+    timing.markRuntimeInitializeStarted();
     await runtime.initialize({ skipMigrations: true });
     if (mediaPlugin) {
       await runtime.getServiceLoadPromise(ServiceType.MEDIA_GENERATION);
@@ -594,7 +624,7 @@ async function executeSharedElizaRuntimeTurn(
       mobilePushDispatch && isSharedNotificationEventBus(eventBus)
         ? subscribeSharedMobilePush(eventBus, mobilePushDispatch, pushDispatches)
         : undefined;
-    const runtimeReadyAt = performance.now();
+    timing.markRuntimeReady();
     if (runtime.actions.some((action) => action.name === "VIEWS")) {
       throw new Error("Eliza Shared runtime must not register client view-navigation actions");
     }
@@ -625,7 +655,7 @@ async function executeSharedElizaRuntimeTurn(
       }
     }
     const roomId = sharedRuntimeConversationRoomId(input.agentKey);
-    const connectionStartedAt = performance.now();
+    timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
       roomId,
@@ -642,8 +672,8 @@ async function executeSharedElizaRuntimeTurn(
           }
         : {}),
     });
-    const connectionReadyAt = performance.now();
-    const historyStartedAt = performance.now();
+    timing.markConnectionReady();
+    timing.markHistoryStarted();
     if (input.history.length > 0) {
       const historyTimestamps = projectedHistoryTimestamps(input.history);
       await adapter.createMemories(
@@ -677,7 +707,7 @@ async function executeSharedElizaRuntimeTurn(
         }),
       );
     }
-    const historyReadyAt = performance.now();
+    timing.markHistoryReady();
 
     const delivered: string[] = [];
     const messageService = runtime.messageService;
@@ -749,24 +779,6 @@ async function executeSharedElizaRuntimeTurn(
     if ((!result?.didRespond && delivered.length === 0) || !reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
-    const completedAt = performance.now();
-    logger.info("[shared-eliza-runtime] turn latency", {
-      turnId: input.messageIds?.assistant ?? null,
-      historyMessages: input.history.length,
-      edgeContextMs: Math.round((edgeContextReadyAt - turnStartedAt) * 10) / 10,
-      runtimeInitializeMs: Math.round((runtimeReadyAt - initializeStartedAt) * 10) / 10,
-      connectionMs: Math.round((connectionReadyAt - connectionStartedAt) * 10) / 10,
-      historyProjectionMs: Math.round((historyReadyAt - historyStartedAt) * 10) / 10,
-      providerDispatchMs:
-        providerDispatchedAt === null
-          ? null
-          : Math.round((providerDispatchedAt - turnStartedAt) * 10) / 10,
-      providerFirstTextMs:
-        providerFirstTextAt === null
-          ? null
-          : Math.round((providerFirstTextAt - turnStartedAt) * 10) / 10,
-      totalMs: Math.round((completedAt - turnStartedAt) * 10) / 10,
-    });
     return {
       reply,
       history: appendSharedTurn(

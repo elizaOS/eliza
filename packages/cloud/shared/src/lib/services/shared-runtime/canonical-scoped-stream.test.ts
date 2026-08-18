@@ -43,6 +43,7 @@ const EXECUTION_CTX = {
 };
 const ABORT_SIGNAL = new AbortController().signal;
 const BASE = {
+  traceId: "trace-canonical-stream",
   abortSignal: ABORT_SIGNAL,
   agent: AGENT,
   agentId: AGENT.id,
@@ -76,6 +77,7 @@ describe("handleCanonicalScopedAgentStream", () => {
       executionCtx: EXECUTION_CTX,
       agentKind: undefined,
       trustedMessageRole: undefined,
+      traceId: "trace-canonical-stream",
     });
   });
 

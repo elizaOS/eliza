@@ -258,6 +258,7 @@ app.post("/", async (c) => {
 
   const conversationId = c.req.param("conversationId") ?? r.agentId;
   return handleCanonicalScopedAgentStream({
+    traceId: c.get("traceId"),
     abortSignal: c.req.raw.signal,
     agent: r.agent,
     agentId: r.agentId,

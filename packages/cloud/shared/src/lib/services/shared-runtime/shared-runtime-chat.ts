@@ -79,12 +79,15 @@ import {
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 import {
   buildTurnSummary,
+  isSharedTurnTraceSampled,
   recordSharedTurnTrace,
+  resolveSharedTurnTraceSampleRate,
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
@@ -157,6 +160,19 @@ function recordTurnTraceOffPath(
   });
 }
 
+/** Keep detailed latency diagnostics on the same bounded sampled off-path as traces. */
+function recordRuntimeTimingOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  receipt: SharedRuntimeTimingReceipt,
+): void {
+  if (process.env.SHARED_TURN_TRACES_ENABLED !== "true") return;
+  const sampleRate = resolveSharedTurnTraceSampleRate(process.env.SHARED_TURN_TRACES_SAMPLE);
+  if (!isSharedTurnTraceSampled(receipt.traceId, sampleRate)) return;
+  void settleOffResponsePath(executionCtx, async () => {
+    logger.info("[shared-eliza-runtime] sampled turn latency", receipt);
+  });
+}
+
 function turnActionResults(
   turn: Pick<
     RunSharedAgentTurnResult,
@@ -215,6 +231,8 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Standard request trace propagated through the conversation coordinator. */
+  traceId?: string;
   abortSignal?: AbortSignal;
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
@@ -1138,6 +1156,8 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        traceId: options.traceId ?? messageIds.assistant,
+        onRuntimeTiming: (receipt) => recordRuntimeTimingOffPath(options.executionCtx, receipt),
         ...(memoryStore ? { memory: memoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
@@ -1168,7 +1188,7 @@ export class SharedRuntimeChatService {
       options.executionCtx,
       agent,
       roomId,
-      messageIds.assistant,
+      options.traceId ?? messageIds.assistant,
       turnStartedAtEpochMs,
       turn,
     );
@@ -1341,6 +1361,8 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        traceId: options.traceId ?? messageIds.assistant,
+        onRuntimeTiming: (receipt) => recordRuntimeTimingOffPath(options.executionCtx, receipt),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(
@@ -1468,7 +1490,7 @@ export class SharedRuntimeChatService {
           options.executionCtx,
           agent,
           roomId,
-          messageIds.assistant,
+          options.traceId ?? messageIds.assistant,
           streamTurnStartedAtEpochMs,
           {
             model: turn.model,

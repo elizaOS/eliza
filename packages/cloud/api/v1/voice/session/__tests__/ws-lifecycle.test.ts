@@ -1550,6 +1550,23 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    const latencyLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) => message === "[voice-session] first-turn latency",
+    );
+    expect(latencyLog?.[1]).toMatchObject({
+      upstreamAttemptCount: 3,
+      upstreamAttempts: [
+        { attempt: 1, status: 503 },
+        { attempt: 2, status: 503 },
+        { attempt: 3, status: 200 },
+      ],
+    });
+    const timingFields = latencyLog?.[1] as
+      | { upstreamSuccessfulHeadersOffsetMs?: number }
+      | undefined;
+    expect(
+      timingFields?.upstreamSuccessfulHeadersOffsetMs,
+    ).toBeGreaterThanOrEqual(0);
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
