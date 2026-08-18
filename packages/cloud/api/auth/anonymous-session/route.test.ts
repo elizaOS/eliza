@@ -41,11 +41,13 @@ mock.module("@/lib/services/anonymous-sessions", () => ({
 }));
 
 // Rate-limit middleware falls open in tests (no Redis binding); make it a no-op
-// so the mint path is reached deterministically.
+// so the mint path is reached deterministically. getRequestIp is the real
+// helper's edge-IP resolver; pin it to a fixed address.
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   rateLimit: () => async (_c: unknown, next: () => Promise<unknown>) =>
     await next(),
   getIpKey: () => "test-ip",
+  getRequestIp: () => "192.0.2.55",
   RateLimitPresets: {
     AGGRESSIVE: { windowMs: 60_000, maxRequests: 30 },
     CRITICAL: { windowMs: 300_000, maxRequests: 5 },

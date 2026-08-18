@@ -128,7 +128,21 @@ export interface VerifyResult {
   isValid: boolean;
   payer?: string;
   invalidReason?: string;
-  invalidMessage?: string;
+}
+
+/**
+ * Reason codes crossing this service's boundary must be constant snake_case
+ * codes. The unauthenticated /api/v1/x402 routes return them verbatim, while
+ * upstream libraries also surface raw thrown error text (@x402/svm returns an
+ * error message as `invalidReason` on decode/simulate failure) that can embed
+ * the key-bearing RPC URL (Alchemy/Infura/Helius) — so only a constant-shaped
+ * code is passed through; anything else collapses to `fallback` and the detail
+ * stays in the server logs.
+ */
+const X402_REASON_CODE_PATTERN = /^[a-z0-9_]+$/;
+
+function sanitizeUpstreamReason(reason: unknown, fallback: string): string {
+  return typeof reason === "string" && X402_REASON_CODE_PATTERN.test(reason) ? reason : fallback;
 }
 
 /** Settlement result */
@@ -953,7 +967,9 @@ class X402FacilitatorService {
       logger.error(`[x402-facilitator] Signature verification failed: ${msg}`);
       return {
         isValid: false,
-        invalidReason: `signature_verification_error: ${msg}`,
+        // Constant reason code — the caught viem error text embeds the
+        // key-bearing RPC URL and reaches unauthenticated callers verbatim.
+        invalidReason: "signature_verification_error",
         payer: payerForError,
       };
     }
@@ -1044,18 +1060,24 @@ class X402FacilitatorService {
           network: accepted.network,
         });
       }
+      if (result.isValid) {
+        return { isValid: true, payer: result.payer || undefined };
+      }
       return {
-        isValid: result.isValid,
+        isValid: false,
         payer: result.payer || undefined,
-        invalidReason: result.invalidReason ?? result.invalidMessage,
-        invalidMessage: result.invalidMessage,
+        // Sanitized @x402/svm passthrough — see sanitizeUpstreamReason. The raw
+        // `invalidMessage` is never returned (logged above).
+        invalidReason: sanitizeUpstreamReason(result.invalidReason, "solana_verification_failed"),
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[x402-facilitator] Solana verification failed: ${msg}`);
       return {
         isValid: false,
-        invalidReason: `solana_verification_error: ${msg}`,
+        // Constant reason code — the caught error text can embed the
+        // key-bearing RPC URL and reaches unauthenticated callers verbatim.
+        invalidReason: "solana_verification_error",
       };
     }
   }
@@ -1442,7 +1464,9 @@ class X402FacilitatorService {
           transaction: result.transaction,
           network: result.network,
           payer: result.payer || undefined,
-          errorReason: result.errorReason ?? result.errorMessage ?? "solana_settlement_failed",
+          // Sanitized @x402/svm passthrough — see sanitizeUpstreamReason. The
+          // raw `errorMessage` is never returned to the caller.
+          errorReason: sanitizeUpstreamReason(result.errorReason, "solana_settlement_failed"),
         };
       }
 
@@ -1465,7 +1489,9 @@ class X402FacilitatorService {
         success: false,
         transaction: "",
         network: paymentPayload.accepted.network,
-        errorReason: `solana_settlement_error: ${msg}`,
+        // Constant reason code — the caught error text can embed the
+        // key-bearing RPC URL and reaches unauthenticated callers verbatim.
+        errorReason: "solana_settlement_error",
       };
     }
   }

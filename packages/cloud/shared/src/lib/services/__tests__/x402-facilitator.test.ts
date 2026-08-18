@@ -476,3 +476,176 @@ test("settle to the facilitator's own signer address is allowed and reaches writ
   });
   expect(writeContract).toHaveBeenCalledTimes(1);
 });
+
+// W5-001: resolved (not thrown) facilitator results reach unauthenticated
+// callers verbatim via the /api/v1/x402 routes, so raw upstream error text —
+// viem's HttpRequestError embeds `URL: https://…/v2/<key>` with the platform's
+// ALCHEMY/INFURA key, and @x402/svm returns raw thrown messages as
+// `invalidReason` on decode/simulate failure — must never appear in them.
+// Service catches collapse to constant reason codes and the @x402/svm
+// passthrough only allows constant-shaped codes.
+const SOLANA_NETWORK = "solana:mainnet";
+const LEAKY_MESSAGE =
+  "HTTP request failed. URL: https://base-mainnet.g.alchemy.com/v2/ALCHEMYKEY123 Status: 401";
+
+function solanaPaymentPayload() {
+  return {
+    x402Version: 2,
+    accepted: {
+      scheme: "exact",
+      network: SOLANA_NETWORK,
+      asset: ASSET,
+      amount: "100",
+      payTo: PAY_TO,
+    },
+    payload: { transaction: "deadbeef" },
+  };
+}
+
+const solanaRequirements = {
+  scheme: "exact",
+  network: SOLANA_NETWORK,
+  asset: ASSET,
+  amount: "100",
+  payTo: PAY_TO,
+};
+
+function primeSolanaFacilitator(svmScheme: {
+  verify: unknown;
+  settle: unknown;
+  getSigners?: unknown;
+}) {
+  process.env.X402_SOLANA_RECIPIENT_ADDRESS = PAY_TO;
+  const service = x402FacilitatorService as unknown as MutableFacilitator & {
+    svmScheme: unknown;
+    enabledSolanaNetworks: string[];
+  };
+  service.initialize = mock(async () => undefined);
+  service.initialized = true;
+  service.account = null;
+  service.svmScheme = { getSigners: () => [], ...svmScheme };
+  service.enabledSolanaNetworks = [SOLANA_NETWORK];
+  return service;
+}
+
+test("verify collapses an EVM signature-check throw to a constant reason", async () => {
+  const { verifyTypedData, readContract } = primeEvmFacilitator();
+  verifyTypedData.mockRejectedValue(new Error(LEAKY_MESSAGE));
+
+  const result = await x402FacilitatorService.verify(paymentPayload("100"), requirements);
+
+  expect(result).toEqual({
+    isValid: false,
+    invalidReason: "signature_verification_error",
+    payer: PAYER,
+  });
+  expect(JSON.stringify(result)).not.toContain("alchemy");
+  expect(JSON.stringify(result)).not.toContain("ALCHEMYKEY123");
+  expect(readContract).not.toHaveBeenCalled();
+});
+
+test("verify collapses a Solana scheme throw to a constant reason", async () => {
+  primeSolanaFacilitator({
+    verify: mock(async () => {
+      throw new Error(LEAKY_MESSAGE);
+    }),
+    settle: mock(),
+  });
+
+  const result = await x402FacilitatorService.verify(solanaPaymentPayload(), solanaRequirements);
+
+  expect(result).toEqual({ isValid: false, invalidReason: "solana_verification_error" });
+  expect(JSON.stringify(result)).not.toContain("ALCHEMYKEY123");
+});
+
+test("verify sanitizes the @x402/svm invalidReason passthrough and drops invalidMessage", async () => {
+  const svmScheme = {
+    verify: mock(async () => ({
+      isValid: false,
+      // The decode/simulate failure paths return the raw thrown message.
+      invalidReason: LEAKY_MESSAGE,
+      invalidMessage: LEAKY_MESSAGE,
+      payer: "",
+    })),
+    settle: mock(),
+  };
+  primeSolanaFacilitator(svmScheme);
+
+  const leaky = await x402FacilitatorService.verify(solanaPaymentPayload(), solanaRequirements);
+  expect(leaky.isValid).toBe(false);
+  expect(leaky.invalidReason).toBe("solana_verification_failed");
+  expect(JSON.stringify(leaky)).not.toContain("ALCHEMYKEY123");
+  expect("invalidMessage" in leaky).toBe(false);
+
+  // Dynamic-suffix reasons (program address appended) are not constants either.
+  svmScheme.verify.mockResolvedValue({
+    isValid: false,
+    invalidReason: "smart_wallet_program_not_allowed: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    payer: "",
+  });
+  const suffixed = await x402FacilitatorService.verify(solanaPaymentPayload(), solanaRequirements);
+  expect(suffixed.invalidReason).toBe("solana_verification_failed");
+
+  // Constant codes pass through unchanged.
+  svmScheme.verify.mockResolvedValue({
+    isValid: false,
+    invalidReason: "invalid_exact_svm_payload_amount_mismatch",
+    payer: "solana-payer",
+  });
+  const constant = await x402FacilitatorService.verify(solanaPaymentPayload(), solanaRequirements);
+  expect(constant).toEqual({
+    isValid: false,
+    payer: "solana-payer",
+    invalidReason: "invalid_exact_svm_payload_amount_mismatch",
+  });
+});
+
+test("settle collapses a Solana scheme throw to a constant reason", async () => {
+  primeSolanaFacilitator({
+    verify: mock(),
+    settle: mock(async () => {
+      throw new Error(LEAKY_MESSAGE);
+    }),
+  });
+
+  const result = await x402FacilitatorService.settle(solanaPaymentPayload(), solanaRequirements);
+
+  expect(result).toEqual({
+    success: false,
+    transaction: "",
+    network: SOLANA_NETWORK,
+    errorReason: "solana_settlement_error",
+  });
+  expect(JSON.stringify(result)).not.toContain("ALCHEMYKEY123");
+});
+
+test("settle sanitizes the @x402/svm errorReason passthrough", async () => {
+  const svmScheme = {
+    verify: mock(),
+    settle: mock(async () => ({
+      success: false,
+      transaction: "",
+      network: SOLANA_NETWORK,
+      payer: "",
+      errorReason: LEAKY_MESSAGE,
+      errorMessage: LEAKY_MESSAGE,
+    })),
+  };
+  primeSolanaFacilitator(svmScheme);
+
+  const leaky = await x402FacilitatorService.settle(solanaPaymentPayload(), solanaRequirements);
+  expect(leaky.success).toBe(false);
+  expect(leaky.errorReason).toBe("solana_settlement_failed");
+  expect(JSON.stringify(leaky)).not.toContain("ALCHEMYKEY123");
+
+  // Constant codes pass through unchanged.
+  svmScheme.settle.mockResolvedValue({
+    success: false,
+    transaction: "",
+    network: SOLANA_NETWORK,
+    payer: "",
+    errorReason: "duplicate_settlement",
+  });
+  const constant = await x402FacilitatorService.settle(solanaPaymentPayload(), solanaRequirements);
+  expect(constant.errorReason).toBe("duplicate_settlement");
+});

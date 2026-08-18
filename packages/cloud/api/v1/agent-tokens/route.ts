@@ -94,6 +94,23 @@ async function authorizeHumanMint(
       error: "admin or container service-account auth required",
     };
   }
+  // Deactivation must revoke this fallback too: getCurrentUser performs no
+  // is_active screening (that lives in requireUser/requireUserWithOrg, which
+  // the swallowed platform-admin denial above may have failed on), so reject
+  // deactivated users/orgs explicitly before the org-admin leg.
+  if (
+    user.is_active !== true ||
+    !user.organization ||
+    user.organization.is_active !== true ||
+    user.organization.id !== user.organization_id
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "platform admin or owning-organization admin required for this agentId",
+    };
+  }
   if (agentId && user.role === "admin" && user.organization_id) {
     const sandbox = await agentSandboxesRepository.findByIdAndOrg(
       agentId,

@@ -3,6 +3,12 @@
  *
  * Sets the anonymous-session cookie when a user arrives with a session
  * token (e.g. via affiliate link). Public endpoint — no auth required.
+ *
+ * The token is accepted only for a session the deployment itself minted
+ * (DB lookup below), and the mutation is guarded like the other session
+ * mutations: exact-host Origin policy plus a non-simple-request marker
+ * (X-Eliza-CSRF header or JSON content type), so a cross-site form POST
+ * cannot plant an attacker-known cookie into a victim's browser.
  */
 
 import { eq } from "drizzle-orm";
@@ -10,6 +16,10 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { dbWrite } from "@/db/client";
 import { anonymousSessions, users } from "@/db/schemas";
+import {
+  checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
+} from "@/lib/auth/browser-origin-policy";
 import {
   RateLimitPresets,
   rateLimit,
@@ -27,6 +37,23 @@ app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
 
 app.post("/", async (c) => {
   logger.info("[Set Session] Received request to set anonymous session cookie");
+
+  // A cross-site simple request (hidden form POST) cannot satisfy this gate,
+  // so an attacker cannot plant a session cookie they know into a victim's
+  // browser and later read or merge the victim's anonymous activity.
+  const originCheck = checkElizaMutatingRequestOrigin(
+    c.req,
+    c.env.NODE_ENV === "production",
+  );
+  if (!originCheck.ok) {
+    logger.warn("[Set Session] rejected cross-origin POST", {
+      detail: originCheck.reason,
+    });
+    return c.json({ error: "Forbidden", code: "forbidden_origin" }, 403);
+  }
+  if (!hasElizaNonSimpleRequestMarker(c.req)) {
+    return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
+  }
 
   let body: { sessionToken?: string };
   try {
@@ -85,7 +112,9 @@ app.post("/", async (c) => {
   setCookie(c, ANON_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: c.env.NODE_ENV === "production",
-    sameSite: "Lax",
+    // Strict, matching the mint routes: the anonymous cookie is a first-party
+    // session handle and is never needed on a cross-site request.
+    sameSite: "Strict",
     path: "/",
     expires: session.expires_at,
   });
