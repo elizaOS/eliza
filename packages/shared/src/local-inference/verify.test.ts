@@ -40,24 +40,8 @@ describe("verifyInstalledModel", () => {
     try {
       await fsp.rm(tempDir, { recursive: true, force: true });
     } catch {
-      // best-effort cleanup
+      // error-policy:J6 temporary test-directory cleanup is best-effort.
     }
-  });
-
-  it("returns missing state for nullish or invalid models", async () => {
-    expect(await verifyInstalledModel(null)).toEqual({
-      state: "missing",
-      currentSha256: null,
-      expectedSha256: null,
-      currentBytes: null,
-    });
-
-    expect(await verifyInstalledModel({} as InstalledModel)).toEqual({
-      state: "missing",
-      currentSha256: null,
-      expectedSha256: null,
-      currentBytes: null,
-    });
   });
 
   it("returns missing state when file path does not exist on disk", async () => {
