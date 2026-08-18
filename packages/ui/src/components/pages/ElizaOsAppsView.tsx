@@ -141,7 +141,7 @@ const ANDROID_SMS_GATEWAY_PHONE_LABEL = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
     "Eliza Cloud Gateway (+14159611510)",
 );
-const ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS = 15_000;
+export const ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS = 15_000;
 
 function useLaunchParams(): URLSearchParams {
   const [params, setParams] = useState(() => readLaunchParams());
@@ -1476,14 +1476,14 @@ function messageTypeLabel(type: number): string {
   return `type ${type}`;
 }
 
-interface IncomingSmsContext {
+export interface IncomingSmsContext {
   sender: string;
   body: string;
   timestamp: number | null;
   messageId: string | null;
 }
 
-interface AndroidSmsGatewayReply {
+export interface AndroidSmsGatewayReply {
   success?: boolean;
   handled?: boolean;
   reason?: string;
@@ -1512,7 +1512,7 @@ function initialMessageBody(params: URLSearchParams): string {
     : (params.get("body") ?? "");
 }
 
-function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
+export function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   return {
     type: "new-message",
     data: {
@@ -1543,9 +1543,11 @@ function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   };
 }
 
-async function forwardAndroidSmsGateway(
+export async function forwardAndroidSmsGateway(
   incoming: IncomingSmsContext,
   signal: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS,
 ): Promise<AndroidSmsGatewayReply> {
   return await fetchWithDeadline(
     ANDROID_SMS_GATEWAY_WEBHOOK_URL,
@@ -1559,16 +1561,31 @@ async function forwardAndroidSmsGateway(
       body: JSON.stringify(androidSmsGatewayPayload(incoming)),
     },
     async (response) => {
-      if (!response.ok) {
-        throw new Error(`Cloud gateway failed (${response.status})`);
+      let cloudReply: AndroidSmsGatewayReply | Record<string, never> = {};
+      let parsed: unknown = cloudReply;
+      let parseFailed = false;
+      try {
+        parsed = await response.json();
+        cloudReply = parsed as AndroidSmsGatewayReply;
+      } catch {
+        parseFailed = true;
       }
-      const body: unknown = await response.json();
-      if (body === null || typeof body !== "object" || Array.isArray(body)) {
-        throw new Error("Cloud gateway returned an unparseable reply");
+      if (response.ok) {
+        if (
+          parseFailed ||
+          parsed === null ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("Cloud gateway returned an unparseable reply");
+        }
+        return cloudReply as AndroidSmsGatewayReply;
       }
-      return body as AndroidSmsGatewayReply;
+      throw new Error(
+        `Cloud gateway failed (${response.status}): ${JSON.stringify(cloudReply)}`,
+      );
     },
-    { signal, timeoutMs: ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS },
+    { signal, timeoutMs, fetchImpl },
   );
 }
 
