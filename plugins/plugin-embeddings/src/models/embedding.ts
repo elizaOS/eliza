@@ -13,6 +13,7 @@ import {
   type CANONICAL_EMBEDDING_DIMENSION,
   CANONICAL_EMBEDDING_MODEL,
   CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   logger,
   ModelType,
   normalizeCanonicalEmbedding,
@@ -21,6 +22,7 @@ import {
 
 import type { EmbeddingResponse } from "../types";
 import {
+  allowUnsafeUnattestedEmbeddingResponse,
   getEmbeddingApiKey,
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
@@ -214,6 +216,28 @@ async function requestEmbeddingsFromEndpoint(
   if (data.model !== endpoint.model) {
     throw new Error(
       `${endpoint.role} embedding model mismatch: endpoint returned ${JSON.stringify(data.model)}, expected ${JSON.stringify(endpoint.model)}`
+    );
+  }
+  if (data.pooling !== undefined && data.pooling !== CANONICAL_EMBEDDING_POOLING) {
+    throw new Error(
+      `${endpoint.role} embedding pooling mismatch: endpoint returned ${JSON.stringify(data.pooling)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_POOLING)}`
+    );
+  }
+  if (
+    data.embedding_space_fingerprint !== undefined &&
+    data.embedding_space_fingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT
+  ) {
+    throw new Error(
+      `${endpoint.role} embedding space mismatch: endpoint returned ${JSON.stringify(data.embedding_space_fingerprint)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)}`
+    );
+  }
+  if (
+    !allowUnsafeUnattestedEmbeddingResponse(runtime) &&
+    (data.pooling !== CANONICAL_EMBEDDING_POOLING ||
+      data.embedding_space_fingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
+  ) {
+    throw new Error(
+      `${endpoint.role} embedding response is unattested: exact pooling=${JSON.stringify(CANONICAL_EMBEDDING_POOLING)} and embedding_space_fingerprint=${JSON.stringify(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)} are required`
     );
   }
 

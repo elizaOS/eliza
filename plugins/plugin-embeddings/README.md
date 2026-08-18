@@ -1,6 +1,6 @@
 # @elizaos/plugin-embeddings
 
-A canonical `TEXT_EMBEDDING` provider for elizaOS agents. Point `EMBEDDING_BASE_URL` at an OpenAI-compatible endpoint serving `BAAI/bge-small-en-v1.5`; every first-party path uses the same 384-dimensional, mean-pooled, L2-normalized vector space independently of the chat provider.
+A canonical `TEXT_EMBEDDING` provider for elizaOS agents. Point `EMBEDDING_BASE_URL` at an OpenAI-compatible endpoint serving `BAAI/bge-small-en-v1.5`; every first-party path uses the same 384-dimensional, CLS-pooled, L2-normalized vector space independently of the chat provider.
 
 ## Why
 
@@ -40,7 +40,7 @@ A bring-your-own endpoint beats a bare local embedder but yields to a paired Eli
 
 ### Fail loudly, never fabricate
 
-On any HTTP / config / response-shape error the handler **throws** — it never returns a zero or garbage vector that would silently corrupt the embedding store. Successful responses must echo the exact requested canonical model in `model`; omission or mismatch fails closed because width alone cannot attest a vector space. The only synthetic return is the boot dimension-probe (`null` input), where a correctly-sized marker vector is the expected, legitimate response.
+On any HTTP / config / response-shape error the handler **throws** — it never returns a zero or garbage vector that would silently corrupt the embedding store. Successful responses must return the exact requested canonical model in `model`, `pooling: "cls"`, and `embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:cls:l2:v2"`; omission or mismatch fails closed because a model echo and width do not prove how a vector was pooled. The only synthetic return is the boot dimension-probe (`null` input), where a correctly-sized marker vector is the expected, legitimate response.
 
 ## Configuration
 
@@ -51,11 +51,12 @@ All variables are read via `runtime.getSetting(key)` first, then `process.env`, 
 | `EMBEDDING_BASE_URL` | _(none)_ | OpenAI-compatible `/embeddings` base URL. **Required** for real embedding calls — no default endpoint. |
 | `EMBEDDING_API_KEY` | _(none)_ | Bearer token. Omit for local servers that need no auth. |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Model id sent as the request `model` field. |
-| `EMBEDDING_POOLING` | `mean` | Canonical pooling mode. Other values fail closed. |
+| `EMBEDDING_POOLING` | `cls` | Canonical pooling mode. Other values fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | _(none)_ | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once when the primary endpoint fails. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | _(none)_ | Bearer token for the fallback endpoint. Omit for fallback servers that need no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | `384` | Vector width (see below). Sent as the request `dimensions` field when explicitly set. |
+| `EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE` | `false` | **Unsafe:** permit a response that omits pooling/fingerprint attestation. Enable only for a separately controlled, image/argv-pinned endpoint; explicit mismatches still fail. |
 | `EMBEDDING_BROWSER_URL` | _(none)_ | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent only when this is set, keeping the key off the client. |
 
 Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` activates the plugin.
@@ -63,7 +64,7 @@ Fallback-only settings do **not** activate it and cannot replace a missing prima
 
 ### Canonical vector space
 
-The model must be `BAAI/bge-small-en-v1.5`, the width must be `384`, and pooling must be `mean`. Results are L2-normalized locally; any model, width, pooling, non-finite, or zero-norm mismatch throws.
+The model must be `BAAI/bge-small-en-v1.5`, the width must be `384`, and pooling must be `cls`. Results are L2-normalized locally; any model, width, pooling, non-finite, or zero-norm mismatch throws.
 
 ### ⚠️ Keep the dimension stable per database
 

@@ -23,6 +23,14 @@ const registryState = vi.hoisted(() => ({
 const hardwareState = vi.hoisted(() => ({
 	probe: { memory: { totalGb: 8 } },
 }));
+const fusedEmbeddingState = vi.hoisted(() => ({
+	ctx: { ptr: 1 },
+	embed: vi.fn(() => {
+		const embedding = new Float32Array(384);
+		embedding[0] = 1;
+		return embedding;
+	}),
+}));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
 	available: vi.fn(async () => true),
@@ -102,6 +110,21 @@ vi.mock("../services/hardware", () => ({
 	probeHardware: vi.fn(async () => hardwareState.probe),
 }));
 
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/tmp/libelizainference.so"),
+}));
+
+vi.mock("../services/voice/ffi-bindings", () => ({
+	ELIZA_POOLING_CLS: 2,
+	loadElizaInferenceFfi: vi.fn(() => ({
+		close: vi.fn(),
+		create: vi.fn(() => fusedEmbeddingState.ctx),
+		destroy: vi.fn(),
+		embed: fusedEmbeddingState.embed,
+		embedSupported: vi.fn(() => true),
+	})),
+}));
+
 vi.mock("../services/memory-arbiter", () => ({
 	tryGetMemoryArbiter: vi.fn(() => arbiterState),
 }));
@@ -112,6 +135,11 @@ vi.mock("../services/registry", () => ({
 
 vi.mock("../services/router-handler", () => ({
 	installRouterHandler: vi.fn(),
+}));
+
+vi.mock("./fused-embedding-bundle", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./fused-embedding-bundle")>()),
+	resolveFusedEmbeddingBundleRoot: vi.fn(() => "/tmp/canonical-bge-bundle"),
 }));
 
 vi.mock("../services/voice", () => ({
@@ -231,12 +259,57 @@ beforeEach(() => {
 		title: "A small image",
 		description: "A tiny synthetic image.",
 	});
+	fusedEmbeddingState.embed.mockClear();
 	vi.mocked(resolveLocalInferenceLoadArgs).mockImplementation(
 		async (target) => target,
 	);
 });
 
 describe("canonical desktop embedding attestation", () => {
+	it("uses the BGE v1.5 GGUF CLS pooling contract at the fused FFI boundary", async () => {
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_EMBEDDING,
+		);
+		await handler(runtime, { text: "semantic pooling regression" });
+
+		expect(fusedEmbeddingState.embed).toHaveBeenCalledWith({
+			ctx: fusedEmbeddingState.ctx,
+			text: "semantic pooling regression",
+			pooling: 2,
+		});
+	});
+
+	it("accepts an explicit CLS pooling attestation", async () => {
+		process.env.ELIZA_EMBED_POOLING = "cls";
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toBe(true);
+	});
+
+	it("rejects a mean-pooling override before falsely attesting the handler", async () => {
+		process.env.ELIZA_EMBED_POOLING = "mean";
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toBe(false);
+		expect(fusedEmbeddingState.embed).not.toHaveBeenCalled();
+	});
+
 	it("does not let a generic embed-capable loader bypass artifact attestation", async () => {
 		process.env.LOCAL_EMBEDDING_MODEL = "gte-small_fp16.gguf";
 		process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";

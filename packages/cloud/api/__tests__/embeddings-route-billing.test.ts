@@ -22,6 +22,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
   CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
 } from "@elizaos/core/edge";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
@@ -300,6 +301,34 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     expect(embedMany).not.toHaveBeenCalled();
   });
 
+  test("rejects legacy mean pooling before Workers AI dispatch or billing", async () => {
+    const aiRun = mock(async () => ({
+      data: [],
+      shape: [0, 384],
+      pooling: "cls",
+    }));
+
+    const res = await post(
+      {
+        model: CANONICAL_EMBEDDING_MODEL,
+        input: "must not mix",
+        dimensions: 384,
+        pooling: "mean",
+      },
+      undefined,
+      { AI: { run: aiRun } },
+    );
+    const body = (await res.json()) as {
+      error?: { param?: string; message?: string };
+    };
+
+    expect(res.status).toBe(400);
+    expect(body.error?.param).toBe("pooling");
+    expect(body.error?.message).toContain("pooling must be cls");
+    expect(aiRun).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
   test("threads the managed canonical identity through route provider resolution", async () => {
     const managedModel = CANONICAL_EMBEDDING_MODEL;
     const { ctx, scheduled } = makeExecutionCtx();
@@ -337,7 +366,7 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
       ) => ({
         data: [raw],
         shape: [1, 384],
-        pooling: "mean",
+        pooling: "cls",
       }),
     );
     const { ctx, scheduled } = makeExecutionCtx();
@@ -347,7 +376,7 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
         model: CANONICAL_EMBEDDING_MODEL,
         input: "hi",
         dimensions: 384,
-        pooling: "mean",
+        pooling: "cls",
       },
       ctx,
       { AI: { run: aiRun } },
@@ -355,14 +384,22 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     const body = (await res.json()) as {
       data: Array<{ embedding: number[] }>;
       model: string;
+      dimensions: number;
+      pooling: string;
+      embedding_space_fingerprint: string;
     };
 
     expect(res.status).toBe(200);
     expect(aiRun).toHaveBeenCalledTimes(1);
     expect(aiRun.mock.calls[0]?.[0]).toBe("@cf/baai/bge-small-en-v1.5");
-    expect(aiRun.mock.calls[0]?.[1]).toEqual({ text: ["hi"], pooling: "mean" });
+    expect(aiRun.mock.calls[0]?.[1]).toEqual({ text: ["hi"], pooling: "cls" });
     expect(aiRun.mock.calls[0]?.[2]?.tags).toEqual(["eliza:cloud-embeddings"]);
     expect(body.model).toBe(CANONICAL_EMBEDDING_MODEL);
+    expect(body.dimensions).toBe(384);
+    expect(body.pooling).toBe("cls");
+    expect(body.embedding_space_fingerprint).toBe(
+      CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    );
     expect(body.data[0]?.embedding[0]).toBeCloseTo(0.6);
     expect(body.data[0]?.embedding[1]).toBeCloseTo(0.8);
     expect(getTextEmbeddingModel).not.toHaveBeenCalled();
@@ -375,7 +412,7 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     const aiRun = mock(async () => ({
       data: [[0.1, 0.2, 0.3]],
       shape: [1, 3],
-      pooling: "mean",
+      pooling: "cls",
     }));
     const { ctx, scheduled } = makeExecutionCtx();
 
@@ -419,6 +456,9 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     );
     const singleBody = (await singleResponse.json()) as {
       data: Array<{ embedding: number[] }>;
+      dimensions: number;
+      pooling: string;
+      embedding_space_fingerprint: string;
     };
     const batchBody = (await batchResponse.json()) as {
       data: Array<{ embedding: number[] }>;
@@ -427,6 +467,11 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     expect(singleResponse.status).toBe(200);
     expect(singleBody.data[0]?.embedding[0]).toBeCloseTo(0.6);
     expect(singleBody.data[0]?.embedding[1]).toBeCloseTo(0.8);
+    expect(singleBody.dimensions).toBe(384);
+    expect(singleBody.pooling).toBe("cls");
+    expect(singleBody.embedding_space_fingerprint).toBe(
+      CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    );
     expect(batchResponse.status).toBe(200);
     expect(batchBody.data).toHaveLength(2);
     expect(batchBody.data[0]?.embedding[0]).toBeCloseTo(0.6);

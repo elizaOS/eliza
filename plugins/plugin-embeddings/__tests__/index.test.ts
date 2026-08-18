@@ -28,6 +28,8 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
       model: "BAAI/bge-small-en-v1.5",
+      pooling: "cls",
+      embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     text: async () => "",
@@ -50,6 +52,8 @@ afterEach(() => {
 
 describe("plugin-embeddings entrypoint", () => {
   it("attests both runtime embedding slots to the canonical semantic space", () => {
+    expect(CANONICAL_EMBEDDING_SPACE_FINGERPRINT).toBe("BAAI/bge-small-en-v1.5:384:cls:l2:v2");
+    expect(CANONICAL_EMBEDDING_SPACE_FINGERPRINT).not.toBe("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
     expect(embeddingsPlugin.modelMetadata?.[ModelType.TEXT_EMBEDDING]).toEqual({
       embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
     });
@@ -128,6 +132,7 @@ describe("plugin-embeddings entrypoint", () => {
       model: "BAAI/bge-small-en-v1.5",
       input: "local first",
       dimensions: 384,
+      pooling: "cls",
     });
   });
 

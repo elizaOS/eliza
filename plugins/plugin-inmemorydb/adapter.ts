@@ -359,9 +359,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     changed: boolean;
     staleMemoryIds: UUID[];
   }> {
-    const cacheKey = `embedding-space-fingerprint:${String(this.agentId)}`;
-    const previousFingerprint = (await this.getCaches<string>([cacheKey])).get(cacheKey);
+    const cacheKey = `embedding-space-fingerprint:v2:${String(this.agentId)}`;
+    const legacyCacheKey = `embedding-space-fingerprint:${String(this.agentId)}`;
+    const fingerprints = await this.getCaches<string>([cacheKey, legacyCacheKey]);
+    const currentFingerprint = fingerprints.get(cacheKey);
+    const previousFingerprint = currentFingerprint ?? fingerprints.get(legacyCacheKey);
     if (previousFingerprint === activeFingerprint) {
+      if (currentFingerprint === undefined) {
+        await this.setCaches([{ key: cacheKey, value: activeFingerprint }]);
+      }
       return {
         activeFingerprint,
         previousFingerprint,
@@ -384,7 +390,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const { embedding: _embedding, ...withoutEmbedding } = memory;
       await this.storage.set(COLLECTIONS.MEMORIES, id, withoutEmbedding);
       await this.vectorIndex.remove(id);
-      staleMemoryIds.push(id);
+      if (typeof memory.content.text === "string" && memory.content.text.trim().length > 0) {
+        staleMemoryIds.push(id);
+      }
     }
     await this.setCaches([{ key: cacheKey, value: activeFingerprint }]);
     return {

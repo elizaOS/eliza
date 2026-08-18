@@ -16,13 +16,13 @@ describe("canonical embedding contract", () => {
 	it("pins BGE-small to one explicit vector space", () => {
 		expect(CANONICAL_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
 		expect(CANONICAL_EMBEDDING_DIMENSION).toBe(384);
-		expect(CANONICAL_EMBEDDING_POOLING).toBe("mean");
+		expect(CANONICAL_EMBEDDING_POOLING).toBe("cls");
 		expect(CANONICAL_EMBEDDING_NORMALIZATION).toBe("l2");
 		expect(CANONICAL_EMBEDDING_SPACE_FINGERPRINT).toBe(
-			"BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+			"BAAI/bge-small-en-v1.5:384:cls:l2:v2",
 		);
 		expect(() =>
-			assertCanonicalEmbeddingConfig("BAAI/bge-small-en-v1.5", 384, "mean"),
+			assertCanonicalEmbeddingConfig("BAAI/bge-small-en-v1.5", 384, "cls"),
 		).not.toThrow();
 	});
 
@@ -31,7 +31,7 @@ describe("canonical embedding contract", () => {
 			assertCanonicalEmbeddingConfig("thenlper/gte-small", 384),
 		).toThrow(/model mismatch/i);
 		expect(() =>
-			assertCanonicalEmbeddingConfig("BAAI/bge-small-en-v1.5", 384, "cls"),
+			assertCanonicalEmbeddingConfig("BAAI/bge-small-en-v1.5", 384, "mean"),
 		).toThrow(/pooling mismatch/i);
 	});
 

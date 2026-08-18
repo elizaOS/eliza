@@ -8,18 +8,22 @@ import {
   CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   ChannelType,
   type Entity,
+  LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
   type Memory,
   MemoryType,
   type Room,
   type UUID,
 } from "@elizaos/core";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { cacheTable, embeddingTable, memoryTable } from "../../schema";
-import { bgeSmallEnV15EmbeddingTable } from "../../schema/embedding";
+import {
+  bgeSmallEnV15ClsL2V2EmbeddingTable,
+  bgeSmallEnV15EmbeddingTable,
+} from "../../schema/embedding";
 import * as migrationSchema from "../../schema/index";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -92,6 +96,7 @@ describe("Embedding Integration Tests", () => {
     beforeEach(async () => {
       await adapter.ensureEmbeddingDimension(384);
       const db = adapter.getDatabase() as DrizzleDatabase;
+      await db.delete(bgeSmallEnV15ClsL2V2EmbeddingTable);
       await db.delete(bgeSmallEnV15EmbeddingTable);
       await db.delete(embeddingTable);
       await db.delete(memoryTable);
@@ -100,6 +105,7 @@ describe("Embedding Integration Tests", () => {
 
     it("keeps the versioned BGE table outside legacy migration snapshots", () => {
       expect(migrationSchema).not.toHaveProperty("bgeSmallEnV15EmbeddingTable");
+      expect(migrationSchema).not.toHaveProperty("bgeSmallEnV15ClsL2V2EmbeddingTable");
     });
 
     it("should create a memory with an embedding and retrieve it", async () => {
@@ -237,16 +243,36 @@ describe("Embedding Integration Tests", () => {
         "Legacy same-width GTE embedding.",
         canonicalVector
       );
+      const unembeddedId = await adapter.createMemory(
+        {
+          id: uuidv4() as UUID,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+          content: { text: "Eligible text that has never been embedded." },
+          createdAt: Date.now(),
+          unique: false,
+          metadata: { type: MemoryType.CUSTOM, source: "missing-vector-test" },
+        },
+        "embedding_test"
+      );
       const fingerprint = CANONICAL_EMBEDDING_SPACE_FINGERPRINT;
 
       const migrated = await adapter.reconcileEmbeddingSpace(fingerprint);
       expect(migrated.changed).toBe(true);
-      expect(migrated.staleMemoryIds).toEqual([legacyId]);
+      expect([...migrated.staleMemoryIds].sort()).toEqual([legacyId, unembeddedId].sort());
       expect((await adapter.getMemoryById(legacyId))?.embedding).toBeUndefined();
+      expect(
+        await adapter.searchMemoriesByEmbedding(canonicalVector, {
+          tableName: "embedding_test",
+          count: 10,
+        })
+      ).toEqual([]);
 
       // Complete the durable backfill that reconciliation requested before
       // asserting the next boot-equivalent discovery is empty.
       await adapter.updateMemory({ id: legacyId, embedding: canonicalVector });
+      await adapter.updateMemory({ id: unembeddedId, embedding: canonicalVector });
 
       const fresh: Memory = {
         id: uuidv4() as UUID,
@@ -265,6 +291,51 @@ describe("Embedding Integration Tests", () => {
         staleMemoryIds: [],
       });
       expect((await adapter.getMemoryById(freshId))?.embedding).toHaveLength(384);
+    });
+
+    it("detects the persisted mean-v1 fingerprint and fully requeues its 384-wide corpus", async () => {
+      await adapter.ensureEmbeddingDimension(384);
+      const meanVector = [0, 1, ...Array.from({ length: 382 }, () => 0)];
+      const memoryId = await adapter.createMemory(
+        {
+          id: uuidv4() as UUID,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+          content: { text: "Mean-pooled BGE corpus row." },
+          createdAt: Date.now(),
+          unique: false,
+          metadata: { type: MemoryType.CUSTOM, source: "mean-v1-migration" },
+        },
+        "embedding_test"
+      );
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      await db.insert(bgeSmallEnV15EmbeddingTable).values({
+        id: uuidv4() as UUID,
+        memoryId,
+        sourceText: "Mean-pooled BGE corpus row.",
+        dim384: meanVector,
+      });
+      await db.insert(cacheTable).values({
+        key: "embedding-space-fingerprint:bge-small-en-v1.5:v2",
+        agentId: testAgentId,
+        value: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+      });
+
+      const migrated = await adapter.reconcileEmbeddingSpace(CANONICAL_EMBEDDING_SPACE_FINGERPRINT);
+      expect(migrated).toMatchObject({
+        changed: true,
+        previousFingerprint: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+        staleMemoryIds: [memoryId],
+      });
+      expect((await adapter.getMemoryById(memoryId))?.embedding).toBeUndefined();
+      expect(await adapter.clearEmbeddingsOutsideActiveDimension()).toEqual([memoryId]);
+      expect(
+        await db
+          .select({ id: bgeSmallEnV15EmbeddingTable.id })
+          .from(bgeSmallEnV15EmbeddingTable)
+          .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memoryId))
+      ).toEqual([]);
     });
 
     it("serializes concurrent fingerprint reconciliation and returns the same missing backlog", async () => {
@@ -306,35 +377,49 @@ describe("Embedding Integration Tests", () => {
       expect(reconciliation.staleMemoryIds).toContain(memoryId);
       await adapter.updateMemory({ id: memoryId, embedding: canonicalVector });
 
-      // Simulate a still-running old binary. It first updates dim_384, then
-      // performs its historical active-dimension cleanup by deleting the whole
-      // legacy row. Neither statement can name the separate canonical table.
+      // Simulate both still-running GTE and mean-v1 binaries. Neither can name
+      // the pooling/version-specific CLS-v2 table.
       const db = adapter.getDatabase() as DrizzleDatabase;
       await db
         .update(embeddingTable)
         .set({ dim384: lateLegacyVector })
         .where(eq(embeddingTable.memoryId, memoryId));
+      await db.insert(bgeSmallEnV15EmbeddingTable).values({
+        id: uuidv4() as UUID,
+        memoryId,
+        sourceText: "Rolling deployment memory.",
+        dim384: lateLegacyVector,
+      });
 
       const beforeCleanup = await db
         .select({
-          canonical: bgeSmallEnV15EmbeddingTable.dim384,
+          canonical: bgeSmallEnV15ClsL2V2EmbeddingTable.dim384,
+          meanV1: bgeSmallEnV15EmbeddingTable.dim384,
           legacy: embeddingTable.dim384,
         })
-        .from(bgeSmallEnV15EmbeddingTable)
+        .from(bgeSmallEnV15ClsL2V2EmbeddingTable)
         .innerJoin(
           embeddingTable,
-          eq(embeddingTable.memoryId, bgeSmallEnV15EmbeddingTable.memoryId)
+          eq(embeddingTable.memoryId, bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId)
         )
-        .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memoryId));
+        .innerJoin(
+          bgeSmallEnV15EmbeddingTable,
+          eq(bgeSmallEnV15EmbeddingTable.memoryId, bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId)
+        )
+        .where(eq(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, memoryId));
       expect(beforeCleanup[0]?.canonical).toEqual(canonicalVector);
+      expect(beforeCleanup[0]?.meanV1).toEqual(lateLegacyVector);
       expect(beforeCleanup[0]?.legacy).toEqual(lateLegacyVector);
 
       await db.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+      await db
+        .delete(bgeSmallEnV15EmbeddingTable)
+        .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memoryId));
 
       const canonicalAfterCleanup = await db
-        .select({ embedding: bgeSmallEnV15EmbeddingTable.dim384 })
-        .from(bgeSmallEnV15EmbeddingTable)
-        .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memoryId));
+        .select({ embedding: bgeSmallEnV15ClsL2V2EmbeddingTable.dim384 })
+        .from(bgeSmallEnV15ClsL2V2EmbeddingTable)
+        .where(eq(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, memoryId));
       expect(canonicalAfterCleanup[0]?.embedding).toEqual(canonicalVector);
       expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(canonicalVector);
 
@@ -503,7 +588,7 @@ describe("Embedding Integration Tests", () => {
       });
 
       const db = adapter.getDatabase() as DrizzleDatabase;
-      await db.insert(bgeSmallEnV15EmbeddingTable).values({
+      await db.insert(bgeSmallEnV15ClsL2V2EmbeddingTable).values({
         id: uuidv4() as UUID,
         memoryId: withoutTextId,
         sourceText: null,
@@ -511,7 +596,7 @@ describe("Embedding Integration Tests", () => {
       });
       // Simulate a malformed row written before blank-source rejection. The
       // equality guard must still refuse it even though both strings match.
-      await db.insert(bgeSmallEnV15EmbeddingTable).values({
+      await db.insert(bgeSmallEnV15ClsL2V2EmbeddingTable).values({
         id: uuidv4() as UUID,
         memoryId: blankTextId,
         sourceText: "   ",
@@ -523,15 +608,28 @@ describe("Embedding Integration Tests", () => {
       expect((await adapter.getMemoryById(clearedBlankId))?.embedding).toBeUndefined();
       expect(
         await db
-          .select({ id: bgeSmallEnV15EmbeddingTable.id })
-          .from(bgeSmallEnV15EmbeddingTable)
-          .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, clearedBlankId))
+          .select({ id: bgeSmallEnV15ClsL2V2EmbeddingTable.id })
+          .from(bgeSmallEnV15ClsL2V2EmbeddingTable)
+          .where(eq(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, clearedBlankId))
       ).toEqual([]);
       expect(
         await adapter.reconcileEmbeddingSpace(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
-      ).toMatchObject({
-        staleMemoryIds: expect.arrayContaining([withoutTextId, blankTextId, clearedBlankId]),
-      });
+      ).toMatchObject({ changed: true, staleMemoryIds: [] });
+      expect(
+        await db
+          .select({ id: bgeSmallEnV15ClsL2V2EmbeddingTable.id })
+          .from(bgeSmallEnV15ClsL2V2EmbeddingTable)
+          .where(
+            inArray(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, [
+              withoutTextId,
+              blankTextId,
+              clearedBlankId,
+            ])
+          )
+      ).toEqual([]);
+      expect(
+        await adapter.reconcileEmbeddingSpace(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
+      ).toMatchObject({ changed: false, staleMemoryIds: [] });
     });
   });
 });

@@ -517,9 +517,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async reconcileEmbeddingSpace(
 		activeFingerprint: string,
 	): Promise<EmbeddingSpaceReconciliation> {
-		const cacheKey = "embedding-space-fingerprint:v1";
-		const previousFingerprint = this.cache.get(cacheKey);
+		const cacheKey = "embedding-space-fingerprint:v2";
+		const legacyCacheKey = "embedding-space-fingerprint:v1";
+		const currentFingerprint = this.cache.get(cacheKey);
+		const previousFingerprint =
+			currentFingerprint ?? this.cache.get(legacyCacheKey);
 		if (previousFingerprint === activeFingerprint) {
+			if (currentFingerprint === undefined) {
+				this.cache.set(cacheKey, activeFingerprint);
+			}
 			return {
 				activeFingerprint,
 				previousFingerprint,
@@ -537,7 +543,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			await this.updateMemories([
 				{ ...withoutEmbedding, id: memory.id as UUID, embedding: undefined },
 			]);
-			staleMemoryIds.push(memory.id as UUID);
+			if (
+				typeof memory.content.text === "string" &&
+				memory.content.text.trim().length > 0
+			) {
+				staleMemoryIds.push(memory.id as UUID);
+			}
 		}
 		this.cache.set(cacheKey, activeFingerprint);
 		return {

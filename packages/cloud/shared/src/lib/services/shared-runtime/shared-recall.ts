@@ -4,7 +4,7 @@
  * shared-runtime-history-policy.ts stays primary, and an embedding search over
  * the tenant Postgres transcript runs ONLY when that keyword path missed.
  * Embeddings come from the native Cloudflare Workers AI binding with the
- * canonical BGE-small vector-space contract (384 dimensions, mean pooling,
+ * canonical BGE-small vector-space contract (384 dimensions, CLS pooling,
  * explicit L2 normalization).
  *
  * `buildSharedRecallContext` is pure orchestration over injected
@@ -172,7 +172,7 @@ function validateWorkersAiEmbeddingResponse(payload: unknown, expectedCount: num
 
 /**
  * Batch-embeds texts through the native Workers AI binding in input order.
- * The model and mean pooling are explicit, the binding's 100-text synchronous
+ * The model and CLS pooling are explicit, the binding's 100-text synchronous
  * limit and core's conservative 510-code-unit input boundary are enforced
  * locally. A single bounded attempt either returns validated, L2-normalized
  * canonical vectors or throws; partial/fabricated vectors are never returned.

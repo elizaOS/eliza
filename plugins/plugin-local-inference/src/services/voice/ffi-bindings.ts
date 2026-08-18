@@ -677,8 +677,9 @@ export interface ElizaInferenceFfi {
 	embedSupported?(): boolean;
 	/**
 	 * Compute a pooled, L2-normalized sentence embedding for `text` over the
-	 * bundle's text model. `pooling` selects the strategy (default MEAN — the
-	 * gte-small convention). Returns a `Float32Array` of length `n_embd`.
+	 * bundle's text model. `pooling` selects the strategy (default CLS — the
+	 * canonical BGE-small-en-v1.5 convention). Returns a `Float32Array` of
+	 * length `n_embd`.
 	 */
 	embed?(args: {
 		ctx: ElizaInferenceContextHandle;
@@ -3065,7 +3066,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				ctx,
 				textArg.ptr,
 				BigInt(textArg.bytes),
-				pooling ?? ELIZA_POOLING_MEAN,
+				pooling ?? ELIZA_POOLING_CLS,
 				ffi.ptr(outEmbedding),
 				BigInt(cap),
 				ffi.ptr(outDim),

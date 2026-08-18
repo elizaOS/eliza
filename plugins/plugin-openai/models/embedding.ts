@@ -1,11 +1,12 @@
 /**
  * `handleTextEmbedding`: calls the OpenAI embeddings endpoint and validates the
- * returned vector against the canonical BGE-small/384/mean/L2 contract.
+ * returned vector against the canonical BGE-small/384/CLS/L2 contract.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
   assertCanonicalEmbeddingConfig,
   CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   logger,
   ModelType,
   normalizeCanonicalEmbedding,
@@ -14,6 +15,7 @@ import {
 
 import type { OpenAIEmbeddingResponse } from "../types";
 import {
+  allowUnsafeUnattestedOpenAIEmbeddingResponse,
   getAuthHeader,
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
@@ -109,6 +111,28 @@ export async function handleTextEmbedding(
   if (data.model !== embeddingModel) {
     throw new Error(
       `Embedding model mismatch: endpoint returned ${JSON.stringify(data.model)}, expected ${JSON.stringify(embeddingModel)}`
+    );
+  }
+  if (data.pooling !== undefined && data.pooling !== CANONICAL_EMBEDDING_POOLING) {
+    throw new Error(
+      `Embedding pooling mismatch: endpoint returned ${JSON.stringify(data.pooling)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_POOLING)}`
+    );
+  }
+  if (
+    data.embedding_space_fingerprint !== undefined &&
+    data.embedding_space_fingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT
+  ) {
+    throw new Error(
+      `Embedding space mismatch: endpoint returned ${JSON.stringify(data.embedding_space_fingerprint)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)}`
+    );
+  }
+  if (
+    !allowUnsafeUnattestedOpenAIEmbeddingResponse(runtime) &&
+    (data.pooling !== CANONICAL_EMBEDDING_POOLING ||
+      data.embedding_space_fingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
+  ) {
+    throw new Error(
+      `Embedding response is unattested: exact pooling=${JSON.stringify(CANONICAL_EMBEDDING_POOLING)} and embedding_space_fingerprint=${JSON.stringify(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)} are required`
     );
   }
 

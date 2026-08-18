@@ -1,7 +1,7 @@
 {
   "id": "embeddings",
   "name": "Embeddings",
-  "description": "Canonical BAAI/bge-small-en-v1.5 TEXT_EMBEDDING provider. The endpoint must return 384-dimensional mean-pooled vectors; results are L2-normalized and mismatches fail closed.",
+  "description": "Canonical BAAI/bge-small-en-v1.5 TEXT_EMBEDDING provider. The endpoint must return 384-dimensional CLS-pooled vectors; results are L2-normalized and mismatches fail closed.",
   "npmName": "@elizaos/plugin-embeddings",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Embedding Base Url",
-      "help": "Base URL of an OpenAI-compatible /embeddings endpoint serving BAAI/bge-small-en-v1.5 with 384-dimensional mean-pooled output. Setting this (or the API key) activates the plugin.",
+      "help": "Base URL of an OpenAI-compatible /embeddings endpoint serving BAAI/bge-small-en-v1.5 with 384-dimensional CLS-pooled output. Setting this (or the API key) activates the plugin.",
       "placeholder": "e.g., http://localhost:8080/v1",
       "advanced": false
     },
@@ -38,9 +38,9 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "mean",
+      "default": "cls",
       "label": "Embedding Pooling",
-      "help": "Canonical pooling mode. Values other than mean fail closed.",
+      "help": "Canonical pooling mode. Values other than cls fail closed.",
       "advanced": true
     },
     "EMBEDDING_FALLBACK_BASE_URL": {
@@ -77,6 +77,15 @@
       "label": "Embedding Dimensions",
       "help": "Canonical BGE-small vector width. Values other than 384 fail closed.",
       "advanced": false
+    },
+    "EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Unsafe Unattested Embeddings",
+      "help": "UNSAFE compatibility only for a separately controlled endpoint that cannot return exact CLS/v2 attestation. Generic endpoints must leave this disabled.",
+      "advanced": true
     },
     "EMBEDDING_BROWSER_URL": {
       "type": "url",

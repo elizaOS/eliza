@@ -208,7 +208,7 @@ export function mergeManagedPublicBaseUrl(
  * prepareManagedElizaBaseEnvironment) and blue/green fleet upgrades apply this
  * patch, so old 1536-d or same-width GTE configuration converges on the one
  * first-party vector space: BAAI/bge-small-en-v1.5, 384 dimensions, explicit
- * mean pooling, and provider-side L2 normalization.
+ * CLS pooling, and provider-side L2 normalization.
  *
  * Fresh provisions use the immutable node-local TEI sidecar. Existing agents
  * keep their local-vs-cloud routing choice, but both routes now use the same
@@ -246,6 +246,11 @@ export function applyManagedAgentInferenceEnvDefaults(
     EMBEDDING_POOLING: CANONICAL_EMBEDDING_POOLING,
     EMBEDDING_DIMENSIONS: canonicalDimension,
     EMBEDDING_DIMENSION: canonicalDimension,
+    // TEI's OpenAI-compatible response does not expose pooling/fingerprint
+    // attestation. This exception is safe only because this URL is the managed,
+    // prewarmed sidecar whose immutable image label and argv are verified by
+    // the container control plane. Cloud and generic endpoints remain strict.
+    EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE: sidecarPrimaryEmbeddings ? "true" : "false",
     ELIZAOS_CLOUD_EMBEDDING_URL: resolveCloudApiBaseUrl(),
     ELIZAOS_CLOUD_EMBEDDING_API_KEY: "",
     ELIZAOS_CLOUD_EMBEDDING_MODEL: CANONICAL_EMBEDDING_MODEL,
@@ -311,7 +316,7 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
-      // Canonical BGE-small/384/mean/L2 embedding config plus the healthy
+      // Canonical BGE-small/384/CLS/L2 embedding config plus the healthy
       // Cerebras-direct text-model pins. Fresh agents use the prewarmed node
       // sidecar; cloud-routed agents use the platform endpoint. Both converge
       // on the same fingerprint, and custom/fallback embedding endpoints are

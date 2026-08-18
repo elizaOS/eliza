@@ -125,6 +125,16 @@ export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
 }
 
 /**
+ * Compatibility escape hatch for a separately controlled endpoint (for
+ * example the managed TEI sidecar) whose wire format cannot attest pooling.
+ * Generic endpoints fail closed by default because model name and width do
+ * not prove that CLS, rather than mean pooling, produced the vector.
+ */
+export function allowUnsafeUnattestedEmbeddingResponse(runtime: IAgentRuntime): boolean {
+  return getBooleanSetting(runtime, "EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE", false);
+}
+
+/**
  * Auth header for the embedding request.
  *
  * In a browser build the `Authorization` header is NOT sent unless an explicit

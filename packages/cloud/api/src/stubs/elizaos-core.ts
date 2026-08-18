@@ -24,9 +24,11 @@ function throwingExport(name: string): (...args: unknown[]) => never {
 // byte-for-byte compatible with packages/core/src/constants/embeddings.ts.
 export const CANONICAL_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5" as const;
 export const CANONICAL_EMBEDDING_DIMENSION = 384 as const;
-export const CANONICAL_EMBEDDING_POOLING = "mean" as const;
+export const CANONICAL_EMBEDDING_POOLING = "cls" as const;
 export const CANONICAL_EMBEDDING_NORMALIZATION = "l2" as const;
 export const CANONICAL_EMBEDDING_SPACE_FINGERPRINT =
+  "BAAI/bge-small-en-v1.5:384:cls:l2:v2" as const;
+export const LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT =
   "BAAI/bge-small-en-v1.5:384:mean:l2:v1" as const;
 
 export function assertCanonicalEmbeddingConfig(

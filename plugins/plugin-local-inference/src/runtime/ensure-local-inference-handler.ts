@@ -25,6 +25,7 @@ import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
 	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_POOLING,
 	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
 	fetchRemoteMedia,
 	type GenerateTextParams,
@@ -87,6 +88,7 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { ELIZA_POOLING_CLS } from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
@@ -682,7 +684,11 @@ function assertCanonicalDesktopEmbeddingEnvironment(): void {
 			process.env.LOCAL_EMBEDDING_CONTEXT_SIZE,
 			String(preset.contextSize),
 		],
-		["ELIZA_EMBED_POOLING", process.env.ELIZA_EMBED_POOLING, "mean"],
+		[
+			"ELIZA_EMBED_POOLING",
+			process.env.ELIZA_EMBED_POOLING,
+			CANONICAL_EMBEDDING_POOLING,
+		],
 	];
 	for (const [key, raw, expected] of expectations) {
 		const actual = raw?.trim();
@@ -875,10 +881,10 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// BGE-small's canonical vector space is mean-pooled. Pooling variants are
+	// BGE-small's canonical vector space is CLS-pooled. Pooling variants are
 	// incompatible even at the same width, so this provider deliberately does
 	// not accept a runtime override here.
-	const pooling = 1;
+	const pooling = ELIZA_POOLING_CLS;
 	return {
 		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};

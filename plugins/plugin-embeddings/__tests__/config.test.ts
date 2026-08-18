@@ -3,6 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  allowUnsafeUnattestedEmbeddingResponse,
   getEmbeddingApiKey,
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
@@ -10,6 +11,7 @@ import {
   getEmbeddingFallbackBaseURL,
   getEmbeddingFallbackModel,
   getEmbeddingModel,
+  getEmbeddingPooling,
   hasEmbeddingConfig,
 } from "../src/utils/config";
 
@@ -78,6 +80,20 @@ describe("plugin-embeddings config", () => {
   it("defaults dimensions to 384", () => {
     expect(getEmbeddingDimensions(makeRuntime())).toBe(384);
     expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "384" }))).toBe(384);
+  });
+
+  it("defaults pooling to CLS while still exposing stale operator values for fail-closed validation", () => {
+    expect(getEmbeddingPooling(makeRuntime())).toBe("cls");
+    expect(getEmbeddingPooling(makeRuntime({ EMBEDDING_POOLING: "mean" }))).toBe("mean");
+  });
+
+  it("keeps the unattested-response escape hatch off unless explicitly enabled", () => {
+    expect(allowUnsafeUnattestedEmbeddingResponse(makeRuntime())).toBe(false);
+    expect(
+      allowUnsafeUnattestedEmbeddingResponse(
+        makeRuntime({ EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE: "true" })
+      )
+    ).toBe(true);
   });
 
   it("hasEmbeddingConfig is true when EITHER url or key is set", () => {

@@ -18,7 +18,7 @@
  *      elizacloud (#8434).
  *   3. EMBEDDING COLUMN = dim384. A fresh provision (no ELIZAOS_CLOUD_API_KEY in
  *      existingEnv) defaults to the node-local canonical BGE-small sidecar, so
- *      the env pins BGE/384/mean and the vectors land in the `dim_384` column.
+ *      the env pins BGE/384/CLS and the vectors land in the `dim_384` column.
  *      We boot a REAL in-memory PGlite adapter, snap it to
  *      the env's dimension, and prove a 384-d memory insert SUCCEEDS — while a
  *      1536-d insert hits the "dimension mismatch" guard (the negative
@@ -75,7 +75,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     // Fresh provision => immutable node-local BGE sidecar, cloud embeddings off.
     expect(env.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(env.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(env.EMBEDDING_POOLING).toBe("mean");
+    expect(env.EMBEDDING_POOLING).toBe("cls");
     expect(env.EMBEDDING_DIMENSIONS).toBe("384");
     expect(env.EMBEDDING_DIMENSION).toBe("384");
     expect(env.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");

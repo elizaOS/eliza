@@ -32,7 +32,7 @@ function vectorOf(length: number): number[] {
   return Array.from({ length }, (_, index) => index / length);
 }
 
-function embeddingResponse(vectors: number[][], pooling: "mean" | "cls" = "mean") {
+function embeddingResponse(vectors: number[][], pooling: "mean" | "cls" = "cls") {
   return {
     shape: [vectors.length, vectors[0]?.length ?? 0],
     data: vectors,
@@ -79,7 +79,7 @@ async function expectElizaError(
 }
 
 describe("Workers AI embedding request contract", () => {
-  test("pins the model, mean pooling, limits, timeout, and L2-normalized space", async () => {
+  test("pins the model, CLS pooling, limits, timeout, and L2-normalized space", async () => {
     const raw = new Array(SHARED_RECALL_EMBEDDING_DIMENSIONS).fill(0);
     raw[0] = 3;
     raw[1] = 4;
@@ -90,7 +90,7 @@ describe("Workers AI embedding request contract", () => {
     expect(SHARED_RECALL_WORKERS_AI_MODEL).toBe("@cf/baai/bge-small-en-v1.5");
     expect(SHARED_RECALL_EMBEDDING_MODEL).toBe(CANONICAL_EMBEDDING_SPACE_FINGERPRINT);
     expect(SHARED_RECALL_EMBEDDING_DIMENSIONS).toBe(384);
-    expect(SHARED_RECALL_EMBEDDING_POOLING).toBe("mean");
+    expect(SHARED_RECALL_EMBEDDING_POOLING).toBe("cls");
     expect(SHARED_RECALL_EMBED_MAX_INPUT_TOKENS).toBe(512);
     expect(SHARED_RECALL_EMBED_MAX_INPUT_CODE_UNITS).toBe(510);
     expect(SHARED_RECALL_EMBED_MAX_BATCH_SIZE).toBe(100);
@@ -99,7 +99,7 @@ describe("Workers AI embedding request contract", () => {
     expect(calls[0]?.model).toBe(SHARED_RECALL_WORKERS_AI_MODEL);
     expect(calls[0]?.input).toEqual({
       text: ["what was my keyboard budget?"],
-      pooling: "mean",
+      pooling: "cls",
     });
     expect(calls[0]?.options?.signal).toBeInstanceOf(AbortSignal);
     expect(calls[0]?.options?.signal?.aborted).toBe(false);
@@ -173,7 +173,7 @@ describe("Workers AI embedding fail-closed validation", () => {
     expect(error.cause).toBe(timeout);
     expect(error.context).toMatchObject({
       model: SHARED_RECALL_WORKERS_AI_MODEL,
-      pooling: "mean",
+      pooling: "cls",
       maxInputTokens: 512,
       timeoutMs: SHARED_RECALL_EMBED_TIMEOUT_MS,
     });
@@ -190,7 +190,7 @@ describe("Workers AI embedding fail-closed validation", () => {
 
   test("rejects wrong pooling metadata", async () => {
     const { ai } = aiReturning(
-      embeddingResponse([vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS)], "cls"),
+      embeddingResponse([vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS)], "mean"),
     );
     const error = await expectElizaError(
       embedTextViaWorkersAi(ai, "hi"),
@@ -198,8 +198,8 @@ describe("Workers AI embedding fail-closed validation", () => {
     );
     expect(error.context).toMatchObject({
       reason: "wrong-pooling",
-      expected: "mean",
-      actual: "cls",
+      expected: "cls",
+      actual: "mean",
     });
   });
 
@@ -207,7 +207,7 @@ describe("Workers AI embedding fail-closed validation", () => {
     const { ai } = aiReturning({
       shape: [1, 3],
       data: [vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS)],
-      pooling: "mean",
+      pooling: "cls",
     });
     const error = await expectElizaError(
       embedTextViaWorkersAi(ai, "hi"),
@@ -223,7 +223,7 @@ describe("Workers AI embedding fail-closed validation", () => {
   test("rejects wrong-dimensional vectors before vector(384) storage", async () => {
     const { ai } = aiReturning({
       data: [vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS), vectorOf(3)],
-      pooling: "mean",
+      pooling: "cls",
     });
     const error = await expectElizaError(
       embedTextsViaWorkersAi(ai, ["user", "assistant"]),

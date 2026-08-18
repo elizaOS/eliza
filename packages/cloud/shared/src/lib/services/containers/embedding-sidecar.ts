@@ -22,7 +22,7 @@
  *
  * Agents consume it over the shared bridge network via plugin-embeddings
  * (`EMBEDDING_BASE_URL=http://eliza-embedding-sidecar:80/v1`). The server pins
- * BGE-small + mean pooling; the provider validates 384 dimensions and performs
+ * BGE-small + CLS pooling; the provider validates 384 dimensions and performs
  * explicit L2 normalization before persistence. The immutable contract label
  * makes an old running GTE container ineligible for the idempotent fast path,
  * so the next ensure replaces it instead of silently keeping the wrong space.

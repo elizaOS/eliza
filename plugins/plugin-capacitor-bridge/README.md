@@ -21,7 +21,7 @@ Both paths install a sandboxed virtual filesystem (`installMobileFsShim`) that c
 The bridge intentionally does not register a semantic `TEXT_EMBEDDING`
 provider. Its stock RPC has no enforceable pooling contract and the bionic host
 used last-token pooling over a chat model, so neither path can truthfully claim
-the canonical BGE-small/384/mean/L2 fingerprint. Embeddings fail closed to a
+the canonical BGE-small/384/CLS/L2 fingerprint. Embeddings fail closed to a
 canonical runtime provider instead.
 
 ## Installation

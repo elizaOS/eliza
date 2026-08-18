@@ -273,7 +273,7 @@ export async function filterUnavailableLocalInference(
 	// local embedder on every cloud-chat turn and sent embeddings on the
 	// always-on recall hot path to Cloud (~1.4s vs ~10ms local). Operators who
 	// deliberately keep embeddings on Cloud set `ELIZAOS_CLOUD_USE_EMBEDDINGS`;
-	// cloud providers are still required to serve the same BGE-small/384/mean/L2
+	// cloud providers are still required to serve the same BGE-small/384/CLS/L2
 	// vector space. That flag also skips the BGE-small warmup, so honour it here
 	// and let cloud win without a per-call local throw. Without that explicit opt-in, a local
 	// failure surfaces to recall's keyword/BM25 fallback instead of silently

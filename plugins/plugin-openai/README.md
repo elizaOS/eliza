@@ -5,7 +5,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 ## What this plugin does
 
 - **Text generation** — multiple tiers (nano, small, medium, large, mega), plus dedicated response-handler and action-planner slots. Supports streaming and structured JSON output.
-- **Text embeddings** — canonical `BAAI/bge-small-en-v1.5`, 384 dimensions, mean pooling, and L2 normalization through an explicit embedding endpoint. The response must echo that exact model identity; omission or mismatch fails closed.
+- **Text embeddings** — canonical `BAAI/bge-small-en-v1.5`, 384 dimensions, CLS pooling, and L2 normalization through an explicit embedding endpoint. The response must attest exact `pooling: "cls"` and fingerprint `BAAI/bge-small-en-v1.5:384:cls:l2:v2`; omission or mismatch fails closed.
 - **Image generation** — DALL-E 3 by default (`dall-e-3`).
 - **Image description** — vision model analyzes an image URL and returns `{ title, description }`.
 - **Audio transcription** — speech-to-text (`gpt-5-mini-transcribe` by default); accepts `Buffer`, `Blob`, `File`, or a URL.
@@ -70,6 +70,7 @@ Set these as environment variables or in your character's `settings` object.
 | `OPENAI_EMBEDDING_URL` | `OPENAI_BASE_URL` | Separate endpoint for embeddings |
 | `OPENAI_EMBEDDING_API_KEY` | `OPENAI_API_KEY` | Separate key for embeddings |
 | `OPENAI_EMBEDDING_DIMENSIONS` | `384` | Vector dimensions (must match model) |
+| `OPENAI_EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE` | `false` | **Unsafe:** allow omitted attestation only for a separately controlled, pinned endpoint; explicit mismatches still fail |
 
 ### Image generation and description
 

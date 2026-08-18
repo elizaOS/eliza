@@ -91,7 +91,7 @@
       "required": false,
       "sensitive": false,
       "label": "Embedding Url",
-      "help": "Required explicit OpenAI-compatible endpoint serving BAAI/bge-small-en-v1.5 at 384 dimensions with mean pooling.",
+      "help": "Required explicit OpenAI-compatible endpoint serving BAAI/bge-small-en-v1.5 at 384 dimensions with CLS pooling.",
       "advanced": false
     },
     "OPENAI_EMBEDDING_API_KEY": {
@@ -110,6 +110,15 @@
       "label": "Embedding Dimensions",
       "help": "Canonical BGE-small vector width; values other than 384 fail closed.",
       "advanced": false
+    },
+    "OPENAI_EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Unsafe Unattested Embeddings",
+      "help": "UNSAFE compatibility only for a separately controlled endpoint that cannot return exact CLS/v2 attestation. Generic endpoints must leave this disabled.",
+      "advanced": true
     },
     "OPENAI_IMAGE_DESCRIPTION_MODEL": {
       "type": "string",

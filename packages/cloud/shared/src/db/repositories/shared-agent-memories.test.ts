@@ -155,7 +155,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
         scope,
         [0.25, 0.5, 0.25],
         7,
-        "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
       );
       expect(result).toEqual(hits as never);
       expect(capturedWindow).toBe(SHARED_AGENT_MEMORY_SEARCH_WINDOW);
@@ -166,7 +166,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       expect(rendered.sql).toContain("embedding_model");
       expect(rendered.sql).toContain("cardinality");
       expect(rendered.params).toContain(3);
-      expect(rendered.params).toContain("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
+      expect(rendered.params).toContain("BAAI/bge-small-en-v1.5:384:cls:l2:v2");
       const order = new PgDialect().sqlToQuery(capturedOuterOrder as SQL);
       expect(order.sql).toContain("distance");
       expect(order.sql).toContain("asc");
@@ -397,12 +397,12 @@ describe("SharedAgentMemoriesWriter.setMemoryEmbedding", () => {
         scope,
         contentText: "remember this",
         embedding: [0.6, 0.8],
-        embeddingModel: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        embeddingModel: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
       });
 
       expect(capturedSet).toEqual({
         embedding: [0.6, 0.8],
-        embedding_model: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        embedding_model: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
       });
       expectTenantPins(capturedWhere);
       const rendered = renderedWhere(capturedWhere);

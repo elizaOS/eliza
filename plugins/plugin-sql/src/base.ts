@@ -360,6 +360,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import {
+  bgeSmallEnV15ClsL2V2EmbeddingTable,
   bgeSmallEnV15EmbeddingTable,
   DIMENSION_MAP,
   EMBEDDING_DIMENSION_BY_COLUMN,
@@ -540,7 +541,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   private getActiveEmbeddingTable(): typeof embeddingTable {
     return this.canonicalBgeStorageActive
-      ? (bgeSmallEnV15EmbeddingTable as unknown as typeof embeddingTable)
+      ? (bgeSmallEnV15ClsL2V2EmbeddingTable as unknown as typeof embeddingTable)
       : embeddingTable;
   }
 
@@ -558,9 +559,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const memoryMatches = sql`${embeddingMemoryId} = ${memoryId}`;
     if (!this.canonicalBgeStorageActive) return memoryMatches;
     return sql`${memoryMatches}
-      AND ${bgeSmallEnV15EmbeddingTable.sourceText} IS NOT NULL
-      AND btrim(${bgeSmallEnV15EmbeddingTable.sourceText}) <> ''
-      AND ${bgeSmallEnV15EmbeddingTable.sourceText} = (${memoryContent}->>'text')`;
+      AND ${bgeSmallEnV15ClsL2V2EmbeddingTable.sourceText} IS NOT NULL
+      AND btrim(${bgeSmallEnV15ClsL2V2EmbeddingTable.sourceText}) <> ''
+      AND ${bgeSmallEnV15ClsL2V2EmbeddingTable.sourceText} = (${memoryContent}->>'text')`;
   }
 
   /** Read the exact currently persisted source text inside the vector write transaction. */
@@ -804,10 +805,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       if (dimension === 384) {
-        // This additive, version-specific table intentionally lives outside the
-        // plugin schema snapshot. A still-running legacy process can update or
-        // delete rows in `embeddings`, including through its dimension cleanup,
-        // without being able to name or mutate canonical BGE vectors.
+        // Keep the old mean-pooled table available solely for upgrade cleanup,
+        // then create a new pooling/version-specific table for CLS vectors. A
+        // still-running legacy or mean-v1 process cannot name the CLS-v2 table,
+        // so its writes and cleanup cannot mix or erase the active space.
         await this.db.execute(
           sql.raw(
             `CREATE TABLE IF NOT EXISTS "embeddings_bge_small_en_v1_5" (` +
@@ -833,6 +834,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             `CREATE UNIQUE INDEX IF NOT EXISTS ` +
               `"idx_embeddings_bge_small_en_v1_5_memory" ` +
               `ON "embeddings_bge_small_en_v1_5" ("memory_id")`
+          )
+        );
+        await this.db.execute(
+          sql.raw(
+            `CREATE TABLE IF NOT EXISTS "embeddings_bge_small_en_v1_5_cls_l2_v2" (` +
+              `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), ` +
+              `"memory_id" uuid NOT NULL REFERENCES "memories"("id") ON DELETE CASCADE, ` +
+              `"created_at" timestamp NOT NULL DEFAULT now(), ` +
+              `"source_text" text, ` +
+              `"embedding" vector(384) NOT NULL)`
+          )
+        );
+        await this.db.execute(
+          sql.raw(
+            `CREATE UNIQUE INDEX IF NOT EXISTS ` +
+              `"idx_embeddings_bge_small_en_v1_5_cls_l2_v2_memory" ` +
+              `ON "embeddings_bge_small_en_v1_5_cls_l2_v2" ("memory_id")`
           )
         );
         this.canonicalBgeStorageActive = true;
@@ -864,7 +882,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const activeEmbeddingTable = this.getActiveEmbeddingTable();
     const columnName = activeEmbeddingTable[this.embeddingDimension].name;
     const tableName = this.canonicalBgeStorageActive
-      ? "embeddings_bge_small_en_v1_5"
+      ? "embeddings_bge_small_en_v1_5_cls_l2_v2"
       : "embeddings";
     const indexName = `idx_${tableName}_${columnName}_hnsw_cosine`;
     // CONCURRENTLY cannot run inside a transaction block; this executes as a
@@ -949,9 +967,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    *
    * Each row populates exactly one `dimNNN` column (the others stay null), so
    * "not in the active dimension" is simply "active column IS NULL". This is the
-   * store side of switching embedders — e.g. an agent moving off cloud 1536-dim
-   * embeddings onto on-device gte-small (384-dim): the stale 1536 vectors would
-   * otherwise sit unreadable by a 384-dim search forever. A no-op (returns `[]`)
+   * store side of switching embedders — e.g. an agent moving from a 1536-wide
+   * provider to canonical BGE-small CLS (384-wide): stale vectors would
+   * otherwise sit unreadable by canonical search forever. A no-op (returns `[]`)
    * once the store holds only active-dimension vectors, so it is safe to call on
    * every boot.
    */
@@ -961,17 +979,37 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ id: memoryTable.id })
         .from(memoryTable)
         .where(eq(memoryTable.agentId, this.agentId));
+      const eligibleRows = await this.db
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.agentId, this.agentId),
+            sql`${memoryTable.content}->>'text' IS NOT NULL`,
+            sql`btrim(${memoryTable.content}->>'text') <> ''`
+          )
+        );
+      const eligibleIds = new Set(eligibleRows.map((row) => row.id));
 
       if (this.canonicalBgeStorageActive) {
-        // Canonical vectors live elsewhere, so every legacy row for this agent
-        // is stale. Deleting it is also an exact rolling-version simulation:
-        // an older binary's cleanup can remove the whole legacy row while the
-        // physically separate BGE row remains untouched.
+        // CLS-v2 vectors live elsewhere, so every generic legacy row and every
+        // mean-v1 BGE row for this agent is stale. The active physical table is
+        // intentionally untouched, preserving rolling-writer isolation.
         const clearedLegacy = await this.db
           .delete(embeddingTable)
           .where(inArray(embeddingTable.memoryId, agentMemoryIds))
           .returning();
-        return clearedLegacy.map((row) => row.memoryId).filter((id): id is UUID => id !== null);
+        const clearedMeanV1 = await this.db
+          .delete(bgeSmallEnV15EmbeddingTable)
+          .where(inArray(bgeSmallEnV15EmbeddingTable.memoryId, agentMemoryIds))
+          .returning();
+        return [
+          ...new Set(
+            [...clearedLegacy, ...clearedMeanV1]
+              .map((row) => row.memoryId)
+              .filter((id): id is UUID => id !== null && eligibleIds.has(id))
+          ),
+        ];
       }
 
       const clearedLegacy = await this.db
@@ -984,15 +1022,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         )
         .returning();
       const clearedCanonical = await this.db
+        .delete(bgeSmallEnV15ClsL2V2EmbeddingTable)
+        .where(inArray(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, agentMemoryIds))
+        .returning();
+      const clearedMeanV1 = await this.db
         .delete(bgeSmallEnV15EmbeddingTable)
         .where(inArray(bgeSmallEnV15EmbeddingTable.memoryId, agentMemoryIds))
         .returning();
 
       return [
         ...new Set(
-          [...clearedLegacy, ...clearedCanonical]
+          [...clearedLegacy, ...clearedCanonical, ...clearedMeanV1]
             .map((row) => row.memoryId)
-            .filter((id): id is UUID => id !== null)
+            .filter((id): id is UUID => id !== null && eligibleIds.has(id))
         ),
       ];
     });
@@ -1031,7 +1073,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       });
     }
 
-    const cacheKey = "embedding-space-fingerprint:bge-small-en-v1.5:v2";
+    const cacheKey = "embedding-space-fingerprint:bge-small-en-v1.5:cls:l2:v2";
+    const legacyCacheKey = "embedding-space-fingerprint:bge-small-en-v1.5:v2";
     return this.withDatabase(async () =>
       this.db.transaction(async (tx) => {
         // The cache row is both the durable attestation and the per-agent
@@ -1049,7 +1092,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .onConflictDoNothing()
           .returning();
 
-        let previousFingerprint: string | undefined;
+        let currentFingerprint: string | undefined;
         if (inserted.length === 0) {
           const rows = await tx
             .select({ value: cacheTable.value })
@@ -1058,35 +1101,60 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             .for("update")
             .limit(1);
           const stored = rows[0]?.value;
-          previousFingerprint = typeof stored === "string" ? stored : undefined;
+          currentFingerprint = typeof stored === "string" ? stored : undefined;
         }
 
-        if (inserted.length === 0 && previousFingerprint !== activeFingerprint) {
+        const legacyRows = await tx
+          .select({ value: cacheTable.value })
+          .from(cacheTable)
+          .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, legacyCacheKey)))
+          .limit(1);
+        const legacyFingerprint =
+          typeof legacyRows[0]?.value === "string" ? legacyRows[0].value : undefined;
+        const previousFingerprint = currentFingerprint ?? legacyFingerprint;
+        const fingerprintChanged = inserted.length > 0 || currentFingerprint !== activeFingerprint;
+
+        if (inserted.length === 0 && currentFingerprint !== activeFingerprint) {
           await tx
             .update(cacheTable)
             .set({ value: activeFingerprint })
             .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, cacheKey)));
         }
 
+        if (fingerprintChanged) {
+          const agentMemoryIds = tx
+            .select({ id: memoryTable.id })
+            .from(memoryTable)
+            .where(eq(memoryTable.agentId, this.agentId));
+          await tx
+            .delete(bgeSmallEnV15ClsL2V2EmbeddingTable)
+            .where(inArray(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, agentMemoryIds));
+        }
+
         const missing = await tx
           .select({ id: memoryTable.id })
           .from(memoryTable)
           .leftJoin(
-            bgeSmallEnV15EmbeddingTable,
+            bgeSmallEnV15ClsL2V2EmbeddingTable,
             this.activeEmbeddingJoinCondition(
-              bgeSmallEnV15EmbeddingTable.memoryId,
+              bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId,
               memoryTable.id,
               memoryTable.content
             )
           )
           .where(
-            and(eq(memoryTable.agentId, this.agentId), isNull(bgeSmallEnV15EmbeddingTable.dim384))
+            and(
+              eq(memoryTable.agentId, this.agentId),
+              sql`${memoryTable.content}->>'text' IS NOT NULL`,
+              sql`btrim(${memoryTable.content}->>'text') <> ''`,
+              isNull(bgeSmallEnV15ClsL2V2EmbeddingTable.dim384)
+            )
           );
 
         return {
           activeFingerprint,
           ...(previousFingerprint ? { previousFingerprint } : {}),
-          changed: inserted.length > 0 || previousFingerprint !== activeFingerprint,
+          changed: fingerprintChanged,
           staleMemoryIds: missing.map((row) => row.id as UUID),
         };
       })
@@ -3133,7 +3201,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               e.dim_3072
             )`;
         const activeEmbeddingJoin = this.canonicalBgeStorageActive
-          ? sql`LEFT JOIN embeddings_bge_small_en_v1_5 e
+          ? sql`LEFT JOIN embeddings_bge_small_en_v1_5_cls_l2_v2 e
               ON e.memory_id = ct.id
               AND e.source_text IS NOT NULL
               AND btrim(e.source_text) <> ''
@@ -4030,8 +4098,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 : null;
               if (this.canonicalBgeStorageActive && sourceText === null) {
                 await tx
-                  .delete(bgeSmallEnV15EmbeddingTable)
-                  .where(eq(bgeSmallEnV15EmbeddingTable.memoryId, memory.id));
+                  .delete(bgeSmallEnV15ClsL2V2EmbeddingTable)
+                  .where(eq(bgeSmallEnV15ClsL2V2EmbeddingTable.memoryId, memory.id));
                 logger.warn(
                   { src: "plugin:sql", agentId: this.agentId, memoryId: memory.id },
                   "Cleared canonical embedding: memory source text is missing or blank"

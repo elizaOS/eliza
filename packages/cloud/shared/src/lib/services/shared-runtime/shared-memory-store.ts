@@ -11,6 +11,7 @@
 
 import { stringToUuid, validateUuid } from "@elizaos/core/edge";
 import {
+  SHARED_AGENT_MEMORY_EMBEDDING_BACKFILL_BATCH_SIZE,
   type SharedAgentMemoriesReader,
   type SharedAgentMemoriesWriter,
   type SharedAgentMemorySearchHit,
@@ -26,6 +27,9 @@ import {
 
 /** Core memories table-name discriminator the Shared runtime projects turns into. */
 const SHARED_MEMORY_TYPE = "messages";
+/** Prevent one post-response maintenance job from monopolizing Worker lifetime. */
+export const SHARED_MEMORY_BACKFILL_MAX_BATCHES = 16;
+export const SHARED_MEMORY_BACKFILL_DEADLINE_MS = 20_000;
 
 export function sharedMemoryTablesEnabled(
   raw: string | undefined = process.env.SHARED_MEMORY_TABLES_ENABLED,
@@ -239,9 +243,80 @@ export class SharedMemoryStore {
             error instanceof Error ? error.message : String(error)
           }`,
         );
+        return;
+      }
+      try {
+        await this.backfillLegacyEmbeddings(scope, embed);
+      } catch (error) {
+        // error-policy:J4 current-space rows are already durable and enriched.
+        // Leave legacy rows excluded from search and retry the bounded batch on
+        // a later turn rather than extending or failing the user response.
+        logger.warn(
+          `[SharedMemoryStore] legacy embedding backfill failed; incompatible rows remain excluded: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     })();
     this.deferEmbedding(work);
+  }
+
+  /**
+   * Repairs one bounded oldest-first batch after live-turn enrichment. This is
+   * deliberately inside the already-deferred job: incompatible vectors are
+   * excluded from search immediately, but migration can never extend response
+   * TTFT or the terminal stream frame.
+   */
+  private async backfillLegacyEmbeddings(
+    scope: { organizationId: string; userId: string; agentId: string },
+    embed: SharedMemoryEmbedConfig,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    let batches = 0;
+    let migrated = 0;
+    while (
+      batches < SHARED_MEMORY_BACKFILL_MAX_BATCHES &&
+      Date.now() - startedAt < SHARED_MEMORY_BACKFILL_DEADLINE_MS
+    ) {
+      const candidates = await this.reader.listEmbeddingBackfillCandidates(
+        scope,
+        embed.model,
+        SHARED_AGENT_MEMORY_EMBEDDING_BACKFILL_BATCH_SIZE,
+      );
+      if (candidates.length === 0) break;
+      const embeddings = await embed.embedTexts(
+        candidates.map((candidate) => candidate.contentText),
+      );
+      if (embeddings.length !== candidates.length) {
+        throw new Error(
+          `embedding backfill count mismatch: received ${embeddings.length}, expected ${candidates.length}`,
+        );
+      }
+      const updates = await Promise.all(
+        candidates.map((candidate, index) =>
+          this.writer.setMemoryEmbedding({
+            id: candidate.id,
+            scope,
+            contentText: candidate.contentText,
+            embedding: embeddings[index] ?? [],
+            embeddingModel: embed.model,
+          }),
+        ),
+      );
+      const updated = updates.filter(Boolean).length;
+      migrated += updated;
+      batches += 1;
+      // A content-race/no-op remains durably eligible (or was cleared by the
+      // winning writer). Stop this job so it cannot spin on one row; a later
+      // turn starts a fresh oldest-first audit.
+      if (updated !== candidates.length) break;
+      if (candidates.length < SHARED_AGENT_MEMORY_EMBEDDING_BACKFILL_BATCH_SIZE) break;
+    }
+    if (migrated > 0) {
+      logger.info(
+        `[SharedMemoryStore] re-embedded ${migrated} legacy embedding rows as ${embed.model} across ${batches} bounded batch(es)`,
+      );
+    }
   }
 }
 

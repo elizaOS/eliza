@@ -50,7 +50,7 @@
 //   LD_LIBRARY_PATH=<build>/bin <build>/bin/llama-server \
 //     -m ~/models/eliza-1-4b-128k.gguf --port 18811 --jinja \
 //     --chat-template-kwargs '{"enable_thinking":false}' -c 16384 -np 2 \
-//     --embeddings --pooling mean
+//     # This chat-only fixture deliberately does not expose an embedding route.
 //   ELIZA_UI_SMOKE_LIVE_STACK=1 LOCAL_LLAMA_CPP_API_KEY=local \
 //   ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL=http://127.0.0.1:18811/v1 \
 //   ELIZA_LIVE_TEST_SMALL_MODEL=eliza-1-4b ELIZA_LIVE_TEST_LARGE_MODEL=eliza-1-4b \

@@ -435,6 +435,15 @@ export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", CANONICAL_EMBEDDING_DIMENSION);
 }
 
+/**
+ * Explicit compatibility escape hatch for a separately controlled endpoint
+ * that cannot return pooling/fingerprint attestation. Generic endpoints fail
+ * closed because model identity and vector width do not prove CLS pooling.
+ */
+export function allowUnsafeUnattestedOpenAIEmbeddingResponse(runtime: IAgentRuntime): boolean {
+  return getBooleanSetting(runtime, "OPENAI_EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE", false);
+}
+
 export function getImageDescriptionMaxTokens(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS", 8192);
 }

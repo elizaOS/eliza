@@ -13,7 +13,7 @@
  * older than the window are invisible to semantic recall by design.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import { type SharedAgentMemoryRow, sharedAgentMemories } from "../schemas/shared-agent-memories";
 import { jsonbParam } from "../utils/jsonb";
@@ -23,6 +23,8 @@ export const SHARED_AGENT_MEMORY_ID_CONFLICT = "SHARED_AGENT_MEMORY_ID_CONFLICT"
 
 /** Rows semantically scanned per embedding search (see module header). */
 export const SHARED_AGENT_MEMORY_SEARCH_WINDOW = 512;
+/** Old-space rows repaired after each successful turn, outside response latency. */
+export const SHARED_AGENT_MEMORY_EMBEDDING_BACKFILL_BATCH_SIZE = 16;
 const MAX_LIST_LIMIT = 200;
 const MAX_EMBEDDING_DIMENSIONS = 4096;
 
@@ -72,6 +74,11 @@ export interface SetSharedAgentMemoryEmbeddingInput {
 }
 
 export type SharedAgentMemorySearchHit = SharedAgentMemoryRow & { distance: number };
+
+export interface SharedAgentMemoryEmbeddingBackfillCandidate {
+  id: string;
+  contentText: string;
+}
 
 function requiredScope(scope: SharedAgentMemoryScope): SharedAgentMemoryScope {
   for (const [field, value] of Object.entries(scope)) {
@@ -354,6 +361,50 @@ export class SharedAgentMemoriesReader {
       .where(and(...tenantPins(scope), eq(sharedAgentMemories.room_id, roomId)))
       .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))
       .limit(limit);
+  }
+
+  /**
+   * Oldest tenant rows carrying an incompatible embedding-space fingerprint.
+   * Search excludes these rows immediately; the Shared runtime consumes this
+   * bounded list from its post-response maintenance job and re-embeds their
+   * source text under the current canonical contract. Vectorless rows are not
+   * migration evidence and remain owned by the ordinary enrichment/retry path.
+   */
+  async listEmbeddingBackfillCandidates(
+    scope: SharedAgentMemoryScope,
+    canonicalEmbeddingModel: string,
+    limit: number = SHARED_AGENT_MEMORY_EMBEDDING_BACKFILL_BATCH_SIZE,
+  ): Promise<SharedAgentMemoryEmbeddingBackfillCandidate[]> {
+    requiredScope(scope);
+    assertLimit(limit);
+    const canonicalModel = canonicalEmbeddingModel.trim();
+    if (!canonicalModel) {
+      throw new ElizaError("Canonical shared agent memory embedding model is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "canonicalEmbeddingModel" },
+      });
+    }
+    const rows = await dbRead
+      .select({
+        id: sharedAgentMemories.id,
+        contentText: sql<string>`${sharedAgentMemories.content}->>'text'`,
+      })
+      .from(sharedAgentMemories)
+      .where(
+        and(
+          ...tenantPins(scope),
+          isNotNull(sharedAgentMemories.embedding),
+          or(
+            isNull(sharedAgentMemories.embedding_model),
+            ne(sharedAgentMemories.embedding_model, canonicalModel),
+          ),
+          sql`jsonb_typeof(${sharedAgentMemories.content}->'text') = 'string'`,
+          sql`length(btrim(${sharedAgentMemories.content}->>'text')) > 0`,
+        ),
+      )
+      .orderBy(asc(sharedAgentMemories.created_at), asc(sharedAgentMemories.id))
+      .limit(limit);
+    return rows.map((row) => ({ id: row.id, contentText: row.contentText }));
   }
 
   /**

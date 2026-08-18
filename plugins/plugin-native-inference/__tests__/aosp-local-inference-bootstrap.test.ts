@@ -1,7 +1,8 @@
 /**
  * Covers AOSP bootstrap helpers and loader ownership. Pure helpers use real
  * filesystem tempdirs and env overrides; service lifecycle uses a real
- * AgentRuntime with a deterministic loader, never the native FFI boundary.
+ * AgentRuntime with a deterministic loader. The fused embedding ABI call is
+ * exercised with pointer-preserving mocks, without loading a native library.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -24,6 +25,7 @@ import {
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
+  embedFused,
   ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
@@ -879,6 +881,47 @@ describe("firstSentenceEndIndex", () => {
 });
 
 describe("AOSP embedding gate", () => {
+  it("passes CLS pooling to the fused embedding ABI call boundary", () => {
+    const pointerViews = new Map<number, ArrayBufferView>();
+    let nextPointer = 1;
+    const embedCalls: unknown[][] = [];
+    const result = embedFused(
+      {
+        ctx: 7n,
+        symbols: {
+          eliza_inference_embed: (...args: unknown[]) => {
+            embedCalls.push(args);
+            const output = pointerViews.get(args[4] as number);
+            const outputDimension = pointerViews.get(args[6] as number);
+            if (!(output instanceof Float32Array)) {
+              throw new Error("missing mocked embedding output buffer");
+            }
+            if (!(outputDimension instanceof Int32Array)) {
+              throw new Error("missing mocked embedding dimension buffer");
+            }
+            output[0] = 1;
+            outputDimension[0] = 384;
+            return 0;
+          },
+        },
+        helpers: {
+          ptr: (view: ArrayBufferView) => {
+            const pointer = nextPointer++;
+            pointerViews.set(pointer, view);
+            return pointer;
+          },
+          takeError: () => null,
+          cString: (value: string) => Buffer.from(`${value}\0`, "utf8"),
+        },
+      },
+      "semantic pooling regression",
+    );
+
+    expect(embedCalls).toHaveLength(1);
+    expect(embedCalls[0]?.[3]).toBe(2);
+    expect(result.embedding).toHaveLength(384);
+  });
+
   it("keeps native embeddings opt-in on Android", () => {
     expect(isAospLocalEmbeddingEnabled({})).toBe(false);
     expect(

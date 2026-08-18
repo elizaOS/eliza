@@ -105,9 +105,9 @@ describe("buildContainerNodeUserData — ghcr access", () => {
     expect(userData).toContain("--restart always");
     expect(userData).toContain("--label ai.elizaos.managed-by=eliza-cloud");
     expect(userData).toContain(
-      "--label ai.elizaos.embedding-space=BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+      "--label ai.elizaos.embedding-space=BAAI/bge-small-en-v1.5:384:cls:l2:v2",
     );
-    expect(userData).toContain("--model-id BAAI/bge-small-en-v1.5 --pooling mean");
+    expect(userData).toContain("--model-id BAAI/bge-small-en-v1.5 --pooling cls");
     expect(userData).toContain(
       "|| echo '[bootstrap] embedding sidecar install failed; the node health loop will surface and self-heal it'",
     );

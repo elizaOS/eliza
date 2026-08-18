@@ -45,6 +45,7 @@ export {
 	getRequiredSecretsForChannel,
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
+	LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
 	LOCAL_MODEL_PROVIDERS,
 	normalizeCanonicalEmbedding,
 	prepareCanonicalEmbeddingInput,

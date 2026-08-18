@@ -87,7 +87,7 @@ reading code. The source of truth is:
 
 | Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
 |---|---|---|---|---|---|
-| Android / iOS phone, >= 6 GB RAM and >= 3 GB free | `OKAY` at best; local LM can run; voice defaults to cloud TTS/ASR with local turn detection, VAD, and wake-word only. | `TEXT_SMALL` uses `eliza-1-2b`; `TEXT_LARGE` tries `eliza-1-4b` then `eliza-1-2b`. | Mobile is capped at 64k even if coarse RAM math says 128k fits. | `bge-small-en-v1.5-q4_k_m.gguf`, 384 dimensions, 512 context, mean pooling, L2 normalization. Use CPU on <= 8 GB or no accelerator; otherwise `gpuLayers: "auto"`. | Phone OS background-task limits are the reason for the tier cap; do not force 9B/27B on mobile for default routing. |
+| Android / iOS phone, >= 6 GB RAM and >= 3 GB free | `OKAY` at best; local LM can run; voice defaults to cloud TTS/ASR with local turn detection, VAD, and wake-word only. | `TEXT_SMALL` uses `eliza-1-2b`; `TEXT_LARGE` tries `eliza-1-4b` then `eliza-1-2b`. | Mobile is capped at 64k even if coarse RAM math says 128k fits. | `bge-small-en-v1.5-q4_k_m.gguf`, 384 dimensions, 512 context, CLS pooling, L2 normalization. Use CPU on <= 8 GB or no accelerator; otherwise `gpuLayers: "auto"`. | Phone OS background-task limits are the reason for the tier cap; do not force 9B/27B on mobile for default routing. |
 | 8 GB Apple Silicon | `OKAY`; local-capable with swapping discipline. | Prefer 2B/4B fits; avoid pinning larger tiers as defaults. | Use the fit selected by the dashboard; expect short or downscaled context under pressure. | CPU fallback if <= 8 GB; BGE-small stays the embedding model. | `device-tier.ts` hard-caps 8 GB Apple Silicon at `OKAY`. |
 | Apple Silicon >= 16 GB with >= 8 GB free | `GOOD` when the free/effective-memory gates pass; all models can run serialized. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when the RAM/VRAM headroom gate passes. | BGE-small with accelerator offload. | `MAX` requires >= 32 GB shared RAM plus the `MAX` free/effective memory gates. |
 | Linux / Windows with discrete GPU >= 8 GB VRAM, >= 12 GB effective memory, and >= 8 GB free | `GOOD`; serialized local LM is recommended. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when memory headroom passes. | BGE-small with `gpuLayers: "auto"` on CUDA/Vulkan. | `MAX` requires >= 16 GB VRAM plus the free/effective memory gates. |
@@ -110,7 +110,7 @@ Operational knobs:
   `1`-`512`; the interactive chat path uses a finer default of `8` when the env
   is unset (internal / planner / voice calls keep the coarse `32`).
 - Embedding identity is pinned to `bge-small-en-v1.5-q4_k_m.gguf`, 384
-  dimensions, 512 context, mean pooling, and L2 normalization. Local and
+  dimensions, 512 context, CLS pooling, and L2 normalization. Local and
   Workers AI paths share that canonical space. The desktop handler rejects
   model/repo/dimension/context/pooling overrides and ambiguous fused bundle
   roots; only performance knobs such as GPU layers and mmap remain tunable.

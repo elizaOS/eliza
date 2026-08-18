@@ -3005,7 +3005,10 @@ export function makeAospTranscriptionHandler(
 /* fallback.                                                             */
 /* -------------------------------------------------------------------- */
 
-const ELIZA_POOLING_MEAN = 1;
+// Mirrors ELIZA_POOLING_CLS in the fused C ABI. BGE-small-en-v1.5's reviewed
+// GGUF declares bert.pooling_type=2, so attesting the canonical CLS fingerprint
+// while requesting mean pooling would silently mix incompatible 384-wide data.
+const ELIZA_POOLING_CLS = 2;
 
 /** Map an `AospLoadModelArgs` KV-cache type onto the fused config string. */
 function fusedCacheTypeName(
@@ -3068,6 +3071,11 @@ interface AospFusedTextLoaderState {
   /** Set after a one-time f16 retry when the build rejects KV-quant. */
   kvQuantRejected?: boolean;
 }
+
+type AospFusedEmbeddingState = Pick<
+  AospFusedTextLoaderState,
+  "symbols" | "helpers" | "ctx"
+>;
 
 /**
  * Tokenize `text` against the fused context via `eliza_inference_tokenize`,
@@ -3133,8 +3141,8 @@ function tokenizeFused(
 }
 
 /** Embed `input` via the fused `eliza_inference_embed`. */
-function embedFused(
-  state: AospFusedTextLoaderState,
+export function embedFused(
+  state: AospFusedEmbeddingState,
   input: string,
 ): { embedding: number[]; tokens: number } {
   const { symbols, helpers } = state;
@@ -3154,7 +3162,7 @@ function embedFused(
     state.ctx,
     helpers.ptr(textBuf),
     BigInt(textLen),
-    ELIZA_POOLING_MEAN,
+    ELIZA_POOLING_CLS,
     helpers.ptr(outEmbedding),
     BigInt(cap),
     helpers.ptr(outDim),

@@ -53,14 +53,14 @@ There is no build step here (`build:linked-workspaces` defers to the repo-root `
 
 Shared semantic recall additionally requires `SHARED_RECALL_ENABLED="true"`, the
 durable memory-table gate, and the Cloud API's native `AI` binding. It calls
-`@cf/baai/bge-small-en-v1.5` with explicit mean pooling, validates the 384-wide
+`@cf/baai/bge-small-en-v1.5` with explicit CLS pooling, validates the 384-wide
 response, and L2-normalizes before storage/search. Rows carry the full canonical
 vector-space fingerprint in `embedding_model`; legacy same-width vectors are
 excluded and must be re-embedded rather than mixed.
 
 Dedicated managed agents use the same space. Fresh agents point
 `plugin-embeddings` at `http://eliza-embedding-sidecar:80/v1`; the per-node TEI
-container is pinned to `BAAI/bge-small-en-v1.5 --pooling mean` and labeled with
+container is pinned to `BAAI/bge-small-en-v1.5 --pooling cls` and labeled with
 the full canonical fingerprint. Node ensure/probe commands treat an unlabeled
 or legacy GTE container as missing and replace it. Managed upgrades overwrite
 old model/dimension/pooling endpoints; runtime fingerprint reconciliation

@@ -20,6 +20,10 @@ export interface EmbeddingResponse {
   }>;
   /** Optional on the wire; canonical handlers reject omission at runtime. */
   model?: string;
+  /** Optional provider attestation. When present it must match CLS exactly. */
+  pooling?: string;
+  /** Optional full vector-space attestation emitted by first-party gateways. */
+  embedding_space_fingerprint?: string;
   usage?: {
     prompt_tokens: number;
     total_tokens: number;

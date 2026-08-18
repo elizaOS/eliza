@@ -42,7 +42,7 @@ type EmbeddingHardwareProbe = Pick<
 const BGE_SMALL_EMBEDDING = {
 	// BGE-small-en-v1.5: the canonical 384-dim semantic embedding space.
 	// The local GGUF is the compact Q4_K_M conversion of the same BAAI model
-	// served by Workers AI. Both paths use mean pooling plus L2 normalization.
+	// served by Workers AI. Both paths use CLS pooling plus L2 normalization.
 	// Chosen for broad device support (mobile included) and an exact match to
 	// plugin-sql's dim384 column — no truncation, no per-device model juggling.
 	model: CANONICAL_EMBEDDING_GGUF_FILENAME,

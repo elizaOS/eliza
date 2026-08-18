@@ -4,6 +4,7 @@ import {
   CANONICAL_EMBEDDING_DIMENSION,
   CANONICAL_EMBEDDING_MODEL,
   CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   logger,
   ModelType,
   normalizeCanonicalEmbedding,
@@ -370,6 +371,8 @@ export async function handleBatchTextEmbedding(
       const data = (await response.json()) as {
         data?: Array<{ embedding: number[]; index: number }>;
         model?: string;
+        pooling?: string;
+        embedding_space_fingerprint?: string;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
@@ -381,6 +384,16 @@ export async function handleBatchTextEmbedding(
 
       if (!data?.data || !Array.isArray(data.data)) {
         throw new Error("[BatchEmbeddings] API returned invalid response structure");
+      }
+      if (data.pooling !== CANONICAL_EMBEDDING_POOLING) {
+        throw new Error(
+          `[BatchEmbeddings] pooling attestation mismatch: endpoint returned ${JSON.stringify(data.pooling)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_POOLING)}`
+        );
+      }
+      if (data.embedding_space_fingerprint !== CANONICAL_EMBEDDING_SPACE_FINGERPRINT) {
+        throw new Error(
+          `[BatchEmbeddings] embedding-space attestation mismatch: endpoint returned ${JSON.stringify(data.embedding_space_fingerprint)}, expected ${JSON.stringify(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)}`
+        );
       }
 
       // A partial response (fewer vectors than inputs) would leave `undefined`

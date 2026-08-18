@@ -532,7 +532,7 @@ describe("SharedRuntimeChatService", () => {
       async run() {
         aiCalls += 1;
         await (aiCalls === 1 ? firstGate : secondGate);
-        return { data: [vector], shape: [1, 384], pooling: "mean" };
+        return { data: [vector], shape: [1, 384], pooling: "cls" };
       },
     };
     const service = new SharedRuntimeChatService();

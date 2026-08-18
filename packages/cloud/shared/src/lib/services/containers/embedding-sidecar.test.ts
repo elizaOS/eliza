@@ -34,7 +34,8 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}`);
     expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_CONFIG_LABEL}"}}`);
-    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:mean:l2:v1|");
+    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:cls:l2:v2|");
+    expect(cmd).not.toContain("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
     // A running legacy/unlabelled GTE container or any image/network/port drift
     // misses the exact label identity and is replaced, rather than docker-started.
     expect(cmd).toContain(
@@ -50,15 +51,16 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     // ones vanished. The label is load-bearing, not cosmetic.
     expect(cmd).toContain("--label ai.elizaos.managed-by=eliza-cloud");
     expect(cmd).toContain(
-      "--label ai.elizaos.embedding-space=BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+      "--label ai.elizaos.embedding-space=BAAI/bge-small-en-v1.5:384:cls:l2:v2",
     );
   });
 
-  test("serves canonical mean-pooled BGE-small on the shared bridge network", () => {
+  test("serves canonical CLS-pooled BGE-small on the shared bridge network", () => {
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain("--network containers-isolated");
     expect(cmd).toContain("-p 127.0.0.1:8290:80");
-    expect(cmd).toContain("--model-id BAAI/bge-small-en-v1.5 --pooling mean");
+    expect(cmd).toContain("--model-id BAAI/bge-small-en-v1.5 --pooling cls");
+    expect(cmd).not.toContain("--pooling mean");
     expect(cmd).toContain("ghcr.io/huggingface/text-embeddings-inference:cpu-1.8");
     // Model cache persists across container replacement.
     expect(cmd).toContain("-v /data/embedding-models:/data");
@@ -106,7 +108,8 @@ describe("buildEmbeddingSidecarProbeCmd + parseEmbeddingSidecarProbe", () => {
     // A healthy-but-legacy GTE container is semantically absent. The probe
     // only reports running when the canonical space label matches exactly.
     expect(cmd).toContain(`{{index .Config.Labels "${EMBEDDING_SIDECAR_SPACE_LABEL}"}}`);
-    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:mean:l2:v1'");
+    expect(cmd).toContain("grep -Fqx 'true|BAAI/bge-small-en-v1.5:384:cls:l2:v2'");
+    expect(cmd).not.toContain("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
     // HTTP-level: a container that is up but cannot serve must not read present.
     expect(cmd).toContain("curl -fsS -m 5 http://127.0.0.1:8290/health");
 

@@ -2247,7 +2247,7 @@ function registerMobileDeviceBridgeModels(
 	// Deliberately do not register TEXT_EMBEDDING. The stock Capacitor RPC does
 	// not carry a pooling contract and the bionic host explicitly used
 	// last-token pooling over the chat model. Neither path can attest the
-	// canonical BGE-small/384/mean/L2 space, so semantic embedding routing must
+	// canonical BGE-small/384/CLS/L2 space, so semantic embedding routing must
 	// fail closed to another fingerprinted provider.
 	// On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
 	// bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
@@ -2267,7 +2267,7 @@ function registerMobileDeviceBridgeModels(
 		);
 	}
 	logger.info(
-		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger}); semantic embeddings remain unregistered because this transport cannot attest mean-pooled BGE-small`,
+		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger}); semantic embeddings remain unregistered because this transport cannot attest CLS-pooled BGE-small`,
 	);
 	registeredRuntimes.add(runtime);
 	registeredRuntimeCount += 1;

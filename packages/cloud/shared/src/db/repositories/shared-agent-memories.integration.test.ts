@@ -6,6 +6,10 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+} from "@elizaos/core/edge";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -321,7 +325,7 @@ describe("SharedAgentMemoriesReader.listRecentByRoom (real PGlite)", () => {
 
 describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)", () => {
   test("ranks only the tenant's exact vector space and excludes same-width legacy models", async () => {
-    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
+    const fingerprint = CANONICAL_EMBEDDING_SPACE_FINGERPRINT;
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeA,
       roomId: ROOM_A,
@@ -364,6 +368,14 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       embedding: [1, 0, 0],
       embeddingModel: "thenlper/gte-small:384:mean:l2:v1",
     });
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeA,
+      roomId: ROOM_A,
+      type: "messages",
+      content: { text: "legacy BGE mean exact match" },
+      embedding: [1, 0, 0],
+      embeddingModel: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+    });
     // Same vector in tenant B: a leak would rank first.
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeB,
@@ -400,5 +412,69 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
     });
     const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, [1, 0, 0], 5);
     expect(hits).toEqual([]);
+  });
+});
+
+describe("SharedAgentMemoriesReader.listEmbeddingBackfillCandidates (real PGlite)", () => {
+  test("returns only tenant-owned incompatible vectors, oldest first and bounded", async () => {
+    const rows = [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000001",
+        scope: scopeA,
+        content: { text: "old mean" },
+        embeddingModel: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+        createdAt: new Date("2026-08-01T00:00:00Z"),
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000002",
+        scope: scopeA,
+        content: { text: "old GTE" },
+        embeddingModel: "thenlper/gte-small:384:mean:l2:v1",
+        createdAt: new Date("2026-08-02T00:00:00Z"),
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000003",
+        scope: scopeA,
+        content: { text: "already CLS" },
+        embeddingModel: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        createdAt: new Date("2026-08-03T00:00:00Z"),
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000004",
+        scope: scopeB,
+        content: { text: "other tenant mean" },
+        embeddingModel: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+        createdAt: new Date("2026-07-01T00:00:00Z"),
+      },
+    ] as const;
+    for (const row of rows) {
+      await sharedAgentMemoriesWriter.insertMemory({
+        id: row.id,
+        scope: row.scope,
+        type: "messages",
+        content: row.content,
+        embedding: [1, 0, 0],
+        embeddingModel: row.embeddingModel,
+        createdAt: row.createdAt,
+      });
+    }
+
+    await expect(
+      sharedAgentMemoriesReader.listEmbeddingBackfillCandidates(
+        scopeA,
+        CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        1,
+      ),
+    ).resolves.toEqual([{ id: rows[0].id, contentText: "old mean" }]);
+    await expect(
+      sharedAgentMemoriesReader.listEmbeddingBackfillCandidates(
+        scopeA,
+        CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        16,
+      ),
+    ).resolves.toEqual([
+      { id: rows[0].id, contentText: "old mean" },
+      { id: rows[1].id, contentText: "old GTE" },
+    ]);
   });
 });

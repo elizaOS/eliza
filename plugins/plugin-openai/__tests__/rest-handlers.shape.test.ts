@@ -95,6 +95,8 @@ describe("OpenAI REST handler request shapes", () => {
             object: "list",
             data: [{ object: "embedding", embedding: new Array(384).fill(0.1), index: 0 }],
             model: "BAAI/bge-small-en-v1.5",
+            pooling: "cls",
+            embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
             usage: { prompt_tokens: 4, total_tokens: 4 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -120,7 +122,7 @@ describe("OpenAI REST handler request shapes", () => {
       model: "BAAI/bge-small-en-v1.5",
       input: "hello",
       dimensions: 384,
-      pooling: "mean",
+      pooling: "cls",
     });
   });
 
@@ -133,6 +135,8 @@ describe("OpenAI REST handler request shapes", () => {
               object: "list",
               data: [{ object: "embedding", embedding: new Array(385).fill(0.1), index: 0 }],
               model: "BAAI/bge-small-en-v1.5",
+              pooling: "cls",
+              embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
               usage: { prompt_tokens: 4, total_tokens: 4 },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -176,14 +180,76 @@ describe("OpenAI REST handler request shapes", () => {
     );
   });
 
+  it("requires exact CLS/v2 response attestation by default", async () => {
+    const vector = new Array(384).fill(0).map((_, index) => (index === 0 ? 1 : 0));
+    const response = (attestation: Record<string, unknown>) =>
+      new Response(
+        JSON.stringify({
+          object: "list",
+          data: [{ object: "embedding", embedding: vector, index: 0 }],
+          model: "BAAI/bge-small-en-v1.5",
+          ...attestation,
+          usage: { prompt_tokens: 4, total_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({}))
+      .mockResolvedValueOnce(response({ pooling: "mean" }))
+      .mockResolvedValueOnce(
+        response({
+          pooling: "cls",
+          embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        })
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), "missing")).rejects.toThrow(/unattested/i);
+    await expect(handleTextEmbedding(createRuntime(), "mean")).rejects.toThrow(/pooling mismatch/i);
+    await expect(handleTextEmbedding(createRuntime(), "old")).rejects.toThrow(
+      /embedding space mismatch/i
+    );
+  });
+
+  it("allows unattested responses only through the unsafe controlled-endpoint flag", async () => {
+    const vector = new Array(384).fill(0).map((_, index) => (index === 0 ? 1 : 0));
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          object: "list",
+          data: [{ object: "embedding", embedding: vector, index: 0 }],
+          model: "BAAI/bge-small-en-v1.5",
+          usage: { prompt_tokens: 4, total_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await expect(
+      handleTextEmbedding(
+        createRuntime({ OPENAI_EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE: "true" }),
+        "controlled sidecar"
+      )
+    ).resolves.toEqual(vector);
+  });
+
   it("fails clearly when provider embedding response is missing the data array", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ object: "list", model: "BAAI/bge-small-en-v1.5" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          })
+          new Response(
+            JSON.stringify({
+              object: "list",
+              model: "BAAI/bge-small-en-v1.5",
+              pooling: "cls",
+              embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
       ) as typeof fetch
     );
 

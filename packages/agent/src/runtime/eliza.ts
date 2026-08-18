@@ -1003,7 +1003,7 @@ export async function configureLocalEmbeddingPlugin(
   ) {
     logger.warn(
       { ignoredIdentityOverrides },
-      "[eliza] Ignoring noncanonical local embedding identity overrides; semantic vectors are pinned to BGE-small-en-v1.5/384/mean/L2",
+      "[eliza] Ignoring noncanonical local embedding identity overrides; semantic vectors are pinned to BGE-small-en-v1.5/384/CLS/L2",
     );
   }
 
@@ -2314,7 +2314,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
-  // BGE-small-en-v1.5/384/mean/L2 is the universal semantic space. Desktop
+  // BGE-small-en-v1.5/384/CLS/L2 is the universal semantic space. Desktop
   // defaults to the in-process canonical model to avoid a network round trip;
   // Cloud embeddings remain opt-in and must attest the exact same space. BYO
   // endpoints need the explicit "false" policy because plugin-elizacloud

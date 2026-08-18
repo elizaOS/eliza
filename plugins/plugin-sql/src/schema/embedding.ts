@@ -6,7 +6,8 @@
  * fixed-width columns instead of a single variable-length vector lets
  * PostgreSQL index each dimension separately.
  *
- * Canonical BGE-small vectors deliberately live in a separate physical table.
+ * Canonical BGE-small vectors deliberately live in separate physical tables
+ * per pooling/version.
  * A still-running legacy binary can update or delete rows in `embeddings`, but
  * it cannot name (and therefore cannot corrupt) the versioned BGE table. The
  * adapter creates that table additively, outside migration snapshots.
@@ -87,14 +88,9 @@ export const embeddingTable = pgTable(
 );
 
 /**
- * Versioned canonical storage. This symbol must stay out of `schema/index.ts`:
- * `ensureEmbeddingDimension(384)` creates the table idempotently outside the
- * migration snapshot, so older binaries keep their known schema hash and can
- * neither update nor delete canonical BGE vectors during a rolling upgrade.
- *
- * The TypeScript property is named `dim384` so the adapter can use the same
- * dimension key for both legacy and canonical storage; its physical column is
- * simply `embedding` in this version-specific table.
+ * Legacy mean-pooled BGE space retained only for safe upgrade detection. This
+ * symbol stays out of `schema/index.ts`; the adapter creates the physical table
+ * additively so migration snapshots remain compatible with older binaries.
  */
 export const bgeSmallEnV15EmbeddingTable = pgTable("embeddings_bge_small_en_v1_5", {
   id: uuid("id").primaryKey().defaultRandom().notNull(),
@@ -106,6 +102,27 @@ export const bgeSmallEnV15EmbeddingTable = pgTable("embeddings_bge_small_en_v1_5
   sourceText: text("source_text"),
   dim384: vector("embedding", { dimensions: VECTOR_DIMS.SMALL }).notNull(),
 });
+
+/**
+ * Active BGE-small CLS + L2 v2 space. A new physical table is required even
+ * though it is also 384-wide: a still-running mean-v1 binary can only name the
+ * legacy BGE table, so it cannot overwrite or delete CLS vectors during a
+ * rolling upgrade. Its `dim384` TypeScript property maps to the physical
+ * `embedding` column so existing dimension-keyed adapter paths remain shared.
+ */
+export const bgeSmallEnV15ClsL2V2EmbeddingTable = pgTable(
+  "embeddings_bge_small_en_v1_5_cls_l2_v2",
+  {
+    id: uuid("id").primaryKey().defaultRandom().notNull(),
+    memoryId: uuid("memory_id")
+      .references(() => memoryTable.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    sourceText: text("source_text"),
+    dim384: vector("embedding", { dimensions: VECTOR_DIMS.SMALL }).notNull(),
+  }
+);
 
 /** Column names for each supported embedding width. */
 export type EmbeddingDimensionColumn =

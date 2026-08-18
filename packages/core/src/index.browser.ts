@@ -44,6 +44,7 @@ export {
 	CANONICAL_EMBEDDING_NORMALIZATION,
 	CANONICAL_EMBEDDING_POOLING,
 	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+	LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
 	normalizeCanonicalEmbedding,
 	prepareCanonicalEmbeddingInput,
 } from "./constants/embeddings";

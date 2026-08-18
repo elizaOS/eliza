@@ -262,7 +262,8 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.environmentVars.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(result.environmentVars.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(result.environmentVars.EMBEDDING_POOLING).toBe("mean");
+    expect(result.environmentVars.EMBEDDING_POOLING).toBe("cls");
+    expect(result.environmentVars.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("true");
     expect(result.environmentVars.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
@@ -279,7 +280,7 @@ describe("managed Eliza environment", () => {
       existingEnv: {
         EMBEDDING_BASE_URL: "https://legacy-gte.example/v1",
         EMBEDDING_MODEL: "thenlper/gte-small",
-        EMBEDDING_POOLING: "cls",
+        EMBEDDING_POOLING: "mean",
         EMBEDDING_DIMENSIONS: "768",
         EMBEDDING_DIMENSION: "768",
         ELIZAOS_CLOUD_EMBEDDING_MODEL: "text-embedding-3-small",
@@ -289,7 +290,8 @@ describe("managed Eliza environment", () => {
 
     expect(result.environmentVars.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(result.environmentVars.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(result.environmentVars.EMBEDDING_POOLING).toBe("mean");
+    expect(result.environmentVars.EMBEDDING_POOLING).toBe("cls");
+    expect(result.environmentVars.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("true");
     expect(result.environmentVars.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
@@ -328,11 +330,13 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       "EMBEDDING_FALLBACK_MODEL",
       "EMBEDDING_MODEL",
       "EMBEDDING_POOLING",
+      "EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE",
     ]);
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(result.EMBEDDING_POOLING).toBe("mean");
+    expect(result.EMBEDDING_POOLING).toBe("cls");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("true");
     expect(result.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
@@ -351,6 +355,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("false");
     expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
@@ -366,6 +371,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("false");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
@@ -381,6 +387,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("0");
     expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("true");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.EMBEDDING_FALLBACK_BASE_URL).toBe("");
@@ -397,6 +404,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("0");
     expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("false");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
@@ -407,7 +415,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     const result = applyManagedAgentInferenceEnvDefaults({
       EMBEDDING_BASE_URL: "https://legacy-gte.example/v1",
       EMBEDDING_MODEL: "thenlper/gte-small",
-      EMBEDDING_POOLING: "cls",
+      EMBEDDING_POOLING: "mean",
       EMBEDDING_DIMENSIONS: "768",
       EMBEDDING_DIMENSION: "768",
       EMBEDDING_FALLBACK_BASE_URL: "https://fallback-gte.example/v1",
@@ -421,7 +429,8 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(result.EMBEDDING_FALLBACK_BASE_URL).toBe("");
     expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(result.EMBEDDING_POOLING).toBe("mean");
+    expect(result.EMBEDDING_POOLING).toBe("cls");
+    expect(result.EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE).toBe("true");
     expect(result.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
@@ -434,7 +443,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
   test("spreading the helper heals a stale upgrade env into the canonical space", async () => {
     // Mirrors the blue/green fleet-upgrade path (eliza-sandbox.ts): an agent
     // provisioned before the canonical fingerprint landed carries stale cloud
-    // defaults. Spreading the helper on top pins BGE/384/mean; runtime startup
+    // defaults. Spreading the helper on top pins BGE/384/CLS; runtime startup
     // then reclaims and re-embeds incompatible vectors.
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
@@ -455,7 +464,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     // The inference defaults are backfilled...
     expect(healed.EMBEDDING_BASE_URL).toBe("");
     expect(healed.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
-    expect(healed.EMBEDDING_POOLING).toBe("mean");
+    expect(healed.EMBEDDING_POOLING).toBe("cls");
     expect(healed.EMBEDDING_DIMENSION).toBe("384");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");

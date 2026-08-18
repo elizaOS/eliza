@@ -1,5 +1,9 @@
 /** Tests for the embedding handlers against a mocked fetch: request shape, dimension validation, and batch handling (no live endpoint). */
-import { CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS, type IAgentRuntime } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { handleBatchTextEmbedding, handleTextEmbedding } from "../src/models/embedding";
@@ -21,7 +25,13 @@ function vectorOf(length: number): number[] {
   return Array.from({ length }, (_v, i) => (i === 0 ? 1 : 0));
 }
 
-function mockEmbeddingsResponse(vectors: number[][]): Response {
+function mockEmbeddingsResponse(
+  vectors: number[][],
+  attestation: Record<string, unknown> = {
+    pooling: "cls",
+    embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  }
+): Response {
   return {
     ok: true,
     status: 200,
@@ -30,6 +40,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
       model: "BAAI/bge-small-en-v1.5",
+      ...attestation,
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     text: async () => "",
@@ -89,6 +100,7 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     const body = JSON.parse(init.body as string);
     expect(body.input).toBe("hello world");
     expect(body.model).toBe("BAAI/bge-small-en-v1.5");
+    expect(body.pooling).toBe("cls");
   });
 
   it("rejects explicit response model mismatches and omitted identity", async () => {
@@ -116,6 +128,44 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     );
     await expect(handleTextEmbedding(createRuntime(), "second")).rejects.toThrow(
       /embedding model mismatch/i
+    );
+  });
+
+  it("fails closed when response pooling/fingerprint attestation is absent or stale", async () => {
+    const vector = vectorOf(384);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vector], {}))
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vector], { pooling: "mean" }))
+      .mockResolvedValueOnce(
+        mockEmbeddingsResponse([vector], {
+          pooling: "cls",
+          embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        })
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), "missing")).rejects.toThrow(/unattested/i);
+    await expect(handleTextEmbedding(createRuntime(), "mean")).rejects.toThrow(/pooling mismatch/i);
+    await expect(handleTextEmbedding(createRuntime(), "old")).rejects.toThrow(
+      /embedding space mismatch/i
+    );
+  });
+
+  it("allows omission only behind the explicitly unsafe compatibility flag", async () => {
+    const vector = vectorOf(384);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vector], {}))
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vector], { pooling: "mean" }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+    const runtime = createRuntime({ EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE: "true" });
+
+    await expect(handleTextEmbedding(runtime, "unattested controlled sidecar")).resolves.toEqual(
+      vector
+    );
+    await expect(handleTextEmbedding(runtime, "explicit mismatch")).rejects.toThrow(
+      /pooling mismatch/i
     );
   });
 
@@ -272,6 +322,16 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects the legacy mean-pooled space before provider dispatch", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(createRuntime({ EMBEDDING_POOLING: "mean" }), { text: "hi" })
+    ).rejects.toThrow(/pooling mismatch.*mean.*cls/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("throws when no endpoint is configured (no silent default, no zero vector)", async () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
@@ -359,6 +419,8 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
               { object: "embedding", embedding: vectorOf(384), index: 0 },
             ],
             model: "BAAI/bge-small-en-v1.5",
+            pooling: "cls",
+            embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
           }),
           text: async () => "",
         }) as unknown as Response
@@ -384,6 +446,8 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
               { object: "embedding", embedding: vectorOf(384), index: 1 },
             ],
             model: "BAAI/bge-small-en-v1.5",
+            pooling: "cls",
+            embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
           }),
           text: async () => "",
         }) as unknown as Response

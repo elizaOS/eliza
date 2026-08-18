@@ -3,7 +3,7 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 
 export const CANONICAL_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5" as const;
 export const CANONICAL_EMBEDDING_DIMENSION = 384 as const;
-export const CANONICAL_EMBEDDING_POOLING = "mean" as const;
+export const CANONICAL_EMBEDDING_POOLING = "cls" as const;
 export const CANONICAL_EMBEDDING_NORMALIZATION = "l2" as const;
 export const CANONICAL_EMBEDDING_MAX_CONTEXT_TOKENS = 512 as const;
 /**
@@ -29,6 +29,15 @@ export const CANONICAL_EMBEDDING_GGUF_SHA256 =
  * every stored vector before semantic search is enabled.
  */
 export const CANONICAL_EMBEDDING_SPACE_FINGERPRINT =
+	"BAAI/bge-small-en-v1.5:384:cls:l2:v2" as const;
+
+/**
+ * The immediately preceding first-party space. It has the same model and
+ * width as the canonical space, but mean pooling makes every vector
+ * incompatible with CLS pooling. Adapters use this only to identify migration
+ * provenance; they must never accept or query it as canonical.
+ */
+export const LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT =
 	"BAAI/bge-small-en-v1.5:384:mean:l2:v1" as const;
 
 /**

@@ -6,7 +6,11 @@
  * repository's own unit and integration suites.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { stringToUuid } from "@elizaos/core/edge";
+import {
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+  stringToUuid,
+} from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,
@@ -91,7 +95,7 @@ describe("sharedMemoryTablesEnabled / createSharedMemoryStore", () => {
 
 describe("SharedMemoryStore.recordTurnPair", () => {
   test("lands rows before deferred Workers AI enrichment settles", async () => {
-    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
+    const fingerprint = CANONICAL_EMBEDDING_SPACE_FINGERPRINT;
     const { writer, inserts, embeddingUpdates } = scriptedWriter();
     let releaseEmbeddings!: (vectors: number[][]) => void;
     const embeddingGate = new Promise<number[][]>((resolve) => {
@@ -101,7 +105,11 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const store = new SharedMemoryStore(
       { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
       writer,
-      undefined,
+      {
+        async listEmbeddingBackfillCandidates() {
+          return [];
+        },
+      } as unknown as SharedAgentMemoriesReader,
       { embedTexts: async () => embeddingGate, model: fingerprint },
       (work) => scheduled.push(work),
     );
@@ -154,12 +162,15 @@ describe("SharedMemoryStore.recordTurnPair", () => {
   });
 
   test("persists and searches with one exact vector-space fingerprint", async () => {
-    const fingerprint = "BAAI/bge-small-en-v1.5:384:mean:l2:v1";
+    const fingerprint = CANONICAL_EMBEDDING_SPACE_FINGERPRINT;
     const { writer, inserts } = scriptedWriter();
     const searchCalls: unknown[][] = [];
     const reader = {
       async searchByEmbedding(...args: unknown[]) {
         searchCalls.push(args);
+        return [];
+      },
+      async listEmbeddingBackfillCandidates() {
         return [];
       },
     } as unknown as SharedAgentMemoriesReader;
@@ -185,6 +196,195 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     expect(inserts[0]?.embeddingModel).toBe(fingerprint);
     expect(inserts[1]?.embeddingModel).toBe(fingerprint);
     expect(searchCalls[0]?.[3]).toBe(fingerprint);
+  });
+
+  test("re-embeds a bounded legacy batch after live rows without delaying recordTurnPair", async () => {
+    const { writer, embeddingUpdates } = scriptedWriter();
+    const backfillCalls: unknown[][] = [];
+    const candidates = [
+      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", contentText: "legacy mean row" },
+      { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", contentText: "legacy GTE row" },
+    ];
+    const reader = {
+      async listEmbeddingBackfillCandidates(...args: unknown[]) {
+        backfillCalls.push(args);
+        return candidates;
+      },
+    } as unknown as SharedAgentMemoriesReader;
+    let releaseLive!: (vectors: number[][]) => void;
+    const liveGate = new Promise<number[][]>((resolve) => {
+      releaseLive = resolve;
+    });
+    const legacyVectors = candidates.map((_, index) => {
+      const vector = new Array(384).fill(0);
+      vector[index] = 1;
+      return vector;
+    });
+    const liveVectors = [new Array(384).fill(0), new Array(384).fill(0)];
+    liveVectors[0][2] = 1;
+    liveVectors[1][3] = 1;
+    const embedCalls: string[][] = [];
+    const scheduled: Promise<void>[] = [];
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      reader,
+      {
+        model: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        async embedTexts(texts) {
+          embedCalls.push(texts);
+          return embedCalls.length === 1 ? liveGate : legacyVectors;
+        },
+      },
+      (work) => scheduled.push(work),
+    );
+
+    await store.recordTurnPair({
+      userMessage: "current user row",
+      assistantReply: "current assistant row",
+    });
+
+    expect(scheduled).toHaveLength(1);
+    expect(embeddingUpdates).toHaveLength(0);
+    expect(backfillCalls).toHaveLength(0);
+
+    releaseLive(liveVectors);
+    await Promise.all(scheduled);
+
+    expect(embedCalls).toEqual([
+      ["current user row", "current assistant row"],
+      ["legacy mean row", "legacy GTE row"],
+    ]);
+    expect(backfillCalls[0]?.[1]).toBe(CANONICAL_EMBEDDING_SPACE_FINGERPRINT);
+    expect(backfillCalls[0]?.[2]).toBe(16);
+    expect(embeddingUpdates.slice(-2)).toEqual(
+      candidates.map((candidate, index) => ({
+        id: candidate.id,
+        scope: {
+          organizationId: ORG,
+          userId: USER,
+          agentId: stringToUuid(AGENT_KEY),
+        },
+        contentText: candidate.contentText,
+        embedding: legacyVectors[index],
+        embeddingModel: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+      })),
+    );
+    expect(CANONICAL_EMBEDDING_SPACE_FINGERPRINT).not.toBe(
+      LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+    );
+  });
+
+  test("retries the same durable legacy candidate on a later turn after backfill failure", async () => {
+    const { writer, embeddingUpdates } = scriptedWriter();
+    const candidate = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      contentText: "survives a worker crash",
+    };
+    let candidateReads = 0;
+    const reader = {
+      async listEmbeddingBackfillCandidates() {
+        candidateReads += 1;
+        return [candidate];
+      },
+    } as unknown as SharedAgentMemoriesReader;
+    let embedCall = 0;
+    const vector = new Array(384).fill(0);
+    vector[0] = 1;
+    const scheduled: Promise<void>[] = [];
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      reader,
+      {
+        model: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        async embedTexts(texts) {
+          embedCall += 1;
+          if (texts[0] === candidate.contentText && embedCall === 2) {
+            throw new Error("worker terminated during legacy batch");
+          }
+          return texts.map(() => vector);
+        },
+      },
+      (work) => scheduled.push(work),
+    );
+
+    await store.recordTurnPair({
+      userMessage: "turn one",
+      assistantReply: "reply one",
+      messageIds: {
+        user: "11111111-1111-4111-8111-111111111111",
+        assistant: "22222222-2222-4222-8222-222222222222",
+      },
+    });
+    await Promise.all(scheduled.splice(0));
+    expect(candidateReads).toBe(1);
+    expect(embeddingUpdates.some((update) => update.id === candidate.id)).toBe(false);
+
+    await store.recordTurnPair({
+      userMessage: "turn two",
+      assistantReply: "reply two",
+      messageIds: {
+        user: "33333333-3333-4333-8333-333333333333",
+        assistant: "44444444-4444-4444-8444-444444444444",
+      },
+    });
+    await Promise.all(scheduled);
+
+    expect(candidateReads).toBe(2);
+    expect(embeddingUpdates.find((update) => update.id === candidate.id)).toEqual({
+      id: candidate.id,
+      scope: {
+        organizationId: ORG,
+        userId: USER,
+        agentId: stringToUuid(AGENT_KEY),
+      },
+      contentText: candidate.contentText,
+      embedding: vector,
+      embeddingModel: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    });
+  });
+
+  test("drains more than one legacy batch in one bounded post-response job", async () => {
+    const { writer, embeddingUpdates } = scriptedWriter();
+    const candidates = Array.from({ length: 18 }, (_, index) => ({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index + 1).padStart(12, "0")}`,
+      contentText: `legacy row ${index + 1}`,
+    }));
+    let candidateRead = 0;
+    const reader = {
+      async listEmbeddingBackfillCandidates() {
+        candidateRead += 1;
+        return candidateRead === 1 ? candidates.slice(0, 16) : candidates.slice(16);
+      },
+    } as unknown as SharedAgentMemoriesReader;
+    const vector = new Array(384).fill(0);
+    vector[0] = 1;
+    const embedCalls: string[][] = [];
+    const scheduled: Promise<void>[] = [];
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+      reader,
+      {
+        model: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        async embedTexts(texts) {
+          embedCalls.push(texts);
+          return texts.map(() => vector);
+        },
+      },
+      (work) => scheduled.push(work),
+    );
+
+    await store.recordTurnPair({ userMessage: "live", assistantReply: "reply" });
+    expect(scheduled).toHaveLength(1);
+    await Promise.all(scheduled);
+
+    expect(candidateRead).toBe(2);
+    expect(embedCalls.map((texts) => texts.length)).toEqual([2, 16, 2]);
+    expect(
+      embeddingUpdates.filter((update) => candidates.some((row) => row.id === update.id)),
+    ).toHaveLength(18);
   });
 
   test("writes the pair with the runtime's storage identities and transport ids", async () => {

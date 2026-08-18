@@ -17,7 +17,7 @@ It registers **only the embedding slots** — no text/image/audio handlers, no a
 | `ModelType.TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embedding.ts` |
 | `ModelType.TEXT_EMBEDDING_BATCH` | `handleBatchTextEmbedding` | `src/models/embedding.ts` |
 
-Both POST `{ model, input, ...(explicit dimensions ? { dimensions } : {}) }` to `` `${EMBEDDING_BASE_URL}/embeddings` `` using raw `fetch` (no `@ai-sdk` dependency), parse the OpenAI-compatible response, validate the returned width against the configured dimension, and emit a `MODEL_USED` event. When `EMBEDDING_FALLBACK_BASE_URL` is configured, primary network/HTTP/shape failures retry once against the fallback endpoint; malformed caller input and invalid local config throw before fallback. Primary and fallback vectors must both match the same `EMBEDDING_DIMENSIONS`.
+Both POST `{ model, input, pooling: "cls", ...(explicit dimensions ? { dimensions } : {}) }` to `` `${EMBEDDING_BASE_URL}/embeddings` `` using raw `fetch` (no `@ai-sdk` dependency), parse the OpenAI-compatible response, require exact CLS/v2 response attestation, validate the returned width against the configured dimension, and emit a `MODEL_USED` event. When `EMBEDDING_FALLBACK_BASE_URL` is configured, primary network/HTTP/shape failures retry once against the fallback endpoint; malformed caller input and invalid local config throw before fallback. Primary and fallback vectors must both match the same `EMBEDDING_DIMENSIONS`.
 
 ### Registration priority
 
@@ -78,11 +78,12 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 | `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
 | `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
 | `EMBEDDING_MODEL` | no | `BAAI/bge-small-en-v1.5` | Model id sent as the request `model` field. |
-| `EMBEDDING_POOLING` | no | `mean` | Canonical pooling mode; other values fail closed. |
+| `EMBEDDING_POOLING` | no | `cls` | Canonical pooling mode; other values fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | no | `384` | Vector width. When explicitly set, sent as the request `dimensions` field. |
+| `EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE` | no | `false` | **Unsafe:** permits omitted pooling/fingerprint only for a separately controlled, image/argv-pinned endpoint. Explicit mismatches still fail. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
@@ -90,7 +91,7 @@ Fallback-only settings are inert until the primary plugin opt-in and primary bas
 
 ### Canonical model and dimensions
 
-`EMBEDDING_DIMENSIONS` must be exactly `384`; the model must be `BAAI/bge-small-en-v1.5` and pooling must be `mean`. Returned vectors are validated and L2-normalized. Any mismatch throws at boot and on every call.
+`EMBEDDING_DIMENSIONS` must be exactly `384`; the model must be `BAAI/bge-small-en-v1.5` and pooling must be `cls`. By default the response must also return exact `pooling: "cls"` and fingerprint `BAAI/bge-small-en-v1.5:384:cls:l2:v2`; model echo plus width is not sufficient attestation. Returned vectors are validated and L2-normalized. Any mismatch throws at boot and on every call.
 
 ### Dimension-switch caveat
 

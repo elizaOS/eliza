@@ -217,6 +217,51 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
+	it("deduplicates every stale-space and stale-width memory into the low-priority reembed drain", async () => {
+		const runtime = makeRuntime();
+		registerCanonicalModel(
+			runtime,
+			ModelType.TEXT_EMBEDDING,
+			async (_runtime, params) =>
+				params === null
+					? canonicalEmbeddingProbeMarker()
+					: canonicalTestEmbedding(),
+			"direct",
+			0,
+		);
+		const firstId = "00000000-0000-0000-0000-000000000011" as UUID;
+		const overlapId = "00000000-0000-0000-0000-000000000012" as UUID;
+		const widthId = "00000000-0000-0000-0000-000000000013" as UUID;
+		vi.spyOn(runtime.adapter, "reconcileEmbeddingSpace").mockResolvedValue({
+			activeFingerprint: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
+			changed: true,
+			staleMemoryIds: [firstId, overlapId],
+		});
+		vi.spyOn(
+			runtime.adapter,
+			"clearEmbeddingsOutsideActiveDimension",
+		).mockResolvedValue([overlapId, widthId]);
+		vi.spyOn(runtime.adapter, "getMemoriesByIds").mockImplementation(
+			async (ids) =>
+				ids.map((id) => ({
+					...makeMemory(`stale ${id}`),
+					id,
+				})),
+		);
+		const queueEmbeddingGeneration = vi
+			.spyOn(runtime, "queueEmbeddingGeneration")
+			.mockResolvedValue();
+
+		await runtime.ensureEmbeddingDimension();
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		expect(queueEmbeddingGeneration).toHaveBeenCalledTimes(3);
+		expect(queueEmbeddingGeneration.mock.calls).toEqual([
+			[expect.objectContaining({ id: firstId }), "low"],
+			[expect.objectContaining({ id: overlapId }), "low"],
+			[expect.objectContaining({ id: widthId }), "low"],
+		]);
+	});
+
 	it("pins the canonically routed embedding provider instead of plugin priority", async () => {
 		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "direct" });
 		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));

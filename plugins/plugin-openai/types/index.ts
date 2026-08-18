@@ -311,6 +311,10 @@ export interface OpenAIEmbeddingResponse {
   }>;
   /** Optional on the wire; canonical handlers reject omission at runtime. */
   model?: string;
+  /** Optional provider attestation. When present it must match CLS exactly. */
+  pooling?: string;
+  /** Optional full vector-space attestation emitted by first-party gateways. */
+  embedding_space_fingerprint?: string;
   usage: {
     prompt_tokens: number;
     total_tokens: number;
@@ -414,6 +418,9 @@ export interface OpenAIPluginConfig {
 
   /** Embedding dimensions */
   OPENAI_EMBEDDING_DIMENSIONS?: string;
+
+  /** Unsafe compatibility for a controlled endpoint without response attestation. */
+  OPENAI_EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE?: string;
 
   /** Separate API key for image description */
   OPENAI_IMAGE_DESCRIPTION_API_KEY?: string;

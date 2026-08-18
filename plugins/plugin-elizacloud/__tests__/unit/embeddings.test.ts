@@ -33,12 +33,17 @@ function makeRuntime(dimension = DIM): IAgentRuntime {
 
 function embeddingResponse(
   vectors: number[][],
-  model: string | null = "BAAI/bge-small-en-v1.5"
+  model: string | null = "BAAI/bge-small-en-v1.5",
+  attestation: Record<string, unknown> = {
+    pooling: "cls",
+    embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
+  }
 ): Response {
   return new Response(
     JSON.stringify({
       data: vectors.map((embedding, index) => ({ embedding, index })),
       ...(model === null ? {} : { model }),
+      ...attestation,
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     { status: 200, headers: { "Content-Type": "application/json" } }
@@ -121,6 +126,30 @@ describe("handleTextEmbedding init + validation", () => {
 
     await expect(handleTextEmbedding(makeRuntime(), "first")).rejects.toThrow(/model mismatch/i);
     await expect(handleTextEmbedding(makeRuntime(), "second")).rejects.toThrow(/model mismatch/i);
+  });
+
+  it("rejects missing, mean-pooled, and old-fingerprint response attestation", async () => {
+    requestRaw
+      .mockResolvedValueOnce(embeddingResponse([vec(1)], "BAAI/bge-small-en-v1.5", {}))
+      .mockResolvedValueOnce(
+        embeddingResponse([vec(1)], "BAAI/bge-small-en-v1.5", { pooling: "mean" })
+      )
+      .mockResolvedValueOnce(
+        embeddingResponse([vec(1)], "BAAI/bge-small-en-v1.5", {
+          pooling: "cls",
+          embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+        })
+      );
+
+    await expect(handleTextEmbedding(makeRuntime(), "missing")).rejects.toThrow(
+      /pooling attestation mismatch/i
+    );
+    await expect(handleTextEmbedding(makeRuntime(), "mean")).rejects.toThrow(
+      /pooling attestation mismatch/i
+    );
+    await expect(handleTextEmbedding(makeRuntime(), "old")).rejects.toThrow(
+      /embedding-space attestation mismatch/i
+    );
   });
 });
 
@@ -346,6 +375,18 @@ describe("embeddingBackoffMs cap + escalation", () => {
 });
 
 describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
+  it("pins every Cloud request to canonical CLS pooling and 384 dimensions", async () => {
+    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(1)]));
+
+    await handleBatchTextEmbedding(makeRuntime(), ["canonical contract"]);
+
+    expect(requestRaw.mock.calls[0]?.[2]?.json).toMatchObject({
+      model: "BAAI/bge-small-en-v1.5",
+      dimensions: 384,
+      pooling: "cls",
+    });
+  });
+
   it("sends the configured `dimensions` in the POST body so the gateway pins width", async () => {
     requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.4)]));
     // 384-configured agent; the response width won't match so the call rejects —
@@ -385,6 +426,8 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
       new Response(
         JSON.stringify({
           model: "BAAI/bge-small-en-v1.5",
+          pooling: "cls",
+          embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
           data: [{ embedding: vec(0.2), index: 5 }],
           usage: { prompt_tokens: 1, total_tokens: 1 },
         }),
@@ -402,6 +445,8 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
       new Response(
         JSON.stringify({
           model: "BAAI/bge-small-en-v1.5",
+          pooling: "cls",
+          embedding_space_fingerprint: "BAAI/bge-small-en-v1.5:384:cls:l2:v2",
           data: [
             { embedding: vec(0.2), index: 0 },
             { embedding: vec(0.3), index: 0 },

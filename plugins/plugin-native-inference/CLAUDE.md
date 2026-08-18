@@ -64,7 +64,7 @@ __tests__/                         Bun tests for paths, ABI, handlers, and polic
   unavailability may route to the next registered cloud handler; aborts and
   unclassified failures propagate.
 - `TEXT_EMBEDDING` registers only when explicitly enabled and is pinned to the
-  exact reviewed BGE-small-en-v1.5 GGUF (384 dimensions, mean pooling, L2
+  exact reviewed BGE-small-en-v1.5 GGUF (384 dimensions, CLS pooling, L2
   normalization, canonical fingerprint metadata). Disabled means unregistered;
   never fabricate a compatibility zero vector.
 - `TEXT_TO_SPEECH` and `TRANSCRIPTION` use the fused voice/ASR symbols and real

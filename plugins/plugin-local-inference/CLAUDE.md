@@ -180,6 +180,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `LOCAL_EMBEDDING_GPU_LAYERS` | No | GPU layers for embedding model |
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | No | Canonical embedding context size (`512`) |
 | `LOCAL_EMBEDDING_DIMENSIONS` | No | Canonical embedding width (`384`) |
+| `ELIZA_EMBED_POOLING` | No | Canonical BGE pooling (`cls`); other values fail closed before registration |
 
 Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (defaults to `~/.eliza`). Set `ELIZA_STATE_DIR` to relocate.
 

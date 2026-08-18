@@ -208,9 +208,11 @@ bun run --cwd packages/cloud/sdk test
 
 This plugin is published to npm as `@elizaos/plugin-elizacloud`. Publishing requires a compatible `@elizaos/cloud-sdk` release because the plugin depends on it directly.
 
-The embeddings route is part of the canonical BGE-small/384/mean/L2 trust
-boundary. A successful response must echo the exact requested model in its
-`model` field; omission or mismatch is rejected before any vector is stored.
+The embeddings route is part of the canonical BGE-small/384/CLS/L2 trust
+boundary. A successful response must return the exact requested `model`,
+`pooling: "cls"`, and `embedding_space_fingerprint:
+"BAAI/bge-small-en-v1.5:384:cls:l2:v2"`; omission or mismatch is rejected before
+any vector is stored.
 
 ## License
 

@@ -9,7 +9,7 @@ This package enables on-device inference for Eliza agents running on Android (AO
 | Model type | Backend |
 |---|---|
 | `TEXT_SMALL` / `TEXT_LARGE` | llama.cpp FFI (`libllama.so` via `libeliza-llama-shim.so`) |
-| `TEXT_EMBEDDING` | Fused embedding FFI with exact BGE-small-en-v1.5 GGUF, 384 dimensions, mean pooling, and L2 normalization (opt-in) |
+| `TEXT_EMBEDDING` | Fused embedding FFI with exact BGE-small-en-v1.5 GGUF, 384 dimensions, CLS pooling, and L2 normalization (opt-in) |
 | `TEXT_TO_SPEECH` | Fused Kokoro (`libelizainference.so`) — WAV output at 24 kHz |
 | `TRANSCRIPTION` | ASR via `libelizainference.so` |
 

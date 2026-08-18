@@ -135,7 +135,7 @@ export const containersEnv = {
 
   /**
    * Model the embedding sidecar serves. The managed fleet has one canonical
-   * vector space: BGE-small, 384 dimensions, mean pooling, and L2-normalized
+   * vector space: BGE-small, 384 dimensions, CLS pooling, and L2-normalized
    * output. A stale GTE (or any other) operator override fails closed instead
    * of letting a same-width incompatible model silently poison memory search.
    */

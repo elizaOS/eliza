@@ -84,7 +84,7 @@
     "pluginParameters": {
       "EMBEDDING_BASE_URL": {
         "type": "string",
-        "description": "Base URL of an OpenAI-compatible /embeddings endpoint serving BAAI/bge-small-en-v1.5 at 384 dimensions with mean pooling. Setting this (or EMBEDDING_API_KEY) activates the plugin.",
+        "description": "Base URL of an OpenAI-compatible /embeddings endpoint serving BAAI/bge-small-en-v1.5 at 384 dimensions with CLS pooling. Setting this (or EMBEDDING_API_KEY) activates the plugin.",
         "required": false,
         "sensitive": false
       },
@@ -103,9 +103,9 @@
       },
       "EMBEDDING_POOLING": {
         "type": "string",
-        "description": "Canonical pooling mode. Must remain mean.",
+        "description": "Canonical pooling mode. Must remain cls.",
         "required": false,
-        "default": "mean",
+        "default": "cls",
         "sensitive": false
       },
       "EMBEDDING_FALLBACK_BASE_URL": {
@@ -131,6 +131,13 @@
         "description": "Canonical BGE-small vector width. Values other than 384 fail closed.",
         "required": false,
         "default": "384",
+        "sensitive": false
+      },
+      "EMBEDDING_UNSAFE_ALLOW_UNATTESTED_RESPONSE": {
+        "type": "boolean",
+        "description": "UNSAFE compatibility only for a separately controlled endpoint that cannot attest pooling and fingerprint in its response. Generic endpoints must leave this false.",
+        "required": false,
+        "default": false,
         "sensitive": false
       },
       "EMBEDDING_BROWSER_URL": {

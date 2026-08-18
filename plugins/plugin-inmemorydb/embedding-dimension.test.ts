@@ -5,7 +5,12 @@
  * dimensions nor lose live results behind deleted candidates.
  */
 import { randomUUID } from "node:crypto";
-import type { Memory, UUID } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
@@ -66,25 +71,37 @@ describe("clearEmbeddingsOutsideActiveDimension", () => {
     await adapter.ensureEmbeddingDimension(384);
     const legacy = memory(vector(384), "legacy GTE vector");
     const [legacyId] = await adapter.createMemories([{ memory: legacy, tableName: "memories" }]);
+    const blank = memory(vector(384), "   ");
+    const [blankId] = await adapter.createMemories([{ memory: blank, tableName: "memories" }]);
 
-    const migrated = await adapter.reconcileEmbeddingSpace("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
+    const migrated = await adapter.reconcileEmbeddingSpace(
+      LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT
+    );
     expect(migrated.changed).toBe(true);
     expect(migrated.previousFingerprint).toBeUndefined();
     expect(migrated.staleMemoryIds).toEqual([legacyId]);
     expect((await adapter.getMemoriesByIds([legacyId]))[0]?.embedding).toBeUndefined();
+    expect((await adapter.getMemoriesByIds([blankId]))[0]?.embedding).toBeUndefined();
 
     const fresh = memory(vector(384), "canonical BGE vector");
     const [freshId] = await adapter.createMemories([{ memory: fresh, tableName: "memories" }]);
     expect(
-      await adapter.reconcileEmbeddingSpace("BAAI/bge-small-en-v1.5:384:mean:l2:v1")
-    ).toMatchObject({ changed: false, staleMemoryIds: [] });
-    expect((await adapter.getMemoriesByIds([freshId]))[0]?.embedding).toHaveLength(384);
+      await adapter.reconcileEmbeddingSpace(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
+    ).toMatchObject({
+      changed: true,
+      previousFingerprint: LEGACY_BGE_SMALL_MEAN_EMBEDDING_SPACE_FINGERPRINT,
+      staleMemoryIds: [freshId],
+    });
+    expect((await adapter.getMemoriesByIds([freshId]))[0]?.embedding).toBeUndefined();
 
-    const nextSpace = await adapter.reconcileEmbeddingSpace(
-      "BAAI/bge-small-en-v1.5:384:mean:l2:v2"
-    );
-    expect(nextSpace.previousFingerprint).toBe("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
-    expect(nextSpace.staleMemoryIds).toEqual([freshId]);
+    const canonical = memory(vector(384), "canonical BGE CLS vector");
+    const [canonicalId] = await adapter.createMemories([
+      { memory: canonical, tableName: "memories" },
+    ]);
+    expect(
+      await adapter.reconcileEmbeddingSpace(CANONICAL_EMBEDDING_SPACE_FINGERPRINT)
+    ).toMatchObject({ changed: false, staleMemoryIds: [] });
+    expect((await adapter.getMemoriesByIds([canonicalId]))[0]?.embedding).toHaveLength(384);
   });
 
   it("invalidates a vector when its source text changes without a replacement", async () => {

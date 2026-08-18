@@ -12,6 +12,7 @@ import {
   CANONICAL_EMBEDDING_DIMENSION,
   CANONICAL_EMBEDDING_MODEL,
   CANONICAL_EMBEDDING_POOLING,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
   ElizaError,
   normalizeCanonicalEmbedding,
   prepareCanonicalEmbeddingInput,
@@ -748,6 +749,13 @@ app.post("/", async (c) => {
         index,
       })),
       model,
+      ...(isCanonicalWorkersAiModel
+        ? {
+            dimensions: CANONICAL_EMBEDDING_DIMENSION,
+            pooling: CANONICAL_EMBEDDING_POOLING,
+            embedding_space_fingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+          }
+        : {}),
       usage: {
         prompt_tokens: actualTokens,
         total_tokens: actualTokens,
