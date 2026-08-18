@@ -260,7 +260,48 @@ describe("host-agent helper", () => {
       }),
     ).rejects.toThrow(/timed out after 40ms/);
     expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(
+      fs
+        .readdirSync(artifactDir)
+        .filter((entry) => entry.startsWith(".host-agent-port-")),
+    ).toEqual([]);
     fs.rmSync(path.join(artifactDir, "host-agent.log"));
+  });
+
+  it("shares one signal coordinator while concurrent children are starting", async () => {
+    const signalCounts = new Map(
+      ["SIGINT", "SIGTERM", "SIGHUP"].map((signal) => [
+        signal,
+        process.listenerCount(signal),
+      ]),
+    );
+    const starts = Array.from({ length: 12 }, (_, index) =>
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir: path.join(makeTmpDir(), String(index)),
+        readyAttempts: 10,
+        readyDelayMs: 20,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1_000)"],
+        env: {},
+      }),
+    );
+
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count + 1);
+    }
+    const results = await Promise.allSettled(starts);
+    expect(results).toHaveLength(12);
+    expect(
+      results.every(
+        (result) =>
+          result.status === "rejected" &&
+          /timed out after 200ms/.test(String(result.reason)),
+      ),
+    ).toBe(true);
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count);
+    }
   });
 
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
@@ -386,6 +427,11 @@ describe("host-agent helper", () => {
     });
 
     await agent.stop();
+    expect(
+      fs
+        .readdirSync(artifactDir)
+        .filter((entry) => entry.startsWith(".host-agent-port-")),
+    ).toEqual([]);
     expect(fs.readFileSync(agent.logPath, "utf8")).toContain(
       "fake host agent up on :0",
     );
@@ -402,6 +448,12 @@ describe("host-agent helper", () => {
   });
 
   it("starts concurrent children on distinct bound ports without probe races", async () => {
+    const signalCounts = new Map(
+      ["SIGINT", "SIGTERM", "SIGHUP"].map((signal) => [
+        signal,
+        process.listenerCount(signal),
+      ]),
+    );
     const agents = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         startDeviceE2eHostAgent({
@@ -416,6 +468,9 @@ describe("host-agent helper", () => {
       ),
     );
     try {
+      for (const [signal, count] of signalCounts) {
+        expect(process.listenerCount(signal)).toBe(count + 1);
+      }
       expect(new Set(agents.map((agent) => agent.port)).size).toBe(12);
       const responses = await Promise.all(
         agents.map((agent) => fetch(`${agent.apiBase}/api/health`)),
@@ -423,6 +478,9 @@ describe("host-agent helper", () => {
       expect(responses.every((response) => response.ok)).toBe(true);
     } finally {
       await Promise.all(agents.map((agent) => agent.stop()));
+    }
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count);
     }
   });
 

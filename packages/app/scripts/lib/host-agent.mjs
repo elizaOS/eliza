@@ -5,6 +5,7 @@
  * the stop handle used by iOS/Android device lanes.
  */
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { waitForAdvertisedPort } from "../../../scripts/e2e-ports.mjs";
@@ -18,6 +19,38 @@ export const DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS = 100;
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const activeSignalStops = new Set();
+const sharedSignalHandlers = new Map();
+
+function signalExitCode(signal) {
+  return 128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15);
+}
+
+/** Coordinate all live children before honoring a parent termination signal. */
+function registerSignalStop(stop) {
+  activeSignalStops.add(stop);
+  if (sharedSignalHandlers.size === 0) {
+    for (const signal of SIGNALS) {
+      const handler = () => {
+        const stops = [...activeSignalStops];
+        void Promise.allSettled(
+          stops.map((activeStop) => activeStop()),
+        ).finally(() => process.exit(signalExitCode(signal)));
+      };
+      sharedSignalHandlers.set(signal, handler);
+      process.once(signal, handler);
+    }
+  }
+
+  return () => {
+    activeSignalStops.delete(stop);
+    if (activeSignalStops.size > 0) return;
+    for (const [signal, handler] of sharedSignalHandlers) {
+      process.off(signal, handler);
+    }
+    sharedSignalHandlers.clear();
+  };
+}
 
 export function parsePort(value, label = "port") {
   const raw = String(value ?? "").trim();
@@ -258,7 +291,7 @@ export async function startDeviceE2eHostAgent({
   const logPath = path.join(artifactDir, "host-agent.log");
   const portFile = path.join(
     artifactDir,
-    `.host-agent-port-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    `.host-agent-port-${process.pid}-${randomUUID()}`,
   );
   fs.rmSync(portFile, { force: true });
   const logFd = fs.openSync(logPath, "w");
@@ -323,23 +356,7 @@ export async function startDeviceE2eHostAgent({
     return stopPromise;
   };
 
-  const signalHandlers = new Map();
-  for (const signal of SIGNALS) {
-    const handler = () => {
-      void stop().finally(() =>
-        process.exit(
-          128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15),
-        ),
-      );
-    };
-    signalHandlers.set(signal, handler);
-    process.once(signal, handler);
-  }
-  const removeSignalHandlers = () => {
-    for (const [signal, handler] of signalHandlers) {
-      process.off(signal, handler);
-    }
-  };
+  const unregisterSignalStop = registerSignalStop(stop);
 
   try {
     const port = await Promise.race([
@@ -370,14 +387,14 @@ export async function startDeviceE2eHostAgent({
       logPath,
       pid: child.pid,
       async stop() {
-        removeSignalHandlers();
+        unregisterSignalStop();
         await stop();
         log?.(`stopped host agent at ${apiBase}`);
       },
     };
   } catch (error) {
     // error-policy:J2 stop child then rethrow readiness/spawn failure
-    removeSignalHandlers();
+    unregisterSignalStop();
     await stop();
     throw error;
   }
