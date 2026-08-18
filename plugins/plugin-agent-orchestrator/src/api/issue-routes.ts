@@ -1,11 +1,6 @@
 /**
- * Issue Route Handlers
- *
- * Handles routes for GitHub issue management:
- * - List issues, create issue
- * - Get issue, comment on issue, close issue
- *
- * @module api/issue-routes
+ * HTTP boundary for listing and mutating GitHub issues through the coding
+ * workspace service. Route inputs are validated before reaching Octokit.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -17,6 +12,20 @@ import {
   sendError,
   sendJson,
 } from "./route-utils.js";
+
+const ISSUE_LIST_STATES = ["open", "closed", "all"] as const;
+type IssueListState = (typeof ISSUE_LIST_STATES)[number];
+
+function isIssueListState(value: string): value is IssueListState {
+  return ISSUE_LIST_STATES.some((state) => state === value);
+}
+
+function parseIssueListState(raw: string | null): IssueListState | null {
+  if (raw === null || raw === "") {
+    return "open";
+  }
+  return isIssueListState(raw) ? raw : null;
+}
 
 /**
  * Handle issue routes (/api/issues/*)
@@ -44,18 +53,18 @@ export async function handleIssueRoutes(
         sendError(res, "repo query parameter required", 400);
         return true;
       }
-      const state = url.searchParams.get("state") as
-        | "open"
-        | "closed"
-        | "all"
-        | null;
+      const state = parseIssueListState(url.searchParams.get("state"));
+      if (state === null) {
+        sendError(res, "state must be one of: open, closed, all", 400);
+        return true;
+      }
       const labelsParam = url.searchParams.get("labels");
       const labels = labelsParam
         ? labelsParam.split(",").map((s) => s.trim())
         : undefined;
 
       const issues = await ctx.workspaceService.listIssues(repo, {
-        state: state ?? "open",
+        state,
         labels,
       });
       sendJson(res, issues);

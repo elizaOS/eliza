@@ -1,4 +1,6 @@
 // Handles v1 cloud API v1 cron reap orphan shared bridges route traffic with route-local auth expectations.
+
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { reapOrphanedSharedBridges } from "@/lib/services/orphan-shared-bridge-reaper";
@@ -28,12 +30,23 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   if (authError) return authError;
 
   const url = new URL(c.req.url);
-  const minAgeMs = Number(url.searchParams.get("minAgeMs"));
-  const max = Number(url.searchParams.get("max"));
+  const minAgeMs = parseCanonicalInteger(url.searchParams.get("minAgeMs"), {
+    min: 1,
+  });
+  const max = parseCanonicalInteger(url.searchParams.get("max"), { min: 1 });
+  if (minAgeMs === "invalid" || max === "invalid") {
+    return c.json(
+      {
+        success: false,
+        error: "minAgeMs and max must be canonical positive integers",
+      },
+      400,
+    );
+  }
 
   const result = await reapOrphanedSharedBridges({
-    minAgeMs: Number.isFinite(minAgeMs) && minAgeMs > 0 ? minAgeMs : undefined,
-    max: Number.isFinite(max) && max > 0 ? max : undefined,
+    minAgeMs,
+    max,
   });
 
   logger.info("[Reap Orphan Shared Bridges] sweep complete", { ...result });

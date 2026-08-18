@@ -597,10 +597,16 @@ function roleHolderText(role: AndroidRoleStatus): string {
   return role.holders.length > 0 ? role.holders.join(", ") : "none";
 }
 
-function numberFromTelUri(uri: string | null): string {
+export function numberFromTelUri(uri: string | null): string {
   if (!uri) return "";
   if (!uri.startsWith("tel:")) return uri;
-  return decodeURIComponent(uri.slice("tel:".length));
+  try {
+    return decodeURIComponent(uri.slice("tel:".length));
+  } catch {
+    // error-policy:J4 An invalid launch number becomes visibly unavailable and
+    // leaves the dial action disabled instead of preserving a dialable value.
+    return "";
+  }
 }
 
 function primaryPhoneNumber(contact: ContactSummary): string {

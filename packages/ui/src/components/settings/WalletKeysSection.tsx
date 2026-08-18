@@ -89,13 +89,19 @@ function tryExtractAgentAddress(rawValue: string): string | null {
   return null;
 }
 
-function entryDisplayLabel(meta: VaultEntryMeta): string {
+export function entryDisplayLabel(meta: VaultEntryMeta): string {
   if (meta.label && meta.label !== meta.key) return meta.label;
   // Make the per-agent agent.<id>.wallet.<chain> shape human-friendly.
   const parts = meta.key.split(".");
   if (parts.length === 4 && parts[0] === "agent" && parts[2] === "wallet") {
-    const agentId = decodeURIComponent(parts[1] ?? "");
-    return `${agentId} (${parts[3]})`;
+    const encodedAgentId = parts[1] ?? "";
+    try {
+      return `${decodeURIComponent(encodedAgentId)} (${parts[3]})`;
+    } catch {
+      // error-policy:J4 An invalid persisted key is shown as explicitly
+      // unavailable instead of exposing its malformed segment as an agent.
+      return `Unavailable agent (${parts[3]})`;
+    }
   }
   return meta.key;
 }

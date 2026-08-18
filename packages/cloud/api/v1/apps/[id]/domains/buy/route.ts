@@ -77,7 +77,17 @@ app.post("/", domainBuyRateLimit, async (c) => {
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
-    const parsed = BuySchema.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch (error) {
+      // error-policy:J3 Only JSON syntax failures are invalid client input.
+      if (error instanceof SyntaxError) {
+        return c.json({ success: false, error: "Invalid JSON body" }, 400);
+      }
+      throw error;
+    }
+    const parsed = BuySchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
         {

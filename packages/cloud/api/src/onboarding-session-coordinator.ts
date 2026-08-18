@@ -960,7 +960,13 @@ export class OnboardingSessionCoordinator {
         if (pathname !== "/turn") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          // error-policy:J3 malformed JSON is an explicit invalid request.
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
         if (!isCoordinatorRequest(body)) {
           return Response.json(
             { error: "Invalid coordinator request" },

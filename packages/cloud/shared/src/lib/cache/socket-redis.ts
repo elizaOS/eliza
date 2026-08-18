@@ -14,6 +14,8 @@
  * a thin `node:net`/`node:tls` shim — same client, two transports.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 type SocketLike = {
   readable: ReadableStream<Uint8Array>;
   writable: WritableStream<Uint8Array>;
@@ -115,7 +117,27 @@ interface ParsedUrl {
   tls: boolean;
 }
 
-function parseRedisUrl(url: string): ParsedUrl {
+export class RedisUrlUserinfoError extends ElizaError {
+  constructor(field: "password", cause: unknown) {
+    super(`Redis URL ${field} has malformed percent-encoding`, {
+      code: "REDIS_URL_USERINFO_INVALID",
+      context: { field },
+      cause,
+    });
+  }
+}
+
+export function decodeRedisUrlPassword(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch (cause) {
+    // error-policy:J2 attach a non-secret field name while preserving the
+    // URIError that made the Redis credential invalid.
+    throw new RedisUrlUserinfoError("password", cause);
+  }
+}
+
+export function parseRedisUrl(url: string): ParsedUrl {
   const u = new URL(url);
   if (u.protocol !== "redis:" && u.protocol !== "rediss:") {
     throw new Error(`Unsupported Redis URL scheme: ${u.protocol}`);
@@ -124,7 +146,7 @@ function parseRedisUrl(url: string): ParsedUrl {
     hostname: u.hostname,
     port: u.port ? Number(u.port) : 6379,
     username: u.username || undefined,
-    password: u.password ? decodeURIComponent(u.password) : undefined,
+    password: u.password ? decodeRedisUrlPassword(u.password) : undefined,
     tls: u.protocol === "rediss:",
   };
 }

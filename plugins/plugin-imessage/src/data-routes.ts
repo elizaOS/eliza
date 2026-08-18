@@ -24,6 +24,7 @@ import {
   type RouteRequest,
   type RouteResponse,
 } from "@elizaos/core";
+import { type ParsedContactId, parseIMessageContactId } from "./contact-path.js";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 
@@ -128,17 +129,19 @@ function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   return isIMessageServiceLike(service) ? service : null;
 }
 
-/**
- * Extract the `:id` segment from a contact path like
- * `/api/imessage/contacts/ABCD-EFGH-...`. Returns null if the path
- * doesn't match.
- */
-function parseContactId(pathname: string): string | null {
-  const prefix = "/api/imessage/contacts/";
-  if (!pathname.startsWith(prefix)) return null;
-  const rest = pathname.slice(prefix.length);
-  if (!rest) return null;
-  return decodeURIComponent(rest);
+function rejectContactId(
+  res: RouteResponse,
+  parsed: ParsedContactId
+): parsed is { ok: true; id: string } {
+  if (parsed.ok) return true;
+  if (parsed.reason === "malformed") {
+    res
+      .status(400)
+      .json(buildSetupError("bad_request", "Invalid contact id: malformed URL encoding"));
+    return false;
+  }
+  res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  return false;
 }
 
 const DEFAULT_MESSAGES_LIMIT = 50;
@@ -375,11 +378,11 @@ async function handleUpdateContact(
   runtime: IAgentRuntime
 ): Promise<void> {
   const pathname = req.url ?? "";
-  const id = parseContactId(pathname.split("?")[0]);
-  if (!id) {
-    res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  const parsed = parseIMessageContactId(pathname.split("?")[0]);
+  if (!rejectContactId(res, parsed)) {
     return;
   }
+  const id = parsed.id;
   const service = resolveService(runtime);
   if (!service) {
     res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"));
@@ -435,11 +438,11 @@ async function handleDeleteContact(
   runtime: IAgentRuntime
 ): Promise<void> {
   const pathname = req.url ?? "";
-  const id = parseContactId(pathname.split("?")[0]);
-  if (!id) {
-    res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
+  const parsed = parseIMessageContactId(pathname.split("?")[0]);
+  if (!rejectContactId(res, parsed)) {
     return;
   }
+  const id = parsed.id;
   const service = resolveService(runtime);
   if (!service) {
     res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"));

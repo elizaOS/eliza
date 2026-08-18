@@ -14,12 +14,17 @@
  * — the value lives there, the vault stores only the reference.
  */
 
-export type { SavedLogin, SavedLoginSummary } from "./credentials.js";
+export type {
+  SavedLogin,
+  SavedLoginKeyFormatErrorContext,
+  SavedLoginSummary,
+} from "./credentials.js";
 export {
   deleteSavedLogin,
   getAutofillAllowed,
   getSavedLogin,
   listSavedLogins,
+  SavedLoginKeyFormatError,
   setAutofillAllowed,
   setSavedLogin,
 } from "./credentials.js";

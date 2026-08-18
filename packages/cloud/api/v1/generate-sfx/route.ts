@@ -123,7 +123,14 @@ app.post("/", async (c) => {
   try {
     const { user, apiKeyId, admissionSnapshot } =
       await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
-    const request = sfxRequestSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const request = sfxRequestSchema.parse(rawBody);
     const definition = getSupportedSfxModelDefinition(request.model);
     if (!definition) {
       return jsonError(

@@ -1,21 +1,13 @@
 /**
- * Computer-use compat HTTP routes — moved out of
- * `packages/app-core/src/api/computer-use-compat-routes.ts`.
- *
- * Exposes:
- *   GET  /api/computer-use/approvals          (auth)
- *   GET  /api/computer-use/approvals/stream   (token-or-header auth, SSE)
- *   POST /api/computer-use/approval-mode      (sensitive auth)
- *   POST /api/computer-use/approvals/:id      (sensitive auth)
- *
- * Service injection: pulls the running ComputerUseService off the agent
- * runtime via `runtime.getService("computeruse")`. Uses a structural
- * `ComputerUseServiceLike` interface so the runtime type stays loose.
+ * Authenticated compatibility routes for computer-use approvals and approval
+ * mode. The handlers resolve the service structurally from the active runtime
+ * so the plugin bridge does not require a concrete runtime implementation.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveAliasedEnvValue } from "@elizaos/core";
+import { decodePathComponent } from "./route-utils.js";
 
 type CompatRuntimeState = {
   current: {
@@ -437,6 +429,21 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
+    const approvalId = match[1];
+    if (approvalId === undefined) {
+      sendJsonErrorResponse(res, 400, "Missing approval id");
+      return true;
+    }
+    const decodedApprovalId = decodePathComponent(approvalId);
+    if (decodedApprovalId === null) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "Invalid approval id: malformed URL encoding",
+      );
+      return true;
+    }
+
     const body = await readCompatJsonBody(req, res);
     if (!body) {
       return true;
@@ -453,14 +460,8 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
-    const approvalId = match[1];
-    if (approvalId === undefined) {
-      sendJsonErrorResponse(res, 400, "Missing approval id");
-      return true;
-    }
-
     const resolution = service.resolveApproval(
-      decodeURIComponent(approvalId),
+      decodedApprovalId,
       body.approved,
       typeof body.reason === "string" ? body.reason : undefined,
     );

@@ -5,6 +5,7 @@
  * plugin entry.
  */
 import type http from "node:http";
+import { decodePathComponent } from "./route-utils.js";
 
 const EMPTY_APPROVAL_SNAPSHOT = {
   mode: "full_control",
@@ -66,9 +67,16 @@ export async function handleComputerUseRoutes(
     pathname,
   );
   if (method === "POST" && approvalDecision) {
+    const approvalId = decodePathComponent(approvalDecision[1] ?? "");
+    if (approvalId === null) {
+      sendJson(res, 400, {
+        error: "Invalid approval id: malformed URL encoding",
+      });
+      return true;
+    }
     sendJson(res, 404, {
       error: "Computer-use approval is not pending.",
-      id: decodeURIComponent(approvalDecision[1] ?? ""),
+      id: approvalId,
     });
     return true;
   }

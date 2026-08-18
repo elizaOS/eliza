@@ -1,5 +1,8 @@
-// Handles v1 cloud API v1 twitter connect route traffic with route-local auth expectations.
-import { Hono } from "hono";
+/**
+ * Starts organization-scoped X OAuth connections after validating the caller's
+ * requested connection role and post-authentication redirect.
+ */
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -16,9 +19,35 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const ConnectBody = z.object({
-  connectionRole: z.enum(["agent", "owner"]).optional(),
+  connectionRole: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.enum(["agent", "owner"]).optional(),
+  ),
   redirectUrl: z.string().optional(),
 });
+
+function invalidConnectBody(
+  c: Context<AppEnv>,
+  parsed: z.ZodSafeParseError<unknown>,
+) {
+  const issue = parsed.error.issues[0];
+  if (issue?.path[0] === "connectionRole") {
+    return c.json(
+      {
+        error: "invalid_connection_role",
+        message: 'connectionRole must be "agent" or "owner".',
+      },
+      400,
+    );
+  }
+  return c.json(
+    {
+      error: "invalid_request_body",
+      message: issue?.message ?? "Invalid request body.",
+    },
+    400,
+  );
+}
 
 app.post("/", async (c) => {
   try {
@@ -31,10 +60,28 @@ app.post("/", async (c) => {
       );
     }
 
-    const rawBody = await c.req.json().catch(() => ({}));
+    const rawText = await c.req.text();
+    let rawBody: unknown = {};
+    if (rawText.trim()) {
+      try {
+        rawBody = JSON.parse(rawText);
+      } catch {
+        // error-policy:J3 malformed JSON is rejected as invalid request input.
+        return c.json(
+          {
+            error: "invalid_request_body",
+            message: "Request body must be valid JSON.",
+          },
+          400,
+        );
+      }
+    }
     const parsedBody = ConnectBody.safeParse(rawBody);
-    const body = parsedBody.success ? parsedBody.data : {};
-    const connectionRole = body.connectionRole === "agent" ? "agent" : "owner";
+    if (!parsedBody.success) {
+      return invalidConnectBody(c, parsedBody);
+    }
+    const body = parsedBody.data;
+    const connectionRole = body.connectionRole ?? "owner";
     const baseUrl =
       c.env?.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||

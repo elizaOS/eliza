@@ -26,6 +26,31 @@ function parseSlot(value: unknown): VertexTuningSlot | undefined {
     : undefined;
 }
 
+class VertexAssignmentActiveError extends Error {
+  constructor(message = "Invalid active") {
+    super(message);
+    this.name = "VertexAssignmentActiveError";
+  }
+}
+
+function parseActiveOnlyQuery(searchParams: URLSearchParams): boolean {
+  const requested = searchParams.getAll("active");
+  if (requested.length > 1) {
+    throw new VertexAssignmentActiveError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return true;
+  }
+  if (raw === "true") {
+    return true;
+  }
+  if (raw === "false") {
+    return false;
+  }
+  throw new VertexAssignmentActiveError();
+}
+
 async function ensureGlobalAccess(request: Request): Promise<void> {
   const admin = await requireAdmin(request);
   if (admin.role !== "super_admin") {
@@ -39,11 +64,6 @@ async function __hono_GET(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
-    // Tuned-model tenant identity, not leftover models catalogOnly or
-    // relationships-scope tax. parseScope maps unknown tokens to
-    // organization, so scope=GLOBAL / USER listed org assignments.
-    // Missing / empty still means unfiltered. Garbage 400s before
-    // listVisibleAssignments. POST/DELETE and slot/active untouched.
     const rawScope = searchParams.get("scope");
     if (
       rawScope !== null &&
@@ -57,7 +77,16 @@ async function __hono_GET(request: Request) {
     const scope = parseScope(rawScope);
     const rawSlot = searchParams.get("slot");
     const slot = parseSlot(rawSlot);
-    const activeOnly = searchParams.get("active") !== "false";
+    let activeOnly: boolean;
+    try {
+      activeOnly = parseActiveOnlyQuery(searchParams);
+      // error-policy:J1 invalid query values become an HTTP 400 response.
+    } catch (activeError) {
+      if (activeError instanceof VertexAssignmentActiveError) {
+        return Response.json({ error: activeError.message }, { status: 400 });
+      }
+      throw activeError;
+    }
 
     if (rawSlot && !slot) {
       return Response.json({ error: "Invalid slot." }, { status: 400 });

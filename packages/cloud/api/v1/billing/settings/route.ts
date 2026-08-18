@@ -87,7 +87,13 @@ app.put(
     try {
       const user = await requireUserOrApiKeyWithOrg(c);
 
-      const body = await c.req.json();
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        // error-policy:J3 malformed JSON is an explicit invalid request.
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
       const validation = UpdateSettingsSchema.safeParse(body);
 
       if (!validation.success) {

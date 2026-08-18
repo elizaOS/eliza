@@ -29,6 +29,15 @@ type OwnedAppContext = {
   appId: string;
 };
 
+function decodeManagedDomainParam(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed domain encoding is invalid path input.
+    return null;
+  }
+}
+
 export async function loadOwnedApp(
   c: AppContext,
 ): Promise<GuardFailure | OwnedAppContext> {
@@ -59,11 +68,18 @@ export async function loadCloudflareManagedDomain(
   const domainParam = c.req.param("domain");
   if (!domainParam)
     return { error: "missing path params", status: 400 as const };
+  const domain = decodeManagedDomainParam(domainParam);
+  if (domain === null) {
+    return {
+      error: "invalid domain: malformed URL encoding",
+      status: 400 as const,
+    };
+  }
 
   // getOwnDomainRow is already scoped to the caller's organization.
   const md = await managedDomainsService.getOwnDomainRow(
     base.user.organization_id,
-    decodeURIComponent(domainParam),
+    domain,
   );
   if (!md || md.appId !== base.appId) {
     return { error: "Domain not attached to this app", status: 404 as const };

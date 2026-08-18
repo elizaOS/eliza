@@ -281,15 +281,29 @@ export async function handleNotificationRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/notifications")) return false;
 
-  let listRequest: { url: URL; limit: number | undefined } | undefined;
+  let listRequest:
+    | { url: URL; limit: number | undefined; unreadOnly: boolean }
+    | undefined;
   if (method === "GET" && pathname === "/api/notifications") {
     const url = new URL(req.url ?? pathname, "http://localhost");
+    const requestedUnreadValues = url.searchParams.getAll("unreadOnly");
+    const requestedUnread = requestedUnreadValues[0];
+    if (
+      requestedUnreadValues.length > 1 ||
+      (requestedUnread != null &&
+        requestedUnread !== "" &&
+        requestedUnread !== "true" &&
+        requestedUnread !== "false")
+    ) {
+      helpers.error(res, "Invalid unreadOnly", 400);
+      return true;
+    }
     const limit = parseLimit(url.searchParams.get("limit"));
     if (limit === null) {
       helpers.error(res, "limit must be a positive integer", 400);
       return true;
     }
-    listRequest = { url, limit };
+    listRequest = { url, limit, unreadOnly: requestedUnread === "true" };
   }
 
   const service = getService(state);
@@ -299,9 +313,9 @@ export async function handleNotificationRoute(
 
   // ── GET /api/notifications ────────────────────────────────────────
   if (listRequest) {
-    const { url, limit } = listRequest;
+    const { url, limit, unreadOnly } = listRequest;
     const notifications = service.list({
-      unreadOnly: url.searchParams.get("unreadOnly") === "true",
+      unreadOnly,
       category: parseCategory(url.searchParams.get("category")),
       limit,
     });

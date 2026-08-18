@@ -28,6 +28,15 @@ function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
   return null;
 }
 
+function decodeCodingContainerId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed container encoding is invalid path input.
+    return null;
+  }
+}
+
 async function forwardContainerSync(
   c: AppContext,
   user: Pick<AuthedUser, "id"> & { organization_id: string },
@@ -152,6 +161,16 @@ app.post("/", async (c) => {
     if (!containerId) {
       return c.json({ success: false, error: "Container id required" }, 400);
     }
+    const decodedContainerId = decodeCodingContainerId(containerId);
+    if (decodedContainerId === null) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid container id: malformed URL encoding",
+        },
+        400,
+      );
+    }
 
     const body = (await c.req.json().catch(() => null)) as unknown;
     const parsed = SyncCloudCodingContainerRequestSchema.safeParse(body);
@@ -165,12 +184,7 @@ app.post("/", async (c) => {
       );
     }
 
-    return forwardContainerSync(
-      c,
-      user,
-      decodeURIComponent(containerId),
-      parsed.data,
-    );
+    return forwardContainerSync(c, user, decodedContainerId, parsed.data);
   } catch (error) {
     logger.error("[CodingContainers API] sync error:", error);
     return failureResponse(c, error);

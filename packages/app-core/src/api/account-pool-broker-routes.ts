@@ -7,7 +7,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { isLoopbackRemoteAddress } from "@elizaos/shared";
+import {
+  isLoopbackRemoteAddress,
+  parseCanonicalInteger,
+} from "@elizaos/shared";
 import {
   AccountPoolBroker,
   parseBrokerLeaseRequest,
@@ -104,10 +107,8 @@ function methodAllowed(
 }
 
 function parseOptionalMs(value: string | null): number | undefined | null {
-  if (value === null || value === "") return undefined;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
-  return parsed;
+  const parsed = parseCanonicalInteger(value);
+  return parsed === "invalid" ? null : parsed;
 }
 
 function decodeRouteSegment(value: string): string | null {

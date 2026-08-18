@@ -17,7 +17,25 @@ async function __hono_GET(request: Request) {
     const region = searchParams.get("region") || "us-central1";
     const jobName = searchParams.get("name");
     const jobId = searchParams.get("jobId");
-    const persistedOnly = searchParams.get("persisted") === "true";
+    const requestedPersistedValues = searchParams.getAll("persisted");
+    const requestedPersisted = requestedPersistedValues[0];
+    if (
+      requestedPersistedValues.length > 1 ||
+      (requestedPersisted != null &&
+        requestedPersisted !== "" &&
+        requestedPersisted !== "true" &&
+        requestedPersisted !== "false")
+    ) {
+      return Response.json(
+        {
+          error: "Invalid persisted",
+          message:
+            'persisted must be specified at most once as "true" or "false".',
+        },
+        { status: 400 },
+      );
+    }
+    const persistedOnly = requestedPersisted === "true";
 
     const viewer = {
       organizationId: user.organization_id,

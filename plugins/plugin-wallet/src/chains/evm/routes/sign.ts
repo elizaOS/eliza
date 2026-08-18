@@ -136,10 +136,17 @@ function readChainId(body: unknown): number {
     throw new EvmSignInputError("chainId required");
   }
   const c = (body as { chainId?: unknown }).chainId;
-  if (typeof c === "number") return c;
+  if (typeof c === "number" && Number.isSafeInteger(c) && c > 0) return c;
   if (typeof c === "string") {
-    const n = c.startsWith("0x") ? Number.parseInt(c.slice(2), 16) : Number(c);
-    if (Number.isFinite(n)) return n;
+    const raw = c.trim();
+    // Browser signing accepts canonical unsigned decimal or 0x-prefixed hex.
+    if (/^0x[0-9a-fA-F]+$/.test(raw)) {
+      const n = Number.parseInt(raw.slice(2), 16);
+      if (Number.isSafeInteger(n) && n > 0) return n;
+    } else if (/^[1-9]\d*$/.test(raw)) {
+      const n = Number(raw);
+      if (Number.isSafeInteger(n)) return n;
+    }
   }
   throw new EvmSignInputError("chainId must be a number or hex string");
 }

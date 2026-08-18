@@ -149,7 +149,14 @@ app.post("/", async (c) => {
   try {
     const { user, apiKeyId, admissionSnapshot } =
       await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
-    const request = musicRequestSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const request = musicRequestSchema.parse(rawBody);
     const definition = getSupportedMusicModelDefinition(request.model);
     if (!definition) {
       return jsonError(

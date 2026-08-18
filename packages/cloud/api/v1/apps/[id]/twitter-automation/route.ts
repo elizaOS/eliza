@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 apps id twitter automation route traffic with route-local auth expectations.
+/** Handles Twitter automation configuration for cloud applications. */
 import { Hono } from "hono";
 import { z } from "zod";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
@@ -48,7 +48,13 @@ async function __hono_POST(
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    // error-policy:J3 malformed JSON is invalid request input.
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const parsed = TwitterAutomationConfigSchema.safeParse(body);
 
   if (!parsed.success) {

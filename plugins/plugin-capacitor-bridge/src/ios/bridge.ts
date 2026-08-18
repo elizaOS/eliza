@@ -1491,6 +1491,15 @@ async function persistTranscript(
 	return transcript;
 }
 
+function decodeTranscriptId(raw: string): UUID | null {
+	try {
+		return decodeURIComponent(raw) as UUID;
+	} catch {
+		// error-policy:J3 Malformed transcript encoding is invalid path input.
+		return null;
+	}
+}
+
 async function handleTranscriptsRoute(
 	runtime: IAgentRuntime,
 	method: string,
@@ -1529,7 +1538,12 @@ async function handleTranscriptsRoute(
 
 	const idMatch = pathname.match(/^\/api\/transcripts\/([^/]+)$/);
 	if (!idMatch) return null;
-	const id = decodeURIComponent(idMatch[1] ?? "") as UUID;
+	const id = decodeTranscriptId(idMatch[1] ?? "");
+	if (id === null) {
+		return jsonResponse(400, {
+			error: "invalid transcript id: malformed URL encoding",
+		});
+	}
 
 	if (method === "GET") {
 		const transcript = await getTranscript(runtime, id);

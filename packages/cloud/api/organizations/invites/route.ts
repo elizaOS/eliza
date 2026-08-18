@@ -31,7 +31,13 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       );
     }
 
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
     const validated = createInviteSchema.parse(body);
 
     const result = await invitesService.createInvite({

@@ -8,6 +8,7 @@
  */
 import type http from "node:http";
 import type { InferenceTurnSummary, Log } from "@elizaos/core";
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -278,13 +279,23 @@ export async function handleDevCompatRoutes(
       });
       return true;
     }
-    const maxLinesRaw = url.searchParams.get("maxLines");
-    const maxBytesRaw = url.searchParams.get("maxBytes");
-    const maxLines = maxLinesRaw ? Number(maxLinesRaw) : undefined;
-    const maxBytes = maxBytesRaw ? Number(maxBytesRaw) : undefined;
+    const maxLines = parseCanonicalInteger(url.searchParams.get("maxLines"), {
+      min: 1,
+    });
+    const maxBytes = parseCanonicalInteger(url.searchParams.get("maxBytes"), {
+      min: 1,
+    });
+    if (maxLines === "invalid" || maxBytes === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "maxLines and maxBytes must be canonical positive integers",
+      );
+      return true;
+    }
     const result = readDevConsoleLogTail(logPath, {
-      maxLines: Number.isFinite(maxLines) ? maxLines : undefined,
-      maxBytes: Number.isFinite(maxBytes) ? maxBytes : undefined,
+      maxLines,
+      maxBytes,
     });
     if (result.ok === false) {
       sendJsonResponse(res, 404, { error: result.error });
@@ -311,17 +322,21 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseCanonicalInteger(url.searchParams.get("limit"), {
+      min: 1,
+    });
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildVoiceLatencyDevPayload } = await import(
       "@elizaos/plugin-local-inference/services"
     );
-    const payload = buildVoiceLatencyDevPayload(
-      undefined,
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
-    );
+    const payload = buildVoiceLatencyDevPayload(undefined, limit);
     sendJsonResponse(res, 200, payload);
     return true;
   }
@@ -341,17 +356,21 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseCanonicalInteger(url.searchParams.get("limit"), {
+      min: 1,
+    });
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildDeviceResourceMetricsDevPayload } = await import(
       "@elizaos/plugin-local-inference/services"
     );
-    const payload = buildDeviceResourceMetricsDevPayload(
-      undefined,
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
-    );
+    const payload = buildDeviceResourceMetricsDevPayload(undefined, limit);
     sendJsonResponse(res, 200, payload);
     return true;
   }
@@ -369,8 +388,17 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseCanonicalInteger(url.searchParams.get("limit"), {
+      min: 1,
+    });
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildInferenceTimingDevPayload } = await import("@elizaos/core");
     const persistedTurns = state.current
       ? (
@@ -384,12 +412,7 @@ export async function handleDevCompatRoutes(
             (summary): summary is InferenceTurnSummary => summary !== null,
           )
       : [];
-    const payload = buildInferenceTimingDevPayload(
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
-      persistedTurns,
-    );
+    const payload = buildInferenceTimingDevPayload(limit, persistedTurns);
     sendJsonResponse(res, 200, payload);
     return true;
   }

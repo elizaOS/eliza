@@ -46,12 +46,42 @@ export interface SavedLoginSummary {
   readonly lastModified: number;
 }
 
+export interface SavedLoginKeyFormatErrorContext {
+  readonly operation: "listSavedLogins";
+  readonly domain: string;
+}
+
+/** A persisted saved-login key contains an invalid encoded account segment. */
+export class SavedLoginKeyFormatError extends Error {
+  readonly code = "VAULT_SAVED_LOGIN_KEY_FORMAT_INVALID";
+
+  constructor(
+    readonly context: SavedLoginKeyFormatErrorContext,
+    options?: ErrorOptions,
+  ) {
+    super(
+      "vault credentials: persisted saved-login key has malformed account encoding",
+      options,
+    );
+    this.name = "SavedLoginKeyFormatError";
+  }
+}
+
 function encodeAccount(username: string): string {
   return encodeURIComponent(username).replace(/\./g, "%2E");
 }
 
-function decodeAccount(segment: string): string {
-  return decodeURIComponent(segment);
+function decodeAccount(segment: string, domain: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch (cause) {
+    // error-policy:J2 Persisted key corruption must abort the listing while
+    // keeping the account segment out of diagnostics because it may be secret.
+    throw new SavedLoginKeyFormatError(
+      { operation: "listSavedLogins", domain },
+      { cause },
+    );
+  }
 }
 
 /** Lower-case domains so `Github.com` and `github.com` collide. */
@@ -134,7 +164,7 @@ export async function listSavedLogins(
     // decrypt the value to render the listing UI.
     summaries.push({
       domain: parsed.domain,
-      username: decodeAccount(parsed.account),
+      username: decodeAccount(parsed.account, parsed.domain),
       lastModified: descriptor.lastModified,
     });
   }

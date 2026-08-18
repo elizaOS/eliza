@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 eliza google calendar events eventid route traffic with route-local auth expectations.
+/** Updates and deletes managed Google Calendar events. */
 import { Hono } from "hono";
 import { z } from "zod";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
@@ -32,7 +32,14 @@ async function __hono_PATCH(
     const { user } =
       await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;
-    const parsed = patchRequestSchema.safeParse(await request.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const parsed = patchRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(
         {

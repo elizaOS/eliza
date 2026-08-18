@@ -391,6 +391,21 @@ export async function handleSecretsManagerRoute(
 const LOGIN_PATH_RE = /^\/api\/secrets\/logins\/([^/]+)\/([^/]+)$/;
 const LOGIN_AUTOALLOW_RE = /^\/api\/secrets\/logins\/([^/]+)\/autoallow$/;
 
+function decodeLoginPathSegment(
+  raw: string,
+  res: http.ServerResponse,
+  field: string,
+): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed percent-encoding is invalid path input, not a
+    // vault outage.
+    sendJsonError(res, 400, `invalid ${field}: malformed URL encoding`);
+    return null;
+  }
+}
+
 function isUnifiedSource(
   v: unknown,
 ): v is "in-house" | "1password" | "bitwarden" {
@@ -513,7 +528,8 @@ async function handleSavedLoginsRoute(
       sendJsonError(res, 400, "missing domain");
       return true;
     }
-    const domain = decodeURIComponent(rawDomain);
+    const domain = decodeLoginPathSegment(rawDomain, res, "domain");
+    if (domain === null) return true;
     if (method === "GET") {
       const allowed = await getAutofillAllowed(vault, domain);
       sendJson(res, 200, { ok: true, allowed });
@@ -550,8 +566,10 @@ async function handleSavedLoginsRoute(
       sendJsonError(res, 400, "missing path segment");
       return true;
     }
-    const domain = decodeURIComponent(rawDomain);
-    const username = decodeURIComponent(rawUser);
+    const domain = decodeLoginPathSegment(rawDomain, res, "domain");
+    if (domain === null) return true;
+    const username = decodeLoginPathSegment(rawUser, res, "username");
+    if (username === null) return true;
 
     if (method === "GET") {
       const login = await getSavedLogin(vault, domain, username);
