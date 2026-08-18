@@ -525,7 +525,9 @@ describe("isSensitiveKeyName", () => {
 /**
  * redactLogArgs is the sink-level redactor: it masks secrets structurally so a
  * logger that pipes its args through it protects `{ apiKey }` with no
- * redact.context() at the call site (#12229 M6).
+ * redact.context() at the call site (#12229 M6). The clone also drops function
+ * values outright — a copied toJSON/valueOf hook re-runs when the sink
+ * JSON-stringifies the output and would reconstitute the masked secrets.
  */
 describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 	it("masks a value under a credential-named key without any wrapping", () => {
@@ -578,6 +580,122 @@ describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 		cyclic.self = cyclic;
 		const [out] = redactLogArgs([cyclic]) as [Record<string, unknown>];
 		expect(out.name).toBe("x");
+	});
+
+	it("drops a hostile own toJSON so serialization cannot reconstitute secrets", () => {
+		const secret = "sk-tojson-resurrected-secret";
+		const hostile = {
+			apiKey: secret,
+			note: "kept",
+			// The marker is not pattern-shaped, so it can only reach the output
+			// by the hook re-running at JSON.stringify.
+			toJSON: () => ({ apiKey: secret, marker: "top-resurrected" }),
+		};
+		const [ctx] = redactLogArgs([hostile]) as [Record<string, unknown>];
+		expect("toJSON" in ctx).toBe(false);
+		expect(ctx.apiKey).toBe("[REDACTED]");
+		expect(ctx.note).toBe("kept");
+		const serialized = JSON.stringify(ctx);
+		expect(serialized).not.toContain(secret);
+		expect(serialized).not.toContain("top-resurrected");
+	});
+
+	it("drops serializer hooks in nested objects and array elements", () => {
+		const secret = "sk-nested-hook-secret-value";
+		const [ctx] = redactLogArgs([
+			{
+				nested: {
+					hook: { toJSON: () => ({ marker: "nested-resurrected" }) },
+					ok: 1,
+				},
+				list: [
+					{ toJSON: () => ({ marker: "array-resurrected" }) },
+					secret,
+					Object.assign(() => secret, {
+						toJSON: () => ({ marker: "fn-resurrected" }),
+					}),
+				],
+			},
+		]) as [Record<string, unknown>];
+		const nested = ctx.nested as Record<string, unknown>;
+		expect(nested.ok).toBe(1);
+		expect(nested.hook).toEqual({});
+		// A function inside an array collapses to null, matching JSON array
+		// serialization semantics.
+		expect(ctx.list).toEqual([{}, "sk-nes…alue", null]);
+		const serialized = JSON.stringify(ctx);
+		expect(serialized).not.toContain(secret);
+		expect(serialized).not.toContain("resurrected");
+	});
+
+	it("drops valueOf/toString hooks alongside toJSON", () => {
+		const secret = "sk-valueof-hook-secret-value";
+		const [ctx] = redactLogArgs([
+			{
+				note: "kept",
+				valueOf: () => secret,
+				toString: () => secret,
+			},
+		]) as [Record<string, unknown>];
+		expect(ctx).toEqual({ note: "kept" });
+		expect(JSON.stringify(ctx)).not.toContain(secret);
+	});
+
+	it("drops an own toJSON on a class instance and never inherits the prototype's", () => {
+		const secret = "sk-class-hook-secret-value";
+		class Payload {
+			note = "kept";
+			apiKey = secret;
+			toJSON() {
+				return { marker: "prototype-resurrected" };
+			}
+		}
+		const ownHooked = Object.assign(new Payload(), {
+			toJSON: () => ({ marker: "own-resurrected" }),
+		});
+		const [plain, hooked] = redactLogArgs([new Payload(), ownHooked]) as [
+			Record<string, unknown>,
+			Record<string, unknown>,
+		];
+		for (const clone of [plain, hooked]) {
+			expect("toJSON" in clone).toBe(false);
+			expect(clone.apiKey).toBe("[REDACTED]");
+			expect(clone.note).toBe("kept");
+		}
+		const serialized = JSON.stringify([plain, hooked]);
+		expect(serialized).not.toContain(secret);
+		expect(serialized).not.toContain("resurrected");
+	});
+
+	it("keeps the Error shape while a hostile own toJSON does not survive", () => {
+		const secret = "sk-error-hook-secret-value";
+		const err = Object.assign(new Error(`boom ${secret}`), {
+			toJSON: () => ({ marker: "error-resurrected", secret }),
+		});
+		const [out] = redactLogArgs([err]) as [Error];
+		expect(out).toBeInstanceOf(Error);
+		expect(out.name).toBe("Error");
+		expect(out.message).not.toContain(secret);
+		expect("toJSON" in out).toBe(false);
+		const serialized = JSON.stringify(out);
+		expect(serialized).not.toContain(secret);
+		expect(serialized).not.toContain("error-resurrected");
+	});
+
+	it("does not let a hostile own toJSON on a Date reconstitute a secret", () => {
+		const secret = "sk-date-hook-secret-value";
+		const when = new Date("2026-01-02T03:04:05.000Z");
+		when.toJSON = () => secret;
+		const [ctx] = redactLogArgs([{ when }]) as [Record<string, unknown>];
+		expect(JSON.stringify(ctx)).not.toContain(secret);
+	});
+
+	it("collapses a bare function argument even when it carries a hostile toJSON", () => {
+		const secret = "sk-function-hook-secret-value";
+		const fn = Object.assign(() => secret, { toJSON: () => secret });
+		const [out] = redactLogArgs([fn]);
+		expect(out).toBeNull();
+		expect(JSON.stringify(redactLogArgs([fn]))).not.toContain(secret);
 	});
 
 	it("leaves non-string, non-object arguments untouched", () => {

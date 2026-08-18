@@ -529,6 +529,15 @@ const MAX_LOG_REDACT_DEPTH = 8;
  * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
  * or not the caller wrapped the context first.
  *
+ * Function values never survive the walk. They are executable serializer hooks
+ * (toJSON/valueOf/toString), and a copied hook re-runs when a JSON sink
+ * stringifies the clone, able to reconstitute the very secrets the walk just
+ * masked. A bare function argument collapses to null and a function-valued
+ * property is dropped outright — matching JSON.stringify, which emits null for
+ * array functions and omits object function props. Symbol-keyed hooks such as
+ * util.inspect.custom never reach the clone because the walk copies string keys
+ * only.
+ *
  * Depth is bounded and cycles are broken (returning the mask) so a pathological
  * log payload cannot hang or blow the stack — a redactor must never be the thing
  * that takes the process down.
@@ -540,6 +549,9 @@ function redactLogArg(
 ): unknown {
 	if (typeof value === "string") {
 		return redactSensitiveText(value);
+	}
+	if (typeof value === "function") {
+		return null;
 	}
 	if (value === null || typeof value !== "object") {
 		return value;
@@ -563,6 +575,14 @@ function redactLogArg(
 	for (const [key, entry] of Object.entries(value)) {
 		if (isSensitiveKeyName(key)) {
 			result[key] = REDACTED_MASK;
+			continue;
+		}
+		// Function-valued properties are executable serializer hooks
+		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
+		// JSON-stringifies the clone and can reconstitute the very secrets the
+		// walk just masked. JSON.stringify omits function props anyway, so
+		// dropping the key matches serialization semantics.
+		if (typeof entry === "function") {
 			continue;
 		}
 		result[key] = redactLogArg(entry, seen, depth + 1);
