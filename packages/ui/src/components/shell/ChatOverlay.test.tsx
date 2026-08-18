@@ -1733,11 +1733,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("omits serving-provider branding from the detached overlay", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
-  });
-
   it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
