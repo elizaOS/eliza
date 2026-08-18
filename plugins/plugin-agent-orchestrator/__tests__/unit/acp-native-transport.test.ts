@@ -174,6 +174,10 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     client.configureClaimedSession({
       cwd: "/tmp/native-acp/claimed",
       approvalPreset: "verifier",
+      env: {
+        ORCHESTRATOR_SESSION_ID: "session-a",
+        PATH: "/tmp/native-acp/git-bin:/usr/bin",
+      },
       onEvent: (event) => events.push(event),
     });
     const created = client.createSession("/tmp/native-acp/claimed", {
@@ -182,6 +186,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
         ORCHESTRATOR_SESSION_ID: "session-a",
         OPENAI_API_KEY: "lease-secret-a",
       },
+      executionPath: "/tmp/native-acp/git-bin:/usr/bin",
     });
     await waitForWrites(p, 2);
     expect(writeAt(p, 1)).toMatchObject({

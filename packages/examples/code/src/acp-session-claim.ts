@@ -4,9 +4,14 @@
  * reusable: callers clear the applied environment and dispose its process.
  */
 import { timingSafeEqual } from "node:crypto";
+import { delimiter, isAbsolute } from "node:path";
 
 export type AcpSessionClaimMeta = {
-  elizaSessionClaim?: { token?: unknown; env?: unknown };
+  elizaSessionClaim?: {
+    token?: unknown;
+    env?: unknown;
+    executionPath?: unknown;
+  };
 };
 
 export class AcpWarmSessionClaim {
@@ -62,10 +67,19 @@ export class AcpWarmSessionClaim {
       }
       validatedEntries.push([key, value]);
     }
+    if (
+      typeof claim.executionPath !== "string" ||
+      !isTrustedExecutionPath(claim.executionPath)
+    ) {
+      throw new Error("invalid warm-session execution path");
+    }
     for (const [key, value] of validatedEntries) {
+      if (key === "PATH") continue;
       targetEnv[key] = value;
       this.appliedKeys.add(key);
     }
+    targetEnv.PATH = claim.executionPath;
+    this.appliedKeys.add("PATH");
     this.consumed = true;
     this.token = "";
   }
@@ -84,4 +98,11 @@ export class AcpWarmSessionClaim {
       timingSafeEqual(expected, received)
     );
   }
+}
+
+function isTrustedExecutionPath(value: string): boolean {
+  if (!value || value.includes("\0")) return false;
+  return value
+    .split(delimiter)
+    .every((entry) => entry.length > 0 && isAbsolute(entry));
 }

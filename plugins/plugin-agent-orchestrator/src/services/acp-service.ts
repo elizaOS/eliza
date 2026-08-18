@@ -3118,8 +3118,31 @@ export class AcpService extends Service {
         opts.codexInitialAgentModeOverride,
       ),
       mcpServers: readConfigMcpServers(),
+      onEvent: (event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          session.id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== session.id) {
+          void this.store
+            .update(session.id, { acpxSessionId: protocolSessionId })
+            // error-policy:J7 mapping persistence runs inside an ACP event
+            // callback and must report without throwing into the transport.
+            .catch((err) =>
+              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
+                sessionId: session.id,
+              }),
+            );
+        }
+      },
+      onStderr: (chunk) => {
+        opts.stderr.push(chunk);
+      },
     });
-    this.configureNativeClientForSession(client, session, opts);
     return {
       command,
       client,
@@ -3129,11 +3152,12 @@ export class AcpService extends Service {
   private configureNativeClientForSession(
     client: NativeAcpClient,
     session: SessionInfo,
-    opts: { timeoutMs?: number; stderr: string[] },
+    opts: { env: NodeJS.ProcessEnv; timeoutMs?: number; stderr: string[] },
   ): void {
     client.configureClaimedSession({
       cwd: session.workdir,
       approvalPreset: session.approvalPreset,
+      env: opts.env,
       mcpServers: readConfigMcpServers(),
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
       onEvent: (event, protocolSessionId) => {
@@ -3178,10 +3202,6 @@ export class AcpService extends Service {
     let stderr: string[] = [];
     const warm = this.takeWarmNativeClient(opts.session.agentType);
     if (warm) {
-      this.configureNativeClientForSession(warm.client, opts.session, {
-        timeoutMs: opts.timeoutMs,
-        stderr,
-      });
       try {
         const builtEnv = this.buildEnv(
           opts.env,
@@ -3190,27 +3210,30 @@ export class AcpService extends Service {
           opts.session.agentType,
           opts.session.id,
         );
+        const trustedExecutionPath = this.trustedSessionExecutionPath(
+          opts.session,
+        );
+        builtEnv.PATH = trustedExecutionPath;
+        delete builtEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        this.configureNativeClientForSession(warm.client, opts.session, {
+          env: builtEnv,
+          timeoutMs: opts.timeoutMs,
+          stderr,
+        });
         const claimEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(builtEnv)) {
           if (typeof value === "string") claimEnv[key] = value;
         }
-        // The authenticated claim must not turn caller-provided PATH into shell
-        // authority. The only allowed extension is the wrapper directory that
-        // this service recorded while creating the session's isolated index;
-        // otherwise retain the host's filtered launch PATH.
-        const trustedExecutionPath =
-          this.gitIndexEnvForSession(opts.session)?.PATH ??
-          forwardableSubAgentEnv(process.env).PATH;
-        if (trustedExecutionPath) claimEnv.PATH = trustedExecutionPath;
-        else delete claimEnv.PATH;
-        // The child captures and rewrites this mirror from trusted PATH after
-        // applying the claim. Never accept a caller/parent mirror as authority.
+        // PATH is separate claim authority: the child never accepts an
+        // arbitrary environment entry as executable-search authority.
+        delete claimEnv.PATH;
         delete claimEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
         const nativeSession = await warm.client.createSession(
           opts.session.workdir,
           {
             token: warm.claimToken,
             env: claimEnv,
+            executionPath: trustedExecutionPath,
           },
         );
         await rm(warm.bootstrapHome, { recursive: true, force: true });
@@ -3302,6 +3325,14 @@ export class AcpService extends Service {
         throw new Error(message);
       }
     }
+  }
+
+  private trustedSessionExecutionPath(session: SessionInfo): string {
+    const wrapperDir = session.metadata?.[ACP_METADATA_GIT_WRAPPER_DIR];
+    const basePath = process.env.PATH ?? "";
+    return typeof wrapperDir === "string" && wrapperDir.trim()
+      ? [wrapperDir, basePath].filter(Boolean).join(delimiter)
+      : basePath;
   }
 
   private async sendNativePrompt(

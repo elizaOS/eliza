@@ -823,11 +823,11 @@ describe("AcpService", () => {
       );
       const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
       expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
-      expect(firstClaim?.env?.PATH).toBe(process.env.PATH);
-      expect(firstClaim?.env?.PATH).not.toContain("caller-controlled");
+      expect(firstClaim?.env?.PATH).toBeUndefined();
       expect(
         firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
       ).toBeUndefined();
+      expect(firstClaim?.executionPath).toBe(process.env.PATH);
 
       await waitForNativeClients(2);
       const secondWarm = nativeClientMock.instances[1];

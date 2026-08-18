@@ -93,6 +93,7 @@ export type NativeAcpSession = {
 export type NativeAcpSessionClaim = {
   token: string;
   env: Record<string, string>;
+  executionPath: string;
 };
 
 export type NativeAcpPromptResult = {
@@ -165,6 +166,7 @@ export class NativeAcpClient {
   configureClaimedSession(opts: {
     cwd: string;
     approvalPreset: ApprovalPreset;
+    env: NodeJS.ProcessEnv;
     mcpServers?: AcpMcpServerConfig[];
     timeoutMs?: number;
     onEvent?: NativeAcpEventCallback;
@@ -172,6 +174,7 @@ export class NativeAcpClient {
   }): void {
     this.opts.cwd = opts.cwd;
     this.opts.approvalPreset = opts.approvalPreset;
+    this.opts.env = opts.env;
     this.opts.mcpServers = opts.mcpServers;
     this.opts.timeoutMs = opts.timeoutMs;
     this.opts.onEvent = opts.onEvent;
@@ -266,6 +269,7 @@ export class NativeAcpClient {
                 elizaSessionClaim: {
                   token: "[REDACTED]",
                   envKeys: Object.keys(claim.env).sort(),
+                  executionPath: "[REDACTED]",
                 },
               },
             }

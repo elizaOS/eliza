@@ -1,5 +1,6 @@
 /**
- * Proves same-worktree ACP sessions get independent git index files (#13773).
+ * Proves same-worktree ACP sessions get independent git index files (#13773),
+ * including when a prewarmed child receives its session wrapper at claim time.
  * Without GIT_INDEX_FILE isolation, concurrent `git add` calls in two
  * isolate=false sessions mutate the repo's single .git/index and each session's
  * staged set clobbers the other.
@@ -18,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AcpWarmSessionClaim } from "../../../../packages/examples/code/src/acp-session-claim.js";
 import { AcpService } from "../services/acp-service.js";
 import { InMemorySessionStore } from "../services/session-store.js";
 
@@ -60,6 +62,32 @@ type GitIndexPreparer = {
     | undefined
   >;
 };
+
+function claimWarmSessionEnv(
+  prepared:
+    | { env: Record<string, string>; metadata: Record<string, string> }
+    | undefined,
+  token: string,
+): NodeJS.ProcessEnv {
+  if (!prepared) throw new Error("session git index was not prepared");
+  const wrapperDir = prepared.metadata.gitWrapperDir;
+  if (!wrapperDir) throw new Error("session git wrapper was not prepared");
+  const target: NodeJS.ProcessEnv = {};
+  const claim = new AcpWarmSessionClaim(token);
+  claim.apply(
+    {
+      elizaSessionClaim: {
+        token,
+        env: prepared.env,
+        executionPath: [wrapperDir, process.env.PATH]
+          .filter(Boolean)
+          .join(path.delimiter),
+      },
+    },
+    target,
+  );
+  return target;
+}
 
 describe("ACP per-session git index isolation (#13773)", () => {
   let tmpRoot: string;
@@ -128,6 +156,48 @@ describe("ACP per-session git index isolation (#13773)", () => {
 
     expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
       ["README.md", "a.txt", "b.txt"].join("\n"),
+    );
+  });
+
+  it("lands both commits through independently claimed warm-child wrapper paths", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    const preparedA = await prepare(
+      repo,
+      `${sessionPrefix}warm-a`,
+      baselineSha,
+    );
+    const preparedB = await prepare(
+      repo,
+      `${sessionPrefix}warm-b`,
+      baselineSha,
+    );
+    const envA = claimWarmSessionEnv(preparedA, "warm-token-a");
+    const envB = claimWarmSessionEnv(preparedB, "warm-token-b");
+
+    expect(envA.PATH?.split(path.delimiter)[0]).toBe(
+      preparedA?.metadata.gitWrapperDir,
+    );
+    expect(envB.PATH?.split(path.delimiter)[0]).toBe(
+      preparedB?.metadata.gitWrapperDir,
+    );
+    expect(envA.PATH).not.toContain("bootstrap/must-not-win");
+    expect(envB.PATH).not.toContain("bootstrap/must-not-win");
+
+    writeFileSync(path.join(repo, "warm-a.txt"), "from warm a\n");
+    writeFileSync(path.join(repo, "warm-b.txt"), "from warm b\n");
+    git(repo, ["add", "warm-a.txt"], envA);
+    git(repo, ["add", "warm-b.txt"], envB);
+    git(repo, ["commit", "-m", "warm session a"], envA);
+    git(repo, ["commit", "-m", "warm session b"], envB);
+
+    expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
+      ["README.md", "warm-a.txt", "warm-b.txt"].join("\n"),
     );
   });
 });

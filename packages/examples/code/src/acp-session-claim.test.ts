@@ -1,5 +1,7 @@
 /** Exercises authenticated warm-child claims without starting a runtime or exposing live credentials. */
+
 import { describe, expect, it } from "bun:test";
+import { delimiter } from "node:path";
 import { AcpWarmSessionClaim } from "./acp-session-claim";
 
 describe("AcpWarmSessionClaim", () => {
@@ -14,7 +16,11 @@ describe("AcpWarmSessionClaim", () => {
           env: {
             ORCHESTRATOR_SESSION_ID: "session-a",
             OPENAI_API_KEY: "lease-a",
+            PATH: "/caller-controlled/bin",
           },
+          executionPath: ["/trusted/session-git/bin", "/usr/bin"].join(
+            delimiter,
+          ),
         },
       },
       target,
@@ -22,6 +28,7 @@ describe("AcpWarmSessionClaim", () => {
     expect(target).toEqual({
       ORCHESTRATOR_SESSION_ID: "session-a",
       OPENAI_API_KEY: "lease-a",
+      PATH: ["/trusted/session-git/bin", "/usr/bin"].join(delimiter),
     });
     expect(() =>
       claim.apply(
@@ -29,6 +36,7 @@ describe("AcpWarmSessionClaim", () => {
           elizaSessionClaim: {
             token: "claim-secret",
             env: { ORCHESTRATOR_SESSION_ID: "session-b" },
+            executionPath: "/usr/bin",
           },
         },
         target,
@@ -48,8 +56,18 @@ describe("AcpWarmSessionClaim", () => {
           OPENAI_API_KEY: "lease-b",
           ELIZA_ACP_WARM_CLAIM_TOKEN: "replace-authenticator",
         },
+        executionPath: "/usr/bin",
       },
-      { token: "claim-secret", env: { "mixed-Case": "lease-b" } },
+      {
+        token: "claim-secret",
+        env: { "mixed-Case": "lease-b" },
+        executionPath: "/usr/bin",
+      },
+      {
+        token: "claim-secret",
+        env: { OPENAI_API_KEY: "lease-b" },
+        executionPath: "relative/bin",
+      },
     ]) {
       const target = { EXISTING: "preserved" };
       const claim = new AcpWarmSessionClaim("claim-secret");
@@ -68,6 +86,7 @@ describe("AcpWarmSessionClaim", () => {
         elizaSessionClaim: {
           token: "injected",
           env: { OPENAI_API_KEY: "lease" },
+          executionPath: "/usr/bin",
         },
       }),
     ).toThrow("unexpected warm-session claim");

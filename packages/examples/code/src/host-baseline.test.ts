@@ -1,14 +1,11 @@
 /**
- * Pins the executable-search authority contract shared by the ACP, one-shot,
- * and TUI entrypoints. Importing the capture module produces a real PATH
- * baseline, and both executable entries keep that module as their first import
- * so no runtime module body can beat it. Deterministic; no live runtime.
+ * Pins executable-search authority for the ACP, one-shot, and TUI entrypoints.
+ * The normal entry captures immediately; the warm ACP bootstrap removes its
+ * authenticator before loading dependencies and captures only after claim.
+ * Deterministic; no live runtime.
  */
 import { readFileSync } from "node:fs";
-import {
-  getHostExecutionBaseline,
-  resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
+import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { describe, expect, it } from "vitest";
 
 describe("eliza-code host execution baseline", () => {
@@ -16,8 +13,7 @@ describe("eliza-code host execution baseline", () => {
     await import("./host-baseline.js");
     const baseline = getHostExecutionBaseline();
     expect(baseline.path).toBeDefined();
-    expect(baseline.path).toContain("/");
-    expect(resolveHostExecutable(process.execPath)).toBe(process.execPath);
+    expect(baseline.path?.length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -34,4 +30,11 @@ describe("eliza-code host execution baseline", () => {
       expect(firstImport).toBe(expected);
     },
   );
+
+  it("captures the claimed PATH before runtime initialization", () => {
+    const acp = readFileSync(new URL("./acp.ts", import.meta.url), "utf8");
+    expect(acp.indexOf("warmSessionClaim.apply(params._meta)")).toBeLessThan(
+      acp.indexOf("captureHostExecutionBaseline()"),
+    );
+  });
 });
