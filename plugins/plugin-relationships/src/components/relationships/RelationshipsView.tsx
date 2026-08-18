@@ -84,26 +84,51 @@ interface RelationshipsWire {
 // ---------------------------------------------------------------------------
 
 export interface RelationshipsFetchers {
-  fetchEntities: () => Promise<EntitiesWire>;
-  fetchRelationships: () => Promise<RelationshipsWire>;
+  fetchEntities: (signal?: AbortSignal) => Promise<EntitiesWire>;
+  fetchRelationships: (signal?: AbortSignal) => Promise<RelationshipsWire>;
 }
 
-async function getEntities(): Promise<EntitiesWire> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/entities`);
+/** Graph JSON GETs are short UI reads — same 15s family as DocumentsView / TodosView. */
+export const RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getRelationshipsJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
+  failedLabel: string = "Relationships",
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
-    throw new Error(`Entities request failed (${response.status})`);
+    throw new Error(`${failedLabel} request failed (${response.status})`);
   }
-  return (await response.json()) as EntitiesWire;
+  return (await response.json()) as T;
 }
 
-async function getRelationships(): Promise<RelationshipsWire> {
-  const response = await fetch(
-    `${client.getBaseUrl()}/api/lifeops/relationships`,
+async function getEntities(signal?: AbortSignal): Promise<EntitiesWire> {
+  return getRelationshipsJsonWithFetch<EntitiesWire>(
+    `${client.getBaseUrl()}/api/lifeops/entities`,
+    globalThis.fetch,
+    RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
+    "Entities",
+    signal,
   );
-  if (!response.ok) {
-    throw new Error(`Relationships request failed (${response.status})`);
-  }
-  return (await response.json()) as RelationshipsWire;
+}
+
+async function getRelationships(
+  signal?: AbortSignal,
+): Promise<RelationshipsWire> {
+  return getRelationshipsJsonWithFetch<RelationshipsWire>(
+    `${client.getBaseUrl()}/api/lifeops/relationships`,
+    globalThis.fetch,
+    RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
+    "Relationships",
+    signal,
+  );
 }
 
 const defaultFetchers: RelationshipsFetchers = {
@@ -253,16 +278,19 @@ export function RelationshipsView(
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(() => {
-    let cancelled = false;
-    setState({ kind: "loading" });
+  const load = useCallback((background = false) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
+    if (!background) setState({ kind: "loading" });
     Promise.all([
-      fetchersRef.current.fetchEntities(),
-      fetchersRef.current.fetchRelationships(),
+      fetchersRef.current.fetchEntities(controller.signal),
+      fetchersRef.current.fetchRelationships(controller.signal),
     ])
       .then(([entitiesWire, relationshipsWire]) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setState({
           kind: "ready",
           nodes: buildNodes(
@@ -271,8 +299,9 @@ export function RelationshipsView(
           ),
         });
       })
+      // error-policy:J4 foreground failures render an error; background failures preserve last-good state.
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
@@ -280,42 +309,20 @@ export function RelationshipsView(
               ? error.message
               : "Could not load relationships.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  useEffect(() => load(), [load]);
-
-  // Background poll: refresh the graph on an interval without flashing the
-  // loading state. Transient poll failures are ignored — the explicit Retry
-  // path is what surfaces errors to the user.
   useEffect(() => {
-    const id = setInterval(() => {
-      Promise.all([
-        fetchersRef.current.fetchEntities(),
-        fetchersRef.current.fetchRelationships(),
-      ])
-        .then(([entitiesWire, relationshipsWire]) => {
-          setState((prev) =>
-            prev.kind === "error"
-              ? prev
-              : {
-                  kind: "ready",
-                  nodes: buildNodes(
-                    entitiesWire.entities,
-                    relationshipsWire.relationships,
-                  ),
-                },
-          );
-        })
-        // error-policy:J4 background poll refresh; a transient failure keeps the
-        // last-good render (the initial load owns the error state), so it is not swallowed silently.
-        .catch(() => {});
-    }, RELATIONSHIPS_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, []);
+    load();
+    const id = setInterval(() => load(true), RELATIONSHIPS_POLL_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+      activeLoadRef.current?.abort();
+    };
+  }, [load]);
 
   const snapshot = useMemo<RelationshipsSnapshot>(() => {
     if (state.kind === "loading") {
