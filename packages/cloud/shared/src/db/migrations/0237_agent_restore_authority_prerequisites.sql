@@ -22,3 +22,29 @@ DO $$ BEGIN
         "vault_key_generation_id", "vault_key_authority_receipt_digest");
   END IF;
 END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname =
+    'agent_sandboxes_activation_backup_authority_fkey'
+    AND conrelid = 'agent_sandboxes'::regclass) THEN
+    ALTER TABLE "agent_sandboxes" ADD CONSTRAINT
+      "agent_sandboxes_activation_backup_authority_fkey"
+      FOREIGN KEY ("activation_backup_id", "organization_id", "id")
+      REFERENCES "agent_sandbox_backups"
+        ("id", "catalog_organization_id", "catalog_agent_id")
+      ON DELETE RESTRICT;
+  END IF;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname =
+    'agent_sandboxes_activation_consent_backup_authority_fkey'
+    AND conrelid = 'agent_sandboxes'::regclass) THEN
+    ALTER TABLE "agent_sandboxes" ADD CONSTRAINT
+      "agent_sandboxes_activation_consent_backup_authority_fkey"
+      FOREIGN KEY ("activation_consent_head_backup_id", "organization_id", "id")
+      REFERENCES "agent_sandbox_backups"
+        ("id", "catalog_organization_id", "catalog_agent_id")
+      ON DELETE RESTRICT;
+  END IF;
+END $$;

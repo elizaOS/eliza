@@ -63,7 +63,14 @@ async function prerequisiteDatabase(): Promise<PGlite> {
       manifest_version integer,
       catalog_state text,
       vault_key_generation_id uuid,
-      vault_key_authority_receipt_digest text
+      vault_key_authority_receipt_digest text,
+      UNIQUE (id, catalog_organization_id, catalog_agent_id)
+    );
+    CREATE TABLE agent_sandboxes (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      activation_backup_id uuid,
+      activation_consent_head_backup_id uuid
     );
     INSERT INTO organizations VALUES ('${ORG_ID}');
     INSERT INTO agent_backup_catalog_authorities
@@ -212,6 +219,55 @@ describe("0237-0245 restore and vault foundation migrations", () => {
           truncate_triggers: 5,
         },
       ]);
+    } finally {
+      await database.close();
+    }
+  }, 60_000);
+
+  test("rejects dangling and cross-tenant activation backup references", async () => {
+    const database = await prerequisiteDatabase();
+    try {
+      const ORG_B = "00000000-0000-4000-8000-00000000f0b1";
+      const FOREIGN_BACKUP = "00000000-0000-4000-8000-00000000f0b2";
+      const OTHER_AGENT_BACKUP = "00000000-0000-4000-8000-00000000f0b3";
+      const OTHER_AGENT = "00000000-0000-4000-8000-00000000f0b4";
+      await database.exec(`
+        INSERT INTO organizations VALUES ('${ORG_B}');
+        INSERT INTO agent_backup_catalog_authorities (organization_id, agent_id)
+          VALUES ('${ORG_B}', '${AGENT_ID}'), ('${ORG_ID}', '${OTHER_AGENT}');
+        INSERT INTO agent_sandbox_backups (
+          id, catalog_organization_id, catalog_agent_id, backup_operation_id,
+          lifecycle_generation, lifecycle_revision, manifest_digest
+        ) VALUES
+          ('${FOREIGN_BACKUP}', '${ORG_B}', '${AGENT_ID}', '${OPERATION_ID}',
+            '${SOURCE_GENERATION}', 1, '${SHA}'),
+          ('${OTHER_AGENT_BACKUP}', '${ORG_ID}', '${OTHER_AGENT}', '${OPERATION_ID}',
+            '${SOURCE_GENERATION}', 1, '${SHA}');
+      `);
+      await applyMigrations(database);
+      await expect(
+        database.exec(`INSERT INTO agent_sandboxes (id, organization_id, activation_backup_id)
+          VALUES ('${AGENT_ID}', '${ORG_ID}', '00000000-0000-4000-8000-00000000dead')`),
+      ).rejects.toThrow(/agent_sandboxes_activation_backup_authority_fkey/);
+      await expect(
+        database.exec(`INSERT INTO agent_sandboxes (id, organization_id, activation_backup_id)
+          VALUES ('${AGENT_ID}', '${ORG_ID}', '${FOREIGN_BACKUP}')`),
+      ).rejects.toThrow(/agent_sandboxes_activation_backup_authority_fkey/);
+      await expect(
+        database.exec(`INSERT INTO agent_sandboxes (id, organization_id, activation_backup_id)
+          VALUES ('${AGENT_ID}', '${ORG_ID}', '${OTHER_AGENT_BACKUP}')`),
+      ).rejects.toThrow(/agent_sandboxes_activation_backup_authority_fkey/);
+      await expect(
+        database.exec(`INSERT INTO agent_sandboxes (
+            id, organization_id, activation_consent_head_backup_id
+          ) VALUES ('${AGENT_ID}', '${ORG_ID}', '${FOREIGN_BACKUP}')`),
+      ).rejects.toThrow(/agent_sandboxes_activation_consent_backup_authority_fkey/);
+      await database.exec(`INSERT INTO agent_sandboxes (
+          id, organization_id, activation_backup_id, activation_consent_head_backup_id
+        ) VALUES ('${AGENT_ID}', '${ORG_ID}', '${BACKUP_ID}', '${BACKUP_ID}')`);
+      await expect(
+        database.exec(`DELETE FROM agent_sandbox_backups WHERE id = '${BACKUP_ID}'`),
+      ).rejects.toThrow(/violates foreign key constraint/);
     } finally {
       await database.close();
     }

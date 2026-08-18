@@ -178,6 +178,9 @@ export const agentSandboxes = pgTable(
     activation_lifecycle_revision: bigint("activation_lifecycle_revision", { mode: "bigint" }),
     activation_purpose: text("activation_purpose").$type<AgentActivationPurpose>(),
     activation_phase: text("activation_phase").$type<AgentActivationPhase>(),
+    // Composite tenant FKs to agent_sandbox_backups(id, catalog_organization_id,
+    // catalog_agent_id) live in 0237 — agentSandboxBackups is declared below, so
+    // drizzle's foreignKey() cannot express them here without a TDZ cycle.
     activation_backup_id: uuid("activation_backup_id"),
     activation_backup_hash: text("activation_backup_hash"),
     activation_receipt: jsonb("activation_receipt").$type<AgentActivationReceipt>(),
