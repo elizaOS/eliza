@@ -289,6 +289,36 @@ async function startMockAgentServer() {
 
     if (
       req.method === "POST" &&
+      url.pathname === "/api/browser-bridge/companions/preflight"
+    ) {
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      const companion = createMockCompanion(origin, jsonBody?.companion);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          companion,
+          settings: {
+            enabled: true,
+            trackingMode: "active_tabs",
+            allowBrowserControl: true,
+            requireConfirmationForAccountAffecting: true,
+            incognitoEnabled: false,
+            siteAccessMode: "all_sites",
+            grantedOrigins: [],
+            blockedOrigins: [],
+            maxRememberedTabs: 10,
+            pauseUntil: null,
+            metadata: {},
+            updatedAt: nowIso(),
+          },
+          settingsVersion: "settings-smoke-v1",
+        }),
+      );
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
       url.pathname === "/api/browser-bridge/companions/sync"
     ) {
       const origin = `http://127.0.0.1:${server.address().port}`;
@@ -354,6 +384,7 @@ async function startMockAgentServer() {
             metadata: {},
             updatedAt: nowIso(),
           },
+          settingsVersion: "settings-smoke-v1",
           session:
             firstTab && !sessionCompleted
               ? {
@@ -526,9 +557,28 @@ async function runAutoPairAndSyncScenario(chromium) {
         request.method === "POST" &&
         request.path === "/api/browser-bridge/companions/sync",
     );
+    const preflightRequests = mockServer.requests.filter(
+      (request) =>
+        request.method === "POST" &&
+        request.path === "/api/browser-bridge/companions/preflight",
+    );
+    if (preflightRequests.length === 0) {
+      throw new Error(
+        "Expected the smoke test to preflight companion settings before sync.",
+      );
+    }
     if (syncRequests.length === 0) {
       throw new Error(
         "Expected the smoke test to hit the companion sync route at least once.",
+      );
+    }
+    if (
+      syncRequests.some(
+        (request) => request.body?.settingsVersion !== "settings-smoke-v1",
+      )
+    ) {
+      throw new Error(
+        "Expected every smoke sync request to bind the preflight settings version.",
       );
     }
     await appPage.waitForFunction(
