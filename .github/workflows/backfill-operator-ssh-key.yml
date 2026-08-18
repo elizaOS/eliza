@@ -157,8 +157,10 @@ jobs:
             control-plane|apps) remote_user=deploy ;;
           esac
           completed=0
+          ssh_error_path="$RUNNER_TEMP/operator-backfill-ssh-error"
           while IFS= read -r host; do
-            printf '%s\n' "$OPERATOR_PUBLIC_KEY" | ssh \
+            : > "$ssh_error_path"
+            if ! printf '%s\n' "$OPERATOR_PUBLIC_KEY" | ssh \
               -i "$AUTH_KEY_PATH" \
               -o BatchMode=yes \
               -o IdentitiesOnly=yes \
@@ -166,7 +168,11 @@ jobs:
               -o UserKnownHostsFile="$KNOWN_HOSTS_PATH" \
               -o ConnectTimeout=10 \
               "$remote_user@$host" \
-              'set -euo pipefail; IFS= read -r operator_key; umask 077; mkdir -p "$HOME/.ssh"; chmod 0700 "$HOME/.ssh"; touch "$HOME/.ssh/authorized_keys"; chmod 0600 "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys" || printf "%s\n" "$operator_key" >> "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys"'
+              'set -euo pipefail; IFS= read -r operator_key; umask 077; mkdir -p "$HOME/.ssh"; chmod 0700 "$HOME/.ssh"; touch "$HOME/.ssh/authorized_keys"; chmod 0600 "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys" || printf "%s\n" "$operator_key" >> "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys"' \
+              2>"$ssh_error_path"; then
+              echo "::error::Operator-key convergence failed for one undisclosed target"
+              exit 1
+            fi
             completed=$((completed + 1))
           done < "$TARGETS_PATH"
           if [ "$completed" != "$EXPECTED_HOST_COUNT" ]; then
@@ -183,6 +189,7 @@ jobs:
           for path in \
             "$RUNNER_TEMP/operator-backfill-auth-key" \
             "$RUNNER_TEMP/operator-backfill-known-hosts" \
+            "$RUNNER_TEMP/operator-backfill-ssh-error" \
             "$RUNNER_TEMP/operator-backfill-targets"; do
             if [ -f "$path" ]; then
               shred -u "$path" 2>/dev/null || unlink "$path"

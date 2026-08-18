@@ -33,6 +33,8 @@ describe("operator SSH backfill workflow", () => {
 
   test("does not disclose selected addresses or private key material", () => {
     expect(workflow).toContain("addresses remain undisclosed");
+    expect(workflow).toContain("failed for one undisclosed target");
+    expect(workflow).toContain('2>"$ssh_error_path"');
     expect(workflow).not.toContain('echo "$host"');
     expect(workflow).not.toContain('echo "$PROVISIONING_SSH_KEY"');
     expect(workflow).not.toContain('echo "$CONTAINERS_SSH_KEY"');
