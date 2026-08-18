@@ -94,6 +94,24 @@ interface RelaunchResponse {
   message?: string;
 }
 
+/** Ordinary REST budget for POST /api/apps/relaunch (settings inventory). */
+export const APPS_MANAGEMENT_RELAUNCH_FETCH_TIMEOUT_MS = 10_000;
+
+export async function fetchAppsManagementRelaunch(
+  body: { name: string; verify: boolean },
+  timeoutMs: number = APPS_MANAGEMENT_RELAUNCH_FETCH_TIMEOUT_MS,
+  api: { fetch: typeof client.fetch } = client,
+): Promise<RelaunchResponse> {
+  return api.fetch<RelaunchResponse>(
+    "/api/apps/relaunch",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { timeoutMs },
+  );
+}
+
 type AsyncStatus =
   | { state: "idle" }
   | { state: "loading"; message?: string }
@@ -195,16 +213,10 @@ export function AppsManagementSection() {
     async (app: InstalledAppInfo) => {
       setBusyApp(app.name);
       try {
-        const response = await client.fetch<RelaunchResponse>(
-          "/api/apps/relaunch",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              name: app.name,
-              verify: verifyOnRelaunch,
-            }),
-          },
-        );
+        const response = await fetchAppsManagementRelaunch({
+          name: app.name,
+          verify: verifyOnRelaunch,
+        });
         setActionNotice(
           response.message ?? `${app.displayName} relaunched.`,
           response.ok === false ? "error" : "success",
