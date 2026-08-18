@@ -29,30 +29,20 @@ which talks to the Hetzner Cloud API directly. See
    `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
 4. **Terraform >= 1.10.0** locally.
 
-## Bootstrap a brand-new control-plane VM (staging)
+## Validate a control-plane change locally
 
 ```bash
 cd packages/cloud/infra/cloud/terraform/hetzner/control-plane
-
-# 1. Pull providers + connect remote state.
-terraform init -backend-config=backend-staging.hcl
-
-# 2. Copy + fill tfvars.
-cp tfvars/staging.tfvars.example tfvars/staging.tfvars
-$EDITOR tfvars/staging.tfvars
-
-# 3. Plan + apply.
-export HCLOUD_TOKEN=...
-export CLOUDFLARE_API_TOKEN=...
-terraform plan -var-file=tfvars/staging.tfvars
-terraform apply -var-file=tfvars/staging.tfvars
-
-# 4. Output gives you the VM IP. Copy the cloud env file into place:
-scp packages/cloud/shared/.env.local root@<vm-ip>:/opt/eliza/cloud/.env.local
-
-# 5. Trigger first deploy from GitHub Actions
-#    (workflow: deploy-eliza-provisioning-worker.yml, manual dispatch).
+terraform init -backend=false -lockfile=readonly
+terraform fmt -check -recursive
+terraform validate
 ```
+
+Provisioning is an authorized infrastructure operation, not a local bootstrap
+step. Dispatch `.github/workflows/infra.yml` from canonical `develop` for
+staging or `main` for production with `operation=plan`, review the exact bound
+plan, and supply that plan's run, attempt, artifact, and digest to a separately
+approved `operation=apply` dispatch.
 
 ## Adopt the existing production VM into Terraform
 
@@ -191,12 +181,14 @@ runtime-created workers. These provider backups reduce host-loss recovery time;
 they do not replace an application-consistent backup of Headscale state or the
 control-plane daemon configuration.
 
-The persistent server and network also use Terraform
-`lifecycle.prevent_destroy`. Hetzner's provider removes API delete protection
-when Terraform intentionally destroys a resource, so provider protection alone
-does not prevent an accidental replacement from an apply. Removing the
-resource block itself also removes the lifecycle guard; configuration deletion
-therefore requires the same separately reviewed retirement plan.
+The persistent server, network, subnet, and server-network attachment also use
+Terraform `lifecycle.prevent_destroy`. Hetzner's provider removes API delete
+protection when Terraform intentionally destroys a resource, so provider
+protection alone does not prevent an accidental replacement from an apply. The
+attachment and subnet guards prevent a refactor from silently disconnecting the
+private route while leaving the VM alive. Removing a resource block itself also
+removes the lifecycle guard; configuration deletion therefore requires the
+same separately reviewed retirement plan.
 
 Always dispatch `Infrastructure` with `operation=plan` from the canonical
 branch for the selected protected environment and review the exact bound plan
@@ -209,8 +201,9 @@ Rollback is intentionally ordered and requires a separately reviewed plan:
 
 1. Keep delete/rebuild protection enabled while validating public ingress,
    Headscale, and daemon health.
-2. Detach the private-network resource only after proving no daemon or worker
-   route depends on it.
+2. Remove the attachment and subnet lifecycle guards and detach the private
+   network only in a reviewed retirement change, after proving no daemon or
+   worker route depends on it.
 3. Disable backups only after an independent state-backup/recovery path is
    proven and the recurring-cost change is accepted.
 4. Remove `lifecycle.prevent_destroy`, rebuild protection, and delete

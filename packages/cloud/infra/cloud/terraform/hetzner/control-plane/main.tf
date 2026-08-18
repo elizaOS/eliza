@@ -33,6 +33,10 @@ resource "hcloud_network_subnet" "data_plane" {
   type         = "cloud"
   network_zone = "eu-central"
   ip_range     = var.data_plane_subnet_cidr
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "hcloud_ssh_key" "operators" {
@@ -109,6 +113,10 @@ resource "hcloud_server_network" "control_plane" {
 
   server_id = each.value.id
   subnet_id = hcloud_network_subnet.data_plane.id
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "cloudflare_dns_record" "control_plane" {

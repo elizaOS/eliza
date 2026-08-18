@@ -34,24 +34,24 @@ Single shared backend file (`backend.hcl`) — there is no staging vs production
 copy of these resources, only one. Both env apply rounds of `apps-data-plane`
 read the same `hetzner/apps-shared/shared.tfstate`.
 
-## Apply
+## Validate locally
 
 ```bash
 cd packages/cloud/infra/cloud/terraform/hetzner/apps-shared
-cp tfvars/shared.tfvars.example shared.tfvars   # fill in real values
-export HCLOUD_TOKEN=...      # the HCLOUD_APPS_TOKEN value
-export AWS_ACCESS_KEY_ID=... # R2 token for the tf state backend
-export AWS_SECRET_ACCESS_KEY=...
-terraform init -backend-config=backend.hcl
-terraform plan  -var-file=shared.tfvars
-terraform apply -var-file=shared.tfvars
+terraform init -backend=false -lockfile=readonly
+terraform fmt -check -recursive
+terraform validate
 ```
 
-Or from CI:
+Do not apply this shared production dependency from a workstation. Dispatch the
+protected workflow from canonical `main`, first with `operation=plan`, review
+the exact encrypted-plan identity and plan output, then dispatch
+`operation=apply` with the reviewed run, attempt, artifact, and digest values.
 
 ```bash
-gh workflow run terraform-apps-shared.yml --ref develop -f action=plan
-gh workflow run terraform-apps-shared.yml --ref develop -f action=apply
+gh workflow run infra.yml --ref main \
+  -f component=apps-shared -f environment=production -f operation=plan \
+  -f plan_scope=full
 ```
 
 ## After apply
@@ -123,21 +123,24 @@ provide application-consistent Postgres recovery, point-in-time recovery, or
 environment isolation. Those require a separate reviewed design and recurring
 restore proof.
 
-The server, volume, and network also use Terraform
+The server, volume, network, subnet, server-network attachment, volume
+attachment, firewall, and state-held database credentials also use Terraform
 `lifecycle.prevent_destroy`. Hetzner's provider removes API delete protection
 when Terraform intentionally destroys a resource, so provider protection alone
-does not block an accidental replacement from an apply. Removing a resource
-block also removes the lifecycle guard and requires a separately reviewed
-retirement plan.
+does not block an accidental replacement from an apply. The attachment guards
+also prevent an otherwise non-destructive-looking refactor from disconnecting
+PGDATA or the private route. Removing a resource block also removes its
+lifecycle guard and requires a separately reviewed retirement plan.
 
 Before any apply, run the protected `Infrastructure` workflow with
 `component=apps-shared`, `environment=production`, and `operation=plan`, then
 review the exact bound plan artifact. Adoption should be in-place. Any server,
 volume, or network replacement is a stop condition.
 
-Rollback must preserve the data dependency order: keep volume and network
-lifecycle guards and delete protection enabled while the database uses them;
-remove the server lifecycle guard or rebuild protection only for an explicitly
-reviewed replacement; and remove volume or network guards only in a later
-retirement plan after a verified off-host restore. Never detach or destroy the
-volume as a shortcut for rolling back backup billing.
+Rollback must preserve the data dependency order: keep credential, firewall,
+attachment, subnet, volume, and network lifecycle guards enabled while the
+database uses them; remove the server lifecycle guard or rebuild protection
+only for an explicitly reviewed replacement; and remove storage or network
+guards only in a later retirement plan after a verified off-host restore.
+Never detach or destroy the volume as a shortcut for rolling back backup
+billing.

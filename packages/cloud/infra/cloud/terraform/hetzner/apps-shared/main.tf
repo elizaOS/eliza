@@ -36,6 +36,13 @@ locals {
 resource "random_password" "tenant_db_admin" {
   length  = 40
   special = false # keep DSN URL-safe (no escaping in admin_dsn output)
+
+  # cloud-init applies this credential only on first boot. Regenerating it in
+  # state without a coordinated database rotation would make the published DSN
+  # disagree with the password PostgreSQL still accepts.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # pgbouncer auth_user credential (#8321 P0 #2). The pooler authenticates itself
@@ -45,6 +52,10 @@ resource "random_password" "tenant_db_admin" {
 resource "random_password" "pgbouncer_auth" {
   length  = 40
   special = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Operator/daemon SSH access is provisioned by cloud-init: each node's `deploy`
@@ -74,6 +85,10 @@ resource "hcloud_network_subnet" "apps" {
   type         = "cloud"
   network_zone = "eu-central"
   ip_range     = var.subnet_cidr
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # ── Block storage for all tenant databases (PGDATA) ───────────────────────────
@@ -115,7 +130,8 @@ resource "hcloud_firewall" "tenant_db" {
   # clean instead of showing a cosmetic rename that has nothing to do with the
   # rule set the operator actually cares about.
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -158,10 +174,18 @@ resource "hcloud_server_network" "tenant_db" {
   # First usable host in the subnet — stable private IP the app nodes + the
   # control-plane provisioner connect to (admin DSN host).
   ip = cidrhost(var.subnet_cidr, 10)
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "hcloud_volume_attachment" "tenant_db_data" {
   volume_id = hcloud_volume.tenant_db_data.id
   server_id = hcloud_server.tenant_db.id
   automount = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

@@ -175,6 +175,14 @@ describe("Persistent Hetzner resource safeguards", () => {
     join(HETZNER_APPS_SHARED_DIR, "main.tf"),
     "utf-8",
   );
+  const controlPlaneReadme = readFileSync(
+    join(HETZNER_CONTROL_PLANE_DIR, "README.md"),
+    "utf-8",
+  );
+  const appsSharedReadme = readFileSync(
+    join(HETZNER_APPS_SHARED_DIR, "README.md"),
+    "utf-8",
+  );
 
   test("protects and backs up persistent control-plane servers", () => {
     const server = terraformResource(
@@ -195,6 +203,11 @@ describe("Persistent Hetzner resource safeguards", () => {
       "hcloud_network",
       "data_plane",
     );
+    const subnet = terraformResource(
+      controlPlane,
+      "hcloud_network_subnet",
+      "data_plane",
+    );
     const attachment = terraformResource(
       controlPlane,
       "hcloud_server_network",
@@ -203,31 +216,82 @@ describe("Persistent Hetzner resource safeguards", () => {
 
     expect(network).toContain("delete_protection = true");
     expect(network).toContain("prevent_destroy = true");
+    expect(subnet).toContain("prevent_destroy = true");
     expect(attachment).toContain("for_each = hcloud_server.control_plane");
     expect(attachment).toContain("server_id = each.value.id");
     expect(attachment).toContain(
       "subnet_id = hcloud_network_subnet.data_plane.id",
     );
     expect(attachment).not.toContain("network_id =");
+    expect(attachment).toContain("prevent_destroy = true");
   });
 
   test("protects and backs up the shared tenant database failure domain", () => {
     const network = terraformResource(appsShared, "hcloud_network", "apps");
+    const subnet = terraformResource(
+      appsShared,
+      "hcloud_network_subnet",
+      "apps",
+    );
     const volume = terraformResource(
       appsShared,
       "hcloud_volume",
       "tenant_db_data",
     );
+    const firewall = terraformResource(
+      appsShared,
+      "hcloud_firewall",
+      "tenant_db",
+    );
     const server = terraformResource(appsShared, "hcloud_server", "tenant_db");
+    const serverNetwork = terraformResource(
+      appsShared,
+      "hcloud_server_network",
+      "tenant_db",
+    );
+    const volumeAttachment = terraformResource(
+      appsShared,
+      "hcloud_volume_attachment",
+      "tenant_db_data",
+    );
 
     expect(network).toContain("delete_protection = true");
     expect(network).toContain("prevent_destroy = true");
+    expect(subnet).toContain("prevent_destroy = true");
     expect(volume).toContain("delete_protection = true");
     expect(volume).toContain("prevent_destroy = true");
+    expect(firewall).toContain("prevent_destroy = true");
     expect(server).toContain("backups            = true");
     expect(server).toContain("delete_protection  = true");
     expect(server).toContain("rebuild_protection = true");
     expect(server).toContain("prevent_destroy = true");
+    expect(serverNetwork).toContain("network_id = hcloud_network.apps.id");
+    expect(serverNetwork).toContain("ip = cidrhost(var.subnet_cidr, 10)");
+    expect(serverNetwork).toContain("prevent_destroy = true");
+    expect(volumeAttachment).toContain(
+      "volume_id = hcloud_volume.tenant_db_data.id",
+    );
+    expect(volumeAttachment).toContain(
+      "server_id = hcloud_server.tenant_db.id",
+    );
+    expect(volumeAttachment).toContain("prevent_destroy = true");
+  });
+
+  test("does not regenerate state-held database credentials out of band", () => {
+    for (const name of ["tenant_db_admin", "pgbouncer_auth"]) {
+      const password = terraformResource(appsShared, "random_password", name);
+      expect(password).toContain("prevent_destroy = true");
+    }
+  });
+
+  test("routes live mutation through the exact reviewed-plan workflow", () => {
+    for (const readme of [controlPlaneReadme, appsSharedReadme]) {
+      expect(readme).toContain("infra.yml");
+      expect(readme).toContain("operation=plan");
+      expect(readme).toContain("operation=apply");
+      expect(readme).not.toContain("terraform apply -var-file");
+    }
+    expect(appsSharedReadme).not.toContain("terraform-apps-shared.yml");
   });
 });
 
