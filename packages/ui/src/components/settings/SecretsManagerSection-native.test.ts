@@ -9,10 +9,10 @@ import { ElizaClient } from "../../api/client-base";
 import type { AgentRequestTransport } from "../../api/transport";
 import { setBootConfig } from "../../config/boot-config";
 import {
-  VAULT_SECRETS_BACKENDS_RAW_REQUEST_TIMEOUT_MS,
-  VAULT_SECRETS_PREFERENCES_RAW_REQUEST_TIMEOUT_MS,
   rawRequestVaultSecretsBackends,
   rawRequestVaultSecretsPreferences,
+  VAULT_SECRETS_BACKENDS_RAW_REQUEST_TIMEOUT_MS,
+  VAULT_SECRETS_PREFERENCES_RAW_REQUEST_TIMEOUT_MS,
 } from "./SecretsManagerSection";
 
 function makeClient(request: AgentRequestTransport["request"]) {
@@ -24,7 +24,7 @@ function makeClient(request: AgentRequestTransport["request"]) {
 function stallTransport(): AgentRequestTransport["request"] {
   return async (_url, init, ctx) => {
     const ms = ctx?.timeoutMs ?? 10;
-    await new Promise<never>((_, reject) => {
+    return new Promise<never>((_, reject) => {
       const timer = setTimeout(() => {
         reject(
           Object.assign(new Error(`Request timed out after ${ms}ms`), {
