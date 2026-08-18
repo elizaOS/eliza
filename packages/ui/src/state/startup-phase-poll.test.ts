@@ -1121,6 +1121,42 @@ describe("runPollingBackend", () => {
     });
   });
 
+  it("routes a fresh cloud-only desktop directly into onboarding", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      __ELIZA_DESKTOP_RUNTIME_MODE__: "cloud",
+      location: {
+        origin: "file://",
+        protocol: "file:",
+        port: "",
+      },
+    };
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: false,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      null,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getAuthStatus).not.toHaveBeenCalled();
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_UNAVAILABLE_FIRST_RUN",
+    });
+  });
+
   it("hands a stale managed Cloud bearer from native cold boot to the top-level auth recovery gate", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
