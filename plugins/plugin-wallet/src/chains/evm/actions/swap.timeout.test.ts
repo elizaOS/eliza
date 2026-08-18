@@ -37,7 +37,7 @@ describe("SwapAction fetch timeout", () => {
   it("aborts a stalled Bebop quote at the deadline", async () => {
     const svc = new SwapAction(createMockWalletProvider());
     const orig = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
     const spy = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
         const sig = init?.signal as AbortSignal | undefined;
@@ -67,6 +67,7 @@ describe("SwapAction fetch timeout", () => {
         expect.stringContaining("api.bebop.xyz"),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS);
     } finally {
       globalThis.fetch = prev;
       vi.restoreAllMocks();
@@ -76,7 +77,7 @@ describe("SwapAction fetch timeout", () => {
   it("aborts a stalled Kyber quote at the deadline", async () => {
     const svc = new SwapAction(createMockWalletProvider());
     const orig = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
     const spy = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
         const sig = init?.signal as AbortSignal | undefined;
@@ -107,6 +108,7 @@ describe("SwapAction fetch timeout", () => {
         expect.stringContaining("aggregator-api.kyberswap.com"),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS);
     } finally {
       globalThis.fetch = prev;
       vi.restoreAllMocks();
@@ -116,7 +118,7 @@ describe("SwapAction fetch timeout", () => {
   it("aborts a stalled Kyber build at the deadline", async () => {
     const svc = new SwapAction(createMockWalletProvider());
     const orig = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
     const spy = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
         const sig = init?.signal as AbortSignal | undefined;
@@ -152,6 +154,7 @@ describe("SwapAction fetch timeout", () => {
         expect.stringContaining("aggregator-api.kyberswap.com"),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS);
     } finally {
       globalThis.fetch = prev;
       vi.restoreAllMocks();
