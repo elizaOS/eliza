@@ -29,7 +29,8 @@ src/
   middleware/              auth.ts (global auth gate + public-path allowlist),
                            cookie-mutation-guard.ts (CSRF origin+marker gate for
                            cookie-authenticated mutations, mounted right after
-                           authMiddleware), org-membership.ts.
+                           authMiddleware and in the thin inference shell, which
+                           skips global auth), org-membership.ts.
   services/                audit/ (cloud-owned audit contract + dispatcher), audit-events.ts (required auth_events sink).
   queue/                   stripe-event.ts, types.ts (Cloudflare Queue consumers).
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
