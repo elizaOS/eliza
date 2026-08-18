@@ -186,7 +186,14 @@ async function __hono_POST(c: AppContext) {
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
 
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not the POST catch's generic 500 "Failed to generate speech".
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const parsed = TtsBody.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(
