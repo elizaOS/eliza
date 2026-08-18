@@ -29,6 +29,8 @@ import type {
 } from "./types.js";
 import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
 
+export const DEFAULT_X402_FETCH_TIMEOUT_MS = 10_000;
+
 /**
  * [MAX-ADDED] x402 Payment Client for AgentWallet.
  *
@@ -62,7 +64,11 @@ export class X402Client {
    */
   async fetch(url: string | URL, init?: RequestInit): Promise<Response> {
     const urlStr = url.toString();
-    const response = await globalThis.fetch(url, init);
+    const timeoutSignal = AbortSignal.timeout(DEFAULT_X402_FETCH_TIMEOUT_MS);
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
+    const response = await globalThis.fetch(url, { ...init, signal });
 
     if (response.status !== 402) {
       return response;
@@ -139,9 +145,16 @@ export class X402Client {
     const payloadB64 = btoa(JSON.stringify(paymentPayload));
     retryHeaders.set("X-PAYMENT", payloadB64);
 
+    const retryTimeoutSignal = AbortSignal.timeout(
+      DEFAULT_X402_FETCH_TIMEOUT_MS,
+    );
+    const retrySignal = init?.signal
+      ? AbortSignal.any([init.signal, retryTimeoutSignal])
+      : retryTimeoutSignal;
     const retryResponse = await globalThis.fetch(url, {
       ...init,
       headers: retryHeaders,
+      signal: retrySignal,
     });
 
     return retryResponse;
