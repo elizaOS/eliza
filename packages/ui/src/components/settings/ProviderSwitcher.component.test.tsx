@@ -252,7 +252,7 @@ describe("ProviderSwitcher", () => {
         icon: Cpu,
         label: "Local",
         category: "local" as const,
-        status: { tone: "ok" as const, label: "Ready" },
+        status: { tone: "ok" as const, label: "Active" },
         current: true,
       },
       {
@@ -283,5 +283,32 @@ describe("ProviderSwitcher", () => {
     expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
       true,
     );
+  });
+
+  it("preserves a non-serving provider warning under external routing", () => {
+    const entries = [
+      {
+        id: "__cloud__",
+        icon: Cloud,
+        label: "Eliza Cloud",
+        category: "cloud" as const,
+        status: { tone: "warn" as const, label: "Not signed in" },
+        current: false,
+      },
+    ];
+
+    const displayed = reconcileProviderEntriesWithServingAxes(entries, {
+      runtime: "local",
+      inference: "external",
+      combination: "external-inference",
+      inferenceFallback: false,
+      activeChatProvider: "cerebras",
+      activeChatEndpoint: "api.cerebras.ai",
+    });
+
+    expect(displayed[0]?.status).toEqual({
+      tone: "warn",
+      label: "Not signed in",
+    });
   });
 });

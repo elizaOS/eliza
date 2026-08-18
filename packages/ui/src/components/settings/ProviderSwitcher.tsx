@@ -453,7 +453,7 @@ export function reconcileProviderEntriesWithServingAxes(
     return {
       ...entry,
       current,
-      ...(selectedInferenceTile
+      ...(selectedInferenceTile && entry.status.label === "Active"
         ? { status: { tone: "muted" as const, label: "Available" } }
         : {}),
     };

@@ -32,6 +32,7 @@ import {
   type AgentRuntime,
   ElizaError,
   logger,
+  ModelType,
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
@@ -562,6 +563,20 @@ function hostOf(value: string | undefined): string | null {
   }
 }
 
+function hasOpenAiTextHandlerRegistered(runtime: AgentRuntime): boolean {
+  try {
+    return (runtime.getModelRegistrations?.() ?? []).some(
+      (entry) =>
+        (entry.modelType === ModelType.TEXT_SMALL ||
+          entry.modelType === ModelType.TEXT_LARGE) &&
+        entry.provider === "openai",
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+    return false;
+  }
+}
+
 export function resolveActiveChat(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
@@ -595,7 +610,13 @@ export function resolveActiveChat(
       processEnv,
       "ELIZA_PROVIDER",
     )?.value.toLowerCase();
-    if (explicitProvider === "cerebras") provider = "cerebras";
+    if (
+      explicitProvider === "cerebras" &&
+      runtime &&
+      hasOpenAiTextHandlerRegistered(runtime)
+    ) {
+      provider = "cerebras";
+    }
   }
   const family =
     provider === "openai"
