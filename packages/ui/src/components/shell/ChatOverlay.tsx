@@ -92,6 +92,7 @@ import {
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
 import { useViewChatBinding } from "../../state/view-chat-binding";
+import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
@@ -5437,7 +5438,7 @@ export function ChatOverlay({
     // Native glass without a tint is transparent enough for home cards and
     // their text to compete with the conversation. Preserve refraction while
     // giving the sheet the same dark-warm reading field as the CSS fallback.
-    tintColor: "#16090DD9",
+    tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
   // Keep the CSS material identity stable through fullscreen and its restore.
