@@ -147,11 +147,18 @@ export const DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT = 2_048;
 
 /**
  * Resolve the documented input token limit for an embedding model id, falling
- * back to the safe default for unmapped overrides.
+ * back to the safe default for unmapped overrides. Google accepts either a
+ * bare model id or its `models/` resource name, so the optional resource prefix
+ * is ignored only for this local constraint lookup; callers still pass the
+ * configured model string unchanged to the SDK.
  */
 export function getEmbeddingInputTokenLimit(model: string): number {
+  const lookupModel = model.startsWith("models/")
+    ? model.slice("models/".length)
+    : model;
   return (
-    EMBEDDING_INPUT_TOKEN_LIMITS[model] ?? DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT
+    EMBEDDING_INPUT_TOKEN_LIMITS[lookupModel] ??
+    DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT
   );
 }
 
