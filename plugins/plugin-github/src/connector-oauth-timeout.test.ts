@@ -24,6 +24,7 @@ const callback = {
     provider: "github",
     state: "state-1",
     status: "pending" as const,
+    codeVerifier: "pkce-verifier",
     createdAt: 1,
     updatedAt: 1,
     metadata: {},
