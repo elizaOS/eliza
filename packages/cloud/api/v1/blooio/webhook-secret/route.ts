@@ -24,7 +24,14 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const orgId = user.organization_id;
 
-    const parsed = WebhookSecretBody.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = WebhookSecretBody.safeParse(rawBody);
     if (!parsed.success) {
       return c.json({ error: "Webhook secret is required" }, 400);
     }

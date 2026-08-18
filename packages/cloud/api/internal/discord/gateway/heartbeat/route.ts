@@ -1,4 +1,4 @@
-// Handles internal cloud API internal discord gateway heartbeat route traffic with service-to-service auth.
+/** Handles internal cloud API internal discord gateway heartbeat route traffic with service-to-service auth. */
 import { Hono } from "hono";
 import { z } from "zod";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
@@ -36,7 +36,14 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = heartbeatSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = heartbeatSchema.parse(rawBody);
     const updated = await discordConnectionsRepository.updateHeartbeatBatch(
       body.pod_name,
       body.connection_ids,

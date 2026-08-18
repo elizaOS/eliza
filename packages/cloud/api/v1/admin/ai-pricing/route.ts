@@ -159,7 +159,14 @@ app.post("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    const body = RefreshSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = RefreshSchema.parse(rawBody);
     const refresh = await refreshPricingCatalog(body.sources);
     return c.json(refresh, refresh.success ? 200 : 207);
   } catch (error) {
@@ -171,7 +178,14 @@ app.put("/", async (c) => {
   try {
     const { user } = await requireAdmin(c);
 
-    const body = OverrideSchema.parse(await c.req.json());
+    let overrideBody: unknown;
+    try {
+      overrideBody = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = OverrideSchema.parse(overrideBody);
     const dimensions = normalizePricingDimensions(body.dimensions);
     const dimensionKey = buildDimensionKey(dimensions);
     const created = await aiPricingRepository.createManualOverride({
