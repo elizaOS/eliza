@@ -92,11 +92,17 @@ export interface FakeProviderAccount {
 }
 
 /** OAuth client registration controlled by the provider rather than the caller. */
-export interface FakeProviderOAuthClient {
+interface FakeProviderOAuthClientBase {
   clientId: string;
   redirectUris: readonly string[];
   accountIds: readonly string[];
 }
+
+export type FakeProviderOAuthClient = FakeProviderOAuthClientBase &
+  (
+    | { clientType: "public" }
+    | { clientType: "confidential"; clientSecret: string }
+  );
 
 export type ProviderProtocolFault =
   | { type: "delay"; durationMs: number }

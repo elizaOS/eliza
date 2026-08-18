@@ -26,6 +26,8 @@ describe("provider-owned OAuth boundary", () => {
       oauthClients: [
         {
           clientId: "registered-client",
+          clientType: "confidential",
+          clientSecret: "registered-client-secret",
           redirectUris: ["https://adapter.test/callback"],
           accountIds: ["acct-owner"],
         },
@@ -61,15 +63,30 @@ describe("provider-owned OAuth boundary", () => {
     const callbackUrl = new URL(callback);
     expect(callbackUrl.searchParams.get("state")).toBe("expected-state");
     const code = callbackUrl.searchParams.get("code") ?? "";
+    const tokenParameters = {
+      grant_type: "authorization_code",
+      code,
+      client_id: "registered-client",
+      redirect_uri: "https://adapter.test/callback",
+      code_verifier: verifier,
+    };
+    for (const clientSecret of [undefined, "wrong-client-secret"]) {
+      const rejected = await fetch(provider.oauthTokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          ...tokenParameters,
+          ...(clientSecret ? { client_secret: clientSecret } : {}),
+        }),
+      });
+      expect(rejected.status).toBe(400);
+    }
     const tokenResponse = await fetch(provider.oauthTokenUrl, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        client_id: "registered-client",
-        redirect_uri: "https://adapter.test/callback",
-        code_verifier: verifier,
+        ...tokenParameters,
+        client_secret: "registered-client-secret",
       }),
     });
     expect(tokenResponse.status).toBe(200);
@@ -117,9 +134,23 @@ describe("provider-owned OAuth boundary", () => {
         grant_type: "refresh_token",
         refresh_token: tokens.refresh_token,
         client_id: "attacker-client",
+        client_secret: "registered-client-secret",
       }),
     });
     expect(wrongClientRefresh.status).toBe(400);
+    for (const clientSecret of [undefined, "wrong-client-secret"]) {
+      const rejected = await fetch(provider.oauthTokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: tokens.refresh_token,
+          client_id: "registered-client",
+          ...(clientSecret ? { client_secret: clientSecret } : {}),
+        }),
+      });
+      expect(rejected.status).toBe(400);
+    }
     const rotatedResponse = await fetch(provider.oauthTokenUrl, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -127,6 +158,7 @@ describe("provider-owned OAuth boundary", () => {
         grant_type: "refresh_token",
         refresh_token: tokens.refresh_token,
         client_id: "registered-client",
+        client_secret: "registered-client-secret",
       }),
     });
     expect(rotatedResponse.status).toBe(200);

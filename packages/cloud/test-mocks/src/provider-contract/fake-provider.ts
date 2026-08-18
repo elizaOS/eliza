@@ -134,6 +134,7 @@ export async function startFakeProvider(
       options.oauthClients ?? [
         {
           clientId,
+          clientType: "public" as const,
           redirectUris: ["https://adapter.test/callback"],
           accountIds: accountSeeds[0] ? [accountSeeds[0].accountId] : [],
         },
@@ -148,7 +149,9 @@ export async function startFakeProvider(
     if (
       registration.redirectUris.length === 0 ||
       registration.accountIds.length === 0 ||
-      registration.accountIds.some((accountId) => !accounts.has(accountId))
+      registration.accountIds.some((accountId) => !accounts.has(accountId)) ||
+      (registration.clientType === "confidential" &&
+        registration.clientSecret.length === 0)
     ) {
       throw new Error(
         `fake provider OAuth client ${registration.clientId} has an invalid provider-owned grant`,
@@ -246,7 +249,8 @@ export async function startFakeProvider(
           entry.used ||
           form.get("client_id") !== entry.clientId ||
           form.get("redirect_uri") !== entry.redirectUri ||
-          pkceChallenge(verifier) !== entry.challenge
+          pkceChallenge(verifier) !== entry.challenge ||
+          !oauthClientAuthenticated(oauthClients.get(entry.clientId), form)
         ) {
           return oauthError("invalid_grant", 400);
         }
@@ -273,7 +277,7 @@ export async function startFakeProvider(
           !prior.active ||
           prior.expiresAt <= now() ||
           form.get("client_id") !== prior.clientId ||
-          !oauthClients.has(prior.clientId)
+          !oauthClientAuthenticated(oauthClients.get(prior.clientId), form)
         ) {
           return oauthError("invalid_grant", 400);
         }
@@ -842,6 +846,15 @@ function oauthError(error: string, status: number): Response {
 function bearerToken(header: string | null): string | null {
   const match = header?.match(/^Bearer\s+(.+)$/i);
   return match?.[1] ?? null;
+}
+
+function oauthClientAuthenticated(
+  registration: FakeProviderOAuthClient | undefined,
+  form: URLSearchParams,
+): boolean {
+  if (!registration) return false;
+  if (registration.clientType === "public") return true;
+  return form.get("client_secret") === registration.clientSecret;
 }
 
 async function applyFault(fault: ProviderProtocolFault): Promise<Response> {

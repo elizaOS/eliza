@@ -30,6 +30,15 @@ let upstream: RunningFakeProvider;
 
 beforeAll(async () => {
   upstream = await startFakeProvider({
+    oauthClients: [
+      {
+        clientId: CLIENT_ID,
+        clientType: "confidential",
+        clientSecret: CLIENT_SECRET,
+        redirectUris: [REDIRECT_URI],
+        accountIds: ["acct-contract"],
+      },
+    ],
     fixtures: [
       {
         id: "github-user",
@@ -171,6 +180,11 @@ describe("GitHub connector OAuth production contract", () => {
       scenarios: {
         success: async () => {
           await completeFreshOAuth();
+          const tokenRequest = upstream.requests.findLast(
+            (request) => request.path === "/oauth/token",
+          );
+          expect(tokenRequest?.body).toContain("client_secret=%3Credacted%3E");
+          expect(tokenRequest?.body).not.toContain(CLIENT_SECRET);
           return passed(
             "success",
             "production connector completed a PKCE-bound loopback grant",
