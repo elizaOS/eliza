@@ -43,9 +43,9 @@ finish-args:
   # inside the per-app sandboxed home so it survives upgrades. Flatpak
   # rewrites this to `~/.var/app/ai.elizaos.App/.eliza` transparently.
   - --persist=.eliza
-  # Portal-managed user-granted workspace folder. The user picks this
-  # explicitly via the FileChooser portal at first run; everything outside
-  # it stays unreadable.
+  # Static, narrowly scoped workspace grant. This is available on every run;
+  # it is not a per-selection FileChooser portal grant. Everything outside it
+  # stays unreadable.
   - --filesystem=xdg-documents/Eliza:create
   # XDG config persistence (config file, account storage, settings).
   - --filesystem=xdg-config/elizaos-app:create
@@ -112,7 +112,10 @@ modules:
         npm_config_nodedir: /app
         npm_config_cache: /run/build/elizaos-app/flatpak-node/npm-cache
     build-commands:
-      - /app/bin/npm install -g --offline --prefix=/app --ignore-scripts elizaos@2.0.3-beta.7
+      - install -d /app/lib
+      - install -Dm644 flatpak-package.json /app/lib/package.json
+      - install -Dm644 flatpak-package-lock.json /app/lib/package-lock.json
+      - /app/bin/npm ci --offline --prefix=/app/lib --ignore-scripts
       - install -Dm755 elizaos-app-wrapper.store.sh /app/bin/elizaos-app
       - install -Dm644 ai.elizaos.App.desktop /app/share/applications/ai.elizaos.App.desktop
       - install -Dm644 ai.elizaos.App.metainfo.xml /app/share/metainfo/ai.elizaos.App.metainfo.xml
@@ -124,6 +127,10 @@ modules:
       # Regenerate with ./generate-sources.sh whenever the package version
       # changes. A bare string lets flatpak-builder expand generator entries.
       - node-sources.json
+      - type: file
+        path: flatpak-package.json
+      - type: file
+        path: flatpak-package-lock.json
       - type: file
         path: ai.elizaos.App.desktop
       - type: file

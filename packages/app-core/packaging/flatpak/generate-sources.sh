@@ -26,6 +26,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 RM_PATH_RECURSIVE="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
 OUT_DIR="${1:-$SCRIPT_DIR}"
 OUT_FILE="$OUT_DIR/node-sources.json"
+PACKAGE_FILE="$OUT_DIR/flatpak-package.json"
+LOCK_FILE="$OUT_DIR/flatpak-package-lock.json"
 ELIZAOS_PACKAGE_JSON="${REPO_ROOT}/packages/elizaos/package.json"
 ELIZAOS_VERSION="${ELIZA_FLATPAK_PACKAGE_VERSION:-$(
   node -p "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).version" \
@@ -81,8 +83,12 @@ flatpak-node-generator npm \
   --recursive \
   -o "$OUT_FILE" \
   "$WORK_DIR/package-lock.json"
+cp "$WORK_DIR/package.json" "$PACKAGE_FILE"
+cp "$WORK_DIR/package-lock.json" "$LOCK_FILE"
+node -e 'const fs = require("node:fs"); for (const path of process.argv.slice(1)) { const value = JSON.parse(fs.readFileSync(path, "utf8")); fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`); }' \
+  "$OUT_FILE" "$PACKAGE_FILE" "$LOCK_FILE"
 
-echo "[generate-sources] Wrote $OUT_FILE" >&2
+echo "[generate-sources] Wrote $OUT_FILE, $PACKAGE_FILE, and $LOCK_FILE" >&2
 echo "[generate-sources] Add the following to ai.elizaos.App.yml under the elizaos-app module sources:" >&2
 echo "      - type: file" >&2
 echo "        path: node-sources.json" >&2

@@ -1,0 +1,8 @@
+{
+  "name": "elizaos-flatpak-sources-shim",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "elizaos": "2.0.3-beta.7"
+  }
+}

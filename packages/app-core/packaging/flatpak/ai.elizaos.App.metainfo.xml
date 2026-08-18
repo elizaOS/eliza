@@ -28,8 +28,8 @@
   </description>
 
   <url type="homepage">https://cloud.eliza.app</url>
-  <url type="bugtracker">https://github.com/elizaos/elizaos-app/issues</url>
-  <url type="vcs-browser">https://github.com/elizaos/elizaos-app</url>
+  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>
+  <url type="vcs-browser">https://github.com/elizaOS/eliza</url>
   <url type="help">https://docs.elizaos.ai</url>
 
   <provides>
@@ -64,7 +64,7 @@
   </screenshots>
 
   <releases>
-    <release version="2.0.0-beta.0" date="2026-05-05">
+    <release version="2.0.3-beta.7" date="2026-06-28">
       <description>
         <p>Beta Flatpak release of elizaOS App.</p>
       </description>

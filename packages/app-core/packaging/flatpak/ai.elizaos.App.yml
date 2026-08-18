@@ -88,7 +88,10 @@ modules:
         npm_config_nodedir: /app
         npm_config_cache: /run/build/elizaos-app/flatpak-node/npm-cache
     build-commands:
-      - /app/bin/npm install -g --prefix=/app --ignore-scripts elizaos@2.0.3-beta.7
+      - install -d /app/lib
+      - install -Dm644 flatpak-package.json /app/lib/package.json
+      - install -Dm644 flatpak-package-lock.json /app/lib/package-lock.json
+      - /app/bin/npm ci --offline --prefix=/app/lib --ignore-scripts
 
       # Install wrapper script from source
       - install -Dm755 elizaos-app-wrapper.sh /app/bin/elizaos-app
@@ -111,6 +114,10 @@ modules:
       # entries, script entries, etc., rather than treating it as a single
       # opaque file to copy.
       - node-sources.json
+      - type: file
+        path: flatpak-package.json
+      - type: file
+        path: flatpak-package-lock.json
       - type: file
         path: ai.elizaos.App.desktop
       - type: file
