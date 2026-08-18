@@ -5,8 +5,8 @@
  * registry pricing (with eliza cloud margin applied). Useful for the agent
  * "give me a few options" flow before committing to a /buy.
  *
- * Untrusted POST JSON is parsed before schema: syntax errors and non-object
- * bodies return 400 and never query the registrar.
+ * Untrusted POST JSON is parsed before schema validation. Syntax errors return
+ * a caller-facing 400; valid JSON values are validated by the route schema.
  *
  * Org-scoped (not per-app) since the user picks an app to attach to AFTER
  * choosing a domain.
@@ -40,10 +40,6 @@ app.post("/", async (c) => {
       if (!(error instanceof SyntaxError)) throw error;
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return c.json({ success: false, error: "Invalid JSON body" }, 400);
-    }
-
     const parsed = SearchSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
