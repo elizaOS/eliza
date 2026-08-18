@@ -34,6 +34,22 @@ const PROD_OPS_DIR = join(
   "hetzner",
   "prod-ops",
 );
+const HETZNER_CONTROL_PLANE_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "control-plane",
+);
+const HETZNER_APPS_SHARED_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "apps-shared",
+);
 
 function readK8sTerraform(file: string): string {
   return readFileSync(join(K8S_TERRAFORM_DIR, file), "utf-8");
@@ -129,6 +145,60 @@ describe("Protected production-operations runner", () => {
     expect(readme).toContain("two live doctor passes");
     expect(readme).toContain("switch back to");
     expect(readme).toContain("`ubuntu-24.04`");
+  });
+});
+
+describe("Persistent Hetzner resource safeguards", () => {
+  const controlPlane = readFileSync(
+    join(HETZNER_CONTROL_PLANE_DIR, "main.tf"),
+    "utf-8",
+  );
+  const appsShared = readFileSync(
+    join(HETZNER_APPS_SHARED_DIR, "main.tf"),
+    "utf-8",
+  );
+
+  test("protects and backs up persistent control-plane servers", () => {
+    const server = controlPlane.match(
+      /resource "hcloud_server" "control_plane" \{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(server).toBeDefined();
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
+  });
+
+  test("attaches every control plane to its protected private network", () => {
+    const network = controlPlane.match(
+      /resource "hcloud_network" "data_plane" \{([\s\S]*?)\n\}/,
+    )?.[1];
+    const attachment = controlPlane.match(
+      /resource "hcloud_server_network" "control_plane" \{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(network).toContain("delete_protection = true");
+    expect(attachment).toContain("for_each = hcloud_server.control_plane");
+    expect(attachment).toContain("server_id  = each.value.id");
+    expect(attachment).toContain("network_id = hcloud_network.data_plane.id");
+  });
+
+  test("protects and backs up the shared tenant database failure domain", () => {
+    const network = appsShared.match(
+      /resource "hcloud_network" "apps" \{([\s\S]*?)\n\}/,
+    )?.[1];
+    const volume = appsShared.match(
+      /resource "hcloud_volume" "tenant_db_data" \{([\s\S]*?)\n\}/,
+    )?.[1];
+    const server = appsShared.match(
+      /resource "hcloud_server" "tenant_db" \{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(network).toContain("delete_protection = true");
+    expect(volume).toContain("delete_protection = true");
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
   });
 });
 

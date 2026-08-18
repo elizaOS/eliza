@@ -179,6 +179,34 @@ the exact "node registers against the wrong service" failure mode.
 These are tracked as follow-ups in
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md#followups).
 
+## Persistent-resource safeguards
+
+Each control-plane VM has Hetzner backups plus delete and rebuild protection,
+and Terraform attaches it to the same protected private network used by its
+runtime-created workers. These provider backups reduce host-loss recovery time;
+they do not replace an application-consistent backup of Headscale state or the
+control-plane daemon configuration.
+
+Always dispatch `Infrastructure` with `operation=plan` from the canonical
+branch for the selected protected environment and review the exact bound plan
+artifact before an apply. The first adoption plan should contain only in-place
+protection/backup updates plus one network attachment per control-plane VM; a
+server replacement, network replacement, or DNS change is a stop condition.
+
+Rollback is intentionally ordered and requires a separately reviewed plan:
+
+1. Keep delete/rebuild protection enabled while validating public ingress,
+   Headscale, and daemon health.
+2. Detach the private-network resource only after proving no daemon or worker
+   route depends on it.
+3. Disable backups only after an independent state-backup/recovery path is
+   proven and the recurring-cost change is accepted.
+4. Remove rebuild protection before delete protection only when an explicitly
+   reviewed replacement or retirement requires it.
+
+Never use an ad-hoc provider mutation to bypass protection. A protected
+resource that Terraform cannot update cleanly must stop at plan review.
+
 ## Cost
 
 | Component                    | Resource    | Monthly (€) |

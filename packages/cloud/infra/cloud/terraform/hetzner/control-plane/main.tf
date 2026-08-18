@@ -15,9 +15,10 @@ locals {
 # The autoscaler reads this network's id from CONTAINERS_HCLOUD_NETWORK_IDS in
 # /opt/eliza/cloud/.env.local on the CP (see node-autoscaler.ts).
 resource "hcloud_network" "data_plane" {
-  name     = "eliza-${var.environment}-private"
-  ip_range = var.data_plane_network_cidr
-  labels   = local.common_labels
+  name              = "eliza-${var.environment}-private"
+  ip_range          = var.data_plane_network_cidr
+  labels            = local.common_labels
+  delete_protection = true
 
   # Same convention as the apps-shared module: ignore Hetzner-side renames so
   # legacy names left over from out-of-band creation don't show as drift.
@@ -58,11 +59,14 @@ resource "hcloud_server" "control_plane" {
   # public internet OR from agent containers, and we don't have a clean
   # inventory of every bound port. Defense is pubkey-only SSH + per-service
   # auth on the bound ports.
-  name        = "eliza-${var.environment}-${each.value}"
-  location    = var.hcloud_location
-  server_type = var.hcloud_server_type
-  image       = var.hcloud_image
-  ssh_keys    = [for k in hcloud_ssh_key.operators : k.id]
+  name               = "eliza-${var.environment}-${each.value}"
+  location           = var.hcloud_location
+  server_type        = var.hcloud_server_type
+  image              = var.hcloud_image
+  backups            = true
+  delete_protection  = true
+  rebuild_protection = true
+  ssh_keys           = [for k in hcloud_ssh_key.operators : k.id]
   labels = merge(local.common_labels, {
     "control-plane-index" = each.value
   })
@@ -91,6 +95,16 @@ resource "hcloud_server" "control_plane" {
       server_type, # cross-arch flips (cax21 ARM ↔ cpx32 x86) are ForceNew, not in-place; would wipe headscale + TLS-cert state on adopt-existing-vm import. Resize must go through `terraform taint` or out-of-band `hcloud server change-type` before plan/apply.
     ]
   }
+}
+
+# The control plane and every runtime-created worker share this environment's
+# private LAN. Keeping the attachment in Terraform closes the provider-side
+# drift where worker nodes were attached but the control plane was not.
+resource "hcloud_server_network" "control_plane" {
+  for_each = hcloud_server.control_plane
+
+  server_id  = each.value.id
+  network_id = hcloud_network.data_plane.id
 }
 
 resource "cloudflare_dns_record" "control_plane" {

@@ -112,3 +112,24 @@ gates every connection.
 - `tenant_db_public_ip` — SSH/admin only.
 - `tenant_db_admin_dsn` — **sensitive**; seed into `tenant_db_clusters` (`:5432`, direct).
 - `tenant_db_pooler_endpoint` — `10.30.1.10:6432`; set as `tenant_db_clusters.host` to route apps through pgbouncer (after rolling the node).
+
+## Persistent-resource safeguards and rollback
+
+The shared tenant Postgres VM has Hetzner backups plus delete and rebuild
+protection. Its attached PGDATA volume and private network have delete
+protection. Provider backups are a short-term host safeguard only: they do not
+provide application-consistent Postgres recovery, point-in-time recovery, or
+environment isolation. Those require a separate reviewed design and recurring
+restore proof.
+
+Before any apply, run the protected `Infrastructure` workflow with
+`component=apps-shared`, `environment=production`, and `operation=plan`, then
+review the exact bound plan artifact. Adoption should be in-place. Any server,
+volume, or network replacement is a stop condition.
+
+Rollback must preserve the data dependency order: keep volume and network
+delete protection enabled while the database uses them; disable server rebuild
+protection only for an explicitly reviewed replacement; and remove volume or
+network delete protection only in a later retirement plan after a verified
+off-host restore. Never detach or destroy the volume as a shortcut for rolling
+back backup billing.
