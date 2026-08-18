@@ -71,6 +71,9 @@ const TASK_TEXT_LIMITS = {
   cursor: 256,
 } as const;
 const MAX_TASK_TAGS = 10;
+const REMOTE_TEXT_SEGMENTER = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -88,14 +91,26 @@ function requireString(record: Record<string, unknown>, key: string): string {
 }
 
 function sanitizeRemoteText(value: string, maxLength: number): string {
-  return Array.from(value, (character) => {
+  const normalized = Array.from(value, (character) => {
     const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) return "\uFFFD";
     return codePoint < 32 || codePoint === 127 ? " " : character;
   })
     .join("")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+    .trim();
+
+  let result = "";
+  let codePointCount = 0;
+  // Keep the hard code-point budget, but never spend a partial grapheme: a
+  // combining or ZWJ cluster that does not fit is omitted as one unit.
+  for (const { segment } of REMOTE_TEXT_SEGMENTER.segment(normalized)) {
+    const segmentLength = Array.from(segment).length;
+    if (codePointCount + segmentLength > maxLength) break;
+    result += segment;
+    codePointCount += segmentLength;
+  }
+  return result;
 }
 
 function requireSanitizedString(
