@@ -188,7 +188,7 @@ describe("manual live contract lane (live-smoke.yml)", () => {
 
   test("accepts the established cloud smoke credential alias", () => {
     expect(smoke?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
-      "${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
+      "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
     );
   });
 
