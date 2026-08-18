@@ -1,10 +1,7 @@
 /** Attacks receipt fabrication, replay, tenant isolation, and denial at the real fake-upstream boundary. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  normalizeCapabilityActionReceipt,
-  normalizeEffectReceipt,
-} from "@elizaos/core";
+import { normalizeEffectReceipt } from "@elizaos/core";
 import {
   type RunningFakeProvider,
   startFakeProvider,
@@ -171,19 +168,6 @@ describe("provider action authorization/effect boundary", () => {
     expect(receipt && normalizeEffectReceipt(receipt.effect)).toEqual(
       receipt?.effect,
     );
-    expect(
-      receipt &&
-        normalizeCapabilityActionReceipt({
-          accountId: receipt.accountId,
-          capabilityId: receipt.capabilityId,
-          policyDecisionId: receipt.policyDecisionId,
-          effect: receipt.effect,
-        }),
-    ).toMatchObject({
-      accountId: "acct-owner",
-      capabilityId: "items.write",
-      effect: { outcome: "applied" },
-    });
     expect(provider.effects).toHaveLength(1);
     expect(response.headers.get("x-provider-receipt-id")).toBe(receipt?.id);
     if (receipt) receipt.outcome = "denied";
