@@ -47,7 +47,7 @@ function parseVariant() {
 
 function manifestFor(variant) {
   const file =
-    variant === "store" ? "ai.elizaos.App.store.yml" : "ai.elizaos.App.yml";
+    variant === "store" ? "ai.elizaos.App.yml" : "ai.elizaos.App.direct.yml";
   const path = resolve(FLATPAK_DIR, file);
   if (!existsSync(path)) {
     throw new Error(`Manifest not found: ${path}`);

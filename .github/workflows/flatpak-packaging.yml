@@ -43,7 +43,7 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive --or-update flathub \
-            org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 \
+            org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 \
             org.flatpak.Builder
 
       - name: Verify pinned packaging inputs
@@ -53,7 +53,7 @@ jobs:
         working-directory: packages/app-core/packaging/flatpak
         run: |
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-            manifest ai.elizaos.App.store.yml
+            manifest ai.elizaos.App.yml
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
             appstream ai.elizaos.App.metainfo.xml
 
@@ -61,7 +61,7 @@ jobs:
         working-directory: packages/app-core/packaging/flatpak
         run: |
           flatpak-builder --user --disable-rofiles-fuse --force-clean \
-            --install --repo=repo build-dir ai.elizaos.App.store.yml
+            --install --repo=repo build-dir ai.elizaos.App.yml
 
       - name: Lint repository and exercise installed entrypoint
         working-directory: packages/app-core/packaging/flatpak

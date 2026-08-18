@@ -22,11 +22,11 @@ const cliPackage = JSON.parse(
   readFileSync(resolve(repoRoot, "packages/elizaos/package.json"), "utf8"),
 );
 const storeManifest = readFileSync(
-  resolve(flatpakDirectory, "ai.elizaos.App.store.yml"),
+  resolve(flatpakDirectory, "ai.elizaos.App.yml"),
   "utf8",
 );
 const directManifest = readFileSync(
-  resolve(flatpakDirectory, "ai.elizaos.App.yml"),
+  resolve(flatpakDirectory, "ai.elizaos.App.direct.yml"),
   "utf8",
 );
 const nodeSourcesText = readFileSync(

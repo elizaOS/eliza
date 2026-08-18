@@ -5,8 +5,8 @@ app-id, but with very different sandbox postures.
 
 | Variant | Manifest | Wrapper | Posture | Distribution |
 |---------|----------|---------|---------|--------------|
-| **Store** (Flathub) | `ai.elizaos.App.store.yml` | `elizaos-app-wrapper.store.sh` | Locked-down sandbox, no host escape | Flathub |
-| **Direct** (power-user) | `ai.elizaos.App.yml` | `elizaos-app-wrapper.sh` | Full `$HOME` access, host shell reach, EXECUTE_CODE permitted | Self-hosted repo, side-loaded bundles |
+| **Store** (Flathub) | `ai.elizaos.App.yml` | `elizaos-app-wrapper.store.sh` | Locked-down sandbox, no host escape | Flathub |
+| **Direct** (power-user) | `ai.elizaos.App.direct.yml` | `elizaos-app-wrapper.sh` | Full `$HOME` access, host shell reach, EXECUTE_CODE permitted | Self-hosted repo, side-loaded bundles |
 
 Pick the variant that matches the audience. Flathub will reject the direct
 manifest on review. Power users who want host-Ollama, docker reach, and
@@ -29,8 +29,8 @@ agent needs:
 - `--filesystem=xdg-documents/Eliza:create` — a static, narrowly scoped grant
   to `~/Documents/Eliza`. This is not a FileChooser grant: the manifest grants
   it at install time and Flatpak exposes it on every run.
-- `--filesystem=xdg-config/elizaos-app:create` — config and account
-  storage under `~/.config/elizaos-app`.
+- Config and account storage use the app's private sandbox home under
+  `~/.var/app/ai.elizaos.App`; no host config-directory grant is needed.
 - `--persist=.eliza` — `~/.eliza` is rewritten transparently by
   Flatpak to `~/.var/app/ai.elizaos.App/.eliza`, surviving upgrades.
 - `--talk-name=org.freedesktop.Notifications` — desktop notifications.
@@ -69,7 +69,7 @@ backend that would otherwise have a local fallback.
 ## Required portals
 
 The store variant relies on these portals (ambient on the
-`org.freedesktop.Platform//24.08` runtime — no extra `--talk-name=`
+`org.freedesktop.Platform//25.08` runtime — no extra `--talk-name=`
 needed):
 
 | Portal | Purpose |
@@ -89,15 +89,15 @@ sudo apt install flatpak flatpak-builder        # Debian / Ubuntu
 sudo dnf install flatpak flatpak-builder        # Fedora
 
 # Install the runtime + SDK once.
-flatpak install --user flathub org.freedesktop.Platform//24.08
-flatpak install --user flathub org.freedesktop.Sdk//24.08
+flatpak install --user flathub org.freedesktop.Platform//25.08
+flatpak install --user flathub org.freedesktop.Sdk//25.08
 
 # Build the store variant.
 ELIZA_BUILD_VARIANT=store bun run build:flatpak
 
 # Or call flatpak-builder directly.
 cd packages/app-core/packaging/flatpak
-flatpak-builder --user --install --force-clean build-dir ai.elizaos.App.store.yml
+flatpak-builder --user --install --force-clean build-dir ai.elizaos.App.yml
 
 # Run both the package entrypoint and its normal desktop command.
 flatpak run ai.elizaos.App --version
@@ -106,7 +106,7 @@ flatpak run ai.elizaos.App start
 # Inspect the granted permissions to confirm the lockdown.
 flatpak info --show-permissions ai.elizaos.App
 # Expect: shared=network;ipc; sockets=wayland;fallback-x11; filesystems
-# limited to xdg-documents/Eliza and xdg-config/elizaos-app; talk-names
+# limited to xdg-documents/Eliza; talk-names
 # limited to Notifications + StatusNotifierWatcher.
 ```
 
@@ -154,7 +154,7 @@ When you're ready to submit the store variant to Flathub:
 
 ## Direct variant
 
-The direct manifest (`ai.elizaos.App.yml`) keeps the existing
+The direct manifest (`ai.elizaos.App.direct.yml`) keeps the existing
 `--filesystem=home` posture so power users who self-host a Flatpak repo
 or side-load a bundle get the same experience as the AppImage / .deb /
 .rpm builds. It does NOT set `ELIZA_BUILD_VARIANT=store`, so the
