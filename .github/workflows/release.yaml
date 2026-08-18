@@ -168,7 +168,9 @@ jobs:
     name: Build immutable candidate
     needs: authorize
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # The capped turbo fan-out (RUN_TURBO_CONCURRENCY=3, needed to fit the
+    # hosted runner's memory) makes verify+test+build exceed two hours.
+    timeout-minutes: 210
     permissions:
       actions: read
       contents: read
