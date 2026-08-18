@@ -218,18 +218,24 @@ export function normalizeBrowserWorkspaceCommand(
   command: BrowserWorkspaceCommand,
 ): BrowserWorkspaceCommand {
   const raw = command as BrowserWorkspaceCommand & Record<string, unknown>;
-  const normalizedSubaction =
-    typeof raw.subaction === "string"
-      ? raw.subaction.trim().toLowerCase()
-      : typeof raw.operation === "string"
-        ? raw.operation.trim().toLowerCase()
-        : "";
+  // A trimmed-empty `subaction` is absent, not a value: fall back to
+  // `operation` before resolving so whitespace cannot mask a valid alias.
+  // Precedence is explicit — a non-empty `subaction` always wins over
+  // `operation`; the raw `command.subaction` is only restored when neither
+  // yields a usable token, preserving the executor's unsupported-subaction
+  // diagnostic.
+  const trimmedSubaction =
+    typeof raw.subaction === "string" ? raw.subaction.trim().toLowerCase() : "";
+  const trimmedOperation =
+    typeof raw.operation === "string" ? raw.operation.trim().toLowerCase() : "";
+  const normalizedSubaction = trimmedSubaction || trimmedOperation;
   const subaction =
     normalizedSubaction === "goto"
       ? "navigate"
       : normalizedSubaction === "read"
         ? "get"
-        : command.subaction;
+        : ((normalizedSubaction ||
+            command.subaction) as BrowserWorkspaceSubaction);
   const timeoutMs =
     parseBrowserWorkspaceNumberLike(command.timeoutMs) ??
     parseBrowserWorkspaceNumberLike(raw.ms) ??
