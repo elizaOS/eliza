@@ -6,7 +6,7 @@
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { normalizeBaseUrl, signalCheck, signalRpcRequest } from "./rpc";
+import { createSignalEventStream, normalizeBaseUrl, signalCheck, signalRpcRequest } from "./rpc";
 
 describe("Signal RPC helpers", () => {
   afterEach(() => {
@@ -90,6 +90,121 @@ describe("Signal RPC helpers", () => {
     await expect(signalRpcRequest("bad", {}, { baseUrl: "http://localhost" })).rejects.toThrow(
       "Signal RPC -32602: bad params"
     );
+  });
+
+  it("grows the reconnect delay exponentially up to the cap when the daemon stays down", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("ECONNREFUSED (daemon down)");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Capture reconnect delays and defer each scheduled reconnect so the test
+    // drives the cycles deterministically instead of racing the event loop.
+    const realSetTimeout = globalThis.setTimeout;
+    const delays: number[] = [];
+    let pending: (() => void) | null = null;
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      pending = fn;
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    const flush = () => new Promise((resolve) => realSetTimeout(resolve, 0));
+
+    let connects = 0;
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onError: () => {},
+      onConnect: () => {
+        connects += 1;
+      },
+      reconnectDelayMs: 1000,
+      maxReconnectDelayMs: 30000,
+    });
+
+    stream.start();
+    for (let i = 0; i < 7; i++) {
+      await flush();
+      const next = pending;
+      pending = null;
+      next?.();
+    }
+    await flush();
+    stream.stop();
+
+    // Backoff doubles from the base delay and saturates at the configured cap.
+    expect(delays.slice(0, 6)).toEqual([1000, 2000, 4000, 8000, 16000, 30000]);
+    expect(delays.every((d) => d <= 30000)).toBe(true);
+    expect(Math.max(...delays)).toBe(30000);
+    // onConnect never fires because no connection was ever established.
+    expect(connects).toBe(0);
+  });
+
+  it("resets the reconnect delay to base after a connection is actually established", async () => {
+    const okStream = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        throw new Error("down");
+      })
+      .mockImplementationOnce(async () => {
+        throw new Error("down");
+      })
+      .mockImplementationOnce(async () => okStream())
+      .mockImplementation(async () => {
+        throw new Error("down");
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const realSetTimeout = globalThis.setTimeout;
+    const delays: number[] = [];
+    let pending: (() => void) | null = null;
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      pending = fn;
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    const flush = async () => {
+      await new Promise((resolve) => realSetTimeout(resolve, 0));
+      await new Promise((resolve) => realSetTimeout(resolve, 0));
+    };
+
+    let connects = 0;
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onError: () => {},
+      onConnect: () => {
+        connects += 1;
+      },
+      reconnectDelayMs: 1000,
+      maxReconnectDelayMs: 30000,
+    });
+
+    stream.start();
+    for (let i = 0; i < 4; i++) {
+      await flush();
+      const next = pending;
+      pending = null;
+      next?.();
+    }
+    await flush();
+    stream.stop();
+
+    // Two failed dials grow the delay (1000 -> 2000); the third dial succeeds
+    // and resets it, so the drop after the established stream restarts at the
+    // base delay rather than continuing the pre-success ramp.
+    expect(delays.slice(0, 4)).toEqual([1000, 2000, 1000, 2000]);
+    // onConnect fires exactly once, only for the genuinely established stream.
+    expect(connects).toBe(1);
   });
 
   it("reports Signal health failures for non-OK and aborted checks", async () => {
