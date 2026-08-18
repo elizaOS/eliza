@@ -56,8 +56,17 @@ export interface ElizaSseBridgeRequest {
   traceId: string;
   /** Abort → cancels the fetch → cancels the upstream provider stream. */
   signal: AbortSignal;
+  /** Reports canonical-route ingress timing as soon as response headers land. */
+  onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
+}
+
+export interface ElizaSseBridgeResponseHeaders {
+  /** Time from dispatch until the canonical route returned streaming headers. */
+  elapsedMs: number;
+  /** Sanitized phase timings emitted by the canonical Shared route. */
+  serverTiming: string | null;
 }
 
 export interface ElizaSseBridgeResult {
@@ -104,6 +113,7 @@ export async function streamElizaConversation(
   onDelta: (text: string) => void,
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
+  const fetchStartedAt = performance.now();
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -154,6 +164,11 @@ export async function streamElizaConversation(
       "upstream_error",
     );
   }
+
+  request.onResponseHeaders?.({
+    elapsedMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
+    serverTiming: response.headers.get("Server-Timing"),
+  });
 
   if (!response.ok) {
     const upstreamError = await readUpstreamError(response);
