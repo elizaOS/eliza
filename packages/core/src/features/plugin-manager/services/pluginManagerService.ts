@@ -18,7 +18,6 @@
 import { exec } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import fs from "fs-extra";
 import { createUniqueUuid } from "../../../entities.ts";
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
@@ -27,6 +26,7 @@ import type { Plugin as ElizaPlugin } from "../../../types/plugin.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
 import { Service } from "../../../types/service.ts";
+import * as fs from "../../../utils/fs-extra-lite.ts";
 import {
 	applyRuntimeExtensions,
 	type ExtendedRuntime,
