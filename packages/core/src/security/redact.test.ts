@@ -628,6 +628,43 @@ describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 		expect(serialized).not.toContain("resurrected");
 	});
 
+	it("does not invoke a caller-owned array map or preserve a hostile array species", () => {
+		const secret = "sk-array-clone-hook-secret-value";
+		const ownMap = [{ apiKey: secret }];
+		Object.assign(ownMap, {
+			map: () => ownMap,
+			toJSON: () => ({ marker: "own-map-resurrected", secret }),
+		});
+
+		class HostileArray extends Array<unknown> {
+			toJSON() {
+				return { marker: "species-resurrected", secret };
+			}
+		}
+		const hostileSpecies = new HostileArray();
+		hostileSpecies.push({ apiKey: secret });
+
+		const [ownMapOut, speciesOut] = redactLogArgs([ownMap, hostileSpecies]) as [
+			unknown[],
+			unknown[],
+		];
+		expect(ownMapOut).not.toBe(ownMap);
+		expect(speciesOut).not.toBeInstanceOf(HostileArray);
+		expect(ownMapOut).toEqual([{ apiKey: "[REDACTED]" }]);
+		expect(speciesOut).toEqual([{ apiKey: "[REDACTED]" }]);
+		const serialized = JSON.stringify([ownMapOut, speciesOut]);
+		expect(serialized).not.toContain(secret);
+		expect(serialized).not.toContain("resurrected");
+	});
+
+	it("uses a null-prototype object clone", () => {
+		const input = JSON.parse('{"__proto__":{"note":"untrusted"},"ok":1}');
+		const [out] = redactLogArgs([input]) as [Record<string, unknown>];
+		expect(Object.getPrototypeOf(out)).toBeNull();
+		expect(Object.hasOwn(out, "__proto__")).toBe(true);
+		expect(out.ok).toBe(1);
+	});
+
 	it("drops valueOf/toString hooks alongside toJSON", () => {
 		const secret = "sk-valueof-hook-secret-value";
 		const [ctx] = redactLogArgs([

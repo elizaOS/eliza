@@ -561,7 +561,15 @@ function redactLogArg(
 	}
 	seen.add(value);
 	if (Array.isArray(value)) {
-		return value.map((item) => redactLogArg(item, seen, depth + 1));
+		// Do not call value.map: an Array subclass, custom Symbol.species, or own
+		// map property can return caller-owned data carrying a serializer hook.
+		// Index into the input but construct the output with the intrinsic Array
+		// constructor so no caller-controlled method or result prototype survives.
+		const result: unknown[] = [];
+		for (let index = 0; index < value.length; index += 1) {
+			result.push(redactLogArg(value[index], seen, depth + 1));
+		}
+		return result;
 	}
 	if (value instanceof Error) {
 		// Preserve the Error shape (name/stack) callers rely on, but scrub the
@@ -571,7 +579,9 @@ function redactLogArg(
 		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
 		return redacted;
 	}
-	const result: Record<string, unknown> = {};
+	// A null-prototype target prevents a __proto__ input key from changing the
+	// clone's prototype and reintroducing inherited serializer behavior.
+	const result = Object.create(null) as Record<string, unknown>;
 	for (const [key, entry] of Object.entries(value)) {
 		if (isSensitiveKeyName(key)) {
 			result[key] = REDACTED_MASK;
