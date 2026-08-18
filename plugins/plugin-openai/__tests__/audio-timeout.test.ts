@@ -35,7 +35,7 @@ function stallUntilAborted(): typeof fetch {
 describe("OpenAI audio request deadlines", () => {
   it("aborts a stalled transcription at the injected deadline", async () => {
     await expect(
-      handleTranscriptionWithFetch(createRuntime(), clip(), stallUntilAborted(), 10),
+      handleTranscriptionWithFetch(createRuntime(), clip(), stallUntilAborted(), 10)
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -44,7 +44,7 @@ describe("OpenAI audio request deadlines", () => {
       new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" });
 
     await expect(
-      handleTranscriptionWithFetch(createRuntime(), clip(), fetchImpl, 1_000),
+      handleTranscriptionWithFetch(createRuntime(), clip(), fetchImpl, 1_000)
     ).rejects.toThrow("quota exceeded");
   });
 
@@ -64,7 +64,7 @@ describe("OpenAI audio request deadlines", () => {
 
   it("aborts a stalled TTS request at the injected deadline", async () => {
     await expect(
-      handleTextToSpeechWithFetch(createRuntime(), "say a bounded line", stallUntilAborted(), 10),
+      handleTextToSpeechWithFetch(createRuntime(), "say a bounded line", stallUntilAborted(), 10)
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -73,7 +73,7 @@ describe("OpenAI audio request deadlines", () => {
       new Response("speech quota exceeded", { status: 429, statusText: "Too Many Requests" });
 
     await expect(
-      handleTextToSpeechWithFetch(createRuntime(), "say a bounded line", fetchImpl, 1_000),
+      handleTextToSpeechWithFetch(createRuntime(), "say a bounded line", fetchImpl, 1_000)
     ).rejects.toThrow("speech quota exceeded");
   });
 
@@ -89,7 +89,7 @@ describe("OpenAI audio request deadlines", () => {
       createRuntime(),
       "say a bounded line",
       fetchImpl,
-      1_000,
+      1_000
     );
 
     expect(signals).toHaveLength(1);
