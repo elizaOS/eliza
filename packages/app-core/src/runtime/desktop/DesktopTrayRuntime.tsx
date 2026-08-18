@@ -224,7 +224,12 @@ export function DesktopTrayRuntime() {
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":
-            await openDesktopSettingsWindow("desktop");
+            await openDesktopAppWindow({
+              slug: "desktop-workspace",
+              title: "Eliza Workspace",
+              path: "/?shellMode=full",
+              alwaysOnTop: false,
+            });
             return;
           case "tray-open-voice-controls":
             await openDesktopSettingsWindow("voice");

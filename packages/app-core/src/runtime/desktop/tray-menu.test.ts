@@ -68,4 +68,21 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
     expect(source).toContain('case "tray-open-notifications"');
     expect(source).toContain("dispatchOpenNotificationCenter()");
   });
+
+  it("opens the full Workspace surface from the Workspace tray item", () => {
+    const audit = DESKTOP_TRAY_CLICK_AUDIT.find(
+      (entry) => entry.id === "tray-open-desktop-workspace",
+    );
+    expect(audit?.expectedAction).toBe(
+      "Open the full Desktop Workspace app surface.",
+    );
+
+    const source = readFileSync(trayRuntimePath, "utf8");
+    expect(source).toMatch(
+      /case "tray-open-desktop-workspace":\s+await openDesktopAppWindow\(\{[\s\S]*?slug: "desktop-workspace",[\s\S]*?path: "\/\?shellMode=full"/,
+    );
+    expect(source).not.toMatch(
+      /case "tray-open-desktop-workspace":\s+await openDesktopSettingsWindow/,
+    );
+  });
 });

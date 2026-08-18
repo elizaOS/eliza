@@ -198,6 +198,7 @@ export type ApplicationMenuItem = {
 };
 
 const SETTINGS_ACTION_PREFIX = "open-settings-";
+export const DESKTOP_WORKSPACE_ACTION = "open-desktop-workspace";
 
 function buildOpenWindowItems(
   windows: ManagedWindowSnapshot[],
@@ -243,7 +244,7 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   return {
     label: "Desktop",
     submenu: [
-      { label: "Desktop Workspace", action: "open-settings-desktop" },
+      { label: "Desktop Workspace", action: DESKTOP_WORKSPACE_ACTION },
       { label: "Voice Controls", action: "open-settings-voice" },
       { label: "Permissions", action: "open-settings-permissions" },
       { label: "Cloud Settings", action: "open-settings-cloud" },

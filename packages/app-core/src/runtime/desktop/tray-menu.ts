@@ -226,8 +226,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "tray-open-desktop-workspace",
     entryPoint: "tray",
     label: "Open Desktop Workspace",
-    expectedAction:
-      "Open a detached settings window focused on the desktop workspace section.",
+    expectedAction: "Open the full Desktop Workspace app surface.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

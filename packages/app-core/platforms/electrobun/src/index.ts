@@ -27,6 +27,7 @@ import {
 } from "./api-base";
 import {
   buildApplicationMenu,
+  DESKTOP_WORKSPACE_ACTION,
   findAppMenuEntryBySlug,
   findViewMenuEntryById,
   parseSettingsWindowAction,
@@ -2134,6 +2135,15 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      if (action === DESKTOP_WORKSPACE_ACTION) {
+        void getDesktopManager().openAppWindow({
+          slug: "desktop-workspace",
+          title: `${BRAND.appName} Workspace`,
+          path: "/?shellMode=full",
+          alwaysOnTop: false,
+        });
+        return true;
+      }
       // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
       // its own window via the same app-window path detached surfaces use.
       // Checked before the generic `new-window:` surface branch because that

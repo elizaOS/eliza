@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildApplicationMenu,
   buildViewsMenu,
+  DESKTOP_WORKSPACE_ACTION,
   findViewMenuEntryById,
   getViewMenuEntries,
   NEW_VIEW_WINDOW_ACTION_PREFIX,
@@ -150,5 +151,18 @@ describe("buildApplicationMenu", () => {
     expect(
       desktop?.submenu?.some((item) => item.action === "desktop-notify"),
     ).toBe(true);
+  });
+
+  it("routes Desktop Workspace to the full app instead of Settings", () => {
+    const menu = buildApplicationMenu({
+      isMac: true,
+      browserEnabled: true,
+      detachedWindows: noWindows,
+    });
+    const desktop = menu.find((item) => item.label === "Desktop");
+    expect(
+      desktop?.submenu?.find((item) => item.label === "Desktop Workspace")
+        ?.action,
+    ).toBe(DESKTOP_WORKSPACE_ACTION);
   });
 });
