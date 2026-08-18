@@ -5,9 +5,7 @@ mock.module("../language-model", () => ({
   getAiProviderConfigurationError: () => "missing provider configuration",
 }));
 
-const { generateAtlasCloudImageWithFetch } = await import(
-  "../image/atlascloud-image-generation"
-);
+const { generateAtlasCloudImageWithFetch } = await import("../image/atlascloud-image-generation");
 
 const request = {
   model: "atlas-test",
@@ -27,9 +25,7 @@ describe("Atlas image request deadlines", () => {
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
 
-    await expect(
-      generateAtlasCloudImageWithFetch(request, fetchImpl, 10),
-    ).rejects.toMatchObject({
+    await expect(generateAtlasCloudImageWithFetch(request, fetchImpl, 10)).rejects.toMatchObject({
       name: "TimeoutError",
     });
   });
@@ -41,6 +37,38 @@ describe("Atlas image request deadlines", () => {
     await expect(generateAtlasCloudImageWithFetch(request, fetchImpl, 1_000)).rejects.toThrow(
       "quota exceeded",
     );
+  });
+
+  it("aborts a stalled prediction poll within the poll deadline", async () => {
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Response.json({
+          data: {
+            id: "prediction-1",
+            urls: { get: "https://atlas.invalid/prediction-1" },
+          },
+        });
+      }
+
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("expected poll abort signal");
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    };
+
+    await expect(
+      generateAtlasCloudImageWithFetch(request, fetchImpl, 1_000, {
+        pollIntervalMs: 0,
+        pollTimeoutMs: 100,
+        pollRequestTimeoutMs: 10,
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(callCount).toBe(2);
   });
 
   it("uses the injected fetch for submit and image download", async () => {

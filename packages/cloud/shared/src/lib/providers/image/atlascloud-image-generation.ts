@@ -1,4 +1,4 @@
-// Defines cloud shared atlascloud image generation behavior for backend service consumers.
+/** Implements Atlas Cloud's asynchronous image submit, poll, and download protocol. */
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
@@ -10,6 +10,12 @@ const ATLAS_IMAGE_SUBMIT_TIMEOUT_MS = 30_000;
 const ATLAS_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const ATLAS_POLL_INTERVAL_MS = 2_000;
 const ATLAS_POLL_TIMEOUT_MS = 120_000;
+
+interface AtlasImageTimingOptions {
+  pollIntervalMs?: number;
+  pollTimeoutMs?: number;
+  pollRequestTimeoutMs?: number;
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -122,6 +128,7 @@ export async function generateAtlasCloudImageWithFetch(
   request: ImageGenRequest,
   fetchImpl: typeof fetch,
   submitTimeoutMs = ATLAS_IMAGE_SUBMIT_TIMEOUT_MS,
+  timing: AtlasImageTimingOptions = {},
 ): Promise<GeneratedImage> {
   const apiKey = request.apiKeys.ATLASCLOUD_API_KEY;
   if (!apiKey) {
@@ -184,15 +191,20 @@ export async function generateAtlasCloudImageWithFetch(
   // 2. Poll the prediction until it terminates. The loop deadline only
   //    gates successful iterations; each poll fetch must also abort or a
   //    stalled Atlas GET hangs past ATLAS_POLL_TIMEOUT_MS.
-  const deadline = Date.now() + ATLAS_POLL_TIMEOUT_MS;
+  const pollIntervalMs = timing.pollIntervalMs ?? ATLAS_POLL_INTERVAL_MS;
+  const pollTimeoutMs = timing.pollTimeoutMs ?? ATLAS_POLL_TIMEOUT_MS;
+  const pollRequestTimeoutMs = timing.pollRequestTimeoutMs ?? ATLAS_IMAGE_SUBMIT_TIMEOUT_MS;
+  const deadline = Date.now() + pollTimeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
+    const sleepMs = Math.min(Math.max(0, pollIntervalMs), Math.max(0, deadline - Date.now()));
+    await new Promise((resolve) => setTimeout(resolve, sleepMs));
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
 
     const pollResponse = await fetchImpl(pollUrl, {
       headers: authHeader,
-      signal: AbortSignal.timeout(
-        Math.max(1, Math.min(ATLAS_IMAGE_SUBMIT_TIMEOUT_MS, deadline - Date.now())),
-      ),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(pollRequestTimeoutMs, remainingMs))),
     });
     const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!pollResponse.ok) {
