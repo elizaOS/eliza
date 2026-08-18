@@ -45,6 +45,9 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 
+/** Token exchange and userinfo are short hops; still need a hard cap. */
+export const GOOGLE_OAUTH_FETCH_TIMEOUT_MS = 15_000;
+
 const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
   gmail: "messaging" as ConnectorAccountPurpose,
   calendar: "calendar" as ConnectorAccountPurpose,
@@ -361,9 +364,14 @@ function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
   }
 }
 
-async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity> {
-  const response = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+export async function fetchGoogleUserInfoWithFetch(
+  accessToken: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS
+): Promise<GoogleIdentity> {
+  const response = await fetchImpl(GOOGLE_USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`Google userinfo request failed with ${response.status}`);
@@ -375,13 +383,21 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity>
   return parsed;
 }
 
-async function exchangeAuthorizationCode(args: {
-  clientId: string;
-  clientSecret: string;
-  redirectUri: string;
-  code: string;
-  codeVerifier?: string;
-}): Promise<GoogleTokenResponse> {
+async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity> {
+  return fetchGoogleUserInfoWithFetch(accessToken);
+}
+
+export async function exchangeAuthorizationCodeWithFetch(
+  args: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    code: string;
+    codeVerifier?: string;
+  },
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS
+): Promise<GoogleTokenResponse> {
   const params = new URLSearchParams({
     client_id: args.clientId,
     client_secret: args.clientSecret,
@@ -393,10 +409,11 @@ async function exchangeAuthorizationCode(args: {
     params.set("code_verifier", args.codeVerifier);
   }
 
-  const response = await fetch(GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint, {
+  const response = await fetchImpl(GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -407,6 +424,16 @@ async function exchangeAuthorizationCode(args: {
     throw new Error("Google token exchange returned an invalid payload.");
   }
   return parsed;
+}
+
+async function exchangeAuthorizationCode(args: {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  code: string;
+  codeVerifier?: string;
+}): Promise<GoogleTokenResponse> {
+  return exchangeAuthorizationCodeWithFetch(args);
 }
 
 /**
