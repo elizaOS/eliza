@@ -67,9 +67,11 @@ function buildTelegramLink(
   }
   if (chatId) {
     const normalized = chatId.replace(/^-100/, "");
-    return messageId
-      ? `https://t.me/c/${normalized}/${messageId}`
-      : `https://t.me/c/${normalized}`;
+    if (normalized.length > 0) {
+      return messageId
+        ? `https://t.me/c/${normalized}/${messageId}`
+        : `https://t.me/c/${normalized}`;
+    }
   }
   return null;
 }
@@ -92,10 +94,12 @@ function buildIMessageLink(room: Record<string, unknown>): string | null {
 }
 
 function buildWhatsAppLink(room: Record<string, unknown>): string | null {
-  const phoneNumber =
-    str(room.phoneNumber) || str(room.jid)?.replace(/@.*$/, "");
-  if (phoneNumber) {
-    return `https://wa.me/${phoneNumber.replace(/\D/g, "")}`;
+  const raw = str(room.phoneNumber) || str(room.jid)?.replace(/@.*$/, "");
+  if (raw) {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length > 0) {
+      return `https://wa.me/${digits}`;
+    }
   }
   return null;
 }
