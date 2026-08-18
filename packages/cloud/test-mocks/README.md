@@ -2,6 +2,49 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+## Managed provider contract harness
+
+`@elizaos/cloud-test-mocks/provider-contract` provides a reusable real-HTTP
+fake upstream and adapter conformance runner. It includes OAuth Authorization
+Code + state + PKCE, rotating refresh credentials, revoked/expired credentials,
+fixture responses, deterministic faults, signed webhook delivery, redacted
+request inspection, and policy receipts.
+
+```ts
+import {
+  runProviderAdapterConformance,
+  startFakeProvider,
+} from "@elizaos/cloud-test-mocks/provider-contract";
+
+const upstream = await startFakeProvider({ fixtures });
+const adapter = new RealProviderAdapter({ baseUrl: upstream.url });
+
+await runProviderAdapterConformance({
+  adapterName: "RealProviderAdapter",
+  capabilities: ["http-read", "pagination"],
+  requiredScenarios: ["success", "designed-empty", "pagination-cursors"],
+  scenarios: {
+    success: async () => {
+      await adapter.list();
+      return {
+        scenario: "success",
+        status: "passed",
+        detail: "real adapter response inspected",
+      };
+    },
+    // Add every declared scenario.
+  },
+});
+
+await upstream.stop();
+```
+
+See `fixtures/provider-contract/README.md` and
+`provider-contract-inventory.json`. `bun run audit:provider-contracts` rejects
+missing suites, undeclared promotions, focused/skipped suites, scenario drift,
+or inventory shrinkage below the checked-in baseline. Normal CI is fully
+offline and credential-free; live/sandbox lanes remain optional.
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in

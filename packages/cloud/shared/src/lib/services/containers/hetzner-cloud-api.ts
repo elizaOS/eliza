@@ -133,9 +133,17 @@ export interface HetznerVolume {
 
 export class HetznerCloudClient implements ComputeProvider {
   private readonly token: string;
+  private readonly apiBaseUrl: string;
+  private readonly requestTimeoutMs: number;
 
-  private constructor(token: string) {
+  private constructor(
+    token: string,
+    apiBaseUrl = HCLOUD_API_BASE,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS,
+  ) {
     this.token = token;
+    this.apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
   /**
@@ -156,11 +164,17 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   /** Construct a client with an explicit token (tests, multi-tenant). */
-  static withToken(token: string): HetznerCloudClient {
+  static withToken(
+    token: string,
+    options: { apiBaseUrl?: string; requestTimeoutMs?: number } = {},
+  ): HetznerCloudClient {
     if (!token) {
       throw new HetznerCloudError("missing_token", "Token must be a non-empty string");
     }
-    return new HetznerCloudClient(token);
+    if (options.requestTimeoutMs !== undefined && options.requestTimeoutMs <= 0) {
+      throw new HetznerCloudError("invalid_input", "requestTimeoutMs must be greater than zero");
+    }
+    return new HetznerCloudClient(token, options.apiBaseUrl, options.requestTimeoutMs);
   }
 
   // ----------------------------------------------------------------------
@@ -381,10 +395,10 @@ export class HetznerCloudClient implements ComputeProvider {
     body?: unknown,
   ): Promise<T> {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(`${HCLOUD_API_BASE}${path}`, {
+      response = await fetch(`${this.apiBaseUrl}${path}`, {
         method,
         headers: {
           Authorization: `Bearer ${this.token}`,

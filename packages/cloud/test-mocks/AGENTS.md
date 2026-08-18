@@ -26,6 +26,13 @@ exits.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
+- `src/provider-contract/` (export `./provider-contract`) — deterministic
+  OAuth 2.0 Authorization Code + PKCE and refresh-rotation upstream, fixture
+  HTTP/fault server, signed webhook sender, secret redaction, action receipts,
+  and capability-aware adapter conformance runner.
+- `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
+- `provider-contract-inventory.json` — promoted managed-integration ratchet;
+  audited by `bun run audit:provider-contracts` and the cloud CI workflow.
 - `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts` — standalone runnable
   entrypoints (bin names `hetzner-mock`, `control-plane-mock`).
 - `mockoon/*.json` — **stateless** Mockoon environments for read-only endpoints
@@ -74,6 +81,32 @@ teardown.
   (default 8791), `HOST`, `CONTROL_PLANE_TICK_MS`, `HCLOUD_API_BASE_URL`.
 - **Mockoon files are stateless** read-only fixtures — they do not share state
   with the Hono mocks; use the Hono mocks when behavior depends on prior writes.
+
+## Managed provider contract suites
+
+Import `startFakeProvider` and `runProviderAdapterConformance` from
+`@elizaos/cloud-test-mocks/provider-contract`. Exercise the real adapter over
+the fake's loopback URL; never replace the client, OAuth callback parser, or
+webhook handler under test. Declare only capabilities the adapter owns and list
+every owned scenario explicitly. The reusable harness itself covers the full
+scenario catalog, including OAuth state/PKCE and credential rotation, response
+and transport faults, webhook ordering/idempotency, tenant denial, redaction,
+and policy receipts.
+
+To promote another managed integration:
+
+1. Add deterministic synthetic fixture data under
+   `fixtures/provider-contract/` when shared data is useful.
+2. Add a contract suite that starts the fake upstream and invokes the real
+   adapter through HTTP/OAuth/webhook boundaries.
+3. Add the package declaration
+   `elizaos.managedIntegration = { promoted: true, contractId: "..." }`.
+4. Add the matching inventory entry, including all scenarios the suite runs.
+5. Run the suite and `bun run audit:provider-contracts`.
+
+Do not put provider credentials or production captures in fixtures. Sandbox
+and live lanes are opt-in evidence only and may not be required for fork pull
+requests.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../CLAUDE.md).
 

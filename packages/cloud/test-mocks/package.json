@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
-    "./control-plane": "./src/control-plane/index.ts"
+    "./control-plane": "./src/control-plane/index.ts",
+    "./provider-contract": "./src/provider-contract/index.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",
