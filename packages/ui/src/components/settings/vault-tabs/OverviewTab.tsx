@@ -30,6 +30,7 @@ import { useAgentElement } from "../../../agent-surface";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
+import type { ElizaClient } from "../../../api/client-base";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
@@ -51,6 +52,26 @@ const BACKEND_ORDER: BackendId[] = [
   "bitwarden",
   "protonpass",
 ];
+
+/** Ordinary REST budget for POST /api/secrets/manager/install. */
+export const VAULT_OVERVIEW_INSTALL_RAW_REQUEST_TIMEOUT_MS = 10_000;
+
+export async function rawRequestVaultOverviewInstall(
+  backendId: InstallableBackendId,
+  method: InstallMethod,
+  timeoutMs: number = VAULT_OVERVIEW_INSTALL_RAW_REQUEST_TIMEOUT_MS,
+  api: Pick<ElizaClient, "rawRequest"> = client,
+): Promise<Response> {
+  return api.rawRequest(
+    "/api/secrets/manager/install",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ backendId, method }),
+    },
+    { allowNonOk: true, timeoutMs },
+  );
+}
 
 export interface OverviewTabProps {
   backends: BackendStatus[];
@@ -643,15 +664,7 @@ export function InstallSheet({
       setError(null);
       setDone(false);
       try {
-        const res = await client.rawRequest(
-          "/api/secrets/manager/install",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ backendId, method }),
-          },
-          { allowNonOk: true },
-        );
+        const res = await rawRequestVaultOverviewInstall(backendId, method);
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as {
             error?: string;
