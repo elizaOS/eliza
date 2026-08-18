@@ -27,4 +27,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS "agent_backup_restore_leases_one_unreleased_ui
   WHERE "released_at" IS NULL;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "agent_backup_restore_leases_active_idx"
-  ON "agent_backup_restore_leases" ("backup_id", "expires_at") WHERE "released_at" IS NULL;
+  ON "agent_backup_restore_leases" ("organization_id", "backup_id", "expires_at")
+  WHERE "released_at" IS NULL;

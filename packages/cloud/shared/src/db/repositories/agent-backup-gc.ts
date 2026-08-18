@@ -243,6 +243,7 @@ export async function listDueAgentBackupDeletions(params: {
             SELECT 1
             FROM ${agentBackupRestoreLeases} AS restore_lease
             WHERE restore_lease.backup_id = backup.id
+              AND restore_lease.organization_id = backup.catalog_organization_id
               AND restore_lease.released_at IS NULL
               AND restore_lease.expires_at > clock_timestamp()
           )
@@ -336,6 +337,7 @@ export async function listFinalizableAgentBackupDeletions(params: {
             SELECT 1
             FROM ${agentBackupRestoreLeases} AS restore_lease
             WHERE restore_lease.backup_id = backup.id
+              AND restore_lease.organization_id = backup.catalog_organization_id
               AND restore_lease.released_at IS NULL
               AND restore_lease.expires_at > clock_timestamp()
           )
@@ -478,6 +480,7 @@ export async function enqueueAgentBackupDeletion(params: {
       .where(
         and(
           eq(agentBackupRestoreLeases.backup_id, backup.id),
+          eq(agentBackupRestoreLeases.organization_id, backup.catalog_organization_id),
           isNull(agentBackupRestoreLeases.released_at),
           gt(agentBackupRestoreLeases.expires_at, databaseNow),
         ),
@@ -1137,6 +1140,7 @@ export async function finalizeAgentBackupDeletion(params: {
       .where(
         and(
           eq(agentBackupRestoreLeases.backup_id, backup.id),
+          eq(agentBackupRestoreLeases.organization_id, backup.catalog_organization_id),
           isNull(agentBackupRestoreLeases.released_at),
           gt(agentBackupRestoreLeases.expires_at, databaseNow),
         ),

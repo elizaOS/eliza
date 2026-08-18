@@ -343,7 +343,7 @@ export const agentBackupRestoreLeases = pgTable(
       .on(table.organization_id, table.backup_id)
       .where(sql`${table.released_at} IS NULL`),
     active_idx: index("agent_backup_restore_leases_active_idx")
-      .on(table.backup_id, table.expires_at)
+      .on(table.organization_id, table.backup_id, table.expires_at)
       .where(sql`${table.released_at} IS NULL`),
     shape_check: check(
       "agent_backup_restore_leases_shape_check",
