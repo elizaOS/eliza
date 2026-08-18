@@ -369,6 +369,11 @@ export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
 export const BLOCKING_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // required database adapter
   "@elizaos/plugin-local-inference", // pre-init local model/embedding handler wiring
+  // Required by app-manifest readiness plugins (Personal Assistant and
+  // Calendar) whose service start hooks resolve ScheduledTaskRunnerService.
+  // Registering it after runtime.initialize() makes those concurrent starts
+  // fail permanently even though scheduling appears moments later.
+  "@elizaos/plugin-scheduling",
 ];
 
 /**

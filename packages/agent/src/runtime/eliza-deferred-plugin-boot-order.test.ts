@@ -11,6 +11,25 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaSource = readFileSync(path.join(here, "eliza.ts"), "utf8");
+const personalAssistantSource = readFileSync(
+  path.resolve(
+    here,
+    "../../../../plugins/plugin-personal-assistant/src/plugin.ts",
+  ),
+  "utf8",
+);
+const rootManifest = JSON.parse(
+  readFileSync(path.resolve(here, "../../../../package.json"), "utf8"),
+) as {
+  elizaos?: {
+    app?: {
+      defaults?: Record<
+        string,
+        { enabled?: boolean; requiredForReady?: boolean }
+      >;
+    };
+  };
+};
 
 function extractRunDeferredBootBody(source: string): string {
   const marker = "const runDeferredBoot = async (";
@@ -50,7 +69,87 @@ function extractDeferredRegistrationBody(source: string): string {
   throw new Error("Could not find the end of registerDeferredRuntimePlugins");
 }
 
+function extractInitializeRuntimeServicesBody(source: string): string {
+  const marker = "const initializeRuntimeServices = async (";
+  const start = source.indexOf(marker);
+  expect(start, "initializeRuntimeServices closure must exist").toBeGreaterThan(
+    -1,
+  );
+
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") depth += 1;
+    if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(bodyStart, index + 1);
+    }
+  }
+
+  throw new Error("Could not find the end of initializeRuntimeServices");
+}
+
 describe("deferred plugin boot ordering", () => {
+  it("makes the app's scheduled-task runtime a readiness dependency", () => {
+    expect(rootManifest.elizaos?.app?.defaults?.scheduling).toEqual({
+      enabled: true,
+      requiredForReady: true,
+    });
+    expect(rootManifest.elizaos?.app?.defaults?.["personal-assistant"]).toEqual(
+      {
+        enabled: true,
+        requiredForReady: true,
+      },
+    );
+  });
+
+  it("runs the blocking core initialization seam before post-runtime services", () => {
+    const body = extractInitializeRuntimeServicesBody(elizaSource);
+    const coreWaveIndex = body.indexOf(
+      "await initializeBlockingCoreRuntimeForBoot({",
+    );
+    const credentialStoreStartIndex = body.indexOf(
+      "await ensureConnectorCredentialStoreStarted()",
+    );
+
+    expect(coreWaveIndex).toBeGreaterThan(-1);
+    expect(credentialStoreStartIndex).toBeGreaterThan(coreWaveIndex);
+  });
+
+  it("waits for the scheduling runner before Personal Assistant boot jobs use it", () => {
+    for (const [label, operation] of [
+      [
+        'label: "deferred message reconciliation"',
+        "reconcileInterruptedMessageDraftDispatches(runtime)",
+      ],
+      [
+        'label: "default-pack boot seed"',
+        "getProductionScheduledTaskRunner(runtime",
+      ],
+    ] as const) {
+      const labelIndex = personalAssistantSource.indexOf(label);
+      const operationIndex = personalAssistantSource.indexOf(
+        operation,
+        labelIndex,
+      );
+      const barrierIndex = personalAssistantSource.indexOf(
+        "waitForScheduledTaskRunnerService(runtime)",
+        labelIndex,
+      );
+
+      expect(labelIndex, `${label} must exist`).toBeGreaterThan(-1);
+      expect(
+        operationIndex,
+        `${operation} must follow ${label}`,
+      ).toBeGreaterThan(labelIndex);
+      expect(barrierIndex, `${label} must wait for its runner`).toBeGreaterThan(
+        labelIndex,
+      );
+      expect(barrierIndex).toBeLessThan(operationIndex);
+    }
+  });
+
   it("registers core services before feature plugins", () => {
     const body = extractRunDeferredBootBody(elizaSource);
     const coreWaveIndex = body.indexOf(
