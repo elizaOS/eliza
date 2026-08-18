@@ -14,9 +14,8 @@ export class AcpWarmSessionClaim {
   private consumed = false;
   private readonly appliedKeys = new Set<string>();
 
-  constructor(sourceEnv: NodeJS.ProcessEnv = process.env) {
-    this.token = sourceEnv.ELIZA_ACP_WARM_CLAIM_TOKEN?.trim() ?? "";
-    delete sourceEnv.ELIZA_ACP_WARM_CLAIM_TOKEN;
+  constructor(token = "") {
+    this.token = token.trim();
   }
 
   get wasConsumed(): boolean {

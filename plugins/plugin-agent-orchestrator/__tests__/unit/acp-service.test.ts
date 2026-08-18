@@ -804,7 +804,11 @@ describe("AcpService", () => {
         name: "warm-a",
         agentType: "elizaos",
         workdir: "/tmp/acp-test",
-        env: { OPENAI_API_KEY: "lease-a" },
+        env: {
+          OPENAI_API_KEY: "lease-a",
+          ELIZA_ACP_WARM_CLAIM_TOKEN: "caller-injected-token",
+          PATH: "/caller-controlled/bin",
+        },
       });
       expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
       expect(firstWarm?.createSession).toHaveBeenCalledWith(
@@ -817,6 +821,13 @@ describe("AcpService", () => {
           }),
         }),
       );
+      const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
+      expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
+      expect(firstClaim?.env?.PATH).toBe(process.env.PATH);
+      expect(firstClaim?.env?.PATH).not.toContain("caller-controlled");
+      expect(
+        firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
+      ).toBeUndefined();
 
       await waitForNativeClients(2);
       const secondWarm = nativeClientMock.instances[1];

@@ -3194,6 +3194,18 @@ export class AcpService extends Service {
         for (const [key, value] of Object.entries(builtEnv)) {
           if (typeof value === "string") claimEnv[key] = value;
         }
+        // The authenticated claim must not turn caller-provided PATH into shell
+        // authority. The only allowed extension is the wrapper directory that
+        // this service recorded while creating the session's isolated index;
+        // otherwise retain the host's filtered launch PATH.
+        const trustedExecutionPath =
+          this.gitIndexEnvForSession(opts.session)?.PATH ??
+          forwardableSubAgentEnv(process.env).PATH;
+        if (trustedExecutionPath) claimEnv.PATH = trustedExecutionPath;
+        else delete claimEnv.PATH;
+        // The child captures and rewrites this mirror from trusted PATH after
+        // applying the claim. Never accept a caller/parent mirror as authority.
+        delete claimEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
         const nativeSession = await warm.client.createSession(
           opts.session.workdir,
           {
@@ -4455,7 +4467,14 @@ export class AcpService extends Service {
       env[canonicalForwardedEnvKey(key)] = value;
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
-      if (typeof value === "string") env[canonicalForwardedEnvKey(key)] = value;
+      if (typeof value !== "string") continue;
+      if (isDeniedSubAgentEnvKey(key)) {
+        this.log("warn", "rejecting spawn env matching env deny-list", {
+          key,
+        });
+        continue;
+      }
+      env[canonicalForwardedEnvKey(key)] = value;
     }
     if (model) {
       const normalizedModel =
