@@ -733,6 +733,59 @@ export function resolveWebSocketUpgradeRejection(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Unauthenticated WebSocket bounds (W5-015)
+// ---------------------------------------------------------------------------
+
+/**
+ * Credential-less upgrades are allowed so browser clients can authenticate
+ * post-open with `{type:"auth"}` — browsers cannot set Authorization on
+ * `new WebSocket(url)`. An unbounded accept was a remote FD-exhaustion DoS:
+ * every completed handshake pinned a file descriptor forever. Two bounds now
+ * apply: this per-peer cap on concurrent pre-auth sockets, and a post-open
+ * auth grace period (enforced in server.ts, cleared on `auth-ok`) after which
+ * the server closes a socket that never authenticated.
+ */
+export const WS_AUTH_GRACE_TIMEOUT_MS = 10_000;
+export const MAX_PENDING_WEBSOCKETS_PER_PEER = 16;
+
+const pendingWebSocketsByPeer = new Map<string, number>();
+
+/**
+ * Reserve a pre-auth slot for the peer; false when the peer is at the cap.
+ * Every true return must be paired with {@link releasePendingWebSocket} once
+ * the socket authenticates or closes.
+ */
+export function tryAcquirePendingWebSocket(
+  remoteAddress: string | null | undefined,
+): boolean {
+  const key = remoteAddress || "unknown";
+  const current = pendingWebSocketsByPeer.get(key) ?? 0;
+  if (current >= MAX_PENDING_WEBSOCKETS_PER_PEER) return false;
+  pendingWebSocketsByPeer.set(key, current + 1);
+  return true;
+}
+
+export function releasePendingWebSocket(
+  remoteAddress: string | null | undefined,
+): void {
+  const key = remoteAddress || "unknown";
+  const current = pendingWebSocketsByPeer.get(key) ?? 0;
+  if (current <= 1) pendingWebSocketsByPeer.delete(key);
+  else pendingWebSocketsByPeer.set(key, current - 1);
+}
+
+export function __resetPendingWebSocketsForTests(): void {
+  pendingWebSocketsByPeer.clear();
+}
+
+/** Current pre-auth socket count for the peer — test/diagnostic visibility. */
+export function pendingWebSocketCount(
+  remoteAddress: string | null | undefined,
+): number {
+  return pendingWebSocketsByPeer.get(remoteAddress || "unknown") ?? 0;
+}
+
 export function rejectWebSocketUpgrade(
   socket: import("node:stream").Duplex,
   statusCode: number,

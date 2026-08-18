@@ -27,7 +27,7 @@
  */
 
 import type http from "node:http";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { isCloudProvisionedContainer } from "./elizacloud/cloud-provisioning.js";
 import { isLoopbackBindHost } from "./runtime-env.js";
 import { readAliasedEnv } from "./utils/env.js";
@@ -224,6 +224,77 @@ export function isLoopbackRemoteAddress(
     normalized.startsWith("::ffff:127.") ||
     normalized.startsWith("::ffff:0:127.")
   );
+}
+
+/**
+ * True when the TCP peer address falls inside an operator-supplied CIDR
+ * allowlist: a comma-separated list of `ip[/prefix]` entries (IPv4 or IPv6; a
+ * bare IP means an exact host match). The Cloud-pair relay uses this to admit
+ * the local-Docker bridge gateway without opening the gate to every
+ * private-range LAN/VPC peer (W5-016). Fail-closed by construction: empty
+ * lists, unparseable peers, and malformed entries admit nothing. IPv4-mapped
+ * IPv6 peer spellings (`::ffff:a.b.c.d`, as dual-stack sockets report them)
+ * are matched against the IPv4 entries.
+ */
+export function isRemoteAddressInCidrList(
+  remoteAddress: string | null | undefined,
+  cidrList: string | null | undefined,
+): boolean {
+  if (!remoteAddress || !cidrList) return false;
+  const entries = cidrList
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (entries.length === 0) return false;
+
+  const blockList = new BlockList();
+  let added = 0;
+  for (const entry of entries) {
+    const slash = entry.lastIndexOf("/");
+    const ip = slash === -1 ? entry : entry.slice(0, slash);
+    const family = isIP(ip);
+    if (family === 0) continue;
+    const type = family === 4 ? "ipv4" : "ipv6";
+    if (slash === -1) {
+      // Bare IP = exact host. Expressed as a full-prefix subnet because not
+      // every runtime's BlockList implements `add`.
+      blockList.addSubnet(ip, family === 4 ? 32 : 128, type);
+      added += 1;
+      continue;
+    }
+    const prefix = Number(entry.slice(slash + 1));
+    const maxPrefix = family === 4 ? 32 : 128;
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) {
+      continue;
+    }
+    try {
+      blockList.addSubnet(ip, prefix, type);
+      added += 1;
+    } catch {
+      // error-policy:J3 malformed operator CIDR entries admit nothing.
+    }
+  }
+  if (added === 0) return false;
+
+  let peer = remoteAddress.trim().toLowerCase();
+  if (isIP(peer) === 6) {
+    for (const mappedPrefix of ["::ffff:", "::ffff:0:"]) {
+      const mapped = peer.slice(mappedPrefix.length);
+      if (peer.startsWith(mappedPrefix) && isIP(mapped) === 4) {
+        peer = mapped;
+        break;
+      }
+    }
+  }
+  const peerFamily = isIP(peer);
+  if (peerFamily === 0) return false;
+  try {
+    return blockList.check(peer, peerFamily === 4 ? "ipv4" : "ipv6");
+  } catch {
+    // error-policy:J3 an exotic-but-unmatchable peer spelling (e.g. a zoned
+    // link-local address on a runtime that rejects it) admits nothing.
+    return false;
+  }
 }
 
 const LOCAL_APP_PROTOCOLS = new Set([

@@ -40,6 +40,7 @@ const AGENT_ID = "55555555-5555-4555-8555-555555555555";
 const MANAGED_ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
+  "ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS",
   "ELIZA_CLOUD_AGENT_ID",
   "WAIFU_ELIZA_CLOUD_AGENT_ID",
   "ELIZAOS_CLOUD_BASE_URL",
@@ -149,7 +150,7 @@ function fakeReq(opts: {
     ...(opts.proto ? { "x-forwarded-proto": opts.proto } : {}),
   };
   Object.defineProperty(req.socket, "remoteAddress", {
-    value: opts.ip ?? "203.0.113.50",
+    value: opts.ip ?? "127.0.0.1",
     configurable: true,
   });
   return req;
@@ -329,6 +330,7 @@ describe("handleCloudPairRoute", () => {
       search: "?token=abc",
       host: "eliza-staging-1.elizacloud.ai",
       proto: "https",
+      ip: "203.0.113.10",
     });
     req.headers["x-forwarded-host"] = "attacker.example";
     const harness = fakeRes();
@@ -339,15 +341,42 @@ describe("handleCloudPairRoute", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows the explicit local-provider relay only for a loopback origin", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          apiKey: "agent_secret_value",
-          agentId: AGENT_ID,
-          agentName: "Local",
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
+  it("never exchanges for a remote peer spoofing a loopback forwarded host (W5-014)", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    // Before the fix, X-Forwarded-Host/Host were trusted for the loopback
+    // gate, so this exact request passed it: a remote peer presenting a
+    // loopback-looking origin could redeem a held pairing token through the
+    // relay and receive the minted agent apiKey in the handoff HTML.
+    const req = fakeReq({
+      pathname: "/pair",
+      search: "?token=abc",
+      host: "localhost:43123",
+      ip: "203.0.113.10",
+    });
+    req.headers["x-forwarded-host"] = "localhost";
+    req.headers["x-forwarded-proto"] = "http";
+    const harness = fakeRes();
+    await handleCloudPairRoute(req, harness.res);
+
+    expect(harness.status()).toBe(421);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows the explicit local-provider relay only for loopback or allowlisted peers", async () => {
+    // Each invocation gets a fresh Response — a single shared Response body
+    // would be consumed on the first .json() and later calls would 502.
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            apiKey: "agent_secret_value",
+            agentId: AGENT_ID,
+            agentName: "Local",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
       ),
     );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
@@ -373,6 +402,29 @@ describe("handleCloudPairRoute", () => {
       }),
     );
 
+    // The exchange origin is built from direct request metadata only:
+    // forwarded headers must not rewrite it (W5-014).
+    fetchMock.mockClear();
+    const forwardedHarness = fakeRes();
+    const forwardedReq = fakeReq({
+      pathname: "/pair",
+      search: "?token=abc",
+      host: "127.0.0.1:43123",
+      proto: "http",
+    });
+    forwardedReq.headers["x-forwarded-host"] = "attacker.example";
+    await handleCloudPairRoute(forwardedReq, forwardedHarness.res);
+    expect(forwardedHarness.status()).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.eliza.app/api/auth/pair",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          origin: "http://127.0.0.1:43123",
+        }),
+      }),
+    );
+
+    // A public peer is rejected no matter what origin metadata it presents.
     fetchMock.mockClear();
     const publicHarness = fakeRes();
     await handleCloudPairRoute(
@@ -381,11 +433,64 @@ describe("handleCloudPairRoute", () => {
         search: "?token=abc",
         host: "agent.example",
         proto: "https",
+        ip: "203.0.113.10",
       }),
       publicHarness.res,
     );
     expect(publicHarness.status()).toBe(421);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    // W5-016: the local-Docker bridge gateway is admitted only through the
+    // explicit CIDR allowlist; other private-range peers stay rejected.
+    fetchMock.mockClear();
+    const dockerDefaultHarness = fakeRes();
+    await handleCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        host: "127.0.0.1:43123",
+        proto: "http",
+        ip: "172.17.0.1",
+      }),
+      dockerDefaultHarness.res,
+    );
+    expect(dockerDefaultHarness.status()).toBe(421);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS = "172.17.0.0/16";
+    try {
+      fetchMock.mockClear();
+      const dockerHarness = fakeRes();
+      await handleCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=abc",
+          host: "127.0.0.1:43123",
+          proto: "http",
+          ip: "172.17.0.1",
+        }),
+        dockerHarness.res,
+      );
+      expect(dockerHarness.status()).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+
+      fetchMock.mockClear();
+      const lanHarness = fakeRes();
+      await handleCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=abc",
+          host: "127.0.0.1:43123",
+          proto: "http",
+          ip: "192.168.1.10",
+        }),
+        lanHarness.res,
+      );
+      expect(lanHarness.status()).toBe(421);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS;
+    }
   });
 
   it("fails before exchange when the local platform identity is missing", async () => {
@@ -546,13 +651,14 @@ describe("handleCloudPairRoute", () => {
     ) as unknown as typeof globalThis.fetch;
 
     // Bucket size is 5/min from sensitive-rate-limit.ts. Hit it 5 times +
-    // assert the 6th call returns 429.
+    // assert the 6th call returns 429. A loopback peer is required now that
+    // the relay gate keys on the TCP peer (W5-014).
     for (let i = 0; i < 5; i++) {
       const h = fakeRes();
       const r = fakeReq({
         pathname: "/pair",
         search: "?token=abc",
-        ip: "9.9.9.9",
+        ip: "127.0.0.2",
       });
       await handleCloudPairRoute(r, h.res);
       expect(h.status()).toBe(200);
@@ -561,7 +667,7 @@ describe("handleCloudPairRoute", () => {
     const r6 = fakeReq({
       pathname: "/pair",
       search: "?token=abc",
-      ip: "9.9.9.9",
+      ip: "127.0.0.2",
     });
     await handleCloudPairRoute(r6, h6.res);
     expect(h6.status()).toBe(429);

@@ -6,7 +6,7 @@
  * sensitivity hints for arbitrary config paths.
  */
 const SENSITIVE_CONFIG_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$|(?:^|[._-])pat$|(?:^|[._-])webhook[a-z]*$|(?:^|[._-])(?:dsn|url|uri|jwt|bearer|cookie|mnemonic)$|(?:^|[._-])key$/i;
+  /password|passwd|passphrase|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$|(?:^|[._-])pat$|(?:^|[._-])webhook[a-z]*$|(?:^|[._-])(?:dsn|url|uri|jwt|bearer|cookie|mnemonic)$|(?:^|[._-])key$/i;
 
 /**
  * camelCase companions for the separator-anchored names above, so
