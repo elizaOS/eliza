@@ -41,6 +41,7 @@
  * recognizer via {@link PseudonymSession.learn}.
  */
 
+import { BufferUtils } from "../utils/buffer";
 import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer";
 
 /** A learned mapping between a real value and its session surrogate. */
@@ -333,15 +334,10 @@ function pick<T>(pool: readonly T[], seed: number): T {
 }
 
 function generateSessionSalt(): string {
-	const bytes = new Uint8Array(16);
-	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
-	if (typeof cryptoObj?.getRandomValues === "function") {
-		cryptoObj.getRandomValues(bytes);
-	} else {
-		for (let i = 0; i < bytes.length; i += 1) {
-			bytes[i] = Math.floor(Math.random() * 256);
-		}
-	}
+	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): the salt
+	// seeds surrogate minting, so a predictable Math.random() fallback would
+	// make session pseudonyms reproducible by an observer.
+	const bytes = BufferUtils.randomBytes(16);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

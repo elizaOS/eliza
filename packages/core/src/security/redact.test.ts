@@ -7,6 +7,7 @@
  * value must never survive in the output.
  */
 
+import { __loggerTestHooks } from "@elizaos/logger";
 import { describe, expect, it } from "vitest";
 import {
 	createSecretsRedactor,
@@ -45,6 +46,12 @@ describe("redactSecrets (known values)", () => {
 });
 
 describe("redactSensitiveText (pattern detection)", () => {
+	it("keeps the core and leaf logger credential-shape policies synchronized", () => {
+		expect(__loggerTestHooks.getSensitiveTextPatternsForTests()).toEqual(
+			getDefaultRedactPatterns(),
+		);
+	});
+
 	it("redacts credentials embedded in URI userinfo", () => {
 		const httpsUrl = "https://admin:hunter2hunter2@host.example.com/private";
 		const postgresUrl =

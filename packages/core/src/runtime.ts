@@ -11359,15 +11359,19 @@ ${section_end}`;
 	/**
 	 * Redact secrets from text content.
 	 * This prevents character secrets from appearing in outputs or memories.
+	 *
+	 * The pattern library runs even when the character configures no secrets:
+	 * default/minimal characters are exactly the ones whose reported errors and
+	 * provider texts can still carry credential-shaped values (API keys, Bearer
+	 * tokens, URI userinfo). `redactWithSecrets` treats an empty secrets map as
+	 * a no-op for the literal pass, and its pattern regexps are compiled once at
+	 * module load, so the always-on scrub costs one pattern sweep per call.
 	 */
 	redactSecrets(text: string): string {
 		if (!text) {
 			return text;
 		}
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length === 0) {
-			return text;
-		}
 		return redactWithSecrets(text, { secrets, applyPatterns: true });
 	}
 
