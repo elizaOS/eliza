@@ -32,38 +32,39 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 [ "$lock_acquired" = true ] || fail
-temporary=""
 cleanup() {
-  if [ -n "$temporary" ] && [ -e "$temporary" ]; then
-    rm -f -- "$temporary"
-  fi
   rmdir "$lock_dir" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
 
-if [ -e "$authorized_keys" ] || [ -L "$authorized_keys" ]; then
-  [ -f "$authorized_keys" ] && [ ! -L "$authorized_keys" ] || fail
-  authorized_keys_owner="$(stat -c '%u' "$authorized_keys" 2>/dev/null || stat -f '%u' "$authorized_keys" 2>/dev/null)" || fail
-  [ "$authorized_keys_owner" = "$(id -u)" ] || fail
-  if grep -qxF -- "$operator_key" "$authorized_keys"; then
-    chmod 0600 "$authorized_keys"
-    exit 0
-  fi
+if [ ! -e "$authorized_keys" ] && [ ! -L "$authorized_keys" ]; then
+  # noclobber makes creation fail rather than follow or replace a path supplied
+  # by a non-cooperating writer between the absence check and open.
+  (umask 077; set -C; : > "$authorized_keys") 2>/dev/null || true
 fi
 
-umask 077
-temporary="$(mktemp "$ssh_dir/.authorized_keys.XXXXXX")" || fail
-if [ -f "$authorized_keys" ]; then
-  cat -- "$authorized_keys" > "$temporary"
+[ -f "$authorized_keys" ] && [ ! -L "$authorized_keys" ] || fail
+authorized_keys_owner="$(stat -c '%u' "$authorized_keys" 2>/dev/null || stat -f '%u' "$authorized_keys" 2>/dev/null)" || fail
+[ "$authorized_keys_owner" = "$(id -u)" ] || fail
+chmod 0600 "$authorized_keys"
+if grep -qxF -- "$operator_key" "$authorized_keys"; then
+  exit 0
 fi
-if [ -s "$temporary" ] && [ -n "$(tail -c 1 -- "$temporary")" ]; then
-  printf '\n' >> "$temporary"
+
+[ -f "$authorized_keys" ] && [ ! -L "$authorized_keys" ] || fail
+authorized_keys_owner="$(stat -c '%u' "$authorized_keys" 2>/dev/null || stat -f '%u' "$authorized_keys" 2>/dev/null)" || fail
+[ "$authorized_keys_owner" = "$(id -u)" ] || fail
+
+# One short O_APPEND write preserves lines added by writers that do not honor
+# this installer's lock; replacing a stale snapshot could silently erase them.
+if [ -s "$authorized_keys" ] && [ -n "$(tail -c 1 -- "$authorized_keys")" ]; then
+  printf '\n%s\n' "$operator_key" >> "$authorized_keys"
+else
+  printf '%s\n' "$operator_key" >> "$authorized_keys"
 fi
-printf '%s\n' "$operator_key" >> "$temporary"
-chmod 0600 "$temporary"
-grep -qxF -- "$operator_key" "$temporary" || fail
-mv -f -- "$temporary" "$authorized_keys"
-temporary=""
 rmdir "$lock_dir" || fail
 trap - EXIT HUP INT TERM
+[ -f "$authorized_keys" ] && [ ! -L "$authorized_keys" ] || fail
+authorized_keys_owner="$(stat -c '%u' "$authorized_keys" 2>/dev/null || stat -f '%u' "$authorized_keys" 2>/dev/null)" || fail
+[ "$authorized_keys_owner" = "$(id -u)" ] || fail
 grep -qxF -- "$operator_key" "$authorized_keys" || fail

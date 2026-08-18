@@ -386,6 +386,52 @@ describe("atomic operator public-key installer", () => {
     });
   });
 
+  test("preserves an append from a writer that does not honor the installer lock", () => {
+    withTempHome((home) => {
+      const sshDir = join(home, ".ssh");
+      mkdirSync(sshDir, { mode: 0o700 });
+      const path = join(sshDir, "authorized_keys");
+      const existing = "ssh-ed25519 AAAAEXISTING existing@test";
+      const externalKey = "ssh-ed25519 AAAAEXTERNAL external@test";
+      writeFileSync(path, `${existing}\n`, { mode: 0o600 });
+
+      const mockBin = join(home, "bin");
+      mkdirSync(mockBin);
+      const marker = join(home, "external-append-complete");
+      const chmodWrapper = join(mockBin, "chmod");
+      writeFileSync(
+        chmodWrapper,
+        `#!/bin/sh
+if [ "$1" = 0600 ] && [ ! -e "$EXTERNAL_APPEND_MARKER" ]; then
+  printf '%s\\n' "$EXTERNAL_APPEND_KEY" >> "$EXTERNAL_APPEND_TARGET"
+  : > "$EXTERNAL_APPEND_MARKER"
+fi
+exec "$REAL_CHMOD" "$@"
+`,
+        { mode: 0o700 },
+      );
+
+      const result = Bun.spawnSync(["bash", installerPath], {
+        env: {
+          ...installerEnvironment(home),
+          PATH: `${mockBin}:${process.env.PATH}`,
+          EXTERNAL_APPEND_KEY: externalKey,
+          EXTERNAL_APPEND_MARKER: marker,
+          EXTERNAL_APPEND_TARGET: path,
+          REAL_CHMOD: Bun.which("chmod"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode).toBe(0);
+      expect(readFileSync(path, "utf8").trimEnd().split("\n")).toEqual([
+        existing,
+        externalKey,
+        operatorKey,
+      ]);
+    });
+  });
+
   test("serializes concurrent additive writers without losing either key", async () => {
     const home = mkdtempSync(join(tmpdir(), "eliza-operator-key-test-"));
     try {
