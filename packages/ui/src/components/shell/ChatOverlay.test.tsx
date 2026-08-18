@@ -520,10 +520,12 @@ describe("ChatOverlay", () => {
         tintColor: "#16090DD9",
       }),
     );
-    // Native material: fill + blur drop (the OS paints them); border, bevel,
-    // and sheen stay — the branded edge survives on every tier.
-    expect(surface.style.backgroundColor).toBe("transparent");
+    // The native material remains attached below the WebView, but the open
+    // conversation owns an opaque DOM fill. Underlying launcher/view controls
+    // must never remain visible through the chat surface on iPad.
+    expect(surface.style.backgroundColor).toBe("var(--bg)");
     expect(surface.style.backdropFilter).toBe("");
+    expect(screen.getByTestId("chat-overlay").className).toContain("isolate");
     expect(screen.getByTestId("chat-glass-tier-probe").textContent).toContain(
       "chat-glass-tier:native",
     );
