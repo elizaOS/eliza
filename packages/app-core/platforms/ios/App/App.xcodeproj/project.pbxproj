@@ -55,6 +55,7 @@
 		AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */; };
 		AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */; };
 		AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */; };
+		AUIT00010000000000000011 /* FreshInstallPermissionOnboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000012 /* FreshInstallPermissionOnboarding.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -182,6 +183,7 @@
 		AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLifecycleUITests.swift; sourceTree = "<group>"; };
 		AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFailureStrings.generated.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceExtensionSurfaceUITests.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000012 /* FreshInstallPermissionOnboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreshInstallPermissionOnboarding.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -382,6 +384,7 @@
 				AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */,
 				AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */,
 				AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */,
+				AUIT00010000000000000012 /* FreshInstallPermissionOnboarding.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -758,6 +761,7 @@
 				AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */,
 				AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */,
 				AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */,
+				AUIT00010000000000000011 /* FreshInstallPermissionOnboarding.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
