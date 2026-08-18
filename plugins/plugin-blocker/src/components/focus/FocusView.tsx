@@ -26,14 +26,31 @@ interface FocusViewProps {
   releaseBlock?: () => Promise<unknown>;
 }
 
-async function defaultFetchStatus(): Promise<SelfControlStatus> {
-  const response = await fetch(`${client.getBaseUrl()}/api/website-blocker`);
+/** Focus JSON GET is a short UI read — same 15s family as InboxView / HealthView. */
+export const FOCUS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getFocusJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = FOCUS_VIEW_JSON_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
     throw new Error(
       `Website blocker status request failed (${response.status}).`,
     );
   }
-  return (await response.json()) as SelfControlStatus;
+  return (await response.json()) as T;
+}
+
+async function defaultFetchStatus(): Promise<SelfControlStatus> {
+  return getFocusJsonWithFetch<SelfControlStatus>(
+    `${client.getBaseUrl()}/api/website-blocker`,
+    globalThis.fetch,
+  );
 }
 
 function defaultReleaseBlock(): Promise<unknown> {
