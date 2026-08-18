@@ -18,10 +18,11 @@ permissions:
 jobs:
   analyze:
     name: Analyze (javascript-typescript)
-    # Whole-repository JavaScript/TypeScript dataflow queries exceeded hosted
-    # runner memory before the extractor exclusions were introduced. Scheduled
-    # and manual runs are trusted and use the existing large Linux robot lane.
-    runs-on: [self-hosted, Linux, X64, hetzner-robot]
+    # Use an always-provisionable hosted lane so scheduled analysis cannot stall
+    # behind offline fleet capacity. CodeQL sizes its default memory and thread
+    # limits to the hosted runner; extraction exclusions keep that budget focused
+    # on maintained product code.
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     permissions:
       actions: read
@@ -44,8 +45,6 @@ jobs:
           languages: javascript-typescript
           build-mode: none
           config-file: ./.github/codeql/codeql-config.yml
-          ram: 120000
-          threads: 8
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
