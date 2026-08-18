@@ -41,38 +41,40 @@ function jsonResponse(data: unknown, status = 200): Response {
  */
 function installFetchRouter(overrides?: {
   approximate?: () => Response | Promise<Response>;
-  openMeteo?: () => Response | Promise<Response>;
+  openMeteo?: (init?: RequestInit) => Response | Promise<Response>;
   notifications?: () => Response | Promise<Response>;
 }) {
   const calls: string[] = [];
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input instanceof Request ? input.url : input);
-    calls.push(url);
-    if (url.includes("/api/location/approximate")) {
-      return (
-        overrides?.approximate?.() ??
-        jsonResponse({
-          lat: 40.71,
-          lon: -74.01,
-          accuracyMeters: 5000,
-          source: "test-geo",
-        })
-      );
-    }
-    if (url.includes("/api/notifications")) {
-      return (
-        overrides?.notifications?.() ??
-        jsonResponse({ notification: { id: "n-1" } }, 201)
-      );
-    }
-    if (url.includes("api.open-meteo.com")) {
-      return (
-        overrides?.openMeteo?.() ??
-        jsonResponse({ current: { temperature_2m: 18.6, weather_code: 0 } })
-      );
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      calls.push(url);
+      if (url.includes("/api/location/approximate")) {
+        return (
+          overrides?.approximate?.() ??
+          jsonResponse({
+            lat: 40.71,
+            lon: -74.01,
+            accuracyMeters: 5000,
+            source: "test-geo",
+          })
+        );
+      }
+      if (url.includes("/api/notifications")) {
+        return (
+          overrides?.notifications?.() ??
+          jsonResponse({ notification: { id: "n-1" } }, 201)
+        );
+      }
+      if (url.includes("api.open-meteo.com")) {
+        return (
+          overrides?.openMeteo?.(init) ??
+          jsonResponse({ current: { temperature_2m: 18.6, weather_code: 0 } })
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    },
+  );
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   return { fetchMock, calls };
 }
@@ -248,6 +250,53 @@ describe("useWeather", () => {
     expect(calls.some((u) => u.includes("api.open-meteo.com"))).toBe(false);
     // And no notification is filed for a failed fallback.
     expect(calls.some((u) => u.includes("/api/notifications"))).toBe(false);
+  });
+
+  it("bounds a stalled Open-Meteo request and degrades on timeout", async () => {
+    const weatherDeadline = new AbortController();
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((milliseconds) =>
+        milliseconds === 15_000
+          ? weatherDeadline.signal
+          : nativeTimeout(milliseconds),
+      );
+    let requestSignal: AbortSignal | null = null;
+    installFetchRouter({
+      openMeteo: (init) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? null;
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        }),
+    });
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(requestSignal).toBe(weatherDeadline.signal));
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+
+    await act(async () => {
+      weatherDeadline.abort(
+        new DOMException("weather timed out", "TimeoutError"),
+      );
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+  });
+
+  it("degrades to unavailable when Open-Meteo returns a provider error", async () => {
+    installFetchRouter({
+      openMeteo: () => jsonResponse({ error: "upstream unavailable" }, 503),
+    });
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
   });
 
   it("ignores cached readings whose unit does not match the current locale", async () => {
