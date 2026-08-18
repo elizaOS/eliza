@@ -502,7 +502,19 @@ async function serveRemotePluginAsset(
       },
     });
   }
-  const moduleId = decodeURIComponent(remainder.slice(0, slashIndex));
+  let moduleId: string;
+  try {
+    moduleId = decodeURIComponent(remainder.slice(0, slashIndex));
+  } catch {
+    // error-policy:J3 malformed path encoding is invalid request input.
+    return jsonResponse(400, {
+      ok: false,
+      error: {
+        code: "CAPABILITY_DECODE_FAILED",
+        message: "Capability asset module id is not valid percent-encoding",
+      },
+    });
+  }
   const assetPath = `/${remainder.slice(slashIndex + 1)}`;
   const asset = await router.plugin.getAsset({
     moduleId,
