@@ -308,7 +308,7 @@ describe("Shared Eliza Workerd runtime", () => {
         dispatches += 1;
       },
       traceId: "trace-observer-nonfatal",
-      onRuntimeTiming: () => {
+      onRuntimeTiming: async () => {
         throw new Error("diagnostics sink unavailable");
       },
       execution: {

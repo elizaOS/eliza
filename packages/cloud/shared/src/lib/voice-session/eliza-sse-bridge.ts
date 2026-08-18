@@ -171,11 +171,21 @@ export async function streamElizaConversation(
   }
 
   try {
-    request.onResponseHeaders?.({
+    const observation = request.onResponseHeaders?.({
       status: response.status,
       elapsedMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
       serverTiming: response.headers.get("Server-Timing"),
-    });
+    }) as unknown;
+    if (observation && typeof (observation as unknown as { then?: unknown }).then === "function") {
+      void Promise.resolve(observation).catch((error) => {
+        // error-policy:J7 diagnostics must not kill the loop — response
+        // decoding observes the same asynchronous diagnostics rejection.
+        logger.warn("[eliza-sse-bridge] response header observer failed", {
+          traceId: request.traceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
   } catch (error) {
     // error-policy:J7 diagnostics must not kill the loop — response decoding is
     // authoritative and an optional header observer cannot reject healthy SSE.

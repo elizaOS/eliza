@@ -429,7 +429,20 @@ async function executeSharedElizaRuntimeTurn(
   );
   const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
     try {
-      input.onRuntimeTiming?.(timing.receipt(outcome));
+      const observation = input.onRuntimeTiming?.(timing.receipt(outcome)) as unknown;
+      if (
+        observation &&
+        typeof (observation as unknown as { then?: unknown }).then === "function"
+      ) {
+        void Promise.resolve(observation).catch((error) => {
+          // error-policy:J7 diagnostics must not kill the loop — the rejected
+          // observer is consumed here, outside the authoritative turn path.
+          logger.warn("[shared-eliza-runtime] timing observer failed", {
+            traceId: input.traceId ?? null,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
     } catch (error) {
       // error-policy:J7 diagnostics must not kill the loop — the observer is
       // outside the authoritative response and persistence path.

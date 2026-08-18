@@ -21,7 +21,7 @@ export interface SharedRuntimeTimingReceipt {
   offsets: {
     providerDispatchOffsetMs: number | null;
     providerFirstTextOffsetMs: number | null;
-    completedOffsetMs: number;
+    completedOffsetMs: number | null;
   };
 }
 
@@ -31,7 +31,8 @@ function boundedDuration(startedAt: number | null, completedAt: number | null): 
   if (startedAt === null || completedAt === null) return null;
   const value = completedAt - startedAt;
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(Math.min(value, MAX_RUNTIME_TIMING_MS) * 10) / 10;
+  if (value > MAX_RUNTIME_TIMING_MS) return null;
+  return Math.round(value * 10) / 10;
 }
 
 /** Mutable timestamps are private to one invocation and produce an immutable receipt. */
@@ -103,7 +104,7 @@ export class SharedRuntimeTimingCollector {
       offsets: {
         providerDispatchOffsetMs: boundedDuration(this.#startedAt, this.#providerDispatchedAt),
         providerFirstTextOffsetMs: boundedDuration(this.#startedAt, this.#providerFirstTextAt),
-        completedOffsetMs: boundedDuration(this.#startedAt, completedAt) ?? 0,
+        completedOffsetMs: boundedDuration(this.#startedAt, completedAt),
       },
     };
   }

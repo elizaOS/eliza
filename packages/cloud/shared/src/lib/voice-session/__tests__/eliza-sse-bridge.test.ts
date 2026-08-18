@@ -588,7 +588,7 @@ describe("eliza sse bridge", () => {
         traceId: "trace-observer",
         signal: new AbortController().signal,
         fetchImpl: (async () => sseResponse(["data: [DONE]\n\n"])) as unknown as typeof fetch,
-        onResponseHeaders: () => {
+        onResponseHeaders: async () => {
           throw new Error("diagnostics unavailable");
         },
       },
