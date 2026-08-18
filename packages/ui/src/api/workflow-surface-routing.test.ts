@@ -25,6 +25,7 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import type { AgentProfile } from "../state/agent-profile-types";
 import { ElizaClient } from "./client-base";
+import { AUTOMATIONS_LIST_FETCH_TIMEOUT_MS } from "./client-automations";
 import "./client-automations";
 import "./client-workflow";
 import {
@@ -223,7 +224,12 @@ describe("workflowSurfaceClient", () => {
       // run response shape is asserted elsewhere; only routing matters here
     });
 
-    expect(fetchSpy).toHaveBeenNthCalledWith(1, "/api/automations");
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      "/api/automations",
+      undefined,
+      { timeoutMs: AUTOMATIONS_LIST_FETCH_TIMEOUT_MS },
+    );
     expect(fetchSpy).toHaveBeenNthCalledWith(
       2,
       "/api/workflow/workflows/wf-1/run",
@@ -239,6 +245,10 @@ describe("workflowSurfaceClient", () => {
 
     await active.listAutomations();
 
-    expect(fetchSpy).toHaveBeenCalledWith("/api/automations");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/automations",
+      undefined,
+      { timeoutMs: AUTOMATIONS_LIST_FETCH_TIMEOUT_MS },
+    );
   });
 });
