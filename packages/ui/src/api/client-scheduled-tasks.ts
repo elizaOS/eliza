@@ -9,6 +9,9 @@ import type {
   ScheduledTaskView,
 } from "./client-types-core";
 
+/** Scheduled-tasks list GET — existing 10s REST budget, independent hop. */
+export const SCHEDULED_TASKS_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 /**
  * Owner-facing scheduled-task verbs (`POST /api/lifeops/scheduled-tasks/:id/<verb>`).
  * These are exactly the runner's frozen `ScheduledTaskVerb` set.
@@ -53,6 +56,7 @@ declare module "./client-base" {
      */
     listScheduledTasks(
       filter?: ScheduledTaskListFilter,
+      timeoutMs?: number,
     ): Promise<ScheduledTaskListResponse>;
 
     /**
@@ -104,9 +108,12 @@ function buildQuery(filter?: ScheduledTaskListFilter): string {
 ElizaClient.prototype.listScheduledTasks = async function (
   this: ElizaClient,
   filter?: ScheduledTaskListFilter,
+  timeoutMs: number = SCHEDULED_TASKS_LIST_FETCH_TIMEOUT_MS,
 ): Promise<ScheduledTaskListResponse> {
   const res = await this.fetch<{ tasks?: ScheduledTaskView[] }>(
     `/api/lifeops/scheduled-tasks${buildQuery(filter)}`,
+    undefined,
+    { timeoutMs },
   );
   return { tasks: Array.isArray(res?.tasks) ? res.tasks : [] };
 };
