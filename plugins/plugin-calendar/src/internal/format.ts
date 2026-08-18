@@ -9,11 +9,11 @@ import type {
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
 
-function truncateForPreview(value: string, maxLength: number): string {
+export function truncateForPreview(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function formatCalendarDatePart(
