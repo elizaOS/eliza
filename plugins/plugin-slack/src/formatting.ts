@@ -8,6 +8,7 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
+import { truncateWellFormed } from "@elizaos/core";
 import {
   parseSlackArchivesUrl,
   type SlackChannel,
@@ -228,8 +229,15 @@ export function splitSlackText(
     }
 
     splitIndex = Math.min(splitIndex, maxChars);
-    messages.push(remaining.slice(0, splitIndex));
-    remaining = remaining.slice(splitIndex);
+    // truncateWellFormed backs the cut off by one unit instead of splitting a
+    // surrogate pair; remaining must resume from the actual chunk length, not
+    // the requested splitIndex, or one unit of text would be dropped.
+    let chunk = truncateWellFormed(remaining, splitIndex);
+    if (chunk.length === 0 && remaining.length > 0) {
+      chunk = truncateWellFormed(remaining, splitIndex + 1);
+    }
+    messages.push(chunk);
+    remaining = remaining.slice(chunk.length);
   }
 
   return messages;
@@ -282,7 +290,14 @@ export function chunkSlackText(
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
 
-    let chunk = remaining.slice(0, breakPoint);
+    // truncateWellFormed backs the cut off by one unit instead of splitting a
+    // surrogate pair; consumedLength (not breakPoint) is how far `remaining`
+    // must advance, since the fence suffix appended below isn't part of it.
+    let chunk = truncateWellFormed(remaining, breakPoint);
+    if (chunk.length === 0 && remaining.length > 0) {
+      chunk = truncateWellFormed(remaining, breakPoint + 1);
+    }
+    const consumedLength = chunk.length;
 
     // Check if this chunk ends inside a code block — count fences in the
     // actual emitted chunk, not the max-size window, so a fence that sits
@@ -297,7 +312,7 @@ export function chunkSlackText(
 
     chunks.push(chunk);
 
-    remaining = remaining.slice(breakPoint);
+    remaining = remaining.slice(consumedLength);
 
     // If we were in a code block, reopen it
     if (inCodeBlock) {
