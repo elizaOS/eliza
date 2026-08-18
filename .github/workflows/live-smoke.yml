@@ -192,6 +192,48 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Preflight cleanup API ancestry
+        id: cleanup_api_preflight
+        if: inputs.cleanup_only
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_commit="$(
+            node --input-type=module <<'NODE'
+            const response = await fetch("https://api-staging.eliza.app/api/health", {
+              headers: { accept: "application/json" },
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (!response.ok) {
+              throw new Error(`Staging health returned HTTP ${response.status}`);
+            }
+            const body = await response.json();
+            if (
+              typeof body !== "object" ||
+              body === null ||
+              typeof body.commit !== "string" ||
+              !/^[a-f0-9]{40}$/.test(body.commit)
+            ) {
+              throw new Error("Staging health did not return an exact deploy commit");
+            }
+            process.stdout.write(body.commit);
+          NODE
+          )"
+          minimum_cleanup_api_sha="${CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA:-}"
+          if [[ -z "$minimum_cleanup_api_sha" ]] || ! git cat-file -e "${minimum_cleanup_api_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Required cleanup API contract commit is absent from this repository checkout."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Staging reported a deploy commit absent from this repository checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"; then
+            echo "::error::Staging deploy predates the conditional cleanup API contract."
+            exit 1
+          fi
+          echo "deployed_commit=$deployed_commit" >> "$GITHUB_OUTPUT"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -209,6 +251,9 @@ jobs:
 
       - name: Run bounded managed dedicated canary
         id: live
+        if: ${{ success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success') }}
+        env:
+          CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT: ${{ steps.cleanup_api_preflight.outputs.deployed_commit || '' }}
         shell: bash
         run: |
           set +e

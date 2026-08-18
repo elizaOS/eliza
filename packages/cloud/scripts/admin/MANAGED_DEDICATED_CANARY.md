@@ -46,6 +46,10 @@ disposable identity row to leak or clean separately.
   is schema version 3 with `operation: cleanup-only` and requires one accepted,
   confirmed deletion, zero created agents, zero chat requests, zero live paths,
   no create/readiness/inference timings, final absence, and no possible orphan.
+  The workflow performs this ancestry check before the DELETE-capable process
+  can start and binds that exact health commit into the process; if staging
+  changes between preflight and execution, cleanup stops before listing or
+  deleting an agent. The post-run ancestry check remains defense in depth.
 - Create sends top-level `alwaysOn: true`, `forceCreate: true`, and
   `autoProvision: true`. The returned and final tier must both be
   `dedicated-always`.

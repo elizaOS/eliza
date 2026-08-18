@@ -207,11 +207,38 @@ describe("managed dedicated live-smoke workflow contract", () => {
   });
 
   test("uploads only canonical privacy-validated evidence", () => {
+    const preflight = namedStep("Preflight cleanup API ancestry");
     const live = namedStep("Run bounded managed dedicated canary");
+    expect(preflight.id).toBe("cleanup_api_preflight");
+    expect(preflight.if).toBe("inputs.cleanup_only");
+    expect(preflight.run).toContain("/api/health");
+    expect(preflight.run).toContain(
+      'git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"',
+    );
+    expect(preflight.run).not.toContain("managed-dedicated-canary.ts");
     expect(live.id).toBe("live");
+    expect(live.if).toBe(
+      githubExpression(
+        "success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success')",
+      ),
+    );
+    expect(live.env?.CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT).toBe(
+      githubExpression(
+        "steps.cleanup_api_preflight.outputs.deployed_commit || ''",
+      ),
+    );
     expect(live.run).toContain("managed-dedicated-canary.ts");
     expect(live.run).toContain("status=$?");
     expect(live.run).toContain('echo "status=$status" >> "$GITHUB_OUTPUT"');
+    expect(dedicated.steps.indexOf(preflight)).toBeLessThan(
+      dedicated.steps.indexOf(live),
+    );
+    const deleteCapableSteps = dedicated.steps.filter((step) =>
+      step.run?.includes(
+        "bun run packages/cloud/scripts/admin/managed-dedicated-canary.ts",
+      ),
+    );
+    expect(deleteCapableSteps).toEqual([live]);
 
     const privacy = namedStep("Validate privacy-safe evidence artifact");
     expect(privacy.id).toBe("privacy");

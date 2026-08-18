@@ -92,6 +92,8 @@ const PRIVACY_SAFE_FAILURE_PHASES = new Set([
 const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "invalid_run_suffix",
   "invalid_stale_canary_suffix",
+  "invalid_expected_deploy_commit",
+  "deployed_commit_changed",
   "error_event",
   "unexpected_error",
   "request_failed",
@@ -184,6 +186,7 @@ export interface ManagedDedicatedCanaryOptions {
   createRecoveryPollIntervalMs?: number;
   staleCanarySuffix?: string;
   cleanupOnly?: boolean;
+  expectedDeployCommit?: string;
 }
 
 class CanaryFailure extends Error {
@@ -947,6 +950,7 @@ export async function runManagedDedicatedCanary(
     options.suffix ??
     `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
   const rawStaleCanarySuffix = options.staleCanarySuffix;
+  const expectedDeployCommit = options.expectedDeployCommit?.trim() ?? "";
   let suffix = "";
   let expectedName = "";
   let staleCanarySuffix: string | null = null;
@@ -1478,6 +1482,9 @@ export async function runManagedDedicatedCanary(
     if (cleanupOnly && staleCanarySuffix === null) {
       throw new CanaryFailure("config", "invalid_stale_canary_suffix");
     }
+    if (cleanupOnly && !/^[a-f0-9]{40}$/.test(expectedDeployCommit)) {
+      throw new CanaryFailure("config", "invalid_expected_deploy_commit");
+    }
     evidence.recovery.requested = staleCanarySuffix !== null;
     expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
     if (!apiKey) {
@@ -1494,6 +1501,9 @@ export async function runManagedDedicatedCanary(
         throw new CanaryFailure("health", "missing_deploy_commit");
       }
       evidence.deployedCommit = deployedCommit;
+      if (cleanupOnly && deployedCommit !== expectedDeployCommit) {
+        throw new CanaryFailure("health", "deployed_commit_changed");
+      }
     });
 
     await inTimedPhase(evidence, "capacityGuard", now, async () => {
@@ -1646,6 +1656,9 @@ async function main(): Promise<void> {
       "CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX",
     ),
     cleanupOnly: workflowEnv("CLOUD_DEDICATED_CANARY_CLEANUP_ONLY") === "true",
+    expectedDeployCommit: workflowEnv(
+      "CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT",
+    ),
   });
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, {
     mode: 0o600,

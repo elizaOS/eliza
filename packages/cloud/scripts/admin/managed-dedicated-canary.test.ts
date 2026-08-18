@@ -361,6 +361,7 @@ async function runFixture(
   canaryOptions: {
     staleCanarySuffix?: string;
     cleanupOnly?: boolean;
+    expectedDeployCommit?: string;
   } = {},
 ) {
   const fixture = createFixture(options);
@@ -375,6 +376,9 @@ async function runFixture(
     cleanupTimeoutMs: 30,
     createRecoveryTimeoutMs: 30,
     createRecoveryPollIntervalMs: 10,
+    expectedDeployCommit: canaryOptions.cleanupOnly
+      ? DEPLOYED_COMMIT
+      : undefined,
     ...canaryOptions,
   });
   return { fixture, evidence };
@@ -521,6 +525,38 @@ describe("managed dedicated canary", () => {
     });
     expect(evidence.verdict).toBe("fail");
     expect(fixture.calls).toHaveLength(0);
+  });
+
+  test("cleanup-only requires a preflight-bound deploy commit before network access", async () => {
+    const { fixture, evidence } = await runFixture(
+      {},
+      {
+        staleCanarySuffix: STALE_SUFFIX,
+        cleanupOnly: true,
+        expectedDeployCommit: "",
+      },
+    );
+    expect(evidence.failure).toEqual({
+      phase: "config",
+      code: "invalid_expected_deploy_commit",
+    });
+    expect(fixture.calls).toHaveLength(0);
+  });
+
+  test("cleanup-only cancels before listing or deleting when staging changed after preflight", async () => {
+    const { fixture, evidence } = await runFixture(
+      { existingCanary: true, existingCanarySuffix: STALE_SUFFIX },
+      {
+        staleCanarySuffix: STALE_SUFFIX,
+        cleanupOnly: true,
+        expectedDeployCommit: "f".repeat(40),
+      },
+    );
+    expect(evidence.failure).toEqual({
+      phase: "health",
+      code: "deployed_commit_changed",
+    });
+    expect(fixture.calls).toEqual([{ method: "GET", pathname: "/api/health" }]);
   });
 
   test("refuses production even when a valid credential is present", async () => {
