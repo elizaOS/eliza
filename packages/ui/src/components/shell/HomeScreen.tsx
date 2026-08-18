@@ -15,17 +15,17 @@ import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+  subscribeNotificationCenterOpenRequests,
+} from "../../state/notifications/notification-center-open-request";
 import { useNotifications } from "../../state/notifications/notification-store";
 import { useShellSurface } from "../../state/shell-surface-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
-import {
-  acknowledgeNotificationCenterOpenRequest,
-  peekNotificationCenterOpenRequest,
-  subscribeNotificationCenterOpenRequests,
-} from "./notification-center-open-request";
 
 // A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
 // throughout so slow paints and screenshot tooling never expose unreadable
@@ -259,12 +259,23 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
     ) {
       return;
     }
-    const requestId = pendingNotificationCenterOpenRequestId;
-    if (acknowledgeNotificationCenterOpenRequest(requestId)) {
-      setNotificationCenterOpenRequestId(requestId);
-    }
-    setPendingNotificationCenterOpenRequestId(null);
+    setNotificationCenterOpenRequestId(pendingNotificationCenterOpenRequestId);
   }, [activeTab, pendingNotificationCenterOpenRequestId, shellSurfacePage]);
+
+  const handleNotificationCenterOpenRequestHandled = useCallback(
+    (requestId: number) => {
+      acknowledgeNotificationCenterOpenRequest(requestId);
+      setPendingNotificationCenterOpenRequestId((current) =>
+        current === requestId ? null : current,
+      );
+      // Clearing the delivered id prevents a later child remount from opening
+      // the same already-acknowledged request a second time.
+      setNotificationCenterOpenRequestId((current) =>
+        current === requestId ? null : current,
+      );
+    },
+    [],
+  );
 
   // Remember the latest launcher control independently of the shade gesture.
   // A notification can arrive asynchronously while an expanded empty shade
@@ -396,6 +407,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             shadeLayoutTargetRef={homeContentColumnRef}
             onShadeOccupancyChange={handleShadeExpandedChange}
             openRequestId={notificationCenterOpenRequestId}
+            onOpenRequestHandled={handleNotificationCenterOpenRequestHandled}
           />
         </div>
 

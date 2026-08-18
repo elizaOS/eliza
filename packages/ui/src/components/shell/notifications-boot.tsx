@@ -14,6 +14,7 @@ import { client } from "../../api/client";
 import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useAppSelector } from "../../state";
+import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
 import {
   initNotifications,
   seedDevNotificationsIfEmpty,
@@ -23,7 +24,6 @@ import {
   refreshPushRegistrationAuthority,
 } from "../../state/notifications/push-registration";
 import { goHome } from "../../state/shell-surface-store";
-import { requestNotificationCenterOpen } from "./notification-center-open-request";
 
 /**
  * Boots data ingress independently of the paintable app shell. Startup, auth,
@@ -46,11 +46,16 @@ export function NotificationsShellBoot(): null {
     // Capacitor may synchronously replay a retained cold-launch tap from
     // addListener(), so reversing this order would drop that first event.
     const onOpen = () => {
-      requestNotificationCenterOpen();
       goHome();
       setTab("chat");
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    // A fallback AppDelegate URL can be replayed by getLaunchUrl() after the
+    // root mounts but before this effect commits. The dispatcher retained that
+    // request, so complete its navigation instead of waiting for another tap.
+    if (peekNotificationCenterOpenRequest() !== null) {
+      onOpen();
+    }
 
     void initLocalNotificationTapRouting().catch((error: unknown) => {
       // error-policy:J1 native notification tap registration is a transport

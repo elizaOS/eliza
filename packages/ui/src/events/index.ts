@@ -20,6 +20,7 @@ import {
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
+import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
 export {
   // Agent / bridge
@@ -198,6 +199,9 @@ export function dispatchChatClose(): void {
  * {@link OPEN_NOTIFICATION_CENTER_EVENT}). */
 export function dispatchOpenNotificationCenter(): void {
   if (typeof window === "undefined") return;
+  // Retain before dispatch: iOS can replay a cold appUrlOpen while React has
+  // mounted but before NotificationsShellBoot's effect attaches its listener.
+  requestNotificationCenterOpen();
   window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
 }
 

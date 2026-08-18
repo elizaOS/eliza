@@ -656,6 +656,8 @@ export interface NotificationsHomeCenterProps {
   onShadeOccupancyChange?: (occupiesHome: boolean) => void;
   /** Monotonic shell request that visibly opens this destination once. */
   openRequestId?: number | null;
+  /** Acknowledges an open request after this visible component applies it. */
+  onOpenRequestHandled?: (requestId: number) => void;
 }
 
 export function NotificationsHomeCenter({
@@ -663,6 +665,7 @@ export function NotificationsHomeCenter({
   shadeLayoutTargetRef,
   onShadeOccupancyChange,
   openRequestId,
+  onOpenRequestHandled,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
@@ -2513,7 +2516,8 @@ export function NotificationsHomeCenter({
     // This effect follows the empty-inbox reset above, so a notification tap
     // overrides the ordinary collapsed empty state after Home has mounted.
     beginProgrammaticShadeOpen();
-  }, [beginProgrammaticShadeOpen, openRequestId]);
+    onOpenRequestHandled?.(openRequestId);
+  }, [beginProgrammaticShadeOpen, onOpenRequestHandled, openRequestId]);
 
   // Build stable rested and expanded projections. During a downward pull,
   // lower-priority groups reveal under the finger while already-visible

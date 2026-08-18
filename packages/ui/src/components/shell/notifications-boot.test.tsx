@@ -37,7 +37,7 @@ vi.mock("../../state/notifications/push-registration", () => ({
   refreshPushRegistrationAuthority: mocks.refreshPush,
 }));
 
-import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import { dispatchOpenNotificationCenter } from "../../events";
 import {
   acknowledgeNotificationCenterOpenRequest,
   peekNotificationCenterOpenRequest,
@@ -74,7 +74,7 @@ describe("notification boot boundaries", () => {
       expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
     });
 
-    act(() => window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT)));
+    act(() => dispatchOpenNotificationCenter());
     expect(mocks.goHome).toHaveBeenCalledOnce();
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
     expect(mocks.goHome.mock.invocationCallOrder[0]).toBeLessThan(
@@ -87,7 +87,7 @@ describe("notification boot boundaries", () => {
       expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
     });
     mocks.localTap.mockImplementationOnce(async () => {
-      window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT));
+      dispatchOpenNotificationCenter();
     });
 
     render(<NotificationsShellBoot />);
@@ -96,6 +96,18 @@ describe("notification boot boundaries", () => {
     expect(mocks.goHome).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
+  });
+
+  it("completes navigation for a retained tap dispatched before shell effects mount", async () => {
+    dispatchOpenNotificationCenter();
+    expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
+
+    render(<NotificationsShellBoot />);
+
+    await waitFor(() => expect(mocks.goHome).toHaveBeenCalledOnce());
+    expect(mocks.setTab).toHaveBeenCalledOnce();
+    expect(mocks.setTab).toHaveBeenCalledWith("chat");
+    expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
   });
 
   it("rotates push ownership on base and token authority changes", async () => {
