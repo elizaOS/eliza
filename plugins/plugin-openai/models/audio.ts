@@ -68,9 +68,17 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
-export async function handleTranscription(
+/** Whisper-style ASR plus upload of a long clip exceeds a 30s chat deadline. */
+export const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120_000;
+
+/** Speech synth of up to 4096 chars is shorter than long-file transcription. */
+export const AUDIO_TTS_TIMEOUT_MS = 60_000;
+
+export async function handleTranscriptionWithFetch(
   runtime: IAgentRuntime,
-  input: TranscriptionInput
+  input: TranscriptionInput,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = AUDIO_TRANSCRIPTION_TIMEOUT_MS
 ): Promise<string> {
   let modelName = getTranscriptionModel(runtime);
   let blob: Blob;
@@ -158,10 +166,11 @@ export async function handleTranscription(
     actionType: "openai.audio.transcriptions.create",
   };
   const data = await recordLlmCall(runtime, details, async () => {
-    const response = await fetch(`${baseURL}/audio/transcriptions`, {
+    const response = await fetchImpl(`${baseURL}/audio/transcriptions`, {
       method: "POST",
       headers: getAuthHeader(runtime),
       body: formData,
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -178,9 +187,18 @@ export async function handleTranscription(
   return data.text;
 }
 
-export async function handleTextToSpeech(
+export async function handleTranscription(
   runtime: IAgentRuntime,
-  input: TTSInput
+  input: TranscriptionInput
+): Promise<string> {
+  return handleTranscriptionWithFetch(runtime, input);
+}
+
+export async function handleTextToSpeechWithFetch(
+  runtime: IAgentRuntime,
+  input: TTSInput,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = AUDIO_TTS_TIMEOUT_MS
 ): Promise<ArrayBuffer> {
   let text: string;
   let voice: string | undefined;
@@ -247,7 +265,7 @@ export async function handleTextToSpeech(
     actionType: "openai.audio.speech.create",
   };
   return recordLlmCall(runtime, details, async () => {
-    const response = await fetch(`${baseURL}/audio/speech`, {
+    const response = await fetchImpl(`${baseURL}/audio/speech`, {
       method: "POST",
       headers: {
         ...getAuthHeader(runtime),
@@ -255,6 +273,7 @@ export async function handleTextToSpeech(
         ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -268,4 +287,11 @@ export async function handleTextToSpeech(
     details.response = `[audio bytes=${audioBuffer.byteLength} format=${format}]`;
     return audioBuffer;
   });
+}
+
+export async function handleTextToSpeech(
+  runtime: IAgentRuntime,
+  input: TTSInput
+): Promise<ArrayBuffer> {
+  return handleTextToSpeechWithFetch(runtime, input);
 }
