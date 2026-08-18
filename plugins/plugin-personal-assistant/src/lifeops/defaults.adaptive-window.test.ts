@@ -85,6 +85,31 @@ describe("computeAdaptiveWindowPolicy", () => {
     },
   );
 
+  it("keeps every adaptive daypart contiguous and non-empty across wake rhythms", () => {
+    for (
+      let typicalWakeHour = 0;
+      typicalWakeHour < 24;
+      typicalWakeHour += 0.5
+    ) {
+      const policy = computeAdaptiveWindowPolicy(
+        {
+          typicalWakeHour,
+          typicalFirstActiveHour: null,
+          typicalLastActiveHour: null,
+          typicalSleepHour: null,
+        },
+        "UTC",
+      );
+
+      for (const [index, window] of policy.windows.entries()) {
+        expect(window.endMinute).toBeGreaterThan(window.startMinute);
+        if (index > 0) {
+          expect(window.startMinute).toBe(policy.windows[index - 1]?.endMinute);
+        }
+      }
+    }
+  });
+
   it("materializes daily morning occurrences under a late-wake policy", () => {
     const policy = computeAdaptiveWindowPolicy(
       {
