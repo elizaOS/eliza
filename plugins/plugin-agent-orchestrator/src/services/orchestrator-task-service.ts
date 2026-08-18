@@ -3404,6 +3404,40 @@ export class OrchestratorTaskService extends Service {
             (err) => (err ? reject(err) : resolve()),
           ),
         );
+      const gitOut = (args: string[]) =>
+        new Promise<string>((resolve, reject) =>
+          execFile(
+            "git",
+            ["-C", workspace.path, ...args],
+            { timeout: 30_000 },
+            (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
+          ),
+        );
+      // task_complete can fire while the child is still writing its final
+      // commit (live 2026-08-18: README edited but uncommitted, three
+      // empty-diff gate blocks in a row). Wait — bounded — for actual new
+      // commits before submitting: poll while the tree is dirty or the
+      // session is still live; give up loudly when neither.
+      const baseCommit = await gitOut(["rev-parse", "origin/HEAD"]).catch(() =>
+        gitOut(["rev-parse", "origin/main"]).catch(() => ""),
+      );
+      const waitDeadline = Date.now() + 5 * 60_000;
+      for (;;) {
+        const head = await gitOut(["rev-parse", "HEAD"]).catch(() => "");
+        if (head && head !== baseCommit) break;
+        const dirty = await gitOut(["status", "--porcelain"]).catch(() => "");
+        const live = acp ? await acp.getSession(sessionId) : undefined;
+        const sessionActive =
+          live !== undefined &&
+          live !== null &&
+          !["stopped", "errored", "completed"].includes(live.status);
+        if (Date.now() > waitDeadline || (!dirty && !sessionActive)) {
+          throw new Error(
+            "auto-submit found no new commits in the provisioned workspace (child finished without committing)",
+          );
+        }
+        await new Promise((r) => setTimeout(r, 10_000));
+      }
       // checkout -B: moves (or creates) the registered branch at the child's
       // HEAD and checks it out in one step — including when the registered
       // branch IS the currently checked-out branch, where `branch -f` refuses
