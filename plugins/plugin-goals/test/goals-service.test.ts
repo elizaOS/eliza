@@ -253,6 +253,18 @@ describe("scoreGoalSimilarity", () => {
       candidate: base,
     });
     expect(unrelated).toBe(0);
+
+    const withNullCriteria = scoreGoalSimilarity({
+      reference: {
+        title: "Run a marathon this year",
+        description: "Train for a marathon",
+      },
+      candidate: {
+        ...base,
+        successCriteria: null,
+      },
+    });
+    expect(withNullCriteria).toBeGreaterThanOrEqual(0.85);
   });
 });
 
