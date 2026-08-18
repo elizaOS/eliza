@@ -34,9 +34,43 @@ const PROD_OPS_DIR = join(
   "hetzner",
   "prod-ops",
 );
+const HETZNER_CONTROL_PLANE_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "control-plane",
+);
+const HETZNER_APPS_SHARED_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "apps-shared",
+);
 
 function readK8sTerraform(file: string): string {
   return readFileSync(join(K8S_TERRAFORM_DIR, file), "utf-8");
+}
+
+function terraformResource(source: string, type: string, name: string): string {
+  const declaration = `resource "${type}" "${name}"`;
+  const declarationStart = source.indexOf(declaration);
+  expect(declarationStart).toBeGreaterThanOrEqual(0);
+
+  const blockStart = source.indexOf("{", declarationStart);
+  expect(blockStart).toBeGreaterThan(declarationStart);
+
+  let depth = 0;
+  for (let index = blockStart; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") depth -= 1;
+    if (depth === 0) return source.slice(blockStart + 1, index);
+  }
+
+  throw new Error(`Unclosed Terraform resource: ${type}.${name}`);
 }
 
 describe("Terraform redis-rest deployment", () => {
@@ -129,6 +163,71 @@ describe("Protected production-operations runner", () => {
     expect(readme).toContain("two live doctor passes");
     expect(readme).toContain("switch back to");
     expect(readme).toContain("`ubuntu-24.04`");
+  });
+});
+
+describe("Persistent Hetzner resource safeguards", () => {
+  const controlPlane = readFileSync(
+    join(HETZNER_CONTROL_PLANE_DIR, "main.tf"),
+    "utf-8",
+  );
+  const appsShared = readFileSync(
+    join(HETZNER_APPS_SHARED_DIR, "main.tf"),
+    "utf-8",
+  );
+
+  test("protects and backs up persistent control-plane servers", () => {
+    const server = terraformResource(
+      controlPlane,
+      "hcloud_server",
+      "control_plane",
+    );
+
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
+  });
+
+  test("attaches every control plane to its protected private network", () => {
+    const network = terraformResource(
+      controlPlane,
+      "hcloud_network",
+      "data_plane",
+    );
+    const attachment = terraformResource(
+      controlPlane,
+      "hcloud_server_network",
+      "control_plane",
+    );
+
+    expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
+    expect(attachment).toContain("for_each = hcloud_server.control_plane");
+    expect(attachment).toContain("server_id = each.value.id");
+    expect(attachment).toContain(
+      "subnet_id = hcloud_network_subnet.data_plane.id",
+    );
+    expect(attachment).not.toContain("network_id =");
+  });
+
+  test("protects and backs up the shared tenant database failure domain", () => {
+    const network = terraformResource(appsShared, "hcloud_network", "apps");
+    const volume = terraformResource(
+      appsShared,
+      "hcloud_volume",
+      "tenant_db_data",
+    );
+    const server = terraformResource(appsShared, "hcloud_server", "tenant_db");
+
+    expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
+    expect(volume).toContain("delete_protection = true");
+    expect(volume).toContain("prevent_destroy = true");
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
   });
 });
 

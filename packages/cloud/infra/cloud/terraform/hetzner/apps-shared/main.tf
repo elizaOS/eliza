@@ -55,15 +55,17 @@ resource "random_password" "pgbouncer_auth" {
 
 # ── Private network: apps + tenant DB only; isolated from the agent plane ─────
 resource "hcloud_network" "apps" {
-  name     = "eliza-apps"
-  ip_range = var.network_cidr
-  labels   = local.common_labels
+  name              = "eliza-apps"
+  ip_range          = var.network_cidr
+  labels            = local.common_labels
+  delete_protection = true
 
   # Same convention as the rest of the shared module: ignore Hetzner-side
   # renames so the legacy `eliza-apps-staging` left over from the pre-shared
   # layout doesn't show as a diff. Operators can rename via Console (cosmetic).
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -76,12 +78,13 @@ resource "hcloud_network_subnet" "apps" {
 
 # ── Block storage for all tenant databases (PGDATA) ───────────────────────────
 resource "hcloud_volume" "tenant_db_data" {
-  name      = "eliza-app-tenant-data"
-  size      = var.tenant_db_volume_size_gb
-  location  = var.hcloud_location
-  format    = "ext4"
-  labels    = local.common_labels
-  automount = false
+  name              = "eliza-app-tenant-data"
+  size              = var.tenant_db_volume_size_gb
+  location          = var.hcloud_location
+  format            = "ext4"
+  labels            = local.common_labels
+  automount         = false
+  delete_protection = true
 
   # Volume rename via Hetzner Console is operator-cosmetic; the state-mv migration
   # from the per-env apps-data-plane leaves the legacy `eliza-apps-tenantdb-staging`
@@ -89,7 +92,8 @@ resource "hcloud_volume" "tenant_db_data" {
   # in-place rename. Ignoring keeps the post-migration plan a true no-op so the
   # operator's verification gate ("plan should be clean") is honest.
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -122,12 +126,15 @@ resource "hcloud_firewall" "tenant_db" {
 # staging` left over from the pre-shared layout) don't cause drift; operators
 # can rename via the Hetzner Console at their discretion (cosmetic only).
 resource "hcloud_server" "tenant_db" {
-  name         = "eliza-app-tenant"
-  location     = var.hcloud_location
-  server_type  = var.tenant_db_server_type
-  image        = var.hcloud_image
-  firewall_ids = [hcloud_firewall.tenant_db.id]
-  labels       = merge(local.common_labels, { "role" = "tenant-db" })
+  name               = "eliza-app-tenant"
+  location           = var.hcloud_location
+  server_type        = var.tenant_db_server_type
+  image              = var.hcloud_image
+  backups            = true
+  delete_protection  = true
+  rebuild_protection = true
+  firewall_ids       = [hcloud_firewall.tenant_db.id]
+  labels             = merge(local.common_labels, { "role" = "tenant-db" })
 
   user_data = templatefile("${path.module}/cloud-init/tenant-db.yaml.tftpl", {
     hostname                = "eliza-app-tenant"
@@ -137,10 +144,11 @@ resource "hcloud_server" "tenant_db" {
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename
-  # via Hetzner Console without TF drift; user_data + image swaps re-apply only
-  # on `terraform apply -replace=hcloud_server.tenant_db`.
+  # via Hetzner Console without TF drift. user_data + image swaps require the
+  # separately reviewed guarded replacement procedure in README.md.
   lifecycle {
-    ignore_changes = [user_data, image, name, ssh_keys]
+    prevent_destroy = true
+    ignore_changes  = [user_data, image, name, ssh_keys]
   }
 }
 
