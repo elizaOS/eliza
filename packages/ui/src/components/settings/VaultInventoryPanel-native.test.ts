@@ -9,8 +9,8 @@ import { ElizaClient } from "../../api/client-base";
 import type { AgentRequestTransport } from "../../api/transport";
 import { setBootConfig } from "../../config/boot-config";
 import {
-  VAULT_INVENTORY_LIST_RAW_REQUEST_TIMEOUT_MS,
   rawRequestVaultInventoryList,
+  VAULT_INVENTORY_LIST_RAW_REQUEST_TIMEOUT_MS,
 } from "./VaultInventoryPanel";
 
 function makeClient(request: AgentRequestTransport["request"]) {
@@ -61,7 +61,7 @@ describe("VaultInventoryPanel list rawRequest native transport", () => {
     const request = vi.fn<AgentRequestTransport["request"]>(
       async (_url, init, ctx) => {
         const ms = ctx?.timeoutMs ?? 10;
-        await new Promise<never>((_, reject) => {
+        return new Promise<never>((_, reject) => {
           const timer = setTimeout(() => {
             reject(
               Object.assign(new Error(`Request timed out after ${ms}ms`), {
