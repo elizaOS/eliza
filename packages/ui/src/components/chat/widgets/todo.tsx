@@ -331,25 +331,44 @@ function WorkbenchTodoItems({
 function useAtRiskGoal(): AttentionGoal | null {
   const authenticated = useIsAuthenticated();
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
+  const activeLoadRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      activeLoadRef.current?.abort();
     };
   }, []);
 
-  const load = useCallback(async () => {
-    const next = await loadGoalsForGlance(authenticated);
-    // A null return means the fetch failed (J4) - keep the last good value.
-    if (next == null || !mountedRef.current) return;
-    setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
-  }, [authenticated]);
+  const load = useCallback(
+    (background = false) => {
+      activeLoadRef.current?.abort();
+      const controller = new AbortController();
+      activeLoadRef.current = controller;
+      void loadGoalsForGlance(authenticated, controller.signal)
+        .then((next) => {
+          if (controller.signal.aborted || !mountedRef.current) return;
+          if (next == null) {
+            if (!background) setGoals([]);
+            return;
+          }
+          setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
+        })
+        .finally(() => {
+          if (activeLoadRef.current === controller) {
+            activeLoadRef.current = null;
+          }
+        });
+    },
+    [authenticated],
+  );
 
   useEffect(() => {
-    void load();
+    load();
+    return () => activeLoadRef.current?.abort();
   }, [load]);
-  useIntervalWhenDocumentVisible(() => void load(), GOALS_REFRESH_INTERVAL_MS);
+  useIntervalWhenDocumentVisible(() => load(true), GOALS_REFRESH_INTERVAL_MS);
 
   if (goals == null) return null;
   return mostUrgentGoal(goals);
@@ -378,28 +397,46 @@ function useTodayTodos(): {
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const activeLoadRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      activeLoadRef.current?.abort();
     };
   }, []);
 
-  const load = useCallback(async () => {
-    const next = await loadTodayTodosForGlance(authenticated);
-    if (!mountedRef.current) return;
-    setNow(Date.now());
-    // A null return means the fetch failed (J4) - keep the last good value.
-    if (next == null) return;
-    setTodos((prev) => (todosEqual(prev, next) ? prev : next));
-  }, [authenticated]);
+  const load = useCallback(
+    (background = false) => {
+      activeLoadRef.current?.abort();
+      const controller = new AbortController();
+      activeLoadRef.current = controller;
+      void loadTodayTodosForGlance(authenticated, controller.signal)
+        .then((next) => {
+          if (controller.signal.aborted || !mountedRef.current) return;
+          setNow(Date.now());
+          if (next == null) {
+            if (!background) setTodos([]);
+            return;
+          }
+          setTodos((prev) => (todosEqual(prev, next) ? prev : next));
+        })
+        .finally(() => {
+          if (activeLoadRef.current === controller) {
+            activeLoadRef.current = null;
+          }
+        });
+    },
+    [authenticated],
+  );
 
   useEffect(() => {
-    void load();
+    load();
+    return () => activeLoadRef.current?.abort();
   }, [load]);
   useIntervalWhenDocumentVisible(
-    () => void load(),
+    () => load(true),
     TODAY_TODOS_REFRESH_INTERVAL_MS,
   );
 
