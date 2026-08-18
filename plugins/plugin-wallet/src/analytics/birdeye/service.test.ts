@@ -94,7 +94,7 @@ describe("BirdeyeService market data caching", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://birdeye.test/defi/multi_price?list_address=0xabc&include_liquidity=true",
-      { headers: { accept: "application/json", "x-chain": "base" } },
+      expect.objectContaining({ headers: { accept: "application/json", "x-chain": "base" }, signal: expect.any(AbortSignal) }),
     );
     expect(result["0xabc"]).toMatchObject({
       priceUsd: 2.5,
