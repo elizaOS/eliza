@@ -602,9 +602,6 @@ describe("MEMORY routing aliases", () => {
   });
 
   it("resolves the bare stage-1 RECALL_MEMORY candidate to MEMORY", () => {
-    // Live sol-dev 2026-08-17/18: stage-1 emitted candidate=RECALL_MEMORY,
-    // it resolved to no runtime action (only RECALL_MEMORY_FILTERED was a
-    // simile), and every recall turn paid a full extra planner round.
     const lookup = new Map<string, string>();
     const normalized = normalizeActionIdentifier(memoryAction.name);
     if (normalized) lookup.set(normalized, memoryAction.name);
@@ -625,11 +622,6 @@ describe("MEMORY routing aliases", () => {
 
 describe("MEMORY op:search rendered line width", () => {
   it("renders up to 300 chars of each windowed hit so text carries the claim", async () => {
-    // The rendered `text` is the model's primary view of a hit: the
-    // full-text data payload is capped downstream by toolMessageContent
-    // (MAX_RENDERED_DATA_CHARS_WITH_TEXT). At the old 120-char slice a
-    // stored correction's operative clause fell outside the rendered line
-    // and was legible only via the (now capped) data blob.
     const { runtime, rows } = makeRuntime();
     const head = "CORRECTION (2026-08-18): the user's earlier claim was ";
     const operative =
@@ -646,7 +638,13 @@ describe("MEMORY op:search rendered line width", () => {
     });
     expect(result.success).toBe(true);
     const text = String(result.text ?? "");
-    // 120-char rendering cut the line before the operative clause; 300 keeps it.
     expect(text).toContain(operative);
+    expect(result.promptData).toMatchObject({
+      actionName: "MEMORY",
+      op: "search",
+      matchedInWindow: 1,
+      rendered: 1,
+    });
+    expect(result.promptData).not.toHaveProperty("memories");
   });
 });

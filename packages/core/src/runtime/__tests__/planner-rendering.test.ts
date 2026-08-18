@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {
-	MAX_RENDERED_DATA_CHARS_WITH_TEXT,
 	toolMessageContent,
 	trajectoryStepsToMessages,
 	truncateToolResultText,
@@ -273,14 +272,8 @@ describe("trajectoryStepsToMessages — maxToolResultChars option", () => {
 	});
 });
 
-describe("toolMessageContent — data cap when a text projection exists", () => {
-	// Live incident (sol-dev 2026-08-18, trajectories ipd1zs/rv6oxq/5m6ir4):
-	// one MEMORY_SEARCH result rendered a ~5KB `text` PLUS a ~46KB
-	// pretty-printed `data` blob duplicating every hit's full text — the
-	// post-search planner call ballooned 18K -> 36-37K prompt tokens and the
-	// evaluator to ~50K, paid on every recall turn.
-
-	it("caps an oversized data payload when result.text is present", () => {
+describe("toolMessageContent — action-owned data projection", () => {
+	it("renders promptData instead of a duplicated machine payload", () => {
 		const memories = Array.from({ length: 17 }, (_, i) => ({
 			id: `id-${i}`,
 			type: "facts",
@@ -289,30 +282,32 @@ describe("toolMessageContent — data cap when a text projection exists", () => 
 		const rendered = toolMessageContent({
 			success: true,
 			text: "Showing all 17 match(es) found in the scanned window.",
-			data: { actionName: "MEMORY_SEARCH", memories },
+			data: { actionName: "MEMORY", op: "search", memories },
+			promptData: {
+				actionName: "MEMORY",
+				op: "search",
+				matchedInWindow: 17,
+			},
 		});
 		expect(rendered.startsWith("text: Showing all 17")).toBe(true);
-		const dataSection = rendered.slice(rendered.indexOf("data: "));
-		// The cap plus the "data: " label and truncation marker overhead.
-		expect(dataSection.length).toBeLessThanOrEqual(
-			MAX_RENDERED_DATA_CHARS_WITH_TEXT + 64,
-		);
-		expect(dataSection).toMatch(/chars truncated/);
+		expect(rendered).toContain('"matchedInWindow": 17');
+		expect(rendered).not.toContain("stored fact 0");
 	});
 
-	it("renders small structured data fully alongside text (chaining payloads survive)", () => {
+	it("keeps arbitrary large chaining data complete when no projection is supplied", () => {
+		const chainingMarker = `CHAINING_FIELD_${"x".repeat(5000)}`;
 		const rendered = toolMessageContent({
 			success: true,
 			text: "Created workspace.",
-			data: { agentId: "a1", workspaceId: "w1" },
+			data: { agentId: "a1", chainingMarker, workspaceId: "w1" },
 		});
 		expect(rendered).toContain("text: Created workspace.");
 		expect(rendered).toContain('"agentId": "a1"');
 		expect(rendered).toContain('"workspaceId": "w1"');
-		expect(rendered).not.toMatch(/chars truncated/);
+		expect(rendered).toContain(chainingMarker);
 	});
 
-	it("renders data in full when there is NO text projection (documented fallback role)", () => {
+	it("renders data in full when there is no text projection", () => {
 		const bigPayload = {
 			rows: Array.from(
 				{ length: 200 },
@@ -323,20 +318,21 @@ describe("toolMessageContent — data cap when a text projection exists", () => 
 			success: true,
 			data: bigPayload,
 		});
-		expect(rendered.length).toBeGreaterThan(MAX_RENDERED_DATA_CHARS_WITH_TEXT);
+		expect(rendered.length).toBeGreaterThan(4_000);
 		expect(rendered).not.toMatch(/chars truncated/);
 		expect(rendered).toContain("row 199");
 	});
 
-	it("keeps error rendering intact when data is capped", () => {
+	it("keeps error rendering alongside projected data", () => {
 		const rendered = toolMessageContent({
 			success: false,
 			text: "search failed",
 			data: { dump: "z".repeat(50_000) },
+			promptData: { actionName: "MEMORY", op: "search" },
 			error: "backend exploded",
 		});
 		expect(rendered).toContain("text: search failed");
-		expect(rendered).toMatch(/chars truncated/);
+		expect(rendered).not.toContain("z".repeat(100));
 		expect(rendered).toContain("error: backend exploded");
 	});
 });

@@ -523,12 +523,6 @@ describe("EvaluatorService", () => {
 	});
 
 	it("renders action results bounded (text projection, not the raw data payload)", async () => {
-		// Live sol-dev 2026-08-18: state.data.actionResults carried a full
-		// MEMORY_SEARCH ActionResult whose data.memories/durableMemories
-		// duplicated every hit's complete text; the old raw stringify pushed the
-		// merged post-turn evaluator call to ~50-52K prompt tokens on every
-		// recall turn. The prompt must render the bounded text projection and
-		// must NOT serialize the data payload.
 		const runtime = makeRuntime();
 		runtime.registerEvaluator({
 			name: "gamma",
@@ -547,19 +541,26 @@ describe("EvaluatorService", () => {
 			success: true,
 			text: "Showing all 7 match(es) found in the scanned window.",
 			data: {
-				actionName: "MEMORY_SEARCH",
+				actionName: "MEMORY",
+				op: "search",
 				memories: Array.from({ length: 17 }, (_, i) => ({
 					id: `id-${i}`,
 					text: `${hugeDataMarker} ${"detail ".repeat(300)}`,
 				})),
+			},
+			promptData: {
+				actionName: "MEMORY",
+				op: "search",
+				matchedInWindow: 7,
 			},
 		};
 
 		const useModel = vi.fn(async (_modelType, params) => {
 			const prompt = String(params.messages?.[0]?.content ?? "");
 			// The bounded text projection is present…
-			expect(prompt).toContain("MEMORY_SEARCH - succeeded");
+			expect(prompt).toContain("MEMORY - succeeded");
 			expect(prompt).toContain("Showing all 7 match(es)");
+			expect(prompt).toContain('"matchedInWindow":7');
 			// …and the raw data payload is NOT serialized into the prompt.
 			expect(prompt).not.toContain(hugeDataMarker);
 			return { gamma: { ok: true } };
@@ -575,6 +576,94 @@ describe("EvaluatorService", () => {
 		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(result.skipped).toBe(false);
 		expect(result.errors).toEqual([]);
+	});
+
+	it("keeps supported data-only action fields visible to the evaluator model", async () => {
+		const runtime = makeRuntime();
+		runtime.registerEvaluator({
+			name: "data-only",
+			description: "data-only section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Inspect the action result.",
+			parse: (output) => output as never,
+			processors: [
+				{ name: "storeDataOnly", process: async () => ({ success: true }) },
+			],
+		});
+		const useModel = vi.fn(async (_modelType, params) => {
+			const prompt = String(params.messages?.[0]?.content ?? "");
+			expect(prompt).toContain("UNINSTALL_SKILL - succeeded");
+			expect(prompt).toContain('"awaitingUserInput":true');
+			expect(prompt).toContain('"slug":"demo-skill"');
+			return { "data-only": { ok: true } };
+		});
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const actionResult = {
+			success: true,
+			data: {
+				actionName: "UNINSTALL_SKILL",
+				awaitingUserInput: true,
+				slug: "demo-skill",
+			},
+		};
+		const state = {
+			values: {},
+			data: { actionResults: [actionResult] },
+			text: "",
+		};
+		await new EvaluatorService(runtime).run(makeMessage(), state);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(state.data.actionResults[0]?.data).toEqual(actionResult.data);
+	});
+
+	it("bounds oversized data-only action JSON without hiding control fields", async () => {
+		const runtime = makeRuntime();
+		runtime.registerEvaluator({
+			name: "bounded-data",
+			description: "bounded-data section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Inspect the action result.",
+			parse: (output) => output as never,
+			processors: [
+				{ name: "storeBoundedData", process: async () => ({ success: true }) },
+			],
+		});
+		const oversizedMarker = "OVERSIZED_PRIVATE_DETAIL".repeat(2_000);
+		const useModel = vi.fn(async (_modelType, params) => {
+			const prompt = String(params.messages?.[0]?.content ?? "");
+			expect(prompt).toContain('"actionName":"UNINSTALL_SKILL"');
+			expect(prompt).toContain('"awaitingUserInput":true');
+			expect(prompt).toContain('"slug":"demo-skill"');
+			expect(prompt).toContain('"__truncated":true');
+			expect(prompt).not.toContain(oversizedMarker);
+			expect(prompt.length).toBeLessThan(EVALUATOR_PROMPT_MAX_CHARS);
+			return { "bounded-data": { ok: true } };
+		});
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {
+				actionResults: [
+					{
+						success: true,
+						data: {
+							actionName: "UNINSTALL_SKILL",
+							awaitingUserInput: true,
+							slug: "demo-skill",
+							details: oversizedMarker,
+						},
+					},
+				],
+			},
+			text: "",
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("trims oversized shared provider context and still calls the model", async () => {

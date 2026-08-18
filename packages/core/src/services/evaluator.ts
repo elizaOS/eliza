@@ -273,23 +273,15 @@ function buildPrompt(params: {
 		? state.data.actionResults
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
-	// Render action results through the bounded prompt formatter, not a raw
-	// stringify: `state.data.actionResults` carries the FULL ActionResult
-	// objects, and for recall-shaped actions `data.memories` +
-	// `data.durableMemories` duplicate every hit's complete text. Live sol-dev
-	// 2026-08-18: one MEMORY_SEARCH result raw-stringified here pushed the
-	// merged post-turn evaluator call to ~50-52K prompt tokens (10-23s at
-	// fable per-call latency) on every recall turn — while
-	// formatActionResultsForPrompt (the exact util the planner prompt uses via
-	// withActionResultsForPrompt) renders the same results bounded (text
-	// field, max 8 results, full-output references preserved). Non-array
-	// shapes keep the raw stringify — unknown data must stay visible.
+	// The merged evaluator prompt uses bounded model projections while the
+	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
 			? formatActionResultsForPrompt(actionResults as ActionResult[], {
 					header: "",
+					includeData: true,
 				})
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,

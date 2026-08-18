@@ -365,13 +365,8 @@ async function doSearch(
   const items = scan.matches
     .slice(0, limit)
     .map((c) => toListItem(c.memory, c.type));
-  // 300 chars per line: the rendered `text` is now the model's PRIMARY view
-  // of each hit — the full-text `data.memories` payload is capped by the
-  // planner/evaluator renderers (toolMessageContent
-  // MAX_RENDERED_DATA_CHARS_WITH_TEXT) after one search result's duplicated
-  // ~46KB data blob doubled recall-turn prompts (live measurement,
-  // 2026-08-18). At 120 chars a stored correction was legible only via that
-  // doomed blob; at 300 the line itself carries the claim.
+  // The text projection carries enough of each hit for model reasoning; the
+  // complete records remain machine data for state and trajectory consumers.
   const lines = items
     .slice(0, 25)
     .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 300)}`);
@@ -406,6 +401,15 @@ async function doSearch(
       op: "search" as const,
       memories: items,
       matchedInWindow,
+      scanWindowPerTable: scan.perTable,
+      scanWindowSaturatedTables: scan.saturatedTables,
+      limit,
+    },
+    promptData: {
+      actionName: "MEMORY",
+      op: "search" as const,
+      matchedInWindow,
+      rendered: lines.length,
       scanWindowPerTable: scan.perTable,
       scanWindowSaturatedTables: scan.saturatedTables,
       limit,
@@ -617,11 +621,7 @@ export const memoryAction: Action = {
     "UPDATE_MEMORY",
     "DELETE_MEMORY",
     "RECALL_MEMORY_FILTERED",
-    // Stage-1 recall candidates: the classifier emits RECALL_MEMORY (bare)
-    // for "who is X" recalls, and without this simile the explicit candidate
-    // resolved to no runtime action (gate=resolved-to-no-runtime-action) —
-    // the turn then paid a full extra planner round to rediscover MEMORY
-    // op:search (live sol-dev 2026-08-17/18).
+    // Stage-1 recall names bind directly to the MEMORY umbrella action.
     "RECALL_MEMORY",
     "RECALL_MEMORIES",
     "MEMORY_RECALL",
