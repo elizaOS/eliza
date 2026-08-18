@@ -1225,8 +1225,10 @@ function stripDiacritics(s: string): string {
  * or null. No LLM. Precision-first: a bare noun never matches without a nav
  * signal (verb / possessive / view-word / whole-message).
  */
-export function matchViewCommand(text: string | undefined): string | null {
-  const raw = (text ?? "").trim();
+export function matchViewCommand(text: unknown): string | null {
+  if (typeof text !== "string") return null;
+  const raw = text.trim();
+  if (raw.startsWith("-")) return null;
   if (!raw || raw.length > 160) return null; // commands are short
   const lower = raw.toLowerCase();
   if (looksLikeCompanionActionRequest(lower)) return null;
