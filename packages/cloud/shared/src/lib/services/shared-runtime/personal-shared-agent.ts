@@ -12,29 +12,19 @@ import { getElizaAgentPublicWebUiUrl } from "../../eliza-agent-web-ui";
 import { getDefaultElizaCharacterData } from "../../utils/default-eliza-character";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
-const PERSONAL_SHARED_AGENT_NAMESPACE = "af8f7624-42f8-4da8-bdf1-593b1a0d7f20";
 const PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE = "b9ea4ce5-636d-4ec4-bc75-6308188f883f";
-const PERSONAL_SHARED_AGENT_PREFIX = "personal:";
 
-export interface PersonalSharedAccountIdentity {
-  userId: string;
-  organizationId: string;
-}
+import {
+  type PersonalSharedAccountIdentity,
+  personalSharedAgentId,
+} from "./personal-shared-identity";
 
-/** Stable namespaced id used for Durable Object routing and mirrored history. */
-export function personalSharedAgentId(identity: PersonalSharedAccountIdentity): string {
-  return `${PERSONAL_SHARED_AGENT_PREFIX}${uuidv5(
-    `${identity.organizationId.trim()}:${identity.userId.trim()}`,
-    PERSONAL_SHARED_AGENT_NAMESPACE,
-  )}`;
-}
-
-/** True only for the namespace reserved for rowless account-native identities. */
-export function isPersonalSharedAgentId(value: string): boolean {
-  return /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
-}
+export {
+  isCanonicalPersonalSharedAgent,
+  isPersonalSharedAgentId,
+  type PersonalSharedAccountIdentity,
+  personalSharedAgentId,
+} from "./personal-shared-identity";
 
 /**
  * A public Discord guild room must never reuse the owner's private cross-channel
