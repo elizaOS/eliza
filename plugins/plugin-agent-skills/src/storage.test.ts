@@ -306,6 +306,25 @@ describe("filesystem path containment", () => {
 		expect(fs.existsSync(path.join(basePath, "escape.txt"))).toBe(false);
 	});
 
+	it("validates every package path before creating a partial skill", async () => {
+		await expect(
+			store.saveSkill({
+				slug: "demo",
+				files: new Map([
+					[
+						"SKILL.md",
+						{ path: "SKILL.md", content: "# demo", isText: true },
+					],
+					[
+						"../../escape.txt",
+						{ path: "../../escape.txt", content: "payload", isText: true },
+					],
+				]),
+			}),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		expect(fs.existsSync(path.join(basePath, "demo"))).toBe(false);
+	});
+
 	it("refuses to save a package whose slug escapes the base directory", async () => {
 		await expect(
 			store.saveSkill({
@@ -331,6 +350,98 @@ describe("filesystem path containment", () => {
 		// The store itself is untouched by the rejected deletes.
 		expect(fs.existsSync(basePath)).toBe(true);
 	});
+
+	it("refuses traversal through every public filesystem read/list path", async () => {
+		const secretDir = path.join(outerDir, "secret-skill");
+		fs.mkdirSync(secretDir);
+		fs.writeFileSync(path.join(secretDir, "SKILL.md"), "outside");
+		fs.writeFileSync(path.join(outerDir, "secret.txt"), "TOPSECRET");
+		fs.mkdirSync(path.join(basePath, "demo"));
+
+		await expect(store.hasSkill("../secret-skill")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		await expect(
+			store.loadSkillContent("../secret-skill"),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		await expect(
+			store.loadFile("demo", "../../secret.txt"),
+		).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+		await expect(store.listFiles("demo", "../..")).rejects.toMatchObject({
+			code: "SKILL_PATH_TRAVERSAL",
+		});
+		expect(() => store.getSkillPath("../secret-skill")).toThrow(
+			/escapes the skill directory/,
+		);
+	});
+
+	it.runIf(process.platform !== "win32")(
+		"rejects reads, writes, lists, and deletes through a child symlink",
+		async () => {
+			const outside = path.join(outerDir, "outside");
+			fs.mkdirSync(outside);
+			fs.writeFileSync(path.join(outside, "SKILL.md"), "outside");
+			fs.symlinkSync(outside, path.join(basePath, "linked"), "dir");
+
+			await expect(store.hasSkill("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadSkillContent("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.loadFile("linked", "SKILL.md")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(store.listFiles("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			await expect(
+				store.saveSkill({
+					slug: "linked",
+					files: new Map([
+						[
+							"SKILL.md",
+							{ path: "SKILL.md", content: "changed", isText: true },
+						],
+					]),
+				}),
+			).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+			await expect(store.deleteSkill("linked")).rejects.toMatchObject({
+				code: "SKILL_PATH_TRAVERSAL",
+			});
+			expect(fs.readFileSync(path.join(outside, "SKILL.md"), "utf8")).toBe(
+				"outside",
+			);
+		},
+	);
+
+	it.runIf(process.platform !== "win32")(
+		"does not create directories through a symlink stored inside a skill",
+		async () => {
+			const outside = path.join(outerDir, "outside");
+			const skillDir = path.join(basePath, "demo");
+			fs.mkdirSync(outside);
+			fs.mkdirSync(skillDir);
+			fs.symlinkSync(outside, path.join(skillDir, "linked"), "dir");
+
+			await expect(
+				store.saveSkill({
+					slug: "demo",
+					files: new Map([
+						[
+							"linked/nested/file.txt",
+							{
+								path: "linked/nested/file.txt",
+								content: "payload",
+								isText: true,
+							},
+						],
+					]),
+				}),
+			).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+			expect(fs.existsSync(path.join(outside, "nested"))).toBe(false);
+		},
+	);
 
 	it("still deletes a real skill directory", async () => {
 		await store.saveSkill({

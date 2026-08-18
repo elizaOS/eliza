@@ -343,15 +343,31 @@ export class FileSystemSkillStore implements ISkillStorage {
 	async hasSkill(slug: string): Promise<boolean> {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
-		const skillPath = path.join(this.basePath, slug, "SKILL.md");
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
+		const skillPath = resolveContainedPath(
+			path,
+			skillDir,
+			path.join(skillDir, "SKILL.md"),
+			"SKILL.md",
+		);
+		assertExistingRealPathContained(fs, path, resolvedBase, skillPath, slug);
 		return fs.existsSync(skillPath);
 	}
 
 	async loadSkillContent(slug: string): Promise<string | null> {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
-		const skillPath = path.join(this.basePath, slug, "SKILL.md");
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
+		const skillPath = resolveContainedPath(
+			path,
+			skillDir,
+			path.join(skillDir, "SKILL.md"),
+			"SKILL.md",
+		);
 		if (!fs.existsSync(skillPath)) return null;
+		assertExistingRealPathContained(fs, path, resolvedBase, skillPath, slug);
 
 		return fs.readFileSync(skillPath, "utf-8");
 	}
@@ -363,12 +379,23 @@ export class FileSystemSkillStore implements ISkillStorage {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
 
-		// Sanitize path to prevent directory traversal
-		const safePath = path.basename(relativePath);
-		const subdir = path.dirname(relativePath);
-		const fullPath = path.join(this.basePath, slug, subdir, safePath);
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
+		const fullPath = resolveContainedPath(
+			path,
+			skillDir,
+			path.join(skillDir, relativePath),
+			relativePath,
+		);
 
 		if (!fs.existsSync(fullPath)) return null;
+		assertExistingRealPathContained(
+			fs,
+			path,
+			resolvedBase,
+			fullPath,
+			relativePath,
+		);
 
 		if (isTextFile(relativePath)) {
 			return fs.readFileSync(fullPath, "utf-8");
@@ -381,11 +408,19 @@ export class FileSystemSkillStore implements ISkillStorage {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
 
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
 		const dirPath = subdir
-			? path.join(this.basePath, slug, subdir)
-			: path.join(this.basePath, slug);
+			? resolveContainedPath(
+					path,
+					skillDir,
+					path.join(skillDir, subdir),
+					subdir,
+				)
+			: skillDir;
 
 		if (!fs.existsSync(dirPath)) return [];
+		assertExistingRealPathContained(fs, path, resolvedBase, dirPath, subdir ?? slug);
 
 		return fs.readdirSync(dirPath).filter((f) => !f.startsWith("."));
 	}
@@ -394,24 +429,43 @@ export class FileSystemSkillStore implements ISkillStorage {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
 
-		const skillDir = path.join(this.basePath, pkg.slug);
-		assertContainedPath(path, path.resolve(this.basePath), skillDir, pkg.slug);
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, pkg.slug);
 		const resolvedSkillDir = path.resolve(skillDir);
+
+		// Validate the complete package before creating or changing anything. A
+		// malicious later entry must not leave a partially installed skill behind.
+		const validatedFiles = [...pkg.files].map(([relativePath, file]) => ({
+			file,
+			fullPath: resolveContainedPath(
+				path,
+				resolvedSkillDir,
+				path.join(resolvedSkillDir, relativePath),
+				relativePath,
+			),
+			relativePath,
+		}));
 
 		// Create skill directory
 		if (!fs.existsSync(skillDir)) {
-			fs.mkdirSync(skillDir, { recursive: true });
+			fs.mkdirSync(skillDir);
 		}
+		assertExistingRealPathContained(fs, path, resolvedBase, skillDir, pkg.slug);
 
 		// Write all files
-		for (const [relativePath, file] of pkg.files) {
-			const fullPath = path.join(skillDir, relativePath);
-			assertContainedPath(path, resolvedSkillDir, fullPath, relativePath);
+		for (const { file, fullPath, relativePath } of validatedFiles) {
 			const dir = path.dirname(fullPath);
 
 			// Ensure directory exists
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true });
+			ensureContainedDirectory(
+				fs,
+				path,
+				resolvedSkillDir,
+				dir,
+				relativePath,
+			);
+			if (fs.existsSync(fullPath) && fs.lstatSync(fullPath).isSymbolicLink()) {
+				throwSkillPathTraversal(relativePath);
 			}
 
 			// Write file
@@ -426,9 +480,10 @@ export class FileSystemSkillStore implements ISkillStorage {
 	async deleteSkill(slug: string): Promise<boolean> {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
-		const skillDir = path.join(this.basePath, slug);
-		assertContainedPath(path, path.resolve(this.basePath), skillDir, slug);
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
 		if (!fs.existsSync(skillDir)) return false;
+		assertExistingRealPathContained(fs, path, resolvedBase, skillDir, slug);
 
 		// Recursive delete
 		fs.rmSync(skillDir, { recursive: true, force: true });
@@ -436,9 +491,10 @@ export class FileSystemSkillStore implements ISkillStorage {
 	}
 
 	getSkillPath(slug: string): string {
-		return this.path
-			? this.path.resolve(this.basePath, slug)
-			: `${this.basePath}/${slug}`;
+		assertSkillStorageSlug(slug);
+		if (!this.path) return `${this.basePath}/${slug}`;
+		const resolvedBase = this.path.resolve(this.basePath);
+		return resolveSkillDirectory(this.path, resolvedBase, slug);
 	}
 
 	/**
@@ -635,11 +691,108 @@ function assertContainedPath(
 		resolvedTarget === resolvedBase ||
 		!resolvedTarget.startsWith(resolvedBase + path.sep)
 	) {
-		throw new ElizaError("Skill path escapes the skill directory", {
-			code: "SKILL_PATH_TRAVERSAL",
-			context: { path: label },
-		});
+		throwSkillPathTraversal(label);
 	}
+}
+
+/** Resolve a target and return it only when it is strictly inside `base`. */
+function resolveContainedPath(
+	path: typeof import("path"),
+	base: string,
+	target: string,
+	label: string,
+): string {
+	const resolvedBase = path.resolve(base);
+	const resolvedTarget = path.resolve(resolvedBase, target);
+	assertContainedPath(path, resolvedBase, resolvedTarget, label);
+	return resolvedTarget;
+}
+
+/**
+ * Keep the storage key to one portable directory component. Domain-level
+ * skill-name validation is intentionally stricter and remains owned by the
+ * service boundary; this lower-level guard only prevents filesystem escape.
+ */
+function assertSkillStorageSlug(slug: string): void {
+	if (
+		!slug ||
+		slug === "." ||
+		slug === ".." ||
+		slug.includes("/") ||
+		slug.includes("\\") ||
+		slug.includes("\0") ||
+		/^[A-Za-z]:/.test(slug)
+	) {
+		throwSkillPathTraversal(slug);
+	}
+}
+
+/** Resolve a portable skill slug beneath the configured storage root. */
+function resolveSkillDirectory(
+	path: typeof import("path"),
+	resolvedBase: string,
+	slug: string,
+): string {
+	assertSkillStorageSlug(slug);
+	return resolveContainedPath(path, resolvedBase, slug, slug);
+}
+
+/**
+ * Reject an existing target whose real path escapes through a symlink. Lexical
+ * containment alone is insufficient for public read/write helpers because an
+ * otherwise safe child directory can be replaced with a link to arbitrary
+ * host files.
+ */
+function assertExistingRealPathContained(
+	fs: typeof import("fs"),
+	path: typeof import("path"),
+	base: string,
+	target: string,
+	label: string,
+): void {
+	if (!fs.existsSync(target)) return;
+	const realBase = fs.realpathSync(base);
+	const realTarget = fs.realpathSync(target);
+	if (realTarget !== realBase && !realTarget.startsWith(realBase + path.sep)) {
+		throwSkillPathTraversal(label);
+	}
+}
+
+/**
+ * Create each missing directory only after its existing parent has passed the
+ * real-path containment check. A recursive mkdir could otherwise traverse a
+ * stored symlink and mutate outside the skill root before the final check.
+ */
+function ensureContainedDirectory(
+	fs: typeof import("fs"),
+	path: typeof import("path"),
+	base: string,
+	target: string,
+	label: string,
+): void {
+	const resolvedBase = path.resolve(base);
+	const resolvedTarget = path.resolve(target);
+	if (resolvedTarget !== resolvedBase) {
+		assertContainedPath(path, resolvedBase, resolvedTarget, label);
+	}
+	assertExistingRealPathContained(fs, path, resolvedBase, resolvedBase, label);
+
+	const relative = path.relative(resolvedBase, resolvedTarget);
+	let current = resolvedBase;
+	for (const component of relative.split(path.sep).filter(Boolean)) {
+		current = path.join(current, component);
+		if (!fs.existsSync(current)) {
+			fs.mkdirSync(current);
+		}
+		assertExistingRealPathContained(fs, path, resolvedBase, current, label);
+	}
+}
+
+function throwSkillPathTraversal(label: string): never {
+	throw new ElizaError("Skill path escapes the skill directory", {
+		code: "SKILL_PATH_TRAVERSAL",
+		context: { path: label },
+	});
 }
 
 /**
