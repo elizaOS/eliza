@@ -1694,15 +1694,24 @@ export function useChatSend(deps: UseChatSendDeps) {
           // warm-up can complete with nothing persisted, and the reload then
           // evicts the user's bubble (#11670). Restore it with a retryable
           // failed turn; no-op when the server persisted it.
-          restoreEvictedUserTurn(convId, {
-            userMsgId,
-            assistantMsgId,
-            text,
-            timestamp: now,
-            ...(optimisticAttachments
-              ? { attachments: optimisticAttachments }
-              : {}),
-          });
+          // A terminal userMessageId is the server's persistence receipt. In
+          // callback-only turns (notably attachment actions) the assistant row
+          // may be committed outside the streamed bubble, so the history load
+          // is necessary but can race that row's WS echo. Re-attaching the
+          // optimistic user turn despite the receipt creates a duplicate user
+          // bubble plus a false Retry failure. Only restore when the server did
+          // not confirm persistence at all (the warm-up/drop case).
+          if (!data.userMessageId) {
+            restoreEvictedUserTurn(convId, {
+              userMsgId,
+              assistantMsgId,
+              text,
+              timestamp: now,
+              ...(optimisticAttachments
+                ? { attachments: optimisticAttachments }
+                : {}),
+            });
+          }
         }
 
         const userMessageCount = conversationMessagesRef.current.filter(

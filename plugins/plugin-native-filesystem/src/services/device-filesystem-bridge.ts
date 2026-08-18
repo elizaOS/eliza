@@ -6,9 +6,12 @@
  * Every relative path is sanitised by `normalizeDevicePath()` first; the Node backend
  * additionally resolves symlinks and verifies the real path stays under the workspace
  * root, since a string-prefix check on the unresolved path alone cannot catch a symlink
- * that escapes after normalization.
+ * that escapes after normalization. read() and list() realpath() their full target;
+ * write() realpath()s the parent directory and, when the final component already exists,
+ * the target itself, so a symlinked target file cannot be followed out of the sandbox.
  */
 import {
+	lstat,
 	mkdir,
 	readdir,
 	readFile,
@@ -197,6 +200,14 @@ export class DeviceFilesystemBridge extends Service {
 		const absolute = this.resolveNodePath(relative);
 		await mkdir(path.dirname(absolute), { recursive: true });
 		await this.assertRealPathWithinRoot(path.dirname(absolute));
+		// A validated parent directory is not enough: if the final path component
+		// is an existing symlink pointing outside the root, writeFile() follows it
+		// and clobbers the external target. Verify the real target path the same
+		// way read()/list() do, but only when the target already exists (realpath
+		// throws ENOENT on a to-be-created file, which is the expected common case).
+		if (await this.pathExists(absolute)) {
+			await this.assertRealPathWithinRoot(absolute);
+		}
 		await writeFile(absolute, content, nodeEncodingFor(encoding));
 	}
 
@@ -259,6 +270,24 @@ export class DeviceFilesystemBridge extends Service {
 			);
 		}
 		return absolute;
+	}
+
+	private async pathExists(targetPath: string): Promise<boolean> {
+		try {
+			await lstat(targetPath);
+			return true;
+		} catch (error) {
+			// error-policy:J3 a missing target is the normal create path; only a
+			// genuine ENOENT means "does not exist" — surface every other error.
+			if (
+				typeof error === "object" &&
+				error !== null &&
+				(error as NodeJS.ErrnoException).code === "ENOENT"
+			) {
+				return false;
+			}
+			throw error;
+		}
 	}
 
 	private async assertRealPathWithinRoot(targetPath: string): Promise<void> {

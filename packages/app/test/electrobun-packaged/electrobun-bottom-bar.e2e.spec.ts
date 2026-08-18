@@ -408,6 +408,164 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         skipVisible: true,
       });
 
+    // Resting-state transform lock: the settled panel's computed transform
+    // must be EXACTLY the shell's centering transform — asserting the
+    // anchored keyframes end state and that the Tailwind utility `translate`
+    // path stays cancelled.
+    const readRestingTransform = () =>
+      harness.eval<{
+        matrix: string;
+        width: number;
+      }>(`(() => {
+        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+        if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
+        return {
+          matrix: getComputedStyle(panel).transform,
+          width: panel.getBoundingClientRect().width,
+        };
+      })()`);
+    // Poll until the entry animation has fully settled: its translateY term
+    // must reach exactly 0 before the one-shot snapshot is asserted.
+    await expect
+      .poll(async () => {
+        const current = await readRestingTransform();
+        const match = /^matrix\(([^)]+)\)$/.exec(current.matrix.trim());
+        return match
+          ? Number.parseFloat(match[1].split(",")[5]?.trim() ?? "NaN")
+          : Number.NaN;
+      })
+      .toBe(0);
+    const resting = await readRestingTransform();
+    const matrixMatch = /^matrix\(([^)]+)\)$/.exec(resting.matrix.trim());
+    expect(matrixMatch).toBeTruthy();
+    const matrixTerms = (matrixMatch?.[1] ?? "")
+      .split(",")
+      .map((term) => Number.parseFloat(term.trim()));
+    // identity scale terms and a pure X translation of exactly -width/2
+    expect(matrixTerms[0]).toBe(1);
+    expect(matrixTerms[1]).toBe(0);
+    expect(matrixTerms[2]).toBe(0);
+    expect(matrixTerms[3]).toBe(1);
+    expect(matrixTerms[5]).toBe(0);
+    expect(Math.abs(matrixTerms[4] + resting.width / 2)).toBeLessThanOrEqual(1);
+
+    // Mid-entry centering probe (#20063, follow-up to #20496): the resting
+    // assertions above wait out the 220ms entry animation, so they pass even
+    // if the animation replaces the centering transform (the residual finding
+    // from the #20496 review: the base `shell-overlay-in` keyframes animate
+    // `translateY(...)` alone, dropping the shell's `translateX(-50%)` for
+    // the entry). Deterministically RESTART the entry animation, flush
+    // styles, pause at the 110ms midpoint, and assert the panel is
+    // horizontally centered THERE, where un-anchored keyframes would place it
+    // ~half its width off-center. A computed animationName alone is NOT
+    // evidence the animation is still running (it stays declared after
+    // finish), and a finished animation ignores animationDelay/playState
+    // changes — hence the explicit restart.
+    {
+      const midEntry = await harness.eval<{
+        skipped: boolean;
+        reason?: string;
+        animationName: string;
+        left: number;
+        width: number;
+        viewportWidth: number;
+      }>(`(() => {
+        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+        if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
+        // The ONLY legitimate skip: the runner itself suppresses animations.
+        // (animation-name is NOT a valid detector — the shell rule sets it
+        // unconditionally, even when motion-safe utilities are withheld.)
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          return { skipped: true, reason: 'prefers-reduced-motion' };
+        }
+        const cs = getComputedStyle(panel);
+        if (cs.animationName !== 'shell-overlay-in-anchored') {
+          // The shell rule must select the anchored keyframes; anything else
+          // is a regression, not a skip.
+          throw new Error(
+            'shell rule no longer selects shell-overlay-in-anchored (got ' +
+              cs.animationName + ')',
+          );
+        }
+        // Capture the utility-declared shorthand so restoration is exact.
+        const declared = {
+          name: cs.animationName,
+          duration: cs.animationDuration,
+          timing: cs.animationTimingFunction,
+          delay: cs.animationDelay,
+          iteration: cs.animationIterationCount,
+          direction: cs.animationDirection,
+          fill: cs.animationFillMode,
+          play: cs.animationPlayState,
+        };
+        // Validate the duration BEFORE any inline mutation so the guard
+        // throws leave the panel untouched (the restore finally sits outside
+        // this eval round-trip; ordering makes the no-leak guarantee
+        // unconditional).
+        const durationMs =
+          Number.parseFloat(declared.duration) *
+          (declared.duration.endsWith("ms") ? 1 : 1000);
+        if (!(durationMs > 0)) {
+          throw new Error(
+            'entry animation duration is not positive (got ' +
+              declared.duration + '); motion-safe utility not applied',
+          );
+        }
+        // Restart: cancel any in-flight/finished animation, cancel the
+        // inline override, then re-declare the shorthand so a NEW
+        // CSSAnimation starts from time zero.
+        for (const anim of panel.getAnimations()) anim.cancel();
+        panel.style.animation = 'none';
+        void panel.offsetWidth; // force style flush
+        panel.style.animation = [
+          declared.duration, declared.timing, '0ms', declared.iteration,
+          declared.direction, declared.fill, 'paused', declared.name,
+        ].join(' ');
+        void panel.offsetWidth; // flush so the paused animation exists
+        // Seek to the midpoint of the duration via currentTime. A
+        // zero/negative duration means the motion-safe utility was withheld
+        // and seeking would sample time zero — a silent false pass.
+        const anim = panel.getAnimations()[0];
+        if (!(anim instanceof CSSAnimation)) {
+          throw new Error('no CSSAnimation running after restart');
+        }
+        anim.currentTime = durationMs / 2;
+        void panel.offsetWidth; // flush the seeked frame
+        const rect = panel.getBoundingClientRect();
+        return {
+          skipped: false,
+          animationName: cs.animationName,
+          left: rect.left,
+          width: rect.width,
+          viewportWidth: window.innerWidth,
+        };
+      })()`);
+      try {
+        if (!midEntry.skipped) {
+          expect(midEntry.animationName).toBe("shell-overlay-in-anchored");
+          const midOffset = Math.abs(
+            midEntry.left + midEntry.width / 2 - midEntry.viewportWidth / 2,
+          );
+          expect(midOffset).toBeLessThanOrEqual(4);
+        } else {
+          // Surface the skip for traceability, matching the file's
+          // established annotation pattern for unavailable-evidence paths.
+          testInfo.annotations.push({
+            type: "entry-probe-unavailable",
+            description: `mid-entry centering probe skipped: ${midEntry.reason ?? "unspecified"}`,
+          });
+        }
+      } finally {
+        // Restoration must run even when an assertion throws (so the inline
+        // animation override never leaks into later probes).
+        await harness.eval(
+          `(() => {
+            const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+            if (panel instanceof HTMLElement) panel.style.animation = '';
+          })()`,
+        );
+      }
+    }
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,
     );
