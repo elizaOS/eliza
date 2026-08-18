@@ -9,6 +9,7 @@ import {
   type AgentRuntime,
   InMemoryDatabaseAdapter,
   type Memory,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -338,6 +339,131 @@ describe("GET /api/memory/search corpus cache", () => {
       }),
     ]);
     expect(getMemories).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not return a cached snapshot whose COUNT-waiting slot was evicted", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const target = "aaaaaaaa-0000-4000-8000-000000000005";
+    const roomId = (name: string) =>
+      stringToUuid(`${name}-hash-memory-room`) as UUID;
+    const stores = new Map<UUID, Store>([
+      [roomId("A"), { rows: [note(target, "original wording", 1)] }],
+      [
+        roomId("B"),
+        {
+          rows: [note("bbbbbbbb-0000-4000-8000-000000000001", "room B", 1)],
+        },
+      ],
+      [
+        roomId("C"),
+        {
+          rows: [note("cccccccc-0000-4000-8000-000000000001", "room C", 1)],
+        },
+      ],
+      [
+        roomId("D"),
+        {
+          rows: [note("dddddddd-0000-4000-8000-000000000001", "room D", 1)],
+        },
+      ],
+      [
+        roomId("E"),
+        {
+          rows: [note("eeeeeeee-0000-4000-8000-000000000001", "room E", 1)],
+        },
+      ],
+    ]);
+    const getMemories = vi.fn(
+      async ({ roomId: currentRoomId }: { roomId: UUID }) => [
+        ...(stores.get(currentRoomId)?.rows ?? []),
+      ],
+    );
+    const countMemories = vi.fn(
+      async ({ roomId: currentRoomId }: { roomId: UUID }) =>
+        stores.get(currentRoomId)?.rows.length ?? 0,
+    );
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "A" },
+      ensureConnection: vi.fn(async () => undefined),
+      getMemories,
+      countMemories,
+      getMemoryById: vi.fn(async (id: UUID) => {
+        for (const store of stores.values()) {
+          const row = store.rows.find((candidate) => candidate.id === id);
+          if (row) return row;
+        }
+        return null;
+      }),
+      updateMemory: vi.fn(
+        async (patch: { id: UUID; content: Record<string, unknown> }) => {
+          for (const store of stores.values()) {
+            const row = store.rows.find(
+              (candidate) => candidate.id === patch.id,
+            );
+            if (row) row.content = patch.content as Memory["content"];
+          }
+        },
+      ),
+      useModel: vi.fn(async () => [0.1, 0.2, 0.3]),
+      reportError: vi.fn(() => undefined),
+    } as unknown as AgentRuntime;
+
+    for (const [index, room] of ["A", "B", "C", "D"].entries()) {
+      vi.setSystemTime(new Date(1_000 + index));
+      runtime.character.name = room;
+      await search(runtime, "gyroscope");
+    }
+
+    let releaseCount = () => {};
+    const countGate = new Promise<void>((resolve) => {
+      releaseCount = resolve;
+    });
+    let markCountEntered = () => {};
+    const countEntered = new Promise<void>((resolve) => {
+      markCountEntered = resolve;
+    });
+    let gateNextACount = true;
+    countMemories.mockImplementation(async ({ roomId: currentRoomId }) => {
+      if (gateNextACount && currentRoomId === roomId("A")) {
+        gateNextACount = false;
+        markCountEntered();
+        await countGate;
+      }
+      return stores.get(currentRoomId)?.rows.length ?? 0;
+    });
+    runtime.character.name = "A";
+    const pendingSearch = search(runtime, "gyroscope");
+    await countEntered;
+
+    vi.setSystemTime(new Date(2_000));
+    runtime.character.name = "E";
+    await search(runtime, "gyroscope");
+
+    const response: { value?: unknown } = {};
+    runtime.character.name = "A";
+    await handleMemoryRoutes(
+      contextFor({
+        runtime,
+        method: "PATCH",
+        path: `/api/memories/${target}`,
+        body: { text: "corrected wording about the gyroscope" },
+        response,
+      }),
+    );
+    releaseCount();
+
+    await expect(pendingSearch).resolves.toEqual([
+      expect.objectContaining({
+        text: "corrected wording about the gyroscope",
+      }),
+    ]);
+    await expect(search(runtime, "gyroscope")).resolves.toEqual([
+      expect.objectContaining({
+        text: "corrected wording about the gyroscope",
+      }),
+    ]);
+    expect(getMemories).toHaveBeenCalledTimes(6);
   });
 
   test("retries a cold build invalidated by a completed mutation", async () => {

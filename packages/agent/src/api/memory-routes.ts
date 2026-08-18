@@ -441,6 +441,13 @@ async function getMemorySearchCorpus(
   if (cached) {
     const rowCount = await countRoomMessages(runtime, roomId);
 
+    // Eviction may have orphaned this slot while COUNT was pending. Re-enter
+    // through the canonical map so the replacement build can be single-flighted
+    // and published for later requests.
+    if (cache.get(roomId) !== slot) {
+      return await getMemorySearchCorpus(runtime, roomId);
+    }
+
     // A module-local mutation may have invalidated this slot while COUNT was
     // pending. Never return the snapshot captured before that mutation.
     if (slot.corpus !== cached) {
