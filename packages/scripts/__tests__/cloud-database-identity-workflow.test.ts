@@ -9,12 +9,10 @@ const source = readFileSync(
 );
 
 describe("Cloud database identity workflow", () => {
-  test("runs the read-only identity preflight immediately before migrations", () => {
-    const preflight = source.indexOf("preflight-database-identity.ts");
-    const migration = source.indexOf("bun run db:cloud:migrate", preflight);
-    expect(preflight).toBeGreaterThan(0);
-    expect(migration).toBeGreaterThan(preflight);
-    const block = source.slice(preflight - 2_500, migration);
+  test("delegates identity enforcement to the migration session", () => {
+    const migration = source.indexOf("bun run db:cloud:migrate");
+    expect(migration).toBeGreaterThan(0);
+    const block = source.slice(migration - 2_500, migration + 100);
     expect(block).toContain(
       "DATABASE_IDENTITY_GATE_MODE: $" +
         "{{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}",
@@ -24,6 +22,10 @@ describe("Cloud database identity workflow", () => {
     );
     expect(block).toContain("DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256");
     expect(block).toContain("DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256");
+    expect(block).toContain("exact PostgreSQL session");
+    expect(block).not.toContain(
+      "bun --conditions=eliza-source packages/cloud/scripts/admin/preflight-database-identity.ts",
+    );
     expect(block).not.toContain("railway variables --set");
     expect(block).not.toContain("wrangler hyperdrive update");
   });
