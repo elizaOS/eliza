@@ -44,6 +44,20 @@ interface TokenStatus {
   savedAt?: number;
 }
 
+/** Ordinary REST budget for GET /api/github/token (status refresh). */
+export const GITHUB_TOKEN_STATUS_FETCH_TIMEOUT_MS = 10_000;
+
+export async function fetchGitHubTokenStatus(
+  timeoutMs: number = GITHUB_TOKEN_STATUS_FETCH_TIMEOUT_MS,
+  api: { fetch: typeof client.fetch } = client,
+): Promise<TokenStatus> {
+  return api.fetch<TokenStatus>(
+    "/api/github/token",
+    undefined,
+    { timeoutMs },
+  );
+}
+
 const TOKEN_GENERATE_URL =
   "https://github.com/settings/tokens/new?description=eliza-coding-agents&scopes=repo,read:user";
 
@@ -101,7 +115,7 @@ export function GitHubConnectionCard() {
   useEffect(() => stopPolling, [stopPolling]);
 
   const refreshStatus = useCallback(async () => {
-    const next = await client.fetch<TokenStatus>("/api/github/token");
+    const next = await fetchGitHubTokenStatus();
     setStatus(next);
   }, []);
 
