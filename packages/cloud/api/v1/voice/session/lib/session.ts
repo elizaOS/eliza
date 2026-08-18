@@ -1048,6 +1048,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let upstreamAttemptCount = 0;
     let activeUpstreamAttempt = 0;
     let upstreamSuccessfulHeadersOffsetMs: number | null = null;
+    let modelAudioStarted = false;
     let upstreamServerTiming: ElizaServerTimingReceipt | null = null;
     let ttsTransportReadyAt: number | null = null;
     const abort = new AbortController();
@@ -1069,6 +1070,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          modelAudioStarted = true;
           const firstAudioAt = this.now();
           logger.info("[voice-session] first-turn latency", {
             traceId,
@@ -1306,6 +1308,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // otherwise collapse its type to never.)
         this.ttsStream?.cancel("empty_llm_reply");
         this.finishTurn(traceId);
+        const fallbackGreeting = options.fallbackGreeting?.trim();
+        if (fallbackGreeting) {
+          this.speakOpeningGreeting(fallbackGreeting);
+        }
       }
       // If a phrase was sent, its final continue:false closes the context.
     } catch (error) {
@@ -1345,7 +1351,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.ttsStream?.cancel("llm_error");
       this.finishTurn(traceId);
       const fallbackGreeting = options.fallbackGreeting?.trim();
-      if (fallbackGreeting && firstModelTextAt === null) {
+      if (fallbackGreeting && !modelAudioStarted) {
         this.speakOpeningGreeting(fallbackGreeting);
       }
     }

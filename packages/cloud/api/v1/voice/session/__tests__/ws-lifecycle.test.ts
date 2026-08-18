@@ -438,6 +438,7 @@ function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
   finish: () => void;
+  fail: () => void;
   ready: Promise<void>;
 } {
   const encoder = new TextEncoder();
@@ -466,6 +467,14 @@ function makeControlledCanonicalChunkFetch(): {
     },
     finish() {
       controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller?.close();
+    },
+    fail() {
+      controller?.enqueue(
+        encoder.encode(
+          `event: error\ndata: ${JSON.stringify({ message: "provider failed" })}\n\n`,
+        ),
+      );
       controller?.close();
     },
     ready,
@@ -726,6 +735,92 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "error", retryable: true }),
+    );
+  });
+
+  test("speaks the safe fallback when the contextual opener completes without speech", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-empty:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: makeCanonicalChunkFetch([], {}),
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+  });
+
+  test("speaks the safe fallback when unspoken model text precedes a stream failure", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-partial:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: (async () => {
+        const encoder = new TextEncoder();
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: chunk\ndata: ${JSON.stringify({ chunk: "Hi" })}\n\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "provider failed" })}\n\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "error", retryable: true }),
+    );
+  });
+
+  test("does not double-speak the fallback after contextual model audio starts", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-spoken:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: controlled.fetchImpl,
+    });
+    await controlled.ready;
+    controlled.enqueueChunk("Welcome home friend.");
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toContain(
+      "Welcome home ",
+    );
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+
+    controlled.fail();
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).not.toContain(
+      "Hello, thanks for calling Eliza.",
     );
   });
 
