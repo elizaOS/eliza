@@ -40,7 +40,9 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function makeController(): ShellController {
+function makeController(
+  overrides: Partial<ShellController> = {},
+): ShellController {
   return {
     phase: "summoned",
     messages: [
@@ -67,6 +69,7 @@ function makeController(): ShellController {
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
+    ...overrides,
   } as unknown as ShellController;
 }
 
@@ -107,5 +110,29 @@ describe("ChatOverlay iOS accessory bar", () => {
     unmount();
 
     expect(accessoryMock.setHidden).toHaveBeenLastCalledWith(false);
+  });
+
+  it("restores the global accessory when transcription replaces a focused textarea", async () => {
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    const composer = screen.getByLabelText("message");
+
+    act(() => composer.focus());
+    await waitFor(() =>
+      expect(accessoryMock.setHidden).toHaveBeenLastCalledWith(true),
+    );
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          recording: true,
+        })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(accessoryMock.setHidden).toHaveBeenLastCalledWith(false),
+    );
+    expect(screen.queryByLabelText("message")).toBeNull();
   });
 });

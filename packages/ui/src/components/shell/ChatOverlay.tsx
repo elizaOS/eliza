@@ -1639,6 +1639,15 @@ export function ChatOverlay({
     },
     [],
   );
+  React.useLayoutEffect(() => {
+    if (!transcriptionComposerActive && !realtimeVoiceComposerVisible) return;
+    // Removing a focused textarea does not reliably emit blur in WebKit. Give
+    // the WebView-global accessory back in the same commit that installs the
+    // voice/transcription surface, otherwise every later form can inherit
+    // chat's hidden state until the overlay itself unmounts.
+    setChatComposerAccessoryBarHidden(false);
+    setComposerFocused(false);
+  }, [realtimeVoiceComposerVisible, transcriptionComposerActive]);
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
