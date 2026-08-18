@@ -5,7 +5,13 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -194,5 +200,36 @@ test("ratchets known debt and rejects both new and stale baseline counts", () =>
   assert.match(
     reconcileMockExportBaseline([], baseline)[0],
     /\[stale-baseline\].*no longer reproduced/,
+  );
+});
+
+test("fails fast when an internal workspace resolves outside the audited tree", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
+  const external = mkdtempSync(path.join(tmpdir(), "mock-export-external-"));
+  roots.push(root, external);
+  const sourceRoot = path.join(root, "packages", "fixture", "src");
+  mkdirSync(sourceRoot, { recursive: true });
+  mkdirSync(path.join(root, "node_modules", "@elizaos"), { recursive: true });
+  writeFileSync(
+    path.join(external, "package.json"),
+    JSON.stringify({ name: "@elizaos/external", types: "index.ts" }),
+  );
+  writeFileSync(path.join(external, "index.ts"), "export const bound = 1;\n");
+  symlinkSync(
+    external,
+    path.join(root, "node_modules", "@elizaos", "external"),
+  );
+  writeFileSync(
+    path.join(root, "packages", "fixture", "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { moduleResolution: "Bundler" } }),
+  );
+  const testFile = path.join(sourceRoot, "consumer.test.ts");
+  writeFileSync(
+    testFile,
+    'import { mock } from "bun:test";\nmock.module("@elizaos/external", () => ({}));\n',
+  );
+  assert.throws(
+    () => auditMockModuleExports(root, [testFile]),
+    /resolves outside the repository.*frozen in-repository Bun install/,
   );
 });

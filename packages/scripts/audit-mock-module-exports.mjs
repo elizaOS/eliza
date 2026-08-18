@@ -206,6 +206,15 @@ function createAnalyzer(repoRoot, candidateFiles) {
       if (resolved) break;
     }
     const canonical = resolved ? canonicalFile(resolved) : undefined;
+    if (
+      canonical &&
+      !contained(root, canonical) &&
+      (specifier.startsWith("@/") || specifier.startsWith("@elizaos/"))
+    ) {
+      throw new Error(
+        `[mock-module-exports] internal module ${JSON.stringify(specifier)} from ${path.relative(root, containingFile)} resolves outside the repository to ${canonical}; run from a frozen in-repository Bun install`,
+      );
+    }
     const internal =
       canonical && contained(root, canonical) && !SKIP_PATH.test(canonical)
         ? canonical
