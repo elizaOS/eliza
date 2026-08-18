@@ -281,6 +281,12 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   private emitSignal = async (reason: string): Promise<void> => {
     if (!this.monitoring) return;
     const snapshot = await buildSnapshot(reason);
+    // Re-check after the async battery read: stopMonitoring() may have resolved
+    // and torn down listeners while getBattery() was pending, and delivering a
+    // stale snapshot would violate the stop-means-stop contract consumers rely
+    // on (a resolved stopMonitoring must not re-trigger quiesced downstream
+    // state).
+    if (!this.monitoring) return;
     this.notifyListeners("signal", snapshot);
     this.notifyListeners("signal", buildHealthSnapshot(reason));
   };
