@@ -7,7 +7,11 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { composeVerifyEscalationNotice } from "../services/orchestrator-task-service.js";
+import {
+  composeVerifyEscalationNotice,
+  OrchestratorTaskService,
+} from "../services/orchestrator-task-service.js";
+import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
 import {
   STALL_GRILL_PROMPT,
   TaskWatchdogService,
@@ -115,8 +119,22 @@ describe("watchdog nag loop (live regression)", () => {
     });
     await watchdog.runOnce();
     expect(acp.sendToSession).not.toHaveBeenCalled();
-    // Still surfaced as stalled for the provider — just not grilled.
-    expect(watchdog.getStalledSessionIds()).toEqual(["s1"]);
+    // Intentional idle must not be surfaced to the planner as a work stall.
+    expect(watchdog.getStalledSessionIds()).toEqual([]);
+  });
+
+  it("does not grill a kept-alive ready session with no active prompt", async () => {
+    const { sessions, acp, watchdog } = makeHarness();
+    sessions.push({
+      id: "s1",
+      status: "ready",
+      lastActivityAt: new Date(Date.now() - 10 * 60_000),
+    });
+
+    await watchdog.runOnce();
+
+    expect(acp.sendToSession).not.toHaveBeenCalled();
+    expect(watchdog.getStalledSessionIds()).toEqual([]);
   });
 
   it("fails open when no task record maps to the session (ad-hoc sessions still get their one grill)", async () => {
@@ -177,5 +195,103 @@ describe("verify-escalation notice", () => {
       missing: [],
     });
     expect(none).not.toContain("couldn't confirm:");
+  });
+
+  async function escalationHarness(
+    sendMessageToTarget: ReturnType<typeof vi.fn>,
+  ) {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const created = await store.createTask({
+      title: "canon-clock build",
+      goal: "build the clock",
+      roomId: "11111111-1111-4111-8111-111111111111",
+      metadata: { source: "discord" },
+    });
+    const service = new OrchestratorTaskService(
+      {
+        character: { name: "Tester" },
+        getSetting: () => undefined,
+        getService: () => undefined,
+        sendMessageToTarget,
+      } as never,
+      { store },
+    ) as unknown as {
+      notifyVerifyEscalation(
+        taskId: string,
+        details: { attempts: number; summary: string; missing: string[] },
+      ): Promise<void>;
+    };
+    return { store, taskId: created.task.id, service };
+  }
+
+  const escalationDetails = {
+    attempts: 3,
+    summary: "verification could not confirm the result",
+    missing: ["passing test output"],
+  };
+
+  it("does not stamp a thrown send and a later attempt remains eligible", async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connector offline"))
+      .mockResolvedValueOnce({ id: "delivered-memory" });
+    const { store, taskId, service } = await escalationHarness(send);
+
+    await service.notifyVerifyEscalation(taskId, escalationDetails);
+    expect(
+      (await store.getTask(taskId))?.task.metadata.verifyEscalationNotifiedAt,
+    ).toBeUndefined();
+
+    await service.notifyVerifyEscalation(taskId, escalationDetails);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(
+      (await store.getTask(taskId))?.task.metadata.verifyEscalationNotifiedAt,
+    ).toEqual(expect.any(String));
+  });
+
+  it("does not stamp explicit non-delivery and retries on a later attempt", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        kind: "not_delivered",
+        code: "NO_HANDLER",
+        message: "no connector handler accepted the target",
+      })
+      .mockResolvedValueOnce({ id: "delivered-memory" });
+    const { store, taskId, service } = await escalationHarness(send);
+
+    await service.notifyVerifyEscalation(taskId, escalationDetails);
+    expect(
+      (await store.getTask(taskId))?.task.metadata.verifyEscalationNotifiedAt,
+    ).toBeUndefined();
+
+    await service.notifyVerifyEscalation(taskId, escalationDetails);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(
+      (await store.getTask(taskId))?.task.metadata.verifyEscalationNotifiedAt,
+    ).toEqual(expect.any(String));
+  });
+
+  it("coalesces concurrent redeliveries into one confirmed connector send", async () => {
+    let release: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const send = vi.fn(async () => {
+      await blocked;
+      return { id: "delivered-memory" };
+    });
+    const { store, taskId, service } = await escalationHarness(send);
+
+    const first = service.notifyVerifyEscalation(taskId, escalationDetails);
+    const second = service.notifyVerifyEscalation(taskId, escalationDetails);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    release?.();
+    await Promise.all([first, second]);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(
+      (await store.getTask(taskId))?.task.metadata.verifyEscalationNotifiedAt,
+    ).toEqual(expect.any(String));
   });
 });

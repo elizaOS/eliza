@@ -60,8 +60,9 @@ export interface StalledSession {
 }
 
 /**
- * Pure: which active (non-terminal) sessions have been idle longer than
- * `stallMs` as of `nowMs`. Terminal sessions are never "stalled" — they're done.
+ * Pure: which actively-working sessions have been idle longer than `stallMs`
+ * as of `nowMs`. Terminal sessions are done, while `ready` means a kept-alive
+ * worker is parked for optional follow-up; neither is a work stall.
  */
 export function detectStalledSessions(
   sessions: WatchdogSessionView[],
@@ -71,6 +72,7 @@ export function detectStalledSessions(
   const stalled: StalledSession[] = [];
   for (const s of sessions) {
     if (TERMINAL_SESSION_STATUSES.has(s.status)) continue;
+    if (s.status === "ready") continue;
     const idleMs = nowMs - s.lastActivityMs;
     if (idleMs >= stallMs) stalled.push({ id: s.id, idleMs });
   }
@@ -309,7 +311,6 @@ export class TaskWatchdogService extends Service {
       lastActivityMs: s.lastActivityAt?.getTime?.() ?? 0,
     }));
     const stalled = detectStalledSessions(views, nowMs, this.stallMs());
-    this.currentlyStalled = new Set(stalled.map((s) => s.id));
 
     // The prod memo lives as long as the session does: drop only ids that are
     // no longer in the session list at all. Recovery does NOT re-arm the grill
@@ -321,19 +322,21 @@ export class TaskWatchdogService extends Service {
     }
 
     const taskStatusBySession = await this.taskStatusBySession();
-    for (const s of stalled) {
+    const actionableStalled = stalled.filter((session) => {
+      const taskStatus = taskStatusBySession.get(session.id);
+      return (
+        taskStatus === undefined || GRILLABLE_TASK_STATUSES.has(taskStatus)
+      );
+    });
+    this.currentlyStalled = new Set(
+      actionableStalled.map((session) => session.id),
+    );
+    for (const s of actionableStalled) {
       if (this.prodded.has(s.id)) continue; // one grill per session lifetime
       // A stall is only worth grilling while the durable task is actually
       // WORKING. User-gated / blocked / validating tasks idle by design; a
       // status check cannot unblock them. Sessions with no resolvable task
       // record fail open (grilled once) — an ad-hoc session can still wedge.
-      const taskStatus = taskStatusBySession.get(s.id);
-      if (taskStatus !== undefined && !GRILLABLE_TASK_STATUSES.has(taskStatus)) {
-        logger.debug(
-          `[TaskWatchdogService] session ${s.id} idle but its task is ${taskStatus} — not grilling`,
-        );
-        continue;
-      }
       this.prodded.add(s.id);
       try {
         await acp.sendToSession(s.id, STALL_GRILL_PROMPT);
@@ -355,7 +358,7 @@ export class TaskWatchdogService extends Service {
     }
 
     await this.checkCapWarnings(sessions);
-    return stalled;
+    return actionableStalled;
   }
 
   /**

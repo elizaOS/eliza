@@ -43,7 +43,10 @@ import {
   shouldUseLanePlanner,
 } from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
-import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
+import {
+  OrchestratorTaskService,
+  RESOLVED_TASK_PROMPT_METADATA_KEY,
+} from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
@@ -2117,13 +2120,11 @@ async function runSpawnAgent(
         try {
           const detail = await spawnDurableService.createTask({
             title: label,
-            // The durable goal is what smithers step prompts, verify
-            // re-engages, and restart resumes compose FROM — the raw planner
-            // task here dropped the resolved-route contract on the child's
-            // actual prompt (live: tide-lines wrote to the workdir ROOT and
-            // 404'd because the data/apps placement rules never reached it,
-            // while initialTask carried them unused).
-            goal: taskWithRouteHints,
+            // Keep the public/verifier goal equal to the user's task. The
+            // route-enriched worker prompt is persisted separately below so a
+            // restart retains it without asking goal-contract generation to
+            // treat room ids and swarm boilerplate as acceptance criteria.
+            goal: task,
             kind: "coding",
             priority: "normal",
             originalRequest: requestText(message),
@@ -2133,6 +2134,7 @@ async function runSpawnAgent(
             metadata: {
               ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
               spawnPath: "spawn_agent",
+              [RESOLVED_TASK_PROMPT_METADATA_KEY]: taskWithRouteHints,
             },
           });
           durableTaskId = detail?.id ?? null;
@@ -2933,8 +2935,9 @@ function goalTokenSet(text: string): Set<string> {
   );
 }
 
-/** Overlap over the smaller token set — the composed duplicate goal is often a
- * compressed restatement of the original, so containment beats Jaccard here. */
+/** Symmetric token containment over the larger token set. A compressed label
+ * alone cannot match a longer request; both descriptions must substantially
+ * overlap for the result to cross the duplicate threshold. */
 export function goalSimilarity(a: string, b: string): number {
   const tokensA = goalTokenSet(a);
   const tokensB = goalTokenSet(b);
@@ -3014,6 +3017,12 @@ async function findNearDuplicateInFlightWork(args: {
         if (TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase())) {
           continue;
         }
+        // A retained `ready` session has completed its prompt and is parked for
+        // optional follow-up. Durable tasks still guard genuinely in-flight
+        // `validating` work above, while a `waiting_on_user` task must not be
+        // resurrected as a duplicate solely because its kept-alive ACP process
+        // remains available.
+        if (session.status.toLowerCase() === "ready") continue;
         const label =
           typeof session.metadata?.label === "string"
             ? session.metadata.label
@@ -3025,7 +3034,8 @@ async function findNearDuplicateInFlightWork(args: {
         // Compare only the GOAL, not the injected workspace/route contract:
         // every routed quick-app carries the same boilerplate sections, which
         // made unrelated builds read as near-duplicates of each other.
-        const initialTask = rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
+        const initialTask =
+          rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
         const existingText = `${label ?? ""} ${initialTask}`;
         if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (

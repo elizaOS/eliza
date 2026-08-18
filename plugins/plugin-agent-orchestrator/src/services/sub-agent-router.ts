@@ -115,6 +115,7 @@ const INTERNAL_MARKER_SOURCES = new Set<string>([
   MESSAGE_SOURCE_SUB_AGENT,
   "sub_agent_complete",
   "orchestrator",
+  "orchestrator-task",
 ]);
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Display name of the ONE shared entity every router post is attributed to.
@@ -2167,7 +2168,8 @@ export class SubAgentRouter extends Service {
             inReplyTo: originReplyTarget,
           }
         : { ...response, source: "sub_agent_complete" };
-      const deliverySource = (await this.resolveDeliverySource(origin)) ?? source;
+      const deliverySource =
+        (await this.resolveDeliverySource(origin)) ?? source;
       const delivered = await sendToTarget(
         {
           source: deliverySource,

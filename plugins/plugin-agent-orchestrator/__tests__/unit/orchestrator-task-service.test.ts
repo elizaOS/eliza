@@ -27,6 +27,7 @@ import {
 } from "../../src/services/orchestrator-artifact-ownership.js";
 import {
   OrchestratorTaskService,
+  RESOLVED_TASK_PROMPT_METADATA_KEY,
   residualsOrchestratorOwnedArtifacts,
   residualsSpawnBaseline,
 } from "../../src/services/orchestrator-task-service.js";
@@ -427,6 +428,32 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     const initialTask = must(acp.spawnArgs[0], "spawn args").initialTask;
     expect(typeof initialTask).toBe("string");
     expect(initialTask as string).toContain("You are Release Captain,");
+  });
+
+  it("replays the resolved worker prompt without replacing the durable user goal", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(
+      createInput({
+        goal: "build the clock",
+        metadata: {
+          [RESOLVED_TASK_PROMPT_METADATA_KEY]:
+            "--- Resolved Workspace ---\nwrite under data/apps/clock\n--- User Task ---\nbuild the clock",
+        },
+      }),
+    );
+
+    await service.spawnAgentForTask(task.id);
+
+    const detail = must(await service.getTask(task.id), "task");
+    expect(detail.goal).toBe("build the clock");
+    expect(detail.sessions[0]?.originalTask).toContain(
+      "write under data/apps/clock",
+    );
+    expect(String(acp.spawnArgs[0]?.initialTask)).toContain(
+      "write under data/apps/clock",
+    );
   });
 });
 

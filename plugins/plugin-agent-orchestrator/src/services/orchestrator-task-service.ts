@@ -34,9 +34,11 @@ import {
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
+  requireConfirmedSendHandlerDelivery,
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
+  type SendHandlerResult,
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
@@ -580,6 +582,18 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Metadata key for the internal, route-enriched worker prompt. The durable
+ * task goal remains the user's goal so criteria generation, status UI, and
+ * completion verification do not judge swarm-routing boilerplate as work. */
+export const RESOLVED_TASK_PROMPT_METADATA_KEY = "resolvedTaskPrompt";
+
+function resolvedTaskPrompt(
+  task: Pick<OrchestratorTaskRecord, "goal" | "metadata">,
+): string {
+  const value = task.metadata?.[RESOLVED_TASK_PROMPT_METADATA_KEY];
+  return typeof value === "string" && value.trim() ? value : task.goal;
+}
+
 /**
  * User-facing notice for an auto-verify give-up. Deliberately honest about the
  * split state: the WORK may be fine (it often is — the live regression was a
@@ -1053,6 +1067,13 @@ export class OrchestratorTaskService extends Service {
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
   private readonly autoVerifyInFlight = new Set<string>();
+  // One connector attempt per task at a time. The durable verification write
+  // lock cannot be reused because escalation runs while that lock is already
+  // held; this narrow promise memo coalesces concurrent event redeliveries.
+  private readonly verifyEscalationDeliveries = new Map<
+    string,
+    Promise<void>
+  >();
 
   /** Per-task async mutex serializing the two completion-metadata writers
    * (autoVerifyCompletion and validateTask). Both replace `task.metadata`
@@ -3282,9 +3303,25 @@ export class OrchestratorTaskService extends Service {
    * the task's origin room. Best-effort at every step (no origin, no send
    * handler, or a delivery failure must never break the escalation itself —
    * the park already happened); the `verifyEscalationNotifiedAt` metadata
-   * stamp makes the notice once-per-task.
+   * stamp makes the notice once-per-task. The stamp is written only after the
+   * connector returns confirmed delivery evidence; throws, explicit refusal,
+   * and unknown legacy returns remain eligible for a later retry.
    */
   private async notifyVerifyEscalation(
+    taskId: string,
+    details: { attempts: number; summary: string; missing: string[] },
+  ): Promise<void> {
+    const existing = this.verifyEscalationDeliveries.get(taskId);
+    if (existing) return existing;
+    const delivery = this.deliverVerifyEscalation(taskId, details);
+    this.verifyEscalationDeliveries.set(taskId, delivery);
+    await delivery;
+    if (this.verifyEscalationDeliveries.get(taskId) === delivery) {
+      this.verifyEscalationDeliveries.delete(taskId);
+    }
+  }
+
+  private async deliverVerifyEscalation(
     taskId: string,
     details: { attempts: number; summary: string; missing: string[] },
   ): Promise<void> {
@@ -3298,21 +3335,27 @@ export class OrchestratorTaskService extends Service {
           sendMessageToTarget?: (
             target: { source: string; roomId?: UUID },
             content: { text: string; source: string },
-          ) => Promise<unknown>;
+          ) => SendHandlerResult;
         }
       ).sendMessageToTarget;
       if (typeof send !== "function") return;
+      const text = composeVerifyEscalationNotice(doc.task.title, details);
+      requireConfirmedSendHandlerDelivery(
+        await send(
+          { source: origin.source, roomId: origin.roomId as UUID },
+          { text, source: origin.source },
+        ),
+      );
+      // Re-read after the external await so this metadata replacement cannot
+      // erase a write made while the connector was delivering.
+      const deliveredDoc = await this.store.getTask(taskId);
+      if (!deliveredDoc) return;
       await this.store.updateTask(taskId, {
         metadata: {
-          ...doc.task.metadata,
+          ...deliveredDoc.task.metadata,
           verifyEscalationNotifiedAt: nowIso(),
         },
       });
-      const text = composeVerifyEscalationNotice(doc.task.title, details);
-      await send(
-        { source: origin.source, roomId: origin.roomId as UUID },
-        { text, source: origin.source },
-      );
     } catch (err) {
       // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
       this.log("warn", "verify-escalation notice delivery failed", {
@@ -5315,10 +5358,11 @@ export class OrchestratorTaskService extends Service {
         );
       }
     }
+    const executionTask = opts.task ?? resolvedTaskPrompt(doc.task);
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
-      task: opts.task ?? doc.task.goal,
+      task: executionTask,
       acceptanceCriteria: doc.task.acceptanceCriteria,
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
@@ -5480,7 +5524,7 @@ export class OrchestratorTaskService extends Service {
           }
         : {}),
       label: agentName,
-      originalTask: opts.task ?? doc.task.goal,
+      originalTask: executionTask,
       goalPrompt,
       workdir: result.workdir,
       repo: opts.repo,

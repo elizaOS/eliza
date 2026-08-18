@@ -15,6 +15,7 @@ import {
   memory,
   runtimeWith,
   serviceMock,
+  session,
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
@@ -608,12 +609,15 @@ describe("TASKS:spawn_agent durable restart owner", () => {
       callback(),
     );
     expect(result?.success).toBe(true);
-    // The durable goal carries the resolved-route contract (swarm/room hints
-    // wrapped around the user task), so assert containment, not equality.
     expect(tasks.createTask).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "coding",
-        goal: expect.stringContaining("fix bug"),
+        goal: "fix bug",
+        metadata: expect.objectContaining({
+          resolvedTaskPrompt: expect.stringContaining(
+            "--- Swarm Coordination ---",
+          ),
+        }),
       }),
     );
     expect(tasks.attachSession).toHaveBeenCalledWith(
@@ -621,6 +625,39 @@ describe("TASKS:spawn_agent durable restart owner", () => {
       expect.objectContaining({ sessionId: "abcdef123456" }),
     );
     expect(result?.data).toMatchObject({ durableTaskId: "durable-task-1" });
+  });
+
+  it("does not let a parked task's retained ready session block a fresh spawn", async () => {
+    const svc = serviceMock({
+      listSessions: vi.fn(() => [
+        session({
+          status: "ready",
+          metadata: { label: "fix bug", initialTask: "fix bug" },
+        }),
+      ]),
+    });
+    const tasks = {
+      ...taskServiceMock(),
+      listTasks: vi.fn(async () => [
+        {
+          id: "parked-task",
+          title: "fix bug",
+          originalRequest: "fix bug",
+          status: "waiting_on_user",
+        },
+      ]),
+    };
+
+    const result = await spawnAgentAction.handler(
+      durableRuntime(svc, tasks),
+      memory({ task: "fix bug", agentType: "codex", workdir: process.cwd() }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(svc.spawnSession).toHaveBeenCalledTimes(1);
   });
 
   it("skips the durable record for routed sub-agent respawns", async () => {
