@@ -72,6 +72,66 @@ function isModelCatalogProviders(
   );
 }
 
+/** View-switch report POST — same 15s Fal #21205 family. */
+const SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS = 15_000;
+/** Shortcut report POST — independent hop, own 15s deadline. */
+const SLASH_SHORTCUT_FETCH_TIMEOUT_MS = 15_000;
+
+async function postViewSwitchReport(args: {
+  base: string;
+  token?: string | null;
+  viewId: string;
+  viewPath?: string;
+}): Promise<void> {
+  const res = await fetch(
+    `${args.base}/api/views/${encodeURIComponent(args.viewId)}/navigate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
+      },
+      body: JSON.stringify({
+        source: "user",
+        ...(args.viewPath ? { path: args.viewPath } : {}),
+      }),
+      signal: AbortSignal.timeout(SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/views/${args.viewId}/navigate returned HTTP ${res.status}`,
+    );
+  }
+  await res.arrayBuffer();
+}
+
+async function postShortcutReport(args: {
+  base: string;
+  token?: string | null;
+  shortcutId: string;
+  context?: string;
+}): Promise<void> {
+  const res = await fetch(`${args.base}/api/interactions/shortcut`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
+    },
+    body: JSON.stringify({
+      shortcutId: args.shortcutId,
+      ...(args.context ? { context: args.context } : {}),
+    }),
+    signal: AbortSignal.timeout(SLASH_SHORTCUT_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/interactions/shortcut returned HTTP ${res.status}`,
+    );
+  }
+  await res.arrayBuffer();
+}
+
 /**
  * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
  * fully guarded: a failure here must never break navigation. `source: "user"`
@@ -84,23 +144,15 @@ export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
     const token = getElizaApiToken();
-    void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    void postViewSwitchReport({ base, token, viewId, viewPath }).catch(
+      (err) => {
+        // error-policy:J7 telemetry write must not break navigation; warn keeps
+        // a dead reporting endpoint observable in the console.
+        logger.warn(
+          `[useSlashCommandController] view-switch report failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       },
-      body: JSON.stringify({
-        source: "user",
-        ...(viewPath ? { path: viewPath } : {}),
-      }),
-    }).catch((err) => {
-      // error-policy:J7 telemetry write must not break navigation; warn keeps
-      // a dead reporting endpoint observable in the console.
-      logger.warn(
-        `[useSlashCommandController] view-switch report failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    );
   } catch {
     // error-policy:J7 same guard for synchronous setup failures — telemetry
     // must never break navigation.
@@ -122,23 +174,15 @@ export function reportShortcutFired(
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
     const token = getElizaApiToken();
-    void fetch(`${base}/api/interactions/shortcut`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    void postShortcutReport({ base, token, shortcutId, context }).catch(
+      (err) => {
+        // error-policy:J7 telemetry write must not break the shortcut; warn keeps
+        // a dead reporting endpoint observable in the console.
+        logger.warn(
+          `[useSlashCommandController] shortcut report failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       },
-      body: JSON.stringify({
-        shortcutId,
-        ...(context ? { context } : {}),
-      }),
-    }).catch((err) => {
-      // error-policy:J7 telemetry write must not break the shortcut; warn keeps
-      // a dead reporting endpoint observable in the console.
-      logger.warn(
-        `[useSlashCommandController] shortcut report failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    );
   } catch {
     // error-policy:J7 same guard for synchronous setup failures — telemetry
     // must never break the shortcut.
