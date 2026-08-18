@@ -117,6 +117,16 @@ describe("parseTransactionsCsv", () => {
     expect(r.errors.some((e) => /merchant/.test(e))).toBe(true);
   });
 
+  it("early-returns when amount column is missing without generating redundant row errors", () => {
+    const csv =
+      "Date,Merchant\n2026-01-15,Netflix\n2026-01-16,Spotify\n2026-01-17,Apple\n";
+    const r = parseTransactionsCsv(csv);
+    expect(r.transactions).toEqual([]);
+    expect(r.errors).toEqual([
+      "Could not find an amount/debit/credit column in the CSV header.",
+    ]);
+  });
+
   it("flags a CSV with no data rows", () => {
     const r = parseTransactionsCsv("Date,Amount,Description\n");
     expect(r.transactions).toEqual([]);
