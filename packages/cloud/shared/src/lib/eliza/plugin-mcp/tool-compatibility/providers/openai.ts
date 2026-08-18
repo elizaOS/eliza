@@ -102,7 +102,7 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
       rule("minItems", `at least ${constraints.minItems} items`);
     if (constraints.maxItems !== undefined)
       rule("maxItems", `at most ${constraints.maxItems} items`);
-    if (constraints.uniqueItems !== undefined) rule("uniqueItems", `items must be unique`);
+    if (constraints.uniqueItems === true) rule("uniqueItems", `items must be unique`);
     if (constraints.minProperties !== undefined)
       rule("minProperties", `at least ${constraints.minProperties} properties`);
     if (constraints.maxProperties !== undefined)

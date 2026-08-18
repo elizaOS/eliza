@@ -80,6 +80,16 @@ describe("cloud MCP tool-compatibility zero-valued bounds (#22068)", () => {
       expect(text).toContain("must be < 10");
     });
 
+    it("does not turn uniqueItems false into a uniqueness requirement", () => {
+      const out = reasoning().transformToolSchema({
+        type: "array",
+        uniqueItems: false,
+      });
+      expect(out.uniqueItems).toBeUndefined();
+      expect(out.description).toContain('"uniqueItems":false');
+      expect(out.description).not.toContain("items must be unique");
+    });
+
     it("surfaces a collected keyword that has no rule instead of dropping it", () => {
       const text = describeOf(reasoning(), {
         type: "string",
