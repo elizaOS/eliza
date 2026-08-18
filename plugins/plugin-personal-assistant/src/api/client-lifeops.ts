@@ -129,12 +129,15 @@ export type {
   LifeOpsSocialHabitSummary,
 } from "@elizaos/shared";
 
+/** Ordinary REST budget for GET /api/lifeops/overview. */
+export const LIFEOPS_OVERVIEW_FETCH_TIMEOUT_MS = 10_000;
+
 // Exported for consumers that import `client` from the `@elizaos/ui/api`
 // subpath (headless chunks that must not touch the root barrel): the
 // `declare module "@elizaos/ui"` merge below only covers root-barrel
 // importers, so they re-type their client view with a Pick of this interface.
 export interface LifeOpsElizaClientMethods {
-  getLifeOpsOverview(): Promise<LifeOpsOverview>;
+  getLifeOpsOverview(timeoutMs?: number): Promise<LifeOpsOverview>;
   getLifeOpsPaymentsDashboard(data?: {
     windowDays?: number | null;
   }): Promise<import("@elizaos/plugin-finances").LifeOpsPaymentsDashboard>;
@@ -463,8 +466,11 @@ declare module "@elizaos/ui/api/client-base" {
 const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &
   LifeOpsElizaClientMethods;
 
-lifeOpsClientPrototype.getLifeOpsOverview = async function (this: ElizaClient) {
-  return this.fetch("/api/lifeops/overview");
+lifeOpsClientPrototype.getLifeOpsOverview = async function (
+  this: ElizaClient,
+  timeoutMs: number = LIFEOPS_OVERVIEW_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/lifeops/overview", undefined, { timeoutMs });
 };
 
 lifeOpsClientPrototype.getLifeOpsPaymentsDashboard = async function (
