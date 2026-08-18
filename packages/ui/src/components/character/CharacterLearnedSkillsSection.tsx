@@ -16,6 +16,45 @@ import {
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
+/** Curated-skills list GET — existing 10s REST budget, independent of mutations. */
+export const CHARACTER_LEARNED_SKILLS_LIST_TIMEOUT_MS = 10_000;
+/** Curated-skills promote/disable/delete — existing 10s REST budget, independent of list. */
+export const CHARACTER_LEARNED_SKILLS_MUTATION_TIMEOUT_MS = 10_000;
+
+type SkillsFetchClient = Pick<typeof client, "fetch">;
+type CuratedMutation = "promote" | "disable" | "delete";
+
+export function characterLearnedSkillMutationPath(
+  name: string,
+  action: CuratedMutation,
+): string {
+  return action === "delete"
+    ? `/api/skills/curated/${encodeURIComponent(name)}`
+    : `/api/skills/curated/${encodeURIComponent(name)}/${action}`;
+}
+
+export async function fetchCharacterLearnedSkills(
+  api: SkillsFetchClient,
+  init?: RequestInit,
+  timeoutMs: number = CHARACTER_LEARNED_SKILLS_LIST_TIMEOUT_MS,
+): Promise<unknown> {
+  return api.fetch("/api/skills/curated", init, { timeoutMs });
+}
+
+export async function mutateCharacterLearnedSkill(
+  api: SkillsFetchClient,
+  name: string,
+  method: "POST" | "DELETE",
+  action: CuratedMutation,
+  timeoutMs: number = CHARACTER_LEARNED_SKILLS_MUTATION_TIMEOUT_MS,
+): Promise<unknown> {
+  return api.fetch(
+    characterLearnedSkillMutationPath(name, action),
+    { method },
+    { timeoutMs },
+  );
+}
+
 type TranslateFn = TranslationContextValue["t"];
 
 type CuratedStatus = "active" | "proposed" | "disabled";
@@ -61,7 +100,7 @@ export function CharacterLearnedSkillsSection({
   const [busyName, setBusyName] = useState<string | null>(null);
 
   const fetchState = useFetchData<CuratedSkill[]>(async (signal) => {
-    const res = (await client.fetch("/api/skills/curated", {
+    const res = (await fetchCharacterLearnedSkills(client, {
       signal,
     })) as ListResponse;
     return res.skills.filter((s) => s.source !== "human");
@@ -90,11 +129,7 @@ export function CharacterLearnedSkillsSection({
       setBusyName(name);
       setActionErrorMessage(null);
       try {
-        const path =
-          action === "delete"
-            ? `/api/skills/curated/${encodeURIComponent(name)}`
-            : `/api/skills/curated/${encodeURIComponent(name)}/${action}`;
-        await client.fetch(path, { method });
+        await mutateCharacterLearnedSkill(client, name, method, action);
         refresh();
       } catch (err) {
         setActionErrorMessage(err instanceof Error ? err.message : String(err));
