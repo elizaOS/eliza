@@ -347,6 +347,7 @@ describe("provider database I/O concurrency", () => {
 		const composition = deferred<{
 			relevantFragments: Memory[];
 			documents: Memory[];
+			pinnedDocuments: Memory[];
 		}>();
 		const service = {
 			composeProviderDocuments: vi.fn(() => composition.promise),
@@ -365,6 +366,7 @@ describe("provider database I/O concurrency", () => {
 
 		composition.resolve({
 			relevantFragments: [],
+			pinnedDocuments: [],
 			documents: [
 				{
 					id: "10000000-0000-0000-0000-000000000008" as UUID,

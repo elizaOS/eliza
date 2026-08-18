@@ -33,6 +33,8 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			composeProviderDocuments: vi.fn(async () => ({
 				relevantFragments: [],
 				documents: [irrelevant],
+				pinnedDocuments:
+					irrelevant.metadata?.pinned === true ? [irrelevant] : [],
 			})),
 		};
 		const runtime = {
@@ -69,6 +71,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 						},
 					],
 					documents: [unpinned],
+					pinnedDocuments: [],
 				})),
 			})),
 		};
@@ -90,6 +93,29 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(rendered.truncated).toBe(false);
 	});
 
+	it("injects an authorized pin even when it is outside the recent-document page", async () => {
+		const recent = Array.from({ length: 25 }, (_, index) =>
+			document(`Recent ${index}`, `recent ${index}`),
+		);
+		const olderPinned = document("Standing rule", "NEVER FABRICATE", true);
+		const runtime = {
+			getService: vi.fn(() => ({
+				composeProviderDocuments: vi.fn(async () => ({
+					relevantFragments: [],
+					documents: recent,
+					pinnedDocuments: [olderPinned],
+				})),
+			})),
+		};
+		const result = await documentsProvider.get(
+			runtime as never,
+			document("query", "unrelated query"),
+		);
+		expect(result.text).toContain("NEVER FABRICATE");
+		expect(result.data?.documents).toHaveLength(25);
+		expect(result.data?.pinnedDocumentIds).toEqual([olderPinned.id]);
+	});
+
 	it("marks overflow explicitly and emits a warning from the provider", async () => {
 		const oversized = document("Ground truth", "X".repeat(40_000), true);
 		const runtime = {
@@ -97,6 +123,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 				composeProviderDocuments: vi.fn(async () => ({
 					relevantFragments: [],
 					documents: [oversized],
+					pinnedDocuments: [oversized],
 				})),
 			})),
 		};
@@ -106,7 +133,9 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			document("query", "unrelated query"),
 		);
 		expect(result.text).toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
+		expect(result.text).not.toContain("X".repeat(100));
 		expect(result.data?.pinnedDocumentsTruncated).toBe(true);
+		expect(result.data?.pinnedDocumentIds).toEqual([]);
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ tokenBudget: 8_000 }),
 			expect.stringContaining("explicitly truncated"),

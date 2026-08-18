@@ -62,18 +62,14 @@ export function renderPinnedDocuments(
 	const blocks: string[] = [];
 	for (const [index, document] of pinned.entries()) {
 		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
-		if (usedChars + block.length > maxChars) {
+		const separatorLength = blocks.length > 0 ? 2 : 0;
+		if (usedChars + separatorLength + block.length > maxChars) {
 			truncated = true;
-			const remaining = Math.max(0, maxChars - usedChars);
-			if (remaining > 0) {
-				blocks.push(block.slice(0, remaining));
-				includedIds.push(document.id);
-			}
 			break;
 		}
 		blocks.push(block);
 		includedIds.push(document.id);
-		usedChars += block.length;
+		usedChars += separatorLength + block.length;
 	}
 	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
 	return { text: blocks.join("\n\n"), truncated, includedIds };
@@ -124,11 +120,11 @@ export const documentsProvider: Provider = {
 			};
 		}
 
-		const { relevantFragments, documents } =
+		const { relevantFragments, documents, pinnedDocuments } =
 			await service.composeProviderDocuments(message, {
 				limit: MAX_AVAILABLE_DOCUMENTS,
 			});
-		const pinned = renderPinnedDocuments(documents);
+		const pinned = renderPinnedDocuments(pinnedDocuments);
 		if (pinned.truncated) {
 			logger.warn(
 				{
