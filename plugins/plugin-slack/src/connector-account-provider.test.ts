@@ -3,6 +3,8 @@
  * patches, and deletes accounts against a mocked `ConnectorAccountManager` and a
  * fake runtime whose `getSetting` returns canned env values. No live Slack API.
  */
+
+import http from "node:http";
 import {
   type ConnectorAccount,
   type ConnectorAccountPatch,
@@ -320,12 +322,48 @@ describe("Slack OAuth token-exchange deadlines", () => {
       oauthTimeoutMs: 10,
     });
     await expect(
-      provider.completeOAuth?.(oauthRequest(), createOAuthCallbackManager(
-        SLACK_SERVICE_NAME,
-        "acct_slack_timeout",
-        vi.fn(async () => undefined),
-      ) as never),
+      provider.completeOAuth?.(
+        oauthRequest(),
+        createOAuthCallbackManager(
+          SLACK_SERVICE_NAME,
+          "acct_slack_timeout",
+          vi.fn(async () => undefined),
+        ) as never,
+      ),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("keeps the deadline active while the token response body stalls", async () => {
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.write('{"ok":true');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address() as import("node:net").AddressInfo;
+    const fetchImpl: typeof fetch = (_input, init) =>
+      fetch(`http://127.0.0.1:${address.port}/oauth`, init);
+    const provider = createSlackConnectorAccountProvider(oauthRuntime(), {
+      fetchImpl,
+      oauthTimeoutMs: 10,
+    });
+
+    try {
+      await expect(
+        provider.completeOAuth?.(
+          oauthRequest(),
+          createOAuthCallbackManager(
+            SLACK_SERVICE_NAME,
+            "acct_slack_body_timeout",
+            vi.fn(async () => undefined),
+          ) as never,
+        ),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("translates a completed token-exchange provider error", async () => {
@@ -339,11 +377,14 @@ describe("Slack OAuth token-exchange deadlines", () => {
       oauthTimeoutMs: 1_000,
     });
     await expect(
-      provider.completeOAuth?.(oauthRequest(), createOAuthCallbackManager(
-        SLACK_SERVICE_NAME,
-        "acct_slack_timeout",
-        vi.fn(async () => undefined),
-      ) as never),
+      provider.completeOAuth?.(
+        oauthRequest(),
+        createOAuthCallbackManager(
+          SLACK_SERVICE_NAME,
+          "acct_slack_timeout",
+          vi.fn(async () => undefined),
+        ) as never,
+      ),
     ).rejects.toThrow("Slack token exchange failed with 401");
   });
 
@@ -402,12 +443,11 @@ describe("Slack OAuth token-exchange deadlines", () => {
       id: "acct_slack_success",
       status: "connected",
     });
-    expect(vault.get("connector.agent-1.slack.acct_slack_success.oauth_tokens")).toContain(
-      "slack-access-token",
-    );
+    expect(
+      vault.get("connector.agent-1.slack.acct_slack_success.oauth_tokens"),
+    ).toContain("slack-access-token");
   });
 });
-
 
 function createOAuthCallbackManager(
   provider: string,
