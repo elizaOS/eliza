@@ -6,7 +6,11 @@
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
-import { GoogleChatConfigurationError } from "./types.js";
+import {
+  GoogleChatConfigurationError,
+  MAX_GOOGLE_CHAT_MESSAGE_LENGTH,
+  splitMessageForGoogleChat,
+} from "./types.js";
 
 describe("Google Chat message connector", () => {
   function runtime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
@@ -285,5 +289,23 @@ describe("Google Chat message connector", () => {
     expect(sendReaction).not.toHaveBeenCalled();
     expect(updateMessage).not.toHaveBeenCalled();
     expect(deleteMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("splitMessageForGoogleChat surrogate pair safety", () => {
+  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", () => {
+    const text = `a${"🙂".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH)}`;
+
+    const chunks = splitMessageForGoogleChat(text);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(MAX_GOOGLE_CHAT_MESSAGE_LENGTH);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("returns original text when under maxLength", () => {
+    expect(splitMessageForGoogleChat("hello")).toEqual(["hello"]);
   });
 });
