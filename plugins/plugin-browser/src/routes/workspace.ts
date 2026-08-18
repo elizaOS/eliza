@@ -171,6 +171,35 @@ function rejectMalformedBrowserWorkspacePayload(
   return true;
 }
 
+function hasInvalidBrowserWorkspaceBatchSteps(
+  value: unknown,
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const command = value as Record<string, unknown>;
+  const steps = command.steps;
+  if (steps === undefined) {
+    return false;
+  }
+  if (!Array.isArray(steps)) {
+    return true;
+  }
+  for (let i = 0; i < steps.length; i++) {
+    if (!(i in steps)) {
+      return true;
+    }
+    const step = steps[i];
+    if (!step || typeof step !== "object" || Array.isArray(step)) {
+      return true;
+    }
+    if (hasInvalidBrowserWorkspaceBatchSteps(step)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
   if (typeof raw !== "string") return null;
   try {
@@ -243,6 +272,9 @@ export async function handleBrowserWorkspaceRoutes(
       const body =
         (await readJsonBody<BrowserWorkspaceCommandBody>(req, res)) ?? null;
       if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
+      if (hasInvalidBrowserWorkspaceBatchSteps(body)) {
         return rejectMalformedBrowserWorkspacePayload(ctx);
       }
       // Normalize once at the boundary so `operation` aliases and

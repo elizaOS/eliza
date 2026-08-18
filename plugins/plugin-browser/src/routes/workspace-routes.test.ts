@@ -145,6 +145,37 @@ describe("browser workspace HTTP routes", () => {
     expect(res.body).toEqual({ error: "request body must be a JSON object" });
   });
 
+  it("rejects malformed nested batch steps with 400", async () => {
+    const cases: unknown[] = [
+      [null],
+      [[]],
+      ["oops"],
+      [42],
+      [true],
+      Array(2),
+      [{ subaction: "batch", steps: [null] }],
+      [{ subaction: "batch", steps: [{ subaction: "batch", steps: ["oops"] }] }],
+    ];
+    for (const steps of cases) {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/browser-workspace/command",
+        body: { subaction: "batch", steps },
+      });
+      await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "request body must be a JSON object" });
+    }
+    // Valid batch should not be rejected as malformed
+    const { ctx: validCtx, res: validRes } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: { subaction: "batch", steps: [{ subaction: "click", selector: "#a" }] },
+    });
+    await expect(handleBrowserWorkspaceRoutes(validCtx)).resolves.toBe(true);
+    expect(validRes.statusCode).not.toBe(400);
+  });
+
   it("rejects malformed encoded tab ids as a 400", async () => {
     const { ctx, res } = buildCtx({
       method: "DELETE",

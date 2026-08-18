@@ -217,6 +217,17 @@ export async function writeBrowserWorkspaceFile(
 export function normalizeBrowserWorkspaceCommand(
   command: BrowserWorkspaceCommand,
 ): BrowserWorkspaceCommand {
+  if (
+    !command ||
+    typeof command !== "object" ||
+    Array.isArray(command)
+  ) {
+    throw createBrowserWorkspaceError(
+      "invalid_url",
+      "url_validation",
+      "request body must be a JSON object",
+    );
+  }
   const raw = command as BrowserWorkspaceCommand & Record<string, unknown>;
   // A trimmed-empty `subaction` is absent, not a value: fall back to
   // `operation` before resolving so whitespace cannot mask a valid alias.
@@ -241,13 +252,39 @@ export function normalizeBrowserWorkspaceCommand(
     parseBrowserWorkspaceNumberLike(raw.ms) ??
     parseBrowserWorkspaceNumberLike(raw.milliseconds);
 
+  const normalizedSteps = (() => {
+    if (!Array.isArray(command.steps)) {
+      return command.steps;
+    }
+    const out: BrowserWorkspaceCommand[] = [];
+    for (let i = 0; i < command.steps.length; i++) {
+      if (!(i in command.steps)) {
+        throw createBrowserWorkspaceError(
+          "invalid_url",
+          "url_validation",
+          "request body must be a JSON object",
+        );
+      }
+      const step = command.steps[i];
+      if (!step || typeof step !== "object" || Array.isArray(step)) {
+        throw createBrowserWorkspaceError(
+          "invalid_url",
+          "url_validation",
+          "request body must be a JSON object",
+        );
+      }
+      out.push(
+        normalizeBrowserWorkspaceCommand(step as BrowserWorkspaceCommand),
+      );
+    }
+    return out;
+  })();
+
   return {
     ...command,
     subaction,
     timeoutMs,
-    steps: Array.isArray(command.steps)
-      ? command.steps.map((step) => normalizeBrowserWorkspaceCommand(step))
-      : command.steps,
+    steps: normalizedSteps,
   };
 }
 
