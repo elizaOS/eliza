@@ -68,18 +68,28 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
-/** Whisper-style ASR plus upload of a long clip exceeds a 30s chat deadline. */
-export const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120_000;
+const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120_000;
 
-/** Speech synth of up to 4096 chars is shorter than long-file transcription. */
-export const AUDIO_TTS_TIMEOUT_MS = 60_000;
+const AUDIO_TTS_TIMEOUT_MS = 60_000;
 
-export async function handleTranscriptionWithFetch(
+function extractAbortSignal(input: unknown): AbortSignal | undefined {
+  if (typeof input !== "object" || input === null || !("signal" in input)) {
+    return undefined;
+  }
+  const signal = (input as { signal?: unknown }).signal;
+  return signal instanceof AbortSignal ? signal : undefined;
+}
+
+function requestSignal(callerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+}
+
+export async function handleTranscription(
   runtime: IAgentRuntime,
-  input: TranscriptionInput,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = AUDIO_TRANSCRIPTION_TIMEOUT_MS
+  input: TranscriptionInput
 ): Promise<string> {
+  const callerSignal = extractAbortSignal(input);
   let modelName = getTranscriptionModel(runtime);
   let blob: Blob;
   let extraParams: Partial<LocalTranscriptionParams> = {};
@@ -166,11 +176,11 @@ export async function handleTranscriptionWithFetch(
     actionType: "openai.audio.transcriptions.create",
   };
   const data = await recordLlmCall(runtime, details, async () => {
-    const response = await fetchImpl(`${baseURL}/audio/transcriptions`, {
+    const response = await fetch(`${baseURL}/audio/transcriptions`, {
       method: "POST",
       headers: getAuthHeader(runtime),
       body: formData,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: requestSignal(callerSignal, AUDIO_TRANSCRIPTION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -187,19 +197,11 @@ export async function handleTranscriptionWithFetch(
   return data.text;
 }
 
-export async function handleTranscription(
+export async function handleTextToSpeech(
   runtime: IAgentRuntime,
-  input: TranscriptionInput
-): Promise<string> {
-  return handleTranscriptionWithFetch(runtime, input);
-}
-
-export async function handleTextToSpeechWithFetch(
-  runtime: IAgentRuntime,
-  input: TTSInput,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = AUDIO_TTS_TIMEOUT_MS
+  input: TTSInput
 ): Promise<ArrayBuffer> {
+  const callerSignal = extractAbortSignal(input);
   let text: string;
   let voice: string | undefined;
   let format: TTSOutputFormat = "mp3";
@@ -265,7 +267,7 @@ export async function handleTextToSpeechWithFetch(
     actionType: "openai.audio.speech.create",
   };
   return recordLlmCall(runtime, details, async () => {
-    const response = await fetchImpl(`${baseURL}/audio/speech`, {
+    const response = await fetch(`${baseURL}/audio/speech`, {
       method: "POST",
       headers: {
         ...getAuthHeader(runtime),
@@ -273,7 +275,7 @@ export async function handleTextToSpeechWithFetch(
         ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: requestSignal(callerSignal, AUDIO_TTS_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -289,9 +291,3 @@ export async function handleTextToSpeechWithFetch(
   });
 }
 
-export async function handleTextToSpeech(
-  runtime: IAgentRuntime,
-  input: TTSInput
-): Promise<ArrayBuffer> {
-  return handleTextToSpeechWithFetch(runtime, input);
-}

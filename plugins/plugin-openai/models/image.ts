@@ -38,17 +38,13 @@ interface ExtendedImageGenerationParams extends ImageGenerationParams {
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Please analyze this image and provide a title and detailed description.";
 
-/** Image synthesis (DALL·E / gpt-image) can exceed a 30s chat deadline. */
-export const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
+const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
 
-/** Vision-chat description is shorter than image synthesis. */
-export const IMAGE_DESCRIPTION_TIMEOUT_MS = 45_000;
+const IMAGE_DESCRIPTION_TIMEOUT_MS = 45_000;
 
-export async function handleImageGenerationWithFetch(
+export async function handleImageGeneration(
   runtime: IAgentRuntime,
-  params: ImageGenerationParams,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = IMAGE_GENERATION_TIMEOUT_MS
+  params: ImageGenerationParams
 ): Promise<ImageGenerationResult[]> {
   const modelName = getImageModel(runtime);
   const count = params.count ?? 1;
@@ -91,14 +87,14 @@ export async function handleImageGenerationWithFetch(
     actionType: "openai.images.generate",
   };
   const data = await recordLlmCall(runtime, details, async () => {
-    const response = await fetchImpl(`${baseURL}/images/generations`, {
+    const response = await fetch(`${baseURL}/images/generations`, {
       method: "POST",
       headers: {
         ...getAuthHeader(runtime),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(IMAGE_GENERATION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -123,13 +119,6 @@ export async function handleImageGenerationWithFetch(
   }));
 }
 
-export async function handleImageGeneration(
-  runtime: IAgentRuntime,
-  params: ImageGenerationParams
-): Promise<ImageGenerationResult[]> {
-  return handleImageGenerationWithFetch(runtime, params);
-}
-
 function parseTitleFromResponse(content: string): string {
   const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
   return titleMatch?.[1]?.trim() ?? "Image Analysis";
@@ -139,11 +128,9 @@ function parseDescriptionFromResponse(content: string): string {
   return content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
 }
 
-export async function handleImageDescriptionWithFetch(
+export async function handleImageDescription(
   runtime: IAgentRuntime,
-  params: ImageDescriptionParams | string,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = IMAGE_DESCRIPTION_TIMEOUT_MS
+  params: ImageDescriptionParams | string
 ): Promise<ImageDescriptionResult> {
   const modelName = getImageDescriptionModel(runtime);
   const paramsWithMaxTokens = params as ImageDescriptionParams & { maxTokens?: number };
@@ -151,7 +138,6 @@ export async function handleImageDescriptionWithFetch(
     typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
       ? paramsWithMaxTokens.maxTokens
       : getImageDescriptionMaxTokens(runtime);
-
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
   let imageUrl: string;
@@ -170,6 +156,11 @@ export async function handleImageDescriptionWithFetch(
   }
 
   const baseURL = getImageDescriptionBaseURL(runtime);
+  const timeoutSignal = AbortSignal.timeout(IMAGE_DESCRIPTION_TIMEOUT_MS);
+  const signal =
+    typeof params === "object" && params.signal
+      ? AbortSignal.any([params.signal, timeoutSignal])
+      : timeoutSignal;
 
   const requestBody = {
     model: modelName,
@@ -195,14 +186,14 @@ export async function handleImageDescriptionWithFetch(
     actionType: "openai.chat.completions.create",
   };
   const data = await recordLlmCall(runtime, details, async () => {
-    const response = await fetchImpl(`${baseURL}/chat/completions`, {
+    const response = await fetch(`${baseURL}/chat/completions`, {
       method: "POST",
       headers: {
         ...getImageDescriptionAuthHeader(runtime),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
 
     if (!response.ok) {
@@ -252,9 +243,3 @@ export async function handleImageDescriptionWithFetch(
   };
 }
 
-export async function handleImageDescription(
-  runtime: IAgentRuntime,
-  params: ImageDescriptionParams | string
-): Promise<ImageDescriptionResult> {
-  return handleImageDescriptionWithFetch(runtime, params);
-}
