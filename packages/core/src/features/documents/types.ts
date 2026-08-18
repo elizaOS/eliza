@@ -168,6 +168,8 @@ export interface AddDocumentOptions {
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
+	/** Always inject this document whole through the DOCUMENTS provider. */
+	pinned?: boolean;
 	/** Store these verbatim fragments instead of token-splitting `content`. */
 	fragments?: PreChunkedFragmentInput[];
 }
@@ -239,6 +241,8 @@ export interface DocumentMemoryMetadata
 	textBacked?: boolean;
 	timestamp?: number;
 	editedAt?: number;
+	/** Always inject the complete document through the DOCUMENTS provider. */
+	pinned?: boolean;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaUrl?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */

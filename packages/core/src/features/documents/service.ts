@@ -1022,6 +1022,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		pinned = false,
 		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
@@ -1173,6 +1174,7 @@ export class DocumentService extends Service {
 				addedAt: Date.now(),
 				ingestionAttemptId,
 				ingestionState: "pending" as const,
+				pinned,
 			};
 
 			const documentMemory = createDocumentMemory({
