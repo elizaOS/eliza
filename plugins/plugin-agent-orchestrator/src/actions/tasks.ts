@@ -1309,12 +1309,16 @@ async function runCreateLegacy(
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
       // itself; the helper is gated + idempotent so non-app tasks pass through.
+      const createTaskForChild =
+        createProvisionedWorkspaceId && createRequestedRepo
+          ? withProvisionedRepoContract(task, createRequestedRepo)
+          : task;
       const taskWithRouteHints = augmentTaskWithDeployGuidance(
         // A provisioned clone is NOT the route's tree: carrying the route's
         // id/instructions onto it would mislabel the workdir class and feed
         // the child instructions about a checkout it is not in.
         taskWithResolvedRoute(
-          task,
+          createTaskForChild,
           createProvisionedWorkspaceId ? undefined : route,
           sessionWorkdir,
           swarmRoomMetadata,
@@ -2187,6 +2191,30 @@ function registeredWorkspaceForPath(
   }
 }
 
+/** The execution contract appended to a provisioned-repo task. Children
+ *  commit behind an isolated git wrapper and CANNOT push or open PRs — by
+ *  design the orchestrator owns credentials. Without saying so, a task
+ *  phrased "…and open a pull request" strands the child on an impossible
+ *  step: live 2026-08-18, children edited the file, never committed, and
+ *  ended (or stalled) without a commit for auto-submit to ship. */
+function withProvisionedRepoContract(task: string, repo: string): string {
+  return (
+    `${task}
+
+--- Workspace contract ---
+` +
+    `You are working in a local clone of ${repo} on a dedicated branch.
+` +
+    `Make the requested changes and COMMIT them locally (configure a git ` +
+    `identity first if the commit asks for one).
+` +
+    `Do NOT push and do NOT try to open the pull request yourself - you do ` +
+    `not have credentials. The orchestrator pushes your branch and opens ` +
+    `the pull request automatically after you finish. Finish once your ` +
+    `commit is in.`
+  );
+}
+
 /**
  * Resolve the repo a spawn/create should provision, tolerant of how humans
  * actually ask: an explicit `repo` param, a URL anywhere in the request, an
@@ -2547,8 +2575,12 @@ async function runSpawnAgent(
         }
       }
     }
+    const spawnTaskForChild =
+      provisionedWorkspaceId && requestedRepo
+        ? withProvisionedRepoContract(task, requestedRepo)
+        : task;
     const taskWithRouteHints = taskWithResolvedRoute(
-      task,
+      spawnTaskForChild,
       provisionedWorkspaceId ? undefined : effectiveRoute,
       effectiveWorkdir,
       swarmRoomMetadata,
