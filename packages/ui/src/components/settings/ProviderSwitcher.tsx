@@ -22,6 +22,7 @@ import { IntelligenceServingSummary } from "./IntelligenceServingSummary";
 import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
 import { ApiKeyPanel, CloudPanel, LocalProviderPanel } from "./ProviderPanels";
+import type { ServingAxes } from "./resolveServingAxes";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { useCloudModelConfig } from "./useCloudModelConfig";
@@ -136,9 +137,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     cloudCallsDisabled: selection.cloudCallsDisabled,
   });
 
+  const displayedProviderEntries = useMemo(
+    () => reconcileProviderEntriesWithServingAxes(providerEntries, servingAxes),
+    [providerEntries, servingAxes],
+  );
+
   const activeEntry = useMemo(
-    () => providerEntries.find((entry) => entry.current) ?? null,
-    [providerEntries],
+    () => displayedProviderEntries.find((entry) => entry.current) ?? null,
+    [displayedProviderEntries],
   );
 
   const activeChatCatalogProvider = resolveActiveChatCatalogProvider(
@@ -218,10 +224,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   // decisions — the agent's brain (Local/Cloud) up top, the coding/workflow
   // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
   // per-slot overrides tucked into Advanced.
-  const intelligenceEntries = providerEntries.filter(
+  const intelligenceEntries = displayedProviderEntries.filter(
     (entry) => entry.category === "cloud" || entry.category === "local",
   );
-  const keyEntries = providerEntries.filter(
+  const keyEntries = displayedProviderEntries.filter(
     (entry) => entry.category === "key",
   );
 
@@ -296,7 +302,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
         {visibleProviderPanelId === "__local__" ? (
           <LocalProviderPanel
-            cloudCallsDisabled={selection.cloudCallsDisabled}
+            cloudCallsDisabled={
+              selection.cloudCallsDisabled && servingAxes.inference === "local"
+            }
             routingModeSaving={selection.routingModeSaving}
             onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
             servingFallback={Boolean(servingLocalFallback)}
@@ -421,6 +429,35 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       </SettingsGroup>
     </SettingsStack>
   );
+}
+
+/**
+ * Selection state says what is configured; the serving axes say what actually
+ * answered chat. When a direct external provider is serving, do not leave the
+ * Local or Cloud tile labelled Active merely because that routing toggle is
+ * still selected. Mark a matching key-provider entry active when one exists.
+ *
+ * @internal Exported for focused settings tests only.
+ */
+export function reconcileProviderEntriesWithServingAxes(
+  entries: ProviderListEntry[],
+  axes: ServingAxes,
+): ProviderListEntry[] {
+  if (axes.inference !== "external") return entries;
+  const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
+  return entries.map((entry) => {
+    const current =
+      entry.category === "key" && entry.id.trim().toLowerCase() === providerId;
+    const selectedInferenceTile =
+      entry.category === "local" || entry.category === "cloud";
+    return {
+      ...entry,
+      current,
+      ...(selectedInferenceTile && entry.status.label === "Active"
+        ? { status: { tone: "muted" as const, label: "Available" } }
+        : {}),
+    };
+  });
 }
 
 /**
