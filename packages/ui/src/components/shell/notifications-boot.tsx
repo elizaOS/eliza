@@ -22,6 +22,7 @@ import {
   initPushRegistration,
   refreshPushRegistrationAuthority,
 } from "../../state/notifications/push-registration";
+import { goHome } from "../../state/shell-surface-store";
 import { requestNotificationCenterOpen } from "./notification-center-open-request";
 
 /**
@@ -46,6 +47,7 @@ export function NotificationsShellBoot(): null {
     // addListener(), so reversing this order would drop that first event.
     const onOpen = () => {
       requestNotificationCenterOpen();
+      goHome();
       setTab("chat");
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
