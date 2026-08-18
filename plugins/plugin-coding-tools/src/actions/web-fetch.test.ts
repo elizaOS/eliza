@@ -18,7 +18,7 @@ import {
   __setWebHttpLookupFnForTests,
   __setWebHttpPinnedFetchImplForTests,
 } from "../lib/web-http.js";
-import { webFetchAction } from "./web-fetch.js";
+import { htmlToReadableText, webFetchAction } from "./web-fetch.js";
 
 vi.mock("@elizaos/logger", () => {
   const logger = {
@@ -275,6 +275,50 @@ describe("coding-tools WEB_FETCH", () => {
       kind: "json",
       truncated: false,
     });
+  });
+
+  it("decodes valid numeric and named HTML entities in readable text", () => {
+    expect(htmlToReadableText("<p>&#65; &#x41; &amp; &lt; &gt;</p>")).toBe(
+      "A A & < >",
+    );
+    expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
+  });
+
+  it("degrades out-of-range numeric entities without throwing and keeps surrounding text", () => {
+    // String.fromCodePoint throws RangeError above 0x10FFFF; the decoder must
+    // leave the malformed reference literal instead of hard-failing the fetch.
+    const hex = htmlToReadableText("<p>hello &#x110000; world</p>");
+    expect(hex).toContain("hello");
+    expect(hex).toContain("world");
+    expect(hex).toContain("&#x110000;");
+
+    const dec = htmlToReadableText("<p>hi &#1114112; there</p>");
+    expect(dec).toContain("hi");
+    expect(dec).toContain("there");
+    expect(dec).toContain("&#1114112;");
+  });
+
+  it("degrades a malformed numeric entity to readable text through the handler instead of io_error", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bad-entity": new Response(
+        "<html><body><p>alpha &#x110000; omega</p></body></html>",
+        {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      ),
+    });
+
+    const result = await runFetch({
+      url: "https://public.example.test/bad-entity",
+    });
+
+    // On unpatched develop htmlToReadableText throws RangeError, which the
+    // handler surfaces as an io_error failure. The fix keeps the fetch success.
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("alpha");
+    expect(result.text).toContain("omega");
+    expect(result.data).toMatchObject({ kind: "html" });
   });
 
   it("falls back to the full JSON when the extract path is missing", async () => {

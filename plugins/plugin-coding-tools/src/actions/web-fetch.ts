@@ -42,13 +42,23 @@ function decodeHtmlEntity(entity: string): string {
     nbsp: " ",
     quot: '"',
   };
-  if (entity.startsWith("#x")) {
-    const code = Number.parseInt(entity.slice(2), 16);
-    return Number.isFinite(code) ? String.fromCodePoint(code) : `&${entity};`;
-  }
   if (entity.startsWith("#")) {
-    const code = Number.parseInt(entity.slice(1), 10);
-    return Number.isFinite(code) ? String.fromCodePoint(code) : `&${entity};`;
+    const code = entity.startsWith("#x")
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number.parseInt(entity.slice(1), 10);
+    // String.fromCodePoint throws RangeError for negatives and any value above
+    // the Unicode ceiling (0x10FFFF), cases Number.isFinite does not reject.
+    // A single malformed reference must degrade to its literal source, never
+    // hard-fail the best-effort fetch. The try/catch is belt-and-suspenders.
+    if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        // error-policy:J4 malformed entity degrades to its literal source text
+        return `&${entity};`;
+      }
+    }
+    return `&${entity};`;
   }
   return named[entity] ?? `&${entity};`;
 }
