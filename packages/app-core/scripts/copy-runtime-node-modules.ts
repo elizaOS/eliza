@@ -42,6 +42,15 @@ type QueueEntry = DependencyEntry & {
   requesterDestDir: string;
 };
 
+/** Record a missing runtime edge against the manifest's requiredness. */
+export function recordMissingRuntimePackage(
+  request: Pick<DependencyEntry, "name" | "required">,
+  missingRequired: Set<string>,
+  missingOptional: Set<string>,
+): void {
+  (request.required ? missingRequired : missingOptional).add(request.name);
+}
+
 export type ResolvedPackage = {
   packageJsonPath: string;
   sourceDir: string;
@@ -2610,7 +2619,7 @@ function main(): void {
       const request = queue.shift();
       if (!request) continue;
 
-      const { name, spec, optional, requesterDir, requesterDestDir } = request;
+      const { name, spec, requesterDir, requesterDestDir } = request;
       if (
         !name ||
         DEP_SKIP.has(name) ||
@@ -2621,7 +2630,7 @@ function main(): void {
 
       const resolved = resolvePackage(name, spec, requesterDir);
       if (!resolved) {
-        (optional ? missingOptional : missingRequired).add(name);
+        recordMissingRuntimePackage(request, missingRequired, missingOptional);
         continue;
       }
 
@@ -2673,7 +2682,7 @@ function main(): void {
           targetDist,
         )
       ) {
-        (optional ? missingOptional : missingRequired).add(name);
+        recordMissingRuntimePackage(request, missingRequired, missingOptional);
         continue;
       }
 

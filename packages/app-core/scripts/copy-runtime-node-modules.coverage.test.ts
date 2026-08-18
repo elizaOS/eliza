@@ -40,6 +40,7 @@ import {
   parseArgs,
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
+  recordMissingRuntimePackage,
   recursiveRemoveErrorDetail,
   selectCopyTargetNodeModules,
   selectResolvedCandidate,
@@ -514,6 +515,27 @@ describe("getRuntimeDependencyEntries", () => {
       dependencies: { zeta: "1.0.0", alpha: "2.0.0" },
     });
     expect(getRuntimeDependencies(manifestPath)).toEqual(["alpha", "zeta"]);
+  });
+});
+
+describe("recordMissingRuntimePackage", () => {
+  it("keeps missing optional and peer edges out of the required failure set", () => {
+    const missingRequired = new Set<string>();
+    const missingOptional = new Set<string>();
+
+    recordMissingRuntimePackage(
+      { name: "optional-runtime", required: false },
+      missingRequired,
+      missingOptional,
+    );
+    recordMissingRuntimePackage(
+      { name: "required-runtime", required: true },
+      missingRequired,
+      missingOptional,
+    );
+
+    expect([...missingRequired]).toEqual(["required-runtime"]);
+    expect([...missingOptional]).toEqual(["optional-runtime"]);
   });
 });
 

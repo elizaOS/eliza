@@ -1,10 +1,9 @@
-/** Verifies shell preference persistence through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
  * Device-local shell preferences use real jsdom localStorage to verify their
  * defaults, normalization, round trips, and clearing behavior as one contract.
  */
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearAvatarIndex,
@@ -61,10 +60,17 @@ describe("shell preference persistence", () => {
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState({}, "", "/");
+    Reflect.deleteProperty(window, "__electrobunWebviewId");
   });
 
-  it("defaults a fresh elizaOS appliance session to always-on voice", () => {
+  it("rejects a public-link attempt to enable always-on voice", () => {
     window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    expect(loadContinuousChatMode()).toBe("off");
+  });
+
+  it("defaults a fresh trusted elizaOS appliance session to always-on voice", () => {
+    window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    Object.assign(window, { __electrobunWebviewId: 7 });
     expect(loadContinuousChatMode()).toBe("always-on");
     saveContinuousChatMode("off");
     expect(loadContinuousChatMode()).toBe("off");
