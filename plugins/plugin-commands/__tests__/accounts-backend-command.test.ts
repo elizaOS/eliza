@@ -569,7 +569,7 @@ describe("/backend", () => {
 				targets: {
 					coding: {
 						ELIZA_DEFAULT_AGENT_TYPE: {
-							value: "opencode",
+							value: "codex",
 							source: "config.env",
 						},
 					},
@@ -583,7 +583,7 @@ describe("/backend", () => {
 		const [call] = recordedCalls(fetchMock);
 		expect(call?.url).toContain("/api/models/config");
 		expect(call?.method).toBe("GET");
-		expect(r.reply).toContain("Default coding backend: opencode (config.env)");
+		expect(r.reply).toContain("Default coding backend: codex (config.env)");
 		expect(r.reply).toContain("codex, claude, eliza");
 	});
 
@@ -654,6 +654,15 @@ describe("/backend", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it("rejects the removed opencode backend as unknown", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
+		expect(r.reply).toContain('Unknown coding backend "opencode"');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("passes the route's 400 validation error through verbatim", async () => {
 		const error = 'Unknown defaultBackend "vscode"';
 		const fetchMock = vi.fn(async () =>
@@ -661,7 +670,7 @@ describe("/backend", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
+		const r = await resolveCommand(runtime, msg("/backend codex"), OWNER);
 		expect(r.reply).toContain(error);
 	});
 });

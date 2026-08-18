@@ -1,7 +1,7 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -59,7 +59,6 @@ import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   diagnoseCodingAccountFallback,
-  isRefreshTokenExpiryText,
   isTokenExpiryText,
   resolveCodingAccountStrategy,
   selectCodingAccount,
@@ -83,10 +82,6 @@ import {
   mintSpawnLease,
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
-import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
 import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
@@ -776,7 +771,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude"];
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -1606,10 +1601,11 @@ export class AcpService extends Service {
           } catch (err) {
             // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
             // the sweep continues and retries next boot.
-            this.log("warn", "scratch GC: failed to remove dir", {
-              path,
-              error: errorMessage(err),
-            });
+            this.log(
+              "warn",
+              `scratch GC: failed to remove dir ${path}: ${errorMessage(err)}`,
+              { path, error: errorMessage(err) },
+            );
           }
         }),
       );
@@ -1798,11 +1794,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
-  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // which NEVER exists for native sessions (verified: 0 such files on disk,
+  // only ses_*.json) — a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
-  // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // respawn cascade AND spuriously throwing on the first real prompt to a
+  // session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -2069,14 +2065,7 @@ export class AcpService extends Service {
         timeoutMs: opts.timeoutMs,
         model: spawnModel,
       });
-      args.push(
-        ...this.agentCommandArgs(agentType, [
-          "sessions",
-          "new",
-          "--name",
-          name,
-        ]),
-      );
+      args.push(agentType, "sessions", "new", "--name", name);
       const result = await this.runAcpx({
         sessionId: id,
         sessionName: name,
@@ -2325,13 +2314,12 @@ export class AcpService extends Service {
       model: promptModel,
     });
     args.push(
-      ...this.agentCommandArgs(session.agentType, [
-        "prompt",
-        "-s",
-        session.name ?? session.id,
-        "--",
-        text,
-      ]),
+      session.agentType,
+      "prompt",
+      "-s",
+      session.name ?? session.id,
+      "--",
+      text,
     );
 
     // The cli transport spawns a fresh subprocess per prompt, so re-inject the
@@ -2457,11 +2445,12 @@ export class AcpService extends Service {
       active.cancelled = true;
       this.terminateProcess(sessionId, active);
     } else {
-      const args = this.agentCommandArgs(session.agentType, [
+      const args = [
+        session.agentType,
         "cancel",
         "-s",
         session.name ?? session.id,
-      ]);
+      ];
       await this.runAcpx({
         sessionId,
         agentType: session.agentType,
@@ -2507,11 +2496,10 @@ export class AcpService extends Service {
       "json",
       "--cwd",
       session.workdir,
-      ...this.agentCommandArgs(session.agentType, [
-        "sessions",
-        "close",
-        session.name ?? session.id,
-      ]),
+      session.agentType,
+      "sessions",
+      "close",
+      session.name ?? session.id,
     ];
     try {
       await this.runAcpx({
@@ -2876,12 +2864,6 @@ export class AcpService extends Service {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
-  }
-
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
@@ -3580,11 +3562,6 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
-    }
     if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
@@ -3619,13 +3596,6 @@ export class AcpService extends Service {
     // close/closeSession failure must not abort the deletion.
     await client.closeSession(protocolSessionId).catch(() => undefined);
     await client.close().catch(() => undefined);
-  }
-
-  private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4006,7 +3976,7 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
+      // in the SAME payload shape as agent_message_chunk (adapters emit it for
       // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
@@ -4018,8 +3988,8 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
-      // entries [{content, status, priority}] (driven by its todowrite tool).
+      // plan: an adapter emits the agent's checklist/plan list as a `plan` update
+      // with entries [{content, status, priority}] (driven by its todo tooling).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.
@@ -4530,7 +4500,6 @@ export class AcpService extends Service {
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -4627,18 +4596,6 @@ export class AcpService extends Service {
           "debug",
           "Dropped inherited OPENAI_MODEL for codex subscription sub-agent (lets Codex use its ChatGPT-compatible default)",
         );
-      }
-    }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
       }
     }
     // Per-spawn git identity: pin an explicit author/committer for every agent
@@ -4816,13 +4773,7 @@ export class AcpService extends Service {
     // that dies with only expiry text would otherwise emit no failureKind at
     // all, defeating the typed signal. Recognize either.
     const expired = isTokenExpiryText(text);
-    // Refresh-token expiry is excluded from isTokenExpiryText on purpose (it
-    // is a genuinely dead credential, never the benign injected-token case),
-    // but it is still AUTH-shaped: without recognizing it here a Codex
-    // "refresh token has expired" run would emit no failureKind at all and
-    // the dead account would be respawned instead of marked needs-reauth.
-    const refreshExpired = isRefreshTokenExpiryText(text);
-    if (!isAuthText(text) && !expired && !refreshExpired) return {};
+    if (!isAuthText(text) && !expired) return {};
     // The `token_expired` reason drives a downstream recovery that keeps the
     // account HEALTHY and just re-injects a fresh token — valid ONLY for the
     // claude bare-token injection path (CLAUDE_CODE_OAUTH_TOKEN the third-party

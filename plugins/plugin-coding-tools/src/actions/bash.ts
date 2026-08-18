@@ -254,8 +254,6 @@ const SOURCE_SEARCH_EXCLUDES = [
   "!**/coverage/**",
   "!**/.next/**",
 ] as const;
-const VENDORED_OPENCODE_SOURCE_ROOT =
-  "plugins/plugin-agent-orchestrator/vendor/opencode";
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -547,17 +545,6 @@ function broadRecursiveGrepPattern(command: string): string | undefined {
   return pattern?.trim() || undefined;
 }
 
-function sourceInspectionRoot(messageText: string): string {
-  const normalized = messageText.toLowerCase();
-  if (
-    /\bopencode\b/.test(normalized) &&
-    /\b(?:vendored|vendor|source)\b/.test(normalized)
-  ) {
-    return VENDORED_OPENCODE_SOURCE_ROOT;
-  }
-  return ".";
-}
-
 function usesBroadSourceDirectoryWalk(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ");
   return (
@@ -702,19 +689,18 @@ export function resolveSourceInspectionCommand(args: {
     return { command: args.command, rewritten: false };
   }
   const platform = args.platform ?? resolveCommandPlatform();
-  const root = sourceInspectionRoot(args.messageText);
   const pattern = broadRecursiveGrepPattern(args.command);
   if (!pattern) {
     if (!usesBroadSourceDirectoryWalk(args.command)) {
       return { command: args.command, rewritten: false };
     }
     return {
-      command: boundedSourceListCommand(root, platform),
+      command: boundedSourceListCommand(".", platform),
       rewritten: true,
     };
   }
   return {
-    command: boundedSourceSearchCommand(pattern, root, platform),
+    command: boundedSourceSearchCommand(pattern, ".", platform),
     rewritten: true,
   };
 }

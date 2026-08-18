@@ -5,7 +5,7 @@
  * project's ~500 LOC guideline.
  */
 
-export type AgentTab = "elizaos" | "pi-agent" | "opencode" | "claude" | "codex";
+export type AgentTab = "elizaos" | "pi-agent" | "claude" | "codex";
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -22,7 +22,6 @@ export type LlmProvider = "subscription" | "api_keys" | "cloud";
 export const AGENT_TABS: AgentTab[] = [
   "elizaos",
   "pi-agent",
-  "opencode",
   "claude",
   "codex",
 ];
@@ -107,7 +106,6 @@ export const AGENT_PROVIDER_MAP: Record<AgentTab, string> = {
   "pi-agent": "cerebras",
   claude: "anthropic",
   codex: "openai",
-  opencode: "cerebras",
 };
 
 export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
@@ -129,7 +127,6 @@ export const AGENT_LABELS: Record<AgentTab, string> = {
   "pi-agent": "Pi Agent",
   claude: "Claude",
   codex: "Codex",
-  opencode: "OpenCode",
 };
 
 /** Map full adapter names from the preflight API to short tab keys. */
@@ -139,8 +136,6 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "eliza os": "elizaos",
   elizaos: "elizaos",
   "openai codex": "codex",
-  "open code": "opencode",
-  opencode: "opencode",
   pi: "pi-agent",
   "pi agent": "pi-agent",
   "pi-agent": "pi-agent",
@@ -153,7 +148,6 @@ export const ENV_PREFIX: Record<AgentTab, string> = {
   "pi-agent": "ELIZA_PI_AGENT",
   claude: "ELIZA_CLAUDE",
   codex: "ELIZA_CODEX",
-  opencode: "ELIZA_OPENCODE",
 };
 
 export interface AuthResult {

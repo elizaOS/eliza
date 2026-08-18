@@ -63,7 +63,6 @@ export const CODING_BACKEND_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "codex", label: "Codex" },
   { value: "claude", label: "Claude" },
-  { value: "opencode", label: "OpenCode" },
   { value: "eliza-code", label: "elizaOS" },
 ];
 
@@ -80,7 +79,6 @@ const CODEX_PINNED_EFFORTS: ReadonlySet<string> = new Set([
 const CODING_MODEL_KEYS: Record<ModelsConfigCodingBackend, string> = {
   codex: "ELIZA_CODEX_MODEL_POWERFUL",
   claude: "ELIZA_CLAUDE_MODEL_POWERFUL",
-  opencode: "ELIZA_OPENCODE_MODEL_POWERFUL",
   "eliza-code": "ELIZA_ELIZAOS_MODEL_POWERFUL",
 };
 
@@ -94,7 +92,6 @@ const CODING_CATALOG_PROVIDERS: Partial<
 > = {
   codex: "codex",
   claude: "claude-coding",
-  opencode: "cerebras",
 };
 
 const SAVED_STATE_TTL_MS = 2500;
@@ -327,7 +324,7 @@ function resolveCodingDraft(
     ? effective(config, "coding", effortKey)?.value
     : undefined;
   const model = configured?.value ?? "";
-  const entry = codingModelOptions(backend, catalog, model).find(
+  const entry = codingModelOptions(backend, catalog).find(
     (item) => item.id === model,
   );
   const effortOptions = entry ? codingEffortOptions(backend, entry) : [];
@@ -346,33 +343,12 @@ function resolveCodingDraft(
 function codingModelOptions(
   backend: ModelsConfigCodingBackend,
   catalog: ModelCatalog,
-  configuredModel: string,
 ): ModelCatalogEntry[] {
   const provider = CODING_CATALOG_PROVIDERS[backend];
   if (!provider) return [];
   // No role filter here: the write route validates coding models against the
-  // whole provider slice, and opencode's cerebras suggestion list carries
-  // small/large roles only.
-  const options = catalog.providers[provider] ?? [];
-  // opencode's catalog slice is a suggestion, not the write-route's truth
-  // (the server accepts any model string for it) — keep a configured value
-  // visible even when it is not in the suggested list.
-  if (
-    backend === "opencode" &&
-    configuredModel &&
-    !options.some((entry) => entry.id === configuredModel)
-  ) {
-    return [
-      {
-        id: configuredModel,
-        display: configuredModel,
-        efforts: [],
-        roles: ["coding"],
-      },
-      ...options,
-    ];
-  }
-  return options;
+  // whole provider slice.
+  return catalog.providers[provider] ?? [];
 }
 
 function codingEffortOptions(
@@ -461,7 +437,6 @@ export function useModelConfiguration(
   >({
     codex: { model: "", effort: "", configured: null },
     claude: { model: "", effort: "", configured: null },
-    opencode: { model: "", effort: "", configured: null },
     "eliza-code": { model: "", effort: "", configured: null },
   });
   const [persistedDefaultBackend, setPersistedDefaultBackend] =
@@ -506,7 +481,6 @@ export function useModelConfiguration(
     setCodingDrafts({
       codex: resolveCodingDraft("codex", data.catalog, data.config),
       claude: resolveCodingDraft("claude", data.catalog, data.config),
-      opencode: resolveCodingDraft("opencode", data.catalog, data.config),
       "eliza-code": resolveCodingDraft("eliza-code", data.catalog, data.config),
     });
   }, []);
@@ -581,10 +555,6 @@ export function useModelConfiguration(
       claude: {
         ...prev.claude,
         configured: resolveCodingDraft("claude", catalog, config).configured,
-      },
-      opencode: {
-        ...prev.opencode,
-        configured: resolveCodingDraft("opencode", catalog, config).configured,
       },
       "eliza-code": {
         ...prev["eliza-code"],
@@ -792,11 +762,7 @@ export function useModelConfiguration(
     (data: ReadyData): ModelConfigCodingGroup => {
       const draft = codingDrafts[codingBackend];
       const freeFormModel = codingBackend === "eliza-code";
-      const modelOptions = codingModelOptions(
-        codingBackend,
-        data.catalog,
-        draft.configured?.model ?? "",
-      );
+      const modelOptions = codingModelOptions(codingBackend, data.catalog);
       const selectedEntry =
         modelOptions.find((entry) => entry.id === draft.model) ?? null;
       const effortOptions = selectedEntry
@@ -811,11 +777,9 @@ export function useModelConfiguration(
       };
       const setModel = (model: string) => {
         setCodingDrafts((prev) => {
-          const entry = codingModelOptions(
-            codingBackend,
-            data.catalog,
-            prev[codingBackend].configured?.model ?? "",
-          ).find((item) => item.id === model);
+          const entry = codingModelOptions(codingBackend, data.catalog).find(
+            (item) => item.id === model,
+          );
           const nextEfforts = entry
             ? codingEffortOptions(codingBackend, entry)
             : [];

@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/**
- * Boots the interactive and one-shot eliza-code entrypoints after capturing
- * the host executable-search baseline needed by shell-backed coding tools.
- */
-
 // Suppress elizaOS logs before any imports
 process.env.LOG_LEVEL = "fatal";
 

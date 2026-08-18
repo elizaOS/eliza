@@ -1,7 +1,7 @@
 /**
  * Deterministic, configurable git identity for coding sub-agent spawns.
  *
- * A coding sub-agent (claude / codex / opencode / elizaos / pi-agent) commits
+ * A coding sub-agent (claude / codex / elizaos / pi-agent) commits
  * inside its workspace. Without an explicit identity, git falls back to whatever
  * `user.name` / `user.email` the child's global/system `~/.gitconfig` (or
  * `EMAIL` / `GIT_AUTHOR_*` env) happens to carry — i.e. the operator's personal

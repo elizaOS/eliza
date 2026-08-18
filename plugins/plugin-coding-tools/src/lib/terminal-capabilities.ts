@@ -1,7 +1,7 @@
 /**
  * Platform terminal capability detection: resolves the host shell and probes the
  * PATH for the binaries the coding tools depend on (sh, git, rg, bun, codex,
- * claude, opencode, …), and reports Android/AOSP runtime constraints. Consumed by
+ * claude, …), and reports Android/AOSP runtime constraints. Consumed by
  * the SHELL action and run-shell to decide what can execute and to produce
  * missing-tool messages.
  */
@@ -17,7 +17,6 @@ export const CODING_TOOL_NAMES = [
   "acpx",
   "codex",
   "claude",
-  "opencode",
 ] as const;
 
 export type CodingToolName = (typeof CODING_TOOL_NAMES)[number];
