@@ -137,23 +137,25 @@ describe("parseTransactionsCsv", () => {
       // 2025-01-05 instead of erroring. Feb 31 (no such day) rolls the same way
       // into March. Both must be rejected, not silently mis-dated.
       const r = parseTransactionsCsv(
-        "Date,Amount,Merchant\n13/05/2024,-1,BadMonthSlash\n02/31/2024,-1,BadDaySlash\n2024-13-05,-1,BadMonthIso\n2024-02-31,-1,BadDayIso\n",
+        "Date,Amount,Merchant\n13/05/2024,-1,BadMonthSlash\n02/31/2024,-1,BadDaySlash\n2024-13-05,-1,BadMonthIso\n2024-02-31,-1,BadDayIso\n0000-02-30,-1,BadYearZeroDay\n",
       );
       expect(r.transactions).toEqual([]);
       expect(r.errors.filter((e) => /unparseable date/.test(e))).toHaveLength(
-        4,
+        5,
       );
     });
 
     it("still accepts real calendar-edge dates", () => {
       const r = parseTransactionsCsv(
-        "Date,Amount,Merchant\n12/31/2024,-1,YearEnd\n2024-02-29,-1,LeapDay\n02/29/2024,-1,LeapDaySlash\n",
+        "Date,Amount,Merchant\n12/31/2024,-1,YearEnd\n2024-02-29,-1,LeapDay\n02/29/2024,-1,LeapDaySlash\n0000-02-29,-1,YearZeroLeapDay\n0099-12-31,-1,TwoDigitCenturyYearEnd\n",
       );
       expect(r.errors).toEqual([]);
       expect(r.transactions.map((t) => t.postedAt)).toEqual([
         utcMidnight(2024, 12, 31),
         utcMidnight(2024, 2, 29),
         utcMidnight(2024, 2, 29),
+        "0000-02-29T00:00:00.000Z",
+        "0099-12-31T00:00:00.000Z",
       ]);
     });
 

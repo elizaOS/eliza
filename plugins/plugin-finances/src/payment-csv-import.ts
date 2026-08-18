@@ -173,7 +173,12 @@ function utcMidnightIsoOrNull(
   month1based: number,
   day: number,
 ): string | null {
-  const date = new Date(Date.UTC(year, month1based - 1, day));
+  // Construct from an epoch date and set the full year explicitly: Date.UTC
+  // remaps years 0..99 to 1900..1999, which would reject otherwise-valid
+  // four-digit ISO years such as 0000 and 0099 during the round-trip check.
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month1based - 1, day);
   if (
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month1based - 1 ||
