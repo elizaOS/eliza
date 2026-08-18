@@ -269,6 +269,11 @@ function logSettingsClient(
 const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
 const DESKTOP_STATUS_RPC_TIMEOUT_MS = 1_500;
 
+/** Random-name GET — existing 10s REST budget, independent hop. */
+export const CHARACTER_RANDOM_NAME_FETCH_TIMEOUT_MS = 10_000;
+/** Character-history GET — existing 10s REST budget, independent hop. */
+export const CHARACTER_HISTORY_FETCH_TIMEOUT_MS = 10_000;
+
 async function getDesktopStatusRpc<T>(
   baseUrl: string,
   rpcMethod: string,
@@ -597,7 +602,7 @@ declare module "./client-base" {
       character: CharacterData;
       agentName: string;
     }>;
-    getRandomName(): Promise<{ name: string }>;
+    getRandomName(timeoutMs?: number): Promise<{ name: string }>;
     generateCharacterField(
       field: string,
       context: {
@@ -613,10 +618,13 @@ declare module "./client-base" {
     updateCharacter(
       character: CharacterData,
     ): Promise<{ ok: boolean; character: CharacterData; agentName: string }>;
-    listCharacterHistory(options?: {
-      limit?: number;
-      offset?: number;
-    }): Promise<CharacterHistoryResponse>;
+    listCharacterHistory(
+      options?: {
+        limit?: number;
+        offset?: number;
+      },
+      timeoutMs?: number,
+    ): Promise<CharacterHistoryResponse>;
     listExperiences(
       options?: ExperienceListQuery,
     ): Promise<ExperienceListResponse>;
@@ -2573,8 +2581,11 @@ ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
   return this.fetch("/api/character");
 };
 
-ElizaClient.prototype.getRandomName = async function (this: ElizaClient) {
-  return this.fetch("/api/character/random-name");
+ElizaClient.prototype.getRandomName = async function (
+  this: ElizaClient,
+  timeoutMs: number = CHARACTER_RANDOM_NAME_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/character/random-name", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.generateCharacterField = async function (
@@ -2602,6 +2613,7 @@ ElizaClient.prototype.updateCharacter = async function (
 ElizaClient.prototype.listCharacterHistory = async function (
   this: ElizaClient,
   options,
+  timeoutMs: number = CHARACTER_HISTORY_FETCH_TIMEOUT_MS,
 ) {
   const params = new URLSearchParams();
   if (typeof options?.limit === "number") {
@@ -2611,7 +2623,9 @@ ElizaClient.prototype.listCharacterHistory = async function (
     params.set("offset", String(options.offset));
   }
   const qs = params.toString();
-  return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`);
+  return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`, undefined, {
+    timeoutMs,
+  });
 };
 
 function appendMultiQueryParam(
