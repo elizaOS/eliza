@@ -308,6 +308,8 @@ async function tryElizaIntent(
     return false;
   }
   const issuedAtIso = new Date().toISOString();
+  const safeDeepLink =
+    req.deepLink && isSafeDeepLink(req.deepLink) ? req.deepLink : undefined;
   const deepLinkOnTap = iosTapDeepLink(req.deepLink);
   const result = await plugin.receiveIntent({
     kind: "reminder",
@@ -320,6 +322,12 @@ async function tryElizaIntent(
       title: req.title,
       body: req.body ?? "",
       priority: req.priority,
+      // Capacitor's NotificationRouter owns UNUserNotificationCenter in the
+      // installed app and reconstructs `notification.extra` exclusively from
+      // native `cap_extra`. Preserve the validated app route for that primary
+      // tap callback while retaining the URL form for a genuine AppDelegate
+      // fallback path.
+      ...(safeDeepLink ? { deepLink: safeDeepLink } : {}),
       ...(deepLinkOnTap ? { deepLinkOnTap } : {}),
     },
     issuedAtIso,

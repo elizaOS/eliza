@@ -95,6 +95,7 @@ import {
   createNavigateViewEvent,
   dispatchAppEvent,
   dispatchConnectRequest,
+  dispatchOpenNotificationCenter,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -2235,6 +2236,12 @@ function handleDeepLink(url: string): void {
       break;
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
+      break;
+    case "notifications":
+      // AppDelegate delivers the fallback notification URL through the native
+      // appUrlOpen lifecycle. The Home notification center is event-driven, so
+      // a hash write cannot open it on the Capacitor composition root.
+      dispatchOpenNotificationCenter();
       break;
     case "aec-loop":
       // On-device AEC acoustic-loop evidence harness (#11373): the hash route
