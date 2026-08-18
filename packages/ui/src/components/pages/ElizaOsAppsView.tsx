@@ -1510,6 +1510,32 @@ function initialMessageBody(params: URLSearchParams): string {
     : (params.get("body") ?? "");
 }
 
+/** Android SMS gateway POST is a short UI hop — same 15s family as BuildBadge. */
+export const ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS = 15_000;
+
+export async function postAndroidSmsGatewayWithFetch(
+  url: string,
+  body: string,
+  secret: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-eliza-bridge": "android-sms",
+      "x-eliza-gateway-secret": secret,
+    },
+    body,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Cloud gateway failed (${response.status})`);
+  }
+  return response;
+}
+
 function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   return {
     type: "new-message",
@@ -1628,15 +1654,12 @@ export function MessagesPageView() {
     let cancelled = false;
     const forward = async () => {
       try {
-        const response = await fetch(ANDROID_SMS_GATEWAY_WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-eliza-bridge": "android-sms",
-            "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
-          },
-          body: JSON.stringify(androidSmsGatewayPayload(incomingSms)),
-        });
+        const response = await postAndroidSmsGatewayWithFetch(
+          ANDROID_SMS_GATEWAY_WEBHOOK_URL,
+          JSON.stringify(androidSmsGatewayPayload(incomingSms)),
+          ANDROID_SMS_GATEWAY_SECRET,
+          globalThis.fetch,
+        );
         let cloudReply: AndroidSmsGatewayReply | Record<string, never> = {};
         try {
           cloudReply = (await response.json()) as AndroidSmsGatewayReply;
