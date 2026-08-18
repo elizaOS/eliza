@@ -57,11 +57,16 @@ describe("MobileSignalsWeb teardown race", () => {
       releaseSecondBattery = () => resolve();
     });
     let batteryCall = 0;
+    let secondBatteryEntered = false;
     setNavigator({
       userAgent: "Mozilla/5.0",
       getBattery: vi.fn(async () => {
         batteryCall += 1;
         if (batteryCall >= 2) {
+          // Mark that the gated event-driven read actually started before we
+          // await, so the test proves the interleave it claims to reproduce
+          // rather than passing because the read never entered the race window.
+          secondBatteryEntered = true;
           await secondBatteryGate;
         }
         return { charging: true, level: 0.5 };
@@ -82,6 +87,10 @@ describe("MobileSignalsWeb teardown race", () => {
 
     // Fire the DOM event: emitSignal begins and awaits getBattery #2 (gated).
     (visibilityHandler as EventListener)(new Event("visibilitychange"));
+    // Let the synchronous-through-first-await portion run so the gated read is
+    // in-flight, then confirm we are genuinely inside the race window.
+    await Promise.resolve();
+    expect(secondBatteryEntered).toBe(true);
 
     // Consumer stops monitoring while the battery read is still pending.
     await plugin.stopMonitoring();
@@ -96,6 +105,101 @@ describe("MobileSignalsWeb teardown race", () => {
 
     // Contract: stopMonitoring() means no further signal delivery.
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("does not deliver an old-session emit after a stop->restart interleave", async () => {
+    let releaseSecondBattery: (() => void) | undefined;
+    const secondBatteryGate = new Promise<void>((resolve) => {
+      releaseSecondBattery = () => resolve();
+    });
+    let batteryCall = 0;
+    let secondBatteryEntered = false;
+    setNavigator({
+      userAgent: "Mozilla/5.0",
+      getBattery: vi.fn(async () => {
+        batteryCall += 1;
+        // Only the event-driven read (#2) is gated; the two startMonitoring
+        // snapshot reads (#1 and #3) resolve immediately so the restart can
+        // complete while the old-session emit is parked.
+        if (batteryCall === 2) {
+          secondBatteryEntered = true;
+          await secondBatteryGate;
+        }
+        return { charging: true, level: 0.5 };
+      }),
+    } as Partial<Navigator>);
+    const { handlers } = setCapturingDocument();
+
+    const plugin = new MobileSignalsWeb();
+    const listener = vi.fn();
+    await plugin.addListener("signal", listener);
+
+    // Session 1 (getBattery #1).
+    await plugin.startMonitoring({ emitInitial: false });
+    const visibilityHandler = handlers.get("visibilitychange");
+    expect(visibilityHandler).toBeTypeOf("function");
+
+    // Session 1 event-driven emit begins and parks on getBattery #2.
+    (visibilityHandler as EventListener)(new Event("visibilitychange"));
+    await Promise.resolve();
+    expect(secondBatteryEntered).toBe(true);
+
+    // Stop, then start a fresh session 2 (getBattery #3) while the old emit is
+    // still parked. `monitoring` is true again, so only a per-session token can
+    // reject the resuming old-session emit.
+    await plugin.stopMonitoring();
+    await plugin.startMonitoring({ emitInitial: false });
+
+    // Resume the parked session-1 emit.
+    releaseSecondBattery?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The old-session snapshot must not be delivered under the new session.
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("does not leak the initial pair when stopMonitoring resolves mid-start", async () => {
+    let releaseFirstBattery: (() => void) | undefined;
+    const firstBatteryGate = new Promise<void>((resolve) => {
+      releaseFirstBattery = () => resolve();
+    });
+    let batteryCall = 0;
+    let firstBatteryEntered = false;
+    setNavigator({
+      userAgent: "Mozilla/5.0",
+      getBattery: vi.fn(async () => {
+        batteryCall += 1;
+        if (batteryCall === 1) {
+          firstBatteryEntered = true;
+          await firstBatteryGate;
+        }
+        return { charging: true, level: 0.5 };
+      }),
+    } as Partial<Navigator>);
+    setCapturingDocument();
+
+    const plugin = new MobileSignalsWeb();
+    const listener = vi.fn();
+    await plugin.addListener("signal", listener);
+
+    // startMonitoring parks on its initial getBattery read.
+    const startPromise = plugin.startMonitoring({ emitInitial: true });
+    await Promise.resolve();
+    expect(firstBatteryEntered).toBe(true);
+
+    // Consumer stops monitoring while the initial read is pending.
+    await plugin.stopMonitoring();
+
+    // Resume the initial read.
+    releaseFirstBattery?.();
+    const result = await startPromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // No initial signal leaks after a resolved stop, and the return value must
+    // not claim the session is enabled when it delivered nothing.
+    expect(listener).not.toHaveBeenCalled();
+    expect(result.enabled).toBe(false);
   });
 
   it("still delivers exactly the two initial signals on the normal path", async () => {
