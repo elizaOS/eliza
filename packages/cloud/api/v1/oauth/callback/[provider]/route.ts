@@ -56,12 +56,22 @@ async function hashState(state: string): Promise<string> {
     .join("");
 }
 
-function providerFromCallbackUrl(url: string): string | undefined {
+function decodeCallbackProvider(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed provider encoding is invalid callback input.
+    return null;
+  }
+}
+
+function providerFromCallbackUrl(url: string): string | undefined | null {
   const pathname = new URL(url).pathname.replace(/\/+$/, "");
   const provider = pathname.split("/").pop();
-  return provider && provider !== "callback"
-    ? decodeURIComponent(provider)
-    : undefined;
+  if (!provider || provider === "callback") {
+    return undefined;
+  }
+  return decodeCallbackProvider(provider);
 }
 
 const app = new Hono<AppEnv>();
@@ -75,7 +85,16 @@ app.use(
   }),
 );
 
-async function handleCallback(c: AppContext, rawProvider: string | undefined) {
+async function handleCallback(
+  c: AppContext,
+  rawProvider: string | undefined | null,
+) {
+  if (rawProvider === null) {
+    return c.json(
+      { success: false, error: "invalid provider: malformed URL encoding" },
+      400,
+    );
+  }
   const provider = rawProvider?.toLowerCase();
   if (!provider || !SUPPORTED_PROVIDERS.has(provider)) {
     return c.json({ success: false, error: "Unsupported provider" }, 400);

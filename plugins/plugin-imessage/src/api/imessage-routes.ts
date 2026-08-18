@@ -31,6 +31,7 @@
 
 import type http from "node:http";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import { parseIMessageContactId } from "../contact-path.js";
 
 /**
  * Route helper options accepted by the host. This plugin depends on core, not
@@ -142,20 +143,6 @@ function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
   const raw = state.runtime.getService(IMESSAGE_SERVICE_NAME);
   return (raw as IMessageServiceLike | null | undefined) ?? null;
-}
-
-/**
- * Extract the `:id` segment from a contact path like
- * `/api/imessage/contacts/ABCD-EFGH-...`. Returns null if the path
- * doesn't match. The id is URL-decoded since Apple Contacts ids are
- * GUID-style and safe, but callers could URL-encode for paranoia.
- */
-function parseContactId(pathname: string): string | null {
-  const prefix = "/api/imessage/contacts/";
-  if (!pathname.startsWith(prefix)) return null;
-  const rest = pathname.slice(prefix.length);
-  if (!rest) return null;
-  return decodeURIComponent(rest);
 }
 
 /**
@@ -305,11 +292,18 @@ export async function handleIMessageRoute(
 
   // ── PATCH /api/imessage/contacts/:id ──────────────────────────────
   if (method === "PATCH" && pathname.startsWith("/api/imessage/contacts/")) {
-    const id = parseContactId(pathname);
-    if (!id) {
-      helpers.error(res, "contact id is required in the path", 400);
+    const parsedId = parseIMessageContactId(pathname);
+    if (!parsedId.ok) {
+      helpers.error(
+        res,
+        parsedId.reason === "malformed"
+          ? "Invalid contact id: malformed URL encoding"
+          : "contact id is required in the path",
+        400
+      );
       return true;
     }
+    const id = parsedId.id;
     const service = resolveService(state);
     if (!service) {
       helpers.error(res, "imessage service not registered", 503);
@@ -355,11 +349,18 @@ export async function handleIMessageRoute(
 
   // ── DELETE /api/imessage/contacts/:id ─────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/imessage/contacts/")) {
-    const id = parseContactId(pathname);
-    if (!id) {
-      helpers.error(res, "contact id is required in the path", 400);
+    const parsedId = parseIMessageContactId(pathname);
+    if (!parsedId.ok) {
+      helpers.error(
+        res,
+        parsedId.reason === "malformed"
+          ? "Invalid contact id: malformed URL encoding"
+          : "contact id is required in the path",
+        400
+      );
       return true;
     }
+    const id = parsedId.id;
     const service = resolveService(state);
     if (!service) {
       helpers.error(res, "imessage service not registered", 503);

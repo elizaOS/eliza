@@ -242,7 +242,16 @@ export function portalFileUriToPath(uri: string): string {
       `Wayland screenshot portal returned a non-local file URI: ${uri}`,
     );
   }
-  return decodeURIComponent(pathname);
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a portal file URI with
+    // `%` / `%2` / `%ZZ` throws URIError. Malformed encoding is a typed
+    // portal URI error, not an uncaught decode crash.
+    throw new Error(
+      `Wayland screenshot portal returned a malformed file URI: ${uri}`,
+    );
+  }
 }
 
 export const WAYLAND_PORTAL_DBUS_TARGET = {

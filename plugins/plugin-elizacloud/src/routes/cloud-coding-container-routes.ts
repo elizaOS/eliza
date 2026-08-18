@@ -22,6 +22,16 @@ export interface CloudCodingContainerRouteState {
   } | null;
 }
 
+function decodeContainerId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+		// error-policy:J3 Malformed percent-encoding is invalid path input, not a cloud
+		// container outage.
+    return null;
+  }
+}
+
 export async function handleCloudCodingContainerRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -86,12 +96,25 @@ export async function handleCloudCodingContainerRoute(
     pathname,
   );
   if (method === "POST" && syncMatch) {
+    const rawId = syncMatch[1];
+    if (rawId === undefined) {
+      sendJsonError(res, "Missing container id", 400);
+      return true;
+    }
+    const containerId = decodeContainerId(rawId);
+    if (containerId === null) {
+      sendJsonError(
+        res,
+        "Invalid container id: malformed URL encoding",
+        400,
+      );
+      return true;
+    }
     const service = getCloudContainerService(state);
     if (!service) {
       sendJsonError(res, "Cloud container service is not available", 503);
       return true;
     }
-    const containerId = decodeURIComponent(syncMatch[1]);
     const body = await readJsonBody(req, res);
     if (!body) return true;
     const parsed = SyncCloudCodingContainerRequestSchema.safeParse(body);
