@@ -57,6 +57,9 @@ const CHAT_API_BASE = "https://chat.googleapis.com/v1";
 const CHAT_UPLOAD_BASE = "https://chat.googleapis.com/upload/v1";
 const CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
 
+/** Chat REST and upload hops share one documented deadline (not a grep token). */
+export const GOOGLE_CHAT_API_TIMEOUT_MS = 30_000;
+
 function normalizeGoogleChatQuery(query: string): string {
   return query.trim().toLowerCase();
 }
@@ -237,6 +240,17 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private states = new Map<string, GoogleChatAccountState>();
   private defaultAccountId = DEFAULT_GOOGLE_CHAT_ACCOUNT_ID;
+  fetchImpl: typeof fetch = globalThis.fetch;
+  chatTimeoutMs = GOOGLE_CHAT_API_TIMEOUT_MS;
+
+  private async chatFetch(input: string, init: RequestInit = {}): Promise<Response> {
+    const fetchImpl = this.fetchImpl ?? globalThis.fetch;
+    const timeoutMs = this.chatTimeoutMs ?? GOOGLE_CHAT_API_TIMEOUT_MS;
+    return fetchImpl(input, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+    });
+  }
 
   static async start(runtime: IAgentRuntime): Promise<GoogleChatService> {
     logger.info("Starting Google Chat service...");
@@ -540,7 +554,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     }
 
     const url = `${CHAT_API_BASE}/spaces?pageSize=1`;
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -602,7 +616,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   private async fetchApi<T>(url: string, init: RequestInit = {}, accountId?: string): Promise<T> {
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       ...init,
       headers: {
         ...init.headers,
@@ -714,7 +728,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/${messageName}`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -772,7 +786,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/${reactionName}`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -840,7 +854,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const token = await this.getAccessToken(accountId);
     const url = `${CHAT_UPLOAD_BASE}/${space}/attachments:upload?uploadType=multipart`;
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -874,7 +888,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/media/${resourceName}?alt=media`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
