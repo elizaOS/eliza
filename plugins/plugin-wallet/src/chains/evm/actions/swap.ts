@@ -346,6 +346,7 @@ export class SwapAction {
       const response = await fetch(`${url}?${reqParams.toString()}`, {
         method: "GET",
         headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {
@@ -434,6 +435,7 @@ export class SwapAction {
 
       const res = await fetch(url.toString(), {
         headers: { "X-Client-Id": "elizaos", Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!res.ok) throw new Error(`KyberSwap API error: ${res.status}`);
@@ -640,6 +642,7 @@ export class SwapAction {
           enableGasEstimation: true,
           source: "elizaos",
         }),
+        signal: AbortSignal.timeout(10_000),
       }
     );
 
