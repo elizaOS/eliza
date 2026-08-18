@@ -14,6 +14,7 @@ import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { roomsService } from "@/lib/services/agents/rooms";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { usersService } from "@/lib/services/users";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,15 +40,12 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   const roomId = c.req.param("roomId") ?? "";
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
-    // bare JSON.parse. SyntaxError must be a caller 400, not an uncaught
-    // 500, before auth or the first-agent memory write.
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
     return c.json({ error: "Invalid JSON body" }, 400);
   }
+  const body = decodedBody.value;
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return c.json({ error: "Invalid JSON body" }, 400);
   }

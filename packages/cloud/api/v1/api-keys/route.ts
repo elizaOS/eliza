@@ -15,6 +15,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,7 +63,18 @@ app.post("/", async (c) => {
     const user = await requireUserWithOrg(c);
     // Guard a malformed/empty body to a 400 instead of a 500 — the ZodError
     // branch in the catch only handles bad FIELDS, not an unparseable body.
-    const body = await c.req.json().catch(() => null);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json(
+        {
+          error: "Invalid JSON body",
+          details: "Request body must be a valid JSON object",
+        },
+        400,
+      );
+    }
+    const body = decodedBody.value;
     if (!body || typeof body !== "object") {
       return c.json(
         {
