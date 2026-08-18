@@ -26,10 +26,23 @@ interface ConnectRequestBody {
   platform: string;
   redirectUrl?: string;
   scopes?: string[];
+  capabilities?: string[];
+  connectionId?: string;
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isValidString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => typeof entry === "string" && entry.trim().length > 0)
+  );
 }
 
 const app = new Hono<AppEnv>();
@@ -58,6 +71,45 @@ app.post("/", async (c) => {
       );
     }
 
+    if (body.scopes !== undefined && !isNonEmptyStringArray(body.scopes)) {
+      return c.json(
+        validationErrorResponse("scopes must be a non-empty string array"),
+        400,
+      );
+    }
+    if (
+      body.capabilities !== undefined &&
+      !isNonEmptyStringArray(body.capabilities)
+    ) {
+      return c.json(
+        validationErrorResponse(
+          "capabilities must be a non-empty string array",
+        ),
+        400,
+      );
+    }
+    if (body.scopes !== undefined && body.capabilities !== undefined) {
+      return c.json(
+        validationErrorResponse(
+          "Request either named capabilities or raw scopes, not both",
+        ),
+        400,
+      );
+    }
+    if (
+      body.connectionId !== undefined &&
+      (!isValidString(body.connectionId) ||
+        !UUID_PATTERN.test(body.connectionId) ||
+        body.capabilities === undefined)
+    ) {
+      return c.json(
+        validationErrorResponse(
+          "connectionId is only valid with named capabilities",
+        ),
+        400,
+      );
+    }
+
     // Sanitize platform — lowercase and max 50 chars.
     body.platform = body.platform.toLowerCase().slice(0, 50);
     platform = body.platform;
@@ -66,6 +118,7 @@ app.post("/", async (c) => {
       organizationId,
       platform,
       hasScopes: !!body.scopes,
+      capabilityCount: body.capabilities?.length,
     });
 
     const result = await oauthService.initiateAuth({
@@ -74,6 +127,8 @@ app.post("/", async (c) => {
       platform,
       redirectUrl: body.redirectUrl,
       scopes: body.scopes,
+      capabilities: body.capabilities,
+      connectionId: body.connectionId,
     });
 
     return c.json(result);

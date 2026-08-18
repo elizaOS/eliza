@@ -149,36 +149,42 @@ async function runConnect(
 
   const { organizationId, user } = userResult;
   const platformName = capitalize(platform);
+  const capabilities = normalizeScopes(params.capabilities);
+  const connectionRole = normalizeRole(params.connectionRole) ?? "owner";
 
   try {
     const alreadyConnected = await oauthService.isPlatformConnected(
       organizationId,
       platform,
       user.id,
-      normalizeRole(params.connectionRole),
+      connectionRole,
     );
 
+    let activeConnectionId: string | undefined;
     if (alreadyConnected) {
       const connections = await oauthService.listConnections({
         organizationId,
         userId: user.id,
         platform,
-        connectionRole: normalizeRole(params.connectionRole),
+        connectionRole,
       });
       const active = connections.find((c) => c.status === "active");
+      activeConnectionId = active?.id;
       const identifier = active ? formatConnectionIdentifier(active) : "";
-      const text = `Your ${platformName} account is already connected${identifier ? ` (${identifier})` : ""}.`;
-      if (callback) await callback({ text, actions: ["OAUTH"] });
-      return {
-        text,
-        success: true,
-        data: {
-          actionName: "OAUTH",
-          op: "connect",
-          alreadyConnected: true,
-          platform,
-        },
-      };
+      if (!capabilities) {
+        const text = `Your ${platformName} account is already connected${identifier ? ` (${identifier})` : ""}.`;
+        if (callback) await callback({ text, actions: ["OAUTH"] });
+        return {
+          text,
+          success: true,
+          data: {
+            actionName: "OAUTH",
+            op: "connect",
+            alreadyConnected: true,
+            platform,
+          },
+        };
+      }
     }
 
     const result = await oauthService.initiateAuth({
@@ -187,7 +193,9 @@ async function runConnect(
       platform,
       redirectUrl: typeof params.redirectUrl === "string" ? params.redirectUrl : undefined,
       scopes: normalizeScopes(params.scopes),
-      connectionRole: normalizeRole(params.connectionRole),
+      capabilities,
+      connectionId: capabilities ? activeConnectionId : undefined,
+      connectionRole,
     });
 
     if (!result.authUrl) {
@@ -209,6 +217,9 @@ async function runConnect(
         platform,
         authUrl: result.authUrl,
         state: result.state,
+        connectionId: activeConnectionId,
+        capabilityAccess: result.capabilityAccess,
+        retryAfterConsent: result.retryAfterConsent ?? false,
       },
     };
   } catch (error) {
@@ -530,7 +541,14 @@ export const oauthAction: ActionWithParams = {
     },
     scopes: {
       type: "array",
-      description: "For op=connect: optional OAuth scopes to request.",
+      description:
+        "For op=connect: legacy raw OAuth scopes. Prefer named capabilities; do not combine both fields.",
+      required: false,
+    },
+    capabilities: {
+      type: "array",
+      description:
+        "For op=connect: stable named capabilities to authorize incrementally. An existing active account is bound automatically and the returned state tells the caller whether consent, review, or admin approval is needed before retrying the blocked action.",
       required: false,
     },
   }),

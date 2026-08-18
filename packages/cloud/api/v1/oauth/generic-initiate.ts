@@ -24,19 +24,31 @@ import {
   isSafeRelativeRedirectPath,
   LOOPBACK_REDIRECT_ORIGINS,
 } from "@/lib/security/redirect-validation";
-import { OAuthError } from "@/lib/services/oauth";
+import { OAuthError, oauthService } from "@/lib/services/oauth";
 import {
   getProvider,
   isProviderConfigured,
 } from "@/lib/services/oauth/provider-registry";
-import { initiateOAuth2 } from "@/lib/services/oauth/providers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface InitiateRequestBody {
   redirectUrl?: string;
   scopes?: string[];
+  capabilities?: string[];
+  connectionId?: string;
   connectionRole?: "owner" | "agent";
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => typeof entry === "string" && entry.trim().length > 0)
+  );
 }
 
 export async function handleGenericOAuthInitiate(
@@ -129,7 +141,53 @@ export async function handleGenericOAuthInitiate(
       );
     }
 
-    const scopes = body.scopes || provider.defaultScopes || [];
+    if (body.scopes !== undefined && !isNonEmptyStringArray(body.scopes)) {
+      return c.json(
+        {
+          error: "INVALID_SCOPES",
+          message: "scopes must be a non-empty string array",
+        },
+        400,
+      );
+    }
+    if (
+      body.capabilities !== undefined &&
+      !isNonEmptyStringArray(body.capabilities)
+    ) {
+      return c.json(
+        {
+          error: "INVALID_CAPABILITIES",
+          message: "capabilities must be a non-empty string array",
+        },
+        400,
+      );
+    }
+    if (body.scopes !== undefined && body.capabilities !== undefined) {
+      return c.json(
+        {
+          error: "AMBIGUOUS_OAUTH_REQUEST",
+          message: "Request either named capabilities or raw scopes, not both",
+        },
+        400,
+      );
+    }
+    if (
+      body.connectionId !== undefined &&
+      (typeof body.connectionId !== "string" ||
+        body.connectionId.trim().length === 0 ||
+        !UUID_PATTERN.test(body.connectionId) ||
+        body.capabilities === undefined)
+    ) {
+      return c.json(
+        {
+          error: "INVALID_CONNECTION_ID",
+          message: "connectionId is only valid with named capabilities",
+        },
+        400,
+      );
+    }
+    const scopes = body.scopes;
+    const capabilities = body.capabilities;
     const connectionRole =
       body.connectionRole === "owner" || body.connectionRole === "agent"
         ? body.connectionRole
@@ -148,15 +206,19 @@ export async function handleGenericOAuthInitiate(
     logger.info(`[OAuth ${platform}] Initiating auth`, {
       organizationId,
       userId: user.id,
-      scopeCount: scopes.length,
+      scopeCount: scopes?.length,
+      capabilityCount: capabilities?.length,
       connectionRole,
     });
 
-    const result = await initiateOAuth2(provider, {
+    const result = await oauthService.initiateAuth({
       organizationId,
       userId: user.id,
+      platform: provider.id,
       redirectUrl,
       scopes,
+      capabilities,
+      connectionId: body.connectionId,
       connectionRole,
     });
 
@@ -167,6 +229,11 @@ export async function handleGenericOAuthInitiate(
         id: provider.id,
         name: provider.name,
       },
+      capabilityAccess: result.capabilityAccess,
+      retryAfterConsent:
+        result.capabilityAccess?.some(
+          (capability) => capability.status !== "available",
+        ) ?? false,
     });
   } catch (error) {
     logger.error(`[OAuth ${platform}] Failed to initiate auth`, {

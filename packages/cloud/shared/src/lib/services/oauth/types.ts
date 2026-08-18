@@ -141,6 +141,10 @@ export interface InitiateAuthParams {
   redirectUrl?: string;
   /** Specific scopes to request (overrides defaults) */
   scopes?: string[];
+  /** Stable provider capability IDs to request incrementally. */
+  capabilities?: string[];
+  /** Existing tenant-owned connection whose grants should be extended. */
+  connectionId?: string;
   /** Logical Agent-side role for the connection */
   connectionRole?: OAuthConnectionRole;
 }
@@ -153,6 +157,15 @@ export interface InitiateAuthResult {
   authUrl: string;
   /** State parameter for CSRF protection */
   state?: string;
+  /** Capability states that caused this incremental consent flow. */
+  capabilityAccess?: Array<{
+    capabilityId: string;
+    status: "available" | "needs_scope" | "needs_review" | "needs_admin";
+    missingScopes: string[];
+    missingUserScopes: string[];
+  }>;
+  /** Signals that the caller's redirect may retry its blocked action after consent. */
+  retryAfterConsent?: boolean;
   /** For API key platforms - indicates credentials form should be shown */
   requiresCredentials?: boolean;
 }

@@ -32,13 +32,18 @@ const insertReturning = mock(async () => [{ id: "conn-1" }]);
 
 let stateData: Record<string, unknown> | null;
 let userInfoBody: Record<string, unknown>;
+let tokenBody: Record<string, unknown>;
+let storedConnection: Record<string, unknown> | null;
+let cachedState: Record<string, unknown> | null;
 let originalFetch: typeof globalThis.fetch;
 
 mock.module("../../../cache/client", () => ({
   cache: {
     get: async () => stateData,
     del: async () => {},
-    set: async () => {},
+    set: async (_key: string, value: Record<string, unknown>) => {
+      cachedState = value;
+    },
   },
 }));
 
@@ -50,8 +55,10 @@ mock.module("../provider-registry", () => ({
   getClientId: () => "client-id",
   getClientSecret: () => "client-secret",
   getCallbackUrl: () => "https://test.example/callback",
-  resolveRequestedScopes: (_p: unknown, s?: string[]) => s ?? [],
-  getNestedValue: () => undefined,
+  getAllowedScopes: realProviderRegistry.getAllowedScopes,
+  resolveOAuthCapabilityRequest: realProviderRegistry.resolveOAuthCapabilityRequest,
+  resolveRequestedScopes: realProviderRegistry.resolveRequestedScopes,
+  getNestedValue: realProviderRegistry.getNestedValue,
 }));
 
 mock.module("../../secrets", () => ({
@@ -82,9 +89,12 @@ mock.module("../../../../db/helpers", () => ({
   writeTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       insert: () => ({
-        values: () => ({
-          onConflictDoUpdate: () => ({ returning: insertReturning }),
-        }),
+        values: (values: Record<string, unknown>) => {
+          storedConnection = values;
+          return {
+            onConflictDoUpdate: () => ({ returning: insertReturning }),
+          };
+        },
       }),
     }),
 }));
@@ -115,6 +125,13 @@ const provider = {
     userInfo: "https://test.example/userinfo",
   },
   pkce: false,
+  defaultScopes: ["a"],
+  allowedScopes: ["a", "b"],
+  capabilityScopes: {
+    "test.write": { scopes: ["b"], consent: "review" },
+  },
+  userScopes: ["user:read"],
+  allowedUserScopes: ["user:read"],
 } as never;
 
 describe("handleOAuth2Callback — identity extraction fails closed (#13415)", () => {
@@ -127,14 +144,18 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       providerId: "testprov",
       redirectUrl: "/done",
       scopes: ["a"],
+      userScopes: ["user:read"],
       connectionRole: "OWNER",
       createdAt: Date.now(),
     };
+    tokenBody = { access_token: "at-123", token_type: "Bearer" };
+    storedConnection = null;
+    cachedState = null;
     originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (url: unknown) => {
       const u = String(url);
       if (u.includes("/token")) {
-        return jsonResponse({ access_token: "at-123", token_type: "Bearer" });
+        return jsonResponse(tokenBody);
       }
       if (u.includes("/userinfo")) {
         return jsonResponse(userInfoBody);
@@ -258,5 +279,78 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     } finally {
       AbortSignal.timeout = originalTimeout;
     }
+  });
+
+  it("stores provider-confirmed grants and drops malformed added scopes", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    userInfoBody = { id: "real-user-42" };
+    tokenBody = {
+      access_token: "at-123",
+      token_type: "Bearer",
+      scope: "a provider:unexpected",
+      authed_user: { scope: "user:read rogue:scope" },
+    };
+
+    await handleOAuth2Callback(provider, "auth-code", "state-token");
+
+    expect(storedConnection?.scopes).toEqual(["a", "user:read"]);
+  });
+
+  it("rejects a different account returned during bound incremental consent", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    stateData = {
+      organizationId: "org-1",
+      userId: "user-1",
+      providerId: "testprov",
+      redirectUrl: "/done",
+      scopes: ["a"],
+      userScopes: ["user:read"],
+      expectedPlatformUserId: "expected-user",
+      connectionRole: "OWNER",
+      createdAt: Date.now(),
+    };
+    userInfoBody = { id: "different-user" };
+
+    await expect(handleOAuth2Callback(provider, "auth-code", "state-token")).rejects.toThrow(
+      "permission",
+    );
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+});
+
+describe("initiateOAuth2 — incremental capability protocol (#19879)", () => {
+  it("preserves grants, binds the account, and emits PKCE plus capability state", async () => {
+    const { initiateOAuth2 } = await import("./oauth2");
+    cachedState = null;
+    const result = await initiateOAuth2({ ...provider, pkce: true } as never, {
+      organizationId: "org-1",
+      userId: "user-1",
+      capabilities: ["test.write"],
+      grantedScopes: ["a"],
+      expectedPlatformUserId: "platform-user-1",
+      connectionRole: "OWNER",
+    });
+
+    const url = new URL(result.authUrl);
+    expect(url.searchParams.get("scope")?.split(" ")).toEqual(["a", "b"]);
+    expect(url.searchParams.get("user_scope")).toBe("user:read");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(url.searchParams.get("state")).toBe(result.state);
+    expect(result.capabilityAccess).toEqual([
+      {
+        capabilityId: "test.write",
+        status: "needs_review",
+        missingScopes: ["b"],
+        missingUserScopes: [],
+      },
+    ]);
+    expect(cachedState).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      scopes: ["a", "b"],
+      userScopes: ["user:read"],
+      expectedPlatformUserId: "platform-user-1",
+    });
   });
 });

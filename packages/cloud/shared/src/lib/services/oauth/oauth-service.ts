@@ -14,7 +14,12 @@ import { logger } from "../../utils/logger";
 import { getOAuthVersion, incrementOAuthVersion } from "./cache-version";
 import { getAdapter, getAllAdapters } from "./connection-adapters";
 import { Errors } from "./errors";
-import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
+import {
+  getAllowedScopes,
+  getProvider,
+  isProviderConfigured,
+  OAUTH_PROVIDERS,
+} from "./provider-registry";
 import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
 import type {
@@ -35,6 +40,45 @@ const DEFAULT_REDIRECT = "/cloud/settings?tab=connections";
 const STATE_TTL = 600; // 10 minutes
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type PlatformCredential = typeof platformCredentials.$inferSelect;
+
+interface ExistingCapabilityGrant {
+  grantedScopes: string[];
+  grantedUserScopes: string[];
+  expectedPlatformUserId: string;
+}
+
+/** Validate and project one explicit existing connection for incremental consent. */
+export function resolveExistingCapabilityGrant(
+  connection: OAuthConnection | null,
+  input: {
+    connectionId: string;
+    platform: string;
+    userId: string;
+    connectionRole: OAuthStandardConnectionRole;
+    allowedScopes: readonly string[];
+    allowedUserScopes: readonly string[];
+  },
+): ExistingCapabilityGrant {
+  const ownsConnection =
+    connection !== null &&
+    connection.platform === input.platform &&
+    connection.status === "active" &&
+    normalizeOAuthConnectionRole(connection.connectionRole) === input.connectionRole &&
+    (input.connectionRole === "AGENT"
+      ? connection.userId === undefined
+      : connection.userId === input.userId);
+  if (!ownsConnection || !connection) {
+    throw Errors.connectionNotFound(input.connectionId);
+  }
+
+  const allowedScopes = new Set(input.allowedScopes);
+  const allowedUserScopes = new Set(input.allowedUserScopes);
+  return {
+    grantedScopes: connection.scopes.filter((scope) => allowedScopes.has(scope)),
+    grantedUserScopes: connection.scopes.filter((scope) => allowedUserScopes.has(scope)),
+    expectedPlatformUserId: connection.platformUserId,
+  };
+}
 
 export function sortConnectionsByRecency(connections: OAuthConnection[]): OAuthConnection[] {
   return [...connections].sort((a, b) => {
@@ -155,12 +199,24 @@ class OAuthService {
 
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
-    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const {
+      organizationId,
+      userId,
+      platform,
+      redirectUrl,
+      scopes,
+      capabilities,
+      connectionId,
+      connectionRole,
+    } = params;
     const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
     if (!provider) throw Errors.platformNotSupported(platform);
     if (!isProviderConfigured(provider)) throw Errors.platformNotConfigured(platform);
+    if (connectionId !== undefined && capabilities === undefined) {
+      throw Errors.invalidCapabilityRequest(platform, ["connectionId requires named capabilities"]);
+    }
 
     // API key providers return a form URL
     if (provider.type === "api_key") {
@@ -172,14 +228,42 @@ class OAuthService {
 
     // Use generic OAuth2 flow for providers that opt-in
     if (provider.useGenericRoutes && provider.type === "oauth2") {
+      let grantedScopes: string[] | undefined;
+      let grantedUserScopes: string[] | undefined;
+      let expectedPlatformUserId: string | undefined;
+      if (connectionId !== undefined) {
+        const connection = await this.getConnection({ organizationId, connectionId });
+        const grant = resolveExistingCapabilityGrant(connection, {
+          connectionId,
+          platform,
+          userId,
+          connectionRole: role,
+          allowedScopes: getAllowedScopes(provider),
+          allowedUserScopes: provider.allowedUserScopes ?? provider.userScopes ?? [],
+        });
+        grantedScopes = grant.grantedScopes;
+        grantedUserScopes = grant.grantedUserScopes;
+        expectedPlatformUserId = grant.expectedPlatformUserId;
+      }
+
       const result = await initiateOAuth2(provider, {
         organizationId,
         userId,
         redirectUrl,
         scopes,
+        capabilities,
+        grantedScopes,
+        grantedUserScopes,
+        expectedPlatformUserId,
         connectionRole: role,
       });
-      return { authUrl: result.authUrl, state: result.state };
+      return {
+        authUrl: result.authUrl,
+        state: result.state,
+        capabilityAccess: result.capabilityAccess,
+        retryAfterConsent:
+          result.capabilityAccess?.some((capability) => capability.status !== "available") ?? false,
+      };
     }
 
     // Provider-specific compatibility handlers remain for OAuth 1.0a Twitter

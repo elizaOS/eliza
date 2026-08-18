@@ -15,6 +15,7 @@ export enum OAuthErrorCode {
   PLATFORM_NOT_CONFIGURED = "PLATFORM_NOT_CONFIGURED",
   PLATFORM_NOT_SUPPORTED = "PLATFORM_NOT_SUPPORTED",
   INVALID_SCOPE_REQUEST = "INVALID_SCOPE_REQUEST",
+  INVALID_CAPABILITY_REQUEST = "INVALID_CAPABILITY_REQUEST",
 
   // Token errors
   TOKEN_REFRESH_FAILED = "TOKEN_REFRESH_FAILED",
@@ -44,6 +45,7 @@ export const ERROR_STATUS_MAP: Record<OAuthErrorCode, number> = {
   [OAuthErrorCode.PLATFORM_NOT_CONFIGURED]: 400,
   [OAuthErrorCode.PLATFORM_NOT_SUPPORTED]: 400,
   [OAuthErrorCode.INVALID_SCOPE_REQUEST]: 400,
+  [OAuthErrorCode.INVALID_CAPABILITY_REQUEST]: 400,
   [OAuthErrorCode.UNAUTHORIZED]: 401,
   [OAuthErrorCode.FORBIDDEN]: 403,
   [OAuthErrorCode.RATE_LIMITED]: 429,
@@ -169,6 +171,13 @@ export const Errors = {
     new OAuthError(
       OAuthErrorCode.INVALID_SCOPE_REQUEST,
       `Requested scopes are not allowed for ${platform}: ${invalidScopes.join(", ")}`,
+      false,
+    ),
+
+  invalidCapabilityRequest: (platform: string, invalidCapabilities: string[]) =>
+    new OAuthError(
+      OAuthErrorCode.INVALID_CAPABILITY_REQUEST,
+      `Requested capabilities are not registered for ${platform}: ${invalidCapabilities.join(", ")}`,
       false,
     ),
 

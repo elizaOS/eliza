@@ -16,12 +16,19 @@ import { cache } from "../../../cache/client";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { secretsService } from "../../secrets";
-import type { OAuthProviderConfig, UserInfoMapping } from "../provider-registry";
+import { Errors } from "../errors";
+import type {
+  OAuthCapabilityAccess,
+  OAuthProviderConfig,
+  UserInfoMapping,
+} from "../provider-registry";
 import {
+  getAllowedScopes,
   getCallbackUrl,
   getClientId,
   getClientSecret,
   getNestedValue,
+  resolveOAuthCapabilityRequest,
   resolveRequestedScopes,
 } from "../provider-registry";
 import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
@@ -47,6 +54,8 @@ interface OAuth2State {
   providerId: string;
   redirectUrl: string;
   scopes: string[];
+  userScopes?: string[];
+  expectedPlatformUserId?: string;
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
   codeVerifier?: string;
@@ -81,6 +90,41 @@ interface TokenResponse {
   token_type?: string;
   scope?: string;
   [key: string]: unknown;
+}
+
+function parseGrantedScopeField(value: unknown): string[] {
+  return typeof value === "string"
+    ? value
+        .split(/[\s,]+/)
+        .map((scope) => scope.trim())
+        .filter(Boolean)
+    : [];
+}
+
+/**
+ * Prefer scopes confirmed by the token response, while preserving providers
+ * that omit scope on a successful exchange. Provider-added values are dropped
+ * unless they were registered in the server-owned allowlist.
+ */
+function resolveGrantedScopes(
+  provider: OAuthProviderConfig,
+  tokens: TokenResponse,
+  requestedScopes: string[],
+  requestedUserScopes: string[],
+): string[] {
+  const tokenScopes = parseGrantedScopeField(tokens.scope);
+  const authedUser = tokens.authed_user;
+  const userTokenScopes =
+    authedUser && typeof authedUser === "object" && !Array.isArray(authedUser)
+      ? parseGrantedScopeField((authedUser as Record<string, unknown>).scope)
+      : [];
+  const confirmed = [...tokenScopes, ...userTokenScopes];
+  const resolved = confirmed.length > 0 ? confirmed : [...requestedScopes, ...requestedUserScopes];
+  const allowed = new Set([
+    ...getAllowedScopes(provider),
+    ...(provider.allowedUserScopes ?? provider.userScopes ?? []),
+  ]);
+  return [...new Set(resolved.filter((scope) => allowed.has(scope)))];
 }
 
 /**
@@ -166,6 +210,7 @@ function oauthSecretName(
 export interface InitiateOAuth2Result {
   authUrl: string;
   state: string;
+  capabilityAccess?: OAuthCapabilityAccess[];
 }
 
 /**
@@ -193,6 +238,10 @@ export async function initiateOAuth2(
     userId: string;
     redirectUrl?: string;
     scopes?: string[];
+    capabilities?: string[];
+    grantedScopes?: string[];
+    grantedUserScopes?: string[];
+    expectedPlatformUserId?: string;
     connectionRole?: OAuthConnectionRole;
   },
 ): Promise<InitiateOAuth2Result> {
@@ -207,7 +256,22 @@ export async function initiateOAuth2(
 
   const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const callbackUrl = getCallbackUrl(provider, baseUrl);
-  const scopes = resolveRequestedScopes(provider, params.scopes);
+  if (params.scopes !== undefined && params.capabilities !== undefined) {
+    throw Errors.invalidCapabilityRequest(provider.id, [
+      "capabilities cannot be combined with raw scopes",
+    ]);
+  }
+  const capabilityRequest =
+    params.capabilities === undefined
+      ? undefined
+      : resolveOAuthCapabilityRequest(
+          provider,
+          params.capabilities,
+          params.grantedScopes,
+          params.grantedUserScopes,
+        );
+  const scopes = capabilityRequest?.scopes ?? resolveRequestedScopes(provider, params.scopes);
+  const userScopes = capabilityRequest?.userScopes ?? provider.userScopes ?? [];
   const redirectUrl = params.redirectUrl || "/auth/success";
 
   // Generate cryptographically secure state
@@ -229,6 +293,8 @@ export async function initiateOAuth2(
     providerId: provider.id,
     redirectUrl,
     scopes,
+    userScopes,
+    expectedPlatformUserId: params.expectedPlatformUserId,
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
@@ -260,8 +326,8 @@ export async function initiateOAuth2(
   // the `storeConnection` dedup guard rejects with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
   const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
-  if (provider.userScopes && provider.userScopes.length > 0 && normalizedRole !== "AGENT") {
-    authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
+  if (userScopes.length > 0 && normalizedRole !== "AGENT") {
+    authUrl.searchParams.set("user_scope", userScopes.join(" "));
   }
 
   authUrl.searchParams.set("state", state);
@@ -288,6 +354,7 @@ export async function initiateOAuth2(
   return {
     authUrl: authUrl.toString(),
     state,
+    ...(capabilityRequest ? { capabilityAccess: capabilityRequest.capabilities } : {}),
   };
 }
 
@@ -316,7 +383,15 @@ export async function handleOAuth2Callback(
   // Delete state to prevent replay attacks
   await cache.del(stateKey);
 
-  const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
+  const {
+    organizationId,
+    userId,
+    redirectUrl,
+    scopes,
+    userScopes,
+    expectedPlatformUserId,
+    codeVerifier,
+  } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
 
   // Exchange code for tokens
@@ -341,6 +416,16 @@ export async function handleOAuth2Callback(
     userInfo = extractUserInfoFromTokens(provider, tokens);
   }
 
+  if (expectedPlatformUserId !== undefined && userInfo.id !== expectedPlatformUserId) {
+    logger.warn("[OAuth2] Incremental consent returned a different account", {
+      providerId: provider.id,
+      organizationId,
+      expectedPlatformUserId,
+      returnedPlatformUserId: userInfo.id,
+    });
+    throw Errors.forbidden();
+  }
+
   // Store connection
   const connectionId = await storeConnection(
     provider,
@@ -349,7 +434,7 @@ export async function handleOAuth2Callback(
     connectionRole,
     tokens,
     userInfo,
-    scopes,
+    resolveGrantedScopes(provider, tokens, scopes, userScopes ?? []),
   );
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {

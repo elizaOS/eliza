@@ -14,6 +14,7 @@ import {
   isProviderConfigured,
   isValidProvider,
   type OAuthProviderConfig,
+  resolveOAuthCapabilityRequest,
   resolveRequestedScopes,
 } from "./provider-registry";
 
@@ -53,6 +54,142 @@ describe("getAllowedScopes / resolveRequestedScopes", () => {
     expect(resolveRequestedScopes(p, ["read", " write "])).toEqual(["read", "write"]);
     // 'admin' is not in the allowlist → scope-escalation attempt must throw.
     expect(() => resolveRequestedScopes(p, ["read", "admin"])).toThrow();
+  });
+});
+
+describe("incremental capability scope bundles (#19879)", () => {
+  test("the seven promoted providers use minimal baselines while retaining legacy scope allowlists", () => {
+    const expectedBaselines: Record<string, string[]> = {
+      google: [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+      ],
+      microsoft: ["openid", "profile", "email", "offline_access", "User.Read"],
+      github: ["read:user", "user:email"],
+      linear: ["read"],
+      slack: ["users:read"],
+      salesforce: ["id", "refresh_token"],
+      airtable: ["user.email:read"],
+    };
+
+    for (const [providerId, baseline] of Object.entries(expectedBaselines)) {
+      const registered = getProvider(providerId);
+      expect(registered?.defaultScopes).toEqual(baseline);
+      expect(registered?.capabilityScopes).toBeDefined();
+      expect(registered?.allowedScopes?.length).toBeGreaterThan(baseline.length);
+      for (const scope of baseline) {
+        expect(registered?.allowedScopes).toContain(scope);
+      }
+    }
+  });
+
+  test("derives only baseline plus the requested named capability", () => {
+    const google = getProvider("google");
+    if (!google) throw new Error("google provider must exist");
+
+    const request = resolveOAuthCapabilityRequest(google, ["google.calendar.read"]);
+
+    expect(request.scopes).toEqual([
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/calendar.readonly",
+    ]);
+    expect(request.scopes).not.toContain("https://www.googleapis.com/auth/gmail.send");
+    expect(request.capabilities).toEqual([
+      {
+        capabilityId: "google.calendar.read",
+        status: "needs_scope",
+        missingScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+        missingUserScopes: [],
+      },
+    ]);
+  });
+
+  test("projects available, review, and admin states from actual grants", () => {
+    const google = getProvider("google");
+    const salesforce = getProvider("salesforce");
+    if (!google || !salesforce) throw new Error("promoted providers must exist");
+
+    expect(
+      resolveOAuthCapabilityRequest(
+        google,
+        ["google.calendar.read"],
+        ["https://www.googleapis.com/auth/calendar.readonly"],
+      ).capabilities[0]?.status,
+    ).toBe("available");
+    expect(
+      resolveOAuthCapabilityRequest(google, ["google.gmail.send"]).capabilities[0]?.status,
+    ).toBe("needs_review");
+    expect(
+      resolveOAuthCapabilityRequest(salesforce, ["salesforce.full"]).capabilities[0]?.status,
+    ).toBe("needs_admin");
+  });
+
+  test("preserves an existing allowed grant while adding one capability", () => {
+    const google = getProvider("google");
+    if (!google) throw new Error("google provider must exist");
+
+    const request = resolveOAuthCapabilityRequest(
+      google,
+      ["google.calendar.read"],
+      ["https://www.googleapis.com/auth/gmail.readonly"],
+    );
+
+    expect(request.scopes).toEqual([
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/calendar.readonly",
+    ]);
+    expect(request.capabilities[0]?.status).toBe("needs_scope");
+  });
+
+  test("splits Slack bot and user scopes without restoring the old broad default", () => {
+    const slack = getProvider("slack");
+    if (!slack) throw new Error("slack provider must exist");
+
+    const request = resolveOAuthCapabilityRequest(slack, [
+      "slack.message.send",
+      "slack.files.read",
+    ]);
+
+    expect(request.scopes).toEqual(["users:read", "chat:write"]);
+    expect(request.userScopes).toEqual(["identity.basic", "chat:write", "files:read"]);
+  });
+
+  test("deduplicates repeated capabilities and fails closed for unknown names", () => {
+    const airtable = getProvider("airtable");
+    if (!airtable) throw new Error("airtable provider must exist");
+
+    const request = resolveOAuthCapabilityRequest(airtable, [
+      "airtable.records.read",
+      "airtable.records.read",
+    ]);
+    expect(request.capabilities).toHaveLength(1);
+    expect(request.scopes).toEqual(["user.email:read", "data.records:read"]);
+    expect(() => resolveOAuthCapabilityRequest(airtable, ["airtable.not-real"])).toThrow(
+      "Requested capabilities are not registered",
+    );
+  });
+
+  test("validates every registered bundle against its provider allowlists", () => {
+    for (const providerId of [
+      "google",
+      "microsoft",
+      "github",
+      "linear",
+      "slack",
+      "salesforce",
+      "airtable",
+    ]) {
+      const registered = getProvider(providerId);
+      if (!registered?.capabilityScopes) {
+        throw new Error(`${providerId} capability registry must exist`);
+      }
+      expect(() =>
+        resolveOAuthCapabilityRequest(registered, Object.keys(registered.capabilityScopes)),
+      ).not.toThrow();
+    }
   });
 });
 
