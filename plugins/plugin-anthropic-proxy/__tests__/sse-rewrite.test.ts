@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { ELIZA_TOOL_RENAMES } from "../src/proxy/eliza-fingerprint.js";
 import { reverseMap } from "../src/proxy/reverse-map.js";
+import { applyReplacements } from "../src/proxy/sanitize.js";
 import { createSseStream } from "../src/proxy/sse-rewrite.js";
 
 describe("createSseStream", () => {
@@ -147,16 +148,14 @@ describe("createSseStream", () => {
     }
   });
 
-  it("does not double-transform an already-mapped retained tail (idempotence)", () => {
+  it("maps a default tool rename once when input arrives byte by byte", () => {
     const config = {
       toolRenames: ELIZA_TOOL_RENAMES,
       propRenames: [] as ReadonlyArray<readonly [string, string]>,
       reverseMap: [] as ReadonlyArray<readonly [string, string]>,
     };
     const reverse = (text: string) => reverseMap(text, config);
-    // Drip the token in one-byte chunks so its mapped form sits in the retained
-    // tail across many rounds; the eliza output token "write_file" must not be
-    // re-triggered by any reverse key.
+    // Drip the token in one-byte chunks to exercise decoder/event buffering.
     const payload = `${"c".repeat(80)}"name":"Write"${"d".repeat(80)}`;
     const emitted: string[] = [];
     const stream = createSseStream(
@@ -171,6 +170,64 @@ describe("createSseStream", () => {
     const joined = emitted.join("");
     expect(joined).toBe(`${"c".repeat(80)}"name":"write_file"${"d".repeat(80)}`);
   });
+
+  it("applies a non-idempotent custom reverse map exactly once", () => {
+    const pairs = [
+      ["B", "C"],
+      ["A", "B"],
+    ] as const;
+    const emitted: string[] = [];
+    const stream = createSseStream(
+      (text) => applyReplacements(text, pairs),
+      (text) => emitted.push(text),
+      () => undefined
+    );
+    const firstEvent = `data: ${"x".repeat(70)}A\n\n`;
+    const secondEvent = "data: done\n\n";
+
+    stream.write(Buffer.from(firstEvent));
+    stream.write(Buffer.from(secondEvent));
+    stream.end();
+
+    expect(emitted.join("")).toBe(applyReplacements(firstEvent + secondEvent, pairs));
+    expect(emitted.join("")).toContain("B\n\n");
+    expect(emitted.join("")).not.toContain("C\n\n");
+  });
+
+  it("buffers custom reverse-map keys longer than 64 characters", () => {
+    const pattern = "K".repeat(80);
+    const emitted: string[] = [];
+    const stream = createSseStream(
+      (text) => text.replaceAll(pattern, "mapped"),
+      (text) => emitted.push(text),
+      () => undefined
+    );
+
+    stream.write(Buffer.from(`data: ${"x".repeat(70)}${pattern.slice(0, 70)}`));
+    stream.write(Buffer.from(`${pattern.slice(70)}\n\n`));
+    stream.end();
+
+    expect(emitted.join("")).toBe(`data: ${"x".repeat(70)}mapped\n\n`);
+  });
+
+  it.each(["\n", "\r", "\r\n"])(
+    "emits an event with %j line endings before the upstream stream ends",
+    (lineEnd) => {
+      const emitted: string[] = [];
+      const stream = createSseStream(
+        (text) => text.replaceAll("Write", "write_file"),
+        (text) => emitted.push(text),
+        () => undefined
+      );
+      const event = `event: content_block_start${lineEnd}data: {"name":"Write"}${lineEnd}${lineEnd}`;
+
+      stream.write(Buffer.from(`${event}partial`));
+
+      expect(emitted).toEqual([event.replace("Write", "write_file")]);
+      stream.end();
+      expect(emitted.join("")).toContain("partial");
+    }
+  );
 
   it("calls finish even for empty streams", () => {
     const emitted: string[] = [];
