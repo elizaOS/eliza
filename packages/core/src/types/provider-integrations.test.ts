@@ -64,6 +64,37 @@ describe("provider integration contracts", () => {
 		).toThrow(/unique IDs/);
 	});
 
+	it("strictly normalizes timestamps and freezes nested capability state", () => {
+		const account = normalizeConnectedAccount({
+			accountId: "conn_opaque_01",
+			providerId: "calendar",
+			mode: "cloud",
+			status: "connected",
+			displayName: null,
+			capabilities: [
+				{ capabilityId: "mail.read", riskLevel: "R1", status: "available" },
+			],
+			lastUsedAt: "2026-08-17T05:00:00-07:00",
+		});
+
+		expect(account.lastUsedAt).toBe("2026-08-17T12:00:00.000Z");
+		expect(Object.isFrozen(account)).toBe(true);
+		expect(Object.isFrozen(account.capabilities)).toBe(true);
+		expect(Object.isFrozen(account.capabilities[0])).toBe(true);
+		expect(() =>
+			normalizeConnectedAccount({
+				...account,
+				lastUsedAt: "2026-08-17",
+			}),
+		).toThrow(/timezone/);
+		expect(() =>
+			normalizeConnectedAccount({
+				...account,
+				lastUsedAt: "2026-02-30T12:00:00Z",
+			}),
+		).toThrow(/ISO-8601/);
+	});
+
 	it("keeps account selection optional in a normalized capability request", () => {
 		expect(
 			normalizeCapabilityRequest({
