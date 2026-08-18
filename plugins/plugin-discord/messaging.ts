@@ -72,6 +72,18 @@ function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
 	return `${text}${closeLine}`;
 }
 
+// truncateWellFormed(remaining, limit) returns "" only when limit === 1 and
+// `remaining` opens with a surrogate pair: the pair needs 2 code units and
+// truncateWellFormed refuses to split it, so it backs the cut off to 0. An
+// empty chunk makes zero progress, turning the caller's while-loop infinite
+// instead of just malformed. Every other limit/input combination already
+// makes progress via truncateWellFormed alone, so widen the ask by exactly
+// one unit only in that single failure mode -- enough to fit the whole pair.
+function takeWellFormedChunk(text: string, limit: number): string {
+	const chunk = truncateWellFormed(text, limit);
+	return chunk.length > 0 ? chunk : truncateWellFormed(text, limit + 1);
+}
+
 function splitLongLine(
 	line: string,
 	maxChars: number,
@@ -91,13 +103,13 @@ function splitLongLine(
 			// emoji), splitting one character across two chunks as a lone high
 			// surrogate + lone low surrogate. truncateWellFormed backs the cut off
 			// by one unit instead.
-			const chunk = truncateWellFormed(remaining, limit);
+			const chunk = takeWellFormedChunk(remaining, limit);
 			out.push(chunk);
 			remaining = remaining.slice(chunk.length);
 			continue;
 		}
 
-		const window = truncateWellFormed(remaining, limit);
+		const window = takeWellFormedChunk(remaining, limit);
 		let breakIdx = -1;
 		for (let i = window.length - 1; i >= 0; i--) {
 			if (/\s/.test(window[i])) {
