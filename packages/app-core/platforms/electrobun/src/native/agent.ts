@@ -345,6 +345,20 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
   childEnv.ELIZA_STATE_DIR = stateDir;
 }
 
+export function applyDesktopChildOwnershipEnv(
+  childEnv: Record<string, string>,
+  parentPid: number = process.pid,
+): void {
+  if (!Number.isSafeInteger(parentPid) || parentPid <= 1) {
+    throw new Error("Desktop parent PID must be an integer greater than 1");
+  }
+  // AgentManager.start only runs after the desktop host has selected the
+  // embedded runtime. Preserve the user's saved remote target on disk while
+  // making the active API mode and process ownership truthful for this child.
+  childEnv.ELIZA_ACTIVE_API_RUNTIME_MODE = "local";
+  childEnv.ELIZA_DESKTOP_PARENT_PID = String(parentPid);
+}
+
 export function applyWindowsNativeInferenceDefaults(
   childEnv: Record<string, string>,
   platform: NodeJS.Platform = process.platform,
@@ -1591,6 +1605,7 @@ export class AgentManager {
       };
       childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);
       applyDesktopChildStateEnv(childEnv);
+      applyDesktopChildOwnershipEnv(childEnv);
       delete childEnv.ELIZA_PORT;
       delete childEnv.NODE_PATH;
 

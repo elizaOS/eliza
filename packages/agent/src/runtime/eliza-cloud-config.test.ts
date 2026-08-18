@@ -11,9 +11,11 @@ import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
+  applyActiveHostRuntimeMode,
   applyCloudConfigToEnv,
   cloudApiKeyFingerprint,
   ensureProvisionedCloudContainerConfig,
+  projectConfigEnvToProcessEnv,
   resolveConfigEnvVaultRefsForBoot,
   resolveEmbeddingProviderPluginName,
   resolveRuntimeProviderName,
@@ -53,6 +55,7 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
   "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
   "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+  "CEREBRAS_API_KEY",
   "ELIZAOS_CLOUD_PLANNER_MODEL",
   "NANO_MODEL",
   "SMALL_MODEL",
@@ -783,6 +786,68 @@ describe("canonical route to runtime provider identity", () => {
 
     expect(config.env?.vars?.ELIZAOS_CLOUD_API_KEY).toBe("resolved-cloud-key");
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("resolved-cloud-key");
+  });
+
+  it("replaces an inherited vault sentinel with the resolved provider credential", async () => {
+    const sentinel = "vault://providers.cerebras.api-key";
+    const config = {
+      env: {
+        CEREBRAS_API_KEY: sentinel,
+        vars: { CEREBRAS_API_KEY: sentinel },
+      },
+    } as ElizaConfig;
+    process.env.CEREBRAS_API_KEY = sentinel;
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      sharedVault: () => ({
+        ...defaultAgentHostBridge.sharedVault(),
+        has: (key: string) =>
+          Promise.resolve(key === "providers.cerebras.api-key"),
+        get: (key: string) =>
+          Promise.resolve(
+            key === "providers.cerebras.api-key" ? "resolved-cerebras-key" : "",
+          ),
+      }),
+    });
+
+    await resolveConfigEnvVaultRefsForBoot(config);
+    projectConfigEnvToProcessEnv(config);
+
+    expect(process.env.CEREBRAS_API_KEY).toBe("resolved-cerebras-key");
+  });
+
+  it("preserves a real launch credential over persisted config", () => {
+    const config = {
+      env: {
+        vars: { CEREBRAS_API_KEY: "persisted-key" },
+      },
+    } as ElizaConfig;
+    process.env.CEREBRAS_API_KEY = "launch-key";
+
+    projectConfigEnvToProcessEnv(config);
+
+    expect(process.env.CEREBRAS_API_KEY).toBe("launch-key");
+  });
+
+  it("uses an in-memory local topology when the desktop host owns a fallback launch", () => {
+    process.env.CEREBRAS_API_KEY = "resolved-cerebras-key";
+    const config = {
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "http://127.0.0.1:2250",
+      },
+      serviceRouting: {
+        llmText: { backend: "cerebras", transport: "direct" },
+      },
+    } as ElizaConfig;
+
+    applyActiveHostRuntimeMode(config, {
+      ELIZA_ACTIVE_API_RUNTIME_MODE: "local",
+    });
+
+    expect(config.deploymentTarget).toEqual({ runtime: "local" });
+    expect(collectPluginNames(config).has("@elizaos/plugin-openai")).toBe(true);
   });
 });
 

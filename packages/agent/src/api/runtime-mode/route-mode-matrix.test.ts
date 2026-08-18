@@ -27,6 +27,23 @@ describe("resolveRuntimeMode", () => {
     expect(resolveRuntimeMode({}).mode).toBe("local");
   });
 
+  test("host-owned local override reflects an active fallback without rewriting the persisted remote target", () => {
+    const snap = resolveRuntimeMode(
+      {
+        deploymentTarget: {
+          runtime: "remote",
+          provider: "remote",
+          remoteApiBase: "http://127.0.0.1:2250",
+        },
+      },
+      "local",
+    );
+
+    expect(snap.mode).toBe("local");
+    expect(snap.deploymentTarget?.runtime).toBe("remote");
+    expect(snap.remoteApiBase).toBeNull();
+  });
+
   test("local-only when cloud.enabled === false on a local target", () => {
     const snap = resolveRuntimeMode({
       deploymentTarget: { runtime: "local" },

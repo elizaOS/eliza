@@ -1,9 +1,24 @@
 /** Exercises agent env behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import {
+  applyDesktopChildOwnershipEnv,
   applyDesktopDeferAppRoutesPolicy,
   applyWindowsNativeInferenceDefaults,
 } from "./agent";
+
+describe("applyDesktopChildOwnershipEnv", () => {
+  it("pins the active API mode and parent lease for an embedded child", () => {
+    const env: Record<string, string> = {
+      ELIZA_ACTIVE_API_RUNTIME_MODE: "remote",
+      ELIZA_DESKTOP_PARENT_PID: "999",
+    };
+
+    applyDesktopChildOwnershipEnv(env, 42);
+
+    expect(env.ELIZA_ACTIVE_API_RUNTIME_MODE).toBe("local");
+    expect(env.ELIZA_DESKTOP_PARENT_PID).toBe("42");
+  });
+});
 
 describe("applyWindowsNativeInferenceDefaults", () => {
   it("sets Windows native inference guards for the child runtime", () => {

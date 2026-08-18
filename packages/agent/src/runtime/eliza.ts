@@ -66,6 +66,7 @@ import {
 import {
   type AgentProcessLifecycle,
   createAgentProcessLifecycle,
+  installParentProcessExitHandler,
   installProcessSignalHandlers,
 } from "./process-lifecycle.ts";
 import {
@@ -2122,6 +2123,64 @@ export async function resolveConfigEnvVaultRefsForBoot(
   }
 }
 
+/** @internal Exported for vault-backed provider boot coverage. */
+export function projectConfigEnvToProcessEnv(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    return;
+  }
+
+  const project = (key: string, value: unknown): void => {
+    if (isElizaCloudManagedProcessEnvKey(key) || typeof value !== "string") {
+      return;
+    }
+    const current = env[key];
+    // A host may project the persisted vault sentinel into the child before
+    // this boot resolves it. The resolved value must replace that sentinel;
+    // a real launch-environment credential remains authoritative.
+    if (!current || isVaultRef(current)) {
+      env[key] = value;
+    }
+  };
+
+  const configEnv = config.env as Record<string, unknown>;
+  for (const [key, value] of Object.entries(configEnv)) {
+    project(key, value);
+  }
+  const vars = configEnv.vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    for (const [key, value] of Object.entries(
+      vars as Record<string, unknown>,
+    )) {
+      project(key, value);
+    }
+  }
+}
+
+/** @internal Exported for embedded-host fallback coverage. */
+export function applyActiveHostRuntimeMode(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const activeMode = env.ELIZA_ACTIVE_API_RUNTIME_MODE?.trim().toLowerCase();
+  if (activeMode !== "local" && activeMode !== "local-only") return;
+
+  // The desktop preflight owns reachability and stamps this override only when
+  // it actually launched the embedded runtime. Keep the saved remote target on
+  // disk, but present a local in-memory topology to plugin discovery so the
+  // serving child retains its model providers and local route surfaces.
+  config.deploymentTarget = { runtime: "local" };
+  if (activeMode === "local-only") {
+    config.cloud = { ...config.cloud, enabled: false };
+  }
+}
+
 /**
  * Auto-resolve Discord Application ID from the bot token via Discord API.
  * Called during async runtime init so that users only need a bot token.
@@ -3847,6 +3906,21 @@ export async function startElizaProcess(
     },
   });
   if (lifecycle) {
+    const desktopParentPid = Number.parseInt(
+      process.env.ELIZA_DESKTOP_PARENT_PID ?? "",
+      10,
+    );
+    if (Number.isSafeInteger(desktopParentPid) && desktopParentPid > 1) {
+      installParentProcessExitHandler({
+        lifecycle,
+        parentPid: desktopParentPid,
+        onError: (error) => {
+          logger.error(
+            `[eliza] Desktop parent shutdown failed: ${formatError(error)}`,
+          );
+        },
+      });
+    }
     installProcessSignalHandlers({
       lifecycle,
       onError: (error) => {
@@ -4033,6 +4107,7 @@ export async function startEliza(
       }
     }
   }
+  applyActiveHostRuntimeMode(config);
 
   // 1a. Local / sandbox character override — must run before first-run setup
   //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
@@ -4164,33 +4239,7 @@ export async function startEliza(
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
   // stale key in config.env refills process.env after disconnect cleared it.
-  if (
-    config.env &&
-    typeof config.env === "object" &&
-    !Array.isArray(config.env)
-  ) {
-    for (const [key, value] of Object.entries(config.env)) {
-      if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-    // Also hydrate from config.env.vars — setEnvValue writes API keys to
-    // both config.env["KEY"] and config.env.vars["KEY"]. If the top-level
-    // key was lost (e.g. pruneEnv, config migration), the nested form is
-    // the authoritative source.
-    const vars = (config.env as Record<string, unknown>).vars;
-    if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-      for (const [key, value] of Object.entries(
-        vars as Record<string, unknown>,
-      )) {
-        if (isElizaCloudManagedProcessEnvKey(key)) continue;
-        if (typeof value === "string" && !process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    }
-  }
+  projectConfigEnvToProcessEnv(config);
 
   // Persisted plugin settings are hydrated into process.env above. Resolve the
   // watchdog only after that merge so first boot validates and uses the same
