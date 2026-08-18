@@ -80,26 +80,24 @@ export interface GoalsFetchers {
 /** Goals JSON GET is a short UI read — same 15s family as InboxView / FocusView. */
 export const GOALS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getGoalsJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
+type GoalsApiClient = {
+  fetch: (
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ) => Promise<unknown>;
+};
+
+export async function getGoalsJsonWithClient<T>(
+  path: string,
+  apiClient: GoalsApiClient,
   timeoutMs: number = GOALS_VIEW_JSON_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Goals request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
+  return apiClient.fetch(path, undefined, { timeoutMs }) as Promise<T>;
 }
 
 async function getGoals(): Promise<GoalsWire> {
-  return getGoalsJsonWithFetch<GoalsWire>(
-    `${client.getBaseUrl()}/api/lifeops/goals`,
-    globalThis.fetch,
-  );
+  return getGoalsJsonWithClient<GoalsWire>("/api/lifeops/goals", client);
 }
 
 const defaultFetchers: GoalsFetchers = {
