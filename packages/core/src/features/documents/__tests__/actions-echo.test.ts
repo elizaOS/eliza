@@ -50,6 +50,10 @@ function makeMessage(text: string, source?: string): Memory {
 		entityId: USER_ID,
 		agentId: AGENT_ID,
 		roomId: ROOM_ID,
+		// The canonical tenant-scope path resolves worldId before any file
+		// existence check; the harness message carries one so scope
+		// resolution cannot mask the behavior under test.
+		worldId: "00000000-0000-0000-0000-0000000000bb" as UUID,
 		content: { text, ...(source ? { source } : {}) },
 		createdAt: Date.now(),
 	} as Memory;
