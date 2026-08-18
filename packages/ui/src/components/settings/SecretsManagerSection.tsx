@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
+import type { ElizaClient } from "../../api/client-base";
 import {
   dispatchSecretsManagerOpen,
   useSecretsManagerModalState,
@@ -51,6 +52,31 @@ import type {
   VaultEntryMeta,
   VaultTabNavigate,
 } from "./vault-tabs/types";
+
+/** Ordinary REST budget for GET /api/secrets/manager/backends (settings row). */
+export const VAULT_SECRETS_BACKENDS_RAW_REQUEST_TIMEOUT_MS = 10_000;
+/** Ordinary REST budget for GET /api/secrets/manager/preferences (settings row). */
+export const VAULT_SECRETS_PREFERENCES_RAW_REQUEST_TIMEOUT_MS = 10_000;
+
+export async function rawRequestVaultSecretsBackends(
+  timeoutMs: number = VAULT_SECRETS_BACKENDS_RAW_REQUEST_TIMEOUT_MS,
+  api: Pick<ElizaClient, "rawRequest"> = client,
+): Promise<Response> {
+  return api.rawRequest("/api/secrets/manager/backends", undefined, {
+    allowNonOk: true,
+    timeoutMs,
+  });
+}
+
+export async function rawRequestVaultSecretsPreferences(
+  timeoutMs: number = VAULT_SECRETS_PREFERENCES_RAW_REQUEST_TIMEOUT_MS,
+  api: Pick<ElizaClient, "rawRequest"> = client,
+): Promise<Response> {
+  return api.rawRequest("/api/secrets/manager/preferences", undefined, {
+    allowNonOk: true,
+    timeoutMs,
+  });
+}
 
 const HASH_PREFIX = "vault";
 
@@ -89,12 +115,8 @@ export function SecretsManagerSection() {
 
   const refreshSummary = useCallback(async () => {
     const [bRes, pRes] = await Promise.all([
-      client.rawRequest("/api/secrets/manager/backends", undefined, {
-        allowNonOk: true,
-      }),
-      client.rawRequest("/api/secrets/manager/preferences", undefined, {
-        allowNonOk: true,
-      }),
+      rawRequestVaultSecretsBackends(),
+      rawRequestVaultSecretsPreferences(),
     ]);
     if (!bRes.ok || !pRes.ok) return;
     const bJson = (await bRes.json()) as { backends: BackendStatus[] };
