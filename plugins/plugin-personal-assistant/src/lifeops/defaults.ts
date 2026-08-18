@@ -95,6 +95,9 @@ export function windowPolicyMatchesDefaults(
 const ADAPTIVE_MORNING_FLOOR_MINUTES = 4 * 60;
 /** Ceiling value for the morning window end (2:00 PM in minutes). */
 const ADAPTIVE_MORNING_END_CAP_MINUTES = 14 * 60;
+/** Latest morning start that preserves a one-hour window before the end cap. */
+const ADAPTIVE_MORNING_START_CAP_MINUTES =
+  ADAPTIVE_MORNING_END_CAP_MINUTES - 60;
 /** Ceiling value for the afternoon window end (8:00 PM in minutes). */
 const ADAPTIVE_AFTERNOON_END_CAP_MINUTES = 20 * 60;
 /** Ceiling value for the evening window end (4:00 AM next day in minutes). */
@@ -135,9 +138,12 @@ export function computeAdaptiveWindowPolicy(
     };
   }
 
-  const morningStartMinute = Math.max(
-    Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
-    ADAPTIVE_MORNING_FLOOR_MINUTES,
+  const morningStartMinute = Math.min(
+    Math.max(
+      Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
+      ADAPTIVE_MORNING_FLOOR_MINUTES,
+    ),
+    ADAPTIVE_MORNING_START_CAP_MINUTES,
   );
 
   const morningEndMinute = Math.min(
