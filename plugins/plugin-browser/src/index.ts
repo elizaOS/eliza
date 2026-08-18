@@ -35,6 +35,7 @@ export {
 export * from "./bridge-policy.js";
 export * from "./bridge-readiness.js";
 export * from "./bridge-records.js";
+export * from "./browser-command-authority.js";
 export {
   BROWSER_SERVICE_TYPE,
   BrowserService,
@@ -76,6 +77,7 @@ import { buildWaitForUrlPredicate as _bs_14_buildWaitForUrlPredicate } from "./a
 import { resolveBrowserBridgeCompanionPairingTokenExpiresAt as _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt } from "./bridge-policy.js";
 import { resolveBrowserBridgeReadiness as _bs_11_resolveBrowserBridgeReadiness } from "./bridge-readiness.js";
 import { createBrowserBridgeCompanionStatus as _bs_12_createBrowserBridgeCompanionStatus } from "./bridge-records.js";
+import { BROWSER_UPLOAD_CAPABILITY_ID as _bs_17_BROWSER_UPLOAD_CAPABILITY_ID } from "./browser-command-authority.js";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -112,6 +114,7 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_14_buildWaitForUrlPredicate,
   _bs_15_waitForUrl,
   _bs_16_validateBrowserParityMatrix,
+  _bs_17_BROWSER_UPLOAD_CAPABILITY_ID,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;

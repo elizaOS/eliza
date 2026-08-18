@@ -105,6 +105,7 @@ import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
   assertBrowserWorkspaceUserScriptAllowed,
+  createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
@@ -749,6 +750,36 @@ export async function executeBrowserWorkspaceCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceCommandResult> {
   command = normalizeBrowserWorkspaceCommand(command);
+  const pending = [command];
+  let blockedCommand: "eval" | "upload" | "realistic-upload" | null = null;
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (!candidate) break;
+    if (
+      candidate.subaction === "upload" ||
+      candidate.subaction === "realistic-upload"
+    ) {
+      blockedCommand = candidate.subaction;
+      break;
+    }
+    if (candidate.subaction === "eval") {
+      blockedCommand = "eval";
+      break;
+    }
+    if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
+      pending.push(...candidate.steps);
+    }
+  }
+  if (blockedCommand) {
+    if (blockedCommand === "eval" && !isBrowserWorkspaceBridgeConfigured(env)) {
+      throw createBrowserWorkspaceJsdomScriptExecutionError("eval");
+    }
+    throw new Error(
+      blockedCommand === "eval"
+        ? "Generic browser eval is disabled. Use typed browser commands instead."
+        : "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   switch (command.subaction) {
     case "batch": {
       const steps = Array.isArray(command.steps) ? command.steps : [];
@@ -892,8 +923,7 @@ export async function executeBrowserWorkspaceCommand(
     case "mouse":
     case "network":
     case "set":
-    case "storage":
-    case "upload": {
+    case "storage": {
       if (!isBrowserWorkspaceBridgeConfigured(env)) {
         return (await executeWebBrowserWorkspaceUtilityCommand(
           command,
@@ -1252,7 +1282,6 @@ export async function executeBrowserWorkspaceCommand(
     case "realistic-fill":
     case "realistic-type":
     case "realistic-press":
-    case "realistic-upload":
     case "cursor-move":
     case "cursor-hide":
       if (
@@ -1277,6 +1306,11 @@ export async function executeBrowserWorkspaceCommand(
         return executeDesktopBrowserWorkspaceDomCommand(command, env);
       }
       return executeWebBrowserWorkspaceDomCommand(command);
+    case "upload":
+    case "realistic-upload":
+      throw new Error(
+        "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+      );
     default: {
       const exhaustive: never = command.subaction;
       throw new Error(`Unsupported browser workspace subaction: ${exhaustive}`);
