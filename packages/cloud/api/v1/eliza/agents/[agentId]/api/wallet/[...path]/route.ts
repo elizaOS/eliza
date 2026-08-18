@@ -295,7 +295,11 @@ function normalizePolicy(value: JsonValue): StewardPolicyRule | null {
   };
 }
 
-async function readJsonBody(c: Context<AppEnv>): Promise<JsonObject | null> {
+const INVALID_JSON_BODY = Symbol("invalid-json-body");
+
+async function readJsonBody(
+  c: Context<AppEnv>,
+): Promise<JsonObject | null | typeof INVALID_JSON_BODY> {
   const contentType = c.req.header("content-type");
   if (!contentType?.includes("application/json")) {
     return null;
@@ -305,7 +309,14 @@ async function readJsonBody(c: Context<AppEnv>): Promise<JsonObject | null> {
     throw new Error("Request body too large");
   }
   if (!text.trim()) return {};
-  const parsed = JSON.parse(text) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    // error-policy:J3 untrusted request body — malformed JSON is caller
+    // error (400), not failureResponse(SyntaxError) → 500.
+    return INVALID_JSON_BODY;
+  }
   return isJsonObject(parsed) ? parsed : null;
 }
 
@@ -447,6 +458,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "PUT" && walletPath === "steward-policies") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const policies = body?.policies;
     if (!Array.isArray(policies)) {
       return json({ error: "policies must be an array" }, { status: 400 });
@@ -520,6 +534,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "POST" && walletPath === "steward-approve-tx") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const txId = typeof body?.txId === "string" ? body.txId : "";
     if (!txId) return json({ error: "txId is required" }, { status: 400 });
     return json(await client.approveTransaction(txId, { approvedBy: user.id }));
@@ -527,6 +544,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "POST" && walletPath === "steward-deny-tx") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const txId = typeof body?.txId === "string" ? body.txId : "";
     const reason =
       typeof body?.reason === "string"
@@ -553,6 +573,9 @@ honoRouter.get("/", async (c) => {
       "GET",
     );
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     return failureResponse(c, error);
   }
 });
@@ -564,6 +587,9 @@ honoRouter.post("/", async (c) => {
       "POST",
     );
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     return failureResponse(c, error);
   }
 });
@@ -575,6 +601,9 @@ honoRouter.put("/", async (c) => {
       "PUT",
     );
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     return failureResponse(c, error);
   }
 });
