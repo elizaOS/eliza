@@ -4,6 +4,7 @@
  * Scope authorization and turn execution are cache-only on the response path;
  * cold hydration is scheduled under waitUntil and surfaced as retryable 503.
  */
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { Hono } from "hono";
 import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
@@ -268,6 +269,10 @@ app.post("/", async (c) => {
     origin,
     namespace: worker.namespace,
     agentKind: "agentKind" in r ? r.agentKind : "sandbox",
+    trustedChannel: {
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+      channelType: ChannelType.DM,
+    },
     // The Worker context carries both cold hydration and the shared turn's
     // deferred billing tail without putting either on the response path.
     executionCtx: worker.executionCtx,

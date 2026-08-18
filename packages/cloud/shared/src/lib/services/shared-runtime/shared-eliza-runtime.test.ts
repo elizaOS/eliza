@@ -4,10 +4,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { AgentRuntime } from "@elizaos/core/edge";
+import { AgentRuntime, ChannelType, InMemoryDatabaseAdapter } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import { sharedRuntimeConversationRoomId } from "./shared-runtime-storage-identity";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
@@ -383,6 +384,8 @@ describe("Shared Eliza Workerd runtime", () => {
   });
 
   test("runs HANDLE_RESPONSE through AgentRuntime and preserves native usage", async () => {
+    const connectionSpy = spyOn(AgentRuntime.prototype, "ensureConnection");
+    const historySpy = spyOn(InMemoryDatabaseAdapter.prototype, "createMemories");
     const requests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -441,7 +444,27 @@ describe("Shared Eliza Workerd runtime", () => {
         system: "You are Eliza.",
         model: "gemma-4-31b",
       },
-      history: [],
+      history: [
+        {
+          id: "telegram-user",
+          role: "user",
+          content: "telegram text",
+          source: "telegram",
+          channelType: ChannelType.DM,
+        },
+        {
+          id: "telegram-assistant",
+          role: "assistant",
+          content: "telegram reply",
+          source: "telegram",
+          channelType: ChannelType.DM,
+        },
+        {
+          id: "legacy-user",
+          role: "user",
+          content: "legacy text without provenance",
+        },
+      ],
       message: "say hello",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
@@ -453,6 +476,11 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         engine: "eliza-runtime",
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "discord:guild-1:channel-7",
+        trustedChannel: {
+          source: "discord",
+          channelType: ChannelType.VOICE_GROUP,
+        },
       },
     });
 
@@ -467,10 +495,52 @@ describe("Shared Eliza Workerd runtime", () => {
       outputTokens: 17,
     });
     expect(result.history.map((message) => message.content)).toEqual([
+      "telegram text",
+      "telegram reply",
+      "legacy text without provenance",
       "say hello",
       "hello from the genuine Shared runtime",
     ]);
+    expect(result.history.slice(-2)).toEqual([
+      expect.objectContaining({ source: "discord", channelType: ChannelType.VOICE_GROUP }),
+      expect.objectContaining({ source: "discord", channelType: ChannelType.VOICE_GROUP }),
+    ]);
+    const projectedHistory = historySpy.mock.calls
+      .flatMap(([entries]) => entries)
+      .filter(
+        (entry) =>
+          entry.tableName === "messages" &&
+          ["telegram text", "telegram reply", "legacy text without provenance"].includes(
+            entry.memory.content.text ?? "",
+          ),
+      );
+    expect(projectedHistory.map((entry) => entry.memory.content)).toEqual([
+      expect.objectContaining({
+        text: "telegram text",
+        source: "telegram",
+        channelType: ChannelType.DM,
+      }),
+      expect.objectContaining({
+        text: "telegram reply",
+        source: "telegram",
+        channelType: ChannelType.DM,
+      }),
+      expect.objectContaining({
+        text: "legacy text without provenance",
+        source: "shared-runtime-history",
+        channelType: ChannelType.DM,
+      }),
+    ]);
     expect(dispatches).toBe(1);
+    expect(connectionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: sharedRuntimeConversationRoomId("discord:guild-1:channel-7"),
+        source: "discord",
+        type: ChannelType.VOICE_GROUP,
+      }),
+    );
+    connectionSpy.mockRestore();
+    historySpy.mockRestore();
     expect(requests).toHaveLength(1);
     expect(
       (requests[0].tools as Array<{ function?: { name?: string } }>).some(

@@ -15,6 +15,7 @@ import { coordinateSharedStream } from "./conversation-coordinator";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
+import type { TrustedSharedChannelEnvelope } from "./trusted-shared-channel";
 
 const CORS_METHODS = "POST, OPTIONS";
 const STREAM_HEADERS = {
@@ -38,6 +39,8 @@ export interface CanonicalScopedStreamRequest {
   agentKind?: "sandbox" | "personal";
   /** Set only by the authenticated in-process voice adapter for lifecycle turns. */
   trustedMessageRole?: "system";
+  /** Server-owned transport provenance; body fields cannot override it. */
+  trustedChannel?: TrustedSharedChannelEnvelope;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -103,7 +106,7 @@ export async function handleCanonicalScopedAgentStream(
       text,
       roomId: request.conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
-      ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
+      ...(request.userId ? { userId: request.userId } : {}),
     },
   };
 
@@ -116,6 +119,7 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      trustedChannel: request.trustedChannel,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

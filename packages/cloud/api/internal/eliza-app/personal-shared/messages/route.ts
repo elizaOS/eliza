@@ -1,5 +1,6 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
+import { ChannelType } from "@elizaos/core/edge";
 import { Hono } from "hono";
 import { z } from "zod";
 import { resolvePersonalDeliveryProjection } from "@/api-app/personal-delivery-projection";
@@ -634,6 +635,8 @@ app.post("/", async (c) => {
       parsed.data.messageId,
       "platform",
       trustedDelivery,
+      undefined,
+      { source: parsed.data.platform, channelType: ChannelType.DM },
     );
     c.header(
       "Server-Timing",

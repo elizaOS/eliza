@@ -119,6 +119,7 @@ import {
 import { purgeSharedConversationRooms } from "./shared-runtime/conversation-coordinator";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
+  appendSharedTurn,
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
   runSharedAgentTurn,
@@ -126,6 +127,7 @@ import {
   type SharedAgentCharacter,
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
+  sharedTurnProvenance,
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
@@ -4294,6 +4296,7 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        execution: { engine: "eliza-runtime", agentKey: rec.id, roomKey: channelId },
       });
       if (turn.degraded) {
         // A failed/degraded turn isn't persisted or billed — just refund the hold.
@@ -4452,10 +4455,16 @@ export class ElizaSandboxService {
     }
 
     try {
+      const execution = {
+        engine: "eliza-runtime" as const,
+        agentKey: rec.id,
+        roomKey: channelId,
+      };
       const turn = await runSharedAgentTurnStream({
         character,
         history,
         message: text,
+        execution,
       });
       if (turn.degraded) {
         await settleReservation(0);
@@ -4501,12 +4510,14 @@ export class ElizaSandboxService {
 
               finished = true;
               const finalReply = part.text.trim() || reply.trim() || "…";
-              const sentAt = Date.now();
-              const nextHistory: SharedTurnMessage[] = [
-                ...history,
-                { role: "user", content: text.trim(), createdAt: sentAt },
-                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
-              ];
+              const nextHistory = appendSharedTurn(
+                history,
+                text.trim(),
+                finalReply,
+                undefined,
+                "user",
+                sharedTurnProvenance({ execution }),
+              );
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
               if (billingContext) {
                 // The reply is final once the last token arrived and history

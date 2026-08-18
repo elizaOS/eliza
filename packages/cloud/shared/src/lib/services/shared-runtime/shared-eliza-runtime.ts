@@ -57,11 +57,16 @@ import type {
   SharedMediaGenerationPort,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedTurn } from "./run-shared-agent-turn";
+import { appendSharedTurn, sharedTurnProvenance } from "./run-shared-agent-turn";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
+import {
+  LEGACY_SHARED_HISTORY_CHANNEL,
+  parseTrustedSharedChannelEnvelope,
+  SHARED_SYSTEM_CHANNEL,
+} from "./trusted-shared-channel";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -375,6 +380,15 @@ function runtimeMemoryId(message: SharedTurnMessage, index: number) {
   );
 }
 
+function persistedMessageChannel(message: SharedTurnMessage) {
+  const persisted = parseTrustedSharedChannelEnvelope({
+    source: message.source,
+    channelType: message.channelType,
+  });
+  if (persisted) return persisted;
+  return message.role === "system" ? SHARED_SYSTEM_CHANNEL : LEGACY_SHARED_HISTORY_CHANNEL;
+}
+
 function projectedHistoryTimestamps(history: SharedTurnMessage[]): number[] {
   const anchors: Array<{ index: number; timestamp: number }> = [];
   for (const [index, message] of history.entries()) {
@@ -624,15 +638,22 @@ async function executeSharedElizaRuntimeTurn(
         throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
       }
     }
-    const roomId = sharedRuntimeConversationRoomId(input.agentKey);
+    const roomKey = input.execution?.roomKey ?? input.agentKey;
+    const roomId = sharedRuntimeConversationRoomId(roomKey);
+    const channel = !actionsEnabled
+      ? { source: "shared-runtime-system", channelType: ChannelType.DM }
+      : (input.execution?.trustedChannel ?? {
+          source: authenticatedPersonalSharedUser ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
+          channelType: ChannelType.DM,
+        });
     const connectionStartedAt = performance.now();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
       roomId,
-      worldId: sharedRuntimeWorldId(input.agentKey),
+      worldId: sharedRuntimeWorldId(roomKey),
       userName: actionsEnabled ? "Shared user" : "Shared lifecycle",
-      source: actionsEnabled ? "shared-runtime" : "shared-runtime-system",
-      type: ChannelType.DM,
+      source: channel.source,
+      type: channel.channelType,
       ...(authenticatedPersonalSharedUser
         ? {
             metadata: {
@@ -649,6 +670,7 @@ async function executeSharedElizaRuntimeTurn(
       await adapter.createMemories(
         input.history.map((message, index) => {
           const createdAt = historyTimestamps[index];
+          const historyChannel = persistedMessageChannel(message);
           const memory = createMessageMemory({
             id: runtimeMemoryId(message, index),
             entityId:
@@ -661,8 +683,8 @@ async function executeSharedElizaRuntimeTurn(
             roomId,
             content: {
               text: message.content,
-              source: message.role === "system" ? "shared-runtime-system" : "shared-runtime",
-              channelType: ChannelType.DM,
+              source: historyChannel.source,
+              channelType: historyChannel.channelType,
             },
           });
           memory.createdAt = createdAt;
@@ -693,15 +715,10 @@ async function executeSharedElizaRuntimeTurn(
         roomId,
         content: {
           text: input.message.trim(),
-          // Only the server-owned execution attestation may translate a Shared
-          // turn to authenticated client-chat provenance. Connector payloads and
-          // direct runtime callers remain on the fail-closed Shared source.
-          source: !actionsEnabled
-            ? "shared-runtime-system"
-            : authenticatedPersonalSharedUser
-              ? MESSAGE_SOURCE_CLIENT_CHAT
-              : "shared-runtime",
-          channelType: ChannelType.DM,
+          // Only the server-owned execution envelope may set transport
+          // provenance. Direct callers retain the fail-closed Shared DM.
+          source: channel.source,
+          channelType: channel.channelType,
           ...(input.originClientMessageId
             ? {
                 chatIdempotency: {
@@ -775,6 +792,7 @@ async function executeSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
+        sharedTurnProvenance(input),
       ),
       model: input.model,
       degraded: false,

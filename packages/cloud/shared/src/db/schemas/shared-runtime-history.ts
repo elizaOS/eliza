@@ -1,4 +1,5 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
+import type { ChannelType } from "@elizaos/core/edge";
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
@@ -7,6 +8,9 @@ export type SharedRuntimeHistoryMessage = {
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  /** Original transport provenance; absent only on legacy rows. */
+  source?: string;
+  channelType?: ChannelType;
   /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
   createdAt?: number;
   /** True when an assistant message is a partial interrupted response. */

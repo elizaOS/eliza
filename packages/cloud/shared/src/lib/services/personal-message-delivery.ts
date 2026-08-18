@@ -2,6 +2,7 @@
  * Routes a normalized personal connector turn to the user's active Dedicated
  * runtime when present, otherwise to their rowless personal Shared runtime.
  */
+import { ChannelType } from "@elizaos/core/edge";
 import type { Organization } from "../../db/schemas/organizations";
 import type { User } from "../../db/schemas/users";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
@@ -188,6 +189,8 @@ export async function deliverPersonalTextMessage(params: {
     params.messageId,
     "platform",
     undefined,
+    undefined,
+    { source: params.platform, channelType: ChannelType.DM },
   );
   return {
     success: true,

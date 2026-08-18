@@ -9,7 +9,12 @@
  * never constructed and the turn path is byte-identical to before.
  */
 
-import { stringToUuid, validateUuid } from "@elizaos/core/edge";
+import {
+  ChannelType,
+  type ChannelType as ChannelTypeValue,
+  stringToUuid,
+  validateUuid,
+} from "@elizaos/core/edge";
 import {
   type SharedAgentMemoriesReader,
   type SharedAgentMemoriesWriter,
@@ -49,6 +54,9 @@ export interface SharedMemoryTurnPair {
   /** Transport-stable ids; reused as row ids so a claim replay cannot double-write. */
   messageIds?: { user: string; assistant: string };
   messageRole?: "system" | "user";
+  /** Exact server-authenticated transport provenance for both landed messages. */
+  source?: string;
+  channelType?: ChannelTypeValue;
   /** Mirrors the canonical history marker for a client-cancelled partial reply. */
   interrupted?: boolean;
 }
@@ -114,6 +122,8 @@ export class SharedMemoryStore {
       agentId,
     };
     const landedAt = Date.now();
+    const source = pair.source?.trim() || "shared-runtime";
+    const channelType = pair.channelType ?? ChannelType.DM;
     // One batched sidecar round-trip for both texts; an embedding failure
     // degrades to vector-less rows (recall coverage shrinks) but never loses
     // the memory write itself.
@@ -146,8 +156,8 @@ export class SharedMemoryStore {
       type: SHARED_MEMORY_TYPE,
       content: {
         text: pair.userMessage,
-        source: "shared-runtime",
-        channelType: "DM",
+        source,
+        channelType,
         ...(pair.messageRole === "system" ? { role: "system" } : {}),
       },
       ...embeddingFields(0),
@@ -165,8 +175,8 @@ export class SharedMemoryStore {
       type: SHARED_MEMORY_TYPE,
       content: {
         text: assistantReply,
-        source: "shared-runtime",
-        channelType: "DM",
+        source,
+        channelType,
       },
       createdAt: new Date(landedAt + 1),
     };

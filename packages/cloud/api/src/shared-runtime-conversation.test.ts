@@ -39,6 +39,7 @@ let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
 let lastBridgeAgent: unknown;
+let lastBridgeTrustedChannel: unknown;
 let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
   outcome: "accepted",
 };
@@ -65,6 +66,7 @@ mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async <T>(fn: () => Promise<T>) => await fn(),
 }));
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => ({}),
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
 }));
@@ -132,6 +134,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
       options: {
         funding?: unknown;
+        trustedChannel?: unknown;
         mobilePushDispatch?: (message: {
           title: string;
           body?: string;
@@ -157,6 +160,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     ) => {
       bridgeFunding = options.funding;
       lastBridgeAgent = agent;
+      lastBridgeTrustedChannel = options.trustedChannel;
       if (rpc.id === "push-event") {
         await options.mobilePushDispatch?.({
           title: "Reminder",
@@ -255,7 +259,7 @@ mock.module("@/lib/mobile-push/apns-provider", () => ({
   },
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: loggerWarn },
+  logger: { info: mock(() => undefined), warn: loggerWarn },
 }));
 
 const { SharedRuntimeConversation } = await import(
@@ -278,6 +282,7 @@ beforeEach(() => {
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
   lastBridgeAgent = undefined;
+  lastBridgeTrustedChannel = undefined;
   apnsOutcome = { outcome: "accepted" };
   apnsSentTokens.length = 0;
   apnsOutcomes.clear();
@@ -379,6 +384,71 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
     return await response.json();
   };
 }
+
+test("validates server-owned channel provenance outside JSON-RPC params", async () => {
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 0,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const request = (body: Record<string, unknown>) =>
+    object.fetch(
+      new Request("https://shared-runtime.internal/bridge", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "bridge",
+          agent: AGENT_FIXTURE,
+          rpc: {
+            jsonrpc: "2.0",
+            id: "channel-boundary",
+            method: "message.send",
+            params: {
+              text: "hi",
+              roomId: "room-1",
+              source: "client_chat",
+              channelType: "VOICE_DM",
+            },
+          },
+          ...body,
+        }),
+      }),
+    );
+
+  const withoutEnvelope = await request({});
+  expect(withoutEnvelope.status).toBe(200);
+  await withoutEnvelope.arrayBuffer();
+  expect(lastBridgeTrustedChannel).toBeUndefined();
+
+  const withEnvelope = await request({
+    trustedChannel: { source: "discord", channelType: "GROUP" },
+  });
+  expect(withEnvelope.status).toBe(200);
+  await withEnvelope.arrayBuffer();
+  expect(lastBridgeTrustedChannel).toEqual({
+    source: "discord",
+    channelType: "GROUP",
+  });
+
+  const invalidEnvelope = await request({
+    trustedChannel: { source: "discord", channelType: "API" },
+  });
+  expect(invalidEnvelope.status).toBe(400);
+  expect((await invalidEnvelope.json()) as unknown).toEqual({
+    success: false,
+    error: "Invalid trusted channel envelope",
+  });
+});
 
 async function pushOperation(
   object: { fetch(request: Request): Promise<Response> },

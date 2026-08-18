@@ -50,6 +50,8 @@ export interface SharedRuntimeHistoryMessageLike {
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  source?: string;
+  channelType?: string;
   createdAt?: number;
   interrupted?: boolean;
 }

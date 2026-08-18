@@ -19,6 +19,7 @@ import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import type { TrustedSharedChannelEnvelope } from "./trusted-shared-channel";
 
 export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
@@ -30,6 +31,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedMessageRole?: "system";
   /** Authenticated raw utterance when RPC text also contains server-composed context. */
   trustedUserUtterance?: string;
+  /** Server-owned channel provenance, serialized outside the JSON-RPC request. */
+  trustedChannel?: TrustedSharedChannelEnvelope;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -296,6 +299,7 @@ export async function coordinateSharedBridge(
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
+        ...(options.trustedChannel ? { trustedChannel: options.trustedChannel } : {}),
       }),
     });
   await requireCoordinatorResponse(response, "conversation");
@@ -321,6 +325,7 @@ export async function coordinateSharedStream(
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
+        ...(options.trustedChannel ? { trustedChannel: options.trustedChannel } : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });

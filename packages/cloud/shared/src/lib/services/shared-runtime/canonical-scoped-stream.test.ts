@@ -112,6 +112,27 @@ describe("handleCanonicalScopedAgentStream", () => {
     expect(options.trustedMessageRole).toBeUndefined();
   });
 
+  test("does not trust channel provenance supplied in the ordinary request body", async () => {
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      trustedChannel: { source: "voice", channelType: "VOICE_DM" },
+      body: {
+        text: "hello",
+        source: "discord",
+        channelType: "VOICE_GROUP",
+      },
+    });
+
+    const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("source");
+    expect(rpc.params).not.toHaveProperty("channelType");
+    expect(options.trustedChannel).toEqual({ source: "voice", channelType: "VOICE_DM" });
+  });
+
   test("passes an authenticated in-process role outside untrusted RPC params", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,

@@ -6,6 +6,7 @@
  * to its own container bridge. Losing that second branch is what 404'd every
  * dedicated agent between 2026-07-23 and #18062.
  */
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -82,6 +83,10 @@ async function __hono_POST(
       executionCtx: resolved.executionCtx,
       namespace: resolved.namespace,
       agentKind: resolved.agentKind,
+      trustedChannel: {
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+        channelType: ChannelType.DM,
+      },
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);

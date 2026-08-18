@@ -30,6 +30,10 @@ import {
   mergeSharedRuntimeHistoryMessages,
   selectSharedRuntimeContext,
 } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
+import {
+  parseTrustedSharedChannelEnvelope,
+  type TrustedSharedChannelEnvelope,
+} from "@/lib/services/shared-runtime/trusted-shared-channel";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle
@@ -42,6 +46,7 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      trustedChannel?: TrustedSharedChannelEnvelope;
     }
   | {
       operation: "personal-bridge";
@@ -49,6 +54,7 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      trustedChannel?: TrustedSharedChannelEnvelope;
     }
   | {
       operation: "stream";
@@ -56,6 +62,7 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      trustedChannel?: TrustedSharedChannelEnvelope;
     }
   | {
       operation: "personal-stream";
@@ -63,6 +70,7 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      trustedChannel?: TrustedSharedChannelEnvelope;
     }
   | {
       operation: "prewarm";
@@ -443,14 +451,10 @@ export class SharedRuntimeConversation {
       const imports: Promise<unknown>[] = [
         import("@/lib/services/shared-runtime/shared-runtime-chat"),
         import("@/lib/services/shared-runtime/cached-agent-dates"),
+        import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
+          ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+        ),
       ];
-      if (this.env.SHARED_ELIZA_AGENT_RUNTIME === "true") {
-        imports.push(
-          import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-            ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
-          ),
-        );
-      }
       await Promise.all(imports);
     });
   }
@@ -1623,10 +1627,15 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      const executionEngine =
-        this.env.SHARED_ELIZA_AGENT_RUNTIME === "true"
-          ? ("eliza-runtime" as const)
-          : ("direct-model" as const);
+      const trustedChannel = parseTrustedSharedChannelEnvelope(
+        payload.trustedChannel,
+      );
+      if (payload.trustedChannel !== undefined && !trustedChannel) {
+        return Response.json(
+          { success: false, error: "Invalid trusted channel envelope" },
+          { status: 400 },
+        );
+      }
       if (
         payload.operation === "stream" ||
         payload.operation === "personal-stream"
@@ -1639,7 +1648,7 @@ export class SharedRuntimeConversation {
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
           trustedUserUtterance: payload.trustedUserUtterance,
-          executionEngine,
+          trustedChannel,
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1654,7 +1663,7 @@ export class SharedRuntimeConversation {
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
         trustedUserUtterance: payload.trustedUserUtterance,
-        executionEngine,
+        trustedChannel,
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);

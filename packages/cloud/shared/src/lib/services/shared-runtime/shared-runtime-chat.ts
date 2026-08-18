@@ -65,6 +65,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedMediaGenerationPort,
   type SharedTurnMessage,
+  sharedTurnProvenance,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
@@ -87,6 +88,7 @@ import {
   recordSharedTurnTrace,
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
+import type { TrustedSharedChannelEnvelope } from "./trusted-shared-channel";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
@@ -225,8 +227,8 @@ export interface SharedRuntimeChatOptions {
   trustedMessageRole?: "system";
   /** Server-authenticated raw utterance when the model message includes connector context. */
   trustedUserUtterance?: string;
-  /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
-  executionEngine?: "direct-model" | "eliza-runtime";
+  /** Server-owned transport provenance, never derived from bridge params. */
+  trustedChannel?: TrustedSharedChannelEnvelope;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -399,6 +401,7 @@ function sharedElizaRuntimeExecution(
   funding: SharedRuntimeChatOptions["funding"],
   executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
+  trustedChannel?: TrustedSharedChannelEnvelope,
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
@@ -408,9 +411,11 @@ function sharedElizaRuntimeExecution(
   return {
     engine: "eliza-runtime",
     agentKey: agent.id,
+    roomKey: roomId,
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(trustedChannel ? { trustedChannel } : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -1139,19 +1144,16 @@ export class SharedRuntimeChatService {
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         ...(memoryStore ? { memory: memoryStore } : {}),
-        ...(options.executionEngine === "eliza-runtime"
-          ? {
-              execution: sharedElizaRuntimeExecution(
-                agent,
-                roomId,
-                claimKey,
-                params,
-                options.funding,
-                options.executionCtx,
-                options.mobilePushDispatch,
-              ),
-            }
-          : {}),
+        execution: sharedElizaRuntimeExecution(
+          agent,
+          roomId,
+          claimKey,
+          params,
+          options.funding,
+          options.executionCtx,
+          options.mobilePushDispatch,
+          options.trustedChannel,
+        ),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -1329,6 +1331,17 @@ export class SharedRuntimeChatService {
     const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
     const streamTurnStartedAtEpochMs = Date.now();
     const providerSetupStartedAt = performance.now();
+    const execution = sharedElizaRuntimeExecution(
+      agent,
+      roomId,
+      claimKey,
+      params,
+      options.funding,
+      options.executionCtx,
+      options.mobilePushDispatch,
+      options.trustedChannel,
+    );
+    const turnProvenance = sharedTurnProvenance({ messageRole, execution });
     try {
       turn = await runSharedAgentTurnStream({
         abortSignal: generationAbort.signal,
@@ -1341,19 +1354,7 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
-        ...(options.executionEngine === "eliza-runtime"
-          ? {
-              execution: sharedElizaRuntimeExecution(
-                agent,
-                roomId,
-                claimKey,
-                params,
-                options.funding,
-                options.executionCtx,
-                options.mobilePushDispatch,
-              ),
-            }
-          : {}),
+        execution,
       });
     } catch (error) {
       detachRequestAbort();
@@ -1410,7 +1411,14 @@ export class SharedRuntimeChatService {
     const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = [
-        { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
+        {
+          id: messageIds.user,
+          role: messageRole,
+          content: text,
+          source: turnProvenance.source,
+          channelType: turnProvenance.channelType,
+          createdAt: sentAt,
+        },
       ];
       const assistantText = reply.trim();
       if (assistantText) {
@@ -1418,6 +1426,8 @@ export class SharedRuntimeChatService {
           id: messageIds.assistant,
           role: "assistant",
           content: assistantText,
+          source: turnProvenance.source,
+          channelType: turnProvenance.channelType,
           createdAt: sentAt + 1,
           interrupted,
         });
@@ -1458,6 +1468,8 @@ export class SharedRuntimeChatService {
             assistantReply: reply,
             messageIds,
             messageRole,
+            source: turnProvenance.source,
+            channelType: turnProvenance.channelType,
             interrupted,
           });
         }

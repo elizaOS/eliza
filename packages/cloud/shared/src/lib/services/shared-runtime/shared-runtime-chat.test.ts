@@ -160,6 +160,25 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
+  sharedTurnProvenance: (input: {
+    execution?: {
+      authenticatedPersonalSharedUser?: boolean;
+      trustedChannel?: { source: string; channelType: string };
+    };
+    messageRole?: "system" | "user";
+  }) => {
+    if (input.messageRole === "system") {
+      return { source: "shared-runtime-system", channelType: "DM" };
+    }
+    if (input.execution?.trustedChannel) return input.execution.trustedChannel;
+    return {
+      source:
+        input.execution?.authenticatedPersonalSharedUser === true
+          ? "client_chat"
+          : "shared-runtime",
+      channelType: "DM",
+    };
+  },
   runSharedAgentTurn: async (input: {
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
@@ -228,6 +247,8 @@ type TestMemoryPair = {
   assistantReply: string;
   messageIds?: { user: string; assistant: string };
   messageRole?: "system" | "user";
+  source?: string;
+  channelType?: string;
   interrupted?: boolean;
 };
 const memoryPairs: TestMemoryPair[] = [];
@@ -346,12 +367,14 @@ type TestMessage = {
   id?: string;
   role: "user" | "assistant";
   content: string;
+  source?: string;
+  channelType?: string;
   createdAt?: number;
   interrupted?: boolean;
 };
 
-function harness() {
-  let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+function harness(initialHistory: TestMessage[] = [{ role: "assistant", content: "prior" }]) {
+  let history: TestMessage[] = initialHistory;
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -545,21 +568,27 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
   });
 
-  test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
+  test("always uses AgentRuntime and only accepts server-owned channel provenance", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
     turn.actionResults = [expectedTodoActionResult];
+    const hostileRpc = {
+      ...rpc,
+      params: { ...rpc.params, source: "telegram", channelType: "DM" },
+    };
 
-    const response = await service.bridge(agent, rpc, {
+    const response = await service.bridge(agent, hostileRpc, {
       ...h,
       funding: "platform",
-      executionEngine: "eliza-runtime",
+      trustedChannel: { source: "discord", channelType: "GROUP" },
     });
 
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      roomKey: expect.any(String),
       authenticatedPersonalSharedUser: true,
+      trustedChannel: { source: "discord", channelType: "GROUP" },
       todos: expectedTodoExecution,
     });
     expect(sharedTodoStorageScope).toHaveBeenCalledWith({
@@ -588,12 +617,12 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(forgedAgent, forgedRpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: forgedAgent.id,
+      roomKey: expect.any(String),
       todos: expectedTodoExecution,
     });
   });
@@ -613,7 +642,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(response.status).toBe(200);
@@ -623,6 +651,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastStreamTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      roomKey: expect.any(String),
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -654,7 +683,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     const body = await response.text();
@@ -686,11 +714,11 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      roomKey: expect.any(String),
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
@@ -706,11 +734,11 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "organization-credits",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      roomKey: expect.any(String),
       todos: expectedTodoExecution,
     });
 
@@ -734,7 +762,6 @@ describe("SharedRuntimeChatService", () => {
         {
           ...harness(),
           funding: "platform",
-          executionEngine: "eliza-runtime",
         },
       );
       expect(lastTurnInput?.execution).toMatchObject({
@@ -886,6 +913,44 @@ describe("SharedRuntimeChatService", () => {
     ]);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("preserves Telegram text provenance when the next turn lands on Discord voice", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const h = harness([
+      {
+        id: "telegram-user",
+        role: "user",
+        content: "sent as Telegram text",
+        source: "telegram",
+        channelType: "DM",
+      },
+      {
+        id: "telegram-assistant",
+        role: "assistant",
+        content: "replied as Telegram text",
+        source: "telegram",
+        channelType: "DM",
+      },
+    ]);
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, {
+      ...h,
+      trustedChannel: { source: "discord", channelType: "VOICE_GROUP" },
+    });
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(h.history().slice(0, 2)).toEqual([
+      expect.objectContaining({ source: "telegram", channelType: "DM" }),
+      expect.objectContaining({ source: "telegram", channelType: "DM" }),
+    ]);
+    expect(h.history().slice(-2)).toEqual([
+      expect.objectContaining({ source: "discord", channelType: "VOICE_GROUP" }),
+      expect.objectContaining({ source: "discord", channelType: "VOICE_GROUP" }),
+    ]);
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({ source: "discord", channelType: "VOICE_GROUP" }),
+    ]);
   });
 
   test("no-model degradation remains a complete canonical SSE turn", async () => {

@@ -98,7 +98,13 @@ describe("runSharedAgentTurn memory commit", () => {
         userMessage: "remember this",
         assistantReply: "landed reply",
         messageIds,
+        source: "shared-runtime",
+        channelType: "DM",
       },
+    ]);
+    expect(result.history.slice(-2)).toEqual([
+      expect.objectContaining({ source: "shared-runtime", channelType: "DM" }),
+      expect.objectContaining({ source: "shared-runtime", channelType: "DM" }),
     ]);
   });
 

@@ -97,6 +97,8 @@ describe("SharedMemoryStore.recordTurnPair", () => {
       userMessage: "remember the launch date",
       assistantReply: "noted — the launch is on Friday",
       messageIds,
+      source: "telegram",
+      channelType: "VOICE_DM",
     });
 
     expect(inserts).toHaveLength(2);
@@ -115,15 +117,15 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     expect(userRow?.entityId).toBe(storage.entityId);
     expect(userRow?.content).toEqual({
       text: "remember the launch date",
-      source: "shared-runtime",
-      channelType: "DM",
+      source: "telegram",
+      channelType: "VOICE_DM",
     });
     expect(assistantRow?.id).toBe(messageIds.assistant);
     expect(assistantRow?.entityId).toBe(storage.agentId);
     expect(assistantRow?.content).toEqual({
       text: "noted — the launch is on Friday",
-      source: "shared-runtime",
-      channelType: "DM",
+      source: "telegram",
+      channelType: "VOICE_DM",
     });
     expect(userRow?.createdAt).toBeInstanceOf(Date);
     expect(assistantRow?.createdAt?.getTime()).toBe((userRow?.createdAt?.getTime() ?? 0) + 1);

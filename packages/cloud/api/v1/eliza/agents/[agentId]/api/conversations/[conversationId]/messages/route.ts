@@ -4,6 +4,7 @@
  * Scope authorization and conversation execution are cache-only through the
  * shared Durable Object; cold hydration returns retryable unavailability.
  */
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { Hono } from "hono";
 import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
@@ -181,6 +182,9 @@ app.post("/", async (c) => {
       worker.namespace,
       sharedTurnClientMessageId(raw),
       "agentKind" in r ? "platform" : "organization-credits",
+      undefined,
+      undefined,
+      { source: MESSAGE_SOURCE_CLIENT_CHAT, channelType: ChannelType.DM },
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

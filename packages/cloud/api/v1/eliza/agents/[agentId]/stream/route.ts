@@ -4,6 +4,7 @@
  * Worker bindings and cache-authorized agent scope are mandatory; the route
  * never falls through to a repository-backed sandbox stream.
  */
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
@@ -100,6 +101,10 @@ async function __hono_POST(
         executionCtx: resolved.executionCtx,
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
+        trustedChannel: {
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
+          channelType: ChannelType.DM,
+        },
       },
     );
 

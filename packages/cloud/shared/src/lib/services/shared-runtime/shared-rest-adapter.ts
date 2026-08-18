@@ -24,6 +24,7 @@ import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+import type { TrustedSharedChannelEnvelope } from "./trusted-shared-channel";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
@@ -541,6 +542,7 @@ export async function sharedRestMessageSend(
   funding: "organization-credits" | "platform" = "organization-credits",
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
+  trustedChannel?: TrustedSharedChannelEnvelope,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -562,6 +564,7 @@ export async function sharedRestMessageSend(
     namespace,
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+    ...(trustedChannel ? { trustedChannel } : {}),
   });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a

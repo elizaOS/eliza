@@ -2,6 +2,7 @@
  * Authorizes and executes managed Discord guild text and voice turns against
  * personal Shared Eliza while isolating public guild history from private transports.
  */
+import { ChannelType } from "@elizaos/core/edge";
 import { ElevenLabsService } from "./elevenlabs";
 import { elizaAppUserService } from "./eliza-app";
 import {
@@ -85,6 +86,7 @@ export async function runManagedDiscordGuildTextTurn(
     "platform",
     undefined,
     input.message,
+    { source: "discord", channelType: ChannelType.GROUP },
   );
   return {
     replyText: reply.text.trim(),
@@ -193,6 +195,7 @@ export async function runManagedDiscordGuildVoiceTurn(
     "platform",
     undefined,
     transcript,
+    { source: "discord", channelType: ChannelType.VOICE_GROUP },
   );
   const replyText = reply.text.trim();
   if (!replyText) throw new Error("Shared Eliza returned no guild voice reply");

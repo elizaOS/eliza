@@ -22,6 +22,9 @@
 
 import {
   type ActionResult,
+  ChannelType,
+  type ChannelType as ChannelTypeValue,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   replaceNameTokens,
@@ -42,12 +45,18 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import type { TrustedSharedChannelEnvelope } from "./trusted-shared-channel";
+import { LEGACY_SHARED_HISTORY_CHANNEL, SHARED_SYSTEM_CHANNEL } from "./trusted-shared-channel";
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  /** Original transport source. Optional only for pre-provenance persisted rows. */
+  source?: string;
+  /** Original transport mode. Optional only for pre-provenance persisted rows. */
+  channelType?: ChannelTypeValue;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
   /**
@@ -101,30 +110,32 @@ export interface RunSharedAgentTurnInput {
    * Flag-gated durable mirror of the landed user/assistant pair into the
    * tenant-scoped `shared_agent_memories` table (P2 edge memory store).
    * Attached by the caller only while `SHARED_MEMORY_TABLES_ENABLED === "true"`;
-   * both the direct-model and eliza-runtime engines commit through it.
+   * the runtime engine commits through it.
    */
   memory?: SharedMemoryStore;
   /**
    * Pre-rendered semantic-recall block (P3, `buildSharedRecallContext`) the
    * caller computed from the tenant memory store when the recall flag is on
    * and the recent window missed. Appended verbatim to the system prompt on
-   * every engine path; absent means recall contributed nothing this turn.
+   * every runtime turn; absent means recall contributed nothing this turn.
    */
   recallContext?: string;
   /**
-   * Transition-only selector for the genuine Workerd AgentRuntime path. The
-   * direct model path remains the control until the runtime path has passed
-   * live model and connector proof.
+   * Selects the canonical Workerd AgentRuntime path and its stable identity.
    */
   execution?: {
     engine: "eliza-runtime";
     agentKey: string;
+    /** Server-resolved conversation identity used for runtime room/world isolation. */
+    roomKey?: string;
     /**
      * Server-only attestation that the hosting boundary resolved this turn to an
      * authenticated Personal Shared tenant/account. Transport payload fields
      * must never populate this grant.
      */
     authenticatedPersonalSharedUser?: true;
+    /** Server-owned transport provenance; RPC/body fields never populate it. */
+    trustedChannel?: TrustedSharedChannelEnvelope;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -314,13 +325,45 @@ export function appendSharedTurn(
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
   messageRole: "system" | "user" = "user",
+  provenance: TrustedSharedChannelEnvelope = messageRole === "system"
+    ? SHARED_SYSTEM_CHANNEL
+    : LEGACY_SHARED_HISTORY_CHANNEL,
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
-    { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
-    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
+    {
+      id: messageIds?.user,
+      role: messageRole,
+      content: userMessage,
+      source: provenance.source,
+      channelType: provenance.channelType,
+      createdAt: sentAt,
+    },
+    {
+      id: messageIds?.assistant,
+      role: "assistant",
+      content: reply,
+      source: provenance.source,
+      channelType: provenance.channelType,
+      createdAt: sentAt + 1,
+    },
   ];
+}
+
+/** Resolve the exact provenance stored for the newly landed turn pair. */
+export function sharedTurnProvenance(
+  input: Pick<RunSharedAgentTurnInput, "execution" | "messageRole">,
+): TrustedSharedChannelEnvelope {
+  if (input.messageRole === "system") return SHARED_SYSTEM_CHANNEL;
+  if (input.execution?.trustedChannel) return input.execution.trustedChannel;
+  return {
+    source:
+      input.execution?.authenticatedPersonalSharedUser === true
+        ? MESSAGE_SOURCE_CLIENT_CHAT
+        : "shared-runtime",
+    channelType: ChannelType.DM,
+  };
 }
 
 /**
@@ -343,11 +386,14 @@ async function commitSharedTurnMemory(
 ): Promise<void> {
   const memory = input.memory;
   if (!memory) return;
+  const provenance = sharedTurnProvenance(input);
   await memory.recordTurnPair({
     userMessage: input.message.trim(),
     assistantReply: reply,
     ...(input.messageIds ? { messageIds: input.messageIds } : {}),
     ...(input.messageRole ? { messageRole: input.messageRole } : {}),
+    source: provenance.source,
+    channelType: provenance.channelType,
   });
 }
 
@@ -391,6 +437,7 @@ function withBlockedSecondaryCapabilities(
       reply,
       input.messageIds,
       input.messageRole,
+      sharedTurnProvenance(input),
     ),
     blockedSecondaryCapabilities: blocked,
   };
@@ -448,6 +495,7 @@ export async function runSharedAgentTurn(
         capabilityWall.reply,
         input.messageIds,
         input.messageRole,
+        sharedTurnProvenance(input),
       ),
       model: "capability-wall",
       degraded: false,
@@ -461,7 +509,14 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendSharedTurn(
+        input.history,
+        message,
+        reply,
+        input.messageIds,
+        input.messageRole,
+        sharedTurnProvenance(input),
+      ),
       model: "none",
       degraded: true,
     };
@@ -530,6 +585,7 @@ export async function runSharedAgentTurn(
           reply,
           input.messageIds,
           input.messageRole,
+          sharedTurnProvenance(input),
         ),
         model: modelId,
         degraded: false,
@@ -590,7 +646,14 @@ export async function runSharedAgentTurnStream(
       model: "capability-wall",
       degraded: false,
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendSharedTurn(
+        input.history,
+        message,
+        reply,
+        input.messageIds,
+        input.messageRole,
+        sharedTurnProvenance(input),
+      ),
       parts,
       capabilityWall,
     };
@@ -602,7 +665,14 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendSharedTurn(
+        input.history,
+        message,
+        reply,
+        input.messageIds,
+        input.messageRole,
+        sharedTurnProvenance(input),
+      ),
       model: "none",
       degraded: true,
     };

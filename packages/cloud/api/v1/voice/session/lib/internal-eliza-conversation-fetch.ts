@@ -8,6 +8,7 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
+import { ChannelType } from "@elizaos/core/edge";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
@@ -344,6 +345,7 @@ async function dispatchInternalElizaConversationFetch(
       (body as { messageRole?: unknown }).messageRole === "system"
         ? "system"
         : undefined,
+    trustedChannel: { source: "voice", channelType: ChannelType.VOICE_DM },
     body,
     origin: headers.get("origin"),
     namespace: runtime.namespace,

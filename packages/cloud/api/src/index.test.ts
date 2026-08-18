@@ -1064,7 +1064,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(productionRoutes).toContain("*.cloud.eliza.app/*");
   });
 
-  test("publishes the genuine Shared runtime in staging and production", async () => {
+  test("does not retain the retired Shared runtime transition gate", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -1075,11 +1075,13 @@ describe("cloud-api worker entrypoint", () => {
       };
     };
 
-    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("false");
-    expect(config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
-    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe(
-      "true",
-    );
+    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME,
+    ).toBeUndefined();
   });
 
   test("keeps the legacy edge guard false and reserves the replacement names for the cutover secrets", async () => {
