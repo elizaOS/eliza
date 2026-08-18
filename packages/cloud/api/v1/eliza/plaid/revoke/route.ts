@@ -1,8 +1,7 @@
 /**
- * POST /api/v1/eliza/plaid/exchange
- *
- * Exchanges a Plaid Link `public_token`, stores the resulting Item credential
- * under the authenticated organization, and returns an opaque connection id.
+ * Revokes a Plaid Item and deletes its organization-bound Cloud credential.
+ * Repeated requests are idempotent and never disclose whether another tenant
+ * owns the supplied connection id.
  */
 
 import { Hono } from "hono";
@@ -20,7 +19,7 @@ const app = new Hono<AppEnv>();
 
 const requestSchema = z
   .object({
-    publicToken: z.string().trim().min(1),
+    connectionId: z.string().uuid(),
   })
   .strict();
 
@@ -32,15 +31,16 @@ app.post("/", async (c) => {
     );
     if (!parsed.success) {
       return c.json(
-        { error: "publicToken is required.", details: parsed.error.issues },
+        { error: "connectionId is required.", details: parsed.error.issues },
         400,
       );
     }
-    const exchange = await plaidConnectionService.exchange({
-      organizationId: user.organization_id,
-      publicToken: parsed.data.publicToken,
-    });
-    return c.json(exchange);
+    return c.json(
+      await plaidConnectionService.revoke({
+        organizationId: user.organization_id,
+        connectionId: parsed.data.connectionId,
+      }),
+    );
   } catch (error) {
     if (error instanceof PlaidConnectionError) {
       return c.json({ error: error.message }, error.status);

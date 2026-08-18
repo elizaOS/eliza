@@ -6,7 +6,7 @@
  * unless the caller explicitly invokes `getDecryptedTokens`.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { db } from "../client";
 import {
@@ -39,7 +39,122 @@ interface DecryptedTokens {
   refreshToken: string | null;
 }
 
+export function buildOrgBoundAccessTokenAad(organizationId: string, connectionId: string): string {
+  return `vendor_connections|${organizationId}|${connectionId}|access_token`;
+}
+
 export const vendorConnectionsRepository = {
+  /**
+   * Store a non-refreshable credential with GCM AAD bound to its tenant and
+   * opaque connection id. This is the required path for Plaid Item tokens.
+   */
+  async upsertOrgBoundAccessToken(
+    input: Omit<UpsertConnectionInput, "refreshToken">,
+  ): Promise<VendorConnection> {
+    const existing = await this.findByVendorLabel(input.organizationId, input.vendor, input.label);
+    const connectionId = existing?.id ?? crypto.randomUUID();
+    const encryption = getEncryptionService();
+    const encrypted = await encryption.encrypt(
+      input.accessToken,
+      buildOrgBoundAccessTokenAad(input.organizationId, connectionId),
+    );
+    const metadata: VendorConnectionMetadata = {
+      ...input.metadata,
+      encryption_context: "org_bound_v1",
+    };
+
+    if (existing) {
+      const [updated] = await db
+        .update(vendorConnections)
+        .set({
+          access_token_encrypted: encrypted.encryptedValue,
+          refresh_token_encrypted: null,
+          encrypted_dek: encrypted.encryptedDek,
+          token_nonce: encrypted.nonce,
+          token_auth_tag: encrypted.authTag,
+          encryption_key_id: encrypted.keyId,
+          expires_at: input.expiresAt,
+          scopes: input.scopes,
+          connection_metadata: metadata,
+          deleted_at: null,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(vendorConnections.id, connectionId),
+            eq(vendorConnections.organization_id, input.organizationId),
+          ),
+        )
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(vendorConnections)
+      .values({
+        id: connectionId,
+        organization_id: input.organizationId,
+        vendor: input.vendor,
+        label: input.label,
+        access_token_encrypted: encrypted.encryptedValue,
+        refresh_token_encrypted: null,
+        encrypted_dek: encrypted.encryptedDek,
+        token_nonce: encrypted.nonce,
+        token_auth_tag: encrypted.authTag,
+        encryption_key_id: encrypted.keyId,
+        expires_at: input.expiresAt,
+        scopes: input.scopes,
+        connection_metadata: metadata,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (created) {
+      return created;
+    }
+
+    // A concurrent exchange for the same Item may win the unique
+    // (organization, vendor, label) insert. Re-bind the credential to that
+    // authoritative row id instead of revoking the Item used by the winner.
+    const concurrent = await this.findByVendorLabel(
+      input.organizationId,
+      input.vendor,
+      input.label,
+    );
+    if (!concurrent) {
+      throw new Error("Vendor connection insert conflicted without an authoritative row.");
+    }
+    const rebound = await encryption.encrypt(
+      input.accessToken,
+      buildOrgBoundAccessTokenAad(input.organizationId, concurrent.id),
+    );
+    const [updated] = await db
+      .update(vendorConnections)
+      .set({
+        access_token_encrypted: rebound.encryptedValue,
+        refresh_token_encrypted: null,
+        encrypted_dek: rebound.encryptedDek,
+        token_nonce: rebound.nonce,
+        token_auth_tag: rebound.authTag,
+        encryption_key_id: rebound.keyId,
+        expires_at: input.expiresAt,
+        scopes: input.scopes,
+        connection_metadata: metadata,
+        deleted_at: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(vendorConnections.id, concurrent.id),
+          eq(vendorConnections.organization_id, input.organizationId),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      throw new Error("Concurrent vendor connection disappeared during credential binding.");
+    }
+    return updated;
+  },
+
   /** Insert or replace the connection for `(org, vendor, label)`. */
   async upsert(input: UpsertConnectionInput): Promise<VendorConnection> {
     const encryption = getEncryptionService();
@@ -129,6 +244,26 @@ export const vendorConnectionsRepository = {
     return row ?? null;
   },
 
+  async findActiveByIdForOrganization(
+    id: string,
+    organizationId: string,
+    vendor: string,
+  ): Promise<VendorConnection | null> {
+    const [row] = await db
+      .select()
+      .from(vendorConnections)
+      .where(
+        and(
+          eq(vendorConnections.id, id),
+          eq(vendorConnections.organization_id, organizationId),
+          eq(vendorConnections.vendor, vendor),
+          isNull(vendorConnections.deleted_at),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+
   async findByVendorLabel(
     organizationId: string,
     vendor: string,
@@ -199,6 +334,40 @@ export const vendorConnectionsRepository = {
       .where(eq(vendorConnections.id, id))
       .returning({ id: vendorConnections.id });
     return result.length > 0;
+  },
+
+  async deleteActiveByIdForOrganization(
+    id: string,
+    organizationId: string,
+    vendor: string,
+  ): Promise<boolean> {
+    const result = await db
+      .delete(vendorConnections)
+      .where(
+        and(
+          eq(vendorConnections.id, id),
+          eq(vendorConnections.organization_id, organizationId),
+          eq(vendorConnections.vendor, vendor),
+        ),
+      )
+      .returning({ id: vendorConnections.id });
+    return result.length > 0;
+  },
+
+  async getOrgBoundAccessToken(connection: VendorConnection): Promise<string> {
+    if (connection.connection_metadata.encryption_context !== "org_bound_v1") {
+      throw new Error("Connection credential is not organization-bound.");
+    }
+    const encryption = getEncryptionService();
+    return encryption.decrypt(
+      {
+        encryptedValue: connection.access_token_encrypted,
+        encryptedDek: connection.encrypted_dek,
+        nonce: connection.token_nonce,
+        authTag: connection.token_auth_tag,
+      },
+      buildOrgBoundAccessTokenAad(connection.organization_id, connection.id),
+    );
   },
 
   async getDecryptedTokens(connection: VendorConnection): Promise<DecryptedTokens> {
