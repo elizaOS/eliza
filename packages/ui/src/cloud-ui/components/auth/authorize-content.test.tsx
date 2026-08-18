@@ -156,6 +156,12 @@ describe("AuthorizeContent", () => {
       name: "Authorize Demo App",
     });
     expect(authorizeButton.className).toContain("hover:bg-accent-hover");
+    expect(
+      document.querySelector('[data-oidc-interstitial="card"]')?.className,
+    ).toContain("rounded-xl");
+    expect(
+      document.querySelector('[data-oidc-interstitial="card"]')?.className,
+    ).toContain("max-w-md");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 

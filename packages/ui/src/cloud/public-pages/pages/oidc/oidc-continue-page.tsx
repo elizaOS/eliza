@@ -20,6 +20,10 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
+  OIDC_INTERSTITIAL_STYLE_TOKENS,
+  OidcInterstitialFrame,
+} from "../../components/oidc-interstitial-frame";
+import {
   OIDC_ISSUER_ENV_VAR,
   type PreparedOidcResumeTarget,
   prepareOidcResumeTarget,
@@ -75,55 +79,58 @@ export default function OidcContinuePage() {
   }, [requestId]);
 
   return (
-    <main className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-      <div className="relative w-full max-w-md bg-card border border-border p-8 text-center">
-        {failure === "issuer_unconfigured" ? (
-          <RecoveryPanel>
-            <p className="text-fg">
-              {t("cloud.oidcContinue.issuerUnconfigured", {
-                defaultValue:
-                  "Single sign-on is not configured for this deployment: {{envVar}} is unset, so there is no identity provider to return to.",
-                envVar: OIDC_ISSUER_ENV_VAR,
-              })}
-            </p>
-            <RecoveryAction />
-          </RecoveryPanel>
-        ) : failure === "session_missing" ||
-          failure === "session_sync_failed" ? (
-          <RecoveryPanel>
-            <p className="text-fg">
-              {t("cloud.oidcContinue.sessionUnavailable", {
-                defaultValue:
-                  "Your Eliza session could not be securely transferred to the identity provider. Sign in again to continue.",
-              })}
-            </p>
-            <RecoveryAction href={retryContinuationHref} />
-          </RecoveryPanel>
-        ) : failure ? (
-          <RecoveryPanel>
-            <p className="text-fg">
-              {t("cloud.oidcContinue.expired", {
-                defaultValue:
-                  "This sign-in request is no longer valid. Return to the application and start sign-in again.",
-              })}
-            </p>
-            <RecoveryAction />
-          </RecoveryPanel>
-        ) : (
-          <h1 className="text-lg font-semibold text-muted-fg">
+    <OidcInterstitialFrame>
+      {failure === "issuer_unconfigured" ? (
+        <RecoveryPanel>
+          <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>
+            {t("cloud.oidcContinue.issuerUnconfigured", {
+              defaultValue:
+                "Single sign-on is not configured for this deployment: {{envVar}} is unset, so there is no identity provider to return to.",
+              envVar: OIDC_ISSUER_ENV_VAR,
+            })}
+          </p>
+          <RecoveryAction />
+        </RecoveryPanel>
+      ) : failure === "session_missing" || failure === "session_sync_failed" ? (
+        <RecoveryPanel>
+          <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>
+            {t("cloud.oidcContinue.sessionUnavailable", {
+              defaultValue:
+                "Your Eliza session could not be securely transferred to the identity provider. Sign in again to continue.",
+            })}
+          </p>
+          <RecoveryAction href={retryContinuationHref} />
+        </RecoveryPanel>
+      ) : failure ? (
+        <RecoveryPanel>
+          <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>
+            {t("cloud.oidcContinue.expired", {
+              defaultValue:
+                "This sign-in request is no longer valid. Return to the application and start sign-in again.",
+            })}
+          </p>
+          <RecoveryAction />
+        </RecoveryPanel>
+      ) : (
+        <>
+          <span
+            aria-hidden="true"
+            className="h-8 w-8 animate-spin rounded-full border-2 border-accent/25 border-t-accent motion-reduce:animate-none"
+          />
+          <h1 className={OIDC_INTERSTITIAL_STYLE_TOKENS.heading}>
             {t("cloud.oidcContinue.redirecting", {
               defaultValue: "Completing sign-in…",
             })}
           </h1>
-        )}
-      </div>
-    </main>
+        </>
+      )}
+    </OidcInterstitialFrame>
   );
 
   function RecoveryPanel({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex flex-col items-center gap-6">
-        <h1 className="text-lg font-semibold text-txt">
+        <h1 className={OIDC_INTERSTITIAL_STYLE_TOKENS.heading}>
           {t("cloud.cliLogin.authError", {
             defaultValue: "Authentication Error",
           })}
@@ -135,10 +142,7 @@ export default function OidcContinuePage() {
 
   function RecoveryAction({ href = "/login" }: { href?: string }) {
     return (
-      <Button
-        asChild
-        className="hosted-signin-focus-emphasis border border-transparent"
-      >
+      <Button asChild className={OIDC_INTERSTITIAL_STYLE_TOKENS.primaryAction}>
         <a href={href}>
           {t("cloud.cliLogin.signInAgain", {
             defaultValue: "Sign In Again",

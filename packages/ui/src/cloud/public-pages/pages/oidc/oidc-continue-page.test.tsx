@@ -48,6 +48,12 @@ describe("OidcContinuePage", () => {
 
       expect(await screen.findByRole("main")).toBeTruthy();
       expect(
+        document.querySelector('[data-oidc-interstitial="card"]')?.className,
+      ).toContain("rounded-xl");
+      expect(
+        document.querySelector('[data-oidc-interstitial="card"]')?.className,
+      ).toContain("max-w-md");
+      expect(
         await screen.findByRole("heading", {
           level: 1,
           name: "Authentication Error",

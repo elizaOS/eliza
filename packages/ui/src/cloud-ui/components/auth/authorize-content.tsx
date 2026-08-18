@@ -9,13 +9,16 @@ import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
+  OIDC_INTERSTITIAL_STYLE_TOKENS,
+  OidcInterstitialFrame,
+} from "../../../cloud/public-pages/components/oidc-interstitial-frame";
+import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
 } from "../../../cloud/public-pages/lib/steward-oauth-url";
 import { Button } from "../../../components/ui/button";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
@@ -365,8 +368,8 @@ function AuthorizeFlow({
   if (status === "validating" || authLoading) {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-muted" />
-        <h3 className="text-lg font-semibold text-white">
+        <Loader2 className="h-12 w-12 animate-spin text-accent" />
+        <h3 className={OIDC_INTERSTITIAL_STYLE_TOKENS.heading}>
           Verifying application...
         </h3>
       </Frame>
@@ -386,9 +389,11 @@ function AuthorizeFlow({
   if (status === "authorizing") {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-muted" />
-        <h3 className="text-lg font-semibold text-white">Authorizing...</h3>
-        <p className="text-sm text-white/60">
+        <Loader2 className="h-12 w-12 animate-spin text-accent" />
+        <h3 className={OIDC_INTERSTITIAL_STYLE_TOKENS.heading}>
+          Authorizing...
+        </h3>
+        <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>
           Redirecting you back to {appInfo.name}
         </p>
       </Frame>
@@ -398,13 +403,13 @@ function AuthorizeFlow({
   return (
     <Frame>
       <AppHeader appInfo={appInfo} />
-      <p className="max-w-sm text-center text-sm text-white/60">
+      <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>
         Connect {appInfo.name} to your Eliza Cloud account. AI features may use
         your cloud credit balance.
       </p>
 
       {error && (
-        <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="w-full rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -439,14 +444,19 @@ function AuthorizationErrorFrame({
 }) {
   return (
     <Frame>
-      <div className="p-4 rounded-full bg-red-500/20">
-        <AlertTriangle className="h-8 w-8 text-red-400" />
+      <div className="rounded-full bg-destructive/10 p-4">
+        <AlertTriangle className="h-8 w-8 text-destructive" />
       </div>
-      <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
-      <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
-      <BrandButton variant="outline" onClick={onHome} className="mt-4">
+      <h3 className={OIDC_INTERSTITIAL_STYLE_TOKENS.heading}>
+        Authorization Error
+      </h3>
+      <p className={OIDC_INTERSTITIAL_STYLE_TOKENS.body}>{error}</p>
+      <Button
+        onClick={onHome}
+        className={`${OIDC_INTERSTITIAL_STYLE_TOKENS.primaryAction} mt-4`}
+      >
         Go to Eliza Cloud
-      </BrandButton>
+      </Button>
     </Frame>
   );
 }
@@ -457,19 +467,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   // remounted the tree and prevented validateApp's effect from completing.
   // Consent screens are also better off header-less (Google/GitHub do the
   // same): single-purpose, not a navigable location.
-  return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
-      <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md bg-black/85">
-          <CornerBrackets size="md" className="opacity-50" />
-          <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
-            {children}
-          </div>
-        </BrandCard>
-      </div>
-    </div>
-  );
+  return <OidcInterstitialFrame>{children}</OidcInterstitialFrame>;
 }
 
 function AppHeader({ appInfo }: { appInfo: AppInfo }) {
@@ -492,9 +490,9 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
         </div>
       )}
       <div>
-        <h1 className="text-xl font-bold text-white">{appInfo.name}</h1>
+        <h1 className="text-xl font-bold text-txt-strong">{appInfo.name}</h1>
         {appInfo.website_url && (
-          <p className="text-sm text-white/50 mt-1">
+          <p className="mt-1 text-sm text-muted">
             {new URL(appInfo.website_url).hostname}
           </p>
         )}
@@ -514,12 +512,12 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton
+      <Button
         onClick={onAuthorize}
-        className="w-full hover:bg-accent-hover hover:text-accent-foreground"
+        className={`w-full ${OIDC_INTERSTITIAL_STYLE_TOKENS.primaryAction}`}
       >
         Authorize {appName}
-      </BrandButton>
+      </Button>
       <InlineCancelButton onCancel={onCancel} />
     </div>
   );
@@ -624,8 +622,8 @@ function SignedOutActions({
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-muted" />
-          <p className="text-sm text-white/60">Loading sign-in options...</p>
+          <Loader2 className="h-6 w-6 animate-spin text-accent" />
+          <p className="text-sm text-muted">Loading sign-in options...</p>
         </div>
       )}
       <InlineCancelButton onCancel={onCancel} />
@@ -639,7 +637,7 @@ function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
       variant="ghost"
       type="button"
       onClick={onCancel}
-      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
+      className={OIDC_INTERSTITIAL_STYLE_TOKENS.secondaryAction}
     >
       Cancel
     </Button>
