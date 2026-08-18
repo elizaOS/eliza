@@ -193,6 +193,7 @@ import {
   type DeepLinkNavigationIntent,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
+import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
@@ -2476,13 +2477,17 @@ async function initializeDesktopShell(): Promise<void> {
       } satisfies PushToTalkHoldDetail);
     },
   });
-  const fnHoldStart = await invokeDesktopBridgeRequest<{
-    status: "started" | "permission-missing" | "failed" | "unavailable";
-    fnSystemUsageType: number;
-  }>({
-    rpcMethod: "desktopStartFnHoldMonitor",
-    ipcChannel: "desktop:startFnHoldMonitor",
-  });
+  const fnHoldStart = shouldStartFnHoldMonitor({
+    cloudOnly: APP_BRANDING.cloudOnly === true,
+  })
+    ? await invokeDesktopBridgeRequest<{
+        status: "started" | "permission-missing" | "failed" | "unavailable";
+        fnSystemUsageType: number;
+      }>({
+        rpcMethod: "desktopStartFnHoldMonitor",
+        ipcChannel: "desktop:startFnHoldMonitor",
+      })
+    : null;
   if (fnHoldStart?.status === "started") {
     if (fnHoldStart.fnSystemUsageType !== 0) {
       console.warn(

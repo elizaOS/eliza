@@ -15,6 +15,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const runtimeMocks = vi.hoisted(() => ({ electrobun: false }));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => false,
@@ -24,6 +26,10 @@ vi.mock("@capacitor/core", () => ({
     post: vi.fn(),
     request: vi.fn(),
   },
+}));
+
+vi.mock("../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => runtimeMocks.electrobun,
 }));
 
 import { setBootConfig } from "../config/boot-config";
@@ -173,6 +179,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
 
 describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)", () => {
   beforeEach(() => {
+    runtimeMocks.electrobun = false;
     setBootConfig({
       branding: {},
       cloudApiBase: "https://staging.elizacloud.ai",
@@ -276,5 +283,42 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
       token: "fresh-session-token",
       userId: "user-snake",
     });
+  });
+});
+
+describe("ElizaClient direct Cloud auth served from Electrobun", () => {
+  beforeEach(() => {
+    runtimeMocks.electrobun = true;
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    stubPageHostname("127.0.0.1", "5174");
+  });
+
+  afterEach(() => {
+    runtimeMocks.electrobun = false;
+    vi.restoreAllMocks();
+    restorePageLocation();
+  });
+
+  it("keeps the browser callback out of the loopback renderer", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ sessionId: "server-issued-electrobun-session" }, 201),
+    );
+
+    const client = new ElizaClient("http://127.0.0.1:31337");
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    const browserUrl = new URL(result.browserUrl ?? "");
+    expect(browserUrl.origin).toBe(STAGING_DIRECT_CLOUD_BASE_URL);
+    expect(browserUrl.pathname).toBe("/auth/cli-login");
+    expect(result.sessionId).toBe("server-issued-electrobun-session");
+    expect(browserUrl.searchParams.get("session")).toBe(
+      "server-issued-electrobun-session",
+    );
+    expect(browserUrl.searchParams.has("returnTo")).toBe(false);
   });
 });

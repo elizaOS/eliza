@@ -34,6 +34,7 @@ const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
 
 vi.mock("../api", () => ({
   client: {
+    getBaseUrl: vi.fn(() => "http://localhost:2138"),
     listCommands: (surface?: string) => listCommands(surface),
     listCustomActions: () => listCustomActions(),
     getModelsCatalog: () => getModelsCatalog(),
@@ -171,6 +172,14 @@ describe("protectedAgentProbesEnabled (pure gate — #16242)", () => {
       protectedAgentProbesEnabled(false, "https://agent.example.com"),
     ).toBe(true);
     expect(protectedAgentProbesEnabled(false, null)).toBe(true);
+  });
+
+  it("blocks unsupported app-shell probes on a limited Cloud agent even when authenticated", () => {
+    const limitedBase =
+      "https://api.eliza.app/api/v1/eliza/agents/personal%3Aowner-id";
+    expect(protectedAgentProbesEnabled(true, "file://", limitedBase)).toBe(
+      false,
+    );
   });
 });
 

@@ -142,10 +142,14 @@ describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
     expect(screen.getByText("Signing you in")).toBeTruthy();
   });
 
-  it("signed out with NO domain session marker → the ordinary login, no bounce", async () => {
+  it("signed out with no cross-host cookie hint starts the auth-origin login handoff", async () => {
     renderEntry("/");
-    expect(await screen.findByTestId("login-page")).toBeTruthy();
-    expect(replacedUrls).toEqual([]);
+    await waitFor(() => expect(replacedUrls).toHaveLength(1));
+    expect(replacedUrls[0]).toMatch(
+      /^https:\/\/eliza\.app\/auth\/bridge\?state=/,
+    );
+    expect(screen.queryByTestId("login-page")).toBeNull();
+    expect(screen.getByText("Signing you in")).toBeTruthy();
   });
 
   it("logout-then-visit does NOT re-bridge: the explicit logged-out marker wins over a live eliza.app session", async () => {

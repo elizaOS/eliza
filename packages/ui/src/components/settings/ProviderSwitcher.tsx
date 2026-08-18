@@ -111,7 +111,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     elizaCloudConnected,
   );
   const cloudModel = useCloudModelConfig(notifySelectionFailure);
-  const bootstrap = useProviderBootstrap(selection, cloudModel);
+  const bootstrap = useProviderBootstrap(
+    selection,
+    cloudModel,
+    !selection.cloudRuntimeLocked,
+  );
 
   const { apiProviderChoices, providerEntries, servingLocalFallback } =
     useProviderEntries({
@@ -225,7 +229,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
   // per-slot overrides tucked into Advanced.
   const intelligenceEntries = displayedProviderEntries.filter(
-    (entry) => entry.category === "cloud" || entry.category === "local",
+    (entry) =>
+      entry.category === "cloud" ||
+      (entry.category === "local" && !selection.cloudRuntimeLocked),
   );
   const keyEntries = displayedProviderEntries.filter(
     (entry) => entry.category === "key",
@@ -279,28 +285,33 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
         {/* Subscription-active needs the honesty clarifier (it does NOT route
             chat); a Cloud/Local active state is already shown on its tile. */}
-        {activeEntry && activeEntry.category === "subscription" ? (
+        {!selection.cloudRuntimeLocked &&
+        activeEntry &&
+        activeEntry.category === "subscription" ? (
           <ActiveProviderSummary entry={activeEntry} t={t} />
         ) : null}
-        <div className="grid gap-2 sm:grid-cols-2">
-          {intelligenceEntries.map((entry) => (
-            <ProviderCard
-              key={entry.id}
-              id={entry.id}
-              icon={entry.icon}
-              label={entry.label}
-              category={entry.category}
-              status={entry.status}
-              current={entry.current}
-              selected={visibleProviderPanelId === entry.id}
-              onSelect={selection.handleProviderPanelSelect}
-              variant="tile"
-              description={intelligenceDescription(entry)}
-            />
-          ))}
-        </div>
+        {!selection.cloudRuntimeLocked ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {intelligenceEntries.map((entry) => (
+              <ProviderCard
+                key={entry.id}
+                id={entry.id}
+                icon={entry.icon}
+                label={entry.label}
+                category={entry.category}
+                status={entry.status}
+                current={entry.current}
+                selected={visibleProviderPanelId === entry.id}
+                onSelect={selection.handleProviderPanelSelect}
+                variant="tile"
+                description={intelligenceDescription(entry)}
+              />
+            ))}
+          </div>
+        ) : null}
 
-        {visibleProviderPanelId === "__local__" ? (
+        {visibleProviderPanelId === "__local__" &&
+        !selection.cloudRuntimeLocked ? (
           <LocalProviderPanel
             cloudCallsDisabled={
               selection.cloudCallsDisabled && servingAxes.inference === "local"
@@ -311,7 +322,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           />
         ) : null}
 
-        {visibleProviderPanelId === "__cloud__" ? (
+        {visibleProviderPanelId === "__cloud__" &&
+        !selection.cloudRuntimeLocked ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
             isCloudSelected={selection.isCloudConfigured}
@@ -332,9 +344,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {/* Per-role model configuration (small/large chat brains + coding
           sub-agent), driven by the validated /api/models catalog. */}
-      <ModelConfigurationPanel activeChatProvider={activeChatCatalogProvider} />
+      {!selection.cloudRuntimeLocked ? (
+        <ModelConfigurationPanel
+          activeChatProvider={activeChatCatalogProvider}
+        />
+      ) : null}
 
-      <SettingsGroup
+      {!selection.cloudRuntimeLocked ? (
+        <SettingsGroup
         title={t("providerswitcher.accountsGroupTitle", {
           defaultValue: "Accounts",
         })}
@@ -355,7 +372,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           onSelectChatProvider={onSelectChatProvider}
           onSelectSubscription={selection.handleSelectSubscription}
         />
-      </SettingsGroup>
+        </SettingsGroup>
+      ) : null}
 
       {/* Voice folds into this section for MVP (the standalone Voice tab is
           developer-only): speech is pinned to the bundled Kokoro TTS, so a
@@ -371,15 +389,26 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 className="h-[18px] w-[18px] shrink-0 text-accent"
                 aria-hidden
               />
-              {t("providerswitcher.voiceRowLabel", {
-                defaultValue: "Kokoro (on-device)",
-              })}
+              {selection.cloudRuntimeLocked
+                ? t("providerswitcher.cloudVoiceRowLabel", {
+                    defaultValue: "Eliza Cloud voice",
+                  })
+                : t("providerswitcher.voiceRowLabel", {
+                    defaultValue: "Kokoro (on-device)",
+                  })}
             </span>
           }
-          description={t("providerswitcher.voiceRowDescription", {
-            defaultValue:
-              "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-          })}
+          description={
+            selection.cloudRuntimeLocked
+              ? t("providerswitcher.cloudVoiceRowDescription", {
+                  defaultValue:
+                    "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
+                })
+              : t("providerswitcher.voiceRowDescription", {
+                  defaultValue:
+                    "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
+                })
+          }
           control={
             <span className="text-xs text-accent">
               {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
@@ -388,7 +417,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         />
       </SettingsGroup>
 
-      <SettingsGroup
+      {!selection.cloudRuntimeLocked ? (
+        <SettingsGroup
         title={t("providerswitcher.advancedGroupTitle", {
           defaultValue: "Advanced",
         })}
@@ -426,7 +456,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             <RoutingMatrix />
           </div>
         </AdvancedSettingsDisclosure>
-      </SettingsGroup>
+        </SettingsGroup>
+      ) : null}
     </SettingsStack>
   );
 }

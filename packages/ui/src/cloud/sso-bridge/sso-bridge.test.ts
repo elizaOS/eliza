@@ -257,18 +257,17 @@ describe("handshake URLs", () => {
 
 describe("shouldAutoBridgeToSso", () => {
   it("requires the exchange role", () => {
-    document.cookie = "steward-authed=1";
     expect(shouldAutoBridgeToSso("eliza.app")).toBe(false);
     expect(shouldAutoBridgeToSso("localhost")).toBe(false);
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
-  it("requires the domain-wide authed marker cookie (post-logout browsers skip the bounce)", () => {
-    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
+  it("starts the auth-origin handoff without a cross-host cookie hint", () => {
+    expect(document.cookie).not.toContain("steward-authed=1");
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
   it("honors the explicit logged-out marker", () => {
-    document.cookie = "steward-authed=1";
     markSsoLoggedOut();
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
     clearSsoLoggedOut();
@@ -276,7 +275,6 @@ describe("shouldAutoBridgeToSso", () => {
   });
 
   it("honors the loop guard", () => {
-    document.cookie = "steward-authed=1";
     markSsoBridgeAttempt();
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });

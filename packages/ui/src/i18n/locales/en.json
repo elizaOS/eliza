@@ -4298,6 +4298,8 @@
   "providerswitcher.cloudInferenceToggleHint": "Cloud can stay connected while inference runs on your own key. Disable cloud inference when using BYOK providers.",
   "providerswitcher.cloudTileDescription": "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
   "providerswitcher.cloudTileUnsignedDescription": "Sign in to use managed models. Chat replies use Local until then.",
+  "providerswitcher.cloudVoiceRowDescription": "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
+  "providerswitcher.cloudVoiceRowLabel": "Eliza Cloud voice",
   "providerswitcher.codingSubscriptionChatNote": "Powers coding agents & workflows only — chat replies keep using your selected Intelligence provider (Cloud or Local).",
   "providerswitcher.customModelSpec": "Custom model spec",
   "providerswitcher.disconnecting": "Disconnecting...",

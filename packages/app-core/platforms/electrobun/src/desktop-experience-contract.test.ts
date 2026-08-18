@@ -30,6 +30,21 @@ describe("desktop experience contract — chat-first launch", () => {
     }
   });
 
+  it("gives Cloud-only installs a recoverable full onboarding window by default", () => {
+    expect(shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [])).toBe(
+      false,
+    );
+    expect(
+      shouldStartBottomBar(
+        {
+          ELIZA_DESKTOP_CLOUD_ONLY: "1",
+          ELIZA_DESKTOP_BOTTOM_BAR: "1",
+        },
+        [],
+      ),
+    ).toBe(true);
+  });
+
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
     expect(shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [])).toBe(
       false,

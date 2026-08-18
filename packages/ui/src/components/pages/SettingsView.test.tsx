@@ -62,6 +62,17 @@ const stubSections = vi.hoisted(() => [
     defaultTitle: "Runtime",
   },
   {
+    id: "managed-hidden",
+    label: "settings.sections.managedHidden.label",
+    defaultLabel: "Managed implementation control",
+    tone: "neutral",
+    hue: "slate",
+    group: "agent",
+    titleKey: "settings.sections.managedHidden.label",
+    defaultTitle: "Managed implementation control",
+    hideOnManagedCloud: true,
+  },
+  {
     id: "crash",
     label: "settings.sections.crash.label",
     defaultLabel: "Crash",
@@ -90,6 +101,12 @@ vi.mock("../../state", () => ({
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
+}));
+
+vi.mock("../views/ShellViewAgentSurface", () => ({
+  ShellViewAgentSurface: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 vi.mock("../permissions/PermissionPrimingModal", () => ({
@@ -288,6 +305,14 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     expect(hubRow("cloud-management").textContent).toContain(
       "Cloud Management",
+    );
+    expect(screen.queryByTestId("settings-hub-row-managed-hidden")).toBeNull();
+  });
+
+  it("keeps managed implementation controls available for local runtimes", () => {
+    render(<SettingsView />);
+    expect(hubRow("managed-hidden").textContent).toContain(
+      "Managed implementation control",
     );
   });
 

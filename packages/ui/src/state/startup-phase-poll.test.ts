@@ -1061,6 +1061,7 @@ describe("runPollingBackend", () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
+      __ELIZA_DESKTOP_RUNTIME_MODE__: "cloud",
       location: {
         origin: "http://localhost:2138",
         protocol: "http:",
@@ -1108,6 +1109,7 @@ describe("runPollingBackend", () => {
 
     expect(clientMock.getFirstRunStatus).not.toHaveBeenCalled();
     expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
+    expect(clientMock.getAuthStatus).not.toHaveBeenCalled();
     expect(deps.setFirstRunCloudProvisionedContainer).toHaveBeenCalledWith(
       false,
     );

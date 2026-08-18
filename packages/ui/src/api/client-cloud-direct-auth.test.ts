@@ -60,7 +60,10 @@ describe("ElizaClient direct Cloud auth on native", () => {
   });
 
   it("creates native CLI sessions through the Cloud API host and opens the web auth host", async () => {
-    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.post.mockResolvedValue({
+      status: 201,
+      data: { sessionId: "server-issued-session" },
+    });
 
     const client = new ElizaClient("https://www.elizacloud.ai");
     const result = await client.cloudLoginDirect("https://www.elizacloud.ai");
@@ -78,9 +81,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
       expect.objectContaining({
         ok: true,
         apiBase: "https://api.eliza.app",
-        browserUrl: expect.stringMatching(
-          /^https:\/\/eliza\.app\/auth\/cli-login\?session=/,
-        ),
+        sessionId: "server-issued-session",
+        browserUrl:
+          "https://eliza.app/auth/cli-login?session=server-issued-session",
       }),
     );
     expectNoLocalPersistOrStatusProbe();
@@ -689,10 +692,10 @@ describe("ElizaClient direct Cloud auth on native", () => {
     const client = new ElizaClient(undefined, "cloud-api-key");
     const result = client.provisionCloudCompatAgent("agent-1");
     const expectation = expect(result).rejects.toThrow(
-      "Eliza Cloud request timed out after 15s",
+      "Eliza Cloud request timed out after 30s",
     );
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     await expectation;
     expect(capacitorMocks.request).toHaveBeenCalledWith(
