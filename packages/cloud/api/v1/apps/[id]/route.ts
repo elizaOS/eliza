@@ -94,7 +94,14 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
     return c.json({ success: false, error: "Access denied" }, 403);
   }
 
-  const rawBody = await c.req.json();
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    // error-policy:J3 untrusted request body — malformed JSON is caller
+    // error (400), not failureResponse(SyntaxError) → 500.
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const validationResult = UpdateAppSchema.safeParse(rawBody);
   if (!validationResult.success) {
     return c.json(
