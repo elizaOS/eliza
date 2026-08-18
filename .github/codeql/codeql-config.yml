@@ -26,6 +26,25 @@ paths-ignore:
   - '**/platforms/*/tmp/**'
   - '**/*.min.js'
 
+  # Unit, integration, fixture, and mock code is never shipped. Excluding it
+  # keeps the full default security suite focused on production data flows and
+  # below the repository's effective hosted-job ceiling; authored runtime,
+  # server, cloud, plugin, and operational script code remains in scope.
+  - '**/__tests__/**'
+  - '**/test/**'
+  - '**/tests/**'
+  - '**/fixtures/**'
+  - '**/mocks/**'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.test.js'
+  - '**/*.test.jsx'
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  - '**/*.spec.js'
+  - '**/*.spec.jsx'
+  - packages/test/**
+
   # Vendored toolchain and generated build cache, not authored application
   # source. This was the single largest extractor/OOM contributor.
   - packages/app-core/scripts/bun-riscv64/**
