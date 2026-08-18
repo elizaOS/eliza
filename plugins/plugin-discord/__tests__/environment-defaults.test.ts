@@ -7,7 +7,7 @@
  * keys before a dynamic import to read them deterministically.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateDiscordConfig } from "../environment";
 
 const POSTURE_ENV_KEYS = [
@@ -81,6 +81,33 @@ describe("Discord default posture", () => {
 			runtimeWith({ DISCORD_DM_POLICY: "nonsense" }),
 		);
 		expect(settings.dmPolicy).toBe("pairing");
+	});
+
+	it("fails closed when the DISCORD_DM_POLICY env var itself is unrecognized", async () => {
+		// DISCORD_DEFAULTS is frozen at import time, so the poisoned env must be
+		// in place before a fresh module evaluation to exercise the default path.
+		vi.resetModules();
+		process.env.DISCORD_DM_POLICY = "pariing";
+		try {
+			const { DISCORD_DEFAULTS, getDiscordSettings } = await import(
+				"../environment"
+			);
+			expect(DISCORD_DEFAULTS.DM_POLICY).toBe("pairing");
+			expect(getDiscordSettings(runtimeWith()).dmPolicy).toBe("pairing");
+		} finally {
+			delete process.env.DISCORD_DM_POLICY;
+			vi.resetModules();
+		}
+	});
+
+	it("resolveDiscordDmPolicy accepts documented values and fails closed otherwise", async () => {
+		const { resolveDiscordDmPolicy } = await import("../environment");
+		expect(resolveDiscordDmPolicy(undefined)).toBe("pairing");
+		expect(resolveDiscordDmPolicy("")).toBe("pairing");
+		expect(resolveDiscordDmPolicy(" OPEN ")).toBe("open");
+		expect(resolveDiscordDmPolicy("Allowlist")).toBe("allowlist");
+		expect(resolveDiscordDmPolicy("disabled")).toBe("disabled");
+		expect(resolveDiscordDmPolicy("open;drop")).toBe("pairing");
 	});
 
 	it("validateDiscordConfig parses a present token and rejects a missing one", async () => {

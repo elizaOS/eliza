@@ -51,6 +51,9 @@ export const twitterEnvSchema = z.object({
   TWITTER_ENABLE_POST: z.string().default("false"),
   TWITTER_ENABLE_REPLIES: z.string().default("true"),
   TWITTER_ENABLE_DMS: z.string().default("true"),
+  // DM access gate: open|pairing|allowlist|disabled; blank fails closed to
+  // `pairing` at the resolver (see dm-policy.ts).
+  TWITTER_DM_POLICY: z.string().default(""),
   TWITTER_DM_POLL_INTERVAL_SECONDS: z.string().default("60"),
   TWITTER_ENABLE_ACTIONS: z.string().default("false"), // likes, retweets, quotes
 
@@ -242,6 +245,10 @@ export async function validateTwitterConfig(
           "true"
         ).toLowerCase() === "true",
       ),
+      TWITTER_DM_POLICY:
+        config.TWITTER_DM_POLICY ??
+        getSetting(runtime, "TWITTER_DM_POLICY") ??
+        "",
       TWITTER_DM_POLL_INTERVAL_SECONDS: String(
         safeParseInt(
           config.TWITTER_DM_POLL_INTERVAL_SECONDS ??
@@ -473,6 +480,7 @@ function getDefaultConfig(): TwitterConfig {
     TWITTER_ENABLE_POST: getConfig("TWITTER_ENABLE_POST") || "false",
     TWITTER_ENABLE_REPLIES: getConfig("TWITTER_ENABLE_REPLIES") || "true",
     TWITTER_ENABLE_DMS: getConfig("TWITTER_ENABLE_DMS") || "true",
+    TWITTER_DM_POLICY: getConfig("TWITTER_DM_POLICY") || "",
     TWITTER_DM_POLL_INTERVAL_SECONDS:
       getConfig("TWITTER_DM_POLL_INTERVAL_SECONDS") || "60",
     TWITTER_ENABLE_ACTIONS: getConfig("TWITTER_ENABLE_ACTIONS") || "false",
