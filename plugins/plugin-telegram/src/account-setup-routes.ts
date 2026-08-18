@@ -202,14 +202,18 @@ export function resolveTelegramAppCredentials(
   runtime: IAgentRuntime,
   connConfig: Record<string, unknown>,
 ): { apiId: number; apiHash: string } {
+  const parsedAccountId =
+    typeof connConfig.appId === "string" || typeof connConfig.appId === "number"
+      ? Number(connConfig.appId)
+      : Number.NaN;
   if (
-    (typeof connConfig.appId === "string" ||
-      typeof connConfig.appId === "number") &&
+    Number.isInteger(parsedAccountId) &&
+    parsedAccountId > 0 &&
     typeof connConfig.appHash === "string" &&
     connConfig.appHash.trim().length > 0
   ) {
     return {
-      apiId: Number(connConfig.appId),
+      apiId: parsedAccountId,
       apiHash: connConfig.appHash.trim(),
     };
   }
