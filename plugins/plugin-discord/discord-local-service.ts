@@ -39,14 +39,7 @@ export const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
 export const DISCORD_LOCAL_ACCOUNT_ID = DEFAULT_ACCOUNT_ID;
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
 
-/** Discord local OAuth token-exchange and refresh share the documented 15s sibling budget. */
-export const DISCORD_OAUTH_TIMEOUT_MS = 15_000;
-
-export type DiscordLocalServiceOptions = {
-	fetchImpl?: typeof fetch;
-	oauthTimeoutMs?: number;
-	sessionPath?: string;
-};
+const DISCORD_OAUTH_TIMEOUT_MS = 15_000;
 const DISCORD_LOCAL_DEFAULT_SCOPES = [
 	"rpc",
 	"identify",
@@ -425,9 +418,7 @@ export class DiscordLocalService extends Service {
 	 * before this can safely vary per request.
 	 */
 	public readonly accountId = DISCORD_LOCAL_ACCOUNT_ID;
-	private readonly sessionPath: string;
-	private readonly fetchImpl: typeof fetch;
-	private readonly oauthTimeoutMs: number;
+	private readonly sessionPath = resolveSessionPath();
 	private readonly pendingRequests = new Map<string, PendingRpcRequest>();
 	private readonly channelCache = new Map<string, DiscordLocalChannel>();
 	private readonly guildCache = new Map<string, DiscordLocalGuild>();
@@ -446,25 +437,16 @@ export class DiscordLocalService extends Service {
 	private authenticated = false;
 	private lastError: string | null = null;
 
-	constructor(
-		runtime?: IAgentRuntime,
-		options: DiscordLocalServiceOptions = {},
-	) {
+	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
-		this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-		this.oauthTimeoutMs = options.oauthTimeoutMs ?? DISCORD_OAUTH_TIMEOUT_MS;
-		this.sessionPath = options.sessionPath ?? resolveSessionPath();
 		if (!runtime) {
 			return;
 		}
 		this.connectorConfig = getDiscordLocalConfig(runtime);
 	}
 
-	static async start(
-		runtime: IAgentRuntime,
-		options?: DiscordLocalServiceOptions,
-	): Promise<DiscordLocalService> {
-		const service = new DiscordLocalService(runtime, options);
+	static async start(runtime: IAgentRuntime): Promise<DiscordLocalService> {
+		const service = new DiscordLocalService(runtime);
 		await service.startService();
 		return service;
 	}
@@ -788,13 +770,13 @@ export class DiscordLocalService extends Service {
 			code,
 		});
 
-		const response = await this.fetchImpl(DISCORD_OAUTH_TOKEN_URL, {
+		const response = await fetch(DISCORD_OAUTH_TOKEN_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
-			signal: AbortSignal.timeout(this.oauthTimeoutMs),
+			signal: AbortSignal.timeout(DISCORD_OAUTH_TIMEOUT_MS),
 		});
 		if (!response.ok) {
 			throw new Error(
@@ -820,13 +802,13 @@ export class DiscordLocalService extends Service {
 			refresh_token: this.session.refreshToken,
 		});
 
-		const response = await this.fetchImpl(DISCORD_OAUTH_TOKEN_URL, {
+		const response = await fetch(DISCORD_OAUTH_TOKEN_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
-			signal: AbortSignal.timeout(this.oauthTimeoutMs),
+			signal: AbortSignal.timeout(DISCORD_OAUTH_TIMEOUT_MS),
 		});
 		if (!response.ok) {
 			throw new Error(`Discord OAuth refresh failed with ${response.status}`);

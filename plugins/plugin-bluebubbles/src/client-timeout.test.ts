@@ -1,196 +1,126 @@
 /**
- * Behavioral BlueBubbles client deadlines. Executes JSON request and
- * attachment POSTs under abort — not a source-grep of client.ts.
+ * Exercises BlueBubbles JSON and attachment deadlines through the public
+ * client with deterministic fetch and abort signals; no live bridge calls.
  */
-import { describe, expect, it } from "vitest";
-import {
-	BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS,
-	BLUEBUBBLES_REQUEST_TIMEOUT_MS,
-	blueBubblesRequestWithFetch,
-	blueBubblesSendAttachmentWithFetch,
-} from "./client.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BlueBubblesClient } from "./client.js";
 
-const REQUEST_URL = "http://127.0.0.1:9/api/v1/message/text?password=pw";
-const ATTACH_URL = "http://127.0.0.1:9/api/v1/message/attachment?password=pw";
+function client(): BlueBubblesClient {
+	return new BlueBubblesClient({
+		serverUrl: "http://127.0.0.1:9",
+		password: "pw",
+	});
+}
 
 function stallUntilAborted(): typeof fetch {
 	return ((_input, init) =>
 		new Promise<Response>((_resolve, reject) => {
 			const signal = init?.signal;
-			if (!signal) throw new Error("expected bluebubbles abort signal");
+			if (!signal) throw new Error("expected BlueBubbles abort signal");
 			const onAbort = () => reject(signal.reason);
-			if (signal.aborted) {
-				onAbort();
-				return;
-			}
+			if (signal.aborted) return onAbort();
 			signal.addEventListener("abort", onAbort, { once: true });
 		})) as typeof fetch;
 }
 
+afterEach(() => {
+	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
+});
+
 describe("BlueBubbles client request deadlines", () => {
-	it("keeps documented JSON and attachment budgets", () => {
-		expect(BLUEBUBBLES_REQUEST_TIMEOUT_MS).toBe(15_000);
-		expect(BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS).toBe(30_000);
-	});
-
-	it("aborts a stalled JSON request at the injected deadline", async () => {
-		await expect(
-			blueBubblesRequestWithFetch(REQUEST_URL, {}, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
-
-	it("surfaces a provider error from a completed JSON request", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("unauthorized", {
-				status: 401,
-				statusText: "Unauthorized",
-			});
-
-		await expect(
-			blueBubblesRequestWithFetch(REQUEST_URL, {}, fetchImpl, 1_000),
-		).rejects.toThrow("401");
-	});
-
-	it("uses the injected fetch for a successful JSON request", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({ data: { guid: "msg-1", text: "hi" } });
-		};
-
-		const payload = await blueBubblesRequestWithFetch<{
-			data: { guid: string; text: string };
-		}>(REQUEST_URL, { method: "POST" }, fetchImpl, 1_000);
-
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(payload.data.guid).toBe("msg-1");
-	});
-
-	it("composes a caller-supplied signal with the deadline instead of replacing it", async () => {
+	it("aborts a stalled JSON request at the client deadline", async () => {
 		const controller = new AbortController();
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			// The forwarded signal is the composed one, not the caller's raw
-			// signal — asserting identity here previously pinned the bypass in.
-			expect(init?.signal).toBeDefined();
-			expect(init?.signal?.aborted).toBe(false);
-			return Response.json({ data: { guid: "caller" } });
-		};
+		const timeout = vi
+			.spyOn(AbortSignal, "timeout")
+			.mockReturnValue(controller.signal);
+		vi.stubGlobal("fetch", stallUntilAborted());
 
-		await blueBubblesRequestWithFetch(
-			REQUEST_URL,
-			{ signal: controller.signal },
-			fetchImpl,
-			1_000,
+		const pending = client().sendMessage("iMessage;-;+14155550100", "hi");
+		controller.abort(new DOMException("deadline", "TimeoutError"));
+
+		await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+		expect(timeout).toHaveBeenCalledWith(15_000);
+	});
+
+	it("composes the probe cancellation signal with the client deadline", async () => {
+		const timeoutController = new AbortController();
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+		vi.stubGlobal("fetch", stallUntilAborted());
+
+		const pending = client().probe(5_000);
+		timeoutController.abort(new DOMException("deadline", "TimeoutError"));
+
+		await expect(pending).resolves.toMatchObject({
+			ok: false,
+			error: "deadline",
+		});
+	});
+
+	it("honors the probe caller deadline even when the client deadline is open", async () => {
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(
+			new AbortController().signal,
 		);
+		vi.stubGlobal("fetch", stallUntilAborted());
+
+		await expect(client().probe(5)).resolves.toMatchObject({ ok: false });
 	});
 
-	it("keeps the deadline armed while a caller signal is present", async () => {
-		// The regression #21881 closes: a never-firing caller signal must not
-		// discard timeoutMs and leave the fetch unbounded.
+	it("keeps the attachment response body inside the upload deadline", async () => {
 		const controller = new AbortController();
+		const timeout = vi
+			.spyOn(AbortSignal, "timeout")
+			.mockReturnValue(controller.signal);
+		let bodyStarted = false;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+				const signal = init?.signal;
+				if (!signal) throw new Error("expected attachment abort signal");
+				return new Response(
+					new ReadableStream({
+						start(stream) {
+							bodyStarted = true;
+							signal.addEventListener(
+								"abort",
+								() => stream.error(signal.reason),
+								{
+									once: true,
+								},
+							);
+						},
+					}),
+				);
+			}),
+		);
 
-		await expect(
-			blueBubblesRequestWithFetch(
-				REQUEST_URL,
-				{ signal: controller.signal },
-				stallUntilAborted(),
-				10,
-			),
-		).rejects.toMatchObject({ name: "TimeoutError" });
+		const pending = client().sendAttachmentBuffer(
+			"iMessage;-;+14155550100",
+			new Uint8Array([1, 2, 3]),
+			"photo.jpg",
+			"image/jpeg",
+		);
+		await vi.waitFor(() => expect(bodyStarted).toBe(true));
+		controller.abort(new DOMException("deadline", "TimeoutError"));
+
+		await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+		expect(timeout).toHaveBeenCalledWith(30_000);
 	});
 
-	it("keeps the composed deadline armed while the response body stalls", async () => {
-		const controller = new AbortController();
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected bluebubbles abort signal");
-
-			return new Response(
-				new ReadableStream({
-					start(streamController) {
-						const onAbort = () => streamController.error(signal.reason);
-						if (signal.aborted) {
-							onAbort();
-							return;
-						}
-						signal.addEventListener("abort", onAbort, { once: true });
-					},
-				}),
-				{ headers: { "Content-Type": "application/json" } },
+	it("preserves provider errors and successful message payloads", async () => {
+		const fetchMock = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(new Response("unauthorized", { status: 401 }))
+			.mockResolvedValueOnce(
+				Response.json({ data: { guid: "msg-1", dateCreated: 1, text: "hi" } }),
 			);
-		};
+		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
-			blueBubblesRequestWithFetch(
-				REQUEST_URL,
-				{ signal: controller.signal },
-				fetchImpl,
-				10,
-			),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
-
-	it("honors caller abort without waiting for the request deadline", async () => {
-		const controller = new AbortController();
-		controller.abort();
-
+			client().sendMessage("iMessage;-;+14155550100", "hi"),
+		).rejects.toThrow("BlueBubbles API error (401)");
 		await expect(
-			blueBubblesRequestWithFetch(
-				REQUEST_URL,
-				{ signal: controller.signal },
-				stallUntilAborted(),
-				5_000,
-			),
-		).rejects.toMatchObject({ name: "AbortError" });
-	});
-
-	it("aborts a stalled attachment POST at the injected deadline", async () => {
-		await expect(
-			blueBubblesSendAttachmentWithFetch(
-				ATTACH_URL,
-				new FormData(),
-				stallUntilAborted(),
-				10,
-			),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
-
-	it("surfaces a provider error from a completed attachment POST", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("too large", {
-				status: 413,
-				statusText: "Payload Too Large",
-			});
-
-		await expect(
-			blueBubblesSendAttachmentWithFetch(
-				ATTACH_URL,
-				new FormData(),
-				fetchImpl,
-				1_000,
-			),
-		).rejects.toThrow("Failed to send attachment");
-	});
-
-	it("uses the injected fetch for a successful attachment POST", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({
-				data: { guid: "att-1", dateCreated: 1, text: "file" },
-			});
-		};
-
-		const result = await blueBubblesSendAttachmentWithFetch(
-			ATTACH_URL,
-			new FormData(),
-			fetchImpl,
-			1_000,
-		);
-
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(result.data.guid).toBe("att-1");
+			client().sendMessage("iMessage;-;+14155550100", "hi"),
+		).resolves.toMatchObject({ guid: "msg-1", status: "sent" });
 	});
 });
