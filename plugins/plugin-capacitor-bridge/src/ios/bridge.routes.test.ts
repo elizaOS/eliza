@@ -224,6 +224,55 @@ describe("iOS bridge — memories view routes", () => {
 		expect(page.json).toMatchObject({ total: 3, limit: 1, offset: 1 });
 	});
 
+	it("browse drains a sparse q filter so deep pages reach every match (#22061)", async () => {
+		// 1000 rows, every 10th matches "needle" (100 matches). A fixed
+		// over-fetch window used to surface only the matches inside it and
+		// report a lying total.
+		for (let i = 0; i < 1000; i++) {
+			await seedMemory(
+				"messages",
+				i % 10 === 0 ? `needle row ${i}` : `hay row ${i}`,
+				2_000_000 - i,
+			);
+		}
+		const union = new Set<string>();
+		for (const offset of [0, 50]) {
+			const page = await call(
+				backend,
+				"GET",
+				`/api/memories/browse?type=messages&q=needle&limit=50&offset=${offset}`,
+			);
+			const memories = page.json.memories as Array<{ id: string }>;
+			expect(memories).toHaveLength(50);
+			for (const m of memories) union.add(m.id);
+		}
+		expect(union.size).toBe(100);
+		const last = await call(
+			backend,
+			"GET",
+			"/api/memories/browse?type=messages&q=needle&limit=50&offset=50",
+		);
+		expect(last.json.total).toBe(100); // exact after exhausting the table
+	});
+
+	it("feed hasMore survives an empty-text run padding the fetch window (#22061)", async () => {
+		// Newest 30 rows browsable, next 470 empty, oldest 100 browsable.
+		for (let i = 0; i < 600; i++) {
+			await seedMemory(
+				"messages",
+				i < 30 || i >= 500 ? `txt ${i}` : "",
+				2_000_000 - i,
+			);
+		}
+		const { json } = await call(
+			backend,
+			"GET",
+			"/api/memories/feed?type=messages&limit=50",
+		);
+		expect(json.count).toBe(50);
+		expect(json.hasMore).toBe(true);
+	});
+
 	it("stats totals per table", async () => {
 		await seedMemory("messages", "m1", 1_000);
 		await seedMemory("messages", "m2", 2_000);

@@ -49,6 +49,14 @@ const QUICK_CONTEXT_DOCUMENTS_THRESHOLD = 0.2;
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
+/**
+ * Hard per-table safety cap for the filtered-browse drain loop. The drain
+ * doubles its fetch window until the requested page (plus one sentinel row)
+ * is satisfied or the adapter is exhausted; this cap bounds the worst-case
+ * scan to 10k rows per table so a needle-in-a-haystack filter cannot turn a
+ * page request into an unbounded table scan.
+ */
+const MEMORY_BROWSE_SCAN_CAP = 10_000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_TABLE_NAMES = [
@@ -360,11 +368,17 @@ async function fetchMemoriesFromTables(
     limit?: number;
     before?: number;
   },
-): Promise<TaggedMemory[]> {
+): Promise<{
+  memories: TaggedMemory[];
+  /** Every table returned fewer rows than requested — nothing deeper exists. */
+  exhausted: boolean;
+  /** The per-table fetch window hit MEMORY_BROWSE_SCAN_CAP. */
+  capped: boolean;
+}> {
   const tables = params.tables ?? MEMORY_TABLE_NAMES;
-  const perTableLimit = Math.max(
-    Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
-    200,
+  const perTableLimit = Math.min(
+    Math.max(Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2), 200),
+    MEMORY_BROWSE_SCAN_CAP,
   );
   // Read every table concurrently — they are independent queries, and a
   // sequential loop would make the feed's first paint wait on N round-trips.
@@ -382,6 +396,10 @@ async function fetchMemoriesFromTables(
     }),
   );
   const allMemories: TaggedMemory[] = perTableMemories.flat();
+  const exhausted = perTableMemories.every(
+    (rows) => rows.length < perTableLimit,
+  );
+  const capped = perTableLimit >= MEMORY_BROWSE_SCAN_CAP;
 
   // The DB adapter ignores entityId in getMemories (used only for RLS
   // context). Post-filter here so person-centric views actually work.
@@ -396,9 +414,54 @@ async function fetchMemoriesFromTables(
 
   const beforeTs = params.before;
   if (beforeTs !== undefined) {
-    return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
+    filtered = filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
   }
-  return filtered;
+  return { memories: filtered, exhausted, capped };
+}
+
+/**
+ * Drain loop for filtered browse paths. Every filter here (entityId, empty
+ * text, `before`, keyword `q`) is applied *after* the adapter's `limit`, so a
+ * single fixed over-fetch window loses matches: a selective filter can leave
+ * the page short while thousands of deeper matching rows exist. Refetch with a
+ * doubling window until the caller's target (page end plus one sentinel row)
+ * is met, the adapter is truly exhausted (returned fewer rows than requested),
+ * or the MEMORY_BROWSE_SCAN_CAP safety cap is hit.
+ *
+ * Totals contract for callers: when `exhausted` is true the filtered array is
+ * the complete match set, so its length is an exact total. When the cap
+ * stopped the drain instead, the length is a lower bound — but it is then
+ * guaranteed to be >= the caller's target, so `total > offset + limit` and
+ * pagination controls stay enabled rather than falsely reporting exhaustion.
+ */
+async function drainFilteredMemories(
+  runtime: AgentRuntime,
+  params: {
+    entityIds?: UUID[];
+    roomId?: UUID;
+    tables?: readonly string[];
+    before?: number;
+  },
+  target: number,
+  keywordQuery?: string,
+): Promise<{ filtered: TaggedMemory[]; exhausted: boolean }> {
+  let requestLimit = Math.max(target + 100, MEMORY_BROWSE_DEFAULT_LIMIT);
+  for (;;) {
+    const { memories, exhausted, capped } = await fetchMemoriesFromTables(
+      runtime,
+      { ...params, limit: requestLimit },
+    );
+    const filtered = keywordQuery
+      ? memories.filter((m) => {
+          const text = (m.content as { text?: string } | undefined)?.text ?? "";
+          return matchesKeyword(text, keywordQuery);
+        })
+      : memories;
+    if (filtered.length >= target || exhausted || capped) {
+      return { filtered, exhausted };
+    }
+    requestLimit *= 2;
+  }
 }
 
 /**
@@ -591,11 +654,14 @@ export async function handleMemoryRoutes(
     }
     const tables = tableFilter.tables;
 
-    const allMemories = await fetchMemoriesFromTables(runtime, {
-      tables,
-      limit: limit * 2,
-      before,
-    });
+    // Drain until limit+1 browsable rows exist (the extra row is a sentinel
+    // proving there is a next page) or the tables are exhausted, so hasMore
+    // cannot false-negative just because empty-text rows padded the window.
+    const { filtered: allMemories } = await drainFilteredMemories(
+      runtime,
+      { tables, before },
+      limit + 1,
+    );
 
     allMemories.sort(byNewestFirst);
     const items = allMemories.slice(0, limit).map(memoryToBrowseItem);
@@ -639,23 +705,22 @@ export async function handleMemoryRoutes(
         ? [entityIdParam as UUID]
         : undefined;
 
-    const allMemories = await fetchMemoriesFromTables(runtime, {
-      tables,
-      entityIds,
-      roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
-      limit: limit + offset + 100,
-    });
+    const { filtered } = await drainFilteredMemories(
+      runtime,
+      {
+        tables,
+        entityIds,
+        roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
+      },
+      offset + limit + 1,
+      searchQuery || undefined,
+    );
 
-    allMemories.sort(byNewestFirst);
+    filtered.sort(byNewestFirst);
 
-    let filtered = allMemories;
-    if (searchQuery) {
-      filtered = allMemories.filter((m) => {
-        const text = (m.content as { text?: string } | undefined)?.text ?? "";
-        return matchesKeyword(text, searchQuery);
-      });
-    }
-
+    // Exact when the drain exhausted the tables; otherwise a lower bound that
+    // exceeds offset+limit, so paging controls never falsely disable (see
+    // drainFilteredMemories).
     const total = filtered.length;
     const page = filtered.slice(offset, offset + limit).map(memoryToBrowseItem);
 
@@ -706,11 +771,14 @@ export async function handleMemoryRoutes(
     }
     const tables = tableFilter.tables;
 
-    const allMemories = await fetchMemoriesFromTables(runtime, {
-      entityIds,
-      tables,
-      limit: limit + offset + 100,
-    });
+    // The adapter ignores entityId, so the entity filter is post-limit and can
+    // be extremely selective — drain until the page is satisfied (see
+    // drainFilteredMemories for the total semantics).
+    const { filtered: allMemories } = await drainFilteredMemories(
+      runtime,
+      { entityIds, tables },
+      offset + limit + 1,
+    );
 
     allMemories.sort(byNewestFirst);
     const total = allMemories.length;
