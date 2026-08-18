@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { createServer } from "node:net";
+import { WebSocket as NodeWebSocket } from "ws";
 import {
   buildCartesiaInkUrl,
   CARTESIA_INK_API_VERSION,
@@ -99,6 +101,23 @@ function createHarness() {
     onEvent: (event) => events.push(event),
   });
   return { events, metrics, requests, session, socket };
+}
+
+async function reserveThenReleaseLoopbackPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("loopback server did not expose a TCP port");
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+  return address.port;
 }
 
 describe("Cartesia Ink realtime adapter", () => {
@@ -270,9 +289,66 @@ describe("Cartesia Ink realtime adapter", () => {
       { type: "close", code: 1000, reason: "cancelled", wasClean: true },
     ]);
     expect(socket.listeners.message.size).toBe(0);
+    expect(socket.listeners.error.size).toBe(1);
+    socket.emitError();
+    expect(events).toHaveLength(1);
     expect(() =>
       session.sendAudioChunk(new Uint8Array(CARTESIA_INK_CHUNK_BYTES)),
     ).toThrow(CartesiaInkConnectionError);
+  });
+
+  it("survives immediate cancellation while Node ws is connecting", async () => {
+    const port = await reserveThenReleaseLoopbackPort();
+    const events: CartesiaInkRealtimeEvent[] = [];
+    let transport: NodeWebSocket | undefined;
+    const session = createCartesiaInkRealtimeSession({
+      cartesiaApiKey: "cartesia-secret",
+      baseUrl: `ws://127.0.0.1:${port}/stt/turns/websocket`,
+      webSocketFactory(request) {
+        transport = new NodeWebSocket(request.url);
+        return transport as unknown as CartesiaInkWebSocket;
+      },
+      onEvent: (event) => events.push(event),
+    });
+    if (!transport) throw new Error("transport factory was not called");
+    const closed = new Promise<void>((resolve) =>
+      transport?.once("close", resolve),
+    );
+
+    session.cancel("immediate-bye");
+    await closed;
+
+    expect(transport.readyState).toBe(NodeWebSocket.CLOSED);
+    expect(events).toEqual([
+      {
+        type: "close",
+        code: 1000,
+        reason: "immediate-bye",
+        wasClean: true,
+      },
+    ]);
+
+    const nextEvents: CartesiaInkRealtimeEvent[] = [];
+    let nextTransport: NodeWebSocket | undefined;
+    createCartesiaInkRealtimeSession({
+      cartesiaApiKey: "cartesia-secret",
+      baseUrl: `ws://127.0.0.1:${port}/stt/turns/websocket`,
+      webSocketFactory(request) {
+        nextTransport = new NodeWebSocket(request.url);
+        return nextTransport as unknown as CartesiaInkWebSocket;
+      },
+      onEvent: (event) => nextEvents.push(event),
+    });
+    if (!nextTransport)
+      throw new Error("next transport factory was not called");
+    await new Promise<void>((resolve) => nextTransport?.once("close", resolve));
+
+    expect(nextEvents).toContainEqual({
+      type: "error",
+      code: "transport_error",
+      message: "Cartesia Ink WebSocket transport reported an error",
+      cause: expect.any(Event),
+    });
   });
 
   it("surfaces metrics hook, transport error, and transport close events", () => {
