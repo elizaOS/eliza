@@ -3,7 +3,27 @@
  * duplicate-listener prevention on healthy pages.
  */
 import { describe, expect, it, vi } from "vitest";
-import { sendWithContentScriptRecovery } from "./content-script-messaging";
+import {
+  assertContentScriptPageUrl,
+  sendWithContentScriptRecovery,
+} from "./content-script-messaging";
+
+describe("assertContentScriptPageUrl", () => {
+  it("binds page access to the exact URL authorized by the service worker", () => {
+    expect(() =>
+      assertContentScriptPageUrl(
+        "https://allowed.example/form",
+        "https://allowed.example/form",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertContentScriptPageUrl(
+        "https://allowed.example/form",
+        "https://other.example/redirect",
+      ),
+    ).toThrow("page navigated after browser action authorization");
+  });
+});
 
 describe("sendWithContentScriptRecovery", () => {
   it("does not reinject when the existing listener responds", async () => {

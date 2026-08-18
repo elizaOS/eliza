@@ -47,6 +47,114 @@ async function throwApiError(response: Response): Promise<never> {
   throw new RelayApiError(message, response.status, code);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidSyncResponse(message: string): never {
+  throw new RelayApiError(
+    `Invalid browser companion sync response: ${message}`,
+    502,
+    "browser_bridge_response_invalid",
+  );
+}
+
+const ACTION_KINDS = new Set([
+  "open",
+  "navigate",
+  "focus_tab",
+  "back",
+  "forward",
+  "reload",
+  "click",
+  "type",
+  "submit",
+  "read_page",
+  "extract_links",
+  "extract_forms",
+]);
+
+function readSyncResponse(
+  payload: unknown,
+  config: CompanionConfig,
+): BrowserBridgeCompanionSyncResponse {
+  if (!isRecord(payload)) invalidSyncResponse("payload is not an object");
+  const companion = payload.companion;
+  if (!isRecord(companion)) invalidSyncResponse("companion is missing");
+  if (
+    companion.id !== config.companionId ||
+    companion.browser !== config.browser ||
+    companion.profileId !== config.profileId
+  ) {
+    invalidSyncResponse("companion identity does not match the pairing");
+  }
+
+  const settings = payload.settings;
+  if (
+    !isRecord(settings) ||
+    typeof settings.enabled !== "boolean" ||
+    !["off", "current_tab", "active_tabs"].includes(
+      String(settings.trackingMode),
+    ) ||
+    typeof settings.allowBrowserControl !== "boolean" ||
+    typeof settings.requireConfirmationForAccountAffecting !== "boolean" ||
+    typeof settings.incognitoEnabled !== "boolean" ||
+    !["current_site_only", "granted_sites", "all_sites"].includes(
+      String(settings.siteAccessMode),
+    ) ||
+    !Array.isArray(settings.grantedOrigins) ||
+    !settings.grantedOrigins.every((value) => typeof value === "string") ||
+    !Array.isArray(settings.blockedOrigins) ||
+    !settings.blockedOrigins.every((value) => typeof value === "string") ||
+    typeof settings.maxRememberedTabs !== "number" ||
+    !Number.isInteger(settings.maxRememberedTabs) ||
+    settings.maxRememberedTabs < 1 ||
+    (settings.pauseUntil !== null && typeof settings.pauseUntil !== "string") ||
+    !isRecord(settings.metadata) ||
+    (settings.updatedAt !== null && typeof settings.updatedAt !== "string")
+  ) {
+    invalidSyncResponse("settings are malformed");
+  }
+
+  const session = payload.session;
+  if (session !== null) {
+    if (!isRecord(session)) invalidSyncResponse("session is malformed");
+    if (
+      typeof session.id !== "string" ||
+      session.id.length === 0 ||
+      (session.companionId !== null &&
+        session.companionId !== config.companionId) ||
+      (session.browser !== null && session.browser !== config.browser) ||
+      (session.profileId !== null && session.profileId !== config.profileId) ||
+      !Array.isArray(session.actions) ||
+      !Number.isInteger(session.currentActionIndex) ||
+      Number(session.currentActionIndex) < 0 ||
+      Number(session.currentActionIndex) > session.actions.length
+    ) {
+      invalidSyncResponse("session identity or checkpoint is invalid");
+    }
+    for (const action of session.actions) {
+      if (
+        !isRecord(action) ||
+        typeof action.id !== "string" ||
+        action.id.length === 0 ||
+        typeof action.kind !== "string" ||
+        !ACTION_KINDS.has(action.kind) ||
+        (action.url !== null && typeof action.url !== "string") ||
+        (action.selector !== null && typeof action.selector !== "string") ||
+        (action.text !== null && typeof action.text !== "string")
+      ) {
+        invalidSyncResponse("session contains a malformed action");
+      }
+    }
+  }
+  if (!Array.isArray(payload.tabs)) invalidSyncResponse("tabs are malformed");
+  if (payload.currentPage !== null && !isRecord(payload.currentPage)) {
+    invalidSyncResponse("currentPage is malformed");
+  }
+  return payload as unknown as BrowserBridgeCompanionSyncResponse;
+}
+
 export class BrowserBridgeRelayClient {
   constructor(private readonly config: CompanionConfig) {}
 
@@ -72,7 +180,7 @@ export class BrowserBridgeRelayClient {
     if (!response.ok) {
       await throwApiError(response);
     }
-    return (await response.json()) as BrowserBridgeCompanionSyncResponse;
+    return readSyncResponse(await response.json(), this.config);
   }
 
   async updateSessionProgress(

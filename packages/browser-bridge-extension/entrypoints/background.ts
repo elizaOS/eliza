@@ -559,6 +559,7 @@ async function captureFocusedPageContext(
   try {
     const response = await sendContentScriptMessage(tabId, {
       type: "browser-bridge:capture-page",
+      expectedUrl: focused.url,
     });
     if (!response.ok || !response.page) {
       return [];
@@ -633,10 +634,12 @@ async function resolveTargetTab(
 
 async function runContentAction(
   tabId: number,
+  expectedUrl: string,
   action: DomActionRequest,
 ): Promise<Record<string, unknown>> {
   const response = await sendContentScriptMessage(tabId, {
     type: "browser-bridge:execute-dom-action",
+    expectedUrl,
     action,
   });
   if (response.ok === false) {
@@ -770,7 +773,9 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, { kind: "history_back" }),
+        result: await runContentAction(tabId, targetUrl, {
+          kind: "history_back",
+        }),
       };
     }
     case "forward": {
@@ -780,7 +785,9 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, { kind: "history_forward" }),
+        result: await runContentAction(tabId, targetUrl, {
+          kind: "history_forward",
+        }),
       };
     }
     case "click":
@@ -792,7 +799,7 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, {
+        result: await runContentAction(tabId, targetUrl, {
           kind: action.kind,
           selector: action.selector ?? null,
           text: action.text ?? null,
@@ -808,6 +815,7 @@ async function executeAction(
       }
       const response = await sendContentScriptMessage(tabId, {
         type: "browser-bridge:capture-page",
+        expectedUrl: targetUrl,
       });
       if (response.ok === false || !response.page) {
         throw new Error(

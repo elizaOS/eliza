@@ -30,18 +30,41 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   });
 }
 
+function syncResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    companion: {
+      id: config.companionId,
+      browser: config.browser,
+      profileId: config.profileId,
+    },
+    tabs: [],
+    currentPage: null,
+    settings: {
+      enabled: true,
+      trackingMode: "active_tabs",
+      allowBrowserControl: true,
+      requireConfirmationForAccountAffecting: true,
+      incognitoEnabled: false,
+      siteAccessMode: "all_sites",
+      grantedOrigins: [],
+      blockedOrigins: [],
+      maxRememberedTabs: 10,
+      pauseUntil: null,
+      metadata: {},
+      updatedAt: null,
+    },
+    session: null,
+    ...overrides,
+  };
+}
+
 describe("BrowserBridgeRelayClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("sends sync requests with pairing headers and normalized endpoint URLs", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        settings: { enabled: true },
-        sessions: [],
-      }),
-    );
+    const fetchMock = vi.fn(async () => jsonResponse(syncResponse()));
     vi.stubGlobal("fetch", fetchMock);
 
     const request: CompanionSyncRequest = {
@@ -76,6 +99,54 @@ describe("BrowserBridgeRelayClient", () => {
         }),
       }),
     );
+  });
+
+  it("rejects successful responses for a different companion", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(
+          syncResponse({
+            companion: {
+              id: "attacker-companion",
+              browser: config.browser,
+              profileId: config.profileId,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(
+      new BrowserBridgeRelayClient(config).sync({} as CompanionSyncRequest),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "browser_bridge_response_invalid",
+    });
+  });
+
+  it("rejects malformed actions before the service worker can execute them", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(
+          syncResponse({
+            session: {
+              id: "session-1",
+              companionId: config.companionId,
+              browser: config.browser,
+              profileId: config.profileId,
+              currentActionIndex: 0,
+              actions: [{ id: "action-1", kind: "run_javascript" }],
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(
+      new BrowserBridgeRelayClient(config).sync({} as CompanionSyncRequest),
+    ).rejects.toThrow("malformed action");
   });
 
   it("encodes session ids for progress and completion endpoints", async () => {

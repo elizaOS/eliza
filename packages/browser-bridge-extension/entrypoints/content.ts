@@ -4,6 +4,8 @@
  * page-extract / dom-actions and returns the result. Thin adapter — all logic
  * lives in src/.
  */
+
+import { assertContentScriptPageUrl } from "../src/content-script-messaging";
 import { runDomAction } from "../src/dom-actions";
 import { capturePageContext } from "../src/page-extract";
 import type {
@@ -26,6 +28,7 @@ if (!contentGlobal.__elizaBrowserBridgeContentRegistered) {
 
     try {
       if (request.type === "browser-bridge:capture-page") {
+        assertContentScriptPageUrl(request.expectedUrl, window.location.href);
         const response: ContentScriptResponse = {
           ok: true,
           page: capturePageContext(),
@@ -35,6 +38,7 @@ if (!contentGlobal.__elizaBrowserBridgeContentRegistered) {
       }
 
       if (request.type === "browser-bridge:execute-dom-action") {
+        assertContentScriptPageUrl(request.expectedUrl, window.location.href);
         const response: ContentScriptResponse = {
           ok: true,
           actionResult: runDomAction(request.action),

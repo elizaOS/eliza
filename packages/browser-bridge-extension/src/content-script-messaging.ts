@@ -14,3 +14,14 @@ export async function sendWithContentScriptRecovery<T>(args: {
     return await args.send();
   }
 }
+
+export function assertContentScriptPageUrl(
+  expectedUrl: string,
+  currentUrl: string,
+): void {
+  if (currentUrl !== expectedUrl) {
+    throw new Error(
+      "The page navigated after browser action authorization; refusing to use the new page.",
+    );
+  }
+}

@@ -54,6 +54,7 @@ export type PopupResponse =
 
 export type CapturePageMessage = {
   type: "browser-bridge:capture-page";
+  expectedUrl: string;
 };
 
 export type PageContextSnapshot = {
@@ -75,6 +76,7 @@ export type DomActionRequest = {
 
 export type ExecuteDomActionMessage = {
   type: "browser-bridge:execute-dom-action";
+  expectedUrl: string;
   action: DomActionRequest;
 };
 
