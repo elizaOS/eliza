@@ -45,6 +45,22 @@ describe("splitTelegramMessage surrogate-safe chunking", () => {
     }
   });
 
+  test("rejects a zero limit immediately instead of spinning", () => {
+    const started = performance.now();
+    expect(() => splitTelegramMessage("hello", 0)).toThrow(RangeError);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  test("backs off an odd limit so a straddling emoji stays well-formed", () => {
+    const text = `${"x".repeat(4)}😀${"y".repeat(4)}`;
+    const chunks = splitTelegramMessage(text, 5);
+    expect(chunks.join("")).toBe(text);
+    expect(chunks.every((chunk) => chunk.length > 0 && chunk.length <= 5)).toBe(
+      true,
+    );
+    expect(chunks.every((chunk) => chunk.toWellFormed() === chunk)).toBe(true);
+  });
+
   test("still splits ASCII lines at the default Telegram limit", () => {
     const chunks = splitTelegramMessage(`${"a".repeat(4096)}\nb`);
     expect(chunks).toEqual(["a".repeat(4096), "b"]);
