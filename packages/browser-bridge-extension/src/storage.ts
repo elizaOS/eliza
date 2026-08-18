@@ -1,8 +1,8 @@
 /**
  * Persistence and agent-API discovery over chrome.storage.local. Loads and
  * normalizes the companion pairing config and cached background state, and
- * probes loopback candidates — likely-Eliza open tabs first, then the default
- * ports — to locate the local agent API (default http://127.0.0.1:31337).
+ * probes loopback candidates and exact reviewed HTTPS agent-app origins to
+ * locate an agent API (default http://127.0.0.1:31337).
  */
 import type { BackgroundState, CompanionConfig } from "./protocol";
 import {
@@ -15,6 +15,7 @@ import {
 
 const CONFIG_KEY = "browserBridgeCompanionConfig";
 const STATE_KEY = "browserBridgeBackgroundState";
+const PROFILE_ID_KEY = "browserBridgeExtensionProfileId";
 export const DEFAULT_BROWSER_BRIDGE_API_BASE_URL = "http://127.0.0.1:31337";
 const LOOPBACK_DISCOVERY_CANDIDATES = [
   "http://127.0.0.1:2138",
@@ -22,6 +23,10 @@ const LOOPBACK_DISCOVERY_CANDIDATES = [
   "http://localhost:2138",
   "http://localhost:31337",
 ] as const;
+const REVIEWED_HTTPS_AGENT_ORIGINS = new Set([
+  "https://eliza.how",
+  "https://eliza.dev",
+]);
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -38,6 +43,9 @@ function normalizeApiBaseUrl(value: unknown): string | null {
       return null;
     }
     if (parsed.username || parsed.password) {
+      return null;
+    }
+    if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
       return null;
     }
     parsed.hash = "";
@@ -71,7 +79,16 @@ function normalizeOriginCandidate(
     if (parsed.username || parsed.password) {
       return null;
     }
-    return parsed.origin.replace(/\/+$/, "");
+    const origin = parsed.origin.replace(/\/+$/, "");
+    if (
+      !isLoopbackHost(parsed.hostname) &&
+      !(
+        parsed.protocol === "https:" && REVIEWED_HTTPS_AGENT_ORIGINS.has(origin)
+      )
+    ) {
+      return null;
+    }
+    return origin;
   } catch {
     return null;
   }
@@ -95,15 +112,24 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
-function isLikelyAgentAppTab(tab: ExtensionTab): boolean {
-  const haystack = `${tab.title ?? ""} ${tab.url ?? ""}`.toLowerCase();
-  return haystack.includes("eliza") || haystack.includes("lifeops");
+export function isLoopbackApiBaseUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      !parsed.username &&
+      !parsed.password &&
+      isLoopbackHost(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function candidateApiBaseUrlsFromTabs(
   tabs: readonly ExtensionTab[],
 ): string[] {
-  const likely = new Set<string>();
+  const reviewedHttps = new Set<string>();
   const loopback = new Set<string>();
 
   for (const tab of tabs) {
@@ -118,17 +144,17 @@ export function candidateApiBaseUrlsFromTabs(
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       continue;
     }
-    const origin = parsed.origin.replace(/\/+$/, "");
-    if (isLikelyAgentAppTab(tab)) {
-      likely.add(origin);
-      continue;
-    }
+    if (parsed.username || parsed.password) continue;
+    const origin = normalizeOriginCandidate(url);
+    if (!origin) continue;
     if (isLoopbackHost(parsed.hostname)) {
       loopback.add(origin);
+    } else {
+      reviewedHttps.add(origin);
     }
   }
 
-  return [...likely, ...loopback];
+  return [...reviewedHttps, ...loopback];
 }
 
 async function isReachableAgentApiBaseUrl(baseUrl: string): Promise<boolean> {
@@ -270,6 +296,24 @@ export function normalizeAutoPairCompanionConfig(
 export async function loadCompanionConfig(): Promise<CompanionConfig | null> {
   const stored = await storageGet<Partial<CompanionConfig>>(CONFIG_KEY);
   return normalizeCompanionConfig(stored);
+}
+
+type ProfileIdStore = {
+  get: () => Promise<unknown>;
+  set: (value: string) => Promise<void>;
+};
+
+export async function getOrCreateExtensionProfileId(
+  store: ProfileIdStore = {
+    get: () => storageGet<string>(PROFILE_ID_KEY),
+    set: (value) => storageSet({ [PROFILE_ID_KEY]: value }),
+  },
+): Promise<string> {
+  const existing = normalizeString(await store.get());
+  if (existing) return existing;
+  const generated = `extension-profile-${crypto.randomUUID()}`;
+  await store.set(generated);
+  return generated;
 }
 
 export async function saveCompanionConfig(

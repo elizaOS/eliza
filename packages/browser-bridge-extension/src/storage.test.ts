@@ -1,36 +1,61 @@
 /**
- * Unit tests for config normalization and loopback API-discovery candidate
+ * Unit tests for config normalization and trusted API-discovery candidate
  * ordering; pure functions, no chrome.storage.
  */
 import { describe, expect, it } from "vitest";
 import {
   candidateApiBaseUrlsFromTabs,
   DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
+  getOrCreateExtensionProfileId,
   isValidApiBaseUrl,
   normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
 } from "./storage";
 
 describe("candidateApiBaseUrlsFromTabs", () => {
-  it("deduplicates likely Eliza tabs before loopback fallbacks", () => {
+  it("deduplicates exact reviewed HTTPS app origins before loopback fallbacks", () => {
     expect(
       candidateApiBaseUrlsFromTabs([
-        { title: "Eliza", url: "http://localhost:3000" },
-        { title: "LifeOps", url: "http://localhost:3000/settings" },
+        { title: "Eliza", url: "https://eliza.dev" },
+        { title: "LifeOps", url: "https://eliza.dev/settings" },
         { title: "Other", url: "http://127.0.0.1:31337" },
       ]),
-    ).toEqual(["http://localhost:3000", "http://127.0.0.1:31337"]);
+    ).toEqual(["https://eliza.dev", "http://127.0.0.1:31337"]);
   });
 
-  it("ignores invalid, credentialed, and non-http tab URLs while preserving safe loopback origins", () => {
+  it("rejects title-spoofed remote, plaintext remote, credentialed, and subdomain candidates", () => {
     expect(
       candidateApiBaseUrlsFromTabs([
         { title: "Eliza", url: "javascript:alert(1)" },
         { title: "Eliza", url: "https://user:pass@example.com/app" },
+        { title: "Eliza LifeOps", url: "https://attacker.example/app" },
+        { title: "Eliza", url: "http://eliza.dev/app" },
+        { title: "Eliza", url: "https://app.eliza.dev/app" },
+        { title: "Eliza", url: "http://127.0.0.1.attacker.example/app" },
         { title: "Other", url: "http://[::1]:2138/settings" },
         { title: "Other", url: "file:///tmp/index.html" },
       ]),
-    ).toEqual(["https://example.com", "http://[::1]:2138"]);
+    ).toEqual(["http://[::1]:2138"]);
+  });
+});
+
+describe("getOrCreateExtensionProfileId", () => {
+  function emptyStore() {
+    let value: string | null = null;
+    return {
+      get: async () => value,
+      set: async (next: string) => {
+        value = next;
+      },
+    };
+  }
+
+  it("is stable across reloads and unique for separate extension profiles", async () => {
+    const firstStore = emptyStore();
+    const secondStore = emptyStore();
+    const first = await getOrCreateExtensionProfileId(firstStore);
+    expect(await getOrCreateExtensionProfileId(firstStore)).toBe(first);
+    expect(await getOrCreateExtensionProfileId(secondStore)).not.toBe(first);
   });
 });
 
@@ -60,6 +85,8 @@ describe("normalizeCompanionConfig", () => {
       "javascript:alert(1)",
       "file:///tmp/socket",
       "https://user:pass@agent.example.com",
+      "http://agent.example.com",
+      "http://127.0.0.1.attacker.example",
       "not a url",
     ]) {
       expect(

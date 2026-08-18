@@ -136,6 +136,21 @@ export interface SyncBrowserBridgeStateRequest {
   }>;
 }
 
+export interface BrowserBridgeCompanionPreflightRequest {
+  companion: SyncBrowserBridgeStateRequest["companion"];
+}
+
+export interface BrowserBridgeCompanionSyncRequest
+  extends SyncBrowserBridgeStateRequest {
+  settingsVersion: string;
+}
+
+export interface BrowserBridgeCompanionPreflightResponse {
+  companion: BrowserBridgeCompanionStatus;
+  settings: BrowserBridgeSettings;
+  settingsVersion: string;
+}
+
 export interface BrowserBridgeCompanionConfig {
   apiBaseUrl: string;
   companionId: string;
@@ -211,5 +226,6 @@ export interface BrowserBridgeCompanionSyncResponse {
   tabs: Array<Record<string, unknown>>;
   currentPage: Record<string, unknown> | null;
   settings: BrowserBridgeSettings;
+  settingsVersion: string;
   session: LifeOpsBrowserSession | null;
 }

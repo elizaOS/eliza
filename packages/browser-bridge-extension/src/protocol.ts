@@ -7,15 +7,17 @@
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionConfig,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeSettings,
   CompleteLifeOpsBrowserSessionRequest,
   CreateBrowserBridgeCompanionAutoPairRequest,
   LifeOpsBrowserSession,
-  SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
 } from "./browser-bridge-contracts";
 
-export type CompanionSyncRequest = SyncBrowserBridgeStateRequest;
+export type CompanionPreflightRequest = BrowserBridgeCompanionPreflightRequest;
+export type CompanionSyncRequest = BrowserBridgeCompanionSyncRequest;
 export type CompanionSession = LifeOpsBrowserSession;
 export type CompanionSessionProgressRequest =
   UpdateBrowserBridgeSessionProgressRequest;

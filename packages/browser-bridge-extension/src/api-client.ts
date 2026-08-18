@@ -4,9 +4,14 @@
  * with the Bearer pairing token from the companion config. Non-2xx responses
  * are wrapped in RelayApiError carrying the HTTP status and server error code.
  */
-import type { BrowserBridgeCompanionSyncResponse } from "./browser-bridge-contracts";
+import type {
+  BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionSyncResponse,
+  BrowserBridgeSettings,
+} from "./browser-bridge-contracts";
 import type {
   CompanionConfig,
+  CompanionPreflightRequest,
   CompanionSessionCompleteRequest,
   CompanionSessionProgressRequest,
   CompanionSyncRequest,
@@ -59,6 +64,75 @@ function invalidSyncResponse(message: string): never {
   );
 }
 
+function readSettings(value: unknown): BrowserBridgeSettings {
+  const settings = value;
+  if (
+    !isRecord(settings) ||
+    typeof settings.enabled !== "boolean" ||
+    !["off", "current_tab", "active_tabs"].includes(
+      String(settings.trackingMode),
+    ) ||
+    typeof settings.allowBrowserControl !== "boolean" ||
+    typeof settings.requireConfirmationForAccountAffecting !== "boolean" ||
+    typeof settings.incognitoEnabled !== "boolean" ||
+    !["current_site_only", "granted_sites", "all_sites"].includes(
+      String(settings.siteAccessMode),
+    ) ||
+    !Array.isArray(settings.grantedOrigins) ||
+    !settings.grantedOrigins.every((entry) => typeof entry === "string") ||
+    !Array.isArray(settings.blockedOrigins) ||
+    !settings.blockedOrigins.every((entry) => typeof entry === "string") ||
+    typeof settings.maxRememberedTabs !== "number" ||
+    !Number.isInteger(settings.maxRememberedTabs) ||
+    settings.maxRememberedTabs < 1 ||
+    (settings.pauseUntil !== null && typeof settings.pauseUntil !== "string") ||
+    !isRecord(settings.metadata) ||
+    (settings.updatedAt !== null && typeof settings.updatedAt !== "string")
+  )
+    invalidSyncResponse("settings are malformed");
+  return settings as unknown as BrowserBridgeSettings;
+}
+
+function readSettingsVersion(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    invalidSyncResponse("settingsVersion is missing");
+  }
+  return value;
+}
+
+function readCompanion(
+  payload: Record<string, unknown>,
+  config: CompanionConfig,
+): void {
+  const companion = payload.companion;
+  if (!isRecord(companion)) invalidSyncResponse("companion is missing");
+  if (
+    companion.id !== config.companionId ||
+    companion.browser !== config.browser ||
+    companion.profileId !== config.profileId
+  ) {
+    invalidSyncResponse("companion identity does not match the pairing");
+  }
+}
+
+function readPreflightResponse(
+  payload: unknown,
+  config: CompanionConfig,
+): BrowserBridgeCompanionPreflightResponse {
+  if (!isRecord(payload)) invalidSyncResponse("payload is not an object");
+  readCompanion(payload, config);
+  for (const forbidden of ["session", "tabs", "currentPage"]) {
+    if (Object.hasOwn(payload, forbidden))
+      invalidSyncResponse(`preflight contains forbidden ${forbidden} data`);
+  }
+  return {
+    companion:
+      payload.companion as BrowserBridgeCompanionPreflightResponse["companion"],
+    settings: readSettings(payload.settings),
+    settingsVersion: readSettingsVersion(payload.settingsVersion),
+  };
+}
+
 const ACTION_KINDS = new Set([
   "open",
   "navigate",
@@ -77,44 +151,12 @@ const ACTION_KINDS = new Set([
 function readSyncResponse(
   payload: unknown,
   config: CompanionConfig,
+  requestSettingsVersion: string,
 ): BrowserBridgeCompanionSyncResponse {
   if (!isRecord(payload)) invalidSyncResponse("payload is not an object");
-  const companion = payload.companion;
-  if (!isRecord(companion)) invalidSyncResponse("companion is missing");
-  if (
-    companion.id !== config.companionId ||
-    companion.browser !== config.browser ||
-    companion.profileId !== config.profileId
-  ) {
-    invalidSyncResponse("companion identity does not match the pairing");
-  }
-
-  const settings = payload.settings;
-  if (
-    !isRecord(settings) ||
-    typeof settings.enabled !== "boolean" ||
-    !["off", "current_tab", "active_tabs"].includes(
-      String(settings.trackingMode),
-    ) ||
-    typeof settings.allowBrowserControl !== "boolean" ||
-    typeof settings.requireConfirmationForAccountAffecting !== "boolean" ||
-    typeof settings.incognitoEnabled !== "boolean" ||
-    !["current_site_only", "granted_sites", "all_sites"].includes(
-      String(settings.siteAccessMode),
-    ) ||
-    !Array.isArray(settings.grantedOrigins) ||
-    !settings.grantedOrigins.every((value) => typeof value === "string") ||
-    !Array.isArray(settings.blockedOrigins) ||
-    !settings.blockedOrigins.every((value) => typeof value === "string") ||
-    typeof settings.maxRememberedTabs !== "number" ||
-    !Number.isInteger(settings.maxRememberedTabs) ||
-    settings.maxRememberedTabs < 1 ||
-    (settings.pauseUntil !== null && typeof settings.pauseUntil !== "string") ||
-    !isRecord(settings.metadata) ||
-    (settings.updatedAt !== null && typeof settings.updatedAt !== "string")
-  ) {
-    invalidSyncResponse("settings are malformed");
-  }
+  readCompanion(payload, config);
+  readSettings(payload.settings);
+  const settingsVersion = readSettingsVersion(payload.settingsVersion);
 
   const session = payload.session;
   if (session !== null) {
@@ -140,18 +182,53 @@ function readSyncResponse(
         action.id.length === 0 ||
         typeof action.kind !== "string" ||
         !ACTION_KINDS.has(action.kind) ||
+        typeof action.label !== "string" ||
+        (action.browser !== null &&
+          action.browser !== undefined &&
+          action.browser !== config.browser) ||
+        (action.windowId !== null &&
+          action.windowId !== undefined &&
+          typeof action.windowId !== "string") ||
+        (action.tabId !== null &&
+          action.tabId !== undefined &&
+          typeof action.tabId !== "string") ||
         (action.url !== null && typeof action.url !== "string") ||
         (action.selector !== null && typeof action.selector !== "string") ||
-        (action.text !== null && typeof action.text !== "string")
+        (action.text !== null && typeof action.text !== "string") ||
+        typeof action.accountAffecting !== "boolean" ||
+        typeof action.requiresConfirmation !== "boolean" ||
+        !isRecord(action.metadata)
       ) {
         invalidSyncResponse("session contains a malformed action");
       }
     }
   }
   if (!Array.isArray(payload.tabs)) invalidSyncResponse("tabs are malformed");
+  for (const tab of payload.tabs) {
+    if (
+      !isRecord(tab) ||
+      tab.browser !== config.browser ||
+      tab.profileId !== config.profileId ||
+      (Object.hasOwn(tab, "companionId") &&
+        tab.companionId !== config.companionId)
+    ) {
+      invalidSyncResponse("tab identity does not match the pairing");
+    }
+  }
   if (payload.currentPage !== null && !isRecord(payload.currentPage)) {
     invalidSyncResponse("currentPage is malformed");
   }
+  if (
+    isRecord(payload.currentPage) &&
+    (payload.currentPage.browser !== config.browser ||
+      payload.currentPage.profileId !== config.profileId ||
+      (Object.hasOwn(payload.currentPage, "companionId") &&
+        payload.currentPage.companionId !== config.companionId))
+  ) {
+    invalidSyncResponse("currentPage identity does not match the pairing");
+  }
+  if (settingsVersion !== requestSettingsVersion)
+    invalidSyncResponse("settingsVersion does not match the request");
   return payload as unknown as BrowserBridgeCompanionSyncResponse;
 }
 
@@ -164,6 +241,24 @@ export class BrowserBridgeRelayClient {
       "Content-Type": "application/json",
       "X-Browser-Bridge-Companion-Id": this.config.companionId,
     };
+  }
+
+  async preflight(
+    request: CompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    const response = await fetch(
+      joinUrl(
+        this.config.apiBaseUrl,
+        "/api/browser-bridge/companions/preflight",
+      ),
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(request),
+      },
+    );
+    if (!response.ok) await throwApiError(response);
+    return readPreflightResponse(await response.json(), this.config);
   }
 
   async sync(
@@ -180,7 +275,11 @@ export class BrowserBridgeRelayClient {
     if (!response.ok) {
       await throwApiError(response);
     }
-    return readSyncResponse(await response.json(), this.config);
+    return readSyncResponse(
+      await response.json(),
+      this.config,
+      request.settingsVersion,
+    );
   }
 
   async updateSessionProgress(

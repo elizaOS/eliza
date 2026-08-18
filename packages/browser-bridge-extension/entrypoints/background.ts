@@ -21,6 +21,7 @@ import type {
   CompanionAutoPairRequest,
   CompanionAutoPairResponse,
   CompanionConfig,
+  CompanionPreflightRequest,
   CompanionSession,
   CompanionSyncRequest,
   ContentScriptResponse,
@@ -32,6 +33,8 @@ import {
   candidateApiBaseUrlsFromTabs,
   clearCompanionConfig,
   discoverReachableAgentApiBaseUrls,
+  getOrCreateExtensionProfileId,
+  isLoopbackApiBaseUrl,
   isValidApiBaseUrl,
   loadBackgroundState,
   loadCompanionConfig,
@@ -158,12 +161,14 @@ function tabsForApiBaseUrl(
     .map((candidate) => candidate.tabId);
 }
 
-function buildAutoPairRequest(
+async function buildAutoPairRequest(
   config: CompanionConfig | null,
-): CompanionAutoPairRequest {
+): Promise<CompanionAutoPairRequest> {
+  const profileId =
+    config?.profileId ?? (await getOrCreateExtensionProfileId());
   return {
     browser: __BROWSER_BRIDGE_KIND__,
-    profileId: config?.profileId ?? "default",
+    profileId,
     profileLabel: config?.profileLabel ?? "Default",
     label: config?.label ?? "",
     extensionVersion: getManifestVersion(),
@@ -387,7 +392,7 @@ async function attemptAutoPair(
 
   try {
     const existingConfig = await loadCompanionConfig();
-    const request = buildAutoPairRequest(existingConfig);
+    const request = await buildAutoPairRequest(existingConfig);
     const openTabs = await queryTabs({});
     const candidateApiBaseUrls = [
       ...new Set([
@@ -426,25 +431,33 @@ async function attemptAutoPair(
         }
       }
 
-      const response = await requestAutoPairFromBackground(apiBaseUrl, request);
-      if (response.ok) {
-        const config = await saveCompanionConfig(response.data.config);
-        if (config) {
-          createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
-          await setState({
-            config,
-            lastError: null,
-            lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
-          });
-          return config;
-        }
-      }
-      if ("error" in response) {
-        lastErrorMessage = autoPairErrorMessage(
+      // Authenticated HTTPS pairing must run inside the exact-origin app tab
+      // so its same-origin cookies/session participate. Only loopback may use
+      // an origin-less background request.
+      if (isLoopbackApiBaseUrl(apiBaseUrl)) {
+        const response = await requestAutoPairFromBackground(
           apiBaseUrl,
-          response.status,
-          response.error,
+          request,
         );
+        if (response.ok) {
+          const config = await saveCompanionConfig(response.data.config);
+          if (config) {
+            createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
+            await setState({
+              config,
+              lastError: null,
+              lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
+            });
+            return config;
+          }
+        }
+        if ("error" in response) {
+          lastErrorMessage = autoPairErrorMessage(
+            apiBaseUrl,
+            response.status,
+            response.error,
+          );
+        }
       }
     }
 
@@ -597,10 +610,12 @@ async function sendContentScriptMessage(
 
 async function buildSyncRequest(
   config: CompanionConfig,
+  settings: BrowserBridgeSettings,
+  settingsVersion: string,
 ): Promise<CompanionSyncRequest> {
-  const settings = backgroundState.settings;
   const tabs = await collectSnapshotTabs(config, settings);
   return {
+    settingsVersion,
     companion: {
       browser: config.browser,
       profileId: config.profileId,
@@ -614,6 +629,38 @@ async function buildSyncRequest(
     tabs,
     pageContexts: await captureFocusedPageContext(tabs),
   };
+}
+
+async function buildPreflightRequest(
+  config: CompanionConfig,
+): Promise<CompanionPreflightRequest> {
+  return {
+    companion: {
+      browser: config.browser,
+      profileId: config.profileId,
+      profileLabel: config.profileLabel,
+      label: config.label,
+      extensionVersion: getManifestVersion(),
+      connectionState: "connected",
+      permissions: await describePermissionState(),
+      lastSeenAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function preflightAndSync(
+  client: BrowserBridgeRelayClient,
+  config: CompanionConfig,
+) {
+  const preflight = await client.preflight(await buildPreflightRequest(config));
+  backgroundState.settings = preflight.settings;
+  return await client.sync(
+    await buildSyncRequest(
+      config,
+      preflight.settings,
+      preflight.settingsVersion,
+    ),
+  );
 }
 
 async function resolveTargetTab(
@@ -655,7 +702,7 @@ async function executeAction(
   action: BrowserBridgeAction,
   currentTabId: number | null,
 ): Promise<{ currentTabId: number | null; result: Record<string, unknown> }> {
-  const freshSync = await client.sync(await buildSyncRequest(config));
+  const freshSync = await preflightAndSync(client, config);
   backgroundState.settings = freshSync.settings;
   const resolvedTabId = await resolveTargetTab(action, session, currentTabId);
   const openTabs = await queryTabs({});
@@ -1031,8 +1078,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
 
   try {
     const client = new BrowserBridgeRelayClient(config);
-    const request = await buildSyncRequest(config);
-    const response = await client.sync(request);
+    const response = await preflightAndSync(client, config);
     await setState({
       syncing: false,
       lastSyncAt: new Date().toISOString(),

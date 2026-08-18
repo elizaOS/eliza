@@ -54,6 +54,7 @@ function syncResponse(overrides: Record<string, unknown> = {}) {
       updatedAt: null,
     },
     session: null,
+    settingsVersion: "settings-v1",
     ...overrides,
   };
 }
@@ -68,18 +69,15 @@ describe("BrowserBridgeRelayClient", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const request: CompanionSyncRequest = {
+      settingsVersion: "settings-v1",
       companion: {
-        companionId: "companion-1",
         browser: "chrome",
         profileId: "default",
         profileLabel: "Default",
         label: "Agent Browser Bridge chrome Default",
       },
       tabs: [],
-      activeTabId: null,
-      capturedAt: "2026-01-01T00:00:00.000Z",
-      extensionVersion: "1.0.0",
-      permissions: [],
+      pageContexts: [],
     };
 
     const client = new BrowserBridgeRelayClient(config);
@@ -101,6 +99,42 @@ describe("BrowserBridgeRelayClient", () => {
     );
   });
 
+  it("preflights without browser data and rejects a data-bearing response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          companion: syncResponse().companion,
+          settings: syncResponse().settings,
+          settingsVersion: "settings-v1",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          companion: syncResponse().companion,
+          settings: syncResponse().settings,
+          settingsVersion: "settings-v1",
+          tabs: [],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BrowserBridgeRelayClient(config);
+    const request = {
+      companion: {
+        browser: "chrome" as const,
+        profileId: "default",
+        label: config.label,
+      },
+    };
+    await expect(client.preflight(request)).resolves.toMatchObject({
+      settingsVersion: "settings-v1",
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+    ).not.toHaveProperty("tabs");
+    await expect(client.preflight(request)).rejects.toThrow("forbidden tabs");
+  });
+
   it("rejects successful responses for a different companion", async () => {
     vi.stubGlobal(
       "fetch",
@@ -118,7 +152,9 @@ describe("BrowserBridgeRelayClient", () => {
     );
 
     await expect(
-      new BrowserBridgeRelayClient(config).sync({} as CompanionSyncRequest),
+      new BrowserBridgeRelayClient(config).sync({
+        settingsVersion: "settings-v1",
+      } as CompanionSyncRequest),
     ).rejects.toMatchObject({
       status: 502,
       code: "browser_bridge_response_invalid",
@@ -145,7 +181,71 @@ describe("BrowserBridgeRelayClient", () => {
     );
 
     await expect(
-      new BrowserBridgeRelayClient(config).sync({} as CompanionSyncRequest),
+      new BrowserBridgeRelayClient(config).sync({
+        settingsVersion: "settings-v1",
+      } as CompanionSyncRequest),
+    ).rejects.toThrow("malformed action");
+  });
+
+  it("rejects cross-profile tabs, pages, stale versions, and malformed action controls", async () => {
+    const client = new BrowserBridgeRelayClient(config);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        syncResponse({ tabs: [{ browser: "chrome", profileId: "other" }] }),
+      ),
+    );
+    await expect(
+      client.sync({ settingsVersion: "settings-v1" } as CompanionSyncRequest),
+    ).rejects.toThrow("tab identity");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        syncResponse({
+          currentPage: { browser: "firefox", profileId: "default" },
+        }),
+      ),
+    );
+    await expect(
+      client.sync({ settingsVersion: "settings-v1" } as CompanionSyncRequest),
+    ).rejects.toThrow("currentPage identity");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(syncResponse({ settingsVersion: "settings-v2" })),
+    );
+    await expect(
+      client.sync({ settingsVersion: "settings-v1" } as CompanionSyncRequest),
+    ).rejects.toThrow("settingsVersion does not match");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        syncResponse({
+          session: {
+            id: "session-1",
+            companionId: config.companionId,
+            browser: config.browser,
+            profileId: config.profileId,
+            currentActionIndex: 0,
+            actions: [
+              {
+                id: "action-1",
+                kind: "click",
+                label: "Click",
+                browser: "firefox",
+                windowId: null,
+                tabId: null,
+                url: null,
+                selector: "button",
+                text: null,
+                accountAffecting: false,
+                requiresConfirmation: false,
+                metadata: {},
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    await expect(
+      client.sync({ settingsVersion: "settings-v1" } as CompanionSyncRequest),
     ).rejects.toThrow("malformed action");
   });
 
@@ -184,14 +284,14 @@ describe("BrowserBridgeRelayClient", () => {
         { status: 401, statusText: "Unauthorized" },
       ),
     );
-    await expect(client.sync({} as CompanionSyncRequest)).rejects.toMatchObject(
-      {
-        name: "RelayApiError",
-        message: "Pairing expired",
-        status: 401,
-        code: "PAIRING_EXPIRED",
-      } satisfies Partial<RelayApiError>,
-    );
+    await expect(
+      client.sync({ settingsVersion: "settings-v1" } as CompanionSyncRequest),
+    ).rejects.toMatchObject({
+      name: "RelayApiError",
+      message: "Pairing expired",
+      status: 401,
+      code: "PAIRING_EXPIRED",
+    } satisfies Partial<RelayApiError>);
 
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
