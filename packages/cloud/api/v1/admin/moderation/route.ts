@@ -76,7 +76,7 @@ function toIsoStringOrNull(value: Date | string | null): string | null {
 }
 
 function truncateText(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
 function toAdminRole(
