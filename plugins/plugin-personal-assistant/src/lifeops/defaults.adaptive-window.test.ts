@@ -61,11 +61,21 @@ describe("computeAdaptiveWindowPolicy", () => {
   });
 
   it.each([
-    { wakeTime: "14:30", typicalWakeHour: 14.5 },
-    { wakeTime: "15:00", typicalWakeHour: 15 },
+    {
+      wakeTime: "14:30",
+      typicalWakeHour: 14.5,
+      startMinute: 840,
+      endMinute: 900,
+    },
+    {
+      wakeTime: "15:00",
+      typicalWakeHour: 15,
+      startMinute: 870,
+      endMinute: 930,
+    },
   ])(
-    "keeps the morning window non-empty for a $wakeTime wake rhythm",
-    ({ typicalWakeHour }) => {
+    "keeps the morning window wake-relative for a $wakeTime wake rhythm",
+    ({ typicalWakeHour, startMinute, endMinute }) => {
       const policy = computeAdaptiveWindowPolicy(
         {
           typicalWakeHour,
@@ -78,12 +88,33 @@ describe("computeAdaptiveWindowPolicy", () => {
 
       expect(policy.windows[0]).toMatchObject({
         name: "morning",
-        startMinute: 780,
-        endMinute: 840,
+        startMinute,
+        endMinute,
       });
-      expect(policy.windows[1]?.startMinute).toBe(840);
+      const wakeMinute = typicalWakeHour * 60;
+      expect(startMinute).toBeLessThanOrEqual(wakeMinute);
+      expect(endMinute).toBeGreaterThan(wakeMinute);
+      expect(policy.windows[1]?.startMinute).toBe(endMinute);
     },
   );
+
+  it("keeps downstream dayparts positive when a very late wake crosses both caps", () => {
+    const policy = computeAdaptiveWindowPolicy(
+      {
+        typicalWakeHour: 21,
+        typicalFirstActiveHour: null,
+        typicalLastActiveHour: null,
+        typicalSleepHour: null,
+      },
+      "UTC",
+    );
+
+    expect(policy.windows.slice(0, 3)).toMatchObject([
+      { name: "morning", startMinute: 1230, endMinute: 1290 },
+      { name: "afternoon", startMinute: 1290, endMinute: 1350 },
+      { name: "evening", startMinute: 1350, endMinute: 1410 },
+    ]);
+  });
 
   it("keeps every adaptive daypart contiguous and non-empty across wake rhythms", () => {
     for (
@@ -136,7 +167,7 @@ describe("computeAdaptiveWindowPolicy", () => {
     ).toBe(true);
     expect(
       occurrences.every(
-        ({ scheduledAt }) => scheduledAt?.slice(11, 16) === "13:00",
+        ({ scheduledAt }) => scheduledAt?.slice(11, 16) === "14:30",
       ),
     ).toBe(true);
   });
