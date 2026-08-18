@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Unit test for the iOS cloud-onboarding smoke contract helpers (#16936):
-// request parsing (blank/bare/JSON/invalid) and the fail-closed reply-row
+// request parsing, direct-Cloud completion, and the fail-closed reply-row
 // classification the in-app liveness driver relies on. Deterministic, jsdom —
 // no simulator or Playwright harness; the overlay DOM shapes below mirror the
 // real renderer (`overlay-assistant-turn-body` phases from
@@ -9,9 +9,44 @@ import { describe, expect, it } from "vitest";
 
 import {
   extractIosLivenessChallengeToken,
+  isIosCloudOnboardingComplete,
   isIosLivenessReplyRow,
   parseIosCloudOnboardingSmokeRequest,
 } from "../src/ios-cloud-onboarding-smoke";
+
+describe("isIosCloudOnboardingComplete", () => {
+  const completeState = {
+    homeVisible: true,
+    composerVisible: true,
+    onboardingHidden: true,
+    cloudActiveServer: true,
+    firstRunPostCount: 0,
+  };
+
+  it("accepts durable direct-Cloud completion without an app-shell POST", () => {
+    expect(isIosCloudOnboardingComplete(completeState)).toBe(true);
+  });
+
+  it("rejects the retired /api/first-run completion shape", () => {
+    expect(
+      isIosCloudOnboardingComplete({
+        ...completeState,
+        firstRunPostCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    "homeVisible",
+    "composerVisible",
+    "onboardingHidden",
+    "cloudActiveServer",
+  ] as const)("requires %s", (field) => {
+    expect(
+      isIosCloudOnboardingComplete({ ...completeState, [field]: false }),
+    ).toBe(false);
+  });
+});
 
 function overlayRow(phase: "status" | "reply", text: string): Element {
   const row = document.createElement("div");

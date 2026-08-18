@@ -201,6 +201,7 @@ import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
   extractIosLivenessChallengeToken,
   type IosCloudOnboardingSmokeRequest,
+  isIosCloudOnboardingComplete,
   isIosLivenessReplyRow as isIosLivenessReplyRowFromContract,
   parseIosCloudOnboardingSmokeRequest as parseIosCloudOnboardingSmokeRequestFromContract,
 } from "./ios-cloud-onboarding-smoke";
@@ -1408,12 +1409,13 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
     );
 
     await writeIosCloudOnboardingSmokeResult({
-      ok:
-        Boolean(home) &&
-        Boolean(composer) &&
-        onboardingHidden &&
-        cloudActiveServer &&
-        firstRunPostCount === 1,
+      ok: isIosCloudOnboardingComplete({
+        homeVisible: Boolean(home),
+        composerVisible: Boolean(composer),
+        onboardingHidden,
+        cloudActiveServer,
+        firstRunPostCount,
+      }),
       phase: "complete",
       mode: request.mode,
       finishedAt: new Date().toISOString(),

@@ -61,6 +61,33 @@ export interface IosCloudOnboardingSmokeRequest {
   livenessPrompt: string;
 }
 
+/** State the in-app verifier must prove before reporting onboarding complete. */
+export interface IosCloudOnboardingCompletionState {
+  homeVisible: boolean;
+  composerVisible: boolean;
+  onboardingHidden: boolean;
+  cloudActiveServer: boolean;
+  firstRunPostCount: number;
+}
+
+/**
+ * Enforce the direct-Cloud completion contract shared with the Android lane.
+ * A provisioned Cloud agent is already the chat runtime, so posting the
+ * app-shell `/api/first-run` endpoint to that base is an architecture error;
+ * durable client state and the authenticated Cloud server prove completion.
+ */
+export function isIosCloudOnboardingComplete(
+  state: IosCloudOnboardingCompletionState,
+): boolean {
+  return (
+    state.homeVisible &&
+    state.composerVisible &&
+    state.onboardingHidden &&
+    state.cloudActiveServer &&
+    state.firstRunPostCount === 0
+  );
+}
+
 const DEFAULT_LIVENESS_PROMPT = "In one short sentence, say hello.";
 
 /**
