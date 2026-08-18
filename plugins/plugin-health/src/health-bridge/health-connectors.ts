@@ -682,7 +682,7 @@ function fitbitStageSamples(
   for (const entry of data) {
     const startAt = normalizeIso(getText(entry, "dateTime"));
     const seconds = getNumber(entry, "seconds");
-    if (!startAt || seconds === null) {
+    if (!startAt || seconds === null || seconds <= 0) {
       continue;
     }
     samples.push({
