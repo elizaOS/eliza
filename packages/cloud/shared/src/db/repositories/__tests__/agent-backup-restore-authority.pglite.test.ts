@@ -617,14 +617,14 @@ describe("strict restore catalogue authority", () => {
       expectedCurrentGenerationId: null,
     } as const;
     const first = await createOrRotateAgentVaultKeyGeneration(firstInput, options);
-    let borrowedPassphrase: Uint8Array | null = null;
+    const borrowedPassphrase: { value: Uint8Array | null } = { value: null };
     let copiedPassphrase = Buffer.alloc(0);
     await first.secret.withPassphrase((passphrase) => {
-      borrowedPassphrase = passphrase;
+      borrowedPassphrase.value = passphrase;
       copiedPassphrase = Buffer.from(passphrase);
     });
     expect(copiedPassphrase.toString("ascii")).toBe("01".repeat(32));
-    expect(borrowedPassphrase?.every((byte) => byte === 0)).toBe(true);
+    expect(borrowedPassphrase.value?.every((byte) => byte === 0)).toBe(true);
     const borrowedRawKey = (first.secret as unknown as { rawKey: Uint8Array | null }).rawKey;
     expect(borrowedRawKey).not.toBeNull();
     first.secret.release();
@@ -693,9 +693,9 @@ describe("strict restore catalogue authority", () => {
 
   test("zeroizes transient vault-key material when KMS encryption fails", async () => {
     const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x94) });
-    let borrowedPlaintext: Uint8Array | null = null;
+    const borrowedPlaintext: { value: Uint8Array | null } = { value: null };
     const encryptSpy = spyOn(kms, "encrypt").mockImplementation(async (_keyId, plaintext, _aad) => {
-      borrowedPlaintext = plaintext;
+      borrowedPlaintext.value = plaintext;
       throw new Error("simulated KMS failure");
     });
     try {
@@ -714,8 +714,8 @@ describe("strict restore catalogue authority", () => {
           },
         ),
       ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_CREATE_FAILED" });
-      expect(borrowedPlaintext).not.toBeNull();
-      expect(borrowedPlaintext?.every((byte) => byte === 0)).toBe(true);
+      expect(borrowedPlaintext.value).not.toBeNull();
+      expect(borrowedPlaintext.value?.every((byte) => byte === 0)).toBe(true);
       expect(await dbWrite.select().from(agentVaultKeyGenerations)).toHaveLength(0);
     } finally {
       encryptSpy.mockRestore();

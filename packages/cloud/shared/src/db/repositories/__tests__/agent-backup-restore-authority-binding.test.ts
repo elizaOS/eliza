@@ -11,12 +11,18 @@ import { hasAgentBackupRestoreAuthority } from "../agent-backup-restore-authorit
 
 const RESTORABLE: AgentBackupCatalogState[] = ["protected", "retained", "restore_verified"];
 const NON_RESTORABLE: AgentBackupCatalogState[] = [
-  "pending",
+  "legacy_unmigrated",
+  "scheduled",
+  "capturing",
+  "captured",
+  "uploading",
+  "primary_uploaded",
   "primary_verified",
   "secondary_pending",
   "expiration_pending",
   "deleting",
   "deleted",
+  "failed_retryable",
   "failed_terminal",
 ];
 
