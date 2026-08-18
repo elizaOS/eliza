@@ -36,6 +36,21 @@ let stewardTokenBehavior: () => Promise<unknown> = async () => null;
 const verifyStewardTokenCached = mock(() => stewardTokenBehavior());
 let playwrightTokenBehavior: () => unknown = () => null;
 const verifyPlaywrightTestSessionToken = mock(() => playwrightTokenBehavior());
+// Mirrors the real gate's contract (production hard-fail + flag) so the
+// import added to workers-hono-auth resolves and the enabled/disabled paths
+// below stay exercisable.
+let playwrightEnabledBehavior: (env: {
+  NODE_ENV?: string;
+  ENVIRONMENT?: string;
+  PLAYWRIGHT_TEST_AUTH?: string;
+}) => boolean = (env) =>
+  env.NODE_ENV !== "production" &&
+  env.ENVIRONMENT !== "production" &&
+  env.PLAYWRIGHT_TEST_AUTH === "true";
+const isPlaywrightTestAuthEnabled = mock(
+  (env: { NODE_ENV?: string; ENVIRONMENT?: string; PLAYWRIGHT_TEST_AUTH?: string }) =>
+    playwrightEnabledBehavior(env),
+);
 let adminBehavior: () => Promise<unknown> = async () => ({ isAdmin: false, role: null });
 const getAdminStatusForUser = mock(() => adminBehavior());
 
@@ -65,6 +80,7 @@ mock.module("./steward-client", () => ({
 }));
 
 mock.module("./playwright-test-session", () => ({
+  isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME: "pw-test-session",
   verifyPlaywrightTestSessionToken,
 }));
@@ -137,6 +153,10 @@ beforeEach(() => {
   stewardUserBehavior = async () => null;
   stewardTokenBehavior = async () => null;
   playwrightTokenBehavior = () => null;
+  playwrightEnabledBehavior = (env) =>
+    env.NODE_ENV !== "production" &&
+    env.ENVIRONMENT !== "production" &&
+    env.PLAYWRIGHT_TEST_AUTH === "true";
   adminBehavior = async () => ({ isAdmin: false, role: null });
   getWithOrganization.mockClear();
   getByStewardId.mockClear();

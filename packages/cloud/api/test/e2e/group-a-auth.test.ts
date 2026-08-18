@@ -368,13 +368,34 @@ describeE2E("Group A: auth + sessions", () => {
   });
 
   // --------------------------------------------------------------------
-  // /api/set-anonymous-session — POST, public.
+  // /api/set-anonymous-session — POST, public. Since the W5-010 fix the route
+  // enforces the browser-origin gate (exact-host Origin policy + non-simple
+  // request marker) before touching the body, so the contract probes below
+  // send a first-party Origin that matches the request host — the leg of
+  // isPermittedElizaBrowserOrigin that holds in every environment.
   // --------------------------------------------------------------------
   describe("POST /api/set-anonymous-session", () => {
+    const firstPartyOrigin = () => ({
+      Origin: new URL(getBaseUrl()).origin,
+    });
+
+    test("CSRF gate: POST without Origin/Referer returns 403 forbidden_origin", async () => {
+      // Bun's fetch sends no Origin — the gate must reject before body
+      // validation, otherwise a cross-site form POST could plant a session
+      // cookie the attacker knows into a victim's browser.
+      const res = await api.post("/api/set-anonymous-session", {});
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("forbidden_origin");
+    });
+
     test("validation: invalid JSON body returns 400", async () => {
       const res = await fetch(`${getBaseUrl()}/api/set-anonymous-session`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...firstPartyOrigin(),
+        },
         body: "{ this is not json",
       });
       expect(res.status).toBe(400);
@@ -383,16 +404,24 @@ describeE2E("Group A: auth + sessions", () => {
     });
 
     test("validation: missing sessionToken returns 400", async () => {
-      const res = await api.post("/api/set-anonymous-session", {});
+      const res = await api.post(
+        "/api/set-anonymous-session",
+        {},
+        { headers: firstPartyOrigin() },
+      );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("Session token is required");
     });
 
     test("auth gate: unknown sessionToken returns 404", async () => {
-      const res = await api.post("/api/set-anonymous-session", {
-        sessionToken: "z".repeat(32),
-      });
+      const res = await api.post(
+        "/api/set-anonymous-session",
+        {
+          sessionToken: "z".repeat(32),
+        },
+        { headers: firstPartyOrigin() },
+      );
       // Unknown token → 404 SESSION_NOT_FOUND (410 is reserved for expired).
       expect(res.status).toBe(404);
       const body = (await res.json()) as { error?: string; code?: string };
