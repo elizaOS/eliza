@@ -23,6 +23,20 @@ import type {
 } from "../../contracts/index.js";
 import { getLocalDateKey, getZonedDateParts } from "../time.js";
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+function sliceGraphemePrefix(value: string, maxCodeUnits: number): string {
+  let end = 0;
+  for (const segment of graphemeSegmenter.segment(value)) {
+    const nextEnd = segment.index + segment.segment.length;
+    if (nextEnd > maxCodeUnits) break;
+    end = nextEnd;
+  }
+  return value.slice(0, end);
+}
+
 // Truncate snippet/preview text and append an ellipsis when we actually cut.
 // Without the marker the slice looks like a sentence the sender wrote, which
 // confuses readers when content gets clipped mid-word.
@@ -35,7 +49,7 @@ function truncateForPreview(value: string, maxLength: number): string {
   }
   if (limit === 0) return "";
   if (limit === 1) return "…";
-  return `${value.slice(0, limit - 1).trimEnd()}…`;
+  return `${sliceGraphemePrefix(value, limit - 1).trimEnd()}…`;
 }
 
 // Build a "Display Name <email@host>" string when both are available, or

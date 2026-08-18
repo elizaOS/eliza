@@ -55,6 +55,20 @@ describe("preview suffix reservation", () => {
 
     expect(snippet).toBe(`${"g".repeat(99)}…`);
     expect(snippet).toHaveLength(100);
+
+    for (const grapheme of ["🙂", "e\u0301", "👨‍👩‍👧‍👦"]) {
+      const message = feed.messages[0];
+      if (!message) throw new Error("expected triage fixture message");
+      message.snippet = `${"g".repeat(98)}${grapheme}tail`;
+      const bounded = formatEmailTriage(feed)
+        .split("\n")
+        .find((line) => line.startsWith("  g"))
+        ?.slice(2);
+
+      expect(bounded).toBe(`${"g".repeat(98)}…`);
+      expect(bounded?.isWellFormed()).toBe(true);
+      expect(bounded?.length).toBeLessThanOrEqual(100);
+    }
   });
 
   it("bounds subject previews at zero, one, fractional, and normal caps", () => {
@@ -72,6 +86,34 @@ describe("preview suffix reservation", () => {
     expect(
       redactSensitiveData({ subject }, { subjectPreview: 20 }).subject,
     ).toBe(`${"s".repeat(19)}…`);
+  });
+
+  it("keeps astral, combining, and ZWJ graphemes intact", () => {
+    const cases = ["🙂", "e\u0301", "👨‍👩‍👧‍👦"];
+
+    for (const grapheme of cases) {
+      const source = grapheme.repeat(100);
+      const bodyCap = grapheme.length + `… [+${source.length} chars]`.length;
+      const subject = redactSensitiveData(
+        { subject: source },
+        { subjectPreview: grapheme.length },
+      ).subject;
+      const body = redactSensitiveData(
+        { body: source },
+        { bodyPreview: bodyCap },
+      ).body;
+
+      expect(subject).toBe("…");
+      expect(subject.isWellFormed()).toBe(true);
+      expect(subject.length).toBeLessThanOrEqual(grapheme.length);
+      expect(body.isWellFormed()).toBe(true);
+      expect(body.length).toBeLessThanOrEqual(bodyCap);
+      const match = body.match(/^(.*)… \[\+(\d+) chars\]$/su);
+      expect(match).not.toBeNull();
+      const prefix = match?.[1] ?? "";
+      expect(prefix === "" || prefix === grapheme).toBe(true);
+      expect(Number(match?.[2])).toBe(source.length - prefix.length);
+    }
   });
 
   it("reports the actual omitted body characters within the cap", () => {
