@@ -2,6 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes as nodeRandomBytes, timingSafeEqual } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { type KmsClient, orgKey } from "@elizaos/core/security/kms";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
@@ -31,16 +32,11 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
-export class AgentVaultKeyAuthorityError extends Error {
+export class AgentVaultKeyAuthorityError extends ElizaError {
   override readonly name = "AgentVaultKeyAuthorityError";
 
-  constructor(
-    readonly code: string,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, { cause: options?.cause });
-    Object.setPrototypeOf(this, new.target.prototype);
+  constructor(code: string, message: string, options?: { cause?: unknown }) {
+    super(message, { code, cause: options?.cause });
   }
 }
 
@@ -374,6 +370,7 @@ async function decryptGeneration(
     } finally {
       decrypted.fill(0);
     }
+    // error-policy:J2 KMS failures are wrapped with stable vault authority context.
   } catch (error) {
     if (error instanceof AgentVaultKeyAuthorityError) throw error;
     throw new AgentVaultKeyAuthorityError(
@@ -654,6 +651,7 @@ export async function createOrRotateAgentVaultKeyGeneration(
       generation: Object.freeze({ ...committed.generation }),
       secret,
     };
+    // error-policy:J2 database/KMS failures are wrapped after transient key zeroization.
   } catch (error) {
     const keyToZero = transientRawKey as Uint8Array | null;
     keyToZero?.fill(0);
