@@ -317,19 +317,20 @@ function createAnalyzer(repoRoot, candidateFiles) {
 
   function factoryExports(factoryNode, parsed, target) {
     const expressions = returnedExpressions(factoryNode, parsed);
-    if (
-      expressions.some((expression) =>
-        isRealModuleExpression(expression, parsed, target),
-      )
-    ) {
-      return { analyzable: true, names: new Set(), realSpread: true };
-    }
-    const objects = expressions.filter(ts.isObjectLiteralExpression);
-    if (objects.length === 0)
+    if (expressions.length === 0)
       return { analyzable: false, names: new Set(), realSpread: false };
-    const names = new Set();
-    let realSpread = false;
-    for (const object of objects) {
+    const variants = [];
+    for (const expression of expressions) {
+      if (isRealModuleExpression(expression, parsed, target)) {
+        variants.push({ names: new Set(), realSpread: true });
+        continue;
+      }
+      if (!ts.isObjectLiteralExpression(expression)) {
+        return { analyzable: false, names: new Set(), realSpread: false };
+      }
+      const names = new Set();
+      let realSpread = false;
+      const object = expression;
       for (const member of object.properties) {
         if (ts.isSpreadAssignment(member)) {
           if (isRealModuleExpression(member.expression, parsed, target))
@@ -338,6 +339,15 @@ function createAnalyzer(repoRoot, candidateFiles) {
         }
         const name = propertyName(member.name);
         if (name !== undefined) names.add(name);
+      }
+      variants.push({ names, realSpread });
+    }
+    const realSpread = variants.every((variant) => variant.realSpread);
+    const concrete = variants.filter((variant) => !variant.realSpread);
+    const names = new Set(concrete[0]?.names ?? []);
+    for (const variant of concrete.slice(1)) {
+      for (const name of names) {
+        if (!variant.names.has(name)) names.delete(name);
       }
     }
     return { analyzable: true, names, realSpread };
@@ -370,7 +380,30 @@ function createAnalyzer(repoRoot, candidateFiles) {
     return mocks;
   }
 
-  function importBindingNames(node) {
+  function namespaceMemberNames(parsed, identifier) {
+    const names = new Set();
+    function visit(node) {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === identifier
+      )
+        names.add(node.name.text);
+      if (
+        ts.isElementAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === identifier &&
+        node.argumentExpression &&
+        isStringLiteral(node.argumentExpression)
+      )
+        names.add(node.argumentExpression.text);
+      ts.forEachChild(node, visit);
+    }
+    visit(parsed);
+    return [...names];
+  }
+
+  function importBindingNames(node, parsed) {
     const names = [];
     if (ts.isImportDeclaration(node)) {
       const clause = node.importClause;
@@ -381,6 +414,11 @@ function createAnalyzer(repoRoot, candidateFiles) {
           if (!element.isTypeOnly)
             names.push(element.propertyName?.text ?? element.name.text);
         }
+      }
+      if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+        names.push(
+          ...namespaceMemberNames(parsed, clause.namedBindings.name.text),
+        );
       }
     } else if (
       ts.isExportDeclaration(node) &&
@@ -395,6 +433,41 @@ function createAnalyzer(repoRoot, candidateFiles) {
       }
     }
     return names;
+  }
+
+  function directDynamicImportBindingNames(node) {
+    let current = node;
+    let awaited = false;
+    while (
+      current.parent &&
+      (ts.isAwaitExpression(current.parent) ||
+        ts.isParenthesizedExpression(current.parent) ||
+        ts.isAsExpression(current.parent) ||
+        ts.isSatisfiesExpression(current.parent))
+    ) {
+      if (ts.isAwaitExpression(current.parent)) awaited = true;
+      current = current.parent;
+    }
+    // `import(...).then(...)` accesses the Promise contract, not a module export.
+    if (!awaited) return [];
+    if (
+      current.parent &&
+      ts.isPropertyAccessExpression(current.parent) &&
+      current.parent.expression === current
+    ) {
+      return [current.parent.name.text];
+    }
+    if (
+      current.parent &&
+      ts.isVariableDeclaration(current.parent) &&
+      ts.isObjectBindingPattern(current.parent.name)
+    ) {
+      return current.parent.name.elements
+        .filter((element) => !element.dotDotDotToken)
+        .map((element) => propertyName(element.propertyName ?? element.name))
+        .filter((name) => name !== undefined);
+    }
+    return [];
   }
 
   function moduleEdgesFor(file) {
@@ -414,9 +487,13 @@ function createAnalyzer(repoRoot, candidateFiles) {
         specifier = dynamicImportSpecifier(node);
       }
       if (specifier) {
+        const target = resolve(specifier, file);
+        const names = ts.isCallExpression(node)
+          ? directDynamicImportBindingNames(node)
+          : importBindingNames(node, parsed);
         edges.push({
-          names: importBindingNames(node),
-          target: resolve(specifier, file),
+          names,
+          target,
         });
       }
       ts.forEachChild(node, visit);

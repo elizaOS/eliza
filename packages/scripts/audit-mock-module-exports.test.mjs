@@ -122,6 +122,47 @@ test("fails closed for an unanalyzable whole-module factory", () => {
   assert.match(report.findings[0], /\[unsupported-factory\].*bound/);
 });
 
+test("requires every conditional factory return to provide each binding", () => {
+  const report = fixture({
+    factory:
+      "() => { if (Math.random()) return { bound: 1 }; return { unbound: 2 }; }",
+    production:
+      'import { bound, unbound } from "@fixture/dependency"; export { bound, unbound };\n',
+  });
+  assert.equal(report.findings.length, 1);
+  assert.match(report.findings[0], /bound, unbound/);
+});
+
+test("tracks direct destructured and property bindings from dynamic imports", () => {
+  for (const production of [
+    'const { bound } = await import("@fixture/dependency"); export { bound };\n',
+    'export const value = (await import("@fixture/dependency")).bound;\n',
+  ]) {
+    const report = fixture({ factory: "() => ({})", production });
+    assert.match(report.findings[0], /\[missing-export\].*bound/);
+  }
+});
+
+test("tracks namespace property access", () => {
+  const report = fixture({
+    factory: "() => ({})",
+    production:
+      'import * as dependency from "@fixture/dependency"; export const value = dependency.bound;\n',
+  });
+  assert.match(report.findings[0], /\[missing-export\].*bound/);
+});
+
+test("tracks default imports and named re-export aliases", () => {
+  for (const production of [
+    'import dependency from "@fixture/dependency"; export { dependency };\n',
+    'export { bound as publicBound } from "@fixture/dependency";\n',
+  ]) {
+    const report = fixture({ factory: "() => ({})", production });
+    assert.equal(report.findings.length, 1);
+    assert.match(report.findings[0], /\[missing-export\]/);
+  }
+});
+
 test("requires ignores to carry a durable reason", () => {
   const report = fixture({
     directive: "// mock-exports-audit: ignore bound",
