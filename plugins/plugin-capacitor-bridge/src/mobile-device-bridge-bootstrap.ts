@@ -32,6 +32,7 @@ import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
 	ElizaError,
+	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	type IAgentRuntime,
@@ -56,6 +57,10 @@ const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600_000;
 const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
+// Bounds for the bionic IMAGE_DESCRIPTION image fetch — same shape the
+// plugin-local-inference vision handlers apply (VISION_IMAGE_* there).
+const IMAGE_DESCRIPTION_FETCH_MAX_BYTES = 20 * 1024 * 1024;
+const IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS = 15_000;
 
 /**
  * Constant-time pairing-token comparison (W1-011). Callers fail closed when
@@ -2178,19 +2183,32 @@ export async function attachMobileDeviceBridgeToServer(
 	await mobileDeviceBridge.attachToHttpServer(server);
 }
 
-/** Resolve a data:/http(s)/file image URL to base64 image bytes for the host. */
-async function imageUrlToBase64(url: string): Promise<string> {
+/** Resolve a data:/http(s) image URL to base64 image bytes for the host. */
+export async function imageUrlToBase64(url: string): Promise<string> {
 	if (url.startsWith("data:")) {
 		const comma = url.indexOf(",");
 		return comma >= 0 ? url.slice(comma + 1) : url;
 	}
-	const resp = await fetch(url);
-	if (!resp.ok) {
+	try {
+		// Caller-influenced image URLs must go through the shared SSRF media
+		// guard; a bare `fetch` would let a bionic-delegated phone describe
+		// internal hosts or pull an unbounded payload into memory.
+		const media = await fetchRemoteMedia({
+			url,
+			maxBytes: IMAGE_DESCRIPTION_FETCH_MAX_BYTES,
+			timeoutMs: IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
+			maxRedirects: 5,
+		});
+		return media.buffer.toString("base64");
+	} catch (err) {
+		// error-policy:J2 context-adding rethrow — preserve guarded-fetch cause
 		throw new Error(
-			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${resp.status}`,
+			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+			{ cause: err },
 		);
 	}
-	return Buffer.from(await resp.arrayBuffer()).toString("base64");
 }
 
 /**

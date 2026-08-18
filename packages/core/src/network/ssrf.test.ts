@@ -120,6 +120,25 @@ describe("SSRF policy enforcement", () => {
 		expect(isPrivateIpAddress("2001:4860:4860::8888")).toBe(false);
 	});
 
+	it("classifies the special-purpose parity ranges the cloud guard blocks", () => {
+		// 198.18.0.0/15 (benchmarking) is internally routable on carrier/lab
+		// networks; 192.0.0.0/24 holds IETF protocol assignments; 224/4 is
+		// multicast and 240/4 is reserved (including 255.255.255.255).
+		expect(isPrivateIpAddress("198.18.0.1")).toBe(true);
+		expect(isPrivateIpAddress("198.19.255.254")).toBe(true);
+		expect(isPrivateIpAddress("192.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("192.0.0.170")).toBe(true);
+		expect(isPrivateIpAddress("224.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("239.255.255.255")).toBe(true);
+		expect(isPrivateIpAddress("240.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("255.255.255.255")).toBe(true);
+		// Just outside each added range stays public.
+		expect(isPrivateIpAddress("198.17.255.255")).toBe(false);
+		expect(isPrivateIpAddress("198.20.0.1")).toBe(false);
+		expect(isPrivateIpAddress("192.0.1.1")).toBe(false);
+		expect(isPrivateIpAddress("223.255.255.255")).toBe(false);
+	});
+
 	it("blocks localhost and internal hostnames after normalization", () => {
 		expect(isBlockedHostname("LOCALHOST.")).toBe(true);
 		expect(isBlockedHostname("metadata.google.internal")).toBe(true);
