@@ -1152,6 +1152,7 @@ export class SteerLiquidityService extends Service {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (!response.ok) {
@@ -1630,6 +1631,7 @@ export class SteerLiquidityService extends Service {
           query,
           variables,
         }),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (!response.ok) {
