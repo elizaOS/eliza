@@ -23,7 +23,7 @@ describe("elizaOS capability action", () => {
     ).toBe(false);
   });
 
-  it("passes operation and argv without shell interpolation", async () => {
+  it("passes a closed operation and argv without shell interpolation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "elizaos-broker-"));
     const runner = join(dir, "runner");
     await writeFile(runner, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
@@ -35,10 +35,25 @@ describe("elizaOS capability action", () => {
       { content: {} } as never,
       undefined,
       {
-        parameters: { operation: "exec", args: ["--", "/bin/printf", "a b"] },
+        parameters: { operation: "service", args: ["restart", "eliza agent"] },
       } as never,
     );
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("exec\n--\n/bin/printf\na b");
+    expect(result?.text).toBe("service\nrestart\neliza agent");
+  });
+
+  it("requires the owner role and rejects arbitrary execution", async () => {
+    expect(osCapabilityAction.roleGate).toEqual({ minRole: "OWNER" });
+
+    const result = await osCapabilityAction.handler?.(
+      { logger: { error: () => undefined } } as never,
+      { content: {} } as never,
+      undefined,
+      { parameters: { operation: "exec", args: ["--", "/bin/sh"] } } as never,
+    );
+    expect(result).toEqual({
+      success: false,
+      text: "Invalid elizaOS operation.",
+    });
   });
 });

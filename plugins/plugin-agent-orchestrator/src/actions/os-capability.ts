@@ -17,7 +17,6 @@ const OPERATIONS = [
   "package",
   "network",
   "power",
-  "exec",
 ] as const;
 
 function runnerPath(): string | undefined {
@@ -69,17 +68,16 @@ function run(runner: string, args: string[]): Promise<string> {
 export const osCapabilityAction: Action = {
   name: "ELIZAOS",
   contexts: ["automation", "agent_internal", "settings", "code"],
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "ELIZAOS_ROOT_STATUS",
     "ELIZAOS_SERVICE",
     "ELIZAOS_PACKAGE",
     "ELIZAOS_NETWORK",
     "ELIZAOS_POWER",
-    "ELIZAOS_ROOT_EXEC",
   ],
   description:
-    "Operate the local elizaOS device through its audited root capability broker. Use operation=exec with an argv array for an owner-authorized arbitrary root command.",
+    "Operate the local elizaOS device through its audited, closed-operation root capability broker. Owner role and device admin mode are required for state-changing operations.",
   parameters: [
     {
       name: "operation",
@@ -89,8 +87,7 @@ export const osCapabilityAction: Action = {
     },
     {
       name: "args",
-      description:
-        "Argument vector after the operation. For exec, start with -- followed by an absolute executable path and its arguments.",
+      description: "Validated argument vector after the operation.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
