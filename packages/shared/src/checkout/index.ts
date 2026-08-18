@@ -20,16 +20,22 @@ export interface StripeCheckoutRequest {
   returnUrl: string;
 }
 
+export const DEFAULT_STRIPE_CHECKOUT_FETCH_TIMEOUT_MS = 10_000;
+
 export interface StripeCheckoutOptions {
   /**
    * Absolute base URL of the Cloud API, or empty string for same-origin.
    * The endpoint path `/api/stripe/create-checkout-session` is appended.
    */
   apiBaseUrl: string;
-  /** Optional bearer token (Steward session) for guest-flow auth. */
+  /** Optional Bearer token (Steward session) for guest-flow auth. */
   bearerToken?: string | null;
   /** Whether to send credentials (cookies). Defaults to "include". */
   credentials?: RequestCredentials;
+  /** Optional caller abort signal to merge with the request deadline. */
+  signal?: AbortSignal;
+  /** Optional override for the request deadline in milliseconds. */
+  timeoutMs?: number;
 }
 
 interface StripeCheckoutResponse {
@@ -63,18 +69,34 @@ export async function createStripeCheckoutSession(
     headers.Authorization = `Bearer ${options.bearerToken}`;
   }
 
+  const timeoutMs =
+    options.timeoutMs ?? DEFAULT_STRIPE_CHECKOUT_FETCH_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: options.credentials ?? "include",
     headers,
     body: JSON.stringify(request),
+    signal,
   });
 
   // error-policy:J3 a non-JSON checkout body → null; the failure is surfaced by
   // the throw below when `response.ok` is false or `body.url` is absent.
-  const body = (await response
-    .json()
-    .catch(() => null)) as StripeCheckoutResponse | null;
+  let body: StripeCheckoutResponse | null;
+  try {
+    body = (await response.json()) as StripeCheckoutResponse | null;
+  } catch (err) {
+    if (
+      err instanceof DOMException &&
+      (err.name === "TimeoutError" || err.name === "AbortError")
+    )
+      throw err;
+    body = null;
+  }
 
   if (!response.ok || !body?.url) {
     throw new StripeCheckoutError(
