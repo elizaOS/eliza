@@ -61,10 +61,14 @@ jobs:
         working-directory: packages/app-core/packaging/flatpak
         run: |
           flatpak-builder --user --disable-rofiles-fuse --force-clean \
-            --install --repo=repo build-dir ai.elizaos.App.yml
+            --install --repo=repo \
+            --mirror-screenshots-url=https://dl.flathub.org/media \
+            --compose-url-policy=full build-dir ai.elizaos.App.yml
 
-      - name: Lint repository and exercise installed entrypoint
+      - name: Lint repository
         working-directory: packages/app-core/packaging/flatpak
-        run: |
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
-          flatpak run ai.elizaos.App --version
+        run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+
+      - name: Exercise installed entrypoint
+        if: ${{ always() }}
+        run: flatpak run ai.elizaos.App --version

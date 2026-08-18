@@ -131,6 +131,11 @@ test("Linux acceptance lints and launches the installed Flatpak", () => {
   assert.match(workflow, /flatpak-builder-lint[\s\S]*repo repo/);
   assert.match(workflow, /flatpak run ai\.elizaos\.App --version/);
   assert.match(workflow, /--install --repo=repo/);
+  assert.match(
+    workflow,
+    /--mirror-screenshots-url=https:\/\/dl\.flathub\.org\/media/,
+  );
+  assert.match(workflow, /--compose-url-policy=full/);
 });
 
 test("AppStream release and repository URLs match the packaged CLI", () => {
