@@ -12,11 +12,19 @@
  */
 
 import { Cloud, Cpu, Server } from "lucide-react";
+import { useBranding } from "../../../config/branding";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
 import { useServingAxes } from "../../settings/useServingAxes";
 
 export function ServingProviderChip({ className }: { className?: string }) {
+  const { cloudOnly } = useBranding();
+  if (cloudOnly) return null;
+
+  return <ServingProviderChipContent className={className} />;
+}
+
+function ServingProviderChipContent({ className }: { className?: string }) {
   const { elizaCloudConnected, t } = useAppSelectorShallow((s) => ({
     elizaCloudConnected: s.elizaCloudConnected,
     t: s.t,

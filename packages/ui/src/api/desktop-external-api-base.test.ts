@@ -22,6 +22,8 @@ function setExternalBase(value: unknown): void {
 afterEach(() => {
   delete (window as { __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: unknown })
     .__ELIZA_DESKTOP_EXTERNAL_API_BASE__;
+  delete (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
+    .__ELIZA_DESKTOP_RUNTIME_MODE__;
 });
 
 describe("desktop-external-api-base", () => {
@@ -33,6 +35,19 @@ describe("desktop-external-api-base", () => {
     expect(isDesktopExternalHttpApiBaseUrl("http://127.0.0.1:8080")).toBe(
       false,
     );
+  });
+
+  it("treats a non-loopback API as external in a cloud-only desktop even before the main process learns the persisted renderer target", () => {
+    (
+      window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown }
+    ).__ELIZA_DESKTOP_RUNTIME_MODE__ = "cloud";
+    expect(
+      isDesktopExternalApiBaseUrl(
+        "https://api.eliza.app/api/v1/eliza/agents/personal%3A123",
+      ),
+    ).toBe(true);
+    expect(isDesktopExternalApiBaseUrl("http://127.0.0.1:31337")).toBe(false);
+    expect(isDesktopExternalApiBaseUrl("eliza-local-agent://ipc")).toBe(false);
   });
 
   it("normalizes trailing slash, case, and path to an origin", () => {

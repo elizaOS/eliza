@@ -20,6 +20,7 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { useBranding } from "../../config/branding";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadWakeWordEnabled,
@@ -91,6 +92,7 @@ function readStoredVoicePrefs(
 }
 
 export function VoiceSectionMount(): React.ReactElement {
+  const { cloudOnly } = useBranding();
   const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(
     DEFAULT_VOICE_SECTION_PREFS,
   );
@@ -233,6 +235,7 @@ export function VoiceSectionMount(): React.ReactElement {
         prefs={prefs}
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
+        showModelsPanel={cloudOnly !== true}
         wakeWordEnabled={wakeWordEnabled}
         onWakeWordToggle={handleWakeWordToggle}
       />

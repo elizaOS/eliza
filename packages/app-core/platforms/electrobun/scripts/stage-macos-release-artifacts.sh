@@ -298,15 +298,45 @@ ditto "$APP_BUNDLE_PATH" "$STAGED_APP_PATH"
 LAUNCHER_PATH="$STAGED_APP_PATH/Contents/MacOS/launcher"
 WGPU_PATH="$STAGED_APP_PATH/Contents/MacOS/libwebgpu_dawn.dylib"
 VERSION_JSON_PATH="$STAGED_APP_PATH/Contents/Resources/version.json"
+BRAND_CONFIG_PATH="$STAGED_APP_PATH/Contents/Resources/app/brand-config.json"
 RUNTIME_DIR="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"
 DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"
 
-for required_path in "$LAUNCHER_PATH" "$WGPU_PATH" "$VERSION_JSON_PATH" "$RUNTIME_DIR"; do
+for required_path in "$LAUNCHER_PATH" "$WGPU_PATH" "$VERSION_JSON_PATH" "$BRAND_CONFIG_PATH"; do
   if [[ ! -e "$required_path" ]]; then
     echo "stage-macos-release-artifacts: expected extracted app content is missing: $required_path"
     exit 1
   fi
 done
+
+if ! CLOUD_ONLY_BUILD="$(node --input-type=module - "$BRAND_CONFIG_PATH" <<'NODE'
+import fs from "node:fs";
+
+const configPath = process.argv[2];
+const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+if (typeof config.cloudOnly !== "boolean") {
+  console.error(
+    `stage-macos-release-artifacts: brand config is missing boolean cloudOnly: ${configPath}`,
+  );
+  process.exit(1);
+}
+process.stdout.write(config.cloudOnly ? "1" : "0");
+NODE
+)"; then
+  exit 1
+fi
+
+if [[ "$CLOUD_ONLY_BUILD" == "1" ]]; then
+  if [[ -e "$RUNTIME_DIR" ]]; then
+    echo "stage-macos-release-artifacts: cloud-only app unexpectedly embeds a local runtime: $RUNTIME_DIR"
+    exit 1
+  fi
+else
+  if [[ ! -d "$RUNTIME_DIR" ]]; then
+    echo "stage-macos-release-artifacts: expected extracted app content is missing: $RUNTIME_DIR"
+    exit 1
+  fi
+fi
 
 if [[ ! -f "$DIRECT_LAUNCHER_SOURCE" ]]; then
   echo "stage-macos-release-artifacts: direct launcher source not found: $DIRECT_LAUNCHER_SOURCE"

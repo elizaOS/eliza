@@ -20,6 +20,12 @@ const modelsConfig = vi.hoisted(() => ({
   pending: false,
 }));
 
+const brandingConfig = vi.hoisted(() => ({ cloudOnly: false }));
+
+vi.mock("../../../config/branding", () => ({
+  useBranding: () => brandingConfig,
+}));
+
 vi.mock("../../../state", () => ({
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
@@ -59,6 +65,7 @@ afterEach(() => {
   cleanup();
   modelsConfig.activeChat = null;
   modelsConfig.pending = false;
+  brandingConfig.cloudOnly = false;
 });
 
 describe("ServingProviderChip", () => {
@@ -104,6 +111,17 @@ describe("ServingProviderChip", () => {
     modelsConfig.pending = true;
     render(<ServingProviderChip />);
     // A chip that guesses is worse than no chip.
+    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
+  });
+
+  it("does not expose provider details in the cloud-only product", () => {
+    brandingConfig.cloudOnly = true;
+    modelsConfig.activeChat = {
+      provider: "elizacloud",
+      family: "ELIZAOS_CLOUD",
+      endpoint: "api.eliza.app",
+    };
+    render(<ServingProviderChip />);
     expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
   });
 });

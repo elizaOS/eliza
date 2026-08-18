@@ -83,7 +83,10 @@ import {
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
-const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
+// Cloud account reads can legitimately take longer than 15 seconds on a cold
+// regional worker. Keep the request bounded, but leave enough room for the
+// billing/credits response the desktop dashboard depends on.
+const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 30_000;
 
 type DirectCloudAgent = {
   id?: string;
@@ -431,7 +434,13 @@ function generateCloudLoginSessionId(): string {
 }
 
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
-  if (shouldUseNativeCloudHttp() || typeof window === "undefined") return null;
+  if (
+    shouldUseNativeCloudHttp() ||
+    isElectrobunRuntime() ||
+    typeof window === "undefined"
+  ) {
+    return null;
+  }
   try {
     const { origin, pathname, protocol, search, hash } = window.location;
     if (protocol !== "http:" && protocol !== "https:") return null;
@@ -3200,7 +3209,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
-  const sessionId = generateCloudLoginSessionId();
+  const requestedSessionId = generateCloudLoginSessionId();
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3208,7 +3217,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: { sessionId },
+        data: { sessionId: requestedSessionId },
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -3216,6 +3225,9 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       if (res.status < 200 || res.status >= 300) {
         return { ok: false, error: `Login failed (${res.status})` };
       }
+      const responseData = recordOrNull(parseDirectCloudJsonSafe(res.data));
+      const sessionId =
+        stringOrNull(responseData?.sessionId) ?? requestedSessionId;
       return {
         ok: true,
         apiBase: authApiBase,
@@ -3229,12 +3241,15 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: requestedSessionId }),
       },
     );
     if (!res.ok) {
       return { ok: false, error: `Login failed (${res.status})` };
     }
+    const responseData = recordOrNull(await res.json());
+    const sessionId =
+      stringOrNull(responseData?.sessionId) ?? requestedSessionId;
     return {
       ok: true,
       apiBase: authApiBase,

@@ -77,6 +77,11 @@ export interface SettingsSectionDef {
    */
   hideOnCloud?: boolean;
   /**
+   * Hide while the active runtime is managed by Eliza Cloud. Use this for
+   * implementation controls that Cloud owns and a consumer cannot change.
+   */
+  hideOnManagedCloud?: boolean;
+  /**
    * Show only while the active runtime target is a managed Eliza Cloud agent.
    * This is independent from role/view-kind authorization: local and VPS
    * runtimes must not expose management controls they cannot fulfill.

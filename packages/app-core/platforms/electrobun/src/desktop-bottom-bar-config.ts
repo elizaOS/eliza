@@ -28,6 +28,17 @@ function parseFalsy(value: string | undefined): boolean {
   );
 }
 
+function parseTruthy(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
  * the full-window dashboard. Default ON (#10350); opt out with
@@ -41,6 +52,19 @@ export function shouldStartBottomBar(
     return false;
   }
   if (parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR)) {
+    return false;
+  }
+  // A fresh Cloud-only install must own a full first-run surface. The compact
+  // chat overlay intentionally does not mount the App first-run conductor, so
+  // making it the only main window can strand a returning user when the
+  // renderer origin changes or its web storage is unavailable. Keep the
+  // consumer Cloud build recoverable by default; an explicitly enabled bottom
+  // bar remains available for controlled deployments that provide another
+  // onboarding owner.
+  if (
+    parseTruthy(env.ELIZA_DESKTOP_CLOUD_ONLY) &&
+    !parseTruthy(env.ELIZA_DESKTOP_BOTTOM_BAR)
+  ) {
     return false;
   }
   return true;

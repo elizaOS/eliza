@@ -138,6 +138,11 @@ export interface VoiceSectionProps {
    */
   modelsPanel?: React.ReactNode;
   /**
+   * Cloud-only consumer builds manage voice models remotely and must not
+   * advertise a local model-download/configuration surface.
+   */
+  showModelsPanel?: boolean;
+  /**
    * Whether the "hey <name>" wake-word listening loop is enabled. Wired by
    * VoiceSectionMount to the persisted device-local pref the shell's
    * useWakeListenWindow reads; defaults off only when no caller supplies it.
@@ -155,6 +160,7 @@ export function VoiceSection({
   onPrefsChange,
   profilesClient,
   modelsPanel,
+  showModelsPanel = true,
   wakeWordEnabled = false,
   onWakeWordToggle,
   className,
@@ -319,24 +325,26 @@ export function VoiceSection({
           ) : null}
         </SettingsGroup>
 
-        <SettingsGroup
-          title={t("voicesection.models", { defaultValue: "Models" })}
-          data-testid="voice-section-models"
-        >
-          {modelsPanel ?? (
-            <SettingsRow
-              icon={Database}
-              label={t("voicesection.models", { defaultValue: "Models" })}
-              description={
-                <span data-testid="voice-section-models-empty">
-                  {t("voicesection.modelsEmpty", {
-                    defaultValue: "Voice models appear here when available.",
-                  })}
-                </span>
-              }
-            />
-          )}
-        </SettingsGroup>
+        {showModelsPanel ? (
+          <SettingsGroup
+            title={t("voicesection.models", { defaultValue: "Models" })}
+            data-testid="voice-section-models"
+          >
+            {modelsPanel ?? (
+              <SettingsRow
+                icon={Database}
+                label={t("voicesection.models", { defaultValue: "Models" })}
+                description={
+                  <span data-testid="voice-section-models-empty">
+                    {t("voicesection.modelsEmpty", {
+                      defaultValue: "Voice models appear here when available.",
+                    })}
+                  </span>
+                }
+              />
+            )}
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup
           bare
