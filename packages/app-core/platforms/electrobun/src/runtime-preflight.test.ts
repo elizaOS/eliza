@@ -9,12 +9,14 @@ import {
 const remoteDeployment = {
   runtime: "remote" as const,
   remoteApiBase: "http://127.0.0.1:2250",
+  remoteAccessToken: "persisted-remote-token",
 };
 
 type EndpointResponse = {
   status?: number;
   body: string;
   contentType?: string;
+  requiredAuthorization?: string;
 };
 
 function sendResponse(res: ServerResponse, response: EndpointResponse): void {
@@ -26,16 +28,30 @@ function sendResponse(res: ServerResponse, response: EndpointResponse): void {
 
 async function withProbeServer(
   endpoints: Record<string, EndpointResponse>,
-  run: (base: string, requests: string[]) => Promise<void>,
+  run: (
+    base: string,
+    requests: string[],
+    authorizations: Array<string | null>,
+  ) => Promise<void>,
 ): Promise<void> {
   const requests: string[] = [];
+  const authorizations: Array<string | null> = [];
   const server = createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
     requests.push(pathname);
-    sendResponse(
-      res,
-      endpoints[pathname] ?? { status: 404, body: '{"error":"not_found"}' },
-    );
+    authorizations.push(req.headers.authorization ?? null);
+    const endpoint = endpoints[pathname] ?? {
+      status: 404,
+      body: '{"error":"not_found"}',
+    };
+    if (
+      endpoint.requiredAuthorization &&
+      req.headers.authorization !== endpoint.requiredAuthorization
+    ) {
+      sendResponse(res, { status: 401, body: '{"error":"unauthorized"}' });
+      return;
+    }
+    sendResponse(res, endpoint);
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -48,7 +64,7 @@ async function withProbeServer(
     if (!address || typeof address === "string") {
       throw new Error("probe test server did not expose a TCP port");
     }
-    await run(`http://127.0.0.1:${address.port}`, requests);
+    await run(`http://127.0.0.1:${address.port}`, requests, authorizations);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -73,6 +89,24 @@ describe("probeExternalAgent", () => {
       await expect(probeExternalAgent(`${base}/`)).resolves.toBe(true);
       expect(requests).toEqual(["/api/health", "/api/status"]);
     });
+  });
+
+  it("retains a ready authenticated Eliza target with its persisted bearer credential", async () => {
+    const accessToken = "protected-target-token";
+    await withProbeServer(
+      {
+        ...readyElizaEndpoints,
+        "/api/status": {
+          ...readyElizaEndpoints["/api/status"],
+          requiredAuthorization: `Bearer ${accessToken}`,
+        },
+      },
+      async (base, requests, authorizations) => {
+        await expect(probeExternalAgent(base, accessToken)).resolves.toBe(true);
+        expect(requests).toEqual(["/api/health", "/api/status"]);
+        expect(authorizations).toEqual([null, `Bearer ${accessToken}`]);
+      },
+    );
   });
 
   it.each([
@@ -134,7 +168,10 @@ describe("resolveDesktopRuntimeForBoot", () => {
 
     expect(result.mode).toBe("external");
     expect(result.externalApi.base).toBe("http://127.0.0.1:2250");
-    expect(probe).toHaveBeenCalledOnce();
+    expect(probe).toHaveBeenCalledWith(
+      "http://127.0.0.1:2250",
+      "persisted-remote-token",
+    );
   });
 
   it("recovers an unreachable persisted remote target to embedded local", async () => {

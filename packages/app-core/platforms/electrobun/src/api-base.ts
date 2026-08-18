@@ -118,6 +118,7 @@ export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
 export interface PersistedDeployment {
   runtime: NonNullable<PersistedDeploymentRuntime>;
   remoteApiBase: string | null;
+  remoteAccessToken?: string | null;
 }
 
 /**

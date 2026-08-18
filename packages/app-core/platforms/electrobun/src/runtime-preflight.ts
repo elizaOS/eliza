@@ -13,7 +13,10 @@ import {
 
 const EXTERNAL_REACHABILITY_TIMEOUT_MS = 1_500;
 
-export type ExternalReachabilityProbe = (base: string) => Promise<boolean>;
+export type ExternalReachabilityProbe = (
+  base: string,
+  accessToken: string | null,
+) => Promise<boolean>;
 
 function hasExplicitExternalTarget(
   env: Record<string, string | undefined>,
@@ -45,27 +48,46 @@ function isReadyElizaStatus(body: unknown): boolean {
 async function fetchJson(
   url: string,
   signal: AbortSignal,
+  accessToken: string | null,
 ): Promise<unknown | null> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   const response = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers,
+    // A persisted credential belongs only to the exact configured origin.
+    // Refusing redirects prevents a remote service from forwarding it elsewhere.
+    redirect: "error",
     signal,
   });
   if (response.status !== 200) return null;
   return response.json();
 }
 
-export async function probeExternalAgent(base: string): Promise<boolean> {
+export async function probeExternalAgent(
+  base: string,
+  accessToken: string | null = null,
+): Promise<boolean> {
   try {
     const signal = AbortSignal.timeout(EXTERNAL_REACHABILITY_TIMEOUT_MS);
     const normalizedBase = base.replace(/\/+$/, "");
-    const health = await fetchJson(`${normalizedBase}/api/health`, signal);
+    const health = await fetchJson(
+      `${normalizedBase}/api/health`,
+      signal,
+      null,
+    );
     if (!isReadyHealth(health)) return false;
 
     // Public remote health intentionally exposes only `{ ready }`. Pair it
     // with the agent status contract so an unrelated service cannot suppress
     // the embedded runtime merely by answering on the persisted port.
-    const status = await fetchJson(`${normalizedBase}/api/status`, signal);
+    const status = await fetchJson(
+      `${normalizedBase}/api/status`,
+      signal,
+      accessToken,
+    );
     return isReadyElizaStatus(status);
   } catch {
     // error-policy:J1 desktop startup probe converts transport and malformed
@@ -96,7 +118,12 @@ export async function resolveDesktopRuntimeForBoot(options: {
     return resolved;
   }
 
-  if (await probe(resolved.externalApi.base)) {
+  if (
+    await probe(
+      resolved.externalApi.base,
+      deployment?.remoteAccessToken ?? null,
+    )
+  ) {
     return resolved;
   }
 

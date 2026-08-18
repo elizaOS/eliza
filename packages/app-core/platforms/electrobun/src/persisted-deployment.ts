@@ -27,8 +27,8 @@ function resolveElizaConfigPath(
 
 /**
  * Read the persisted `deploymentTarget` from `eliza.json` as a
- * {@link PersistedDeployment} (`runtime` + the cloud-hosted/external agent's
- * `remoteApiBase`). Best-effort and fail-safe: any missing file, parse error,
+ * {@link PersistedDeployment} (runtime, remote API base, and the optional
+ * credential already stored for that target). Best-effort and fail-safe: any missing file, parse error,
  * or absent deployment target resolves to `null`, which the caller treats as
  * "no cloud-hosted target" and keeps the existing local-agent boot path. The
  * persisted config is written by `saveElizaConfig` as strict JSON, so a strict
@@ -73,6 +73,7 @@ export function readPersistedDeployment(
   return {
     runtime: deploymentTarget.runtime,
     remoteApiBase: deploymentTarget.remoteApiBase ?? null,
+    remoteAccessToken: deploymentTarget.remoteAccessToken ?? null,
   };
 }
 
