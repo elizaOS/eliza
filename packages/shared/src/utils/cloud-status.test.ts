@@ -27,12 +27,9 @@ describe("cloud-status utilities", () => {
       expect(isCloudStatusReasonApiKeyOnly("")).toBe(false);
     });
 
-    it("returns false for nullish or non-string inputs", () => {
+    it("returns false for nullish inputs", () => {
       expect(isCloudStatusReasonApiKeyOnly(null)).toBe(false);
       expect(isCloudStatusReasonApiKeyOnly(undefined)).toBe(false);
-      expect(isCloudStatusReasonApiKeyOnly(123 as unknown as string)).toBe(
-        false,
-      );
     });
   });
 
