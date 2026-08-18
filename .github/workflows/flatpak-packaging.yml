@@ -1,0 +1,58 @@
+# Validates the Flathub packaging contract and performs a clean, network-disabled
+# build of the store manifest on Linux whenever its release inputs change.
+
+name: Flatpak packaging
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/flatpak-packaging.yml"
+      - "package.json"
+      - "packages/elizaos/package.json"
+      - "packages/app-core/package.json"
+      - "packages/app-core/scripts/flatpak-packaging.test.mjs"
+      - "packages/app-core/packaging/flatpak/**"
+  push:
+    branches:
+      - develop
+    paths:
+      - ".github/workflows/flatpak-packaging.yml"
+      - "package.json"
+      - "packages/elizaos/package.json"
+      - "packages/app-core/package.json"
+      - "packages/app-core/scripts/flatpak-packaging.test.mjs"
+      - "packages/app-core/packaging/flatpak/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate and build store manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive --or-update flathub \
+            org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Verify pinned packaging inputs
+        run: node --test packages/app-core/scripts/flatpak-packaging.test.mjs
+
+      - name: Validate AppStream metadata
+        run: appstreamcli validate --no-net packages/app-core/packaging/flatpak/ai.elizaos.App.metainfo.xml
+
+      - name: Build Flathub manifest without network
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --force-clean \
+            build-dir ai.elizaos.App.store.yml

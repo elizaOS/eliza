@@ -4,8 +4,8 @@
 # Flathub's build infrastructure forbids network access during the build
 # phase. This script invokes `flatpak-node-generator` to produce a
 # `node-sources.json` manifest that lists every npm tarball + hash the
-# `elizaos` CLI install needs, so the Flathub build can populate
-# /app via vendored sources instead of `npm install -g elizaos`.
+# exact repository `elizaos` CLI release needs, so the Flathub build can
+# populate /app from vendored sources instead of a floating registry install.
 #
 # Prerequisites (Linux only — flatpak-builder is Linux-only):
 #   - python3
@@ -26,6 +26,16 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 RM_PATH_RECURSIVE="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
 OUT_DIR="${1:-$SCRIPT_DIR}"
 OUT_FILE="$OUT_DIR/node-sources.json"
+ELIZAOS_PACKAGE_JSON="${REPO_ROOT}/packages/elizaos/package.json"
+ELIZAOS_VERSION="${ELIZA_FLATPAK_PACKAGE_VERSION:-$(
+  node -p "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).version" \
+    "${ELIZAOS_PACKAGE_JSON}"
+)}"
+
+if [[ ! "${ELIZAOS_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+  echo "Invalid elizaos Flatpak package version: ${ELIZAOS_VERSION}" >&2
+  exit 1
+fi
 
 if ! command -v flatpak-node-generator >/dev/null 2>&1; then
   echo "flatpak-node-generator not found on PATH." >&2
@@ -38,8 +48,7 @@ fi
 
 # flatpak-node-generator needs a package-lock.json or yarn.lock to derive
 # the exact dependency closure. We don't ship a lockfile inside the flatpak
-# packaging dir, so synthesize one from a fresh install of the latest
-# published `elizaos` CLI in a temp dir.
+# packaging dir, so synthesize one from the exact repository package version.
 WORK_DIR="$(mktemp -d)"
 cleanup() {
   node "${RM_PATH_RECURSIVE}" "${WORK_DIR}"
@@ -64,10 +73,10 @@ PKG
   # `npm install --package-lock-only` writes the lockfile without
   # actually fetching/extracting tarballs into node_modules. We just
   # need the resolved graph for flatpak-node-generator.
-  npm install --package-lock-only --ignore-scripts elizaos@latest
+  npm install --package-lock-only --ignore-scripts --save-exact "elizaos@${ELIZAOS_VERSION}"
 )
 
-echo "[generate-sources] Generating $OUT_FILE" >&2
+echo "[generate-sources] Generating $OUT_FILE for elizaos@${ELIZAOS_VERSION}" >&2
 flatpak-node-generator npm \
   --recursive \
   -o "$OUT_FILE" \

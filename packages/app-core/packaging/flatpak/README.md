@@ -113,26 +113,19 @@ flatpak info --show-permissions ai.elizaos.App
 
 When you're ready to submit the store variant to Flathub:
 
-1. **Vendor the npm tree as offline sources.** Flathub's build
-   infrastructure does not allow network access during `build`. The
-   `test-flatpak.yml` CI workflow regenerates `node-sources.json` on
-   every run via `./generate-sources.sh` and uploads it as the
-   `flatpak-node-sources` artifact. To refresh the committed copy
-   locally (Linux only):
+1. **Vendor the exact npm tree as offline sources.** Flathub's build
+   infrastructure does not allow network access during `build`.
+   `generate-sources.sh` reads the version from
+   `packages/elizaos/package.json`; it never resolves `latest`. Refresh the
+   committed copy whenever that version changes:
    ```bash
    ./generate-sources.sh        # writes node-sources.json next to this README
    ```
-   Or download the CI artifact from the most recent successful
-   `Test Flatpak Build` workflow run on `develop` and drop it next to
-   this README. Once `node-sources.json` is committed, the manifest can
-   build offline (`npm install -g --offline`) and the
-   `build-options.build-args: --share=network` shim is no longer needed.
-2. **Replace screenshot URLs** in `ai.elizaos.App.metainfo.xml`. Three
-   placeholder `<screenshot>` entries currently point at
-   `https://cloud.eliza.app/screenshots/{dashboard,onboarding,plugins}.png`
-   — host the real 1280×720 PNGs at those paths (or update the URLs to
-   wherever they're served from) before submitting. Flathub fetches the
-   URLs at review time.
+   The committed `node-sources.json` is consumed directly by both manifests;
+   the store manifest uses `npm --offline` and has no build-network override.
+2. **Review the immutable screenshot URLs** in
+   `ai.elizaos.App.metainfo.xml`. They must remain reachable, representative
+   of the current product, and pinned to immutable source bytes.
 3. **Verify the manifest** with `appstream-util validate` and
    `flatpak-builder --show-manifest --show-deps`.
 4. **Open a submission issue at https://github.com/flathub/flathub/issues/new**
