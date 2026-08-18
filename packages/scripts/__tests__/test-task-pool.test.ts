@@ -407,6 +407,60 @@ describe("run-all-tests plan mode", () => {
     expect(plan.cloudStep).toBeNull();
   });
 
+  test("matches forward-slash filters when path.relative returns Windows separators", () => {
+    const preloadSource = String.raw`
+      import path from "node:path";
+      const nativeRelative = path.relative;
+      path.relative = (from, to) => {
+        const relativePath = nativeRelative(from, to);
+        const caller = (new Error().stack ?? "").split("\n")[2] ?? "";
+        if (
+          to.endsWith(path.join("packages", "core")) &&
+          caller.includes("run-all-tests.mjs") &&
+          !caller.includes("printableTask")
+        ) {
+          return relativePath.replaceAll("/", "\\");
+        }
+        return relativePath;
+      };
+    `;
+    const result = spawnSync(
+      "node",
+      [
+        "--import",
+        `data:text/javascript,${encodeURIComponent(preloadSource)}`,
+        runnerPath.pathname,
+        "--plan=json",
+        "--only=test",
+        "--no-cloud",
+        "--filter=^@elizaos/core \\(packages/core\\)#test$",
+      ],
+      {
+        cwd: new URL("../../..", import.meta.url).pathname,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          TEST_LANE: "pr",
+          TEST_PACKAGE_FILTER: "",
+          TEST_SCRIPT_FILTER: "",
+          TEST_SHARD: "",
+          TEST_START_AT: "",
+          TEST_CONCURRENCY: "",
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout).tasks).toEqual([
+      expect.objectContaining({
+        packageName: "@elizaos/core",
+        relativeDir: "packages/core",
+        label: "@elizaos/core (packages/core)#test",
+      }),
+    ]);
+  });
+
   test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {
     const result = runPlan(
       [
