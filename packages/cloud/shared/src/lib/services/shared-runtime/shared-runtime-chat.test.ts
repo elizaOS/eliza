@@ -30,6 +30,8 @@ let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
+const tokenEstimateInputs: Array<Array<{ content: string }>> = [];
+const streamTurnInputs: Array<Record<string, unknown>> = [];
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
 const traceRows: Array<Record<string, unknown>> = [];
@@ -166,7 +168,10 @@ mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference,
 }));
 mock.module("../ai-billing", () => ({
-  estimateInputTokens: () => 12,
+  estimateInputTokens: (input: Array<{ content: string }>) => {
+    tokenEstimateInputs.push(input);
+    return 12;
+  },
   reserveCredits: async () => {
     throw new Error("synchronous reserve must not run");
   },
@@ -245,6 +250,7 @@ mock.module("./run-shared-agent-turn", () => ({
   }) => {
     streamTurnCalls++;
     lastStreamTurnInput = input;
+    streamTurnInputs.push(input);
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -448,6 +454,8 @@ beforeEach(() => {
   settleCalls.length = 0;
   settleUnknownCalls = 0;
   billCalls.length = 0;
+  tokenEstimateInputs.length = 0;
+  streamTurnInputs.length = 0;
   admissionError = null;
   billError = null;
   turnError = null;
@@ -1070,6 +1078,29 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("keeps a trusted transient prompt out of history and long-term memory", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.stream(agent, rpc, {
+      ...h,
+      trustedMessageRole: "system",
+      transientInput: true,
+    });
+    expect(await response.text()).toContain("event: done");
+
+    expect(lastStreamTurnInput).toMatchObject({
+      message: "hello",
+      messageRole: "system",
+    });
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "assistant", content: "hello back" }),
+    ]);
+    expect(memoryPairs).toEqual([]);
+  });
+
   test("no-model degradation remains a complete canonical SSE turn", async () => {
     streamTurn = {
       degraded: true,
@@ -1622,6 +1653,90 @@ describe("SharedRuntimeChatService", () => {
     expect(firstContext?.metadata?.idempotencyKey).toBe(
       `shared-runtime:${agent.id}:${firstContext?.metadata?.channelId}:client-key-1`,
     );
+  });
+
+  test("a lifecycle cutoff freezes admission and model history across a pending retry", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const cutoff = 1_000;
+    const lifecycleRpc = {
+      ...keyedRpc,
+      params: {
+        ...keyedRpc.params,
+        text: "generate a call greeting",
+        clientMessageId: "twilio-call:CA1:opening",
+      },
+    };
+    await h.historyStore.merge(agent.id, "room-1", [
+      { id: "pre", role: "user", content: "pre-call private fact", createdAt: cutoff - 1 },
+      { id: "at", role: "assistant", content: "at-cutoff event", createdAt: cutoff },
+      { id: "post", role: "user", content: "post-cutoff secret", createdAt: cutoff + 1 },
+    ]);
+    const options = {
+      ...h,
+      turnClaims: store,
+      trustedMessageRole: "system" as const,
+      trustedHistoryCutoffAt: cutoff,
+    };
+
+    streamTurnError = new Error("provider connection lost");
+    await expect(service.stream(agent, lifecycleRpc, options)).rejects.toThrow(
+      "provider connection lost",
+    );
+    await h.historyStore.merge(agent.id, "room-1", [
+      {
+        id: "later-post",
+        role: "assistant",
+        content: "newer retry-visible secret",
+        createdAt: cutoff + 2,
+      },
+    ]);
+
+    streamTurnError = null;
+    const retried = await service.stream(agent, lifecycleRpc, options);
+    expect(await retried.text()).toContain("hello back");
+    await Promise.all(h.background);
+
+    expect(streamTurnInputs).toHaveLength(2);
+    for (const input of streamTurnInputs) {
+      expect(input.history).toEqual([
+        {
+          id: "pre",
+          role: "user",
+          content: "pre-call private fact",
+          createdAt: cutoff - 1,
+        },
+      ]);
+    }
+    const admissionPrompts = tokenEstimateInputs.filter((entries) =>
+      entries.some((entry) => entry.content === "generate a call greeting"),
+    );
+    expect(admissionPrompts).toHaveLength(2);
+    for (const prompt of admissionPrompts) {
+      expect(prompt.map((entry) => entry.content)).toEqual([
+        "Be useful.",
+        "pre-call private fact",
+        "generate a call greeting",
+      ]);
+    }
+  });
+
+  test("rejects a history cutoff without the trusted lifecycle role", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await expect(
+      service.bridge(agent, rpc, {
+        ...h,
+        trustedHistoryCutoffAt: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "INVALID_TRUSTED_HISTORY_CUTOFF",
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(turnCalls).toBe(0);
   });
 
   test("a completed keyed stream turn replays its terminal frames without re-dispatch", async () => {
