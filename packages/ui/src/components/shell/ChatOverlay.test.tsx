@@ -38,6 +38,9 @@ import {
 vi.mock("../../api/client", () => ({
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    // Shell capability gates consult the configured agent base before mounting
+    // the composer-adjacent provider indicator.
+    getBaseUrl: vi.fn(() => ""),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi

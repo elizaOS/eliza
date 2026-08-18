@@ -2,11 +2,10 @@
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
-// the sheet opens pinned at FULL/MAXIMIZED with an OPAQUE backdrop, every
-// collapse path (Escape, outside tap, drag/close) is a no-op, the drag handle is
-// hidden, the composer is sign-in-first/locked, transcript CHOICE widgets stay
-// interactive, and the sheet drops from full to the half detent (with the
-// backdrop fading to the normal scrim) exactly once on the completion edge.
+// the sheet opens pinned at the shared HALF composer detent, every collapse path
+// (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
+// composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
+// and completion keeps the same half-height surface ready to dismiss to pill.
 
 import {
   act,
@@ -65,7 +64,7 @@ function makeController(
       {
         id: "greeting",
         role: "assistant",
-        content: "Hi, I'm Eliza. Let's get you set up.",
+        content: "Hi, I’m Eliza. Sign in to Eliza Cloud to get started.",
         createdAt: 1,
       },
     ],
@@ -187,46 +186,40 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
+  it("does not mount a first-run full-screen backdrop", () => {
     const controller = makeController();
-    const { rerender } = render(
-      <ChatOverlay controller={controller} firstRunOpen />,
-    );
-    expect(
-      screen
-        .getByTestId("chat-first-run-backdrop")
-        .getAttribute("data-first-run-opaque"),
-    ).toBe("true");
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
-    // Onboarding completes: the opaque layer fades to the normal scrim (or has
-    // already unmounted under reduced-motion) — either way it is no longer the
-    // full-opacity launcher-hiding layer.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
-    const after = screen.queryByTestId("chat-first-run-backdrop");
-    expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
-      "true",
-    );
+    expect(screen.queryByTestId("chat-first-run-backdrop")).toBeNull();
   });
 
-  it("opens edge-to-edge full-bleed (maximized) during onboarding without drag affordances", () => {
-    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+  it("opens at the shared half detent during onboarding without drag affordances", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        firstRunOpen
+        onStateChange={onStateChange}
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
-    // The login/first-run chat is full-screen: full-bleed edge-to-edge.
-    expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
-  it("opens pinned at FULL and ignores Escape while onboarding is active", () => {
+  it("opens pinned at HALF and ignores Escape while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("ignores an outside tap while onboarding is active", () => {
@@ -245,10 +238,10 @@ describe("ChatOverlay first-run gating", () => {
       clientY: 4,
     });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("renders a non-interactive composer handle at the full detent", () => {
+  it("renders a non-interactive composer handle at the half detent", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     const composer = screen.getByTestId("chat-composer-row");
@@ -259,7 +252,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
     expect(decorativeHandle.tagName).toBe("SPAN");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {
@@ -349,8 +342,13 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
+      expect(screen.getByTestId("thread-line").textContent).toContain(
+        FIRST_RUN_GREETING,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+      // The first Cloud prompt is one ordinary assistant row: its action is
+      // part of the shared transcript, never a special panel below composer.
+      expect(screen.getAllByTestId("thread-line")).toHaveLength(1);
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
@@ -397,7 +395,9 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
+      expect(screen.getByTestId("thread-line").textContent).toContain(
+        FIRST_RUN_GREETING,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -418,6 +418,8 @@ describe("ChatOverlay first-run gating", () => {
           id: "first-run:cloud-oauth",
           role: "assistant",
           content: [
+            FIRST_RUN_GREETING,
+            "",
             FIRST_RUN_SIGN_IN_PROMPT,
             "",
             "[CHOICE:first-run id=runtime]",
@@ -432,8 +434,12 @@ describe("ChatOverlay first-run gating", () => {
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
     expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
-    expect(screen.getAllByText(FIRST_RUN_GREETING)).toHaveLength(1);
-    expect(screen.getAllByText(FIRST_RUN_SIGN_IN_PROMPT)).toHaveLength(1);
+    expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
+      FIRST_RUN_GREETING,
+    );
+    expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
+      FIRST_RUN_SIGN_IN_PROMPT,
+    );
   });
 
   it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {
@@ -481,6 +487,11 @@ describe("ChatOverlay first-run gating", () => {
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     expect(input.placeholder).toBe("Message Eliza");
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "What should I do next?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("What should I do next?");
 
     // A later re-render with onboarding still complete must NOT force another
     // detent change — the half-settle is a one-shot falling edge.

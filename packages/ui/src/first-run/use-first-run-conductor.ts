@@ -132,8 +132,9 @@ const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
 // open, same-tab /login navigation where popups are blocked or hostile,
 // #15143). Keep this as one obvious CTA; the Cloud flow itself owns OAuth and
 // provisioning, so there is no second in-chat "Connect" step.
-const CLOUD_SIGN_IN_GREETING = FIRST_RUN_GREETING;
 const CLOUD_SIGN_IN_CHOICE = [
+  FIRST_RUN_GREETING,
+  "",
   FIRST_RUN_SIGN_IN_PROMPT,
   "",
   "[CHOICE:first-run id=runtime]",
@@ -1504,7 +1505,10 @@ export function useFirstRunConductor(): void {
       // THIS path only — a greeting was genuinely shown, so silently yanking
       // the conversation would read as broken.
       const seedSignInGreetingAndPoll = () => {
-        seedTurn(makeTurn("first-run:greeting", CLOUD_SIGN_IN_GREETING));
+        // Cloud-only onboarding starts with one normal assistant turn: its
+        // in-message action is the sign-in gesture. Keeping greeting + action
+        // atomic means a fresh desktop panel never briefly shows a separate
+        // welcome screen or an empty/frozen composer below the real CTA.
         seedTurn(makeTurn("first-run:cloud-oauth", CLOUD_SIGN_IN_CHOICE));
         startTokenPoll();
       };
