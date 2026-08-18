@@ -1576,6 +1576,11 @@ X-GNOME-Autostart-enabled=true
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
+    // A maximized bottom-bar surface is a temporary full app experience (most
+    // importantly first-run onboarding), not a system overlay. Let external
+    // sign-in and permission windows come in front; restore the floating level
+    // as soon as the sheet returns to half/input/pill mode.
+    win.setAlwaysOnTop(options.state !== "MAXIMIZED");
     const frame = computeBottomBarSurfaceFrame(workArea, options.state);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;
