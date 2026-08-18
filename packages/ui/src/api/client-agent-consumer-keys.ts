@@ -9,6 +9,9 @@
 
 import { ElizaClient } from "./client-base";
 
+/** Consumer-key list GET — existing 10s REST budget, independent hop. */
+export const CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 export interface ConsumerKeySummary {
   id: string;
   label: string;
@@ -73,7 +76,7 @@ function parseCreated(value: unknown): ConsumerKeyCreated {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listConsumerKeys(): Promise<ConsumerKeySummary[]>;
+    listConsumerKeys(timeoutMs?: number): Promise<ConsumerKeySummary[]>;
     createConsumerKey(body: ConsumerKeyPatch): Promise<ConsumerKeyCreated>;
     updateConsumerKey(
       id: string,
@@ -83,8 +86,15 @@ declare module "./client-base" {
   }
 }
 
-ElizaClient.prototype.listConsumerKeys = async function (this: ElizaClient) {
-  const response = await this.fetch<unknown>("/api/accounts/consumer-keys");
+ElizaClient.prototype.listConsumerKeys = async function (
+  this: ElizaClient,
+  timeoutMs: number = CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS,
+) {
+  const response = await this.fetch<unknown>(
+    "/api/accounts/consumer-keys",
+    undefined,
+    { timeoutMs },
+  );
   if (!isRecord(response) || !Array.isArray(response.keys)) {
     throw new Error("Malformed consumer-key list from agent");
   }
