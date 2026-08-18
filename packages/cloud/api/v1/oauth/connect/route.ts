@@ -25,6 +25,7 @@ interface ConnectRequestBody {
   platform: string;
   redirectUrl?: string;
   scopes?: string[];
+  capabilities?: string[];
 }
 
 function isValidString(value: unknown): value is string {
@@ -73,6 +74,7 @@ app.post("/", async (c) => {
       platform,
       redirectUrl: body.redirectUrl,
       scopes: body.scopes,
+      capabilities: body.capabilities,
     });
 
     return c.json(result);

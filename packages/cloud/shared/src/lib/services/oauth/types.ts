@@ -5,6 +5,8 @@
  * a consistent interface across multiple OAuth providers (Google, Twitter, Twilio, Blooio).
  */
 
+import type { OAuthCapabilityScopeResolution } from "./provider-registry.js";
+
 export type OAuthProviderType = "oauth2" | "oauth1a" | "api_key";
 
 export type OAuthConnectionStatus = "pending" | "active" | "expired" | "revoked" | "error";
@@ -141,6 +143,8 @@ export interface InitiateAuthParams {
   redirectUrl?: string;
   /** Specific scopes to request (overrides defaults) */
   scopes?: string[];
+  /** Named capability bundles to request incrementally instead of raw scopes. */
+  capabilities?: string[];
   /** Logical Agent-side role for the connection */
   connectionRole?: OAuthConnectionRole;
 }
@@ -155,6 +159,8 @@ export interface InitiateAuthResult {
   state?: string;
   /** For API key platforms - indicates credentials form should be shown */
   requiresCredentials?: boolean;
+  /** Consent state used by blocked actions to retry after the connection lands. */
+  scopeAccess?: OAuthCapabilityScopeResolution;
 }
 
 /**

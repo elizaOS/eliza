@@ -36,6 +36,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 interface InitiateRequestBody {
   redirectUrl?: string;
   scopes?: string[];
+  capabilities?: string[];
   connectionRole?: "owner" | "agent";
 }
 
@@ -157,12 +158,14 @@ export async function handleGenericOAuthInitiate(
       userId: user.id,
       redirectUrl,
       scopes,
+      capabilities: body.capabilities,
       connectionRole,
     });
 
     return c.json({
       authUrl: result.authUrl,
       state: result.state,
+      scopeAccess: result.scopeAccess,
       provider: {
         id: provider.id,
         name: provider.name,

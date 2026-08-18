@@ -32,6 +32,8 @@ const realDbHelpersExports = { ...realDbHelpers };
 
 const secretsCreateCalls: unknown[] = [];
 const insertReturning = mock(async () => [{ id: "conn-1" }]);
+const cacheSetCalls: unknown[][] = [];
+const insertValuesCalls: Array<Record<string, unknown>> = [];
 
 let stateData: Record<string, unknown> | null;
 let userInfoBody: Record<string, unknown>;
@@ -41,7 +43,9 @@ mock.module("../../../cache/client", () => ({
   cache: {
     get: async () => stateData,
     del: async () => {},
-    set: async () => {},
+    set: async (...args: unknown[]) => {
+      cacheSetCalls.push(args);
+    },
   },
 }));
 
@@ -54,6 +58,14 @@ mock.module("../provider-registry", () => ({
   getClientSecret: () => "client-secret",
   getCallbackUrl: () => "https://test.example/callback",
   resolveRequestedScopes: (_p: unknown, s?: string[]) => s ?? [],
+  resolveCapabilityScopes: (_p: unknown, capabilities?: string[]) => ({
+    status: "needs_review",
+    capabilities: capabilities ?? [],
+    scopes: ["identity", "messages.write"],
+    userScopes: ["identity.basic"],
+    missingScopes: ["identity", "messages.write", "identity.basic"],
+    retryAfterConsent: true,
+  }),
   getNestedValue: () => undefined,
 }));
 
@@ -85,9 +97,12 @@ mock.module("../../../../db/helpers", () => ({
   writeTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       insert: () => ({
-        values: () => ({
-          onConflictDoUpdate: () => ({ returning: insertReturning }),
-        }),
+        values: (values: Record<string, unknown>) => {
+          insertValuesCalls.push(values);
+          return {
+            onConflictDoUpdate: () => ({ returning: insertReturning }),
+          };
+        },
       }),
     }),
 }));
@@ -123,6 +138,8 @@ const provider = {
 describe("handleOAuth2Callback — identity extraction fails closed (#13415)", () => {
   beforeEach(() => {
     secretsCreateCalls.length = 0;
+    cacheSetCalls.length = 0;
+    insertValuesCalls.length = 0;
     insertReturning.mockClear();
     stateData = {
       organizationId: "org-1",
@@ -180,5 +197,101 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     expect(result.connectionId).toBe("conn-1");
     // The real id flowed through storage untouched (never coerced to "unknown").
     expect(insertReturning).toHaveBeenCalledTimes(1);
+  });
+
+  it("never persists Slack user scopes omitted from an AGENT authorization", async () => {
+    const { handleOAuth2Callback, initiateOAuth2 } = await import("./oauth2");
+    const slackProvider = {
+      ...provider,
+      id: "slack",
+      userScopes: ["identity.basic"],
+    };
+    const initiated = await initiateOAuth2(slackProvider, {
+      organizationId: "org-1",
+      userId: "user-1",
+      capabilities: ["messages.write"],
+      connectionRole: "agent",
+    });
+    const authUrl = new URL(initiated.authUrl);
+    const [, storedState] = cacheSetCalls[0] as [string, Record<string, unknown>];
+
+    expect(authUrl.searchParams.has("user_scope")).toBe(false);
+    expect(storedState.userScopes).toEqual([]);
+    expect(initiated.scopeAccess.userScopes).toEqual([]);
+    expect(initiated.scopeAccess.missingScopes).not.toContain("identity.basic");
+
+    stateData = storedState;
+    userInfoBody = { id: "slack-bot-42" };
+    await handleOAuth2Callback(slackProvider, "auth-code", initiated.state);
+
+    expect(insertValuesCalls).toHaveLength(1);
+    expect(insertValuesCalls[0]?.scopes).toEqual(["identity", "messages.write"]);
+    expect(insertValuesCalls[0]?.scopes).not.toContain("identity.basic");
+  });
+});
+
+describe("initiateOAuth2 — incremental consent protocol", () => {
+  beforeEach(() => {
+    cacheSetCalls.length = 0;
+  });
+
+  it("binds capability scopes, redirect state, and PKCE into the authorization request", async () => {
+    const { initiateOAuth2 } = await import("./oauth2");
+    const result = await initiateOAuth2(
+      {
+        ...provider,
+        id: "slack",
+        pkce: true,
+        userScopes: ["identity.basic"],
+      },
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        redirectUrl: "/settings/connections",
+        capabilities: ["messages.write"],
+        connectionRole: "owner",
+      },
+    );
+    const authUrl = new URL(result.authUrl);
+
+    expect(authUrl.searchParams.get("redirect_uri")).toBe("https://test.example/callback");
+    expect(authUrl.searchParams.get("scope")).toBe("identity messages.write");
+    expect(authUrl.searchParams.get("user_scope")).toBe("identity.basic");
+    expect(authUrl.searchParams.get("state")).toBe(result.state);
+    expect(authUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(authUrl.searchParams.get("code_challenge")).toBeTruthy();
+    expect(result.scopeAccess).toMatchObject({
+      status: "needs_review",
+      capabilities: ["messages.write"],
+      retryAfterConsent: true,
+    });
+
+    const [key, storedState, ttl] = cacheSetCalls[0] as [string, Record<string, unknown>, number];
+    expect(key).toBe(`oauth2:slack:${result.state}`);
+    expect(ttl).toBe(600);
+    expect(storedState).toMatchObject({
+      redirectUrl: "/settings/connections",
+      scopes: ["identity", "messages.write"],
+      userScopes: ["identity.basic"],
+      capabilities: ["messages.write"],
+      connectionRole: "OWNER",
+    });
+    expect(storedState.codeVerifier).toBeTruthy();
+  });
+
+  it("preserves the raw scopes protocol when no capability request is supplied", async () => {
+    const { initiateOAuth2 } = await import("./oauth2");
+    const result = await initiateOAuth2(provider, {
+      organizationId: "org-1",
+      userId: "user-1",
+      scopes: ["legacy.read"],
+    });
+
+    expect(new URL(result.authUrl).searchParams.get("scope")).toBe("legacy.read");
+    expect(result.scopeAccess).toMatchObject({
+      capabilities: [],
+      scopes: ["legacy.read"],
+      retryAfterConsent: true,
+    });
   });
 });

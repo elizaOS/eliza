@@ -93,6 +93,27 @@ export interface CredentialField {
   placeholder?: string;
 }
 
+export type OAuthScopeConsent = "user" | "review" | "admin";
+
+/** Named provider capability whose scopes are requested only when needed. */
+export interface OAuthCapabilityScopeBundle {
+  scopes?: string[];
+  /** Slack-style user-token scopes carried in the separate user_scope parameter. */
+  userScopes?: string[];
+  consent: OAuthScopeConsent;
+}
+
+export type OAuthScopeAccessStatus = "ready" | "needs_scope" | "needs_review" | "needs_admin";
+
+export interface OAuthCapabilityScopeResolution {
+  status: OAuthScopeAccessStatus;
+  capabilities: string[];
+  scopes: string[];
+  userScopes: string[];
+  missingScopes: string[];
+  retryAfterConsent: boolean;
+}
+
 /**
  * Full OAuth provider configuration.
  */
@@ -126,6 +147,15 @@ export interface OAuthProviderConfig {
 
   /** Default OAuth scopes to request */
   defaultScopes?: string[];
+
+  /** Least-privilege scopes requested before any named capability is selected. */
+  baselineScopes?: string[];
+
+  /** Provider-specific baseline user-token scopes, separate from bot/app scopes. */
+  baselineUserScopes?: string[];
+
+  /** Incremental capability bundles available for explicit escalation. */
+  capabilityScopes?: Record<string, OAuthCapabilityScopeBundle>;
 
   /** Superset of scopes this app will allow callers to request for the provider. */
   allowedScopes?: string[];
@@ -250,12 +280,42 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     defaultScopes: [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+    baselineScopes: [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+    allowedScopes: [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
       "https://www.googleapis.com/auth/gmail.send",
       "https://www.googleapis.com/auth/gmail.readonly",
       "https://www.googleapis.com/auth/calendar.events",
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/contacts.readonly",
     ],
+    capabilityScopes: {
+      "mail.read": {
+        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+        consent: "user",
+      },
+      "mail.send": {
+        scopes: ["https://www.googleapis.com/auth/gmail.send"],
+        consent: "review",
+      },
+      "calendar.read": {
+        scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+        consent: "user",
+      },
+      "calendar.write": {
+        scopes: ["https://www.googleapis.com/auth/calendar.events"],
+        consent: "review",
+      },
+      "contacts.read": {
+        scopes: ["https://www.googleapis.com/auth/contacts.readonly"],
+        consent: "user",
+      },
+    },
     userInfoMapping: {
       id: "id",
       email: "email",
@@ -284,7 +344,9 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       token: "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
       userInfo: "https://graph.microsoft.com/v1.0/me",
     },
-    defaultScopes: [
+    defaultScopes: ["openid", "profile", "email", "offline_access", "User.Read"],
+    baselineScopes: ["openid", "profile", "email", "offline_access", "User.Read"],
+    allowedScopes: [
       "openid",
       "profile",
       "email",
@@ -296,6 +358,13 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       "Mail.ReadWrite",
       "Mail.Send",
     ],
+    capabilityScopes: {
+      "calendar.read": { scopes: ["Calendars.Read"], consent: "user" },
+      "calendar.write": { scopes: ["Calendars.ReadWrite"], consent: "review" },
+      "mail.read": { scopes: ["Mail.Read"], consent: "user" },
+      "mail.write": { scopes: ["Mail.ReadWrite"], consent: "review" },
+      "mail.send": { scopes: ["Mail.Send"], consent: "review" },
+    },
     userInfoMapping: {
       id: "id",
       email: "mail",
@@ -323,7 +392,13 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       userInfoGraphQLQuery: "query { viewer { id email name avatarUrl } }",
       revoke: "https://api.linear.app/oauth/revoke",
     },
-    defaultScopes: ["read", "write", "issues:create"],
+    defaultScopes: ["read"],
+    baselineScopes: ["read"],
+    allowedScopes: ["read", "write", "issues:create"],
+    capabilityScopes: {
+      "issues.create": { scopes: ["issues:create"], consent: "user" },
+      "workspace.write": { scopes: ["write"], consent: "review" },
+    },
     userInfoMapping: {
       id: "data.viewer.id",
       email: "data.viewer.email",
@@ -375,7 +450,12 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       token: "https://github.com/login/oauth/access_token",
       userInfo: "https://api.github.com/user",
     },
-    defaultScopes: ["read:user", "user:email", "repo"],
+    defaultScopes: ["read:user", "user:email"],
+    baselineScopes: ["read:user", "user:email"],
+    allowedScopes: ["read:user", "user:email", "repo"],
+    capabilityScopes: {
+      "repositories.write": { scopes: ["repo"], consent: "review" },
+    },
     userInfoMapping: {
       id: "id",
       email: "email",
@@ -402,7 +482,18 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       userInfo: "https://slack.com/api/users.identity",
       revoke: "https://slack.com/api/auth.revoke",
     },
-    defaultScopes: ["identity.basic", "users:read", "chat:write", "channels:read"],
+    defaultScopes: ["channels:read"],
+    baselineScopes: ["channels:read"],
+    allowedScopes: ["channels:read", "chat:write"],
+    capabilityScopes: {
+      "messages.write": {
+        scopes: ["chat:write"],
+        userScopes: ["chat:write"],
+        consent: "review",
+      },
+      "messages.search": { userScopes: ["search:read"], consent: "user" },
+      "files.read": { userScopes: ["files:read"], consent: "user" },
+    },
     // User-level scopes requested for the OWNER role so the user's own
     // Slack identity (authed_user.access_token, `xoxp-...`) can act on
     // the user's behalf — read their channels, write as them, search
@@ -411,7 +502,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     // (the userInfo URL above) — without it the OWNER callback's
     // userInfo fetch fails with `missing_scope` and `extractUserInfo`
     // cannot resolve `user_id`.
-    userScopes: ["identity.basic", "chat:write", "search:read", "users:read", "files:read"],
+    userScopes: ["identity.basic", "users:read"],
+    baselineUserScopes: ["identity.basic", "users:read"],
     userInfoMapping: {
       id: "user_id",
       displayName: "user",
@@ -529,7 +621,14 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       userInfo: "https://login.salesforce.com/services/oauth2/userinfo",
       revoke: "https://login.salesforce.com/services/oauth2/revoke",
     },
-    defaultScopes: ["full", "api", "id", "refresh_token", "chatter_api"],
+    defaultScopes: ["id", "refresh_token"],
+    baselineScopes: ["id", "refresh_token"],
+    allowedScopes: ["id", "refresh_token", "api", "chatter_api", "full"],
+    capabilityScopes: {
+      "records.read": { scopes: ["api"], consent: "user" },
+      "chatter.write": { scopes: ["chatter_api"], consent: "review" },
+      "organization.admin": { scopes: ["full"], consent: "admin" },
+    },
     userInfoMapping: {
       id: "user_id",
       email: "email",
@@ -555,7 +654,9 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       token: "https://airtable.com/oauth2/v1/token",
       userInfo: "https://api.airtable.com/v0/meta/whoami",
     },
-    defaultScopes: [
+    defaultScopes: ["user.email:read", "schema.bases:read"],
+    baselineScopes: ["user.email:read", "schema.bases:read"],
+    allowedScopes: [
       "data.records:read",
       "data.records:write",
       "data.recordComments:read",
@@ -565,6 +666,14 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       "user.email:read",
       "webhook:manage",
     ],
+    capabilityScopes: {
+      "records.read": { scopes: ["data.records:read"], consent: "user" },
+      "records.write": { scopes: ["data.records:write"], consent: "review" },
+      "comments.read": { scopes: ["data.recordComments:read"], consent: "user" },
+      "comments.write": { scopes: ["data.recordComments:write"], consent: "review" },
+      "schema.write": { scopes: ["schema.bases:write"], consent: "admin" },
+      "webhooks.manage": { scopes: ["webhook:manage"], consent: "admin" },
+    },
     userInfoMapping: {
       id: "id",
       email: "email",
@@ -859,7 +968,7 @@ export function getProviderEnvDiagnostics(): ProviderEnvDiagnostic[] {
   });
 }
 
-function normalizeScopes(scopes: string[] | undefined): string[] {
+function normalizeScopes(scopes: readonly string[] | undefined): string[] {
   if (!scopes) {
     return [];
   }
@@ -875,6 +984,12 @@ export function resolveRequestedScopes(
   provider: OAuthProviderConfig,
   requestedScopes?: string[],
 ): string[] {
+  if (
+    requestedScopes !== undefined &&
+    (!Array.isArray(requestedScopes) || requestedScopes.some((scope) => typeof scope !== "string"))
+  ) {
+    throw Errors.invalidScopeRequest(provider.id, ["<invalid-scope-list>"]);
+  }
   const normalizedRequested = normalizeScopes(requestedScopes);
   if (normalizedRequested.length === 0) {
     return normalizeScopes(provider.defaultScopes);
@@ -887,6 +1002,84 @@ export function resolveRequestedScopes(
   }
 
   return normalizedRequested;
+}
+
+function consentStatus(consent: OAuthScopeConsent): OAuthScopeAccessStatus {
+  switch (consent) {
+    case "admin":
+      return "needs_admin";
+    case "review":
+      return "needs_review";
+    case "user":
+      return "needs_scope";
+  }
+}
+
+const CONSENT_PRIORITY: Record<OAuthScopeAccessStatus, number> = {
+  ready: 0,
+  needs_scope: 1,
+  needs_review: 2,
+  needs_admin: 3,
+};
+
+/**
+ * Resolve a least-privilege capability request and whether a blocked action can
+ * retry after consent. Raw `scopes` callers remain supported by
+ * `resolveRequestedScopes`; this named path never silently broadens a grant.
+ */
+export function resolveCapabilityScopes(
+  provider: OAuthProviderConfig,
+  requestedCapabilities: string[] | undefined,
+  grantedScopes: string[] = [],
+): OAuthCapabilityScopeResolution {
+  if (
+    requestedCapabilities !== undefined &&
+    (!Array.isArray(requestedCapabilities) ||
+      requestedCapabilities.some((capability) => typeof capability !== "string"))
+  ) {
+    throw Errors.invalidScopeRequest(provider.id, ["<invalid-capability-list>"]);
+  }
+  if (!Array.isArray(grantedScopes) || grantedScopes.some((scope) => typeof scope !== "string")) {
+    throw Errors.invalidScopeRequest(provider.id, ["<invalid-grant-list>"]);
+  }
+  const capabilities = normalizeScopes(requestedCapabilities);
+  const bundles = provider.capabilityScopes ?? {};
+  const invalidCapabilities = capabilities.filter((capability) => !bundles[capability]);
+  if (invalidCapabilities.length > 0) {
+    throw Errors.invalidScopeRequest(provider.id, invalidCapabilities);
+  }
+
+  const scopes = normalizeScopes([
+    ...(provider.baselineScopes ?? provider.defaultScopes ?? []),
+    ...capabilities.flatMap((capability) => bundles[capability]?.scopes ?? []),
+  ]);
+  const userScopes = normalizeScopes([
+    ...(provider.baselineUserScopes ?? provider.userScopes ?? []),
+    ...capabilities.flatMap((capability) => bundles[capability]?.userScopes ?? []),
+  ]);
+  const granted = new Set(normalizeScopes(grantedScopes));
+  const missingScopes = [...scopes, ...userScopes].filter((scope) => !granted.has(scope));
+  let status: OAuthScopeAccessStatus = "ready";
+  for (const capability of capabilities) {
+    const bundle = bundles[capability];
+    if (!bundle) continue;
+    const bundleMissing = [...(bundle.scopes ?? []), ...(bundle.userScopes ?? [])].some(
+      (scope) => !granted.has(scope),
+    );
+    if (!bundleMissing) continue;
+    const candidate = consentStatus(bundle.consent);
+    if (CONSENT_PRIORITY[candidate] > CONSENT_PRIORITY[status]) status = candidate;
+  }
+  if (missingScopes.length > 0 && status === "ready") status = "needs_scope";
+
+  return {
+    status,
+    capabilities,
+    scopes,
+    userScopes,
+    missingScopes,
+    retryAfterConsent: status !== "ready",
+  };
 }
 
 /** Get all provider IDs. */

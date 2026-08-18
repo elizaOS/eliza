@@ -155,7 +155,8 @@ class OAuthService {
 
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
-    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const { organizationId, userId, platform, redirectUrl, scopes, capabilities, connectionRole } =
+      params;
     const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
@@ -177,9 +178,10 @@ class OAuthService {
         userId,
         redirectUrl,
         scopes,
+        capabilities,
         connectionRole: role,
       });
-      return { authUrl: result.authUrl, state: result.state };
+      return { authUrl: result.authUrl, state: result.state, scopeAccess: result.scopeAccess };
     }
 
     // Provider-specific compatibility handlers remain for OAuth 1.0a Twitter

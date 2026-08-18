@@ -14,6 +14,7 @@ import {
   isProviderConfigured,
   isValidProvider,
   type OAuthProviderConfig,
+  resolveCapabilityScopes,
   resolveRequestedScopes,
 } from "./provider-registry";
 
@@ -53,6 +54,87 @@ describe("getAllowedScopes / resolveRequestedScopes", () => {
     expect(resolveRequestedScopes(p, ["read", " write "])).toEqual(["read", "write"]);
     // 'admin' is not in the allowlist → scope-escalation attempt must throw.
     expect(() => resolveRequestedScopes(p, ["read", "admin"])).toThrow();
+  });
+});
+
+describe("resolveCapabilityScopes", () => {
+  test("keeps the seven incremental providers on a least-privilege baseline", () => {
+    const incrementalProviders = [
+      "google",
+      "microsoft",
+      "github",
+      "linear",
+      "slack",
+      "salesforce",
+      "airtable",
+    ];
+
+    for (const providerId of incrementalProviders) {
+      const configuredProvider = getProvider(providerId) as OAuthProviderConfig;
+      expect(configuredProvider.baselineScopes).toEqual(configuredProvider.defaultScopes);
+      expect(configuredProvider.capabilityScopes).toBeDefined();
+      expect(getAllowedScopes(configuredProvider)).toEqual(
+        expect.arrayContaining(configuredProvider.baselineScopes ?? []),
+      );
+    }
+  });
+
+  test("classifies user, review, and admin consent and becomes retry-ready after grant", () => {
+    const configuredProvider = provider({
+      baselineScopes: ["identity"],
+      allowedScopes: ["identity", "read", "write", "admin"],
+      capabilityScopes: {
+        read: { scopes: ["read"], consent: "user" },
+        write: { scopes: ["write"], consent: "review" },
+        admin: { scopes: ["admin"], consent: "admin" },
+      },
+    });
+
+    expect(resolveCapabilityScopes(configuredProvider, ["read"]).status).toBe("needs_scope");
+    expect(resolveCapabilityScopes(configuredProvider, ["write"]).status).toBe("needs_review");
+    const escalation = resolveCapabilityScopes(configuredProvider, ["admin"]);
+    expect(escalation).toMatchObject({
+      status: "needs_admin",
+      scopes: ["identity", "admin"],
+      missingScopes: ["identity", "admin"],
+      retryAfterConsent: true,
+    });
+    expect(resolveCapabilityScopes(configuredProvider, ["admin"], escalation.scopes)).toMatchObject(
+      { status: "ready", missingScopes: [], retryAfterConsent: false },
+    );
+  });
+
+  test("keeps Slack user scopes separate and rejects unknown capabilities", () => {
+    const slack = getProvider("slack") as OAuthProviderConfig;
+    const resolution = resolveCapabilityScopes(slack, ["messages.search"]);
+
+    expect(resolution.scopes).toEqual(["channels:read"]);
+    expect(resolution.userScopes).toEqual(
+      expect.arrayContaining(["identity.basic", "users:read", "search:read"]),
+    );
+    expect(() => resolveCapabilityScopes(slack, ["workspace.admin"])).toThrow();
+  });
+
+  test("preserves raw-scope compatibility for existing callers and grants", () => {
+    const google = getProvider("google") as OAuthProviderConfig;
+    const legacyScopes = [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/gmail.send",
+    ];
+
+    expect(resolveRequestedScopes(google, legacyScopes)).toEqual(legacyScopes);
+    expect(resolveCapabilityScopes(google, ["mail.send"], legacyScopes)).toMatchObject({
+      status: "ready",
+      missingScopes: [],
+      retryAfterConsent: false,
+    });
+  });
+
+  test("rejects malformed scope and capability arrays at the service boundary", () => {
+    const configuredProvider = provider({});
+    expect(() => resolveRequestedScopes(configuredProvider, "read" as never)).toThrow();
+    expect(() => resolveCapabilityScopes(configuredProvider, [7] as never)).toThrow();
   });
 });
 

@@ -36,8 +36,13 @@ export {
   isProviderConfigured,
   isValidProvider,
   OAUTH_PROVIDERS,
+  type OAuthCapabilityScopeBundle,
+  type OAuthCapabilityScopeResolution,
   type OAuthProviderConfig,
+  type OAuthScopeAccessStatus,
+  type OAuthScopeConsent,
   type ProviderEnvDiagnostic,
+  resolveCapabilityScopes,
 } from "./provider-registry";
 
 // Advanced use cases

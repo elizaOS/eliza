@@ -16,12 +16,17 @@ import { cache } from "../../../cache/client";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { secretsService } from "../../secrets";
-import type { OAuthProviderConfig, UserInfoMapping } from "../provider-registry";
+import type {
+  OAuthCapabilityScopeResolution,
+  OAuthProviderConfig,
+  UserInfoMapping,
+} from "../provider-registry";
 import {
   getCallbackUrl,
   getClientId,
   getClientSecret,
   getNestedValue,
+  resolveCapabilityScopes,
   resolveRequestedScopes,
 } from "../provider-registry";
 import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
@@ -39,6 +44,8 @@ interface OAuth2State {
   providerId: string;
   redirectUrl: string;
   scopes: string[];
+  userScopes?: string[];
+  capabilities?: string[];
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
   codeVerifier?: string;
@@ -158,6 +165,7 @@ function oauthSecretName(
 export interface InitiateOAuth2Result {
   authUrl: string;
   state: string;
+  scopeAccess: OAuthCapabilityScopeResolution;
 }
 
 /**
@@ -185,6 +193,7 @@ export async function initiateOAuth2(
     userId: string;
     redirectUrl?: string;
     scopes?: string[];
+    capabilities?: string[];
     connectionRole?: OAuthConnectionRole;
   },
 ): Promise<InitiateOAuth2Result> {
@@ -199,7 +208,39 @@ export async function initiateOAuth2(
 
   const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const callbackUrl = getCallbackUrl(provider, baseUrl);
-  const scopes = resolveRequestedScopes(provider, params.scopes);
+  const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
+  const capabilityRequest = params.capabilities !== undefined;
+  const capabilityScopeAccess = capabilityRequest
+    ? resolveCapabilityScopes(provider, params.capabilities)
+    : null;
+  const scopes = capabilityScopeAccess?.scopes ?? resolveRequestedScopes(provider, params.scopes);
+  const resolvedUserScopes = capabilityRequest
+    ? (capabilityScopeAccess?.userScopes ?? [])
+    : (provider.baselineUserScopes ?? provider.userScopes ?? []);
+  // AGENT installs authorize only bot/app scopes. Keep every downstream view
+  // of the request aligned with the actual URL so the callback cannot persist
+  // user permissions that were deliberately excluded from consent.
+  const requestedUserScopes = normalizedRole === "AGENT" ? [] : resolvedUserScopes;
+  const omittedUserScopes = new Set(normalizedRole === "AGENT" ? resolvedUserScopes : []);
+  const requestedMissingScopes = capabilityScopeAccess?.missingScopes.filter(
+    (scope) => !omittedUserScopes.has(scope),
+  );
+  const scopeAccess: OAuthCapabilityScopeResolution = capabilityScopeAccess
+    ? {
+        ...capabilityScopeAccess,
+        userScopes: requestedUserScopes,
+        missingScopes: requestedMissingScopes ?? [],
+        status: requestedMissingScopes?.length === 0 ? "ready" : capabilityScopeAccess.status,
+        retryAfterConsent: (requestedMissingScopes?.length ?? 0) > 0,
+      }
+    : {
+        status: "needs_scope",
+        capabilities: [],
+        scopes,
+        userScopes: requestedUserScopes,
+        missingScopes: [...new Set([...scopes, ...requestedUserScopes])],
+        retryAfterConsent: true,
+      };
   const redirectUrl = params.redirectUrl || "/auth/success";
 
   // Generate cryptographically secure state
@@ -221,7 +262,9 @@ export async function initiateOAuth2(
     providerId: provider.id,
     redirectUrl,
     scopes,
-    connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
+    userScopes: requestedUserScopes,
+    ...(capabilityRequest ? { capabilities: scopeAccess.capabilities } : {}),
+    connectionRole: normalizedRole,
     createdAt: Date.now(),
     codeVerifier,
   };
@@ -251,9 +294,8 @@ export async function initiateOAuth2(
   // lookup to resolve to the same Slack user_id (the authorizer), which
   // the `storeConnection` dedup guard rejects with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
-  const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
-  if (provider.userScopes && provider.userScopes.length > 0 && normalizedRole !== "AGENT") {
-    authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
+  if (requestedUserScopes.length > 0) {
+    authUrl.searchParams.set("user_scope", requestedUserScopes.join(" "));
   }
 
   authUrl.searchParams.set("state", state);
@@ -280,6 +322,7 @@ export async function initiateOAuth2(
   return {
     authUrl: authUrl.toString(),
     state,
+    scopeAccess,
   };
 }
 
@@ -308,7 +351,7 @@ export async function handleOAuth2Callback(
   // Delete state to prevent replay attacks
   await cache.del(stateKey);
 
-  const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
+  const { organizationId, userId, redirectUrl, scopes, userScopes = [], codeVerifier } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
 
   // Exchange code for tokens
@@ -341,7 +384,7 @@ export async function handleOAuth2Callback(
     connectionRole,
     tokens,
     userInfo,
-    scopes,
+    [...new Set([...scopes, ...userScopes])],
   );
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
