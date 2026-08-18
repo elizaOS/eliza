@@ -448,7 +448,7 @@ const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
   // ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
   String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
   // JSON fields.
-  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|sessionKey|authToken|botToken|connectionString|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
   // CLI flags (space-separated and --flag=value forms).
   String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
   // Authorization headers (see core for the full grammar rationale: Basic
@@ -592,6 +592,10 @@ function redactLogValue(
   depth: number,
 ): unknown {
   if (typeof value === "string") return redactSensitiveLogText(value);
+  // Functions are executable values even when they are passed directly or as
+  // trailing arguments. Never let a caller-owned function (and its toJSON)
+  // survive into a sink.
+  if (typeof value === "function") return null;
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
@@ -599,7 +603,7 @@ function redactLogValue(
 
   if (value instanceof Error) {
     const clone = new Error(redactSensitiveLogText(value.message));
-    clone.name = value.name;
+    clone.name = redactSensitiveLogText(value.name);
     if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
     if (value.cause !== undefined) {
       clone.cause = redactLogValue(value.cause, seen, depth + 1);
@@ -610,12 +614,12 @@ function redactLogValue(
   }
 
   if (Array.isArray(value)) {
-    // Function elements collapse to null (matching JSON.stringify semantics)
-    // so no executable serializer hook survives the clone — see
-    // redactOwnPropertiesInto for why hooks must never be copied.
-    return value.map((item) =>
-      typeof item === "function" ? null : redactLogValue(item, seen, depth + 1),
-    );
+    // Avoid the caller's potentially overridden `map` and species constructor.
+    const result = new Array<unknown>(value.length);
+    for (let index = 0; index < value.length; index += 1) {
+      result[index] = redactLogValue(value[index], seen, depth + 1);
+    }
+    return result;
   }
 
   // Binary payloads carry raw bytes that JSON serializes verbatim
@@ -626,26 +630,71 @@ function redactLogValue(
     return `[BUFFER REDACTED ${value.byteLength} bytes]`;
   }
 
-  // Opaque built-ins have no enumerable credential keys to mask and are never
-  // mutated by the walker, so returning them by reference is safe.
-  if (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    value instanceof Map ||
-    value instanceof Set ||
-    value instanceof WeakMap ||
-    value instanceof WeakSet ||
-    value instanceof Promise
-  ) {
-    return value;
+  // Built-ins must also be detached from the caller. JSON.stringify invokes a
+  // caller-owned Date/toJSON before its replacer, and pretty sinks may inspect
+  // Map/Set contents directly.
+  if (value instanceof Date) {
+    try {
+      return Date.prototype.toISOString.call(value);
+    } catch {
+      return "[Invalid Date]";
+    }
   }
+  if (value instanceof RegExp) {
+    return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`;
+  }
+  if (value instanceof Map) {
+    const entries: unknown[] = [];
+    Map.prototype.forEach.call(
+      value,
+      (entryValue: unknown, entryKey: unknown) => {
+        const safeKey = redactLogValue(entryKey, seen, depth + 1);
+        const safeValue =
+          typeof entryKey === "string" && isSensitiveLogKey(entryKey)
+            ? REDACTED_VALUE
+            : redactLogValue(entryValue, seen, depth + 1);
+        entries.push([safeKey, safeValue]);
+      },
+    );
+    const result = Object.create(null) as Record<string, unknown>;
+    defineSafeProperty(result, "type", "Map");
+    defineSafeProperty(result, "entries", entries);
+    return result;
+  }
+  if (value instanceof Set) {
+    const values: unknown[] = [];
+    Set.prototype.forEach.call(value, (entryValue: unknown) => {
+      values.push(redactLogValue(entryValue, seen, depth + 1));
+    });
+    const result = Object.create(null) as Record<string, unknown>;
+    defineSafeProperty(result, "type", "Set");
+    defineSafeProperty(result, "values", values);
+    return result;
+  }
+  if (value instanceof WeakMap) return "[WeakMap]";
+  if (value instanceof WeakSet) return "[WeakSet]";
+  if (value instanceof Promise) return "[Promise]";
 
   // Class instances are cloned into plain objects: JSON serialization only
   // ever emits own enumerable properties anyway, and walking them here masks
   // credentials stashed on config/response wrappers (axios-style).
-  const result: Record<string, unknown> = {};
+  const result = Object.create(null) as Record<string, unknown>;
   redactOwnPropertiesInto(value, result, seen, depth + 1);
   return result;
+}
+
+/** Define a clone key without invoking Object.prototype's `__proto__` setter. */
+function defineSafeProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 /**
@@ -664,7 +713,7 @@ function redactOwnPropertiesInto(
 ): void {
   for (const key of Object.keys(source)) {
     if (isSensitiveLogKey(key)) {
-      target[key] = REDACTED_VALUE;
+      defineSafeProperty(target, key, REDACTED_VALUE);
       continue;
     }
     try {
@@ -674,11 +723,11 @@ function redactOwnPropertiesInto(
       // can reconstitute the very secrets the walk just masked. JSON.stringify
       // omits function props anyway, so the clone drops them outright.
       if (typeof entry === "function") continue;
-      target[key] = redactLogValue(entry, seen, depth);
+      defineSafeProperty(target, key, redactLogValue(entry, seen, depth));
     } catch {
       // error-policy:J7 logging must never break the runtime; a throwing
       // getter fails closed on this one key, never emits the raw value.
-      target[key] = REDACTION_FAILED_VALUE;
+      defineSafeProperty(target, key, REDACTION_FAILED_VALUE);
     }
   }
 }
@@ -691,7 +740,8 @@ function redactOwnPropertiesInto(
 function redactTrailingArgs(args: readonly unknown[]): unknown[] {
   return args.map((arg) => {
     if (typeof arg === "string") return redactSensitiveLogText(arg);
-    if (arg === null || typeof arg !== "object") return arg;
+    if (arg === null || (typeof arg !== "object" && typeof arg !== "function"))
+      return arg;
     try {
       return redactLogValue(arg, new WeakSet<object>(), 0);
     } catch {

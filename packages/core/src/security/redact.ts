@@ -34,7 +34,7 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|sessionKey|authToken|botToken|connectionString|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// Authorization credentials are either one token68 value or a complete

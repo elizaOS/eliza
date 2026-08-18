@@ -581,17 +581,22 @@ describe("secret redaction", () => {
     logger.info(
       {
         payload:
-          '{"clientSecret":"client-secret-value-123","sessionKey":"session-secret-value-123","authToken":"auth-secret-value-123","botToken":"123456:bot-secret-value-abc","connectionString":"Server=db;Pwd=hunter2w10","access_token":"access-secret-value-123","refresh_token":"refresh-secret-value-123","webhookUrl":"https://discord.test/api/webhooks/9/hook-secret-a","webhook_url":"https://discord.test/api/webhooks/9/hook-secret-b"}',
+          '{"clientSecret":"client-secret-value-123","client_secret":"client-snake-secret-value-123","sessionKey":"session-secret-value-123","session_key":"session-snake-secret-value-123","authToken":"auth-secret-value-123","auth_token":"auth-snake-secret-value-123","botToken":"123456:bot-secret-value-abc","bot_token":"123456:bot-snake-secret-value-abc","connectionString":"Server=db;Pwd=hunter2w10","connection_string":"Server=db;Pwd=hunter2snake","access_token":"access-secret-value-123","refresh_token":"refresh-secret-value-123","webhookUrl":"https://discord.test/api/webhooks/9/hook-secret-a","webhook_url":"https://discord.test/api/webhooks/9/hook-secret-b"}',
       },
       "ctx",
     );
     const logs = recentLogs();
     for (const secret of [
       "client-secret-value-123",
+      "client-snake-secret-value-123",
       "session-secret-value-123",
+      "session-snake-secret-value-123",
       "auth-secret-value-123",
+      "auth-snake-secret-value-123",
       "bot-secret-value-abc",
+      "bot-snake-secret-value-abc",
       "hunter2w10",
+      "hunter2snake",
       "access-secret-value-123",
       "refresh-secret-value-123",
       "hook-secret-a",
@@ -740,6 +745,52 @@ describe("JSON mode sink hygiene", () => {
     });
   });
 
+  it("detaches hostile built-ins, functions, map/set contents, and clone keys", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secrets = {
+        date: "sk-date-hook-secret",
+        map: "sk-map-value-secret",
+        set: "sk-set-hook-secret",
+        promise: "sk-promise-hook-secret",
+        fn: "sk-function-hook-secret",
+        proto: "sk-proto-hook-secret",
+      };
+      const hostileDate = new Date("2026-01-02T03:04:05.000Z");
+      hostileDate.toJSON = () => secrets.date;
+      const hostileSetValue = { toJSON: () => secrets.set };
+      const hostilePromise = Object.assign(Promise.resolve(), {
+        toJSON: () => secrets.promise,
+      });
+      const hostileFunction = Object.assign(() => {}, {
+        toJSON: () => secrets.fn,
+      });
+      const protoValue = { toJSON: () => secrets.proto };
+      const payload: Record<string, unknown> = {
+        when: hostileDate,
+        map: new Map([["apiKey", secrets.map]]),
+        set: new Set([hostileSetValue]),
+        pending: hostilePromise,
+      };
+      Object.defineProperty(payload, "__proto__", {
+        value: protoValue,
+        enumerable: true,
+      });
+
+      fresh
+        .createLogger({ level: "trace" })
+        .info(payload, "ctx", hostileFunction);
+
+      const outputs = `${fresh.recentLogs()} ${infoSpy.mock.calls.flat().join(" ")}`;
+      for (const secret of Object.values(secrets)) {
+        expect(outputs).not.toContain(secret);
+      }
+      expect(outputs).toContain("2026-01-02T03:04:05.000Z");
+      expect(outputs).toContain("[Promise]");
+      expect(outputs).toContain("[REDACTED]");
+    });
+  });
+
   it("redacts creation and child bindings before they become Adze meta", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     await withJsonMode((fresh) => {
@@ -753,6 +804,26 @@ describe("JSON mode sink hygiene", () => {
       expect(printed).toContain("[REDACTED]");
       // Non-secret bindings survive onto the JSON lines.
       expect(printed).toContain("r-1");
+    });
+  });
+
+  it("detaches hostile Date hooks in creation and child bindings", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const parentSecret = "sk-parent-date-hook-secret";
+      const childSecret = "sk-child-date-hook-secret";
+      const parentDate = new Date("2026-02-03T04:05:06.000Z");
+      const childDate = new Date("2026-03-04T05:06:07.000Z");
+      parentDate.toJSON = () => parentSecret;
+      childDate.toJSON = () => childSecret;
+
+      const logger = fresh.createLogger({ level: "trace", when: parentDate });
+      logger.child({ when: childDate }).info("child-line");
+
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(parentSecret);
+      expect(printed).not.toContain(childSecret);
+      expect(printed).toContain("2026-03-04T05:06:07.000Z");
     });
   });
 });
@@ -810,6 +881,26 @@ describe("binary payload redaction", () => {
     expect(out).toContain("[BUFFER REDACTED 14 bytes]");
     expect(out).not.toContain('"type":"Buffer"');
   });
+
+  it("detaches hostile built-ins and functions in the browser path", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const dateSecret = "sk-browser-date-hook-secret";
+    const functionSecret = "sk-browser-function-hook-secret";
+    const date = new Date("2026-04-05T06:07:08.000Z");
+    date.toJSON = () => dateSecret;
+    const fn = Object.assign(() => {}, { toJSON: () => functionSecret });
+
+    createLogger({ level: "trace", __forceType: "browser" }).info(
+      { date, values: new Set([fn]) },
+      "ctx",
+      fn,
+    );
+
+    const out = infoSpy.mock.calls.flat().join(" ");
+    expect(out).not.toContain(dateSecret);
+    expect(out).not.toContain(functionSecret);
+    expect(out).toContain("2026-04-05T06:07:08.000Z");
+  });
 });
 
 /**
@@ -838,6 +929,10 @@ describe("file sink permissions", () => {
         vi.resetModules();
         const fresh = await import("./logger");
         fresh.logger.info("perm-test-entry");
+        const sinkSecret = "sk-file-date-hook-secret";
+        const hostileDate = new Date("2026-05-06T07:08:09.000Z");
+        hostileDate.toJSON = () => sinkSecret;
+        fresh.logger.info({ when: hostileDate }, "file-redaction-entry");
         fresh.logPrompt("text", "prompt-body");
         fresh.logChatIn({
           agentName: "Eliza",
@@ -855,6 +950,9 @@ describe("file sink permissions", () => {
         // The legacy content survives the heal (append-only sink).
         expect(await fs.readFile(logPath, "utf8")).toContain("old line");
         expect(await fs.readFile(logPath, "utf8")).toContain("perm-test-entry");
+        const fileContents = await fs.readFile(logPath, "utf8");
+        expect(fileContents).not.toContain(sinkSecret);
+        expect(fileContents).toContain("2026-05-06T07:08:09.000Z");
       } finally {
         if (previous === undefined) delete process.env.LOG_FILE;
         else process.env.LOG_FILE = previous;

@@ -23,8 +23,11 @@ const SENSITIVE_CAMEL_KEY_RE =
  * ENCRYPTIONKEY) have no word boundary for the rules above, and the camelCase
  * rule requires a lowercase predecessor — so a closed suffix set on the
  * normalized name catches them without opening `key$` to lookalikes
- * (`monkey`, `turnkey`, `KEYBOARD`). Bare `auth` is matched exactly: looser
- * forms would fold `oauth`/`author` into the credential set.
+ * (`monkey`, `turnkey`, `KEYBOARD`). Lowercase `auth` is deliberately not a
+ * generic secret key: the canonical config uses it for profile containers and
+ * provider mode discriminators. An exact SCREAMING_SNAKE `AUTH` environment
+ * key remains classified, while credential children inside structural auth
+ * containers are redacted individually.
  */
 const SENSITIVE_CONCAT_KEY_RE = /(?:master|signing|ssh|encryption)key$/i;
 
@@ -36,6 +39,6 @@ export function isSensitiveConfigKey(key: string): boolean {
     SENSITIVE_CONFIG_KEY_RE.test(key) ||
     SENSITIVE_CAMEL_KEY_RE.test(lastSegment) ||
     SENSITIVE_CONCAT_KEY_RE.test(normalized) ||
-    normalized === "auth"
+    lastSegment === "AUTH"
   );
 }

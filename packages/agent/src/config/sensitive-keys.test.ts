@@ -197,9 +197,9 @@ describe("passwd/passphrase credential names (W5-027)", () => {
 /**
  * W10: concatenated all-caps `*KEY` names (MASTERKEY/SIGNINGKEY/SSHKEY/
  * ENCRYPTIONKEY) have no separator for the boundary rules and no lowercase
- * predecessor for the camelCase rule, and bare `AUTH` is itself a credential
- * name. Both are covered by closed rules so key-suffix and auth-prefix
- * lookalikes stay non-sensitive.
+ * predecessor for the camelCase rule. An exact uppercase `AUTH` environment
+ * key is a credential, while canonical lowercase auth containers and mode
+ * discriminators must remain visible.
  */
 describe("concatenated KEY names and bare AUTH (W10)", () => {
   it("classifies concatenated all-caps *KEY names as sensitive", () => {
@@ -215,10 +215,11 @@ describe("concatenated KEY names and bare AUTH (W10)", () => {
     }
   });
 
-  it("classifies bare AUTH as sensitive without touching auth lookalikes", () => {
+  it("classifies uppercase AUTH without erasing structural lowercase auth", () => {
     expect(isSensitiveConfigKey("AUTH")).toBe(true);
-    expect(isSensitiveConfigKey("auth")).toBe(true);
-    expect(isSensitiveConfigKey("service.auth")).toBe(true);
+    expect(isSensitiveConfigKey("service.AUTH")).toBe(true);
+    expect(isSensitiveConfigKey("auth")).toBe(false);
+    expect(isSensitiveConfigKey("service.auth")).toBe(false);
     for (const key of ["OAUTH", "oauth", "author", "AUTHORITY"]) {
       expect(isSensitiveConfigKey(key), key).toBe(false);
     }
@@ -233,5 +234,57 @@ describe("concatenated KEY names and bare AUTH (W10)", () => {
     }) as { env: Record<string, unknown> };
     expect(redacted.env.MASTERKEY).toBe("[REDACTED]");
     expect(redacted.env.LOG_LEVEL).toBe("info");
+  });
+
+  it("preserves canonical auth metadata while redacting credential children", () => {
+    expect(
+      redactConfigSecrets({
+        auth: {
+          profiles: {
+            work: {
+              provider: "openai",
+              mode: "oauth",
+              email: "a@example.test",
+            },
+          },
+          order: ["work"],
+        },
+        gateway: {
+          auth: {
+            mode: "token",
+            token: "gateway-token-secret",
+            password: "gateway-password-secret",
+            allowTailscale: true,
+          },
+        },
+        models: {
+          providers: {
+            local: { auth: "api-key", apiKey: "provider-secret" },
+          },
+        },
+        env: { AUTH: "legacy-auth-secret" },
+      }),
+    ).toEqual({
+      auth: {
+        profiles: {
+          work: { provider: "openai", mode: "oauth", email: "a@example.test" },
+        },
+        order: ["work"],
+      },
+      gateway: {
+        auth: {
+          mode: "token",
+          token: "[REDACTED]",
+          password: "[REDACTED]",
+          allowTailscale: true,
+        },
+      },
+      models: {
+        providers: {
+          local: { auth: "api-key", apiKey: "[REDACTED]" },
+        },
+      },
+      env: { AUTH: "[REDACTED]" },
+    });
   });
 });
