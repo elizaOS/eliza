@@ -111,6 +111,10 @@ mock.module("@/lib/services/ai-billing", () => ({
     return { totalCost: 0.004, inputTokens: 12, outputTokens: 4 };
   },
   recordUsageAnalytics: async () => null,
+  billFlatUsage: async () => {
+    billSettlements++;
+    return { totalCost: 0.004, inputTokens: 0, outputTokens: 0 };
+  },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     required = 1;
     available = 0;
