@@ -415,25 +415,37 @@ export function createSignalEventStream(params: {
   isRunning: () => boolean;
 } {
   let abortController: AbortController | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let establishedController: AbortController | null = null;
   let running = false;
+  let generation = 0;
   const baseDelay = params.reconnectDelayMs ?? 1000;
   const maxDelay = params.maxReconnectDelayMs ?? 30000;
   let reconnectDelay = baseDelay;
 
-  const connect = async () => {
-    if (!running) {
+  const connect = async (expectedGeneration: number) => {
+    if (!running || generation !== expectedGeneration) {
       return;
     }
 
-    abortController = new AbortController();
+    const controller = new AbortController();
+    abortController = controller;
 
     try {
       await streamSignalEvents({
         baseUrl: params.baseUrl,
         account: params.account,
-        abortSignal: abortController.signal,
-        onEvent: params.onEvent,
+        abortSignal: controller.signal,
+        onEvent: (event) => {
+          if (running && generation === expectedGeneration && !controller.signal.aborted) {
+            params.onEvent(event);
+          }
+        },
         onConnected: () => {
+          if (!running || generation !== expectedGeneration || controller.signal.aborted) {
+            return;
+          }
+          establishedController = controller;
           // A connection was actually established; announce it and reset the
           // backoff so the next drop restarts from the base delay. Resetting
           // per-attempt (the previous behavior) defeated exponential backoff
@@ -443,17 +455,26 @@ export function createSignalEventStream(params: {
         },
       });
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (controller.signal.aborted || generation !== expectedGeneration || !running) {
         return;
       }
       params.onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
-      params.onDisconnect?.();
+      if (abortController === controller) {
+        abortController = null;
+      }
+      if (establishedController === controller) {
+        establishedController = null;
+        params.onDisconnect?.();
+      }
     }
 
     // Reconnect with exponential backoff
-    if (running) {
-      setTimeout(connect, reconnectDelay);
+    if (running && generation === expectedGeneration) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect(expectedGeneration);
+      }, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
     }
   };
@@ -464,12 +485,25 @@ export function createSignalEventStream(params: {
         return;
       }
       running = true;
-      connect();
+      generation += 1;
+      reconnectDelay = baseDelay;
+      void connect(generation);
     },
     stop: () => {
       running = false;
-      abortController?.abort();
+      generation += 1;
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      const controller = abortController;
+      const notifyDisconnect = establishedController !== null;
+      establishedController = null;
+      controller?.abort();
       abortController = null;
+      if (notifyDisconnect) {
+        params.onDisconnect?.();
+      }
     },
     isRunning: () => running,
   };
