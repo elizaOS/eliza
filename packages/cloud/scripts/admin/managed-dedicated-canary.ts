@@ -790,7 +790,7 @@ export function validateManagedDedicatedCanaryEvidence(
  * distinct from the full live canary proof: it must prove one conditional
  * deletion and the complete absence of create, readiness, or inference work.
  */
-export function validateManagedDedicatedCleanupEvidence(
+export function validateManagedDedicatedCanaryCleanupEvidence(
   value: unknown,
 ): string[] {
   const errors = validateManagedDedicatedCanaryArtifact(value);

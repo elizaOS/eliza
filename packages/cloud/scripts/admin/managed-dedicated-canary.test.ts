@@ -8,8 +8,8 @@ import {
   canonicalizeManagedDedicatedCanaryArtifact,
   runManagedDedicatedCanary,
   validateManagedDedicatedCanaryArtifact,
+  validateManagedDedicatedCanaryCleanupEvidence,
   validateManagedDedicatedCanaryEvidence,
-  validateManagedDedicatedCleanupEvidence,
 } from "./managed-dedicated-canary";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -654,7 +654,7 @@ describe("managed dedicated canary", () => {
       possibleOrphan: false,
     });
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
-    expect(validateManagedDedicatedCleanupEvidence(evidence)).toEqual([]);
+    expect(validateManagedDedicatedCanaryCleanupEvidence(evidence)).toEqual([]);
     expect(validateManagedDedicatedCanaryEvidence(evidence)).toContain(
       "wrong_operation",
     );
@@ -686,16 +686,16 @@ describe("managed dedicated canary", () => {
     const wrongMode = structuredClone(evidence);
     wrongMode.operation = "canary";
 
-    expect(validateManagedDedicatedCleanupEvidence(created)).toContain(
+    expect(validateManagedDedicatedCanaryCleanupEvidence(created)).toContain(
       "cleanup_created_agent",
     );
-    expect(validateManagedDedicatedCleanupEvidence(pathExecuted)).toContain(
-      "cleanup_live_path_executed",
-    );
-    expect(validateManagedDedicatedCleanupEvidence(timedCreate)).toContain(
-      "unexpected_timing_create",
-    );
-    expect(validateManagedDedicatedCleanupEvidence(wrongMode)).toContain(
+    expect(
+      validateManagedDedicatedCanaryCleanupEvidence(pathExecuted),
+    ).toContain("cleanup_live_path_executed");
+    expect(
+      validateManagedDedicatedCanaryCleanupEvidence(timedCreate),
+    ).toContain("unexpected_timing_create");
+    expect(validateManagedDedicatedCanaryCleanupEvidence(wrongMode)).toContain(
       "wrong_operation",
     );
   });
