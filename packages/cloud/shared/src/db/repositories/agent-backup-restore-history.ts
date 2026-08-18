@@ -77,11 +77,24 @@ async function lockCurrentNodeHistory(
       provider_server_id: node.provider_server_id,
       host_key_fingerprint: node.host_key_fingerprint,
     })
-    .onConflictDoNothing({ target: agentNodeIncarnationHistories.node_incarnation });
+    .onConflictDoNothing({
+      target: [
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+      ],
+    });
+  // Read back on the same composite key the insert arbitrates on. A boot id is
+  // unique per node record, not globally (0259), so selecting on the incarnation
+  // alone would pick an arbitrary record's row once a host re-registers.
   const [history] = await tx
     .select()
     .from(agentNodeIncarnationHistories)
-    .where(eq(agentNodeIncarnationHistories.node_incarnation, input.nodeIncarnation))
+    .where(
+      and(
+        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
+        eq(agentNodeIncarnationHistories.node_incarnation, input.nodeIncarnation),
+      ),
+    )
     .limit(1);
   if (
     !history ||

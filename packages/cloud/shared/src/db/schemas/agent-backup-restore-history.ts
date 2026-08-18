@@ -37,9 +37,6 @@ export const agentNodeIncarnationHistories = pgTable(
     attested_at: timestamp("attested_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    incarnation_unique: unique("agent_node_incarnation_histories_incarnation_unique").on(
-      table.node_incarnation,
-    ),
     record_incarnation_unique: unique(
       "agent_node_incarnation_histories_record_incarnation_unique",
     ).on(table.docker_node_record_id, table.node_incarnation),

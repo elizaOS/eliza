@@ -16,6 +16,14 @@ const MIGRATION_NAMES = [
 const MIGRATIONS = MIGRATION_NAMES.map((name) =>
   readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"),
 );
+// Applied after the 0246-0250 stack rather than inside it. 0253 drops the global
+// incarnation unique that 0246's own backfill arbitrates on, so 0246 is not
+// re-runnable once 0253 has landed -- a sequence the journal-based migrator
+// never produces, and one the replay proofs below must therefore not simulate.
+const REARM_MIGRATION = readFileSync(
+  join(MIGRATIONS_DIR, "0259_agent_node_incarnation_rearm.sql"),
+  "utf8",
+);
 
 const ORG = "00000000-0000-4000-8000-00000000a001";
 const AGENT = "00000000-0000-4000-8000-00000000a002";
@@ -345,6 +353,68 @@ describe("0246-0250 immutable restore history migrations", () => {
         '${manifestB}', '${seedB}', '${RECEIPT}', '${TARGET}', 'restore', '${PUBLICATION}',
         '${RECEIPT}', 2, '${SHA}')`),
       ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+});
+
+describe("0253 node incarnation re-arm", () => {
+  const REPLACEMENT_NODE = "00000000-0000-4000-8000-00000000a016";
+
+  async function reRegisterSameBootUnderNewRecord(database: PGlite): Promise<void> {
+    await database.exec(`DELETE FROM docker_nodes WHERE id = '${NODE}'`);
+    await database.exec(`INSERT INTO docker_nodes VALUES
+      ('${REPLACEMENT_NODE}', 'node-a2', '${BOOT}', 'robot', 'hetzner', NULL,
+        'ssh-ed25519 AAA', NOW())`);
+  }
+
+  test("0246 alone wedges a boot that re-registers under a new node record", async () => {
+    const database = await databaseWithFoundation();
+    try {
+      await applyMigrations(database);
+
+      await expect(reRegisterSameBootUnderNewRecord(database)).rejects.toThrow(
+        "node incarnation conflicts with immutable history",
+      );
+    } finally {
+      await database.close();
+    }
+  });
+
+  test("0253 lets the same boot re-attest under a new record and keeps both rows", async () => {
+    const database = await databaseWithFoundation();
+    try {
+      await applyMigrations(database);
+      await database.exec(REARM_MIGRATION);
+
+      await reRegisterSameBootUnderNewRecord(database);
+
+      const histories = await database.query<{
+        docker_node_record_id: string;
+        node_id: string;
+      }>(`SELECT docker_node_record_id, node_id FROM agent_node_incarnation_histories
+          WHERE node_incarnation = '${BOOT}' ORDER BY node_id`);
+      expect(histories.rows).toEqual([
+        { docker_node_record_id: NODE, node_id: "node-a" },
+        { docker_node_record_id: REPLACEMENT_NODE, node_id: "node-a2" },
+      ]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  test("0253 is idempotent and still refuses an identity rewrite on the same record", async () => {
+    const database = await databaseWithFoundation();
+    try {
+      await applyMigrations(database);
+      await database.exec(REARM_MIGRATION);
+      await database.exec(REARM_MIGRATION);
+
+      await expect(
+        database.exec(`UPDATE docker_nodes SET host_key_fingerprint = 'different'
+          WHERE id = '${NODE}'`),
+      ).rejects.toThrow("node incarnation conflicts with immutable history");
     } finally {
       await database.close();
     }
