@@ -13,6 +13,7 @@ import {
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createStewardClient } from "@/lib/services/steward-client";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -216,18 +217,6 @@ function toIsoString(value: unknown): string {
   if (typeof value === "number") return new Date(value).toISOString();
   if (typeof value === "string") return value;
   return new Date().toISOString();
-}
-
-function boundedIntParam(
-  params: URLSearchParams,
-  name: string,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  const raw = Number(params.get(name) ?? fallback);
-  if (!Number.isFinite(raw)) return fallback;
-  return Math.min(Math.max(Math.trunc(raw), min), max);
 }
 
 function isPolicyType(value: unknown): value is PolicyType {
@@ -482,14 +471,8 @@ export async function handleDirectWalletRequest(
   if (method === "GET" && walletPath === "steward-tx-records") {
     const url = new URL(c.req.url);
     const status = url.searchParams.get("status") || "";
-    const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(
-      url.searchParams,
-      "offset",
-      0,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    );
+    const limit = parseClampedLimit(url.searchParams.get("limit"), 50, 100);
+    const offset = parseClampedOffset(url.searchParams.get("offset"), 0);
     const dashboard = await client.getAgentDashboard(stewardAgentId);
     const records = (dashboard.recentTransactions ?? [])
       .filter((tx) => !status || tx.status === status)
@@ -510,14 +493,8 @@ export async function handleDirectWalletRequest(
 
   if (method === "GET" && walletPath === "steward-pending-approvals") {
     const url = new URL(c.req.url);
-    const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(
-      url.searchParams,
-      "offset",
-      0,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    );
+    const limit = parseClampedLimit(url.searchParams.get("limit"), 50, 100);
+    const offset = parseClampedOffset(url.searchParams.get("offset"), 0);
     const [approvals, dashboard] = await Promise.all([
       client.listPendingApprovals(stewardAgentId, { limit, offset }),
       client.getAgentDashboard(stewardAgentId),
