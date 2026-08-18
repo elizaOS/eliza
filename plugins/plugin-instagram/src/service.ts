@@ -23,6 +23,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -1017,9 +1018,15 @@ export function splitMessage(content: string, maxLength: number): string[] {
             }
 
             if (word.length > maxLength) {
-              // Split by characters
-              for (let i = 0; i < word.length; i += maxLength) {
-                parts.push(word.slice(i, i + maxLength));
+              // A raw slice() can land between the two UTF-16 code units of a
+              // surrogate pair (most emoji), leaving a lone surrogate at the
+              // chunk boundary. truncateWellFormed backs the cut off by one
+              // unit instead.
+              let remainingWord = word;
+              while (remainingWord.length > 0) {
+                const chunk = truncateWellFormed(remainingWord, maxLength);
+                parts.push(chunk);
+                remainingWord = remainingWord.slice(chunk.length);
               }
             } else {
               current = word;
