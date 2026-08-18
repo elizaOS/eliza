@@ -239,6 +239,7 @@ export function TranscriptViewerOverlay({
     let live = true;
     void (async () => {
       const inline = await readInlineText(attachment, controller.signal);
+      if (!live) return;
       const id = attachment.transcriptId;
       if (id) {
         try {
