@@ -12,7 +12,7 @@ on:
         description: Exact host class to update
         required: true
         type: choice
-        options: [control-plane, data-plane, apps-host-key-inspection, apps]
+        options: [control-plane, data-plane, apps]
       expected_host_count:
         description: Reviewed exact number of hosts that must be selected
         required: true
@@ -36,17 +36,18 @@ jobs:
       TARGET_CLASS: ${{ inputs.target_class }}
       EXPECTED_HOST_COUNT: ${{ inputs.expected_host_count }}
       OPERATOR_PUBLIC_KEY: ${{ vars.APPS_OPERATOR_SSH_KEY }}
-      OPERATOR_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS }}
-      PROVISIONING_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
-      PROVISIONING_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
-      APPS_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY }}
-      APPS_CONTROL_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST }}
-      PIN_ARTIFACT_KEY: ${{ secrets.ELIZA_OPERATOR_PIN_ARTIFACT_KEY }}
-      HCLOUD_TOKEN: ${{ startsWith(inputs.target_class, 'apps') && secrets.HCLOUD_APPS_TOKEN || secrets.HCLOUD_TOKEN }}
     steps:
-      - name: Validate canonical source and protected inputs
+      - name: Validate canonical source and protected setting presence
         shell: bash
+        env:
+          HAS_OPERATOR_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS != '' }}
+          HAS_PROVISIONING_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST != '' }}
+          HAS_PROVISIONING_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY != '' }}
+          HAS_CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY != '' }}
+          HAS_APPS_CONTROL_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST != '' }}
+          HAS_APPS_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY != '' }}
+          HAS_PROJECT_HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
+          HAS_APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN != '' }}
         run: |
           set -euo pipefail
           expected_ref="refs/heads/$([ "$TARGET_ENVIRONMENT" = production ] && echo main || echo develop)"
@@ -59,199 +60,191 @@ jobs:
             exit 1
           fi
           case "$TARGET_CLASS:$TARGET_ENVIRONMENT" in
-            control-plane:staging|control-plane:production|data-plane:staging|apps-host-key-inspection:production|apps:production) ;;
-            *)
-              echo "::error::Unsupported environment and target-class combination"
-              exit 1
-              ;;
+            control-plane:staging|control-plane:production|data-plane:staging|apps:production) ;;
+            *) echo "::error::Unsupported environment and target-class combination"; exit 1 ;;
           esac
-          required=(OPERATOR_PUBLIC_KEY OPERATOR_KNOWN_HOSTS)
+          required=(HAS_OPERATOR_KNOWN_HOSTS)
           case "$TARGET_CLASS" in
-            control-plane) required+=(PROVISIONING_HOST PROVISIONING_SSH_KEY) ;;
-            data-plane) required+=(HCLOUD_TOKEN CONTAINERS_SSH_KEY PROVISIONING_HOST) ;;
-            apps-host-key-inspection) required+=(HCLOUD_TOKEN APPS_SSH_KEY APPS_CONTROL_HOST PIN_ARTIFACT_KEY) ;;
-            apps) required+=(HCLOUD_TOKEN APPS_SSH_KEY APPS_CONTROL_HOST) ;;
+            control-plane) required+=(HAS_PROVISIONING_HOST HAS_PROVISIONING_SSH_KEY) ;;
+            data-plane) required+=(HAS_PROVISIONING_HOST HAS_CONTAINERS_SSH_KEY HAS_PROJECT_HCLOUD_TOKEN) ;;
+            apps) required+=(HAS_APPS_CONTROL_HOST HAS_APPS_SSH_KEY HAS_APPS_HCLOUD_TOKEN) ;;
           esac
           missing=()
           for name in "${required[@]}"; do
-            value="${!name:-}"
-            [ -n "${value//[[:space:]]/}" ] || missing+=("$name")
+            [ "${!name:-false}" = true ] || missing+=("${name#HAS_}")
           done
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "::error::Missing protected setting name(s): ${missing[*]}"
             exit 1
           fi
-          key_type="$(awk '{print $1}' <<<"$OPERATOR_PUBLIC_KEY")"
-          key_blob="$(awk '{print $2}' <<<"$OPERATOR_PUBLIC_KEY")"
-          if [ "$key_type" != ssh-ed25519 ] || ! [[ "$key_blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
-            echo "::error::APPS_OPERATOR_SSH_KEY must be one valid ED25519 public key"
-            exit 1
-          fi
 
-      - name: Install ephemeral identities and pinned host inventory
-        id: identity
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate exact operator public key
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          key_path="$RUNNER_TEMP/operator-backfill-auth-key"
-          known_hosts_path="$RUNNER_TEMP/operator-backfill-known-hosts"
-          printf '%s\n' "$OPERATOR_KNOWN_HOSTS" > "$known_hosts_path"
-          case "$TARGET_CLASS" in
-            control-plane) printf '%s\n' "$PROVISIONING_SSH_KEY" > "$key_path" ;;
-            data-plane) printf '%s' "$CONTAINERS_SSH_KEY" | base64 --decode > "$key_path" ;;
-            apps-host-key-inspection|apps) printf '%s\n' "$APPS_SSH_KEY" > "$key_path" ;;
-          esac
-          chmod 0600 "$key_path" "$known_hosts_path"
-          ssh-keygen -y -f "$key_path" >/dev/null
-          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
-          echo "known_hosts_path=$known_hosts_path" >> "$GITHUB_OUTPUT"
+          public_key_path="$RUNNER_TEMP/operator-backfill-public-key"
+          printf '%s\n' "$OPERATOR_PUBLIC_KEY" > "$public_key_path"
+          line_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$public_key_path")"
+          [ "$line_count" -eq 1 ] || { echo "::error::APPS_OPERATOR_SSH_KEY must contain exactly one public key"; exit 1; }
+          description="$(ssh-keygen -E sha256 -lf "$public_key_path" 2>/dev/null)" || {
+            echo "::error::APPS_OPERATOR_SSH_KEY is not a valid OpenSSH public key"
+            exit 1
+          }
+          bits="$(awk '{print $1}' <<<"$description")"
+          key_type="$(awk '{print $NF}' <<<"$description")"
+          if [ "$bits" != 256 ] || [ "$key_type" != '(ED25519)' ]; then
+            echo "::error::APPS_OPERATOR_SSH_KEY must be one valid ED25519 public key"
+            exit 1
+          fi
 
-      - name: Resolve exact target inventory
-        id: inventory
+      - name: Install control-plane deploy identity and pins
+        if: inputs.target_class == 'control-plane'
+        shell: bash
+        env:
+          AUTH_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          PINNED_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$AUTH_SSH_KEY" > "$RUNNER_TEMP/operator-backfill-auth-key"
+          printf '%s\n' "$PINNED_KNOWN_HOSTS" > "$RUNNER_TEMP/operator-backfill-known-hosts"
+          chmod 0600 "$RUNNER_TEMP/operator-backfill-auth-key" "$RUNNER_TEMP/operator-backfill-known-hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/operator-backfill-auth-key" >/dev/null
+
+      - name: Install data-plane deploy identity and pins
+        if: inputs.target_class == 'data-plane'
+        shell: bash
+        env:
+          AUTH_SSH_KEY_BASE64: ${{ secrets.CONTAINERS_SSH_KEY }}
+          PINNED_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$AUTH_SSH_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/operator-backfill-auth-key"
+          printf '%s\n' "$PINNED_KNOWN_HOSTS" > "$RUNNER_TEMP/operator-backfill-known-hosts"
+          chmod 0600 "$RUNNER_TEMP/operator-backfill-auth-key" "$RUNNER_TEMP/operator-backfill-known-hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/operator-backfill-auth-key" >/dev/null
+
+      - name: Install apps deploy identity and pins
+        if: inputs.target_class == 'apps'
+        shell: bash
+        env:
+          AUTH_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY }}
+          PINNED_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$AUTH_SSH_KEY" > "$RUNNER_TEMP/operator-backfill-auth-key"
+          printf '%s\n' "$PINNED_KNOWN_HOSTS" > "$RUNNER_TEMP/operator-backfill-known-hosts"
+          chmod 0600 "$RUNNER_TEMP/operator-backfill-auth-key" "$RUNNER_TEMP/operator-backfill-known-hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/operator-backfill-auth-key" >/dev/null
+
+      - name: Resolve control-plane target
+        if: inputs.target_class == 'control-plane'
+        shell: bash
+        env:
+          CONTROL_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+        run: |
+          set -euo pipefail
+          printf '%s\tdirect\n' "$CONTROL_HOST" > "$RUNNER_TEMP/operator-backfill-targets"
+
+      - name: Resolve exact data-plane inventory
+        if: inputs.target_class == 'data-plane'
+        shell: bash
+        env:
+          CONTROL_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          PROJECT_HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$({ curl --fail --silent --show-error -H "Authorization: Bearer $PROJECT_HCLOUD_TOKEN" 'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
+          jq -r --arg control_host "$CONTROL_HOST" \
+            '.servers[] | select(.status == "running") | select(.public_net.ipv4.ip != $control_host) | [.public_net.ipv4.ip, "direct"] | @tsv' \
+            <<<"$response" > "$RUNNER_TEMP/operator-backfill-targets"
+
+      - name: Resolve exact apps inventory
+        if: inputs.target_class == 'apps'
+        shell: bash
+        env:
+          APPS_CONTROL_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST }}
+          APPS_HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$({ curl --fail --silent --show-error -H "Authorization: Bearer $APPS_HCLOUD_TOKEN" 'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
+          jq -r --arg control_host "$APPS_CONTROL_HOST" \
+            '.servers[] | select(.status == "running") | . as $server | select(["app-node", "apps-control", "apps-worker", "tenant-db"] | index($server.labels.role)) | if $server.public_net.ipv4.ip == $control_host then [$server.public_net.ipv4.ip, "direct"] else [($server.private_net | map(.ip) | first), "proxy"] end | @tsv' \
+            <<<"$response" > "$RUNNER_TEMP/operator-backfill-targets"
+
+      - name: Validate exact target inventory and host pins
         shell: bash
         run: |
           set -euo pipefail
           targets_path="$RUNNER_TEMP/operator-backfill-targets"
-          case "$TARGET_CLASS" in
-            control-plane)
-              printf '%s\tdirect\n' "$PROVISIONING_HOST" > "$targets_path"
-              ;;
-            data-plane|apps-host-key-inspection|apps)
-              response="$({ curl --fail --silent --show-error \
-                -H "Authorization: Bearer $HCLOUD_TOKEN" \
-                'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
-              if [ "$TARGET_CLASS" = data-plane ]; then
-                jq -r --arg control_host "$PROVISIONING_HOST" \
-                  '.servers[] | select(.status == "running") | select(.public_net.ipv4.ip != $control_host) | [.public_net.ipv4.ip, "direct"] | @tsv' \
-                  <<<"$response" > "$targets_path"
-              elif [ "$TARGET_CLASS" = apps-host-key-inspection ]; then
-                jq -r \
-                  '.servers[] | select(.status == "running") | . as $server | select(["app-node", "apps-worker", "tenant-db"] | index($server.labels.role)) | [(.private_net | map(.ip) | first), "inspect"] | @tsv' \
-                  <<<"$response" > "$targets_path"
-              else
-                jq -r \
-                  '.servers[] | select(.status == "running") | . as $server | select(["app-node", "apps-control", "apps-worker", "tenant-db"] | index($server.labels.role)) | if $server.labels.role == "apps-control" then [$server.public_net.ipv4.ip, "direct"] else [($server.private_net | map(.ip) | first), "proxy"] end | @tsv' \
-                  <<<"$response" > "$targets_path"
-              fi
-              ;;
-          esac
+          known_hosts_path="$RUNNER_TEMP/operator-backfill-known-hosts"
           sort -u -o "$targets_path" "$targets_path"
           actual_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$targets_path")"
           if [ "$actual_count" != "$EXPECTED_HOST_COUNT" ]; then
             echo "::error::Resolved host count did not match the reviewed expected_host_count"
             exit 1
           fi
+          direct_count="$(awk '$2 == "direct" { count += 1 } END { print count + 0 }' "$targets_path")"
+          if [ "$TARGET_CLASS" = apps ] && [ "$direct_count" -ne 1 ]; then
+            echo "::error::Apps inventory must contain exactly one pinned control host"
+            exit 1
+          fi
           while IFS=$'\t' read -r host route; do
-            if [ "$route" = inspect ]; then
-              ssh-keygen -F "$APPS_CONTROL_HOST" -f "${{ steps.identity.outputs.known_hosts_path }}" >/dev/null || {
-                echo "::error::Protected known_hosts inventory has no apps-control bastion pin"
-                exit 1
-              }
-            else
-              ssh-keygen -F "$host" -f "${{ steps.identity.outputs.known_hosts_path }}" >/dev/null || {
-                echo "::error::Protected known_hosts inventory is incomplete for the selected target set"
-                exit 1
-              }
-              if [ "$route" = proxy ]; then
-                ssh-keygen -F "$APPS_CONTROL_HOST" -f "${{ steps.identity.outputs.known_hosts_path }}" >/dev/null || {
-                  echo "::error::Protected known_hosts inventory has no apps-control bastion pin"
-                  exit 1
-                }
-              fi
-            fi
-          done < "$targets_path"
-          echo "targets_path=$targets_path" >> "$GITHUB_OUTPUT"
-          echo "Resolved and host-key-pinned $actual_count target(s); addresses remain undisclosed."
-
-      - name: Inspect apps-private host keys through pinned control host
-        if: inputs.target_class == 'apps-host-key-inspection'
-        shell: bash
-        env:
-          AUTH_KEY_PATH: ${{ steps.identity.outputs.key_path }}
-          KNOWN_HOSTS_PATH: ${{ steps.identity.outputs.known_hosts_path }}
-          TARGETS_PATH: ${{ steps.inventory.outputs.targets_path }}
-        run: |
-          set -euo pipefail
-          pins_path="$RUNNER_TEMP/operator-backfill-private-pins"
-          encrypted_path="$RUNNER_TEMP/operator-backfill-private-pins.enc"
-          ssh_error_path="$RUNNER_TEMP/operator-backfill-ssh-error"
-          if ! cut -f1 "$TARGETS_PATH" | ssh \
-            -i "$AUTH_KEY_PATH" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$KNOWN_HOSTS_PATH" \
-            -o ConnectTimeout=10 \
-            "deploy@$APPS_CONTROL_HOST" \
-            'set -euo pipefail; while IFS= read -r target; do ssh-keyscan -T 8 -t ed25519 "$target" 2>/dev/null | awk '\''!/^#/ && $2 == "ssh-ed25519" { print; found=1; exit } END { exit !found }'\''; done' \
-            >"$pins_path" 2>"$ssh_error_path"; then
-            echo "::error::Private host-key inspection failed through the pinned control host"
-            exit 1
-          fi
-          actual_count="$(awk 'NF == 3 && $2 == "ssh-ed25519" { count += 1 } END { print count + 0 }' "$pins_path")"
-          if [ "$actual_count" != "$EXPECTED_HOST_COUNT" ]; then
-            echo "::error::Private host-key inspection did not return the reviewed target count"
-            exit 1
-          fi
-          while IFS=$'\t' read -r host _route; do
-            ssh-keygen -F "$host" -f "$pins_path" >/dev/null || {
-              echo "::error::Private host-key inspection omitted one undisclosed target"
+            case "$route" in direct|proxy) ;; *) echo "::error::Invalid undisclosed target route"; exit 1 ;; esac
+            ssh-keygen -F "$host" -f "$known_hosts_path" >/dev/null || {
+              echo "::error::Protected known_hosts inventory is incomplete for the selected target set"
               exit 1
             }
-          done < "$TARGETS_PATH"
-          openssl enc -aes-256-cbc -pbkdf2 -salt \
-            -pass env:PIN_ARTIFACT_KEY -in "$pins_path" -out "$encrypted_path"
-          shred -u "$pins_path"
-          echo "Encrypted $actual_count reviewed private host-key pin(s); addresses remain undisclosed."
+          done < "$targets_path"
+          echo "Resolved and host-key-pinned $actual_count target(s); addresses remain undisclosed."
 
-      - name: Upload encrypted apps-private host-key inventory
-        if: inputs.target_class == 'apps-host-key-inspection'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: operator-private-host-pins-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/operator-backfill-private-pins.enc
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Add operator key idempotently
-        if: inputs.target_class != 'apps-host-key-inspection'
+      - name: Add operator key atomically and idempotently
         shell: bash
-        env:
-          AUTH_KEY_PATH: ${{ steps.identity.outputs.key_path }}
-          KNOWN_HOSTS_PATH: ${{ steps.identity.outputs.known_hosts_path }}
-          TARGETS_PATH: ${{ steps.inventory.outputs.targets_path }}
         run: |
           set -euo pipefail
+          auth_key_path="$RUNNER_TEMP/operator-backfill-auth-key"
+          known_hosts_path="$RUNNER_TEMP/operator-backfill-known-hosts"
+          targets_path="$RUNNER_TEMP/operator-backfill-targets"
+          public_key_path="$RUNNER_TEMP/operator-backfill-public-key"
+          key_base64="$(openssl base64 -A -in "$public_key_path")"
           case "$TARGET_CLASS" in
             data-plane) remote_user=root ;;
             control-plane|apps) remote_user=deploy ;;
           esac
+          apps_control_host="$(awk '$2 == "direct" { print $1 }' "$targets_path")"
           completed=0
           ssh_error_path="$RUNNER_TEMP/operator-backfill-ssh-error"
           while IFS=$'\t' read -r host route; do
             : > "$ssh_error_path"
             proxy_args=()
             if [ "$route" = proxy ]; then
-              proxy_command="ssh -i $AUTH_KEY_PATH -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS_PATH -o ConnectTimeout=10 -W %h:%p deploy@$APPS_CONTROL_HOST"
+              proxy_command="ssh -i $auth_key_path -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts_path -o ConnectTimeout=10 -W %h:%p deploy@$apps_control_host"
               proxy_args=(-o "ProxyCommand=$proxy_command")
             fi
-            if ! printf '%s\n' "$OPERATOR_PUBLIC_KEY" | ssh \
-              -i "$AUTH_KEY_PATH" \
+            if ! ssh \
+              -i "$auth_key_path" \
               -o BatchMode=yes \
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile="$KNOWN_HOSTS_PATH" \
+              -o UserKnownHostsFile="$known_hosts_path" \
               -o ConnectTimeout=10 \
               "${proxy_args[@]}" \
               "$remote_user@$host" \
-              'set -euo pipefail; IFS= read -r operator_key; umask 077; mkdir -p "$HOME/.ssh"; chmod 0700 "$HOME/.ssh"; touch "$HOME/.ssh/authorized_keys"; chmod 0600 "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys" || printf "%s\n" "$operator_key" >> "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys"' \
+              "OPERATOR_KEY_BASE64=$key_base64 bash -s" \
+              < packages/cloud/scripts/admin/install-operator-public-key.sh \
               2>"$ssh_error_path"; then
               echo "::error::Operator-key convergence failed for one undisclosed target"
               exit 1
             fi
             completed=$((completed + 1))
-          done < "$TARGETS_PATH"
+          done < "$targets_path"
           if [ "$completed" != "$EXPECTED_HOST_COUNT" ]; then
             echo "::error::Not every reviewed target completed the additive key convergence"
             exit 1
@@ -266,8 +259,7 @@ jobs:
           for path in \
             "$RUNNER_TEMP/operator-backfill-auth-key" \
             "$RUNNER_TEMP/operator-backfill-known-hosts" \
-            "$RUNNER_TEMP/operator-backfill-private-pins" \
-            "$RUNNER_TEMP/operator-backfill-private-pins.enc" \
+            "$RUNNER_TEMP/operator-backfill-public-key" \
             "$RUNNER_TEMP/operator-backfill-ssh-error" \
             "$RUNNER_TEMP/operator-backfill-targets"; do
             if [ -f "$path" ]; then
