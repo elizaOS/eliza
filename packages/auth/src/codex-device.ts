@@ -59,6 +59,12 @@ export interface CodexDeviceFlow {
   close: () => void;
 }
 
+export function codexDeviceLoginUsesShell(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === "win32";
+}
+
 function expiryFromJwt(token: string): number {
   try {
     const payload = JSON.parse(
@@ -83,6 +89,10 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
   const codexHome = mkdtempSync(path.join(os.tmpdir(), "eliza-codex-device-"));
   const child = spawn("codex", ["login", "--device-auth"], {
     env: { ...process.env, CODEX_HOME: codexHome, NO_COLOR: "1" },
+    // npm installs Codex as a `.cmd` shim on Windows. The command and its
+    // arguments are static, so the shell is used only to make that shim
+    // executable; Unix keeps the direct child process and signal behavior.
+    shell: codexDeviceLoginUsesShell(),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
