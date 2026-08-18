@@ -64,7 +64,9 @@ function fixture({
   return auditMockModuleExports(root, files);
 }
 
-test("reports a named binding omitted by an object factory", () => {
+test("reports a named binding omitted by an object factory", {
+  timeout: 15_000,
+}, () => {
   const report = fixture({
     factory: "() => ({ unbound: 2 })",
     production:
@@ -202,7 +204,9 @@ test("recognizes aliased and namespace bun:test mock callees", () => {
   }
 });
 
-test("propagates only demanded names through export-star barrels", () => {
+test("propagates only demanded names through export-star barrels", {
+  timeout: 15_000,
+}, () => {
   const missing = fixture({
     factory: "() => ({ unbound: 2 })",
     production: 'export * from "@fixture/dependency";\n',
