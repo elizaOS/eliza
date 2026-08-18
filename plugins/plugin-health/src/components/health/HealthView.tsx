@@ -59,26 +59,24 @@ export interface SleepFetchers {
 /** Sleep JSON GETs are short UI reads — same family as the 15s OAuth sibling, not the 1.5s checkpoint-client hop. */
 export const HEALTH_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getHealthJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
+type HealthApiClient = {
+  fetch: (
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ) => Promise<unknown>;
+};
+
+export async function getHealthJsonWithClient<T>(
+  path: string,
+  apiClient: HealthApiClient,
   timeoutMs: number = HEALTH_VIEW_JSON_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Sleep request failed (${response.status}): ${url}`);
-  }
-  return (await response.json()) as T;
+  return apiClient.fetch(path, undefined, { timeoutMs }) as Promise<T>;
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  return getHealthJsonWithFetch<T>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-  );
+  return getHealthJsonWithClient<T>(path, client);
 }
 
 const defaultFetchers: SleepFetchers = {

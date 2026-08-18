@@ -1,79 +1,68 @@
 /**
  * @vitest-environment jsdom
  *
- * Behavioral HealthView sleep-JSON deadline. Executes default getJson under
- * abort — not a source-grep of HealthView.tsx.
+ * HealthView sleep JSON through the canonical ElizaClient seam.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("@elizaos/ui/api", () => ({
-  client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 import {
-  getHealthJsonWithFetch,
+  getHealthJsonWithClient,
   HEALTH_VIEW_JSON_TIMEOUT_MS,
 } from "./HealthView.js";
 
-const URL = "http://test.local/api/lifeops/sleep/history?windowDays=14";
-
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected health-view abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
-}
+const PATH = "/api/lifeops/sleep/history?windowDays=14";
 
 describe("HealthView sleep JSON deadline", () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
   it("keeps a documented UI JSON budget", () => {
     expect(HEALTH_VIEW_JSON_TIMEOUT_MS).toBe(15_000);
   });
 
-  it("aborts a stalled sleep GET at the injected deadline", async () => {
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
+
     await expect(
-      getHealthJsonWithFetch(URL, stallUntilAborted(), 10),
+      getHealthJsonWithClient(PATH, { fetch: clientFetch }, 10),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 10,
+    });
   });
 
-  it("surfaces a provider error from a completed sleep GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-
-    await expect(getHealthJsonWithFetch(URL, fetchImpl, 1_000)).rejects.toThrow(
-      "503",
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new Error(`Sleep request failed (503): ${PATH}`),
     );
+
+    await expect(
+      getHealthJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).rejects.toThrow("503");
   });
 
-  it("uses the injected fetch for a successful sleep GET", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({
-        episodes: [],
-        summary: {
-          cycleCount: 0,
-          averageDurationMin: null,
-          overnightCount: 0,
-          napCount: 0,
-          openCount: 0,
-        },
-        windowDays: 14,
-        includeNaps: true,
-      });
-    };
+  it("uses the bounded client path for a successful sleep GET", async () => {
+    clientFetch.mockResolvedValueOnce({ episodes: [] });
 
-    const body = await getHealthJsonWithFetch<{ windowDays: number }>(
-      URL,
-      fetchImpl,
-      1_000,
-    );
-
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(body.windowDays).toBe(14);
+    await expect(
+      getHealthJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).resolves.toEqual({ episodes: [] });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 1_000,
+    });
   });
 });
