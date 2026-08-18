@@ -72,6 +72,36 @@ describe("androidContacts provider", () => {
       starred: true,
     });
   });
+
+  it("normalizes missing phones and emails to empty arrays", async () => {
+    const contacts = [
+      {
+        id: "2",
+        displayName: "Charles Babbage",
+        phoneNumbers: undefined,
+        emailAddresses: undefined,
+      },
+    ];
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    const data = result.data as {
+      contacts: {
+        id: string;
+        displayName: string;
+        phones: string[];
+        emails: string[];
+      }[];
+    };
+    expect(data.contacts[0]?.phones).toEqual([]);
+    expect(data.contacts[0]?.emails).toEqual([]);
+  });
+
   it("renders a distinguishable error shape and reports on bridge failure", async () => {
     const boom = new Error("contacts permission denied");
     contactsMock.listContacts.mockRejectedValue(boom);
