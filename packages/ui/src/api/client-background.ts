@@ -6,6 +6,9 @@
  */
 import { ElizaClient } from "./client-base";
 
+/** Background upload POST — existing 10s REST budget, independent hop. */
+export const BACKGROUND_UPLOAD_FETCH_TIMEOUT_MS = 10_000;
+
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
@@ -20,7 +23,10 @@ declare module "./client-base" {
      * ~5 MB localStorage quota (where writes fail silently and the wallpaper
      * reverts on reload).
      */
-    uploadBackgroundImage(dataUrl: string): Promise<{ url: string }>;
+    uploadBackgroundImage(
+      dataUrl: string,
+      timeoutMs?: number,
+    ): Promise<{ url: string }>;
   }
 }
 
@@ -31,9 +37,14 @@ declare module "./client-base" {
 ElizaClient.prototype.uploadBackgroundImage = async function (
   this: ElizaClient,
   dataUrl,
+  timeoutMs: number = BACKGROUND_UPLOAD_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch<{ url: string }>("/api/background/upload-image", {
-    method: "POST",
-    body: JSON.stringify({ dataUrl }),
-  });
+  return this.fetch<{ url: string }>(
+    "/api/background/upload-image",
+    {
+      method: "POST",
+      body: JSON.stringify({ dataUrl }),
+    },
+    { timeoutMs },
+  );
 };
