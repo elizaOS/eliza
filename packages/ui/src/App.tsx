@@ -105,6 +105,7 @@ import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
+import { focusChatComposerWhenReady } from "./components/shell/focus-chat-composer";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -1973,15 +1974,9 @@ function ShellFoundationMount({
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
     }
-    focusComposerOnOpenRef.current = false;
-    const frame = window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLTextAreaElement>(
-          '[data-testid="chat-composer-textarea"]',
-        )
-        ?.focus({ preventScroll: true });
+    return focusChatComposerWhenReady(() => {
+      focusComposerOnOpenRef.current = false;
     });
-    return () => window.cancelAnimationFrame(frame);
   }, [shellIsOpen, useWebChatPanel]);
   const closeWebChatWhenPilled = useCallback(
     (pilled: boolean) => {

@@ -248,35 +248,28 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await harness.eval(
       `document.querySelector('[data-testid="shell-home-pill"]')?.click()`,
     );
-    const composerState = await harness.waitForState(
-      (next) =>
-        next.mainWindow.bounds?.width === 600 &&
-        next.mainWindow.bounds?.height === 64,
-      "Expected opening the pill to form the exact compact composer frame.",
-      30_000,
-    );
-    const composerBounds = composerState.mainWindow.bounds;
-    expect(composerBounds).toBeTruthy();
-    if (!bounds || !composerBounds) {
-      throw new Error("bottom-bar composer bounds unavailable");
-    }
-    expect(composerBounds.y + composerBounds.height).toBe(
-      bounds.y + bounds.height,
-    );
     await expect
       .poll(() =>
         harness.eval(`(() => ({
+          homePillPresent: Boolean(document.querySelector('[data-testid="shell-home-pill"]')),
+          chatOverlayPresent: Boolean(document.querySelector('[data-testid="chat-overlay"]')),
+          chatSheetPresent: Boolean(document.querySelector('[data-testid="chat-sheet"]')),
           composerPresent: Boolean(document.querySelector('[data-testid="chat-composer-textarea"]')),
+          composerFocused: document.activeElement?.getAttribute('data-testid') === 'chat-composer-textarea',
           providerTruthVisible: Boolean(document.querySelector('[data-testid="serving-provider-chip"]')),
         }))()`),
       )
-      .toEqual({ composerPresent: true, providerTruthVisible: false });
-    await harness.eval(
-      `document.querySelector('[data-testid="chat-composer-textarea"]')?.focus()`,
-    );
+      .toEqual({
+        homePillPresent: false,
+        chatOverlayPresent: true,
+        chatSheetPresent: true,
+        composerPresent: true,
+        composerFocused: true,
+        providerTruthVisible: false,
+      });
     const expandedState = await harness.waitForState(
       (next) => (next.mainWindow.bounds?.height ?? 0) > 400,
-      "Expected focusing the composer to expand the bottom-anchored native chat window.",
+      "Expected opening the pill to focus the composer and expand the bottom-anchored native chat window.",
       30_000,
     );
     const expandedBounds = expandedState.mainWindow.bounds;
@@ -380,13 +373,13 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await expect
       .poll(() =>
         harness.eval(`(() => {
-          const send = document.querySelector('button[aria-label="Send message"]');
+          const send = document.querySelector('[data-testid="chat-composer-action"]');
           return send instanceof HTMLButtonElement && !send.disabled;
         })()`),
       )
       .toBe(true);
     await harness.eval(
-      `document.querySelector('button[aria-label="Send message"]')?.click()`,
+      `document.querySelector('[data-testid="chat-composer-action"]')?.click()`,
     );
 
     await expect
