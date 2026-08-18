@@ -102,19 +102,20 @@ export interface InboxFetchers {
 /** Inbox JSON GET is a short UI read — same 15s family as HealthView sleep JSON. */
 export const INBOX_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getInboxJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
+type InboxApiClient = {
+  fetch: (
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ) => Promise<unknown>;
+};
+
+export async function getInboxJsonWithClient<T>(
+  path: string,
+  apiClient: InboxApiClient,
   timeoutMs: number = INBOX_VIEW_JSON_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Inbox request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
+  return apiClient.fetch(path, undefined, { timeoutMs }) as Promise<T>;
 }
 
 async function getInbox(channels: InboxChannel[]): Promise<InboxWire> {
@@ -122,10 +123,7 @@ async function getInbox(channels: InboxChannel[]): Promise<InboxWire> {
   if (channels.length > 0) params.set("channels", channels.join(","));
   const query = params.toString();
   const path = `/api/lifeops/inbox${query ? `?${query}` : ""}`;
-  return getInboxJsonWithFetch<InboxWire>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-  );
+  return getInboxJsonWithClient<InboxWire>(path, client);
 }
 
 const defaultFetchers: InboxFetchers = {
