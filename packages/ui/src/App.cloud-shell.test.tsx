@@ -79,15 +79,13 @@ describe("App standalone chat-overlay wiring", () => {
     expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
     expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
-    expect(foundation).toContain(
-      "if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen))",
-    );
+    expect(foundation).toContain("const firstRunJustCompleted =");
+    expect(foundation).toContain("keepChatOpenAfterFirstRun");
+    expect(foundation).toContain("const shouldMountWebChatPanel =");
     expect(foundation).toContain(
       "const firstRunPinnedOpen = firstRunComplete === false;",
     );
-    expect(foundation).toContain(
-      "useWebChatPanel && (shellIsOpen || firstRunPinnedOpen)",
-    );
+    expect(foundation).toContain("shouldMountWebChatPanel");
     expect(foundation).toContain("<ChatOverlayMount");
     expect(foundation).toContain("const { setChatInput } = useChatComposer();");
     expect(foundation).toContain("useChatInputRef()");
@@ -118,16 +116,18 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf("function ChatOverlayMount("),
     );
 
-    // Only an active user-opened shell or an incomplete onboarding can mount
-    // the chat panel. A completed relaunch therefore starts at HomePill.
-    expect(foundation).toContain(
-      "if (useWebChatPanel && (shellIsOpen || firstRunPinnedOpen))",
-    );
+    // A completed relaunch begins as the pill, while the one completion edge
+    // keeps the already-mounted half-height overlay visible until dismissal.
+    expect(foundation).toContain("firstRunJustCompleted");
+    expect(foundation).toContain("keepChatOpenAfterFirstRun");
+    expect(foundation).toContain("setKeepChatOpenAfterFirstRun(false)");
     expect(foundation).toContain("<HomePill");
     expect(foundation).toContain(
       "focusComposerOnOpenRef.current = useWebChatPanel;",
     );
-    expect(foundation).toContain("controller.open();");
+    expect(foundation).toContain("const openSharedDesktopComposer");
+    expect(foundation).toContain("window.addEventListener(CHAT_OPEN_EVENT");
+    expect(foundation).toContain('initialMode="half"');
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {

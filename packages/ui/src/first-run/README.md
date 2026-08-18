@@ -13,23 +13,15 @@
 
 ## The onboarding surface (#12178)
 
-While first-run is pending the floating chat is a full-screen onboarding
-surface: pinned FULL with an **opaque `bg-bg` backdrop** that hides the
-launcher/home behind it, every collapse path a no-op, and a one-shot
-auto-collapse — with the backdrop fading to the normal scrim — on completion.
+While first-run is pending the floating chat is the shared half-height
+conversation surface: pinned HALF with no opaque app backdrop, every collapse
+path a no-op, and the same sheet remains open when setup completes until the
+user intentionally folds it to the pill. A completed relaunch begins at that
+pill; opening it restores the shared half-height composer.
 
-The composer is **unlocked** (#12178, a deliberate reversal of the #9952
-onboarding lock): the user can type freely with the placeholder "Ask me anything
-— or pick an option". Before a runtime is chosen, typed text is answered by the
-conductor's local echo persona (a friendly not-ready line that varies by flow
-position) and never reaches the server — the AppContext send funnel enforces
-that via `classifyActionMessage` → `"conductor"` → `tryHandleFirstRunText`. The
-one exception (#14103): once the user has picked Cloud and the dedicated agent
-is provisioning behind a ready bootstrap bridge (`cloudProvisionedContainer`),
-the funnel classifies free text as `"send"` so the first real message reaches
-the bootstrap-bridge agent instead of the canned setup copy. Attach and mic stay
-disabled (no agent to serve media yet); the seeded CHOICE/OAuth widgets remain
-the primary input. The full contract (and which seam enforces each
-guarantee) is documented in
+Before setup completes, the composer is sign-in-first and locked; the seeded
+CHOICE/OAuth widgets in the normal transcript are the primary input. Attach and
+mic stay disabled because no agent is available yet. The full contract (and
+which seam enforces each guarantee) is documented in
 [`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
 `../components/shell/ChatOverlay.firstrun.test.tsx`.

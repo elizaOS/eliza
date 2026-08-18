@@ -2319,8 +2319,8 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     await act(async () => vi.advanceTimersByTimeAsync(50));
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(50));
-    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
-      "Waiting for sign-in",
+    expect(turn("first-run:cloud-login-waiting")?.text).toBe(
+      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue. If nothing opened, tap Sign in again.",
     );
 
     await act(async () => vi.advanceTimersByTimeAsync(90_000));

@@ -68,4 +68,13 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
     expect(source).toContain('case "tray-open-notifications"');
     expect(source).toContain("dispatchOpenNotificationCenter()");
   });
+
+  it("DesktopTrayRuntime opens Messages through the shared chat event", () => {
+    const source = readFileSync(trayRuntimePath, "utf8");
+    expect(source).toContain('case "tray-open-chat"');
+    expect(source).toContain("dispatchChatOpen()");
+    expect(source).not.toContain(
+      'case "tray-open-chat":\n            switchShellView("desktop");',
+    );
+  });
 });

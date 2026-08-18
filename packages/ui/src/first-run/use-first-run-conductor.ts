@@ -834,7 +834,7 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           "first-run:cloud-login-waiting",
-          "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
+          "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue. If nothing opened, tap Sign in again.",
         ),
       );
     };
