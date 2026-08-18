@@ -230,6 +230,19 @@ describe("operator public-key validator", () => {
       const valid = readFileSync(publicPath, "utf8");
       writeFileSync(multiplePath, `${valid}${valid}`);
       expect(Bun.spawnSync(["bash", validatorPath, multiplePath]).exitCode).not.toBe(0);
+
+      const keyFields = valid.trimEnd().split(/\s+/).slice(0, 2).join(" ");
+      const knownHostsPath = join(home, "known-host-shaped.pub");
+      writeFileSync(knownHostsPath, `example.invalid ${keyFields}\n`);
+      expect(Bun.spawnSync(["bash", validatorPath, knownHostsPath]).exitCode).not.toBe(0);
+
+      const optionsPath = join(home, "authorized-key-options.pub");
+      writeFileSync(optionsPath, `restrict ${keyFields}\n`);
+      expect(Bun.spawnSync(["bash", validatorPath, optionsPath]).exitCode).not.toBe(0);
+
+      const commentedPath = join(home, "commented.pub");
+      writeFileSync(commentedPath, `${keyFields} operator comment is allowed\n`);
+      expect(Bun.spawnSync(["bash", validatorPath, commentedPath]).exitCode).toBe(0);
     });
   });
 });
