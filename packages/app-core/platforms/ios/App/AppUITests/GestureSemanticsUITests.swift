@@ -675,6 +675,17 @@ final class GestureSemanticsUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if app.state == .notRunning { break }
+            let permissionSetup = completePermissionSetupIfPresent(in: app)
+            if permissionSetup == .blocked {
+                XCTFail(
+                    "the fresh-install 'Set up Eliza' dialog appeared but its "
+                        + "real 'Skip for now' control could not close it"
+                )
+                throw XCTSkip(
+                    "permission onboarding blocked renderer readiness — see "
+                        + "firstrun-permissions-blocked artifacts"
+                )
+            }
             if markerValue(Self.detentPrefix, in: app) != nil {
                 completeFirstRunIfPresent(in: app)
                 return
@@ -702,6 +713,43 @@ final class GestureSemanticsUITests: XCTestCase {
             "boot did not reach an interactive renderer within \(Int(timeout))s "
                 + "— boot coverage lives in BootCaptureUITests"
         )
+    }
+
+    /// A fresh app container can present the native-hosted web permissions
+    /// dialog before the chat probe mounts. Drive only that exact dialog's
+    /// real Skip control; the dialog label prevents this helper from consuming
+    /// the later placement or tutorial onboarding choices.
+    private func completePermissionSetupIfPresent(
+        in app: XCUIApplication
+    ) -> FreshInstallPermissionOnboardingResult {
+        let dialog = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Set up Eliza'")
+        ).firstMatch
+        let skip = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == 'Skip for now'")
+        ).firstMatch
+
+        let result = driveFreshInstallPermissionOnboarding(
+            dialogIsPresent: { dialog.exists },
+            skipIsHittable: { skip.exists && skip.isHittable },
+            tapSkip: {
+                self.attachScreenshot(named: "firstrun-permissions-present")
+                skip.tap()
+            },
+            waitForNextPoll: { Thread.sleep(forTimeInterval: 1.0) }
+        )
+
+        switch result {
+        case .skipped:
+            attachScreenshot(named: "firstrun-permissions-skipped")
+        case .blocked:
+            attachScreenshot(named: "firstrun-permissions-blocked")
+            attachAccessibilitySnapshot(
+                of: app, named: "ax-firstrun-permissions-blocked")
+        case .absent:
+            break
+        }
+        return result
     }
 
     /// A fresh install boots into the first-run placement question ("where
