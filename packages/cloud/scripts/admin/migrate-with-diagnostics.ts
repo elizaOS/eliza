@@ -19,6 +19,11 @@ import {
   runCleanupSteps,
   runWithCleanup,
 } from "./error-preserving-cleanup";
+import {
+  type DatabaseIdentityConfig,
+  readDatabaseIdentityConfig,
+  runDatabaseIdentityPreflight,
+} from "./preflight-database-identity";
 
 const { Client } = pg;
 
@@ -508,6 +513,7 @@ export async function runMigrations(
   client: MigrationClient,
   migrations: Migration[],
   retryOptions: LockRetryOptions,
+  databaseIdentityConfig?: DatabaseIdentityConfig,
 ): Promise<void> {
   let lockHeld = false;
   await runWithCleanup(
@@ -519,6 +525,17 @@ export async function runMigrations(
         console.log(
           "[db:migrate] PGlite backend uses its single-writer database lock",
         );
+      }
+      if (databaseIdentityConfig && databaseIdentityConfig.mode !== "off") {
+        if (client.backend !== "postgres") {
+          throw new Error(
+            "database identity verification requires a PostgreSQL migration session",
+          );
+        }
+        // The authoritative check must run on the locked session that performs
+        // the first DDL. A separate connection could resolve to a different
+        // backend between preflight and migration.
+        await runDatabaseIdentityPreflight(databaseIdentityConfig, client);
       }
       await ensureMigrationsTable(client);
 
@@ -564,7 +581,8 @@ export async function runMigrations(
 }
 
 async function main(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const environment: Readonly<Record<string, string | undefined>> = process.env;
+  const databaseUrl = environment.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required to run database migrations.");
   }
@@ -579,7 +597,13 @@ async function main(): Promise<void> {
     ? await createPGliteClient(databaseUrl)
     : await createPgClient(databaseUrl);
 
-  await runMigrations(client, migrations, retryOptions);
+  const databaseIdentityConfig =
+    environment.DATABASE_IDENTITY_GATE_MODE !== undefined ||
+    environment.DATABASE_IDENTITY_ENVIRONMENT !== undefined
+      ? readDatabaseIdentityConfig(environment)
+      : undefined;
+
+  await runMigrations(client, migrations, retryOptions, databaseIdentityConfig);
 }
 
 if (import.meta.main) {
