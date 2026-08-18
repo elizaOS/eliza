@@ -1,6 +1,9 @@
 /** Verifies runStartingRuntime — managed cloud cold-boot warmup through the package's configured test harness. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runStartingRuntime } from "./startup-phase-runtime";
+import {
+  runStartingRuntime,
+  STARTUP_CLOUD_PROXY_STATUS_FETCH_TIMEOUT_MS,
+} from "./startup-phase-runtime";
 
 /**
  * Cold-boot routing regression for Eliza-MANAGED cloud agents.
@@ -303,7 +306,11 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     );
 
     // We fell back to /api/status once the 5xx streak crossed threshold.
-    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status");
+    expect(clientMock.fetch).toHaveBeenCalledWith(
+      "/api/status",
+      undefined,
+      { timeoutMs: STARTUP_CLOUD_PROXY_STATUS_FETCH_TIMEOUT_MS },
+    );
     // And advanced to chat exactly once instead of stranding on the boot screen.
     const runningDispatches = dispatch.mock.calls.filter(
       ([e]) => e.type === "AGENT_RUNNING",

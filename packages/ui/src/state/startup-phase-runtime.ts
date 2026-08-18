@@ -222,9 +222,19 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
  * genuinely-serving agent on the boot screen — if status says `canRespond`, the
  * agent is ready and the user should be let into chat (CONVERSATIONS-500).
  */
+/** Ordinary REST budget for GET /api/status (cloud-passthrough readiness). */
+export const STARTUP_CLOUD_PROXY_STATUS_FETCH_TIMEOUT_MS = 10_000;
+
+export async function fetchCloudProxyAgentStatus(
+  timeoutMs: number = STARTUP_CLOUD_PROXY_STATUS_FETCH_TIMEOUT_MS,
+  api: { fetch: typeof client.fetch } = client,
+): Promise<AgentStatus> {
+  return api.fetch<AgentStatus>("/api/status", undefined, { timeoutMs });
+}
+
 async function isCloudProxyStatusReady(): Promise<boolean> {
   try {
-    const status = await client.fetch<AgentStatus>("/api/status");
+    const status = await fetchCloudProxyAgentStatus();
     return status?.state === "running" && status?.canRespond === true;
   } catch {
     return false;
