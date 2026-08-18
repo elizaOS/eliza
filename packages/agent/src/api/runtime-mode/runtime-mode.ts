@@ -88,10 +88,14 @@ export function resolveRuntimeMode(
   const deploymentTarget = normalizeDeploymentTargetConfig(
     config?.deploymentTarget,
   );
+  const cloudExplicitlyDisabled = config?.cloud?.enabled === false;
   const normalizedOverride = activeModeOverride?.trim().toLowerCase();
   if (normalizedOverride === "local" || normalizedOverride === "local-only") {
     return {
-      mode: normalizedOverride,
+      mode:
+        normalizedOverride === "local-only" || cloudExplicitlyDisabled
+          ? "local-only"
+          : "local",
       deploymentTarget: deploymentTarget ?? null,
       remoteApiBase: null,
       remoteApiBaseError: null,
@@ -131,8 +135,6 @@ export function resolveRuntimeMode(
   // Default and explicit `local` — `cloud.enabled === false` collapses
   // to `local-only`. The strong schema above means we can read the
   // field directly without a `typeof === "object"` guard.
-  const cloudExplicitlyDisabled = config?.cloud?.enabled === false;
-
   return {
     mode: cloudExplicitlyDisabled ? "local-only" : "local",
     deploymentTarget: deploymentTarget ?? null,

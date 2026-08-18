@@ -4,6 +4,7 @@ import {
   applyDesktopChildOwnershipEnv,
   applyDesktopDeferAppRoutesPolicy,
   applyWindowsNativeInferenceDefaults,
+  resolveDesktopChildActiveRuntimeMode,
 } from "./agent";
 
 describe("applyDesktopChildOwnershipEnv", () => {
@@ -17,6 +18,71 @@ describe("applyDesktopChildOwnershipEnv", () => {
 
     expect(env.ELIZA_ACTIVE_API_RUNTIME_MODE).toBe("local");
     expect(env.ELIZA_DESKTOP_PARENT_PID).toBe("42");
+  });
+
+  it("preserves persisted local-only intent for an embedded child", () => {
+    const env: Record<string, string> = {
+      ELIZA_STATE_DIR: "/tmp/eliza-desktop-local-only",
+    };
+
+    applyDesktopChildOwnershipEnv(env, 42, () =>
+      JSON.stringify({
+        deploymentTarget: {
+          runtime: "remote",
+          remoteApiBase: "http://127.0.0.1:2250",
+        },
+        cloud: { enabled: false },
+      }),
+    );
+
+    expect(env.ELIZA_ACTIVE_API_RUNTIME_MODE).toBe("local-only");
+    expect(env.ELIZA_DESKTOP_PARENT_PID).toBe("42");
+  });
+
+  it("keeps an explicit local-only process signal when config is unavailable", () => {
+    expect(
+      resolveDesktopChildActiveRuntimeMode(
+        { ELIZA_ACTIVE_API_RUNTIME_MODE: "local-only" },
+        () => {
+          throw new Error("config unavailable");
+        },
+      ),
+    ).toBe("local-only");
+  });
+
+  it("uses the direct-build local default only for an absent first-run config", () => {
+    expect(
+      resolveDesktopChildActiveRuntimeMode(
+        { ELIZA_STATE_DIR: "/tmp/eliza-desktop-first-run" },
+        () => {
+          throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        },
+      ),
+    ).toBe("local");
+  });
+
+  it("rejects malformed persisted config instead of exposing local routes", () => {
+    expect(() =>
+      resolveDesktopChildActiveRuntimeMode(
+        { ELIZA_STATE_DIR: "/tmp/eliza-desktop-malformed" },
+        () => "{ not-json",
+      ),
+    ).toThrow();
+  });
+
+  it("surfaces unreadable persisted config instead of treating it as absent", () => {
+    const unreadable = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
+
+    expect(() =>
+      resolveDesktopChildActiveRuntimeMode(
+        { ELIZA_STATE_DIR: "/tmp/eliza-desktop-unreadable" },
+        () => {
+          throw unreadable;
+        },
+      ),
+    ).toThrow(unreadable);
   });
 });
 

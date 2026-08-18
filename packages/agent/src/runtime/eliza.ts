@@ -2168,22 +2168,35 @@ export function projectConfigEnvToProcessEnv(
   }
 }
 
-/** @internal Exported for embedded-host fallback coverage. */
+/**
+ * Build an in-memory topology for a host-owned fallback without changing the
+ * config object that represents durable user intent.
+ *
+ * @internal Exported for embedded-host fallback coverage.
+ */
 export function applyActiveHostRuntimeMode(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
-): void {
+): ElizaConfig {
   const activeMode = env.ELIZA_ACTIVE_API_RUNTIME_MODE?.trim().toLowerCase();
-  if (activeMode !== "local" && activeMode !== "local-only") return;
+  if (activeMode !== "local" && activeMode !== "local-only") return config;
+
+  const effectiveMode =
+    activeMode === "local-only" || config.cloud?.enabled === false
+      ? "local-only"
+      : "local";
+  const activeConfig = structuredClone(config);
 
   // The desktop preflight owns reachability and stamps this override only when
-  // it actually launched the embedded runtime. Keep the saved remote target on
-  // disk, but present a local in-memory topology to plugin discovery so the
-  // serving child retains its model providers and local route surfaces.
-  config.deploymentTarget = { runtime: "local" };
-  if (activeMode === "local-only") {
-    config.cloud = { ...config.cloud, enabled: false };
+  // it actually launched the embedded runtime. The clone presents a local
+  // topology to boot/plugin discovery while the caller retains the untouched
+  // object for any automatic persistence performed during resolution.
+  activeConfig.deploymentTarget = { runtime: "local" };
+  if (effectiveMode === "local-only") {
+    activeConfig.cloud = { ...activeConfig.cloud, enabled: false };
   }
+  env.ELIZA_ACTIVE_API_RUNTIME_MODE = effectiveMode;
+  return activeConfig;
 }
 
 /**
@@ -4035,7 +4048,10 @@ export async function startEliza(
       }
     }
   }
-  applyActiveHostRuntimeMode(config);
+  const persistedConfig = config;
+  config = applyActiveHostRuntimeMode(config);
+  const installRepairPersistenceConfig =
+    config === persistedConfig ? undefined : persistedConfig;
 
   // 1a. Local / sandbox character override — must run before first-run setup
   //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
@@ -4518,6 +4534,7 @@ export async function startEliza(
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
     forceIncludePluginNames: initialForceIncludePluginNames,
+    installRepairPersistenceConfig,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
   // #10203: exercise a fault right after the blocking plugin set resolves.
@@ -5663,6 +5680,7 @@ export async function startEliza(
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",
+      installRepairPersistenceConfig,
     });
     bootTimer.lap("deferred:resolve-plugins-import");
     return deferredResolvedPlugins;

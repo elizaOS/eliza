@@ -829,7 +829,7 @@ describe("canonical route to runtime provider identity", () => {
     expect(process.env.CEREBRAS_API_KEY).toBe("launch-key");
   });
 
-  it("uses an in-memory local topology when the desktop host owns a fallback launch", () => {
+  it("uses an ephemeral local topology when the desktop host owns a fallback launch", () => {
     process.env.CEREBRAS_API_KEY = "resolved-cerebras-key";
     const config = {
       deploymentTarget: {
@@ -842,12 +842,40 @@ describe("canonical route to runtime provider identity", () => {
       },
     } as ElizaConfig;
 
-    applyActiveHostRuntimeMode(config, {
+    const activeConfig = applyActiveHostRuntimeMode(config, {
       ELIZA_ACTIVE_API_RUNTIME_MODE: "local",
     });
 
-    expect(config.deploymentTarget).toEqual({ runtime: "local" });
-    expect(collectPluginNames(config).has("@elizaos/plugin-openai")).toBe(true);
+    expect(activeConfig).not.toBe(config);
+    expect(activeConfig.deploymentTarget).toEqual({ runtime: "local" });
+    expect(config.deploymentTarget).toEqual({
+      runtime: "remote",
+      provider: "remote",
+      remoteApiBase: "http://127.0.0.1:2250",
+    });
+    expect(collectPluginNames(activeConfig).has("@elizaos/plugin-openai")).toBe(
+      true,
+    );
+  });
+
+  it("keeps explicit local-only intent in both the active clone and process signal", () => {
+    const env = { ELIZA_ACTIVE_API_RUNTIME_MODE: "local" };
+    const config = {
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "http://127.0.0.1:2250",
+      },
+      cloud: { enabled: false },
+    } as ElizaConfig;
+
+    const activeConfig = applyActiveHostRuntimeMode(config, env);
+
+    expect(activeConfig).not.toBe(config);
+    expect(activeConfig.deploymentTarget).toEqual({ runtime: "local" });
+    expect(activeConfig.cloud?.enabled).toBe(false);
+    expect(config.deploymentTarget?.runtime).toBe("remote");
+    expect(env.ELIZA_ACTIVE_API_RUNTIME_MODE).toBe("local-only");
   });
 });
 

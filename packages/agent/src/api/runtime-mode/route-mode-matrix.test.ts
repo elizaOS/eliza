@@ -44,6 +44,44 @@ describe("resolveRuntimeMode", () => {
     expect(snap.remoteApiBase).toBeNull();
   });
 
+  test("host-owned fallback preserves an explicit persisted local-only boundary", () => {
+    const snap = resolveRuntimeMode(
+      {
+        deploymentTarget: {
+          runtime: "remote",
+          provider: "remote",
+          remoteApiBase: "http://127.0.0.1:2250",
+        },
+        cloud: { enabled: false },
+      },
+      "local",
+    );
+
+    expect(snap.mode).toBe("local-only");
+    expect(
+      isRouteVisible({
+        pathname: "/api/cloud/status",
+        method: "GET",
+        mode: snap.mode,
+      }),
+    ).toBe(false);
+    const cloudTtsRule = findRegisteredRouteModeRule({
+      runtime: {
+        routes: [
+          {
+            type: "POST",
+            path: "/api/tts/cloud",
+            rawPath: true,
+            modes: ["local", "cloud", "remote"],
+          },
+        ],
+      },
+      pathname: "/api/tts/cloud",
+      method: "POST",
+    });
+    expect(cloudTtsRule?.modes.includes(snap.mode)).toBe(false);
+  });
+
   test("local-only when cloud.enabled === false on a local target", () => {
     const snap = resolveRuntimeMode({
       deploymentTarget: { runtime: "local" },
