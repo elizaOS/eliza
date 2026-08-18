@@ -19,6 +19,10 @@ import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
+import {
+  consumeNotificationCenterOpenRequest,
+  subscribeNotificationCenterOpenRequests,
+} from "./notification-center-open-request";
 
 // A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
 // throughout so slow paints and screenshot tooling never expose unreadable
@@ -219,9 +223,24 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   const wasAppsDisplacedRef = useRef(false);
   const [notificationShadeExpanded, setNotificationShadeExpanded] =
     useState(false);
+  const [notificationCenterOpenRequestId, setNotificationCenterOpenRequestId] =
+    useState<number | null>(null);
   const { notifications } = useNotifications();
   const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
   appsDisplacedRef.current = appsDisplaced;
+
+  useLayoutEffect(() => {
+    // Subscribe before consuming so a request racing this mount is either
+    // delivered live or retained, never lost between those two states.
+    const unsubscribe = subscribeNotificationCenterOpenRequests(
+      setNotificationCenterOpenRequestId,
+    );
+    const retainedRequestId = consumeNotificationCenterOpenRequest();
+    if (retainedRequestId !== null) {
+      setNotificationCenterOpenRequestId(retainedRequestId);
+    }
+    return unsubscribe;
+  }, []);
 
   // Remember the latest launcher control independently of the shade gesture.
   // A notification can arrive asynchronously while an expanded empty shade
@@ -352,6 +371,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             emptyGestureTargetRef={homeScreenRef}
             shadeLayoutTargetRef={homeContentColumnRef}
             onShadeOccupancyChange={handleShadeExpandedChange}
+            openRequestId={notificationCenterOpenRequestId}
           />
         </div>
 
