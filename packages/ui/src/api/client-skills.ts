@@ -85,8 +85,10 @@ export interface TelegramAccountSetupStatus {
 
 declare module "./client-base" {
   interface ElizaClient {
-    getSkills(): Promise<{ skills: SkillInfo[] }>;
-    refreshSkills(): Promise<{ ok: boolean; skills: SkillInfo[] }>;
+    getSkills(timeoutMs?: number): Promise<{ skills: SkillInfo[] }>;
+    refreshSkills(
+      timeoutMs?: number,
+    ): Promise<{ ok: boolean; skills: SkillInfo[] }>;
     installSkillFromGitHub(githubUrl: string): Promise<{
       ok: boolean;
       message: string;
@@ -398,12 +400,27 @@ declare module "./client-base" {
 // Prototype augmentation
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getSkills = async function (this: ElizaClient) {
-  return this.fetch("/api/skills");
+/** Skills list GET — existing 10s REST budget, independent hop. */
+export const SKILLS_LIST_FETCH_TIMEOUT_MS = 10_000;
+/** Skills refresh POST — existing 10s REST budget, independent hop. */
+export const SKILLS_REFRESH_FETCH_TIMEOUT_MS = 10_000;
+
+ElizaClient.prototype.getSkills = async function (
+  this: ElizaClient,
+  timeoutMs: number = SKILLS_LIST_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/skills", undefined, { timeoutMs });
 };
 
-ElizaClient.prototype.refreshSkills = async function (this: ElizaClient) {
-  return this.fetch("/api/skills/refresh", { method: "POST" });
+ElizaClient.prototype.refreshSkills = async function (
+  this: ElizaClient,
+  timeoutMs: number = SKILLS_REFRESH_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch(
+    "/api/skills/refresh",
+    { method: "POST" },
+    { timeoutMs },
+  );
 };
 
 ElizaClient.prototype.installSkillFromGitHub = async function (
