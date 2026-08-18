@@ -30,6 +30,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
   ServiceType,
   type UUID,
@@ -121,6 +122,28 @@ export function telegramFileIdFromRef(url: string | undefined): string | null {
   if (!url?.startsWith(TELEGRAM_FILE_REF_PREFIX)) return null;
   const fileId = url.slice(TELEGRAM_FILE_REF_PREFIX.length);
   return fileId.length > 0 ? fileId : null;
+}
+
+/**
+ * `resolveAttachmentBytes` for a token-bearing Bot API file URL. Core's
+ * `MediaFetchError` messages embed the fetched URL, which for Telegram is the
+ * `getFileLink` URL carrying the bot token — rethrow with only the failure
+ * code so a failed download can never write the credential to a log sink.
+ */
+async function resolveTelegramFileBytes(
+  url: string,
+): Promise<ResolvedAttachmentBytes> {
+  try {
+    return await resolveAttachmentBytes(url);
+  } catch (error) {
+    // error-policy:J2 preserve the failure class/code, drop the token-bearing
+    // URL from the message and cause before it reaches connector log sinks.
+    const code =
+      error instanceof Error && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "unknown";
+    throw new Error(`Telegram file download failed (${code})`);
+  }
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -441,7 +464,7 @@ export class MessageManager {
     fileId: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     const fileLink = await this.bot.telegram.getFileLink(fileId);
-    return resolveAttachmentBytes(fileLink.toString());
+    return resolveTelegramFileBytes(fileLink.toString());
   }
 
   /**
@@ -616,7 +639,7 @@ export class MessageManager {
       // SSRF-guarded + byte-capped connector fetch (repo media invariant) —
       // the file URL comes from the (possibly self-hosted) Bot API, never
       // fetch it raw and unbounded.
-      const { buffer: pdfBuffer } = await resolveAttachmentBytes(documentUrl);
+      const { buffer: pdfBuffer } = await resolveTelegramFileBytes(documentUrl);
       const text = await pdfService.convertPdfToText(pdfBuffer);
 
       logger.debug(
@@ -665,7 +688,8 @@ export class MessageManager {
     documentUrl: string,
   ): Promise<DocumentProcessingResult> {
     try {
-      const { buffer: textBuffer } = await resolveAttachmentBytes(documentUrl);
+      const { buffer: textBuffer } =
+        await resolveTelegramFileBytes(documentUrl);
       const text = textBuffer.toString("utf8");
 
       logger.debug(

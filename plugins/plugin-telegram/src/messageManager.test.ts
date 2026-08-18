@@ -9,7 +9,7 @@
  * carry `telegram-file:<file_id>`, the token-bearing Bot API URL stays inside
  * the fetch path, and model handlers receive bytes, never the URL.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
 
@@ -730,6 +730,39 @@ describe("MessageManager telegram-file capability references", () => {
     // failed enrichment must not fabricate one.
     expect(memory.content.attachments[0].text).toBe("");
     expect(JSON.stringify(memory)).not.toContain("SECRET");
+  });
+
+  it("keeps the token-bearing file URL out of failure logs", async () => {
+    // Core's MediaFetchError embeds the fetched URL in its message; for a
+    // Bot API file URL that message carries the bot token, so the connector
+    // rethrows a sanitized failure before any log sink sees it.
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          "Failed to fetch media from https://api.telegram.org/file/bot123:SECRET/voice/v1.ogg: HTTP 404",
+        ),
+        { name: "MediaFetchError", code: "http_error" },
+      ),
+    );
+    const warnSpy = vi
+      .spyOn(logger, "warn")
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    try {
+      const { manager, handleMessage } = replyPathHarness("unused");
+
+      await manager.handleMessage(voiceCtx);
+
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const logCalls = [...warnSpy.mock.calls, ...errorSpy.mock.calls];
+      expect(logCalls.length).toBeGreaterThan(0);
+      expect(JSON.stringify(logCalls)).not.toContain("SECRET");
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("re-sends a stored reference outbound by bare file_id", async () => {
