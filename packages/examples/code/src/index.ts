@@ -1,6 +1,18 @@
 #!/usr/bin/env node
+/**
+ * Boots the interactive and one-shot eliza-code entrypoints after capturing
+ * the host executable-search baseline needed by shell-backed coding tools.
+ */
+
 // Suppress elizaOS logs before any imports
 process.env.LOG_LEVEL = "fatal";
+
+// FIRST import: capture the executable-search authority before any runtime
+// module (or loadEnv) can mutate process.env — same contract as the acp
+// entry. Without it the one-shot/TUI child resolves git/rg/bun against an
+// empty baseline and every SHELL dispatch dies "not available in PATH"
+// (live 2026-08-18: repo tasks completed with no commits).
+import "./host-baseline.js";
 
 import type { AgentRuntime } from "@elizaos/core";
 import { main as cliMain } from "./cli.js";
