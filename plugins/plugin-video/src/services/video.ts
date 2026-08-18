@@ -240,13 +240,12 @@ export class VideoService extends IVideoService {
       const downloadOptions: Record<string, string | boolean> = {
         verbose: true,
         output: outputFile,
-        writeInfoJson: true,
+        writeInfoJson: options?.writeInfoJson ?? true,
       };
 
       if (options?.format) {
         downloadOptions.format = options.format;
-      }
-      if (options?.quality) {
+      } else if (options?.quality) {
         downloadOptions.format = options.quality;
       }
       if (options?.audioOnly) {
@@ -255,6 +254,12 @@ export class VideoService extends IVideoService {
       }
       if (options?.videoOnly) {
         downloadOptions.format = "bestvideo[ext=mp4]/best[ext=mp4]/best";
+      }
+      if (options?.subtitles) {
+        downloadOptions.writeSubs = true;
+      }
+      if (options?.embedSubs) {
+        downloadOptions.embedSubs = true;
       }
 
       await this.binaries.runYtDlp(url, downloadOptions);
