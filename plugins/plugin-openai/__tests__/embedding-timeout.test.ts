@@ -48,7 +48,7 @@ function vector(): number[] {
 describe("OpenAI embedding request deadlines", () => {
   it("aborts a stalled embedding at the injected deadline", async () => {
     await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", stallUntilAborted(), 10),
+      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", stallUntilAborted(), 10)
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -57,7 +57,7 @@ describe("OpenAI embedding request deadlines", () => {
       new Response("quota exceeded", { status: 429, statusText: "Too Many Requests" });
 
     await expect(
-      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", fetchImpl, 1_000),
+      handleTextEmbeddingWithFetch(createRuntime(), "embed a bounded line", fetchImpl, 1_000)
     ).rejects.toThrow("quota exceeded");
   });
 
@@ -73,7 +73,7 @@ describe("OpenAI embedding request deadlines", () => {
       createRuntime(),
       "embed a bounded line",
       fetchImpl,
-      1_000,
+      1_000
     );
 
     expect(signals).toHaveLength(1);

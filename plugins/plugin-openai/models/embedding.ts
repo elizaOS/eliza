@@ -125,9 +125,7 @@ export async function handleTextEmbeddingWithFetch(
   const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
   const callerSignal = extractSignal(params);
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutSignal])
-    : timeoutSignal;
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 
   const text = extractText(params);
   if (text === null) {
