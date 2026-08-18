@@ -63,12 +63,32 @@ jobs:
           flatpak-builder --user --disable-rofiles-fuse --force-clean \
             --install --repo=repo \
             --mirror-screenshots-url=https://dl.flathub.org/media \
-            --compose-url-policy=full build-dir ai.elizaos.App.yml
+            build-dir ai.elizaos.App.yml
 
       - name: Lint repository
         working-directory: packages/app-core/packaging/flatpak
         run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
       - name: Exercise installed entrypoint
-        if: ${{ always() }}
-        run: flatpak run ai.elizaos.App --version
+        run: |
+          set -euo pipefail
+          flatpak run ai.elizaos.App --help
+          flatpak run --env=CI=1 --env=ELIZA_API_PORT=3000 \
+            ai.elizaos.App start >flatpak-start.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true; cat flatpak-start.log' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health >flatpak-health.json; then
+              break
+            fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "Installed Flatpak exited before becoming healthy" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:3000/api/health \
+            | tee flatpak-health.json \
+            | grep --fixed-strings '"ready":true'
+          curl --fail --silent http://127.0.0.1:3000/ \
+            | grep --ignore-case --extended-regexp '<title>[^<]*eliza'
