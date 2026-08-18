@@ -14,5 +14,17 @@
 export { formatError } from "@elizaos/core/client-public";
 
 export function formatErrorWithStack(err: unknown): string {
-  return err instanceof Error ? (err.stack ?? err.message) : String(err);
+  if (err instanceof Error) {
+    return err.stack?.trim() ? err.stack : err.message;
+  }
+  if (typeof err === "object" && err !== null) {
+    const record = err as { stack?: unknown; message?: unknown };
+    if (typeof record.stack === "string" && record.stack.trim()) {
+      return record.stack;
+    }
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message;
+    }
+  }
+  return typeof err === "string" ? err : String(err);
 }
