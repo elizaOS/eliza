@@ -8,6 +8,7 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
+import { truncateWellFormed } from "@elizaos/core";
 import {
   parseSlackArchivesUrl,
   type SlackChannel,
@@ -228,8 +229,11 @@ export function splitSlackText(
     }
 
     splitIndex = Math.min(splitIndex, maxChars);
-    messages.push(remaining.slice(0, splitIndex));
-    remaining = remaining.slice(splitIndex);
+    const chunkCandidate = truncateWellFormed(remaining, splitIndex);
+    const cutPoint =
+      chunkCandidate.length > 0 ? chunkCandidate.length : splitIndex;
+    messages.push(remaining.slice(0, cutPoint));
+    remaining = remaining.slice(cutPoint);
   }
 
   return messages;
@@ -281,8 +285,11 @@ export function chunkSlackText(
     // exactly on hardLimit yields breakPoint = hardLimit + 1 and the reserved
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
+    const chunkCandidate = truncateWellFormed(remaining, breakPoint);
+    const cutPoint =
+      chunkCandidate.length > 0 ? chunkCandidate.length : breakPoint;
 
-    let chunk = remaining.slice(0, breakPoint);
+    let chunk = remaining.slice(0, cutPoint);
 
     // Check if this chunk ends inside a code block — count fences in the
     // actual emitted chunk, not the max-size window, so a fence that sits
@@ -297,7 +304,7 @@ export function chunkSlackText(
 
     chunks.push(chunk);
 
-    remaining = remaining.slice(breakPoint);
+    remaining = remaining.slice(cutPoint);
 
     // If we were in a code block, reopen it
     if (inCodeBlock) {

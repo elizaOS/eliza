@@ -525,3 +525,25 @@ describe("parseSlackMessageLink", () => {
     ).toBeNull();
   });
 });
+
+describe("splitSlackText and chunkSlackText surrogate pair safety", () => {
+  it("keeps surrogate pairs intact in splitSlackText", () => {
+    const text = "aaaaa\u{1F98A}bbbbb";
+    const chunks = splitSlackText(text, 6);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(6);
+    }
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("keeps surrogate pairs intact in chunkSlackText", () => {
+    const text = "aaaaa\u{1F98A}bbbbb";
+    const chunks = chunkSlackText(text, 10);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+  });
+});
