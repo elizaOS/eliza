@@ -29,6 +29,8 @@ const ASSERTION_TTL_S = 3600;
 /** Refresh the access token slightly before it expires (60s skew). */
 const TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
 
+export const DEFAULT_FCM_FETCH_TIMEOUT_MS = 10_000;
+
 interface ServiceAccount {
   client_email: string;
   private_key: string;
@@ -178,6 +180,7 @@ export class FcmProvider implements PushProvider {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: params.toString(),
+      signal: AbortSignal.timeout(DEFAULT_FCM_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(
@@ -211,6 +214,7 @@ export class FcmProvider implements PushProvider {
         "content-type": "application/json",
       },
       body: this.buildMessageBody(token, message),
+      signal: AbortSignal.timeout(DEFAULT_FCM_FETCH_TIMEOUT_MS),
     });
     if (res.ok) return;
 
@@ -238,7 +242,13 @@ async function readFcmErrorCode(res: Response): Promise<string | undefined> {
   let parsed: unknown;
   try {
     parsed = await res.json();
-  } catch {
+  } catch (err) {
+    // error-policy:J3 untrusted FCM error body may be malformed or truncated — degrade to undefined code, preserve timeout/abort
+    if (
+      err instanceof DOMException &&
+      (err.name === "TimeoutError" || err.name === "AbortError")
+    )
+      throw err;
     return undefined;
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
