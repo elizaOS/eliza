@@ -3,6 +3,11 @@
  * sliding window and feature-gates group/image messages before handing each
  * message to the `onMessage` callback. Sits between `callback-server` (which
  * normalizes proxy payloads) and the channel's dispatch into the runtime.
+ *
+ * The dedup cache is a hard-bounded LRU-by-insertion of at most
+ * DEDUP_MAX_ENTRIES ids: since `Bot` is a long-lived per-account object on the
+ * hot inbound path, capacity eviction (not just window expiry) must hold even
+ * when more than DEDUP_MAX_ENTRIES distinct ids arrive inside the window.
  */
 
 import { hasCommittedWechatSideEffect } from "./delivery-error";
@@ -101,9 +106,21 @@ export class Bot {
       return true;
     }
 
-    // Evict if at capacity
+    // Evict if at capacity. First drop entries older than the dedup window;
+    // that alone is insufficient when more than DEDUP_MAX_ENTRIES distinct ids
+    // arrive inside the window (a busy account or a flood), so afterward
+    // deterministically evict the oldest entries until the map is back under
+    // the cap. `Map` preserves insertion order, so `keys()` yields oldest-first
+    // and the most recent ids — the ones dedup actually protects — are kept.
     if (this.seen.size >= DEDUP_MAX_ENTRIES) {
       this.cleanup();
+      while (this.seen.size >= DEDUP_MAX_ENTRIES) {
+        const oldest = this.seen.keys().next();
+        if (oldest.done) {
+          break;
+        }
+        this.seen.delete(oldest.value);
+      }
     }
 
     this.seen.set(messageId, now);
