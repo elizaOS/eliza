@@ -801,12 +801,10 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
-	// Coding/repo-shaped invented names route to the TASKS coding umbrella —
-	// both the explicit spellings stage-1 emits live (tj-79876bf0f950e8) and
-	// the heuristic git-surface family, which must win before the view
-	// heuristic (CODE_PR_CREATE's CREATE token otherwise reads as a generated
-	// view capability and repo work misroutes to VIEWS).
-	it("routes coding candidates to TASKS ahead of the view heuristic", () => {
+	// Observed coding/repo inventions route to the TASKS coding umbrella. Keep
+	// this mapping explicit: generic CODE, PR, COMMIT, and BRANCH tokens are
+	// ambiguous and must not admit the coding surface on their own.
+	it("routes observed coding candidates to TASKS without broad token guessing", () => {
 		for (const candidate of [
 			"CODE_EDIT",
 			"CODE_PR_CREATE",
@@ -820,10 +818,17 @@ describe("action catalogue and retrieval", () => {
 		]) {
 			expect(parentAliasesForCandidateAction(candidate)).toEqual(["TASKS"]);
 		}
-		// QR guard: scan/generate-a-code names are not repo work.
-		expect(parentAliasesForCandidateAction("SCAN_QR_CODE")).not.toEqual([
-			"TASKS",
-		]);
+		for (const unrelatedCandidate of [
+			"SCAN_QR_CODE",
+			"READ_ERROR_CODE",
+			"BANK_BRANCH",
+			"PUBLIC_RELATIONS_PR",
+			"COMMITMENT_STATUS",
+		]) {
+			expect(parentAliasesForCandidateAction(unrelatedCandidate)).not.toContain(
+				"TASKS",
+			);
+		}
 	});
 
 	// Habit/reminder-shaped invented names must hint the owner-life umbrella AND
