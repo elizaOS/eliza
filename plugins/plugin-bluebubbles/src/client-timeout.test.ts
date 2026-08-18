@@ -67,10 +67,13 @@ describe("BlueBubbles client request deadlines", () => {
 		expect(payload.data.guid).toBe("msg-1");
 	});
 
-	it("preserves a caller-supplied cancellation signal", async () => {
+	it("composes a caller-supplied signal with the deadline instead of replacing it", async () => {
 		const controller = new AbortController();
 		const fetchImpl: typeof fetch = async (_input, init) => {
-			expect(init?.signal).toBe(controller.signal);
+			// The forwarded signal is the composed one, not the caller's raw
+			// signal — asserting identity here previously pinned the bypass in.
+			expect(init?.signal).toBeDefined();
+			expect(init?.signal?.aborted).toBe(false);
 			return Response.json({ data: { guid: "caller" } });
 		};
 
@@ -78,8 +81,23 @@ describe("BlueBubbles client request deadlines", () => {
 			REQUEST_URL,
 			{ signal: controller.signal },
 			fetchImpl,
-			10,
+			1_000,
 		);
+	});
+
+	it("keeps the deadline armed while a caller signal is present", async () => {
+		// The regression #21881 closes: a never-firing caller signal must not
+		// discard timeoutMs and leave the fetch unbounded.
+		const controller = new AbortController();
+
+		await expect(
+			blueBubblesRequestWithFetch(
+				REQUEST_URL,
+				{ signal: controller.signal },
+				stallUntilAborted(),
+				10,
+			),
+		).rejects.toMatchObject({ name: "TimeoutError" });
 	});
 
 	it("honors caller abort without waiting for the request deadline", async () => {

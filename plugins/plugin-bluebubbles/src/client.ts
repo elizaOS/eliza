@@ -36,7 +36,12 @@ export async function blueBubblesRequestWithFetch<T>(
 	fetchImpl: typeof fetch = globalThis.fetch,
 	timeoutMs: number = BLUEBUBBLES_REQUEST_TIMEOUT_MS,
 ): Promise<T> {
-	const signal = options.signal ?? AbortSignal.timeout(timeoutMs);
+	// The deadline always applies: a caller-supplied signal composes with the
+	// timeout instead of replacing it, so cancellation-aware callers cannot
+	// accidentally opt back into the unbounded-fetch hang this bound removed.
+	const signal = options.signal
+		? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)])
+		: AbortSignal.timeout(timeoutMs);
 	const response = (await fetchImpl(urlWithPassword, {
 		...options,
 		headers: {
