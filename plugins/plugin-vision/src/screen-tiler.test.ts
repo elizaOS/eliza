@@ -139,6 +139,80 @@ describe("tileScreenshot — ultra-wide 5K case", () => {
   });
 });
 
+describe("tileScreenshot — full source coverage (regression #22125)", () => {
+  // A floored inter-tile stride advanced intermediate tiles too slowly while
+  // the anchored last tile jumped to `width - tileWidth`, leaving a strip of
+  // source columns/rows present in no tile. These sizes each opened such a gap
+  // (e.g. width 5119 dropped source column 3838 entirely). Every source
+  // column and row must land inside at least one tile's cropped rect.
+  const cases: Array<{ width: number; height: number }> = [
+    { width: 5119, height: 1440 },
+    { width: 6399, height: 1440 },
+    { width: 7679, height: 2160 },
+    { width: 5120, height: 2160 },
+  ];
+  for (const { width, height } of cases) {
+    it(`covers every source column and row for ${width}x${height}`, async () => {
+      const png = await makePng(width, height);
+      const tiles = await tileScreenshot(
+        { displayId: "cov", width, height, pngBytes: png },
+        { maxEdge: 1280, overlapFraction: 0.12 },
+      );
+
+      const colCovered = new Uint8Array(width);
+      const rowCovered = new Uint8Array(height);
+      for (const t of tiles) {
+        // No tile may extend past the source bounds.
+        expect(t.sourceX).toBeGreaterThanOrEqual(0);
+        expect(t.sourceY).toBeGreaterThanOrEqual(0);
+        expect(t.sourceX + t.sourceW).toBeLessThanOrEqual(width);
+        expect(t.sourceY + t.sourceH).toBeLessThanOrEqual(height);
+        for (let x = t.sourceX; x < t.sourceX + t.sourceW; x += 1) {
+          colCovered[x] = 1;
+        }
+        for (let y = t.sourceY; y < t.sourceY + t.sourceH; y += 1) {
+          rowCovered[y] = 1;
+        }
+      }
+
+      const firstGapCol = [...colCovered].indexOf(0);
+      const firstGapRow = [...rowCovered].indexOf(0);
+      expect(
+        firstGapCol,
+        `source column ${firstGapCol} covered by no tile for ${width}x${height}`,
+      ).toBe(-1);
+      expect(
+        firstGapRow,
+        `source row ${firstGapRow} covered by no tile for ${width}x${height}`,
+      ).toBe(-1);
+    });
+  }
+
+  it("never leaves a gap between horizontally adjacent tiles", async () => {
+    // At width 5119 four 1280px-max tiles span 5120px of capacity, so only 1px
+    // of total slack is spread across three seams: positive overlap at every
+    // seam is impossible without exceeding maxEdge. The guarantee the ceil
+    // stride restores is that neighbours are contiguous-or-overlapping
+    // (overlap >= 0), which is exactly "no source column falls between tiles".
+    const width = 5119;
+    const png = await makePng(width, 1440);
+    const tiles = await tileScreenshot(
+      { displayId: "cov", width, height: 1440, pngBytes: png },
+      { maxEdge: 1280, overlapFraction: 0.12 },
+    );
+    const row0 = tiles
+      .filter((t) => t.id.startsWith("tile-0-"))
+      .sort((a, b) => a.sourceX - b.sourceX);
+    expect(row0.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < row0.length; i += 1) {
+      const prev = expectPresent(row0[i - 1], `tile-0-${i - 1}`);
+      const cur = expectPresent(row0[i], `tile-0-${i}`);
+      const overlap = prev.sourceX + prev.sourceW - cur.sourceX;
+      expect(overlap).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 describe("tileScreenshot — overlap math", () => {
   it("adjacent tiles in the same row overlap by ~overlapFraction*tileW", async () => {
     const png = await makePng(2400, 1000);
