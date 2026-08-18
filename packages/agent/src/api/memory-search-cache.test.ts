@@ -5,7 +5,12 @@
  * bounded refresh failure, runtime isolation, rebuild races, and memory limits.
  */
 
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  InMemoryDatabaseAdapter,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
 import {
@@ -58,6 +63,41 @@ function makeRuntime(store: Store) {
     reportError: vi.fn(() => undefined),
   } as unknown as AgentRuntime;
   return { runtime, getMemories, countMemories };
+}
+
+async function makeAdapterRuntime() {
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+  const runtime = {
+    agentId: AGENT_ID,
+    character: { name: "Eliza" },
+    ensureConnection: vi.fn(async () => undefined),
+    getMemories: vi.fn(
+      async (params: Parameters<InMemoryDatabaseAdapter["getMemories"]>[0]) =>
+        adapter.getMemories(params),
+    ),
+    countMemories: vi.fn(
+      async (params: { roomId?: UUID; tableName?: string }) =>
+        adapter.countMemories({
+          roomIds: params.roomId ? [params.roomId] : undefined,
+          tableName: params.tableName,
+        }),
+    ),
+    getMemoryById: vi.fn(
+      async (id: UUID) => (await adapter.getMemoriesByIds([id]))[0] ?? null,
+    ),
+    createMemory: vi.fn(
+      async (memory: Memory, tableName: string) =>
+        (await adapter.createMemories([{ memory, tableName }]))[0],
+    ),
+    deleteMemory: vi.fn(async (id: UUID) => adapter.deleteMemories([id])),
+    updateMemory: vi.fn(async (patch: Partial<Memory> & { id: UUID }) =>
+      adapter.updateMemories([patch]),
+    ),
+    useModel: vi.fn(async () => [0.1, 0.2, 0.3]),
+    reportError: vi.fn(() => undefined),
+  } as unknown as AgentRuntime;
+  return { runtime, adapter };
 }
 
 function contextFor(args: {
@@ -115,6 +155,38 @@ afterEach(() => {
 });
 
 describe("GET /api/memory/search corpus cache", () => {
+  test("finds remember-created rows through the real adapter", async () => {
+    const { runtime } = await makeAdapterRuntime();
+    for (const text of [
+      "quartz deadline moved to Friday",
+      "voice pipeline ships tonight",
+      "morning workout at the gym",
+    ]) {
+      const response: { value?: unknown } = {};
+      await handleMemoryRoutes(
+        contextFor({
+          runtime,
+          method: "POST",
+          path: "/api/memory/remember",
+          body: { text },
+          response,
+        }),
+      );
+    }
+
+    const results = await search(runtime, "quartz");
+
+    expect(results).toEqual([
+      expect.objectContaining({ text: "quartz deadline moved to Friday" }),
+    ]);
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ agentId: expect.anything() }),
+    );
+    expect(runtime.countMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ agentId: expect.anything() }),
+    );
+  });
+
   test("warm search reuses the corpus (no rescan) and returns identical ordering", async () => {
     const store: Store = {
       rows: [

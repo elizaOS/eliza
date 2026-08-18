@@ -274,7 +274,6 @@ async function countRoomMessages(
   if (typeof runtime.countMemories !== "function") return null;
   try {
     return await runtime.countMemories({
-      agentId: runtime.agentId as UUID,
       roomId,
       tableName: "messages",
     });
@@ -330,7 +329,6 @@ async function buildMemorySearchCorpus(
   // snapshot can answer this request but is never published for later reuse.
   const countBefore = await countRoomMessages(runtime, roomId);
   const memories = await runtime.getMemories({
-    agentId: runtime.agentId as UUID,
     roomId,
     tableName: "messages",
     limit: MEMORY_SEARCH_SCAN_LIMIT,
