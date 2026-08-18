@@ -1657,8 +1657,8 @@ declare module "./client-base" {
       restored: true;
       requiresRestart: true;
     }>;
-    getSandboxPlatform(): Promise<SandboxPlatformStatus>;
-    getSandboxBrowser(): Promise<SandboxBrowserEndpoints>;
+    getSandboxPlatform(timeoutMs?: number): Promise<SandboxPlatformStatus>;
+    getSandboxBrowser(timeoutMs?: number): Promise<SandboxBrowserEndpoints>;
     getSandboxScreenshot(
       region?: SandboxScreenshotRegion,
     ): Promise<SandboxScreenshotPayload>;
@@ -3164,12 +3164,23 @@ ElizaClient.prototype.restoreLocalAgentBackup = async function (
   );
 };
 
-ElizaClient.prototype.getSandboxPlatform = async function (this: ElizaClient) {
-  return this.fetch("/api/sandbox/platform");
+/** Sandbox platform GET — existing 10s REST budget, independent hop. */
+export const SANDBOX_PLATFORM_FETCH_TIMEOUT_MS = 10_000;
+/** Sandbox browser GET — existing 10s REST budget, independent hop. */
+export const SANDBOX_BROWSER_FETCH_TIMEOUT_MS = 10_000;
+
+ElizaClient.prototype.getSandboxPlatform = async function (
+  this: ElizaClient,
+  timeoutMs: number = SANDBOX_PLATFORM_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/sandbox/platform", undefined, { timeoutMs });
 };
 
-ElizaClient.prototype.getSandboxBrowser = async function (this: ElizaClient) {
-  return this.fetch("/api/sandbox/browser");
+ElizaClient.prototype.getSandboxBrowser = async function (
+  this: ElizaClient,
+  timeoutMs: number = SANDBOX_BROWSER_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/sandbox/browser", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.getSandboxScreenshot = async function (
