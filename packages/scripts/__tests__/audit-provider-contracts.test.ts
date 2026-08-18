@@ -21,7 +21,7 @@ describe("provider contract inventory audit", () => {
     expect(result.ids).toEqual(["eliza-cloud-api", "hetzner-cloud"]);
   });
 
-  test("rejects inventory shrinkage below the checked-in baseline", async () => {
+  test("rejects removal of a protected integration without trusting inventory metadata", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "provider-contract-audit-"));
     temporaryRoots.push(root);
     const inventoryDirectory = path.join(root, "packages/cloud/test-mocks");
@@ -30,21 +30,11 @@ describe("provider contract inventory audit", () => {
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
       JSON.stringify({
         version: 1,
-        baselineCount: 2,
-        integrations: [
-          {
-            id: "only-one",
-            package: "packages/only-one",
-            suite: "packages/only-one/contract.test.ts",
-            fixtureDirectory: "fixtures",
-            scenarios: ["success"],
-            liveLaneRequiredInForks: false,
-          },
-        ],
+        integrations: [],
       }),
     );
     await expect(auditProviderContracts(root)).rejects.toThrow(
-      "fell below its 2 integration baseline",
+      "may not remove protected integration eliza-cloud-api",
     );
   });
 
@@ -56,7 +46,7 @@ describe("provider contract inventory audit", () => {
     await mkdir(inventoryDirectory, { recursive: true });
     await mkdir(fixtureDirectory, { recursive: true });
     const integrations = [];
-    for (const id of ["one", "two", "missing"]) {
+    for (const id of ["eliza-cloud-api", "hetzner-cloud", "missing"]) {
       const packageDirectory = path.join(root, "packages", id);
       await mkdir(packageDirectory, { recursive: true });
       await writeFile(
@@ -74,20 +64,99 @@ describe("provider contract inventory audit", () => {
       if (id !== "missing") {
         integrations.push({
           id,
+          adapterName: id,
           package: `packages/${id}`,
           suite: `packages/${id}/contract.test.ts`,
           fixtureDirectory: "fixtures",
-          scenarios: ["success"],
+          capabilities: ["http-read"],
           liveLaneRequiredInForks: false,
         });
       }
     }
     await writeFile(
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
-      JSON.stringify({ version: 1, baselineCount: 2, integrations }),
+      JSON.stringify({ version: 1, integrations }),
     );
     await expect(auditProviderContracts(root)).rejects.toThrow(
       "packages/missing promotes missing without a matching provider contract inventory entry",
+    );
+  });
+
+  test("rejects a capability without a matching executed observation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "provider-contract-audit-"));
+    temporaryRoots.push(root);
+    const inventoryDirectory = path.join(root, "packages/cloud/test-mocks");
+    const fixtureDirectory = path.join(root, "fixtures");
+    await mkdir(inventoryDirectory, { recursive: true });
+    await mkdir(fixtureDirectory, { recursive: true });
+    const alwaysRequired = [
+      "success",
+      "designed-empty",
+      "invalid-input",
+      "rate-limit-retry-metadata",
+      "malformed-json",
+      "schema-drift",
+      "timeout",
+      "connection-reset",
+      "provider-4xx",
+      "provider-5xx",
+      "opaque-connection-id",
+      "secret-redaction",
+      "read-policy",
+    ];
+    const integrations = [];
+    for (const id of ["eliza-cloud-api", "hetzner-cloud"]) {
+      const packageDirectory = path.join(root, "packages", id);
+      await mkdir(packageDirectory, { recursive: true });
+      await writeFile(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({
+          elizaos: {
+            managedIntegration: { promoted: true, contractId: id },
+          },
+        }),
+      );
+      const adapterName = `${id}-adapter`;
+      const capabilities =
+        id === "eliza-cloud-api" ? ["http-read", "http-write"] : ["http-read"];
+      const observations = alwaysRequired;
+      await writeFile(
+        path.join(packageDirectory, "contract.test.ts"),
+        `/** Emits a deterministic audit fixture report from an executed Bun test. */
+import { test } from "bun:test";
+import { appendFileSync } from "node:fs";
+test("emits observations", () => {
+  appendFileSync(process.env.ELIZA_PROVIDER_CONTRACT_REPORT_PATH, JSON.stringify({
+    version: 1,
+    nonce: process.env.ELIZA_PROVIDER_CONTRACT_REPORT_NONCE,
+    adapterName: ${JSON.stringify(adapterName)},
+    capabilities: ${JSON.stringify(capabilities)},
+    requiredScenarios: ${JSON.stringify(
+      id === "eliza-cloud-api"
+        ? [...alwaysRequired, "write-policy-receipt"]
+        : alwaysRequired,
+    )},
+    executedObservations: ${JSON.stringify(observations)}
+  }) + "\\n");
+});
+`,
+      );
+      integrations.push({
+        id,
+        adapterName,
+        package: `packages/${id}`,
+        suite: `packages/${id}/contract.test.ts`,
+        fixtureDirectory: "fixtures",
+        capabilities,
+        liveLaneRequiredInForks: false,
+      });
+    }
+    await writeFile(
+      path.join(inventoryDirectory, "provider-contract-inventory.json"),
+      JSON.stringify({ version: 1, integrations }),
+    );
+    await expect(auditProviderContracts(root)).rejects.toThrow(
+      "eliza-cloud-api did not execute required capability observations: write-policy-receipt",
     );
   });
 });

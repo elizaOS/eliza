@@ -1,7 +1,7 @@
 /** Runs the real Cloud API HTTP adapter against deterministic protocol fixtures. */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { CloudApiClient } from "../../../sdk/src/http.js";
+import { CloudApiClient } from "@elizaos/cloud-sdk";
 import {
   type RunningFakeProvider,
   runProviderAdapterConformance,
@@ -46,6 +46,12 @@ beforeAll(async () => {
           body: { error: { code: "rate_limited", message: "slow down" } },
         },
       },
+      {
+        id: "write",
+        method: "POST",
+        path: "/api/v1/writes",
+        response: { status: 201, body: { id: "write-1" } },
+      },
     ],
   });
 });
@@ -60,21 +66,11 @@ describe("CloudApiClient provider contract", () => {
     const report = await runProviderAdapterConformance({
       adapterName: "CloudApiClient",
       capabilities: ["http-read", "http-write"],
-      requiredScenarios: [
-        "success",
-        "designed-empty",
-        "invalid-input",
-        "rate-limit-retry-metadata",
-        "malformed-json",
-        "schema-drift",
-        "timeout",
-        "provider-4xx",
-        "provider-5xx",
-        "secret-redaction",
-      ],
       scenarios: {
         success: async () => {
-          expect(await client.get("/models")).toEqual({
+          expect(
+            await client.get<{ models: Array<{ id: string }> }>("/models"),
+          ).toEqual({
             models: [{ id: "model-1" }],
           });
           return {
@@ -84,7 +80,9 @@ describe("CloudApiClient provider contract", () => {
           };
         },
         "designed-empty": async () => {
-          expect(await client.get("/empty")).toEqual({ items: [] });
+          expect(await client.get<{ items: unknown[] }>("/empty")).toEqual({
+            items: [],
+          });
           return {
             scenario: "designed-empty",
             status: "passed",
@@ -130,7 +128,12 @@ describe("CloudApiClient provider contract", () => {
             type: "schema-drift",
             body: { models: [], upstream_revision: 2 },
           });
-          expect(await client.get("/models")).toEqual({
+          expect(
+            await client.get<{
+              models: unknown[];
+              upstream_revision: number;
+            }>("/models"),
+          ).toEqual({
             models: [],
             upstream_revision: 2,
           });
@@ -138,6 +141,29 @@ describe("CloudApiClient provider contract", () => {
             scenario: "schema-drift",
             status: "passed",
             detail: "transport preserves schema for the owning DTO validator",
+          };
+        },
+        "connection-reset": async () => {
+          const resetProvider = await startFakeProvider({
+            fixtures: [
+              {
+                id: "reset-models",
+                method: "GET",
+                path: "/api/v1/models",
+                response: { status: 200, body: { models: [] } },
+              },
+            ],
+          });
+          const resetClient = new CloudApiClient(
+            `${resetProvider.url}/api/v1`,
+            "reset-secret",
+          );
+          await resetProvider.resetConnections();
+          await expect(resetClient.get("/models")).rejects.toThrow();
+          return {
+            scenario: "connection-reset",
+            status: "passed",
+            detail: "stopped loopback upstream produced a real network failure",
           };
         },
         timeout: async () => {
@@ -196,8 +222,45 @@ describe("CloudApiClient provider contract", () => {
             diagnostic: provider.requests.at(-1),
           };
         },
+        "opaque-connection-id": async () => {
+          const connectionId = provider.createConnectionId();
+          return {
+            scenario: "opaque-connection-id",
+            status: "passed",
+            detail:
+              "provider connection exposed only an opaque capability handle",
+            connectionId,
+          };
+        },
+        "read-policy": async () => {
+          await client.get("/models");
+          const receipt = provider.recordAction("list-models", "read", true);
+          expect(receipt).toMatchObject({
+            effect: "read",
+            outcome: "succeeded",
+          });
+          return {
+            scenario: "read-policy",
+            status: "passed",
+            detail: "real read completed under the provider read policy",
+          };
+        },
+        "write-policy-receipt": async () => {
+          expect(
+            await client.post<{ id: string }>("/writes", { value: 1 }),
+          ).toEqual({
+            id: "write-1",
+          });
+          const receipt = provider.recordAction("create-write", "write", true);
+          return {
+            scenario: "write-policy-receipt",
+            status: "passed",
+            detail: "real write completed and emitted an auditable receipt",
+            receiptId: receipt.id,
+          };
+        },
       },
     });
-    expect(report.observations).toHaveLength(10);
+    expect(report.observations).toHaveLength(14);
   });
 });

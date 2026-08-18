@@ -37,12 +37,18 @@ export type HetznerCloudErrorCode =
   | "server_error"
   | "transport_error";
 
+export interface HetznerRetryMetadata {
+  retryAfterSeconds?: number;
+  resetAtEpochSeconds?: number;
+}
+
 export class HetznerCloudError extends Error {
   constructor(
     public readonly code: HetznerCloudErrorCode,
     message: string,
     public readonly status?: number,
     public readonly cause?: unknown,
+    public readonly retry?: HetznerRetryMetadata,
   ) {
     super(message);
     this.name = "HetznerCloudError";
@@ -184,6 +190,12 @@ export class HetznerCloudClient implements ComputeProvider {
   async listServers(label?: Record<string, string>): Promise<HetznerServer[]> {
     const params = label ? `?label_selector=${encodeLabelSelector(label)}` : "";
     const data = await this.request<{ servers: HetznerServer[] }>("GET", `/servers${params}`);
+    if (!Array.isArray(data.servers)) {
+      throw new HetznerCloudError(
+        "server_error",
+        "Hetzner Cloud API list servers response is missing the servers array",
+      );
+    }
     return data.servers;
   }
 
@@ -445,6 +457,8 @@ export class HetznerCloudClient implements ComputeProvider {
         errorPayload?.message ??
           `Hetzner Cloud API ${method} ${path} failed with status ${response.status}`,
         response.status,
+        undefined,
+        code === "rate_limited" ? parseRetryMetadata(response.headers) : undefined,
       );
     }
 
@@ -471,6 +485,32 @@ function mapStatusToCode(status: number, apiCode?: string): HetznerCloudErrorCod
   if (status === 422 || status === 400) return "invalid_input";
   if (status === 429) return "rate_limited";
   return "server_error";
+}
+
+function parseRetryMetadata(headers: Headers): HetznerRetryMetadata {
+  const retryAfter = headers.get("retry-after");
+  const resetAt = headers.get("ratelimit-reset") ?? headers.get("x-ratelimit-reset");
+  const retryAfterSeconds = parseRetryAfterSeconds(retryAfter);
+  const resetAtEpochSeconds = parseNonNegativeNumber(resetAt);
+  return {
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+    ...(resetAtEpochSeconds === undefined ? {} : { resetAtEpochSeconds }),
+  };
+}
+
+function parseRetryAfterSeconds(value: string | null): number | undefined {
+  const seconds = parseNonNegativeNumber(value);
+  if (seconds !== undefined) return seconds;
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.max(0, Math.ceil((timestamp - Date.now()) / 1_000));
+}
+
+function parseNonNegativeNumber(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function encodeLabelSelector(labels: Record<string, string>): string {

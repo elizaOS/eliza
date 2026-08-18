@@ -1,44 +1,22 @@
 {
   "version": 1,
-  "baselineCount": 2,
   "integrations": [
     {
       "id": "eliza-cloud-api",
+      "adapterName": "CloudApiClient",
       "package": "packages/cloud/sdk",
       "suite": "packages/cloud/test-mocks/test/provider-contract/cloud-api-client.contract.test.ts",
       "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
       "capabilities": ["http-read", "http-write"],
-      "scenarios": [
-        "success",
-        "designed-empty",
-        "invalid-input",
-        "rate-limit-retry-metadata",
-        "malformed-json",
-        "schema-drift",
-        "timeout",
-        "provider-4xx",
-        "provider-5xx",
-        "secret-redaction"
-      ],
       "liveLaneRequiredInForks": false
     },
     {
       "id": "hetzner-cloud",
+      "adapterName": "HetznerCloudClient",
       "package": "packages/cloud/shared",
       "suite": "packages/cloud/test-mocks/test/provider-contract/hetzner-cloud-client.contract.test.ts",
       "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
       "capabilities": ["http-read", "http-write", "irreversible-write"],
-      "scenarios": [
-        "success",
-        "designed-empty",
-        "invalid-input",
-        "rate-limit-retry-metadata",
-        "malformed-json",
-        "timeout",
-        "provider-4xx",
-        "provider-5xx",
-        "secret-redaction"
-      ],
       "liveLaneRequiredInForks": false
     }
   ]

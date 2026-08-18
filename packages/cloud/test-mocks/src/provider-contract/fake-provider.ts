@@ -99,7 +99,7 @@ export async function startFakeProvider(
     requests.push({
       method: request.method,
       path: url.pathname,
-      query: Object.fromEntries(url.searchParams),
+      query: redactEntries(url.searchParams),
       headers: redactHeaders(request.headers),
       body: redactText(body),
     });
@@ -312,7 +312,7 @@ export function redactProviderDiagnostics(
   const secretSet = new Set(secrets.filter(Boolean));
   const visit = (candidate: unknown): unknown => {
     if (typeof candidate === "string") {
-      let redacted = candidate.replace(
+      let redacted = redactSensitiveAssignments(candidate).replace(
         /Bearer\s+[^\s,;]+/gi,
         "Bearer <redacted>",
       );
@@ -326,9 +326,7 @@ export function redactProviderDiagnostics(
       return Object.fromEntries(
         Object.entries(candidate).map(([key, item]) => [
           key,
-          /authorization|cookie|secret|token|api-key|apikey/i.test(key)
-            ? "<redacted>"
-            : visit(item),
+          isSensitiveKey(key) ? "<redacted>" : visit(item),
         ]),
       );
     }
@@ -394,7 +392,9 @@ async function applyFault(fault: ProviderProtocolFault): Promise<Response> {
     });
   }
   if (fault.type === "schema-drift") return json(fault.body);
-  if (fault.type === "status") return json(fault.body, fault.status);
+  if (fault.type === "status") {
+    return json(fault.body, fault.status, fault.headers);
+  }
   const exhaustive: never = fault;
   throw new Error(`Unknown provider fault: ${JSON.stringify(exhaustive)}`);
 }
@@ -411,14 +411,7 @@ function json(
 }
 
 function redactHeaders(headers: Headers): Record<string, string> {
-  return Object.fromEntries(
-    [...headers.entries()].map(([key, value]) => [
-      key,
-      /authorization|cookie|secret|token|api-key|apikey/i.test(key)
-        ? "<redacted>"
-        : value,
-    ]),
-  );
+  return redactEntries(headers);
 }
 
 function redactText(value: string | null): string | null {
@@ -430,10 +423,75 @@ function redactText(value: string | null): string | null {
     // error-policy:J3 Non-JSON request bodies continue through explicit
     // form/header patterns; they are never interpreted as safe structured data.
   }
-  return value
-    .replace(
-      /(access_token|refresh_token|client_secret)=([^&]+)/gi,
-      "$1=<redacted>",
-    )
-    .replace(/Bearer\s+[^\s,;]+/gi, "Bearer <redacted>");
+  const form = new URLSearchParams(value);
+  if ([...form.keys()].some(isSensitiveKey)) {
+    return new URLSearchParams(
+      [...form.entries()].map(([key, item]): [string, string] => [
+        key,
+        isSensitiveKey(key) ? "<redacted>" : item,
+      ]),
+    ).toString();
+  }
+  return redactSensitiveAssignments(value).replace(
+    /Bearer\s+[^\s,;]+/gi,
+    "Bearer <redacted>",
+  );
+}
+
+const SENSITIVE_KEY_SUFFIXES = [
+  "authorization",
+  "authorizationcode",
+  "codeverifier",
+  "cookie",
+  "credential",
+  "credentials",
+  "password",
+  "secret",
+  "token",
+  "apikey",
+] as const;
+
+const SENSITIVE_KEYS = new Set(["code", ...SENSITIVE_KEY_SUFFIXES]);
+
+function normalizeSensitiveKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = normalizeSensitiveKey(key);
+  return (
+    SENSITIVE_KEYS.has(normalized) ||
+    SENSITIVE_KEY_SUFFIXES.some((suffix) => normalized.endsWith(suffix))
+  );
+}
+
+function redactEntries(
+  entries: Iterable<readonly [string, string]>,
+): Record<string, string> {
+  return Object.fromEntries(
+    [...entries].map(([key, value]) => [
+      key,
+      isSensitiveKey(key) ? "<redacted>" : value,
+    ]),
+  );
+}
+
+function redactSensitiveAssignments(value: string): string {
+  return value.replace(
+    /(^|[?&;,\s{])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\2(\s*[:=]\s*)(?:(["'])(.*?)\5|([^&;,\s}]+))/g,
+    (
+      match,
+      prefix,
+      keyQuote,
+      key,
+      separator,
+      valueQuote,
+      _quotedValue,
+      _unquotedValue,
+    ) => {
+      if (!isSensitiveKey(key)) return match;
+      const quote = valueQuote ?? "";
+      return `${prefix}${keyQuote}${key}${keyQuote}${separator}${quote}<redacted>${quote}`;
+    },
+  );
 }

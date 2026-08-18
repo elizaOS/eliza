@@ -1,11 +1,55 @@
 /** Ratchets promoted managed integrations to deterministic provider contract suites. */
 
-import { readdir, readFile, stat } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const INVENTORY_PATH =
   "packages/cloud/test-mocks/provider-contract-inventory.json";
+const PROTECTED_INTEGRATION_IDS = ["eliza-cloud-api", "hetzner-cloud"];
+const REPORT_PATH_ENV = "ELIZA_PROVIDER_CONTRACT_REPORT_PATH";
+const REPORT_NONCE_ENV = "ELIZA_PROVIDER_CONTRACT_REPORT_NONCE";
+const BUN_EXECUTABLE = process.versions.bun ? process.execPath : "bun";
+const ALWAYS_REQUIRED = [
+  "success",
+  "designed-empty",
+  "invalid-input",
+  "rate-limit-retry-metadata",
+  "malformed-json",
+  "schema-drift",
+  "timeout",
+  "connection-reset",
+  "provider-4xx",
+  "provider-5xx",
+  "opaque-connection-id",
+  "secret-redaction",
+  "read-policy",
+];
+const CAPABILITY_SCENARIOS = {
+  oauth: [
+    "oauth-state-pkce",
+    "oauth-refresh-rotation",
+    "oauth-revoked-credential",
+    "oauth-expired-credential",
+  ],
+  "http-read": [],
+  "http-write": ["write-policy-receipt"],
+  "irreversible-write": ["irreversible-policy-receipt"],
+  pagination: ["pagination-cursors"],
+  "tenant-isolation": ["cross-tenant-denial"],
+  webhooks: [
+    "duplicate-webhook",
+    "out-of-order-webhook",
+    "webhook-idempotency",
+  ],
+};
+const KNOWN_SCENARIOS = new Set([
+  ...ALWAYS_REQUIRED,
+  ...Object.values(CAPABILITY_SCENARIOS).flat(),
+]);
 
 async function exists(target) {
   try {
@@ -45,15 +89,6 @@ export async function auditProviderContracts(root = process.cwd()) {
   if (inventory.version !== 1 || !Array.isArray(inventory.integrations)) {
     throw new Error("provider contract inventory must use schema version 1");
   }
-  if (
-    !Number.isInteger(inventory.baselineCount) ||
-    inventory.baselineCount < 2 ||
-    inventory.integrations.length < inventory.baselineCount
-  ) {
-    throw new Error(
-      `provider contract inventory fell below its ${inventory.baselineCount} integration baseline`,
-    );
-  }
 
   const ids = new Set();
   const packages = new Map();
@@ -64,15 +99,23 @@ export async function auditProviderContracts(root = process.cwd()) {
       );
     }
     ids.add(entry.id);
+    if (typeof entry.adapterName !== "string" || !entry.adapterName) {
+      throw new Error(`${entry.id} is missing adapterName`);
+    }
     if (entry.liveLaneRequiredInForks !== false) {
       throw new Error(
         `${entry.id} may not require a secret-bearing live lane in fork CI`,
       );
     }
-    if (!Array.isArray(entry.scenarios) || entry.scenarios.length === 0) {
-      throw new Error(
-        `${entry.id} must declare at least one contract scenario`,
-      );
+    if (!Array.isArray(entry.capabilities) || entry.capabilities.length === 0) {
+      throw new Error(`${entry.id} must declare at least one capability`);
+    }
+    for (const capability of entry.capabilities) {
+      if (!(capability in CAPABILITY_SCENARIOS)) {
+        throw new Error(
+          `${entry.id} declares unknown capability ${capability}`,
+        );
+      }
     }
     for (const field of ["package", "suite", "fixtureDirectory"]) {
       if (typeof entry[field] !== "string" || !entry[field]) {
@@ -85,22 +128,18 @@ export async function auditProviderContracts(root = process.cwd()) {
       }
     }
     const suite = await readFile(path.join(root, entry.suite), "utf8");
-    if (!suite.includes("runProviderAdapterConformance")) {
-      throw new Error(
-        `${entry.id} suite does not run the adapter conformance helper`,
-      );
-    }
-    for (const scenario of entry.scenarios) {
-      if (!suite.includes(`"${scenario}"`)) {
-        throw new Error(
-          `${entry.id} suite does not declare scenario ${scenario}`,
-        );
-      }
-    }
     if (/\.(?:only|skip)\s*\(/.test(suite)) {
       throw new Error(`${entry.id} suite contains focused or skipped tests`);
     }
     packages.set(entry.package, entry.id);
+  }
+
+  for (const protectedId of PROTECTED_INTEGRATION_IDS) {
+    if (!ids.has(protectedId)) {
+      throw new Error(
+        `provider contract ratchet may not remove protected integration ${protectedId}`,
+      );
+    }
   }
 
   const promotedDeclarations = new Map();
@@ -148,7 +187,116 @@ export async function auditProviderContracts(root = process.cwd()) {
     }
   }
 
+  for (const entry of inventory.integrations) {
+    await assertExecutedObservations(root, entry);
+  }
+
   return { count: inventory.integrations.length, ids: [...ids].sort() };
+}
+
+function requiredScenarios(capabilities) {
+  return [
+    ...new Set([
+      ...ALWAYS_REQUIRED,
+      ...capabilities.flatMap((capability) => CAPABILITY_SCENARIOS[capability]),
+    ]),
+  ];
+}
+
+async function assertExecutedObservations(root, entry) {
+  const nonce = randomUUID();
+  const reportPath = path.join(
+    tmpdir(),
+    `eliza-provider-contract-${process.pid}-${nonce}.ndjson`,
+  );
+  try {
+    const result = spawnSync(BUN_EXECUTABLE, ["test", entry.suite], {
+      cwd: root,
+      env: {
+        ...process.env,
+        [REPORT_PATH_ENV]: reportPath,
+        [REPORT_NONCE_ENV]: nonce,
+      },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error(
+        `${entry.id} contract suite failed while collecting observations:\n${result.stdout}${result.stderr}`,
+      );
+    }
+    if (!(await exists(reportPath))) {
+      throw new Error(`${entry.id} contract suite emitted no execution report`);
+    }
+    const reports = (await readFile(reportPath, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter(
+        (report) =>
+          report.version === 1 &&
+          report.nonce === nonce &&
+          report.adapterName === entry.adapterName,
+      );
+    if (reports.length !== 1) {
+      throw new Error(
+        `${entry.id} expected one executed report for ${entry.adapterName}, received ${reports.length}`,
+      );
+    }
+    const report = reports[0];
+    if (
+      JSON.stringify(report.capabilities) !== JSON.stringify(entry.capabilities)
+    ) {
+      throw new Error(
+        `${entry.id} executed capabilities do not match its inventory declaration`,
+      );
+    }
+    const required = requiredScenarios(entry.capabilities);
+    if (!Array.isArray(report.requiredScenarios)) {
+      throw new Error(
+        `${entry.id} execution report did not declare mandatory scenarios`,
+      );
+    }
+    const reportedRequired = new Set(report.requiredScenarios);
+    const unbound = required.filter(
+      (scenario) => !reportedRequired.has(scenario),
+    );
+    if (unbound.length > 0) {
+      throw new Error(
+        `${entry.id} execution report did not bind capabilities to mandatory scenarios: ${unbound.join(", ")}`,
+      );
+    }
+    if (!Array.isArray(report.executedObservations)) {
+      throw new Error(`${entry.id} execution report has no observations`);
+    }
+    const unknownScenarios = [
+      ...report.requiredScenarios,
+      ...report.executedObservations,
+    ].filter((scenario) => !KNOWN_SCENARIOS.has(scenario));
+    if (unknownScenarios.length > 0) {
+      throw new Error(
+        `${entry.id} execution report contains unknown scenarios: ${[
+          ...new Set(unknownScenarios),
+        ].join(", ")}`,
+      );
+    }
+    const executed = new Set(report.executedObservations);
+    const missing = report.requiredScenarios.filter(
+      (scenario) => !executed.has(scenario),
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `${entry.id} did not execute required capability observations: ${missing.join(", ")}`,
+      );
+    }
+    if (executed.size !== report.executedObservations.length) {
+      throw new Error(`${entry.id} execution report repeats observations`);
+    }
+  } finally {
+    await rm(reportPath, { force: true });
+  }
 }
 
 const isMain =

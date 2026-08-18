@@ -372,49 +372,5 @@ describe("adapter conformance runner", () => {
         scenarios: {},
       }),
     ).rejects.toThrow("oauth-state-pkce");
-
-    const report = await runProviderAdapterConformance({
-      adapterName: "fixture-adapter",
-      capabilities: ["http-write", "irreversible-write"],
-      requiredScenarios: [
-        "success",
-        "opaque-connection-id",
-        "secret-redaction",
-        "write-policy-receipt",
-        "irreversible-policy-receipt",
-      ],
-      scenarios: {
-        success: async () => ({
-          scenario: "success",
-          status: "passed",
-          detail: "real HTTP response inspected",
-        }),
-        "opaque-connection-id": async () => ({
-          scenario: "opaque-connection-id",
-          status: "passed",
-          detail: "opaque handle inspected",
-          connectionId: "conn_0123456789abcdef",
-        }),
-        "secret-redaction": async () => ({
-          scenario: "secret-redaction",
-          status: "passed",
-          detail: "diagnostic inspected",
-          diagnostic: { authorization: "<redacted>" },
-        }),
-        "write-policy-receipt": async () => ({
-          scenario: "write-policy-receipt",
-          status: "passed",
-          detail: "write receipt inspected",
-          receiptId: "receipt-write",
-        }),
-        "irreversible-policy-receipt": async () => ({
-          scenario: "irreversible-policy-receipt",
-          status: "passed",
-          detail: "denial receipt inspected",
-          receiptId: "receipt-delete",
-        }),
-      },
-    });
-    expect(report.observations).toHaveLength(5);
   });
 });

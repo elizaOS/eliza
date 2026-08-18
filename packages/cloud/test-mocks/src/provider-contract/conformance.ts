@@ -1,5 +1,6 @@
 /** Runs adapter-owned scenarios and enforces the managed-provider invariants. */
 
+import { appendFileSync } from "node:fs";
 import {
   PROVIDER_CONTRACT_SCENARIOS,
   type ProviderContractCapability,
@@ -48,7 +49,7 @@ const CAPABILITY_SCENARIOS: Record<
 export interface ProviderAdapterConformanceOptions {
   adapterName: string;
   capabilities: readonly ProviderContractCapability[];
-  /** Scenarios this adapter surface owns; defaults to its full capability profile. */
+  /** Additional adapter-owned scenarios beyond its mandatory capability profile. */
   requiredScenarios?: readonly ProviderContractScenario[];
   scenarios: Partial<
     Record<ProviderContractScenario, () => Promise<ProviderContractObservation>>
@@ -60,6 +61,11 @@ export interface ProviderAdapterConformanceReport {
   capabilities: readonly ProviderContractCapability[];
   observations: ProviderContractObservation[];
 }
+
+export const PROVIDER_CONTRACT_REPORT_PATH_ENV =
+  "ELIZA_PROVIDER_CONTRACT_REPORT_PATH";
+export const PROVIDER_CONTRACT_REPORT_NONCE_ENV =
+  "ELIZA_PROVIDER_CONTRACT_REPORT_NONCE";
 
 export function requiredProviderContractScenarios(
   capabilities: readonly ProviderContractCapability[],
@@ -75,9 +81,20 @@ export function requiredProviderContractScenarios(
 export async function runProviderAdapterConformance(
   options: ProviderAdapterConformanceOptions,
 ): Promise<ProviderAdapterConformanceReport> {
-  const required = options.requiredScenarios
-    ? [...options.requiredScenarios]
-    : requiredProviderContractScenarios(options.capabilities);
+  const required = [
+    ...new Set([
+      ...requiredProviderContractScenarios(options.capabilities),
+      ...(options.requiredScenarios ?? []),
+    ]),
+  ];
+  const unknown = required.filter(
+    (scenario) => !PROVIDER_CONTRACT_SCENARIOS.includes(scenario),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `${options.adapterName} declared unknown provider contract scenarios: ${unknown.join(", ")}`,
+    );
+  }
   if (required.length === 0) {
     throw new Error(
       `${options.adapterName} declared an empty provider contract suite`,
@@ -109,11 +126,38 @@ export async function runProviderAdapterConformance(
     observations.push(observation);
   }
 
-  return {
+  const report = {
     adapterName: options.adapterName,
     capabilities: options.capabilities,
     observations,
   };
+  recordExecutedReport(report, required);
+  return report;
+}
+
+function recordExecutedReport(
+  report: ProviderAdapterConformanceReport,
+  requiredScenarios: readonly ProviderContractScenario[],
+): void {
+  const reportPath = process.env[PROVIDER_CONTRACT_REPORT_PATH_ENV];
+  if (!reportPath) return;
+  const nonce = process.env[PROVIDER_CONTRACT_REPORT_NONCE_ENV];
+  if (!nonce) {
+    throw new Error("provider contract report capture requires a nonce");
+  }
+  appendFileSync(
+    reportPath,
+    `${JSON.stringify({
+      version: 1,
+      nonce,
+      adapterName: report.adapterName,
+      capabilities: report.capabilities,
+      requiredScenarios,
+      executedObservations: report.observations.map(
+        (observation) => observation.scenario,
+      ),
+    })}\n`,
+  );
 }
 
 function assertObservationSafe(

@@ -67,7 +67,12 @@ export type ProviderProtocolFault =
   | { type: "delay"; durationMs: number }
   | { type: "malformed-json"; body?: string }
   | { type: "schema-drift"; body: unknown }
-  | { type: "status"; status: number; body?: unknown };
+  | {
+      type: "status";
+      status: number;
+      body?: unknown;
+      headers?: Record<string, string>;
+    };
 
 export interface RecordedProviderRequest {
   method: string;

@@ -771,6 +771,7 @@
         "hono": "4.13.1",
       },
       "devDependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
         "bun-types": "*",
       },
     },

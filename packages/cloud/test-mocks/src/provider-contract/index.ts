@@ -6,6 +6,8 @@ export type {
 } from "./conformance.js";
 export {
   assertCompleteScenarioCatalog,
+  PROVIDER_CONTRACT_REPORT_NONCE_ENV,
+  PROVIDER_CONTRACT_REPORT_PATH_ENV,
   requiredProviderContractScenarios,
   runProviderAdapterConformance,
 } from "./conformance.js";

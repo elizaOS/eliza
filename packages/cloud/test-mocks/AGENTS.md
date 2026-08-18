@@ -87,8 +87,10 @@ teardown.
 Import `startFakeProvider` and `runProviderAdapterConformance` from
 `@elizaos/cloud-test-mocks/provider-contract`. Exercise the real adapter over
 the fake's loopback URL; never replace the client, OAuth callback parser, or
-webhook handler under test. Declare only capabilities the adapter owns and list
-every owned scenario explicitly. The reusable harness itself covers the full
+webhook handler under test. Declare only capabilities the adapter owns and
+implement every always-required and capability-derived scenario; an explicit
+`requiredScenarios` list may add coverage but cannot narrow the contract. The
+reusable harness itself covers the full
 scenario catalog, including OAuth state/PKCE and credential rotation, response
 and transport faults, webhook ordering/idempotency, tenant denial, redaction,
 and policy receipts.
@@ -101,8 +103,9 @@ To promote another managed integration:
    adapter through HTTP/OAuth/webhook boundaries.
 3. Add the package declaration
    `elizaos.managedIntegration = { promoted: true, contractId: "..." }`.
-4. Add the matching inventory entry, including all scenarios the suite runs.
-5. Run the suite and `bun run audit:provider-contracts`.
+4. Add the matching inventory entry with the exact adapter name and capabilities.
+5. Run the suite and `bun run audit:provider-contracts`; the audit executes the
+   suite and verifies its nonce-bound observation report.
 
 Do not put provider credentials or production captures in fixtures. Sandbox
 and live lanes are opt-in evidence only and may not be required for fork pull

@@ -22,7 +22,6 @@ const adapter = new RealProviderAdapter({ baseUrl: upstream.url });
 await runProviderAdapterConformance({
   adapterName: "RealProviderAdapter",
   capabilities: ["http-read", "pagination"],
-  requiredScenarios: ["success", "designed-empty", "pagination-cursors"],
   scenarios: {
     success: async () => {
       await adapter.list();
@@ -32,7 +31,8 @@ await runProviderAdapterConformance({
         detail: "real adapter response inspected",
       };
     },
-    // Add every declared scenario.
+    // Add every always-required and capability-derived scenario. An optional
+    // requiredScenarios list can only add adapter-specific coverage.
   },
 });
 
@@ -41,9 +41,11 @@ await upstream.stop();
 
 See `fixtures/provider-contract/README.md` and
 `provider-contract-inventory.json`. `bun run audit:provider-contracts` rejects
-missing suites, undeclared promotions, focused/skipped suites, scenario drift,
-or inventory shrinkage below the checked-in baseline. Normal CI is fully
-offline and credential-free; live/sandbox lanes remain optional.
+missing suites, undeclared promotions, focused/skipped suites, unknown
+capabilities, removal of protected integration IDs, or a mismatch between
+declared capabilities and nonce-bound observations emitted by the executed
+suite. Normal CI is fully offline and credential-free; live/sandbox lanes
+remain optional.
 
 ## Hetzner Cloud mock
 
