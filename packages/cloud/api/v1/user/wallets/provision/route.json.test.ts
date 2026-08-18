@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ProvisionWalletParams } from "@/lib/services/server-wallets";
 
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -17,9 +18,18 @@ const requireUserOrApiKey = mock(async () => ({
   organization: { id: ORG_ID },
 }));
 
-const provisionServerWallet = mock(async () => {
-  throw new Error("provisionServerWallet must not run");
-});
+const provisionServerWallet = mock(
+  async (
+    _params: ProvisionWalletParams,
+  ): Promise<{
+    id: string;
+    address: string;
+    chain_type: string;
+    client_address: string;
+  }> => {
+    throw new Error("provisionServerWallet must not run");
+  },
+);
 
 const failureResponse = mock(
   (c: { json: (body: unknown, status: number) => unknown }) =>
