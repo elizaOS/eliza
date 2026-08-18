@@ -60,6 +60,8 @@ export abstract class McpToolCompatibility {
       "minItems",
       "maxItems",
       "uniqueItems",
+      "minProperties",
+      "maxProperties",
     ]) {
       if (schema[prop as keyof JSONSchema7] !== undefined) {
         constraints[prop] = schema[prop as keyof JSONSchema7];
