@@ -21,6 +21,7 @@ import {
   type JsonValue,
   ModelType,
   observationExtractionTemplate,
+  parseTrajectorySemanticStages,
   redactBasicEmails,
   resolveStateDir,
   resolveTrajectoryGate,
@@ -3454,6 +3455,7 @@ export function parsePersistedStepObject(
   const skillInvocations = parsePersistedSkillInvocations(
     record.skillInvocations,
   );
+  const semanticStages = parseTrajectorySemanticStages(record.semanticStages);
   const action = parsePersistedActionAttempt(record.action);
   return {
     stepId,
@@ -3474,6 +3476,7 @@ export function parsePersistedStepObject(
     ...(scriptHash !== undefined ? { scriptHash } : {}),
     ...(evaluatorName !== undefined ? { evaluatorName } : {}),
     ...(skillInvocations !== undefined ? { skillInvocations } : {}),
+    ...(semanticStages !== undefined ? { semanticStages } : {}),
   };
 }
 
@@ -3558,6 +3561,7 @@ function normalizeStepForPersistence(
     childSteps,
     usedSkills,
     skillInvocations,
+    semanticStages,
     script,
     ...scalarFields
   } = step;
@@ -3624,6 +3628,9 @@ function normalizeStepForPersistence(
           skillInvocations:
             parsePersistedSkillInvocations(skillInvocations) ?? [],
         }
+      : {}),
+    ...(semanticStages !== undefined
+      ? { semanticStages: parseTrajectorySemanticStages(semanticStages) }
       : {}),
     ...(script !== undefined ? { script } : {}),
   };

@@ -527,6 +527,72 @@ describe("trajectory_steps dedicated table", () => {
     });
   });
 
+  it("round-trips versioned semantic stages through dedicated step rows", async () => {
+    const trajectory = createBaseTrajectory(
+      trajectoryId,
+      1_700_000_000_000,
+      runtime.agentId,
+      "test",
+    );
+    const step = trajectory.steps[0];
+    if (!step) throw new Error("fixture step is missing");
+    step.semanticStages = [
+      {
+        schemaVersion: 1,
+        stageId: "tool-search-1",
+        kind: "toolSearch",
+        iteration: 1,
+        startedAt: 1_700_000_000_001,
+        endedAt: 1_700_000_000_009,
+        latencyMs: 8,
+        payload: {
+          toolSearch: {
+            query: {
+              text: "schedule a workout",
+              candidateActions: ["OWNER_ROUTINES", "VIEWS"],
+            },
+            results: [
+              { name: "OWNER_ROUTINES", score: 0.91, rank: 1 },
+              { name: "VIEWS", score: 0.22, rank: 2 },
+            ],
+            selectedActions: ["OWNER_ROUTINES"],
+          },
+        },
+      },
+    ];
+
+    await expect(saveTrajectory(runtime, trajectory)).resolves.toBe(true);
+    const loaded = await loadTrajectoryById(runtime, trajectoryId);
+
+    expect(loaded?.steps[0]?.semanticStages).toEqual(step.semanticStages);
+  });
+
+  it("rejects malformed semantic stages before persisting a step", async () => {
+    const trajectory = createBaseTrajectory(
+      trajectoryId,
+      1_700_000_000_000,
+      runtime.agentId,
+      "test",
+    );
+    const step = trajectory.steps[0];
+    if (!step) throw new Error("fixture step is missing");
+    step.semanticStages = [
+      {
+        schemaVersion: 1,
+        stageId: "invalid-stage",
+        kind: "toolSearch",
+        startedAt: 2,
+        endedAt: 1,
+        latencyMs: 1,
+        payload: {},
+      },
+    ];
+
+    await expect(saveTrajectory(runtime, trajectory)).rejects.toMatchObject({
+      code: "TRAJECTORY_SEMANTIC_STAGE_INVALID",
+    });
+  });
+
   it("rejects malformed SQL result containers instead of reporting empty reads or deletes", async () => {
     type MalformedDb = {
       execute: () => Promise<Record<string, never>>;

@@ -9,6 +9,7 @@ export { tryHandleTrajectoryReadRoutes } from "../features/trajectories/read-rou
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
 export * from "./trajectory-export";
 export * from "./trajectory-json";
+export * from "./trajectory-semantic-stage";
 export * from "./trajectory-types";
 
 import type {
