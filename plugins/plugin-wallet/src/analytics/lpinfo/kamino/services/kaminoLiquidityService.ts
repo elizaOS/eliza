@@ -14,6 +14,8 @@ import { logger, Service } from "@elizaos/core";
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
 const KAMINO_LIQUIDITY_PROGRAM_ID = "kamino-rest-api";
 
+export const DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS = 10_000;
+
 const KNOWN_TOKENS: Record<string, string> = {
   HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC: "AI16Z Token",
   ai16z: "AI16Z Token (Symbol)",
@@ -238,6 +240,12 @@ export class KaminoLiquidityService extends Service {
           "Content-Type": "application/json",
           ...options.headers,
         },
+        signal: options.signal
+          ? AbortSignal.any([
+              options.signal,
+              AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
+            ])
+          : AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
