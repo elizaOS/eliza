@@ -17,11 +17,13 @@ type EndpointResponse = {
   body: string;
   contentType?: string;
   requiredAuthorization?: string;
+  location?: string;
 };
 
 function sendResponse(res: ServerResponse, response: EndpointResponse): void {
   res.writeHead(response.status ?? 200, {
     "content-type": response.contentType ?? "application/json",
+    ...(response.location ? { location: response.location } : {}),
   });
   res.end(response.body);
 }
@@ -105,6 +107,34 @@ describe("probeExternalAgent", () => {
         await expect(probeExternalAgent(base, accessToken)).resolves.toBe(true);
         expect(requests).toEqual(["/api/health", "/api/status"]);
         expect(authorizations).toEqual([null, `Bearer ${accessToken}`]);
+      },
+    );
+  });
+
+  it("rejects redirects without forwarding the persisted bearer credential", async () => {
+    const accessToken = "protected-target-token";
+    await withProbeServer(
+      { "/redirect-target": readyElizaEndpoints["/api/status"] },
+      async (redirectBase, redirectRequests, redirectAuthorizations) => {
+        await withProbeServer(
+          {
+            ...readyElizaEndpoints,
+            "/api/status": {
+              status: 302,
+              body: "",
+              location: `${redirectBase}/redirect-target`,
+            },
+          },
+          async (base, requests, authorizations) => {
+            await expect(probeExternalAgent(base, accessToken)).resolves.toBe(
+              false,
+            );
+            expect(requests).toEqual(["/api/health", "/api/status"]);
+            expect(authorizations).toEqual([null, `Bearer ${accessToken}`]);
+            expect(redirectRequests).toEqual([]);
+            expect(redirectAuthorizations).toEqual([]);
+          },
+        );
       },
     );
   });
