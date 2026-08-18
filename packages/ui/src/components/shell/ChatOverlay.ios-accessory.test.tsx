@@ -14,10 +14,6 @@ vi.mock("./ios-chat-accessory-bar", () => ({
   setChatComposerAccessoryBarHidden: accessoryMock.setHidden,
 }));
 
-vi.mock("../composites/chat/ServingProviderChip", () => ({
-  ServingProviderChip: () => <span data-testid="serving-provider-chip" />,
-}));
-
 vi.mock("../../api/client", () => ({
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
@@ -84,7 +80,6 @@ describe("ChatOverlay iOS accessory bar", () => {
 
     const composer = screen.getByLabelText("message");
     const settingsField = screen.getByLabelText("Settings field");
-    expect(screen.getByTestId("serving-provider-chip")).toBeTruthy();
 
     act(() => composer.focus());
     await waitFor(() =>
