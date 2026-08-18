@@ -296,7 +296,9 @@ export function parseTransactionsCsv(
   }
 
   const transactions: ParsedCsvTransaction[] = [];
-  if (dateIndex < 0 || merchantIndex < 0) {
+  const hasAmountColumn =
+    amountIndex >= 0 || debitIndex >= 0 || creditIndex >= 0;
+  if (dateIndex < 0 || merchantIndex < 0 || !hasAmountColumn) {
     return { transactions, rowsRead: rows.length - 1, errors };
   }
 
