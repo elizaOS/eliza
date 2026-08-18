@@ -921,12 +921,16 @@ export async function handleSkillsRoutes(
     }
 
     const description = body.description ?? "Describe what this skill does.";
-    const escapedDescription = description
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"');
+    const sanitizedDescription =
+      description
+        .replace(/[\r\n]+/g, " ")
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: YAML frontmatter must be single-line; strip ASCII control characters that would break parsing or inject keys
+        .replace(/[\x00-\x1F\x7F]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || "Describe what this skill does.";
     const template = skillScaffoldMarkdown
       .replace(/__SLUG__/g, slug)
-      .replace(/__DESCRIPTION__/g, escapedDescription);
+      .replace(/__DESCRIPTION__/g, sanitizedDescription);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
