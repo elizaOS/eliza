@@ -175,6 +175,26 @@ describe("safeFetch fail-closed", () => {
     );
   });
 
+  test("does not connect when DNS resolves after the request is aborted", async () => {
+    let finishLookup: ((records: Array<{ address: string; family: number }>) => void) | undefined;
+    lookupMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("deadline expired");
+    const pending = safeFetch("https://slow-dns.example/image", {
+      signal: controller.signal,
+    });
+
+    controller.abort(reason);
+    finishLookup?.([{ address: "93.184.216.34", family: 4 }]);
+
+    await expect(pending).rejects.toBe(reason);
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+
   test("rejects credential-bearing and non-http targets before any lookup", async () => {
     await expect(safeFetch("http://user:pass@example.com/")).rejects.toThrow();
     await expect(safeFetch("ftp://example.com/file")).rejects.toThrow();

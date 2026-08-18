@@ -256,11 +256,15 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
   let currentInit = init;
 
   for (let hop = 0; ; hop += 1) {
+    currentInit.signal?.throwIfAborted();
     // Validate (resolve DNS + screen every address) on every hop in both
     // runtimes. On Node we then pin the connection to the validated IP; on
     // workerd we cannot pin an arbitrary IP, so the platform fetch re-resolves
     // — a residual rebinding window documented on canPinSockets().
     const { url, address, family } = await resolveSafeOutboundTarget(currentUrl);
+    // DNS APIs do not accept AbortSignal. Re-check immediately after the await
+    // so a lookup that outlives its caller's deadline cannot open a socket.
+    currentInit.signal?.throwIfAborted();
     // EDGE-SSRF: no socket pinning on workerd — egress network policy required.
     // The edge branch re-resolves DNS (a rebinding window between validate and
     // connect, #12229 M5); it stays safe only behind a Cloudflare egress policy

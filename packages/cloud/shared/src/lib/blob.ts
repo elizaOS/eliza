@@ -1,4 +1,6 @@
 // Defines cloud shared blob behavior for backend service consumers.
+import { ElizaError } from "@elizaos/core";
+
 import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
@@ -178,6 +180,7 @@ async function readResponseBodyWithCap(
   response: Response,
   maxBytes: number,
   sourceUrl: string,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   const contentLength = response.headers.get("content-length");
   const declaredLength = contentLength === null ? null : Number(contentLength);
@@ -207,6 +210,21 @@ async function readResponseBodyWithCap(
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  const cancelReaderAfterAbort = async (): Promise<void> => {
+    try {
+      await reader.cancel(signal?.reason);
+    } catch {
+      // error-policy:J6 The deadline failure is already authoritative; stream
+      // cancellation is best-effort teardown for a non-cooperative body.
+    }
+  };
+  const onAbort = (): void => {
+    void cancelReaderAfterAbort();
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) {
+    onAbort();
+  }
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -230,6 +248,7 @@ async function readResponseBodyWithCap(
       }
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     try {
       reader.releaseLock();
     } catch {
@@ -262,29 +281,60 @@ export async function uploadFromUrl(
   options: BlobUploadOptions,
 ): Promise<BlobUploadResult> {
   const controller = new AbortController();
+  const timeoutError = new ElizaError(
+    `Remote blob fetch timed out after ${UPLOAD_FROM_URL_TIMEOUT_MS}ms`,
+    {
+      code: "REMOTE_BLOB_FETCH_TIMEOUT",
+      context: { timeoutMs: UPLOAD_FROM_URL_TIMEOUT_MS },
+      severity: "ephemeral",
+    },
+  );
+  let rejectDeadline: (error: ElizaError) => void = () => undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectDeadline = reject;
+  });
   const timeout = setTimeout(() => {
-    controller.abort(
-      new Error(`Remote blob fetch timed out after ${UPLOAD_FROM_URL_TIMEOUT_MS}ms`),
-    );
+    controller.abort(timeoutError);
+    // Reject independently of AbortSignal cooperation. DNS resolution and
+    // arbitrary response streams are not required to observe the signal.
+    rejectDeadline(timeoutError);
   }, UPLOAD_FROM_URL_TIMEOUT_MS);
   timeout.unref?.();
 
+  let response: Response;
+  let buffer: Buffer;
   try {
-    const response = await safeFetch(sourceUrl, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch URL: ${response.statusText}`);
-    }
-
-    const buffer = await readResponseBodyWithCap(response, UPLOAD_FROM_URL_MAX_BYTES, sourceUrl);
-    const contentType = options.contentType || response.headers.get("content-type") || undefined;
-
-    return uploadToBlob(buffer, {
-      ...options,
-      contentType,
-    });
+    ({ response, buffer } = await Promise.race([
+      (async () => {
+        const fetchedResponse = await safeFetch(sourceUrl, { signal: controller.signal });
+        if (!fetchedResponse.ok) {
+          try {
+            await fetchedResponse.body?.cancel();
+          } catch {
+            // error-policy:J6 The HTTP status failure is authoritative; body
+            // cancellation is best-effort teardown of the remote connection.
+          }
+          throw new Error(`Failed to fetch URL: ${fetchedResponse.statusText}`);
+        }
+        const fetchedBuffer = await readResponseBodyWithCap(
+          fetchedResponse,
+          UPLOAD_FROM_URL_MAX_BYTES,
+          sourceUrl,
+          controller.signal,
+        );
+        return { response: fetchedResponse, buffer: fetchedBuffer };
+      })(),
+      deadline,
+    ]));
   } finally {
     clearTimeout(timeout);
   }
+
+  const contentType = options.contentType || response.headers.get("content-type") || undefined;
+  return uploadToBlob(buffer, {
+    ...options,
+    contentType,
+  });
 }
 
 /**

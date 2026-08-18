@@ -17,6 +17,14 @@ const MAX_BYTES = 25 * 1024 * 1024;
 
 const puts: Array<{ key: string; bytes: Uint8Array; contentType?: string }> = [];
 
+function expireDeadlineImmediately(): void {
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
+    queueMicrotask(callback);
+    return 1 as unknown as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout);
+  vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+}
+
 function streamResponse(
   chunks: Uint8Array[],
   init: { headers?: Record<string, string> } = {},
@@ -90,11 +98,7 @@ describe("uploadFromUrl", () => {
   });
 
   test("aborts a remote fetch that does not settle before the deadline", async () => {
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
-      queueMicrotask(callback);
-      return 1 as unknown as ReturnType<typeof setTimeout>;
-    }) as typeof setTimeout);
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+    expireDeadlineImmediately();
     safeFetchMock.mockImplementation(
       (_url: string, init: RequestInit) =>
         new Promise((_resolve, reject) => {
@@ -104,18 +108,29 @@ describe("uploadFromUrl", () => {
         }),
     );
 
+    const result = uploadFromUrl("https://images.example/hangs.png", { filename: "x.png" });
+    await expect(result).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "REMOTE_BLOB_FETCH_TIMEOUT",
+      message: "Remote blob fetch timed out after 15000ms",
+      context: { timeoutMs: 15_000 },
+      severity: "ephemeral",
+    });
+    expect(puts).toHaveLength(0);
+  });
+
+  test("bounds a DNS or guard lookup that ignores the abort signal", async () => {
+    expireDeadlineImmediately();
+    safeFetchMock.mockReturnValue(new Promise<Response>(() => undefined));
+
     await expect(
-      uploadFromUrl("https://images.example/hangs.png", { filename: "x.png" }),
-    ).rejects.toThrow("Remote blob fetch timed out after 15000ms");
+      uploadFromUrl("https://images.example/stalled-dns.png", { filename: "x.png" }),
+    ).rejects.toHaveProperty("code", "REMOTE_BLOB_FETCH_TIMEOUT");
     expect(puts).toHaveLength(0);
   });
 
   test("keeps the deadline active while reading a stalled response body", async () => {
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
-      queueMicrotask(callback);
-      return 1 as unknown as ReturnType<typeof setTimeout>;
-    }) as typeof setTimeout);
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+    expireDeadlineImmediately();
     safeFetchMock.mockImplementation((_url: string, init: RequestInit) => {
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -133,12 +148,73 @@ describe("uploadFromUrl", () => {
     expect(puts).toHaveLength(0);
   });
 
+  test("bounds and cancels a response body that ignores the fetch signal", async () => {
+    expireDeadlineImmediately();
+    let cancelled = false;
+    safeFetchMock.mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise<void>(() => undefined);
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      uploadFromUrl("https://images.example/non-cooperative-body.png", { filename: "x.png" }),
+    ).rejects.toHaveProperty("code", "REMOTE_BLOB_FETCH_TIMEOUT");
+    await vi.waitFor(() => expect(cancelled).toBe(true));
+    expect(puts).toHaveLength(0);
+  });
+
+  test("ends the remote deadline before starting the R2 write", async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    let fetchSignal: AbortSignal | null = null;
+    let finishPut: (() => void) | undefined;
+    const putFinished = new Promise<void>((resolve) => {
+      finishPut = resolve;
+    });
+    setRuntimeR2Bucket({
+      get: async () => null,
+      put: async () => putFinished,
+      delete: async () => undefined,
+    });
+    safeFetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      fetchSignal = init.signal ?? null;
+      return Promise.resolve(new Response("image", { status: 200 }));
+    });
+
+    const upload = uploadFromUrl("https://images.example/image.png", { filename: "x.png" });
+    await vi.waitFor(() => expect(clearTimeoutSpy).toHaveBeenCalledTimes(1));
+    expect(fetchSignal?.aborted).toBe(false);
+    finishPut?.();
+    await expect(upload).resolves.toMatchObject({ size: 5 });
+  });
+
   test("rejects a non-OK response without reading the body", async () => {
-    safeFetchMock.mockResolvedValue(new Response("nope", { status: 404, statusText: "Not Found" }));
+    let cancelled = false;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("nope"));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      { status: 404, statusText: "Not Found" },
+    );
+    safeFetchMock.mockResolvedValue(response);
 
     await expect(
       uploadFromUrl("https://images.example/missing.png", { filename: "x.png" }),
     ).rejects.toThrow("Failed to fetch URL: Not Found");
+    expect(cancelled).toBe(true);
     expect(puts).toHaveLength(0);
   });
 
