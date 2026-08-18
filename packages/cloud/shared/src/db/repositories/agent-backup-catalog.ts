@@ -90,8 +90,8 @@ export interface AgentBackupOperationClaim extends AgentBackupOperationExecution
 }
 
 export class AgentBackupCatalogConflictError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, { cause: options?.cause });
     this.name = "AgentBackupCatalogConflictError";
   }
 }

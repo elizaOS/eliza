@@ -85,8 +85,10 @@ function manifestWithDigest(canonicalDraft: string, manifestSha256: string): unk
   let draft: unknown;
   try {
     draft = JSON.parse(canonicalDraft);
-  } catch (_cause) {
-    throw new AgentBackupCatalogConflictError("Restore source manifest is not valid JSON");
+  } catch (cause) {
+    throw new AgentBackupCatalogConflictError("Restore source manifest is not valid JSON", {
+      cause,
+    });
   }
   if (typeof draft !== "object" || draft === null || Array.isArray(draft)) {
     throw new AgentBackupCatalogConflictError("Restore source manifest draft is not an object");
@@ -286,8 +288,10 @@ export async function loadAgentBackupRestoreSourceV3(
     let manifest: AgentBackupManifestV3;
     try {
       manifest = await parseAgentBackupManifestV3(manifestInput);
-    } catch (_cause) {
-      throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed");
+    } catch (cause) {
+      throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed", {
+        cause,
+      });
     }
     const { manifestSha256: _manifestSha256, ...draftIntegrity } = manifest.integrity;
     const canonicalDraft = canonicalizeAgentBackupManifestV3({
