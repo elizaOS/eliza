@@ -3983,6 +3983,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/link-token/route.ts",
   },
+  "POST /api/v1/eliza/plaid/revoke": {
+    method: "POST",
+    path: "/api/v1/eliza/plaid/revoke",
+    methodName: "postApiV1ElizaPlaidRevoke",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/plaid/revoke/route.ts",
+  },
   "POST /api/v1/eliza/plaid/sync": {
     method: "POST",
     path: "/api/v1/eliza/plaid/sync",
@@ -5579,6 +5588,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/paypal/transactions": Record<never, never>;
   "POST /api/v1/eliza/plaid/exchange": Record<never, never>;
   "POST /api/v1/eliza/plaid/link-token": Record<never, never>;
+  "POST /api/v1/eliza/plaid/revoke": Record<never, never>;
   "POST /api/v1/eliza/plaid/sync": Record<never, never>;
   "POST /api/v1/embeddings": Record<never, never>;
   "POST /api/v1/extract": Record<never, never>;
@@ -10420,6 +10430,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaPlaidRevoke<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/revoke"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/plaid/revoke", TResponse>(
+      "POST /api/v1/eliza/plaid/revoke",
+      options,
+    );
+  }
+
   postApiV1ElizaPlaidSync<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<TResponse> {
@@ -14288,6 +14307,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/link-token"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/eliza/plaid/link-token", options);
+  }
+
+  postApiV1ElizaPlaidRevokeRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/revoke"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/plaid/revoke", options);
   }
 
   postApiV1ElizaPlaidSyncRaw(

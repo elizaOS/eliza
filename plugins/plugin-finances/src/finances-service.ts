@@ -124,6 +124,7 @@ function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfi
 
 type PlaidPaymentMetadata = Record<string, unknown> & {
   accessToken?: unknown;
+  connectionId?: string;
   cursor?: string;
 };
 
@@ -156,6 +157,9 @@ function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
   const metadata: PlaidPaymentMetadata = { ...value };
   if (typeof metadata.cursor !== "string") {
     delete metadata.cursor;
+  }
+  if (typeof metadata.connectionId !== "string") {
+    delete metadata.connectionId;
   }
   return metadata;
 }
@@ -437,6 +441,25 @@ export class FinancesService {
 
   async deletePaymentSource(sourceId: string): Promise<{ ok: true }> {
     const trimmed = requireNonEmptyString(sourceId, "sourceId");
+    const source = await this.repository.getPaymentSource(
+      this.agentId(),
+      trimmed,
+    );
+    if (source?.kind === "plaid") {
+      const metadata = readPlaidPaymentMetadata(source.metadata.plaid);
+      if (metadata?.connectionId) {
+        try {
+          await this.getPlaidManagedClient().revokeConnection({
+            connectionId: metadata.connectionId,
+          });
+        } catch (error) {
+          if (error instanceof PlaidManagedClientError) {
+            fail(error.status, error.message);
+          }
+          throw error;
+        }
+      }
+    }
     await this.repository.deletePaymentSource(this.agentId(), trimmed);
     return { ok: true };
   }
@@ -928,8 +951,8 @@ export class FinancesService {
 
   /**
    * Completes a Plaid Link flow by exchanging the public_token for an
-   * access_token and creating (or updating) a payment_source row whose
-   * metadata holds the access_token + cursor for sync.
+   * Cloud-held Item credential and creating a payment_source row whose
+   * metadata holds only the opaque connection id and incremental cursor.
    */
   async completePlaidLink(args: {
     publicToken: string;
@@ -967,8 +990,8 @@ export class FinancesService {
       transactionCount: 0,
       metadata: {
         plaid: {
-          accessToken: encryptPaymentMetadataToken(result.accessToken),
-          itemId: result.itemId,
+          connectionId: result.connectionId,
+          environment: result.environment,
           institutionId: result.institution.institutionId,
           cursor: "",
           accounts: result.institution.accounts,
@@ -977,7 +1000,26 @@ export class FinancesService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.repository.upsertPaymentSource(source);
+    try {
+      await this.repository.upsertPaymentSource(source);
+    } catch (error) {
+      try {
+        await this.getPlaidManagedClient().revokeConnection({
+          connectionId: result.connectionId,
+        });
+      } catch (cleanupError) {
+        // error-policy:J6 compensating revoke is best-effort; preserve the
+        // authoritative local persistence failure without logging credentials.
+        this.logFinancesWarn(
+          "plaid_link_cleanup",
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : "Plaid connection cleanup failed.",
+          { connectionId: result.connectionId },
+        );
+      }
+      throw error;
+    }
     return source;
   }
 
@@ -1000,14 +1042,13 @@ export class FinancesService {
       fail(409, `Source ${sourceId} is not a Plaid source.`);
     }
     const plaidMetadata = readPlaidPaymentMetadata(source.metadata.plaid);
-    const accessToken = readPaymentMetadataToken(
-      plaidMetadata?.accessToken,
-      "Plaid access",
-    );
-    if (!accessToken) {
+    const connectionId = plaidMetadata?.connectionId;
+    if (!connectionId) {
       fail(
         409,
-        "Plaid source is missing an access token. Re-link the account.",
+        plaidMetadata?.accessToken
+          ? "This Plaid source uses retired local token storage. Re-link the account."
+          : "Plaid source is missing a Cloud connection. Re-link the account.",
       );
     }
     const cursor = plaidMetadata?.cursor ?? "";
@@ -1021,7 +1062,7 @@ export class FinancesService {
       let delta: PlaidSyncResponse;
       try {
         delta = await this.getPlaidManagedClient().syncTransactions({
-          accessToken,
+          connectionId,
           cursor: pageCursor,
         });
       } catch (error) {
@@ -1063,8 +1104,10 @@ export class FinancesService {
       metadata: {
         ...source.metadata,
         plaid: {
-          ...plaidMetadata,
-          accessToken: encryptPaymentMetadataToken(accessToken),
+          connectionId,
+          environment: plaidMetadata?.environment,
+          institutionId: plaidMetadata?.institutionId,
+          accounts: plaidMetadata?.accounts,
           cursor: pageCursor,
         },
       },

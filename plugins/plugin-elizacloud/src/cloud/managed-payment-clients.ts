@@ -110,8 +110,8 @@ export interface PlaidLinkTokenResponse {
 }
 
 export interface PlaidExchangeResponse {
-  accessToken: string;
-  itemId: string;
+  connectionId: string;
+  environment: "sandbox" | "development" | "production";
   institution: {
     institutionId: string;
     institutionName: string;
@@ -207,7 +207,7 @@ export class PlaidManagedClient {
   }
 
   async syncTransactions(args: {
-    accessToken: string;
+    connectionId: string;
     cursor?: string;
     count?: number;
   }): Promise<PlaidSyncResponse> {
@@ -219,13 +219,29 @@ export class PlaidManagedClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        accessToken: args.accessToken,
+        connectionId: args.connectionId,
         cursor: args.cursor ?? "",
         count: args.count ?? 250,
       }),
       signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS * 2),
     });
     return readPlaidJson<PlaidSyncResponse>(response);
+  }
+
+  async revokeConnection(args: {
+    connectionId: string;
+  }): Promise<{ revoked: true }> {
+    const config = this.requireConfig();
+    const response = await fetch(`${config.apiBaseUrl}/v1/eliza/plaid/revoke`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ connectionId: args.connectionId }),
+      signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
+    });
+    return readPlaidJson<{ revoked: true }>(response);
   }
 }
 

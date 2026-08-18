@@ -14,7 +14,8 @@
  */
 
 import type { AgentRuntime, HandlerOptions, Memory } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PlaidManagedClient } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -69,6 +70,141 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
 
     const list = await service.listPaymentSources();
     expect(list.find((s) => s.id === created.id)).toBeTruthy();
+  });
+
+  it("persists only an opaque Plaid connection and revokes it before deletion", async () => {
+    const requests: Array<{ url: string; body: string }> = [];
+    let syncPage = 0;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        requests.push({ url, body: String(init?.body ?? "") });
+        if (url.endsWith("/exchange")) {
+          return Response.json({
+            connectionId: "11111111-1111-4111-8111-111111111111",
+            environment: "sandbox",
+            institution: {
+              institutionId: "ins-1",
+              institutionName: "Test Bank",
+              primaryAccountMask: "1234",
+              accounts: [],
+            },
+          });
+        }
+        if (url.endsWith("/sync")) {
+          syncPage += 1;
+          return Response.json({
+            added: [],
+            modified: [],
+            removed: [],
+            nextCursor: `cursor-${syncPage}`,
+            hasMore: syncPage === 1,
+          });
+        }
+        if (url.endsWith("/revoke")) {
+          return Response.json({ revoked: true });
+        }
+        return Response.json({ error: "unexpected route" }, { status: 500 });
+      });
+
+    try {
+      service.plaidManagedClientCache = new PlaidManagedClient(() => ({
+        configured: true,
+        apiKey: "eliza_test",
+        apiBaseUrl: "https://cloud.example/api",
+        siteUrl: "https://cloud.example",
+      }));
+      const source = await service.completePlaidLink({
+        publicToken: "public-token",
+      });
+      const stored = await repository.getPaymentSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(stored?.metadata.plaid).toEqual(
+        expect.objectContaining({
+          connectionId: "11111111-1111-4111-8111-111111111111",
+          environment: "sandbox",
+        }),
+      );
+      expect(JSON.stringify(stored)).not.toContain("public-token");
+      expect(JSON.stringify(stored)).not.toContain("accessToken");
+
+      await expect(
+        service.syncPlaidTransactions({ sourceId: source.id }),
+      ).resolves.toMatchObject({ nextCursor: "cursor-2" });
+      expect(
+        requests.filter((request) => request.url.endsWith("/sync")),
+      ).toHaveLength(2);
+      await expect(service.deletePaymentSource(source.id)).resolves.toEqual({
+        ok: true,
+      });
+      await expect(
+        repository.getPaymentSource(runtime.agentId, source.id),
+      ).resolves.toBeNull();
+
+      const bodies = requests.map((request) => request.body).join("\n");
+      expect(bodies).not.toContain("accessToken");
+      expect(requests.at(-1)).toMatchObject({
+        url: "https://cloud.example/api/v1/eliza/plaid/revoke",
+        body: JSON.stringify({
+          connectionId: "11111111-1111-4111-8111-111111111111",
+        }),
+      });
+    } finally {
+      fetchSpy.mockRestore();
+      service.plaidManagedClientCache = null;
+    }
+  });
+
+  it("revokes the Cloud connection when local source persistence fails", async () => {
+    const requestedRoutes: string[] = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        requestedRoutes.push(url);
+        if (url.endsWith("/exchange")) {
+          return Response.json({
+            connectionId: "22222222-2222-4222-8222-222222222222",
+            environment: "sandbox",
+            institution: {
+              institutionId: "ins-2",
+              institutionName: "Failure Bank",
+              primaryAccountMask: null,
+              accounts: [],
+            },
+          });
+        }
+        if (url.endsWith("/revoke")) {
+          return Response.json({ revoked: true });
+        }
+        return Response.json({ error: "unexpected route" }, { status: 500 });
+      });
+    const persistSpy = vi
+      .spyOn(service.repository, "upsertPaymentSource")
+      .mockRejectedValueOnce(new Error("local persistence unavailable"));
+
+    try {
+      service.plaidManagedClientCache = new PlaidManagedClient(() => ({
+        configured: true,
+        apiKey: "eliza_test",
+        apiBaseUrl: "https://cloud.example/api",
+        siteUrl: "https://cloud.example",
+      }));
+      await expect(
+        service.completePlaidLink({ publicToken: "public-token" }),
+      ).rejects.toThrow("local persistence unavailable");
+      expect(requestedRoutes).toEqual([
+        "https://cloud.example/api/v1/eliza/plaid/exchange",
+        "https://cloud.example/api/v1/eliza/plaid/revoke",
+      ]);
+    } finally {
+      persistSpy.mockRestore();
+      fetchSpy.mockRestore();
+      service.plaidManagedClientCache = null;
+    }
   });
 
   it("inserts transactions and lists / spending round-trips against the real DB", async () => {

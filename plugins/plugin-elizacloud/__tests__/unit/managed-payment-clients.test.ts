@@ -60,6 +60,55 @@ describe("managed payment clients", () => {
     );
   });
 
+  it("uses opaque Plaid connection ids without transporting access tokens", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/exchange")) {
+        return Response.json({
+          connectionId: "11111111-1111-4111-8111-111111111111",
+          environment: "sandbox",
+          institution: {
+            institutionId: "ins-1",
+            institutionName: "Test Bank",
+            primaryAccountMask: "1234",
+            accounts: [],
+          },
+        });
+      }
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        nextCursor: "cursor-2",
+        hasMore: false,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new PlaidManagedClient(() => ({
+      configured: true,
+      apiKey: "eliza_test",
+      apiBaseUrl: "https://cloud.example/api",
+      siteUrl: "https://cloud.example",
+    }));
+
+    const exchange = await client.exchangePublicToken({ publicToken: "public-token" });
+    await client.syncTransactions({
+      connectionId: exchange.connectionId,
+      cursor: "cursor-1",
+    });
+
+    const payloads = fetchMock.mock.calls.map(([, init]) => String(init?.body));
+    expect(payloads).toContain(
+      JSON.stringify({
+        connectionId: "11111111-1111-4111-8111-111111111111",
+        cursor: "cursor-1",
+        count: 250,
+      })
+    );
+    expect(payloads.join("\n")).not.toContain("accessToken");
+    expect(payloads.join("\n")).not.toContain("plaid-secret");
+  });
+
   it("surfaces Plaid errors as typed client errors", async () => {
     vi.stubGlobal(
       "fetch",
