@@ -52,6 +52,13 @@ const metadata = readFileSync(
   resolve(flatpakDirectory, "ai.elizaos.App.metainfo.xml"),
   "utf8",
 );
+const wrappers = [
+  readFileSync(resolve(flatpakDirectory, "elizaos-app-wrapper.sh"), "utf8"),
+  readFileSync(
+    resolve(flatpakDirectory, "elizaos-app-wrapper.store.sh"),
+    "utf8",
+  ),
+];
 
 function assertPinnedRuntime(manifest) {
   const nodeVersion = rootPackage.engines.node;
@@ -102,6 +109,17 @@ test("vendored npm closure and generator target the exact CLI release", () => {
     flatpakLock.packages[""].dependencies.elizaos,
     cliPackage.version,
   );
+  assert.equal(
+    flatpakLock.packages["node_modules/elizaos"].bin.elizaos,
+    cliPackage.bin.elizaos.replace(/^\.\//, ""),
+  );
+  for (const wrapper of wrappers) {
+    assert.match(
+      wrapper,
+      /exec \/app\/bin\/node \/app\/lib\/node_modules\/elizaos\/dist\/cli\.js "\$@"/,
+    );
+    assert.doesNotMatch(wrapper, /elizaos-app\.mjs/);
+  }
 
   const cachedArchives = new Map(
     nodeSources
