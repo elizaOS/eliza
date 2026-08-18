@@ -55,7 +55,6 @@ paths-ignore:
   - packages/examples/**
   - packages/os/**
   - packages/docs/**
-  - packages/homepage/**
 
   # Deliberately invalid TypeScript used to test syntax-failure reporting.
   - packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts

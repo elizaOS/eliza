@@ -57,7 +57,11 @@ describe("scheduled CodeQL workflow", () => {
   test("uses the bounded hosted-runner analysis contract", () => {
     expect(analyze?.["runs-on"]).toBe("ubuntu-24.04");
     expect(analyze?.["timeout-minutes"]).toBe(360);
-    expect(analyze?.permissions?.["security-events"]).toBe("write");
+    expect(analyze?.permissions).toEqual({
+      actions: "read",
+      contents: "read",
+      "security-events": "write",
+    });
     expect(workflow.permissions).toEqual({ contents: "read" });
   });
 
@@ -108,5 +112,6 @@ describe("scheduled CodeQL workflow", () => {
         "packages/test/**",
       ]),
     );
+    expect(config["paths-ignore"]).not.toContain("packages/homepage/**");
   });
 });

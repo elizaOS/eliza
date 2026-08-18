@@ -27,7 +27,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      packages: read
       security-events: write
     steps:
       - name: Checkout repository
