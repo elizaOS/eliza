@@ -11,7 +11,7 @@ import {
 } from "./extraction";
 import { FormService } from "./service";
 import type { FormDefinition } from "./types";
-import { validateField } from "./validation";
+import { parseValue, validateField } from "./validation";
 
 const entityId = "00000000-0000-4000-8000-000000000101" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000102" as UUID;
@@ -294,5 +294,42 @@ describe("field validation edge cases", () => {
     expect(validateField("Infinity", control).valid).toBe(false);
     expect(validateField("1e309", control).valid).toBe(false);
     expect(validateField("123", control).valid).toBe(true);
+  });
+
+  it("rejects trailing-garbage numeric strings instead of coercing them", () => {
+    const control = { key: "amount", label: "Amount", type: "number" };
+
+    // parseFloat stopped at the first non-numeric character and silently
+    // coerced these to a wrong value; strict validation must reject them.
+    for (const garbage of ["50abc", "0x10", "1.2.3", "12 apples", "5e3xyz"]) {
+      expect(validateField(garbage, control).valid).toBe(false);
+    }
+
+    // The extraction path runs parseValue before validateField, so a
+    // rejected input must not be silently coerced to a partial number.
+    for (const garbage of ["50abc", "0x10", "1.2.3", "12 apples", "5e3xyz"]) {
+      const parsed = parseValue(garbage, control);
+      expect(Number.isNaN(parsed)).toBe(true);
+      expect(validateField(parsed, control).valid).toBe(false);
+    }
+
+    // A required number field rejects empty input as before.
+    expect(validateField("", { ...control, required: true }).valid).toBe(false);
+  });
+
+  it("still accepts legitimate numeric formats", () => {
+    const control = { key: "amount", label: "Amount", type: "number" };
+
+    const accepted: Array<[string, number]> = [
+      ["1,234", 1234],
+      ["$50", 50],
+      ["-3.5", -3.5],
+      [".5", 0.5],
+      ["1e3", 1000],
+    ];
+    for (const [input, expected] of accepted) {
+      expect(validateField(input, control).valid).toBe(true);
+      expect(parseValue(input, control)).toBe(expected);
+    }
   });
 });
