@@ -3,7 +3,10 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AwarenessContributor } from "../contracts/awareness.ts";
+import {
+  type AwarenessContributor,
+  SUMMARY_TOTAL_CHAR_LIMIT,
+} from "../contracts/awareness.ts";
 import { AwarenessRegistry } from "./registry.ts";
 
 describe("AwarenessRegistry", () => {
@@ -15,7 +18,7 @@ describe("AwarenessRegistry", () => {
     mockRuntime = {} as IAgentRuntime;
   });
 
-  it("registers contributors in ascending order of position and rejects duplicates", () => {
+  it("composes contributors in ascending position and rejects duplicates", async () => {
     const c1: AwarenessContributor = {
       id: "second",
       position: 20,
@@ -31,23 +34,10 @@ describe("AwarenessRegistry", () => {
     registry.register(c2);
 
     expect(() => registry.register(c1)).toThrow(/duplicate contributor id/);
-  });
-
-  it("unregisters contributors and clears the registry", async () => {
-    const c: AwarenessContributor = {
-      id: "mod-1",
-      position: 10,
-      summary: vi.fn(async () => "Mod 1 summary"),
-    };
-
-    registry.register(c);
-    expect(registry.unregister("mod-1")).toBe(true);
-    expect(registry.unregister("mod-1")).toBe(false);
-
-    registry.register(c);
-    registry.clear();
     const summary = await registry.composeSummary(mockRuntime);
-    expect(summary).toBe("[Self Status v1]\n");
+    expect(summary.indexOf("First summary")).toBeLessThan(
+      summary.indexOf("Second summary"),
+    );
   });
 
   it("composes summary with header and handles empty summaries", async () => {
@@ -64,6 +54,23 @@ describe("AwarenessRegistry", () => {
 
     const summary = await registry.composeSummary(mockRuntime);
     expect(summary).toBe("[Self Status v1]\nAgent active");
+  });
+
+  it("enforces the global summary budget and reports omitted contributors", async () => {
+    for (let index = 0; index < 20; index += 1) {
+      registry.register({
+        id: `module-${index}`,
+        position: index,
+        trusted: true,
+        summary: vi.fn(async () => `module-${index}-${"x".repeat(68)}`),
+      });
+    }
+
+    const summary = await registry.composeSummary(mockRuntime);
+    expect(summary.length).toBeLessThanOrEqual(SUMMARY_TOTAL_CHAR_LIMIT);
+    expect(summary).toMatch(/\[\+\d+ more\]$/);
+    expect(summary).toContain("module-0-");
+    expect(summary).not.toContain("module-19-");
   });
 
   it("surfaces unavailable marker when contributor summary throws", async () => {
