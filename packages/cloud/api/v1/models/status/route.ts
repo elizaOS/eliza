@@ -62,16 +62,19 @@ app.post("/", async (c) => {
   try {
     await getCurrentUser(c).catch(() => null);
 
-    let body: { modelIds?: unknown };
+    let body: unknown;
     try {
-      body = (await c.req.json()) as { modelIds?: unknown };
+      body = await c.req.json();
     } catch (error) {
       // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
       // failures stay 500 — do not reprint leftover-tax #21685/#21690.
       if (!(error instanceof SyntaxError)) throw error;
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-    const modelIds = body.modelIds;
+    const modelIds =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as { modelIds?: unknown }).modelIds
+        : undefined;
 
     if (!Array.isArray(modelIds) || modelIds.length === 0) {
       return c.json({ error: "modelIds array is required" }, 400);

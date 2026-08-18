@@ -1,8 +1,4 @@
-/**
- * POST /api/v1/models/status used to let c.req.json() throw into
- * failureResponse, which maps SyntaxError to 500. Malformed JSON is caller
- * error and must not read modelIds or consult the catalog.
- */
+/** Verifies malformed and schema-invalid JSON handling for the model-status endpoint. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const getCachedMergedModelCatalog = mock(async () => [
@@ -54,6 +50,23 @@ describe("POST /api/v1/models/status malformed JSON", () => {
     });
     expect(getCachedMergedModelCatalog).not.toHaveBeenCalled();
   });
+
+  test.each(["null", '"openai/gpt-5-mini"', "12", "[]"])(
+    "rejects a valid non-object JSON body %s without reading the catalog",
+    async (body) => {
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "modelIds array is required",
+      });
+      expect(getCachedMergedModelCatalog).not.toHaveBeenCalled();
+    },
+  );
 
   test("canonical JSON still checks model availability", async () => {
     const response = await app.request("/", {
