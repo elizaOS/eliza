@@ -45,7 +45,14 @@ async function __hono_POST(
   const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    // error-policy:J3 untrusted request body — malformed JSON is caller
+    // error (400), not an unhandled SyntaxError 500.
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const parsed = PreviewRequestSchema.safeParse(body);
 
   if (!parsed.success) {
