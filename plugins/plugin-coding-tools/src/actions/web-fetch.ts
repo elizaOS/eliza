@@ -46,19 +46,14 @@ function decodeHtmlEntity(entity: string): string {
     const code = entity.startsWith("#x")
       ? Number.parseInt(entity.slice(2), 16)
       : Number.parseInt(entity.slice(1), 10);
-    // String.fromCodePoint throws RangeError for negatives and any value above
-    // the Unicode ceiling (0x10FFFF), cases Number.isFinite does not reject.
-    // A single malformed reference must degrade to its literal source, never
-    // hard-fail the best-effort fetch. The try/catch is belt-and-suspenders.
-    if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
-      try {
-        return String.fromCodePoint(code);
-      } catch {
-        // error-policy:J4 malformed entity degrades to its literal source text
-        return `&${entity};`;
-      }
-    }
-    return `&${entity};`;
+    // Exclude the UTF-16 surrogate range as well as values outside Unicode.
+    // Once this scalar-value guard passes, String.fromCodePoint cannot throw.
+    const isUnicodeScalarValue =
+      Number.isInteger(code) &&
+      code >= 0 &&
+      code <= 0x10ffff &&
+      (code < 0xd800 || code > 0xdfff);
+    return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
   }
   return named[entity] ?? `&${entity};`;
 }
