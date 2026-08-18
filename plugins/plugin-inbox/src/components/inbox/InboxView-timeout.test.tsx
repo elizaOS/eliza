@@ -11,8 +11,8 @@ vi.mock("@elizaos/ui/api", () => ({
 }));
 
 import {
-  INBOX_VIEW_JSON_TIMEOUT_MS,
   getInboxJsonWithFetch,
+  INBOX_VIEW_JSON_TIMEOUT_MS,
 } from "./InboxView.js";
 
 const URL = "http://test.local/api/lifeops/inbox";
