@@ -126,8 +126,8 @@ export const DEFAULT_GOOGLE_EMBEDDING_MODEL = "gemini-embedding-001";
  * Per-model input token limit for the embedding endpoint. Google documents a
  * 2,048-token input limit for `gemini-embedding-001`, while the larger-window
  * `gemini-embedding-2` accepts 8,192 tokens. `handleTextEmbedding` derives its
- * character truncation boundary from this map so the request never exceeds the
- * model's real limit; an unmapped/override id falls back to the safe 2,048
+ * provider-tokenized truncation boundary from this map so the request never
+ * exceeds the model's real limit; an unmapped/override id falls back to 2,048
  * limit (`DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT`) rather than assuming the larger
  * window. This is a hard model constraint — it must not be confused with the
  * telemetry-only `length / 4` estimate in `utils/tokenization.ts`.
