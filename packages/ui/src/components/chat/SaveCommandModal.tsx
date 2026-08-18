@@ -75,7 +75,7 @@ export function SaveCommandModal({
     [handleSubmit],
   );
 
-  const preview = text.length > 120 ? `${text.slice(0, 120)}...` : text;
+  const preview = text.length > 120 ? `${text.slice(0, 117)}...` : text;
 
   return (
     <Dialog
