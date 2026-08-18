@@ -54,8 +54,6 @@ describe("parseTransactionsCsv", () => {
   });
 
   it("supports separate debit/credit columns and accounting negatives", () => {
-    // ISO dates parse to a deterministic UTC midnight (US/short formats go
-    // through Date.parse, which is timezone-dependent — not asserted here).
     const r = parseTransactionsCsv(
       "Posted Date,Payee,Debit,Credit\n2026-01-15,Coffee,(4.50),\n2026-01-16,Refund,,10.00\n",
     );
@@ -74,8 +72,68 @@ describe("parseTransactionsCsv", () => {
   it("normalizes US-format and 2-digit-year dates to a 2026 calendar date", () => {
     const r = parseTransactionsCsv("Date,Amount,Merchant\n1/16/26,-5,Gym\n");
     expect(r.transactions).toHaveLength(1);
-    // Exact time is timezone-dependent via Date.parse; assert the year only.
-    expect(r.transactions[0].postedAt).toMatch(/^2026-01-1[56]T/);
+    expect(r.transactions[0].postedAt).toBe("2026-01-16T00:00:00.000Z");
+  });
+
+  describe("timezone-deterministic date normalization", () => {
+    // postedAt feeds buildTransactionId, so a date-only value must map to the
+    // same UTC instant on every machine or re-imports from another timezone
+    // double-count. Expected instants are therefore always constructed via
+    // Date.UTC — never via `new Date(y, m, d)`, which would bake the test
+    // runner's local offset into the expectation and hide the regression.
+    const utcMidnight = (y: number, m: number, d: number) =>
+      new Date(Date.UTC(y, m - 1, d)).toISOString();
+
+    it("parses MM/DD/YYYY and ISO date-only values to the same UTC midnight", () => {
+      const r = parseTransactionsCsv(
+        "Date,Amount,Merchant\n01/02/2024,-12.34,Netflix\n2024-01-02,-9.99,Spotify\n",
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions[0].postedAt).toBe(utcMidnight(2024, 1, 2));
+      expect(r.transactions[0].postedAt).toBe("2024-01-02T00:00:00.000Z");
+      expect(r.transactions[1].postedAt).toBe(r.transactions[0].postedAt);
+    });
+
+    it("keeps mixed-format rows for the same day on one UTC base", () => {
+      const r = parseTransactionsCsv(
+        'Date,Amount,Merchant\n1-2-24,-1,Dash\n"Jan 2, 2024",-1,Prose\n2024-01-02,-1,Iso\n',
+      );
+      expect(r.errors).toEqual([]);
+      const stamps = new Set(r.transactions.map((t) => t.postedAt));
+      expect(stamps).toEqual(new Set([utcMidnight(2024, 1, 2)]));
+    });
+
+    it("preserves native semantics for datetimes carrying Z or an offset", () => {
+      const r = parseTransactionsCsv(
+        "Date,Amount,Merchant\n2024-01-02T10:00:00Z,-1,Zulu\n2024-01-02T10:00:00-05:00,-1,Offset\n",
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions[0].postedAt).toBe("2024-01-02T10:00:00.000Z");
+      expect(r.transactions[1].postedAt).toBe("2024-01-02T15:00:00.000Z");
+    });
+
+    it("still rejects unparseable dates", () => {
+      const r = parseTransactionsCsv(
+        "Date,Amount,Merchant\nnot-a-date,-1,Bad\n2024-99,-1,AlsoBad\n",
+      );
+      expect(r.transactions).toEqual([]);
+      expect(r.errors.filter((e) => /unparseable date/.test(e))).toHaveLength(
+        2,
+      );
+    });
+
+    it("yields a stable transaction-id key for a re-imported row", () => {
+      // Mirrors buildTransactionId's hash key recipe (finances-service.ts):
+      // postedAt is a hashed component, so determinism here is what keeps
+      // CSV re-imports idempotent across machines in different timezones.
+      const key = (t: { postedAt: string; amountUsd: number }) =>
+        ["agent", "source", t.postedAt, t.amountUsd.toFixed(2)].join("|");
+      const csv = "Date,Amount,Merchant\n01/02/2024,-12.34,Netflix\n";
+      const first = parseTransactionsCsv(csv).transactions[0];
+      const second = parseTransactionsCsv(csv).transactions[0];
+      expect(key(second)).toBe(key(first));
+      expect(first.postedAt).toBe(utcMidnight(2024, 1, 2));
+    });
   });
 
   it("strips currency symbols and thousands separators", () => {

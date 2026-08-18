@@ -169,12 +169,12 @@ function normalizeDate(raw: string): string | null {
   if (!trimmed) {
     return null;
   }
-  // Try native parse first. Falls back to YYYY-MM-DD and MM/DD/YYYY.
-  const native = Date.parse(trimmed);
-  if (Number.isFinite(native)) {
-    return new Date(native).toISOString();
-  }
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Date-only values must map to the same UTC instant on every machine:
+  // buildTransactionId hashes postedAt, so a timezone-dependent parse would
+  // mint different ids for the same row and double-count re-imports. The
+  // explicit UTC-based branches therefore run BEFORE the native Date.parse
+  // fallback, which is reserved for strings carrying a time component.
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
     return new Date(
       Date.UTC(
@@ -184,7 +184,7 @@ function normalizeDate(raw: string): string | null {
       ),
     ).toISOString();
   }
-  const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (usMatch) {
     const month = Number(usMatch[1]);
     const day = Number(usMatch[2]);
@@ -192,7 +192,21 @@ function normalizeDate(raw: string): string | null {
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
     return new Date(Date.UTC(year, month - 1, day)).toISOString();
   }
-  return null;
+  const native = Date.parse(trimmed);
+  if (!Number.isFinite(native)) {
+    return null;
+  }
+  // Strings with a time-of-day (e.g. "2024-01-02T10:00:00Z" or offset-bearing
+  // datetimes) keep native semantics. Remaining date-only spellings such as
+  // "Jan 2, 2024" parse as local midnight, so rebase the local calendar date
+  // onto UTC midnight to stay deterministic across timezones.
+  if (/\d:\d/.test(trimmed)) {
+    return new Date(native).toISOString();
+  }
+  const local = new Date(native);
+  return new Date(
+    Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()),
+  ).toISOString();
 }
 
 export interface ParsedCsvTransaction
