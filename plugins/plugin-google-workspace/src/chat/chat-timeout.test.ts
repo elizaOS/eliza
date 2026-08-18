@@ -51,9 +51,9 @@ function serviceWithFetch(fetchImpl: typeof fetch, timeoutMs = 1_000): GoogleCha
 
 describe("Google Chat request deadlines", () => {
   it("aborts a stalled list-spaces request at the injected deadline", async () => {
-    await expect(
-      serviceWithFetch(stallUntilAborted(), 10).getSpaces(),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+    await expect(serviceWithFetch(stallUntilAborted(), 10).getSpaces()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
   });
 
   it("aborts a stalled send at the injected deadline", async () => {
@@ -61,7 +61,7 @@ describe("Google Chat request deadlines", () => {
       serviceWithFetch(stallUntilAborted(), 10).sendMessage({
         space: "spaces/bounded",
         text: "a bounded line",
-      }),
+      })
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -71,8 +71,8 @@ describe("Google Chat request deadlines", () => {
         "spaces/bounded",
         "note.txt",
         Buffer.from("hi"),
-        "text/plain",
-      ),
+        "text/plain"
+      )
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -84,13 +84,13 @@ describe("Google Chat request deadlines", () => {
       serviceWithFetch(fetchImpl).sendMessage({
         space: "spaces/bounded",
         text: "a bounded line",
-      }),
+      })
     ).rejects.toBeInstanceOf(GoogleChatApiError);
     await expect(
       serviceWithFetch(fetchImpl).sendMessage({
         space: "spaces/bounded",
         text: "a bounded line",
-      }),
+      })
     ).rejects.toThrow("quota exceeded");
   });
 
