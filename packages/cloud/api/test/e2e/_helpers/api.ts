@@ -38,6 +38,22 @@ export function url(path: string): string {
 }
 
 /**
+ * Adds the Origin a browser sends for a same-origin request.
+ *
+ * This is deliberately opt-in so CSRF tests can continue exercising missing
+ * and hostile origins. Explicit caller headers win, including an intentional
+ * cross-origin Origin used by negative coverage.
+ */
+export function sameOriginBrowserHeaders(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    Origin: new URL(getBaseUrl()).origin,
+    ...headers,
+  };
+}
+
+/**
  * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
  * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
  * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
