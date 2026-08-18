@@ -407,6 +407,36 @@ describe("PairingService pending-queue cap", () => {
 		expect(result.request?.senderId).toBe(existing.senderId);
 		expect(updatePairingRequest).toHaveBeenCalledTimes(1);
 	});
+
+	it("serializes concurrent admissions so the pending queue cannot overrun its cap", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-10T00:00:00.000Z"));
+		const pending: PairingRequest[] = [];
+		const { runtime, createPairingRequest } = cappedQueueRuntime(pending);
+		createPairingRequest.mockImplementation(async (created: PairingRequest) => {
+			// Yield once to make an unguarded read-check-create race deterministic.
+			await Promise.resolve();
+			pending.push(created);
+		});
+		const service = new PairingService(runtime, {
+			maxPendingRequests: 3,
+			requestTtlMs: Number.MAX_SAFE_INTEGER,
+		});
+
+		const results = await Promise.all(
+			Array.from({ length: 12 }, (_, index) =>
+				service.upsertRequest({
+					channel: "discord",
+					senderId: `concurrent-sender-${index}`,
+				}),
+			),
+		);
+
+		expect(results.filter((result) => result.created)).toHaveLength(3);
+		expect(results.filter((result) => !result.code)).toHaveLength(9);
+		expect(pending).toHaveLength(3);
+		expect(createPairingRequest).toHaveBeenCalledTimes(3);
+	});
 });
 
 describe("PairingService pairing reply claims", () => {
