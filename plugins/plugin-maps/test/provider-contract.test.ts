@@ -1,0 +1,313 @@
+/** Exercises the real normalized HTTP adapter against the protocol-faithful fake upstream. */
+
+import {
+  type ProviderContractObservation,
+  type ProviderProtocolFixture,
+  redactProviderDiagnostics,
+  runProviderAdapterConformance,
+  startFakeProvider,
+} from "@elizaos/cloud-test-mocks/provider-contract";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { JsonMapsHttpAdapter } from "../src/adapter.js";
+import { MapsError } from "../src/errors.js";
+
+const place = {
+  provider: "contract-maps",
+  providerPlaceId: "place-1",
+  name: "Contract Park",
+  coordinates: { latitude: 37.77, longitude: -122.42 },
+  formattedAddress: "1 Contract Way",
+  categories: ["park"],
+};
+
+const fixtures: ProviderProtocolFixture[] = [
+  {
+    id: "maps-search",
+    method: "GET",
+    path: "/places/search",
+    response: {
+      status: 200,
+      body: { places: [place], nextCursor: "cursor-page-2" },
+    },
+  },
+  {
+    id: "maps-place",
+    method: "GET",
+    path: "/places/place-1",
+    response: { status: 200, body: place },
+  },
+  {
+    id: "maps-route",
+    method: "POST",
+    path: "/routes",
+    response: {
+      status: 200,
+      body: {
+        provider: "contract-maps",
+        routeId: "route-1",
+        origin: place,
+        destination: { ...place, providerPlaceId: "place-2", name: "Museum" },
+        travelMode: "walk",
+        distanceMeters: 1200,
+        durationSeconds: 900,
+        warnings: [],
+      },
+    },
+  },
+];
+
+function passed(
+  scenario: ProviderContractObservation["scenario"],
+  detail: string,
+  extra: Partial<ProviderContractObservation> = {},
+): ProviderContractObservation {
+  return { scenario, status: "passed", detail, ...extra };
+}
+
+async function expectCode(
+  operation: Promise<unknown>,
+  code: MapsError["code"],
+): Promise<MapsError> {
+  try {
+    await operation;
+  } catch (error) {
+    // error-policy:J1 The test assertion boundary verifies the typed failure
+    // returned by the real adapter instead of allowing it to escape the case.
+    expect(error).toBeInstanceOf(MapsError);
+    expect((error as MapsError).code).toBe(code);
+    return error as MapsError;
+  }
+  throw new Error(`Expected ${code}`);
+}
+
+describe("JsonMapsHttpAdapter provider contract", () => {
+  let upstream: Awaited<ReturnType<typeof startFakeProvider>>;
+  let adapter: JsonMapsHttpAdapter;
+
+  beforeAll(async () => {
+    upstream = await startFakeProvider({ fixtures });
+    adapter = new JsonMapsHttpAdapter({
+      id: "contract-maps",
+      connectionId: upstream.createConnectionId(),
+      baseUrl: upstream.url,
+      credential: "maps_contract_secret",
+      timeoutMs: 30,
+    });
+  });
+
+  afterAll(async () => {
+    await upstream.stop();
+  });
+
+  it("executes every outbound read and pagination scenario", async () => {
+    const report = await runProviderAdapterConformance({
+      adapterName: "JsonMapsHttpAdapter",
+      profile: "outbound-http",
+      capabilities: ["http-read", "pagination"],
+      scenarios: {
+        success: async () => {
+          const page = await adapter.searchPlaces({ query: "park" });
+          expect(page.places[0]).toEqual(place);
+          return passed("success", "normalized place response inspected");
+        },
+        "designed-empty": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "schema-drift",
+            body: { places: [], nextCursor: null },
+          });
+          const page = await adapter.searchPlaces({ query: "none" });
+          expect(page).toEqual({ places: [], nextCursor: null });
+          return passed(
+            "designed-empty",
+            "empty page remained distinct from failure",
+          );
+        },
+        "invalid-input": async () => {
+          await expectCode(
+            adapter.searchPlaces({ query: " " }),
+            "MAPS_INVALID_INPUT",
+          );
+          return passed("invalid-input", "blank query rejected before HTTP");
+        },
+        "pagination-cursors": async () => {
+          const page = await adapter.searchPlaces({
+            query: "park",
+            cursor: "cursor-page-1",
+          });
+          expect(page.nextCursor).toBe("cursor-page-2");
+          expect(upstream.requests.at(-1)?.query.cursor).toBe("cursor-page-1");
+          return passed(
+            "pagination-cursors",
+            "opaque request and response cursors inspected",
+          );
+        },
+        "rate-limit-retry-metadata": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "status",
+            status: 429,
+            headers: { "retry-after": "2" },
+            body: { code: "rate_limited" },
+          });
+          const error = await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_RATE_LIMITED",
+          );
+          expect(error.retryAfterMs).toBe(2_000);
+          return passed(
+            "rate-limit-retry-metadata",
+            "Retry-After preserved as 2000ms",
+          );
+        },
+        "malformed-json": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "malformed-json",
+          });
+          await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_MALFORMED_RESPONSE",
+          );
+          return passed("malformed-json", "invalid provider JSON rejected");
+        },
+        "schema-drift": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "schema-drift",
+            body: {
+              places: [
+                {
+                  ...place,
+                  coordinates: { latitude: 200, longitude: -122.42 },
+                },
+              ],
+              nextCursor: null,
+            },
+          });
+          await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_MALFORMED_RESPONSE",
+          );
+          return passed(
+            "schema-drift",
+            "malformed provider coordinates rejected",
+          );
+        },
+        timeout: async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "delay",
+            durationMs: 100,
+          });
+          await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_PROVIDER_TIMEOUT",
+          );
+          return passed("timeout", "bounded abort surfaced as timeout");
+        },
+        "connection-reset": async () => {
+          const resetUpstream = await startFakeProvider({ fixtures });
+          const resetAdapter = new JsonMapsHttpAdapter({
+            id: "reset-maps",
+            connectionId: resetUpstream.createConnectionId(),
+            baseUrl: resetUpstream.url,
+          });
+          await resetUpstream.resetConnections();
+          await expectCode(
+            resetAdapter.searchPlaces({ query: "park" }),
+            "MAPS_PROVIDER_NETWORK",
+          );
+          return passed(
+            "connection-reset",
+            "closed upstream surfaced as network failure",
+          );
+        },
+        "provider-4xx": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "status",
+            status: 400,
+            body: { code: "bad_request" },
+          });
+          await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_PROVIDER_REJECTED",
+          );
+          return passed("provider-4xx", "provider rejection remained explicit");
+        },
+        "provider-5xx": async () => {
+          upstream.enqueueFault("GET", "/places/search", {
+            type: "status",
+            status: 503,
+            body: { code: "unavailable" },
+          });
+          await expectCode(
+            adapter.searchPlaces({ query: "park" }),
+            "MAPS_PROVIDER_FAILURE",
+          );
+          return passed("provider-5xx", "provider outage remained explicit");
+        },
+        "opaque-connection-id": async () =>
+          passed(
+            "opaque-connection-id",
+            "adapter exposes only an opaque connection handle",
+            {
+              connectionId: adapter.connectionId,
+            },
+          ),
+        "secret-redaction": async () => {
+          await adapter.searchPlaces({ query: "park" });
+          const diagnostic = redactProviderDiagnostics(upstream.requests, [
+            "maps_contract_secret",
+          ]);
+          expect(JSON.stringify(diagnostic)).not.toContain(
+            "maps_contract_secret",
+          );
+          return passed(
+            "secret-redaction",
+            "recorded requests redact bearer credentials",
+            {
+              diagnostic,
+            },
+          );
+        },
+        "read-policy": async () => {
+          const page = await adapter.searchPlaces({ query: "park", limit: 1 });
+          expect(page.places).toHaveLength(1);
+          return passed(
+            "read-policy",
+            "read completed without mutation receipt",
+          );
+        },
+      },
+    });
+    expect(report.observations).toHaveLength(14);
+  });
+
+  it("keeps expired and revoked authentication failures distinct", async () => {
+    upstream.enqueueFault("GET", "/places/search", {
+      type: "status",
+      status: 401,
+      body: { code: "credential_expired" },
+    });
+    await expectCode(
+      adapter.searchPlaces({ query: "park" }),
+      "MAPS_AUTH_EXPIRED",
+    );
+
+    upstream.enqueueFault("GET", "/places/search", {
+      type: "status",
+      status: 403,
+      body: { code: "credential_revoked" },
+    });
+    await expectCode(
+      adapter.searchPlaces({ query: "park" }),
+      "MAPS_AUTH_REVOKED",
+    );
+  });
+
+  it("validates route and place detail responses through the same adapter", async () => {
+    await expect(adapter.getPlace("place-1")).resolves.toEqual(place);
+    const route = await adapter.planRoute({
+      origin: place,
+      destination: { ...place, providerPlaceId: "place-2", name: "Museum" },
+      travelMode: "walk",
+    });
+    expect(route).toMatchObject({ routeId: "route-1", durationSeconds: 900 });
+  });
+});

@@ -1,0 +1,44 @@
+# @elizaos/plugin-maps
+
+Provider-neutral maps domain for elizaOS agents: place lookup, route planning,
+saved places, safe sharing, and navigation handoffs.
+
+## Ownership and boundaries
+
+- `MapsService` owns normalized maps behavior and adapter registration.
+- Provider packages implement `MapsProviderAdapter`; this package never embeds
+  provider credentials or provider-specific response shapes.
+- Saved places use the runtime memory store, scoped by agent and owner entity.
+  Do not add another file store, scheduler, or identity graph.
+- Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
+  package does not request device permissions or read device location itself.
+- Google Maps/Routes integration and rendered maps UI belong to later issues.
+
+## Public surface
+
+- `PlaceRef`, `RoutePlan`, and `SavedPlace` are validated normalized types.
+- `MapsProviderAdapter` is the connector seam for place and route reads.
+- `MAPS` is the umbrella action. `promoteSubactionsToActions` registers
+  `MAPS_PLACE`, `MAPS_ROUTE`, `MAPS_SAVE`, `MAPS_SHARE`, and `MAPS_NAVIGATE`.
+- Missing action inputs return a canonical form interaction and set
+  `awaitingUserInput`; they never fabricate coordinates or places.
+
+## Commands
+
+```bash
+bun run --cwd plugins/plugin-maps test
+bun run --cwd plugins/plugin-maps typecheck
+bun run --cwd plugins/plugin-maps lint:check
+bun run --cwd plugins/plugin-maps build
+```
+
+## Verification
+
+The provider-contract test drives a real HTTP adapter against the repository's
+protocol-faithful fake upstream. Keep success, empty, validation, pagination,
+rate-limit metadata, malformed/schema-drift responses, auth failures, network
+failures, provider 4xx/5xx, opaque connection IDs, redaction, and read-policy
+coverage intact. Saved-place tests must cover persistence, owner scoping,
+idempotent replay, and concurrent calls.
+
+Follow the root `AGENTS.md` and `CONTRIBUTING.md` evidence requirements.
