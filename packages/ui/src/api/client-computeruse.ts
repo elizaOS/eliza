@@ -36,24 +36,36 @@ export interface ComputerUseApprovalResolution {
   reason?: string;
 }
 
+/** Approvals GET — existing 10s REST budget, independent hop. */
+export const COMPUTER_USE_GET_APPROVALS_FETCH_TIMEOUT_MS = 10_000;
+/** Respond POST — existing 10s REST budget, independent hop. */
+export const COMPUTER_USE_RESPOND_FETCH_TIMEOUT_MS = 10_000;
+/** Approval-mode POST — existing 10s REST budget, independent hop. */
+export const COMPUTER_USE_SET_MODE_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
-    getComputerUseApprovals(): Promise<ComputerUseApprovalSnapshot>;
+    getComputerUseApprovals(
+      timeoutMs?: number,
+    ): Promise<ComputerUseApprovalSnapshot>;
     respondToComputerUseApproval(
       id: string,
       approved: boolean,
       reason?: string,
+      timeoutMs?: number,
     ): Promise<ComputerUseApprovalResolution>;
     setComputerUseApprovalMode(
       mode: ComputerUseApprovalMode,
+      timeoutMs?: number,
     ): Promise<{ mode: ComputerUseApprovalMode }>;
   }
 }
 
 ElizaClient.prototype.getComputerUseApprovals = async function (
   this: ElizaClient,
+  timeoutMs: number = COMPUTER_USE_GET_APPROVALS_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/computer-use/approvals");
+  return this.fetch("/api/computer-use/approvals", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.respondToComputerUseApproval = async function (
@@ -61,19 +73,29 @@ ElizaClient.prototype.respondToComputerUseApproval = async function (
   id: string,
   approved: boolean,
   reason?: string,
+  timeoutMs: number = COMPUTER_USE_RESPOND_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch(`/api/computer-use/approvals/${encodeURIComponent(id)}`, {
-    method: "POST",
-    body: JSON.stringify({ approved, reason }),
-  });
+  return this.fetch(
+    `/api/computer-use/approvals/${encodeURIComponent(id)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ approved, reason }),
+    },
+    { timeoutMs },
+  );
 };
 
 ElizaClient.prototype.setComputerUseApprovalMode = async function (
   this: ElizaClient,
   mode: ComputerUseApprovalMode,
+  timeoutMs: number = COMPUTER_USE_SET_MODE_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/computer-use/approval-mode", {
-    method: "POST",
-    body: JSON.stringify({ mode }),
-  });
+  return this.fetch(
+    "/api/computer-use/approval-mode",
+    {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    },
+    { timeoutMs },
+  );
 };
