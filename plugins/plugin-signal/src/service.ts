@@ -46,6 +46,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -2356,8 +2357,10 @@ export class SignalService extends Service implements ISignalService {
         }
       }
 
-      messages.push(remaining.slice(0, splitIndex));
-      remaining = remaining.slice(splitIndex);
+      const chunkCandidate = truncateWellFormed(remaining, splitIndex);
+      const cutPoint = chunkCandidate.length > 0 ? chunkCandidate.length : splitIndex;
+      messages.push(remaining.slice(0, cutPoint));
+      remaining = remaining.slice(cutPoint);
     }
 
     return messages;

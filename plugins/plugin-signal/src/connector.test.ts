@@ -334,3 +334,19 @@ describe("Signal message connector", () => {
     });
   });
 });
+
+describe("SignalService.splitMessage", () => {
+  it("keeps surrogate pairs intact when splitting long text", () => {
+    const service = Object.create(SignalService.prototype) as unknown as {
+      splitMessage: (text: string) => string[];
+    };
+    const prefix = "a".repeat(7999);
+    const text = `${prefix}\u{1F98A}bbbb`;
+    const chunks = service.splitMessage(text);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(chunks.join("")).toBe(text);
+  });
+});
