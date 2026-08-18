@@ -157,9 +157,13 @@ export interface VoiceSessionConfig {
   prewarmElizaContext?: () => Promise<void>;
   /** Optional provider-synthesized opener that runs while agent context warms. */
   openingGreeting?: string;
-  /** Optional canonical agent turn that generates and persists the opener. */
+  /** Optional canonical agent turn that generates a durable assistant opener. */
   openingPrompt?: string;
   openingClientMessageId?: string;
+  /** Server-attested call-start cutoff applied only to the canonical opener. */
+  openingHistoryCutoffAt?: number;
+  /** Fixed privacy-safe greeting used only when opener generation fails. */
+  openingFallbackGreeting?: string;
   /** Deterministic test override; production uses bounded exponential backoff. */
   cacheWarmingRetryDelaysMs?: readonly number[];
   /** Deterministic test override for the bounded Ink reconnect schedule. */
@@ -382,6 +386,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       void this.runResponseTurn(this.config.openingPrompt.trim(), traceId, {
         messageRole: "system",
         clientMessageId: this.config.openingClientMessageId,
+        historyCutoffAt: this.config.openingHistoryCutoffAt,
+        transientInput: true,
+        fallbackGreeting: this.config.openingFallbackGreeting,
       });
     } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
@@ -873,6 +880,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     options: {
       messageRole?: "system";
       clientMessageId?: string;
+      historyCutoffAt?: number;
+      transientInput?: true;
+      fallbackGreeting?: string;
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
@@ -965,6 +975,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         ...(options.clientMessageId
           ? { clientMessageId: options.clientMessageId }
           : {}),
+        ...(options.historyCutoffAt !== undefined
+          ? { historyCutoffAt: options.historyCutoffAt }
+          : {}),
+        ...(options.transientInput ? { transientInput: true as const } : {}),
         agentId: this.config.agentId,
         conversationId: this.config.conversationId,
         organizationId: this.config.organizationId,
@@ -1135,6 +1149,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
       this.finishTurn(traceId);
+      const fallbackGreeting = options.fallbackGreeting?.trim();
+      if (fallbackGreeting && firstModelTextAt === null) {
+        this.speakOpeningGreeting(fallbackGreeting);
+      }
     }
   }
 

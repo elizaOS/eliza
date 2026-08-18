@@ -1716,6 +1716,13 @@
       "when": 1790280000000,
       "tag": "0245_agent_vault_key_topology_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1790366400000,
+      "tag": "0246_twilio_call_opening_context",
+      "breakpoints": true
     }
   ]
 }

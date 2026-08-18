@@ -58,7 +58,8 @@ import {
 import { verifyTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   callEndedEvent,
-  callOpeningGreeting,
+  callOpeningClientMessageId,
+  callOpeningPrompt,
   callStartedEvent,
   prewarmAndRecordVoiceCallStart,
 } from "../lib/voice-continuity";
@@ -390,16 +391,22 @@ app.get("/", async (c) => {
       organizationId: claims.organizationId,
       userId: claims.userId,
     });
+    const callConnectedAt = Date.now();
+    const callContextAt = claims.callStartedAt ?? callConnectedAt;
     const callExpSeconds =
-      Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
+      Math.floor(callConnectedAt / 1_000) + resolveMaxCallSeconds(env);
     const prewarmAndRecordCallStart = () =>
       prewarmAndRecordVoiceCallStart(
         () => elizaFetch.prewarm?.(),
         () =>
           elizaFetch.recordLifecycleEvent({
             id: `twilio-call:${claims.callSid}:started`,
-            content: callStartedEvent(claims.previousInteractionAt),
-            createdAt: Date.now(),
+            content: callStartedEvent(
+              claims.returningCaller,
+              claims.previousInteractionAt,
+              callContextAt,
+            ),
+            createdAt: callConnectedAt,
           }),
       );
     session = new VoiceSession({
@@ -426,7 +433,14 @@ app.get("/", async (c) => {
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
       prewarmElizaContext: prewarmAndRecordCallStart,
-      openingGreeting: callOpeningGreeting(claims.returningCaller),
+      openingPrompt: callOpeningPrompt(
+        claims.returningCaller,
+        claims.previousInteractionAt,
+        callContextAt,
+      ),
+      openingClientMessageId: callOpeningClientMessageId(claims.callSid),
+      openingHistoryCutoffAt: callContextAt,
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>
