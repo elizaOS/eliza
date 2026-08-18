@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import process from "node:process";
 /**
  * Evidence expectation matrix for active LifeOps MVP project issues. The board
  * can show that a row is human-gated, but closeout still needs a concrete proof contract
  * per issue so screenshots, videos, logs, trajectories, and domain artifacts do
  * not collapse into a vague "needs review" bucket.
  */
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 

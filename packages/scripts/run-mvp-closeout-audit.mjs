@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import process from "node:process";
 /**
  * Produces one atomic LifeOps MVP closeout report from a single Project 15
  * snapshot. Board state, readiness policy, and evidence expectations consume
  * identical inputs so rate limits or mid-run board changes cannot create a
  * false parity result.
  */
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { buildEvidenceMatrix } from "./audit-mvp-evidence-matrix.mjs";
 import {

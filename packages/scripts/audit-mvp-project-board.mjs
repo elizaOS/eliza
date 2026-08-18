@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import process from "node:process";
 /**
  * Read-only audit for the LifeOps MVP project board. The GitHub Project is the
  * live kanban, but closeout work needs a compact stale-state report instead of
  * a raw project dump: closed issues that are not Done, open issues still
  * active, and the subset that is explicitly human-gated.
  */
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 
