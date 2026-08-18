@@ -2,14 +2,16 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  consumeNotificationCenterOpenRequest,
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
   requestNotificationCenterOpen,
   subscribeNotificationCenterOpenRequests,
 } from "./notification-center-open-request";
 
 afterEach(() => {
-  while (consumeNotificationCenterOpenRequest() !== null) {
-    // Drain any retained request so each scenario starts without shell intent.
+  const pendingRequestId = peekNotificationCenterOpenRequest();
+  if (pendingRequestId !== null) {
+    acknowledgeNotificationCenterOpenRequest(pendingRequestId);
   }
 });
 
@@ -19,11 +21,13 @@ describe("notification center open requests", () => {
     const second = requestNotificationCenterOpen();
 
     expect(second).toBeGreaterThan(first);
-    expect(consumeNotificationCenterOpenRequest()).toBe(second);
-    expect(consumeNotificationCenterOpenRequest()).toBeNull();
+    expect(peekNotificationCenterOpenRequest()).toBe(second);
+    expect(acknowledgeNotificationCenterOpenRequest(first)).toBe(false);
+    expect(acknowledgeNotificationCenterOpenRequest(second)).toBe(true);
+    expect(peekNotificationCenterOpenRequest()).toBeNull();
   });
 
-  it("delivers to a mounted Home subscriber without retaining a stale replay", () => {
+  it("retains a delivered request until the visible Home acknowledges it", () => {
     const received: number[] = [];
     const unsubscribe = subscribeNotificationCenterOpenRequests((requestId) =>
       received.push(requestId),
@@ -32,12 +36,14 @@ describe("notification center open requests", () => {
     try {
       const requestId = requestNotificationCenterOpen();
       expect(received).toEqual([requestId]);
-      expect(consumeNotificationCenterOpenRequest()).toBeNull();
+      expect(peekNotificationCenterOpenRequest()).toBe(requestId);
+      expect(acknowledgeNotificationCenterOpenRequest(requestId)).toBe(true);
+      expect(peekNotificationCenterOpenRequest()).toBeNull();
     } finally {
       unsubscribe();
     }
 
     const retainedRequestId = requestNotificationCenterOpen();
-    expect(consumeNotificationCenterOpenRequest()).toBe(retainedRequestId);
+    expect(peekNotificationCenterOpenRequest()).toBe(retainedRequestId);
   });
 });

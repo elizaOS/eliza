@@ -12,13 +12,19 @@ const mocks = vi.hoisted(() => ({
   onBaseUrlChange: vi.fn(),
   seed: vi.fn(async () => undefined),
   setTab: vi.fn(),
+  goHome: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   client: { onBaseUrlChange: mocks.onBaseUrlChange },
 }));
 
-vi.mock("../../state", () => ({ useAppSelector: () => mocks.setTab }));
+vi.mock("../../state", () => ({
+  useAppSelector: (
+    selector: (state: { setTab: typeof mocks.setTab }) => unknown,
+  ) => selector({ setTab: mocks.setTab }),
+}));
+vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
 vi.mock("../../bridge/native-notifications", () => ({
   initLocalNotificationTapRouting: mocks.localTap,
 }));
@@ -32,7 +38,10 @@ vi.mock("../../state/notifications/push-registration", () => ({
 }));
 
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
-import { consumeNotificationCenterOpenRequest } from "./notification-center-open-request";
+import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+} from "./notification-center-open-request";
 import {
   NotificationsDataBoot,
   NotificationsShellBoot,
@@ -40,8 +49,9 @@ import {
 
 afterEach(() => {
   cleanup();
-  while (consumeNotificationCenterOpenRequest() !== null) {
-    // Notification-center intent is module-scoped so it can cross a Home mount.
+  const pendingRequestId = peekNotificationCenterOpenRequest();
+  if (pendingRequestId !== null) {
+    acknowledgeNotificationCenterOpenRequest(pendingRequestId);
   }
   vi.clearAllMocks();
 });
@@ -60,21 +70,21 @@ describe("notification boot boundaries", () => {
     await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
     expect(mocks.localTap).toHaveBeenCalledOnce();
 
-    mocks.setTab.mockImplementationOnce(() => {
-      expect(consumeNotificationCenterOpenRequest()).toEqual(
-        expect.any(Number),
-      );
+    mocks.goHome.mockImplementationOnce(() => {
+      expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
     });
 
     act(() => window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT)));
+    expect(mocks.goHome).toHaveBeenCalledOnce();
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
+    expect(mocks.goHome.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setTab.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
   });
 
   it("routes a retained cold-launch tap replayed during native listener attachment", async () => {
-    mocks.setTab.mockImplementationOnce(() => {
-      expect(consumeNotificationCenterOpenRequest()).toEqual(
-        expect.any(Number),
-      );
+    mocks.goHome.mockImplementationOnce(() => {
+      expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));
     });
     mocks.localTap.mockImplementationOnce(async () => {
       window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT));
@@ -83,6 +93,7 @@ describe("notification boot boundaries", () => {
     render(<NotificationsShellBoot />);
 
     await waitFor(() => expect(mocks.localTap).toHaveBeenCalledOnce());
+    expect(mocks.goHome).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledTimes(1);
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
   });
