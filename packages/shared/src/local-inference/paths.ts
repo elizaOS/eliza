@@ -36,7 +36,8 @@ export function downloadsStagingDir(): string {
 }
 
 /** True when `target` is inside Eliza's local-inference root. */
-export function isWithinElizaRoot(target: string): boolean {
+export function isWithinElizaRoot(target: string | null | undefined): boolean {
+  if (typeof target !== "string" || !target.trim()) return false;
   const root = path.resolve(localInferenceRoot());
   const resolved = path.resolve(target);
   if (resolved === root) return false;

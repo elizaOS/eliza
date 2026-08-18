@@ -85,6 +85,13 @@ export {
   type NetworkPolicyReason,
   type RawNetworkState,
 } from "./network-policy.js";
+export {
+  downloadsStagingDir,
+  elizaModelsDir,
+  isWithinElizaRoot,
+  localInferenceRoot,
+  registryPath,
+} from "./paths.js";
 export type {
   ProviderEnableState,
   ProviderId,
