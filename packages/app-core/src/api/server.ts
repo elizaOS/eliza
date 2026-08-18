@@ -867,7 +867,17 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         return false;
       }
       if (!(await ensureRouteAuthorized(req, res, state))) return true;
-      const pluginId = decodeURIComponent(uiSpecMatch[1]);
+      let pluginId: string;
+      try {
+        pluginId = decodeURIComponent(uiSpecMatch[1]);
+      } catch {
+        // error-policy:J3 untrusted path segment — malformed percent-encoding
+        // is caller error (400), not runCompatRequestPipeline URIError → 500.
+        sendJsonResponse(res, 400, {
+          error: "Plugin id is not valid percent-encoding",
+        });
+        return true;
+      }
       const { buildPluginConfigUiSpec } = await import(
         "@elizaos/shared/config/plugin-ui-spec"
       );
