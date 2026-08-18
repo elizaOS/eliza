@@ -129,12 +129,29 @@ function parseRegularity(value: unknown): SleepRegularityClass | null {
   return isRegularityResponse(value) ? value.classification : null;
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
+/** Sleep widget JSON GETs are short UI reads — same 15s family as HealthView. */
+export const HEALTH_SLEEP_JSON_TIMEOUT_MS = 15_000;
+
+export async function getHealthSleepJsonWithFetch(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = HEALTH_SLEEP_JSON_TIMEOUT_MS,
+): Promise<unknown> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
-    throw new Error(`Sleep request failed (${response.status}): ${path}`);
+    throw new Error(`Sleep request failed (${response.status}): ${url}`);
   }
   return (await response.json()) as unknown;
+}
+
+async function getJson(path: string): Promise<unknown> {
+  return getHealthSleepJsonWithFetch(
+    `${client.getBaseUrl()}${path}`,
+    globalThis.fetch,
+  );
 }
 
 async function fetchSleep(): Promise<SleepWidgetData> {
