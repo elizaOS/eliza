@@ -230,9 +230,12 @@ export async function processFragmentsSynchronously({
 		fullDocumentText,
 		contentType,
 		agentId,
+		// roomId/entityId must satisfy readDocumentMutationSnapshot's isUuid gate
+		// (database/document-list-query.ts) to stay readable, so "" is coerced
+		// like a missing value; worldId has no such gate and keeps "" verbatim.
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
-		worldId: worldId || agentId,
+		worldId: worldId ?? agentId,
 		concurrencyLimit: CONCURRENCY_LIMIT,
 		rateLimiter,
 		documentTitle,
@@ -607,7 +610,7 @@ async function processAndSaveFragments({
 					id: uuidv4() as UUID,
 					agentId,
 					roomId: roomId || agentId,
-					worldId: worldId || agentId,
+					worldId: worldId ?? agentId,
 					entityId: entityId || agentId,
 					embedding,
 					content: { text: contextualizedChunkText },
