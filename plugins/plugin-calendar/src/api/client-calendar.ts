@@ -57,9 +57,13 @@ type CalendarEditorDeleteRequest = Partial<
     | "remove_private_copy";
 };
 
+/** Ordinary REST budget for GET /api/lifeops/calendar/feed. */
+export const LIFEOPS_CALENDAR_FEED_FETCH_TIMEOUT_MS = 10_000;
+
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
     options?: GetLifeOpsCalendarFeedRequest,
+    timeoutMs?: number,
   ): Promise<LifeOpsCalendarFeed>;
   getLifeOpsCalendars(
     options?: ListLifeOpsCalendarsRequest,
@@ -115,6 +119,7 @@ const calendarClientPrototype = ElizaClient.prototype as ElizaClient &
 calendarClientPrototype.getLifeOpsCalendarFeed = async function (
   this: ElizaClient,
   options: GetLifeOpsCalendarFeedRequest = {},
+  timeoutMs: number = LIFEOPS_CALENDAR_FEED_FETCH_TIMEOUT_MS,
 ) {
   const params = new URLSearchParams();
   if (options.mode) params.set("mode", options.mode);
@@ -136,6 +141,8 @@ calendarClientPrototype.getLifeOpsCalendarFeed = async function (
   const query = params.toString();
   return this.fetch<LifeOpsCalendarFeed>(
     `/api/lifeops/calendar/feed${query ? `?${query}` : ""}`,
+    undefined,
+    { timeoutMs },
   );
 };
 
