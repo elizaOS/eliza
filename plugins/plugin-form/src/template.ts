@@ -12,15 +12,6 @@ const TEMPLATE_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 export function buildTemplateValues(session: FormSession): TemplateValues {
   const values: TemplateValues = {};
 
-  for (const [key, state] of Object.entries(session.fields)) {
-    const value = state.value;
-    if (typeof value === "string") {
-      values[key] = value;
-    } else if (typeof value === "number" || typeof value === "boolean") {
-      values[key] = String(value);
-    }
-  }
-
   const context = session.context;
   if (context && typeof context === "object" && !Array.isArray(context)) {
     for (const [key, value] of Object.entries(context)) {
@@ -29,6 +20,15 @@ export function buildTemplateValues(session: FormSession): TemplateValues {
       } else if (typeof value === "number" || typeof value === "boolean") {
         values[key] = String(value);
       }
+    }
+  }
+
+  for (const [key, state] of Object.entries(session.fields)) {
+    const value = state.value;
+    if (typeof value === "string") {
+      values[key] = value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      values[key] = String(value);
     }
   }
 
