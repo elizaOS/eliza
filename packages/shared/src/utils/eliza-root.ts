@@ -33,9 +33,18 @@ function readPackageNameSync(dir: string): string | null {
 }
 
 function listAncestorDirs(startDir: string, maxDepth = 12): string[] {
+  if (typeof startDir !== "string" || startDir.trim() === "") {
+    return [];
+  }
+  const depthLimit =
+    typeof maxDepth === "number" &&
+    Number.isSafeInteger(maxDepth) &&
+    maxDepth > 0
+      ? maxDepth
+      : 12;
   const dirs: string[] = [];
-  let current = path.resolve(startDir);
-  for (let i = 0; i < maxDepth; i += 1) {
+  let current = path.resolve(startDir.trim());
+  for (let i = 0; i < depthLimit; i += 1) {
     dirs.push(current);
     const parent = path.dirname(current);
     if (parent === current) {
@@ -70,7 +79,10 @@ function findPackageRootSync(startDir: string, maxDepth = 12): string | null {
 }
 
 function candidateDirsFromArgv1(argv1: string): string[] {
-  const normalized = path.resolve(argv1);
+  if (typeof argv1 !== "string" || argv1.trim() === "") {
+    return [];
+  }
+  const normalized = path.resolve(argv1.trim());
   const candidates = [path.dirname(normalized)];
   const parts = normalized.split(path.sep);
   const binIndex = parts.lastIndexOf(".bin");
@@ -88,17 +100,26 @@ type ResolveElizaRootOptions = {
   moduleUrl?: string;
 };
 
-function candidateDirsFromOptions(opts: ResolveElizaRootOptions): string[] {
+function candidateDirsFromOptions(
+  opts?: ResolveElizaRootOptions | null,
+): string[] {
+  if (!opts || typeof opts !== "object") {
+    return [];
+  }
   const candidates: string[] = [];
 
-  if (opts.moduleUrl) {
-    candidates.push(path.dirname(fileURLToPath(opts.moduleUrl)));
+  if (typeof opts.moduleUrl === "string" && opts.moduleUrl.trim() !== "") {
+    try {
+      candidates.push(path.dirname(fileURLToPath(opts.moduleUrl.trim())));
+    } catch {
+      // error-policy:J3 ignore malformed URL inputs
+    }
   }
-  if (opts.argv1) {
+  if (typeof opts.argv1 === "string" && opts.argv1.trim() !== "") {
     candidates.push(...candidateDirsFromArgv1(opts.argv1));
   }
-  if (opts.cwd) {
-    candidates.push(opts.cwd);
+  if (typeof opts.cwd === "string" && opts.cwd.trim() !== "") {
+    candidates.push(opts.cwd.trim());
   }
 
   return candidates;
