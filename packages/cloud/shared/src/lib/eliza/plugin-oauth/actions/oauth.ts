@@ -151,6 +151,24 @@ async function runConnect(
   const platformName = capitalize(platform);
   const capabilities = normalizeScopes(params.capabilities);
   const connectionRole = normalizeRole(params.connectionRole) ?? "owner";
+  const requestedConnectionId =
+    typeof params.connectionId === "string" && params.connectionId.trim().length > 0
+      ? params.connectionId.trim()
+      : undefined;
+
+  if (params.connectionId !== undefined && requestedConnectionId === undefined) {
+    return failureResult("Choose a valid connected account.", "INVALID_CONNECTION_ID", {
+      op: "connect",
+      platform,
+    });
+  }
+  if (requestedConnectionId && !capabilities) {
+    return failureResult(
+      "A connected account can only be selected when requesting named capabilities.",
+      "INVALID_CONNECTION_ID",
+      { op: "connect", platform },
+    );
+  }
 
   try {
     const alreadyConnected = await oauthService.isPlatformConnected(
@@ -161,14 +179,38 @@ async function runConnect(
     );
 
     let activeConnectionId: string | undefined;
-    if (alreadyConnected) {
+    if (alreadyConnected || capabilities) {
       const connections = await oauthService.listConnections({
         organizationId,
         userId: user.id,
         platform,
         connectionRole,
       });
-      const active = connections.find((c) => c.status === "active");
+      const activeConnections = connections.filter((connection) => connection.status === "active");
+      const active = requestedConnectionId
+        ? activeConnections.find((connection) => connection.id === requestedConnectionId)
+        : activeConnections.length === 1
+          ? activeConnections[0]
+          : undefined;
+
+      if (requestedConnectionId && !active) {
+        return failureResult(
+          `The selected ${platformName} account is unavailable or does not belong to you.`,
+          "CONNECTION_NOT_FOUND",
+          { op: "connect", platform },
+        );
+      }
+      if (capabilities && !requestedConnectionId && activeConnections.length > 1) {
+        return failureResult(
+          `Choose which ${platformName} account should receive the additional access.`,
+          "AMBIGUOUS_CONNECTION",
+          {
+            op: "connect",
+            platform,
+            connectionIds: activeConnections.map((connection) => connection.id),
+          },
+        );
+      }
       activeConnectionId = active?.id;
       const identifier = active ? formatConnectionIdentifier(active) : "";
       if (!capabilities) {
@@ -549,6 +591,12 @@ export const oauthAction: ActionWithParams = {
       type: "array",
       description:
         "For op=connect: stable named capabilities to authorize incrementally. An existing active account is bound automatically and the returned state tells the caller whether consent, review, or admin approval is needed before retrying the blocked action.",
+      required: false,
+    },
+    connectionId: {
+      type: "string",
+      description:
+        "For capability-based connect: the existing connected account to extend. Required when more than one active account exists.",
       required: false,
     },
   }),

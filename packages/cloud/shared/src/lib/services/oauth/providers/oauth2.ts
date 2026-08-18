@@ -110,21 +110,26 @@ function resolveGrantedScopes(
   provider: OAuthProviderConfig,
   tokens: TokenResponse,
   requestedScopes: string[],
-  requestedUserScopes: string[],
-): string[] {
+): { scopes: string[]; userScopes: string[] } {
   const tokenScopes = parseGrantedScopeField(tokens.scope);
+  const tokenScopesConfirmed = typeof tokens.scope === "string";
   const authedUser = tokens.authed_user;
-  const userTokenScopes =
+  const rawUserScope =
     authedUser && typeof authedUser === "object" && !Array.isArray(authedUser)
-      ? parseGrantedScopeField((authedUser as Record<string, unknown>).scope)
-      : [];
-  const confirmed = [...tokenScopes, ...userTokenScopes];
-  const resolved = confirmed.length > 0 ? confirmed : [...requestedScopes, ...requestedUserScopes];
-  const allowed = new Set([
-    ...getAllowedScopes(provider),
-    ...(provider.allowedUserScopes ?? provider.userScopes ?? []),
-  ]);
-  return [...new Set(resolved.filter((scope) => allowed.has(scope)))];
+      ? (authedUser as Record<string, unknown>).scope
+      : undefined;
+  const userTokenScopes = rawUserScope === undefined ? [] : parseGrantedScopeField(rawUserScope);
+  const resolvedScopes = tokenScopesConfirmed ? tokenScopes : requestedScopes;
+  // User-token grants must never be inferred from the request. Slack returns
+  // them under authed_user.scope; if that authority is absent or malformed,
+  // persist no user grant and require consent again.
+  const resolvedUserScopes = userTokenScopes;
+  const allowedScopes = new Set(getAllowedScopes(provider));
+  const allowedUserScopes = new Set(provider.allowedUserScopes ?? provider.userScopes ?? []);
+  return {
+    scopes: [...new Set(resolvedScopes.filter((scope) => allowedScopes.has(scope)))],
+    userScopes: [...new Set(resolvedUserScopes.filter((scope) => allowedUserScopes.has(scope)))],
+  };
 }
 
 /**
@@ -184,6 +189,7 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
 
 function connectionSourceContext(
   connectionRole: OAuthStandardConnectionRole,
+  oauthUserScopes: string[],
 ): PlatformCredentialSourceContext {
   // We intentionally no longer write `agentGoogleSide`. `connectionRole`
   // is the canonical field; existing rows that only have the compatibility
@@ -192,7 +198,7 @@ function connectionSourceContext(
   // and `connection-adapters/generic-adapter.ts`. The upsert
   // setWhere clause below also COALESCEs both fields so a re-link
   // matches the original row.
-  return { connectionRole };
+  return { connectionRole, oauthUserScopes };
 }
 
 function oauthSecretName(
@@ -383,15 +389,8 @@ export async function handleOAuth2Callback(
   // Delete state to prevent replay attacks
   await cache.del(stateKey);
 
-  const {
-    organizationId,
-    userId,
-    redirectUrl,
-    scopes,
-    userScopes,
-    expectedPlatformUserId,
-    codeVerifier,
-  } = stateData;
+  const { organizationId, userId, redirectUrl, scopes, expectedPlatformUserId, codeVerifier } =
+    stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
 
   // Exchange code for tokens
@@ -427,6 +426,7 @@ export async function handleOAuth2Callback(
   }
 
   // Store connection
+  const granted = resolveGrantedScopes(provider, tokens, scopes);
   const connectionId = await storeConnection(
     provider,
     organizationId,
@@ -434,7 +434,8 @@ export async function handleOAuth2Callback(
     connectionRole,
     tokens,
     userInfo,
-    resolveGrantedScopes(provider, tokens, scopes, userScopes ?? []),
+    granted.scopes,
+    granted.userScopes,
   );
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
@@ -785,6 +786,7 @@ async function storeConnection(
   tokens: TokenResponse,
   userInfo: ExtractedUserInfo,
   scopes: string[],
+  userScopes: string[],
 ): Promise<string> {
   const connectionUserId = connectionRole === "OWNER" ? userId : null;
   const audit = {
@@ -1023,7 +1025,7 @@ async function storeConnection(
           scopes,
           profile_data: userInfo.raw,
           source_type: "web",
-          source_context: connectionSourceContext(connectionRole),
+          source_context: connectionSourceContext(connectionRole, userScopes),
           linked_at: new Date(),
         })
         .onConflictDoUpdate({
@@ -1052,7 +1054,7 @@ async function storeConnection(
             token_expires_at: tokenExpiresAt,
             scopes,
             profile_data: userInfo.raw,
-            source_context: connectionSourceContext(connectionRole),
+            source_context: connectionSourceContext(connectionRole, userScopes),
             linked_at: new Date(),
             updated_at: new Date(),
           },

@@ -64,9 +64,9 @@ export function resolveExistingCapabilityGrant(
     connection.platform === input.platform &&
     connection.status === "active" &&
     normalizeOAuthConnectionRole(connection.connectionRole) === input.connectionRole &&
-    (input.connectionRole === "AGENT"
-      ? connection.userId === undefined
-      : connection.userId === input.userId);
+    (input.connectionRole === "OWNER"
+      ? connection.userId === input.userId
+      : connection.userId === undefined);
   if (!ownsConnection || !connection) {
     throw Errors.connectionNotFound(input.connectionId);
   }
@@ -75,7 +75,9 @@ export function resolveExistingCapabilityGrant(
   const allowedUserScopes = new Set(input.allowedUserScopes);
   return {
     grantedScopes: connection.scopes.filter((scope) => allowedScopes.has(scope)),
-    grantedUserScopes: connection.scopes.filter((scope) => allowedUserScopes.has(scope)),
+    grantedUserScopes: (connection.userScopes ?? []).filter((scope) =>
+      allowedUserScopes.has(scope),
+    ),
     expectedPlatformUserId: connection.platformUserId,
   };
 }
@@ -169,6 +171,7 @@ function connectionFromPlatformCredential(cred: PlatformCredential): OAuthConnec
     avatarUrl: cred.platform_avatar_url || undefined,
     status: cred.status,
     scopes: (cred.scopes as string[]) || [],
+    userScopes: getStoredOAuthUserScopes(cred.source_context),
     linkedAt: cred.linked_at || cred.created_at,
     lastUsedAt: cred.last_used_at || undefined,
     tokenExpired: cred.token_expires_at ? new Date(cred.token_expires_at) < new Date() : false,
@@ -182,6 +185,13 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
   }
   const context = sourceContext as Record<string, unknown>;
   return normalizeOAuthConnectionRole(context.connectionRole ?? context.agentGoogleSide);
+}
+
+function getStoredOAuthUserScopes(sourceContext: unknown): string[] | undefined {
+  if (!sourceContext || typeof sourceContext !== "object") return undefined;
+  const value = (sourceContext as Record<string, unknown>).oauthUserScopes;
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((scope): scope is string => typeof scope === "string");
 }
 
 class OAuthService {

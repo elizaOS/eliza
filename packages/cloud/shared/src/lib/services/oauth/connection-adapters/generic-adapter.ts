@@ -24,6 +24,13 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // Buffer before token expiry to trigger refresh (5 minutes)
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
+function readOAuthUserScopes(sourceContext: unknown): string[] | undefined {
+  if (!sourceContext || typeof sourceContext !== "object") return undefined;
+  const value = (sourceContext as Record<string, unknown>).oauthUserScopes;
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((scope): scope is string => typeof scope === "string");
+}
+
 /**
  * Create a generic adapter for a specific platform.
  * This allows the adapter to be used for any platform that stores in platform_credentials.
@@ -125,6 +132,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
         avatarUrl: cred.platform_avatar_url || undefined,
         status: cred.status,
         scopes: (cred.scopes as string[]) || [],
+        userScopes: readOAuthUserScopes(cred.source_context),
         linkedAt: cred.linked_at || cred.created_at,
         lastUsedAt: cred.last_used_at || undefined,
         tokenExpired: cred.token_expires_at ? new Date(cred.token_expires_at) < new Date() : false,

@@ -99,6 +99,8 @@ export interface OAuthConnection {
   status: OAuthConnectionStatus;
   /** OAuth scopes granted */
   scopes: string[];
+  /** User-token OAuth scopes when the provider separates user and bot grants. */
+  userScopes?: string[];
   /** When the connection was established */
   linkedAt: Date;
   /** When the connection was last used */

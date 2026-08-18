@@ -45,6 +45,21 @@ describe("existing OAuth capability grant binding (#19879)", () => {
     });
   });
 
+  test("does not infer user-token authority from an overlapping bot scope", () => {
+    const candidate = connection({ scopes: ["chat:write"] });
+    const grant = resolveExistingCapabilityGrant(candidate, {
+      connectionId: CONNECTION_ID,
+      platform: "google",
+      userId: "user-1",
+      connectionRole: "OWNER",
+      allowedScopes: ["chat:write"],
+      allowedUserScopes: ["chat:write"],
+    });
+
+    expect(grant.grantedScopes).toEqual(["chat:write"]);
+    expect(grant.grantedUserScopes).toEqual([]);
+  });
+
   test.each([
     null,
     connection({ userId: "other-user" }),
@@ -58,5 +73,21 @@ describe("existing OAuth capability grant binding (#19879)", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: OAuthErrorCode.CONNECTION_NOT_FOUND });
     }
+  });
+
+  test("accepts an organization-shared TEAM connection without fabricating user ownership", () => {
+    const grant = resolveExistingCapabilityGrant(
+      connection({ connectionRole: "team", userId: undefined }),
+      {
+        connectionId: CONNECTION_ID,
+        platform: "google",
+        userId: "user-1",
+        connectionRole: "TEAM",
+        allowedScopes: ["identity", "calendar.read"],
+        allowedUserScopes: [],
+      },
+    );
+
+    expect(grant.expectedPlatformUserId).toBe("google-user-1");
   });
 });

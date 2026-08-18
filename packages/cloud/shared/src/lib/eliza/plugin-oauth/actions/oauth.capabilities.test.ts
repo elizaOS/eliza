@@ -23,23 +23,26 @@ const initiateAuth = mock(async (_input: unknown) => ({
   ],
   retryAfterConsent: true,
 }));
+let connections: Array<Record<string, unknown>> = [];
+
+function connection(id: string, platformUserId: string): Record<string, unknown> {
+  return {
+    id,
+    status: "active",
+    platform: "google",
+    platformUserId,
+    userId: "user-1",
+    connectionRole: "owner",
+    scopes: ["identity"],
+    linkedAt: new Date("2026-01-01T00:00:00.000Z"),
+    source: "platform_credentials",
+  };
+}
 
 mock.module("../../../services/oauth", () => ({
   oauthService: {
     isPlatformConnected: async () => true,
-    listConnections: async () => [
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        status: "active",
-        platform: "google",
-        platformUserId: "google-user-1",
-        userId: "user-1",
-        connectionRole: "owner",
-        scopes: ["identity"],
-        linkedAt: new Date("2026-01-01T00:00:00.000Z"),
-        source: "platform_credentials",
-      },
-    ],
+    listConnections: async () => connections,
     initiateAuth,
   },
 }));
@@ -61,7 +64,7 @@ afterAll(() => {
   mock.module("../utils", () => realUtilsExports);
 });
 
-function message(): Memory {
+function message(actionParams: Record<string, unknown> = {}): Memory {
   return {
     agentId: "agent-1",
     entityId: "user-1",
@@ -73,13 +76,17 @@ function message(): Memory {
         platform: "google",
         capabilities: ["google.calendar.write"],
         redirectUrl: "/calendar?retry=intent-1",
+        ...actionParams,
       },
     },
   } as Memory;
 }
 
 describe("OAUTH incremental capability handoff (#19879)", () => {
-  beforeEach(() => initiateAuth.mockClear());
+  beforeEach(() => {
+    initiateAuth.mockClear();
+    connections = [connection("11111111-1111-4111-8111-111111111111", "google-user-1")];
+  });
 
   test("extends the active account and returns machine-readable retry state", async () => {
     const result = await oauthAction.handler({} as IAgentRuntime, message());
@@ -107,5 +114,33 @@ describe("OAUTH incremental capability handoff (#19879)", () => {
         },
       ],
     });
+  });
+
+  test("requires an explicit account when multiple active connections exist", async () => {
+    connections.push(connection("22222222-2222-4222-8222-222222222222", "google-user-2"));
+
+    const result = await oauthAction.handler({} as IAgentRuntime, message());
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "AMBIGUOUS_CONNECTION",
+    });
+    expect(initiateAuth).not.toHaveBeenCalled();
+  });
+
+  test("binds the explicitly selected account when multiple are active", async () => {
+    connections.push(connection("22222222-2222-4222-8222-222222222222", "google-user-2"));
+
+    const result = await oauthAction.handler(
+      {} as IAgentRuntime,
+      message({ connectionId: "22222222-2222-4222-8222-222222222222" }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(initiateAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: "22222222-2222-4222-8222-222222222222",
+      }),
+    );
   });
 });

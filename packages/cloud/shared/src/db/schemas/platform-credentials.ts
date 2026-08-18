@@ -128,6 +128,7 @@ export const platformCredentials = pgTable(
       referrer?: string;
       agentGoogleSide?: "owner" | "agent";
       connectionRole?: "OWNER" | "AGENT" | "TEAM";
+      oauthUserScopes?: string[];
     }>(),
 
     // Raw profile data from OAuth provider

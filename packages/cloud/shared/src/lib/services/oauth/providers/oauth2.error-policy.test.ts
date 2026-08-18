@@ -198,6 +198,10 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     expect(result.connectionId).toBe("conn-1");
     // The real id flowed through storage untouched (never coerced to "unknown").
     expect(insertReturning).toHaveBeenCalledTimes(1);
+    expect(storedConnection?.source_context).toEqual({
+      connectionRole: "OWNER",
+      oauthUserScopes: [],
+    });
   });
 
   it("applies the shared 15-second deadline to callback and refresh requests", async () => {
@@ -293,7 +297,11 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
 
     await handleOAuth2Callback(provider, "auth-code", "state-token");
 
-    expect(storedConnection?.scopes).toEqual(["a", "user:read"]);
+    expect(storedConnection?.scopes).toEqual(["a"]);
+    expect(storedConnection?.source_context).toEqual({
+      connectionRole: "OWNER",
+      oauthUserScopes: ["user:read"],
+    });
   });
 
   it("rejects a different account returned during bound incremental consent", async () => {
