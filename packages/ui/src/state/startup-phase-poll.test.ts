@@ -1125,7 +1125,6 @@ describe("runPollingBackend", () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
-      __ELIZA_DESKTOP_RUNTIME_MODE__: "cloud",
       location: {
         origin: "file://",
         protocol: "file:",
@@ -1140,7 +1139,7 @@ describe("runPollingBackend", () => {
         backendTimeoutMs: 1000,
         agentReadyTimeoutMs: 1000,
         probeForExistingInstall: true,
-        defaultTarget: "embedded-local",
+        defaultTarget: "cloud-managed",
       },
       null,
       1,
