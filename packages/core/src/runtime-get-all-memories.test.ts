@@ -3,9 +3,9 @@
  * recording adapter: the partition sweep must include every platform-owned
  * memory table — the media GC's referenced-set and clearAllAgentMemories both
  * depend on this list being complete (#14751: a partition missing here leaves
- * its media references invisible to the sweep) — and must paginate each
- * partition to exhaustion rather than truncate at one bounded page (a
- * truncated sweep makes the GC delete still-referenced media).
+ * its media references invisible to the sweep) — must paginate each partition
+ * to exhaustion rather than truncate at one bounded page (a truncated sweep
+ * makes the GC delete still-referenced media).
  */
 
 import { describe, expect, it } from "vitest";

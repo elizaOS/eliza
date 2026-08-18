@@ -11236,6 +11236,16 @@ ${section_end}`;
 			// Paginate until a short page: a single 10k-bounded read silently
 			// truncates a larger partition, and the media GC would then delete
 			// files referenced only by rows past the cap as "orphaned".
+			//
+			// Accepted race (wave-5 audit, W5-022): offset pagination is the only
+			// mechanism the IDatabaseAdapter contract guarantees — it has no
+			// unique-key cursor, and `createdAt` is optional and non-unique, so
+			// keyset pagination cannot be expressed through the interface. A
+			// `deleteMemory` racing the sweep shifts later pages up and can skip
+			// a row; media referenced only by that row is then collected after
+			// the grace window. The window is narrow (a delete must race the
+			// daily task) and the grace window protects fresh media, so this is
+			// documented rather than re-architected.
 			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
 				const memories = await this.adapter.getMemories({
 					agentId: this.agentId,
