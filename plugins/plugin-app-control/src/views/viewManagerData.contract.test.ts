@@ -100,6 +100,29 @@ describe("fetchViewEntries contract (/api/views ViewRegistryEntry shape)", () =>
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 
+	it("aborts an in-flight list request when its caller is superseded", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+				return new Promise<Response>((_resolve, reject) => {
+					if (init?.signal?.aborted) {
+						reject(init.signal.reason);
+						return;
+					}
+					init?.signal?.addEventListener(
+						"abort",
+						() => reject(init.signal?.reason),
+						{ once: true },
+					);
+				});
+			}),
+		);
+		const controller = new AbortController();
+		const request = fetchViewEntries(undefined, controller.signal);
+		controller.abort();
+		await expect(request).rejects.toMatchObject({ name: "AbortError" });
+	});
+
 	it("rejects when the payload's views field is not an array", async () => {
 		vi.stubGlobal(
 			"fetch",

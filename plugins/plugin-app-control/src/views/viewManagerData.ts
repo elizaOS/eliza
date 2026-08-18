@@ -15,6 +15,7 @@ import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 export type ViewModality = "gui" | "tui" | "xr";
 
 const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
+const VIEW_LIST_TIMEOUT_MS = 15_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -206,9 +207,18 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 
 export async function fetchViewEntries(
 	viewType?: "gui" | "tui" | "xr",
+	callerSignal?: AbortSignal,
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetch(`/api/views${qs}`);
+	const timeoutSignal = AbortSignal.timeout(VIEW_LIST_TIMEOUT_MS);
+	const signal = callerSignal
+		? AbortSignal.any([callerSignal, timeoutSignal])
+		: timeoutSignal;
+	const res = await fetchWithCsrf(
+		`/api/views${qs}`,
+		{ signal },
+		{ timeoutMs: VIEW_LIST_TIMEOUT_MS },
+	);
 	if (!res.ok) {
 		throw new ElizaError(`GET /api/views returned HTTP ${res.status}`, {
 			code: "VIEW_MANAGER_LIST_HTTP_FAILED",
@@ -216,9 +226,24 @@ export async function fetchViewEntries(
 		});
 	}
 	let data: unknown;
+	const abortBodyRead = () => {
+		void res.body?.cancel();
+	};
+	let rejectBodyRead: ((reason?: unknown) => void) | undefined;
+	const rejectOnAbort = () => rejectBodyRead?.(signal.reason);
 	try {
-		data = await res.json();
+		const aborted = new Promise<never>((_, reject) => {
+			rejectBodyRead = reject;
+			if (signal.aborted) {
+				reject(signal.reason);
+				return;
+			}
+			signal.addEventListener("abort", rejectOnAbort, { once: true });
+		});
+		signal.addEventListener("abort", abortBodyRead, { once: true });
+		data = await Promise.race([res.json(), aborted]);
 	} catch (cause) {
+		if (signal.aborted) throw cause;
 		// error-policy:J2 preserve the JSON parser failure while adding the API
 		// boundary and response status needed to diagnose a broken registry payload.
 		return invalidViewListResponse(
@@ -226,6 +251,9 @@ export async function fetchViewEntries(
 			{ status: res.status, viewType },
 			{ cause },
 		);
+	} finally {
+		signal.removeEventListener("abort", abortBodyRead);
+		signal.removeEventListener("abort", rejectOnAbort);
 	}
 	if (!isRecord(data) || !Array.isArray(data.views)) {
 		return invalidViewListResponse(
