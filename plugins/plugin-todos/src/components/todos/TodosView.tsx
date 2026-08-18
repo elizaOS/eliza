@@ -55,12 +55,29 @@ export interface TodosFetchers {
   fetchTodos: () => Promise<TodosWire>;
 }
 
-async function getTodos(): Promise<TodosWire> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`);
+/** Todos JSON GET is a short UI read — same 15s family as GoalsView / FocusView. */
+export const TODOS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getTodosJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TODOS_VIEW_JSON_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
     throw new Error(`Todos request failed (${response.status})`);
   }
-  return (await response.json()) as TodosWire;
+  return (await response.json()) as T;
+}
+
+async function getTodos(): Promise<TodosWire> {
+  return getTodosJsonWithFetch<TodosWire>(
+    `${client.getBaseUrl()}/api/lifeops/todos`,
+    globalThis.fetch,
+  );
 }
 
 const defaultFetchers: TodosFetchers = {
