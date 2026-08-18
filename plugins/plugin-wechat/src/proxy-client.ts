@@ -50,10 +50,7 @@ export class ProxyClient {
         });
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter
-            ? Number.parseInt(retryAfter, 10) * 1000
-            : Math.min(1000 * 2 ** attempt, 8000);
+          const delay = retryDelayMs(res.headers.get("Retry-After"), attempt);
           // Consume the response body to release the connection
           await res.text().catch(() => {});
           await sleep(delay);
@@ -173,6 +170,44 @@ export class LoginExpiredError extends Error {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_BACKOFF_MS = 8000;
+// JavaScript timers overflow above a signed 32-bit delay and may fire almost
+// immediately, which would defeat the rate-limit backoff this parser protects.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const HTTP_DATE_PATTERN =
+  /^(?:[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]+, \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Z][a-z]{2} [A-Z][a-z]{2} {1,2}\d{1,2} \d{2}:\d{2}:\d{2} \d{4})$/;
+
+/**
+ * RFC 7231 §7.1.3 allows Retry-After to be either delay-seconds ("120") or an
+ * HTTP-date ("Wed, 21 Oct 2026 07:28:00 GMT"). `Number.parseInt` on the date
+ * form silently returns NaN, which made `setTimeout` fire almost immediately
+ * instead of honoring the server's backoff. Falls back to the existing
+ * exponential backoff when the header is absent or neither form parses.
+ */
+export function retryDelayMs(
+  retryAfterHeader: string | null,
+  attempt: number,
+): number {
+  const fallback = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+  if (!retryAfterHeader) return fallback;
+
+  const value = retryAfterHeader.trim();
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) return MAX_TIMER_DELAY_MS;
+    return Math.min(seconds * 1000, MAX_TIMER_DELAY_MS);
+  }
+
+  if (HTTP_DATE_PATTERN.test(value)) {
+    const dateMs = Date.parse(value);
+    if (!Number.isNaN(dateMs)) {
+      return Math.min(Math.max(0, dateMs - Date.now()), MAX_TIMER_DELAY_MS);
+    }
+  }
+
+  return fallback;
 }
 
 function normalizeProxyUrl(proxyUrl: string): string {
