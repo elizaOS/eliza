@@ -22,6 +22,7 @@ import {
   type MessageSource,
   type SearchMessagesFilters,
 } from "@elizaos/core/node";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/well-formed";
 import { isEmailAddress } from "./gmail-message-connector.js";
 import type {
   GoogleGmailBulkOperation,
@@ -47,7 +48,10 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  const wellFormedValue = toWellFormedUnicode(value);
+  return wellFormedValue.length > maxLength
+    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
+    : wellFormedValue;
 }
 
 function refId(messageId: string): string {

@@ -200,6 +200,70 @@ describe("GoogleGmailAdapter", () => {
     expect(sent.externalId).toBe("sent_new_1");
   });
 
+  it("clips draft body preview without tearing UTF-16 surrogate pairs at 240 limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+
+    const body = `${"x".repeat(236)}\u{1F98A}yyyy`;
+    const draft = await adapter.createDraft(runtime, {
+      source: "gmail",
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      body,
+      worldId: "acct_google_1",
+    });
+
+    expect(draft.preview.length).toBeLessThanOrEqual(240);
+    expect(draft.preview.isWellFormed()).toBe(true);
+    expect(draft.preview.endsWith("...")).toBe(true);
+    expect(draft.preview).toBe(`${"x".repeat(236)}...`);
+  });
+
+  it("preserves well-formed draft previews at and below the 240-code-unit limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const bodies = ["ready 🦊", "x".repeat(240)];
+
+    for (const body of bodies) {
+      const draft = await adapter.createDraft(runtime, {
+        source: "gmail",
+        to: [{ identifier: "test@example.com" }],
+        subject: "Test Subject",
+        body,
+        worldId: "acct_google_1",
+      });
+
+      expect(draft.preview).toBe(body);
+      expect(draft.preview.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("normalizes lone surrogates in short and clipped draft previews", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+
+    const shortDraft = await adapter.createDraft(runtime, {
+      ...baseRequest,
+      body: "short\ud800preview",
+    });
+    const longDraft = await adapter.createDraft(runtime, {
+      ...baseRequest,
+      body: `${"x".repeat(237)}\udc00tail`,
+    });
+
+    expect(shortDraft.preview).toBe("short�preview");
+    expect(longDraft.preview).toBe(`${"x".repeat(237)}...`);
+    expect(shortDraft.preview.isWellFormed()).toBe(true);
+    expect(longDraft.preview.isWellFormed()).toBe(true);
+    expect(longDraft.preview.length).toBeLessThanOrEqual(240);
+  });
+
   it("refuses a new draft without an email-address recipient", async () => {
     const runtime = runtimeWithGoogleService({});
     await expect(
