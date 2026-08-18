@@ -190,6 +190,15 @@ describe("WebSearchService", () => {
                 maxResults: 3,
             })
         );
+
+        await service.searchNews("funding", { days: 14 });
+        expect(searchMock).toHaveBeenLastCalledWith(
+            "funding",
+            expect.objectContaining({
+                topic: "news",
+                days: 14,
+            })
+        );
     });
 
     it("derives suggestions and trending searches from Tavily result titles", async () => {
