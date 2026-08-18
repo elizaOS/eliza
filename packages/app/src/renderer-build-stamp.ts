@@ -33,6 +33,8 @@ declare global {
   }
 }
 
+export const DEFAULT_RENDERER_BUILD_STAMP_FETCH_TIMEOUT_MS = 5_000;
+
 const MANIFEST_FILENAME = "eliza-renderer-build.json";
 
 export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | null> {
@@ -56,7 +58,12 @@ export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | nul
       base === "/"
         ? new URL(MANIFEST_FILENAME, window.location.origin).toString()
         : new URL(MANIFEST_FILENAME, document.baseURI).toString();
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(
+        DEFAULT_RENDERER_BUILD_STAMP_FETCH_TIMEOUT_MS,
+      ),
+    });
     if (!response.ok) {
       window.__ELIZA_RENDERER_BUILD__ = null;
       return null;
@@ -77,4 +84,4 @@ export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | nul
 }
 
 // Kick off without blocking boot.
-void loadRendererBuildStamp();
+if (typeof window !== "undefined") void loadRendererBuildStamp();
