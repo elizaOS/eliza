@@ -62,10 +62,10 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
   private formatConstraintsForGoogle(constraints: GoogleConstraints): string {
     const rules: string[] = [];
 
-    if (constraints.minLength) {
+    if (constraints.minLength !== undefined) {
       rules.push(`text must be at least ${constraints.minLength} characters long`);
     }
-    if (constraints.maxLength) {
+    if (constraints.maxLength !== undefined) {
       rules.push(`text must be no more than ${constraints.maxLength} characters long`);
     }
     if (constraints.minimum !== undefined) {
@@ -80,7 +80,7 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     if (constraints.exclusiveMaximum !== undefined) {
       rules.push(`number must be less than ${constraints.exclusiveMaximum}`);
     }
-    if (constraints.multipleOf) {
+    if (constraints.multipleOf !== undefined) {
       rules.push(`number must be a multiple of ${constraints.multipleOf}`);
     }
     if (constraints.format === "email") {
@@ -101,19 +101,19 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     if (constraints.enum && Array.isArray(constraints.enum)) {
       rules.push(`must be exactly one of these values: ${constraints.enum.join(", ")}`);
     }
-    if (constraints.minItems) {
+    if (constraints.minItems !== undefined) {
       rules.push(`array must contain at least ${constraints.minItems} items`);
     }
-    if (constraints.maxItems) {
+    if (constraints.maxItems !== undefined) {
       rules.push(`array must contain no more than ${constraints.maxItems} items`);
     }
     if (constraints.uniqueItems === true) {
       rules.push(`array items must all be unique (no duplicates)`);
     }
-    if (constraints.minProperties) {
+    if (constraints.minProperties !== undefined) {
       rules.push(`object must have at least ${constraints.minProperties} properties`);
     }
-    if (constraints.maxProperties) {
+    if (constraints.maxProperties !== undefined) {
       rules.push(`object must have no more than ${constraints.maxProperties} properties`);
     }
     if (constraints.additionalProperties === false) {
