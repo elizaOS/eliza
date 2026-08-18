@@ -5,10 +5,12 @@
  * A messaging onboarding funnel hands the browser
  * `?onboardingSession=<opaque token>`. This page persists the token across the
  * Steward login round trip. Ordinary identity-link continuations are previewed
- * and explicitly confirmed here. Telegram account-claim continuations are
- * consumed earlier by Steward sync so the DM-created user and organization are
- * adopted before generic signup can create duplicates; after auth this page
- * simply forwards to `/join`.
+ * and explicitly confirmed here. Telegram account-claim continuations run
+ * through the same confirm phase: the page shows the attested Telegram
+ * identity and only the explicit confirmation gesture fires the claim, which
+ * Steward sync consumes so the DM-created user and organization are adopted
+ * before generic signup can create duplicates. A signed-out visit still
+ * redirects to login, where session creation consumes the pending claim.
  *
  * Signed-out visitors bounce to `/login?returnTo=/get-started`; the token
  * survives in storage, not the URL. A visit with no pending token just
@@ -184,21 +186,17 @@ export default function GetStartedPage(): React.JSX.Element {
     if (!session.ready || !session.authenticated) return;
     if (startedRef.current) return;
     if (telegramClaimToken) {
+      // A clicked claim link must never execute the account claim on its own:
+      // run the read-only preview and let the confirmation gesture fire it.
       startedRef.current = true;
-      void claimTelegramAccount(telegramClaimToken);
+      void preview(telegramClaimToken);
       return;
     }
     const token = peekPendingOnboardingSession();
     if (!token) return;
     startedRef.current = true;
     void preview(token);
-  }, [
-    session.ready,
-    session.authenticated,
-    telegramClaimToken,
-    claimTelegramAccount,
-    preview,
-  ]);
+  }, [session.ready, session.authenticated, telegramClaimToken, preview]);
 
   if (
     session.ready &&
@@ -258,6 +256,10 @@ export default function GetStartedPage(): React.JSX.Element {
             <Button
               type="button"
               onClick={() => {
+                if (telegramClaimToken) {
+                  void claimTelegramAccount(telegramClaimToken);
+                  return;
+                }
                 const token = peekPendingOnboardingSession();
                 if (token) void redeem(token);
               }}
@@ -322,7 +324,12 @@ export default function GetStartedPage(): React.JSX.Element {
                   return;
                 }
                 if (telegramClaimToken) {
-                  void claimTelegramAccount(telegramClaimToken);
+                  // Retry only the step that failed: the mutating claim once
+                  // the preview has named the identity, otherwise the preview.
+                  // A failed preview must never escalate into the claim.
+                  if (platformIdentity)
+                    void claimTelegramAccount(telegramClaimToken);
+                  else void preview(telegramClaimToken);
                   return;
                 }
                 const token = peekPendingOnboardingSession();

@@ -9,7 +9,8 @@
  * `public-pages/lib/login-return-to.ts` — and redeemed exactly once after
  * authentication by POSTing the onboarding chat endpoint with the Steward
  * bearer. Ordinary continuations are explicitly confirmed after login. A
- * Telegram personal-account claim is purpose-marked separately and consumed by
+ * Telegram personal-account claim is purpose-marked separately, confirmed
+ * against the read-only claim preview on the landing page, and consumed by
  * Steward sync before generic account creation, preserving its existing user,
  * organization, and transcript. The purpose marker is routing metadata only;
  * the server validates all authority from the opaque token.

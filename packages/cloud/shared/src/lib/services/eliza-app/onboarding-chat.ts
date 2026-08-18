@@ -112,6 +112,12 @@ export interface TelegramPersonalAccountContinuation {
   telegramId: string;
   userId: string;
   organizationId: string;
+  /**
+   * Gateway-attested Telegram display name. The claim decision never reads
+   * it; it exists so the browser landing can name the identity it asks the
+   * user to confirm before the claim fires.
+   */
+  platformDisplayName: string;
 }
 
 export interface OnboardingChatCta {
@@ -467,6 +473,27 @@ export async function inspectTelegramPersonalAccountContinuation(
     telegramId: session.platformUserId,
     userId: session.userId,
     organizationId: session.organizationId,
+    platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+  };
+}
+
+/**
+ * Browser-facing read-only preview of a Telegram personal-account claim
+ * continuation. The generic account-bound preview rejects these sessions by
+ * design — a claim session is bound to the DM-created account the caller may
+ * claim, never to the caller — so the confirmation landing inspects the claim
+ * authority directly. Only the Telegram identity being linked is disclosed;
+ * the bound account ids stay server-side.
+ */
+export async function previewTelegramPersonalAccountClaimContinuation(
+  continuationToken: string,
+): Promise<OnboardingContinuationPreview> {
+  const claim = await inspectTelegramPersonalAccountContinuation(continuationToken);
+  return {
+    platform: "telegram",
+    platformUserId: claim.telegramId,
+    platformDisplayName: claim.platformDisplayName,
+    returnUrl: null,
   };
 }
 
