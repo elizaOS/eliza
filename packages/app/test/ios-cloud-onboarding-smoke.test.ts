@@ -19,6 +19,8 @@ describe("isIosCloudOnboardingComplete", () => {
     homeVisible: true,
     composerVisible: true,
     onboardingHidden: true,
+    firstRunComplete: true,
+    stewardSessionPresent: true,
     cloudActiveServer: true,
     firstRunPostCount: 0,
   };
@@ -40,6 +42,8 @@ describe("isIosCloudOnboardingComplete", () => {
     "homeVisible",
     "composerVisible",
     "onboardingHidden",
+    "firstRunComplete",
+    "stewardSessionPresent",
     "cloudActiveServer",
   ] as const)("requires %s", (field) => {
     expect(

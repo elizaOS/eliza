@@ -66,6 +66,8 @@ export interface IosCloudOnboardingCompletionState {
   homeVisible: boolean;
   composerVisible: boolean;
   onboardingHidden: boolean;
+  firstRunComplete: boolean;
+  stewardSessionPresent: boolean;
   cloudActiveServer: boolean;
   firstRunPostCount: number;
 }
@@ -83,6 +85,8 @@ export function isIosCloudOnboardingComplete(
     state.homeVisible &&
     state.composerVisible &&
     state.onboardingHidden &&
+    state.firstRunComplete &&
+    state.stewardSessionPresent &&
     state.cloudActiveServer &&
     state.firstRunPostCount === 0
   );

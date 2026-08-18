@@ -1393,10 +1393,9 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
     const { home, composer } = await waitForIosCloudOnboardingHome();
     const storage = readIosCloudOnboardingSmokeStorageSnapshot();
     const firstRunPostCount = firstRunCounter.getCount();
-    const activeServer = storage["elizaos:active-server"];
-    const cloudActiveServer =
-      typeof activeServer === "string" &&
-      activeServer.includes('"kind":"cloud"');
+    const firstRunComplete = storage["eliza:first-run-complete"] === "1";
+    const stewardSessionPresent = storage.stewardSessionPresent === true;
+    const cloudActiveServer = loadPersistedActiveServer()?.kind === "cloud";
     const onboardingHidden = !document.querySelector(
       '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
     );
@@ -1413,6 +1412,8 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
         homeVisible: Boolean(home),
         composerVisible: Boolean(composer),
         onboardingHidden,
+        firstRunComplete,
+        stewardSessionPresent,
         cloudActiveServer,
         firstRunPostCount,
       }),
