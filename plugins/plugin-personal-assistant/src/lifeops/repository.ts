@@ -6505,6 +6505,113 @@ export class LifeOpsRepository {
     );
   }
 
+  /** Atomically claims the oldest eligible session for one exact companion. */
+  async claimBrowserSession(
+    agentId: string,
+    companion: BrowserBridgeCompanionStatus,
+    claimedAt: string,
+  ): Promise<LifeOpsBrowserSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `WITH candidate AS (
+         SELECT id
+           FROM app_lifeops.life_workflow_browser_sessions
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND (browser IS NULL OR browser = ${sqlQuote(companion.browser)})
+            AND (profile_id IS NULL OR profile_id = ${sqlQuote(companion.profileId)})
+            AND (companion_id IS NULL OR companion_id = ${sqlQuote(companion.id)})
+            AND (
+              status = 'queued'
+              OR (
+                status = 'running'
+                AND metadata_json::jsonb ->> 'claimedByCompanionId' = ${sqlQuote(companion.id)}
+              )
+            )
+          ORDER BY
+            CASE WHEN status = 'running' THEN 0 ELSE 1 END,
+            created_at ASC,
+            id ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+       )
+       UPDATE app_lifeops.life_workflow_browser_sessions AS session
+          SET status = 'running',
+              browser = COALESCE(session.browser, ${sqlQuote(companion.browser)}),
+              companion_id = ${sqlQuote(companion.id)},
+              profile_id = COALESCE(session.profile_id, ${sqlQuote(companion.profileId)}),
+              metadata_json = (session.metadata_json::jsonb || ${sqlJson({
+                claimedAt,
+                claimedByCompanionId: companion.id,
+                claimedBrowser: companion.browser,
+                claimedProfileId: companion.profileId,
+              })}::jsonb)::text,
+              updated_at = ${sqlQuote(claimedAt)}
+         FROM candidate
+        WHERE session.id = candidate.id
+          AND session.agent_id = ${sqlQuote(agentId)}
+        RETURNING session.*`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Applies a monotonic companion checkpoint without a read/write race. */
+  async updateBrowserSessionProgressFromCompanion(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    currentActionIndex: number;
+    resultPatch: Record<string, unknown>;
+    metadataPatch: Record<string, unknown>;
+    updatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET current_action_index = ${sqlInteger(args.currentActionIndex)},
+              result_json = (result_json::jsonb || ${sqlJson(args.resultPatch)}::jsonb)::text,
+              metadata_json = (metadata_json::jsonb || ${sqlJson(args.metadataPatch)}::jsonb)::text,
+              updated_at = ${sqlQuote(args.updatedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+          AND current_action_index <= ${sqlInteger(args.currentActionIndex)}
+          AND ${sqlInteger(args.currentActionIndex)} <= jsonb_array_length(actions_json::jsonb)
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Completes only a running session owned by the exact companion identity. */
+  async completeBrowserSessionFromCompanion(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    status: Extract<LifeOpsBrowserSession["status"], "done" | "failed">;
+    resultPatch: Record<string, unknown>;
+    updatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET status = ${sqlQuote(args.status)},
+              current_action_index = jsonb_array_length(actions_json::jsonb),
+              result_json = (result_json::jsonb || ${sqlJson(args.resultPatch)}::jsonb)::text,
+              updated_at = ${sqlQuote(args.updatedAt)},
+              finished_at = ${sqlQuote(args.updatedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
   async getBrowserSession(
     agentId: string,
     sessionId: string,

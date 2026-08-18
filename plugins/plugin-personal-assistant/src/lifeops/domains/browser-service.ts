@@ -78,7 +78,6 @@ import {
   requireNonEmptyString,
 } from "../service-normalize.js";
 import { normalizeBrowserActionInput } from "../service-normalize-task.js";
-import { selectBrowserSessionForCompanion } from "./browser-session-claim.js";
 
 type BrowserScreenTimeEvent = {
   source: "app" | "website";
@@ -317,30 +316,18 @@ export class BrowserDomain {
   public async claimQueuedBrowserSession(
     companion: BrowserBridgeCompanionStatus,
   ): Promise<LifeOpsBrowserSession | null> {
-    const claimable = selectBrowserSessionForCompanion(
-      await this.listBrowserSessions(),
+    const nowIso = new Date().toISOString();
+    const claimed = await this.ctx.repository.claimBrowserSession(
+      this.ctx.agentId(),
       companion,
+      nowIso,
     );
-    if (!claimable) {
+    if (!claimed) {
       return null;
     }
-    if (claimable.status === "running") {
-      return claimable;
-    }
-    const nowIso = new Date().toISOString();
-    const nextSession: LifeOpsBrowserSession = {
-      ...claimable,
-      status: "running",
-      metadata: mergeMetadata(claimable.metadata, {
-        claimedAt: nowIso,
-        claimedByCompanionId: companion.id,
-      }),
-      updatedAt: nowIso,
-    };
-    await this.ctx.repository.updateBrowserSession(nextSession);
     await this.deps.recordBrowserAudit(
       "browser_session_updated",
-      nextSession.id,
+      claimed.id,
       "browser session claimed by companion",
       {
         companionId: companion.id,
@@ -348,10 +335,10 @@ export class BrowserDomain {
         profileId: companion.profileId,
       },
       {
-        status: nextSession.status,
+        status: claimed.status,
       },
     );
-    return nextSession;
+    return claimed;
   }
 
   public async requireBrowserSessionForCompanion(
@@ -488,8 +475,14 @@ export class BrowserDomain {
         companionInput.lastSeenAt,
         "companion.lastSeenAt",
       ) ?? new Date().toISOString();
-    const existingTabs = await this.ctx.repository.listBrowserTabs(
+    const allExistingTabs = await this.ctx.repository.listBrowserTabs(
       this.ctx.agentId(),
+    );
+    const existingTabs = allExistingTabs.filter(
+      (tab) =>
+        tab.companionId === companion.id &&
+        tab.browser === browser &&
+        tab.profileId === profileId,
     );
     const currentSyncMs = Date.parse(nowIso);
     const previouslyFocusedTab =
@@ -664,10 +657,16 @@ export class BrowserDomain {
       allTabs.filter((tab) => !keptTabIds.has(tab.id)).map((tab) => tab.id),
     );
 
+    const companionTabs = keptTabs.filter(
+      (tab) =>
+        tab.companionId === companion.id &&
+        tab.browser === browser &&
+        tab.profileId === profileId,
+    );
     const focusedTab =
-      keptTabs.find((tab) => tab.focusedActive) ??
-      keptTabs.find((tab) => tab.activeInWindow) ??
-      keptTabs[0] ??
+      companionTabs.find((tab) => tab.focusedActive) ??
+      companionTabs.find((tab) => tab.activeInWindow) ??
+      companionTabs[0] ??
       null;
     const focusedKey = focusedTab ? browserTabIdentityKey(focusedTab) : null;
     const existingContexts = await this.ctx.repository.listBrowserPageContexts(
@@ -817,10 +816,20 @@ export class BrowserDomain {
         .map((context) => context.id),
     );
 
-    const currentPage = await this.getCurrentBrowserPage();
+    const currentPage = focusedKey
+      ? ((
+          await this.ctx.repository.listBrowserPageContexts(this.ctx.agentId())
+        ).find(
+          (context) =>
+            context.browser === browser &&
+            context.profileId === profileId &&
+            browserPageContextIdentityKey(context) === focusedKey &&
+            browserUrlAllowedBySettings(context.url, settings),
+        ) ?? null)
+      : null;
     return {
       companion,
-      tabs: await this.listBrowserTabs(),
+      tabs: companionTabs,
       currentPage,
     };
   }
@@ -1263,17 +1272,59 @@ export class BrowserDomain {
       companion,
       sessionId,
     );
-    if (
-      session.status !== "queued" &&
-      session.status !== "running" &&
-      session.status !== "awaiting_confirmation"
-    ) {
+    if (session.status !== "running") {
       fail(
         409,
         `browser session cannot update progress from status ${session.status}`,
       );
     }
-    return this.updateBrowserSessionProgress(session.id, request);
+    const currentActionIndex =
+      request.currentActionIndex === undefined
+        ? session.currentActionIndex
+        : normalizeBrowserSessionActionIndex(
+            request.currentActionIndex,
+            session.actions.length,
+          );
+    if (currentActionIndex < session.currentActionIndex) {
+      fail(409, "browser session checkpoint cannot move backwards");
+    }
+    const updatedAt = new Date().toISOString();
+    const lifecycle = mergeBrowserTaskLifecycle({
+      session,
+      resultPatch:
+        request.result === undefined
+          ? undefined
+          : requireRecord(request.result, "result"),
+      metadataPatch:
+        request.metadata === undefined
+          ? undefined
+          : requireRecord(request.metadata, "metadata"),
+      now: updatedAt,
+    });
+    const updated =
+      await this.ctx.repository.updateBrowserSessionProgressFromCompanion({
+        agentId: this.ctx.agentId(),
+        sessionId: session.id,
+        companion,
+        currentActionIndex,
+        resultPatch: lifecycle.result,
+        metadataPatch: lifecycle.metadata,
+        updatedAt,
+      });
+    if (!updated) {
+      fail(409, "browser session checkpoint lost a concurrent update");
+    }
+    await this.deps.recordBrowserAudit(
+      "browser_session_updated",
+      updated.id,
+      "browser session progress updated",
+      {
+        currentActionIndex: updated.currentActionIndex,
+        browserTask: summarizeBrowserTaskLifecycle(updated),
+      },
+      { status: updated.status },
+    );
+    return updated;
   }
 
   async completeBrowserSessionFromCompanion(
@@ -1286,7 +1337,60 @@ export class BrowserDomain {
       companionId,
       pairingToken,
     );
-    await this.requireBrowserSessionForCompanion(companion, sessionId);
-    return this.completeBrowserSession(sessionId, request);
+    const session = await this.requireBrowserSessionForCompanion(
+      companion,
+      sessionId,
+    );
+    if (session.status !== "running") {
+      if (session.status === (request.status ?? "done")) {
+        return session;
+      }
+      fail(
+        409,
+        `browser session cannot complete from status ${session.status}`,
+      );
+    }
+    const updatedAt = new Date().toISOString();
+    const status = request.status ?? "done";
+    const lifecycle = mergeBrowserTaskLifecycle({
+      session,
+      resultPatch:
+        request.result === undefined
+          ? undefined
+          : requireRecord(request.result, "result"),
+      now: updatedAt,
+      completed: status === "done",
+    });
+    const completed =
+      await this.ctx.repository.completeBrowserSessionFromCompanion({
+        agentId: this.ctx.agentId(),
+        sessionId,
+        companion,
+        status,
+        resultPatch: lifecycle.result,
+        updatedAt,
+      });
+    if (!completed) {
+      const latest = await this.getBrowserSession(sessionId);
+      if (
+        latest.status === status &&
+        latest.companionId === companion.id &&
+        latest.browser === companion.browser &&
+        latest.profileId === companion.profileId
+      ) {
+        return latest;
+      }
+      fail(409, "browser session completion lost a concurrent update");
+    }
+    await this.deps.recordBrowserAudit(
+      "browser_session_updated",
+      completed.id,
+      status === "failed"
+        ? "browser session failed"
+        : "browser session completed",
+      { result: request.result ?? null },
+      { status: completed.status },
+    );
+    return completed;
   }
 }
