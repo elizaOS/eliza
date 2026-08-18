@@ -1177,6 +1177,8 @@ export interface SearchResponse {
  * News search options.
  */
 export interface NewsSearchOptions extends SearchOptions {
+	/** Explicit maximum age in days; takes precedence over freshness. */
+	days?: number;
 	/** News category */
 	category?:
 		| "general"
