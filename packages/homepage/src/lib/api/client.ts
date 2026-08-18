@@ -17,6 +17,8 @@ export function getElizacloudUrl(): string {
   return getBaseUrl();
 }
 
+export const DEFAULT_ELIZACLOUD_FETCH_TIMEOUT_MS = 10_000;
+
 export type ApiRequestInit = RequestInit & {
   params?: Record<string, string>;
 };
@@ -38,8 +40,15 @@ export async function elizacloudFetch<T = unknown>(
 ): Promise<T> {
   const { params, ...reqInit } = init ?? {};
   const url = buildUrl(path, params);
+  const timeoutSignal = AbortSignal.timeout(
+    DEFAULT_ELIZACLOUD_FETCH_TIMEOUT_MS,
+  );
+  const signal = reqInit.signal
+    ? AbortSignal.any([reqInit.signal, timeoutSignal])
+    : timeoutSignal;
   const res = await fetch(url, {
     ...reqInit,
+    signal,
     headers: {
       "Content-Type": "application/json",
       ...reqInit.headers,
