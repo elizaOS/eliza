@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent google behavior for cloud runtime services.
+/** Adapts hosted MCP schemas to Google's accepted tool-schema subset. */
 import { McpToolCompatibility, type ModelInfo } from "../base";
 
 export class GoogleMcpCompatibility extends McpToolCompatibility {
@@ -56,9 +56,11 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
       rule("multipleOf", `multiple of ${constraints.multipleOf}`);
     if (constraints.format === "email") rule("format", "valid email");
     if (constraints.format === "uri" || constraints.format === "url") rule("format", "valid URL");
-    if (typeof constraints.pattern === "string") rule("pattern", `matches ${constraints.pattern}`);
-    if (Array.isArray(constraints.enum) && constraints.enum.length > 0)
-      rule("enum", `one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`);
+    if (typeof constraints.pattern === "string" && constraints.pattern.length <= 512) {
+      rule("pattern", `matches ${constraints.pattern}`);
+    }
+    const serializedEnum = this.serializeDiagnosticList(constraints.enum);
+    if (serializedEnum !== undefined) rule("enum", `one of: ${serializedEnum}`);
     if (nonNegativeInteger(constraints.minItems))
       rule("minItems", `>= ${constraints.minItems} items`);
     if (nonNegativeInteger(constraints.maxItems))
@@ -75,11 +77,16 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     const parts: string[] = [];
     if (rules.length > 0) parts.push(`Constraints: ${rules.join("; ")}`);
     if (unrendered.length > 0) {
-      parts.push(
-        this.stringifyConstraints(
-          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
-        ),
-      );
+      const values = Object.create(null) as Record<string, unknown>;
+      for (const key of unrendered) {
+        Object.defineProperty(values, key, {
+          value: constraints[key],
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+      parts.push(this.serializeDiagnostic(values));
     }
 
     const text = parts.join(" ");

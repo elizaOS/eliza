@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent openai behavior for cloud runtime services.
+/** Adapts hosted MCP schemas to OpenAI's model-specific tool-schema subsets. */
 import { McpToolCompatibility, type ModelInfo } from "../base";
 
 export class OpenAIMcpCompatibility extends McpToolCompatibility {
@@ -100,13 +100,10 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     if (constraints.format === "email") rule("format", `must be a valid email`);
     if (constraints.format === "uri" || constraints.format === "url")
       rule("format", `must be a valid URL`);
-    if (typeof constraints.pattern === "string")
+    if (typeof constraints.pattern === "string" && constraints.pattern.length <= 512)
       rule("pattern", `must match: ${constraints.pattern}`);
-    if (Array.isArray(constraints.enum) && constraints.enum.length > 0)
-      rule(
-        "enum",
-        `must be one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`,
-      );
+    const serializedEnum = this.serializeDiagnosticList(constraints.enum);
+    if (serializedEnum !== undefined) rule("enum", `must be one of: ${serializedEnum}`);
     if (nonNegativeInteger(constraints.minItems))
       rule("minItems", `at least ${constraints.minItems} items`);
     if (nonNegativeInteger(constraints.maxItems))
@@ -123,11 +120,16 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     const parts: string[] = [];
     if (rules.length > 0) parts.push(`IMPORTANT: ${rules.join(", ")}`);
     if (unrendered.length > 0) {
-      parts.push(
-        this.stringifyConstraints(
-          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
-        ),
-      );
+      const values = Object.create(null) as Record<string, unknown>;
+      for (const key of unrendered) {
+        Object.defineProperty(values, key, {
+          value: constraints[key],
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+      parts.push(this.serializeDiagnostic(values));
     }
 
     const text = parts.join(" ");
