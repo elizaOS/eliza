@@ -1,13 +1,13 @@
 /** Exercises malformed browser-workspace tab identifiers at the bridge boundary. */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import http from "node:http";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const closeTab = mock(
-  async (options: { id: string }) => options.id === "tab-1",
+const closeTab = vi.hoisted(() =>
+  vi.fn(async (options: { id: string }) => options.id === "tab-1"),
 );
 
-mock.module("./native/browser-workspace", () => ({
+vi.mock("./native/browser-workspace", () => ({
   getBrowserWorkspaceManager: () => ({
     listTabs: async () => ({ tabs: [] }),
     closeTab,
@@ -74,9 +74,13 @@ async function request(
 }
 
 describe("electrobun browser-workspace tab id encoding", () => {
+  let nextPort = 31991;
   beforeEach(() => {
     closeTab.mockClear();
-    process.env.ELIZA_BROWSER_WORKSPACE_PORT = "31991";
+    // A fresh port per test: the previous server's close is asynchronous, and
+    // reusing its port races the shutdown into ECONNRESET under vitest.
+    nextPort += 1;
+    process.env.ELIZA_BROWSER_WORKSPACE_PORT = String(nextPort);
     process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = "test-tab-encoding-token";
   });
 
