@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   createGoogleGenAI: vi.fn(),
   embedContent: vi.fn(),
   emitModelUsageEvent: vi.fn(),
+  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
 }));
 
 vi.mock("@elizaos/core", async () => {
@@ -38,10 +39,18 @@ vi.mock("@elizaos/core", async () => {
   };
 });
 
-vi.mock("../utils/config", () => ({
-  createGoogleGenAI: mocks.createGoogleGenAI,
-  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
-}));
+vi.mock("../utils/config", async () => {
+  // Use the real per-model input-token-limit resolver so the truncation
+  // boundary tests exercise the actual gemini-embedding-001 (2048) vs
+  // gemini-embedding-2 (8192) map, not a re-declared stub that could drift.
+  const actual =
+    await vi.importActual<typeof import("../utils/config")>("../utils/config");
+  return {
+    createGoogleGenAI: mocks.createGoogleGenAI,
+    getEmbeddingModel: mocks.getEmbeddingModel,
+    getEmbeddingInputTokenLimit: actual.getEmbeddingInputTokenLimit,
+  };
+});
 
 vi.mock("../utils/events", () => ({
   emitModelUsageEvent: mocks.emitModelUsageEvent,
@@ -63,6 +72,7 @@ function createRuntime(): IAgentRuntime {
 describe("Google GenAI embeddings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-001");
     mocks.countTokens.mockResolvedValue(5);
     // gemini-embedding-001 honours outputDimensionality:768 and returns a
     // 768-length (un-normalized) vector for that request.
@@ -237,6 +247,56 @@ describe("Google GenAI embeddings", () => {
       code: "EMBEDDING_NON_FINITE",
       context: { dimensions: 768, index: 7 },
     });
+  });
+
+  it("truncates an oversized input to the default model's 2,048-token (~8,192-char) limit before the embedContent call", async () => {
+    // gemini-embedding-001 documents a 2,048-token input limit. The handler must
+    // slice the text to ~4 chars/token = 8,192 chars BEFORE the SDK call, so the
+    // mocked embedContent never sees more than 8,192 characters for this model.
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-001");
+    const oversized = "a".repeat(20_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+    const passed = mocks.embedContent.mock.calls[0][0] as {
+      model: string;
+      contents: string;
+    };
+    expect(passed.model).toBe("gemini-embedding-001");
+    expect(passed.contents.length).toBe(8_192);
+    expect(passed.contents).toBe("a".repeat(8_192));
+  });
+
+  it("does NOT truncate a gemini-embedding-2 override to the smaller 2,048 limit for the same input", async () => {
+    // gemini-embedding-2 supports an 8,192-token window (~32,768 chars). The
+    // same 20,000-char input that is cut to 8,192 chars under the default model
+    // must pass through untouched here, proving the limit is model-aware and not
+    // pinned to the old hardcoded boundary.
+    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-2");
+    const input = "a".repeat(20_000);
+
+    await handleTextEmbedding(createRuntime(), input);
+
+    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+    const passed = mocks.embedContent.mock.calls[0][0] as {
+      model: string;
+      contents: string;
+    };
+    expect(passed.model).toBe("gemini-embedding-2");
+    expect(passed.contents.length).toBe(20_000);
+  });
+
+  it("truncates an unmapped override to the safe 2,048-token default limit", async () => {
+    // An override id not present in the limit map falls back to the safe 2,048
+    // limit (never the larger 8,192 window), so it is cut to 8,192 chars.
+    mocks.getEmbeddingModel.mockReturnValue("some-unknown-embedding-model");
+    const oversized = "b".repeat(40_000);
+
+    await handleTextEmbedding(createRuntime(), oversized);
+
+    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    expect(passed.contents.length).toBe(8_192);
   });
 
   it("throws for empty embedding input before creating a client", async () => {

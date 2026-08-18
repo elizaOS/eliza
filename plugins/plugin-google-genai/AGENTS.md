@@ -99,7 +99,7 @@ Append a `TestCase` object to the `pluginTests[0].tests` array in `index.ts`. Te
 - **Structured output.** Pass a JSON Schema as `responseSchema` in `GenerateTextParams`. Text handlers internally set `responseMimeType: "application/json"` and `responseJsonSchema` on the Google SDK request. The model returns raw JSON text; no post-parse step is applied for text handlers (the caller owns parsing).
 - **Safety settings are hardcoded.** All four harm categories block at `BLOCK_MEDIUM_AND_ABOVE`. Adjust in `utils/config.ts → getSafetySettings()` if needed.
 - **Token counting is a heuristic.** `utils/tokenization.ts` estimates tokens as `Math.ceil(text.length / 4)`. It is used for telemetry only; do not rely on it for context-window management.
-- **Embedding truncation.** Inputs longer than ~32 768 characters (~8 192 tokens) are truncated before being sent to the embedding model.
+- **Embedding truncation.** Inputs are truncated to the embedding model's documented input token limit before the request (`gemini-embedding-001` -> 2 048 tokens / ~8 192 chars; the larger-window `gemini-embedding-2` -> 8 192 tokens / ~32 768 chars), resolved via `getEmbeddingInputTokenLimit` in `utils/config.ts`. This is a real per-model constraint, not the telemetry-only `length / 4` estimate.
 - **No actions, providers, or evaluators.** If you need to add behavior beyond model inference, register it in a separate plugin or in the agent's character definition.
 
 ## Verification
