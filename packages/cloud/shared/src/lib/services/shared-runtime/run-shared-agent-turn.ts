@@ -27,11 +27,13 @@ import {
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   type MessageExampleGroup,
+  replaceIndexedNameTokens,
   replaceNameTokens,
   type UUID,
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import type { CharacterFailureTemplates } from "@elizaos/shared";
 import { generateText, streamText } from "ai";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
@@ -45,6 +47,9 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+
+/** Runtime-compatible map whose projector admits only the typed failure keys. */
+export type SharedFailureTemplates = CharacterFailureTemplates & Record<string, string>;
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
@@ -76,8 +81,8 @@ export interface SharedAgentCharacter {
   adjectives?: string[];
   /** Chat/post voice rules consumed by the canonical prompt pipeline. */
   style?: { all?: string[]; chat?: string[]; post?: string[] };
-  /** Character-owned response templates. Tool/plugin selection remains server-owned. */
-  templates?: Record<string, string>;
+  /** Character-owned failure replies. Prompt-shaped runtime templates are never projected. */
+  templates?: SharedFailureTemplates;
   /** Optional model id override; otherwise the shared default is used. */
   model?: string;
 }
@@ -288,16 +293,23 @@ function renderMessageExamples(character: SharedAgentCharacter): string {
   const groups = character.messageExamples ?? [];
   const rendered = groups
     .slice(0, 5)
-    .map((group) =>
-      group.examples
+    .map((group) => {
+      const participantNames = ["Person 1", "Person 2", "Person 3", "Person 4", "Person 5"];
+      const resolveExampleTokens = (value: string): string =>
+        replaceIndexedNameTokens(replaceNameTokens(value, name), participantNames);
+      return group.examples
         .map((message) => {
-          const speaker = replaceNameTokens(message.name, name);
-          const text = replaceNameTokens(message.content.text ?? "", name).trim();
-          return text ? `${speaker}: ${text}` : "";
+          const speaker = resolveExampleTokens(message.name);
+          const text = resolveExampleTokens(message.content.text ?? "").trim();
+          const actions = (message.content.actions ?? [])
+            .map(resolveExampleTokens)
+            .filter(Boolean)
+            .join(", ");
+          return text ? `${speaker}: ${text}${actions ? ` (actions: ${actions})` : ""}` : "";
         })
         .filter(Boolean)
-        .join("\n"),
-    )
+        .join("\n");
+    })
     .filter(Boolean);
   return rendered.length ? `# Example Conversations for ${name}\n${rendered.join("\n\n")}` : "";
 }
@@ -522,7 +534,9 @@ export async function runSharedAgentTurn(
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
-    const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
+    const reply =
+      input.character.templates?.noModelProviderReply?.trim() ||
+      `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
@@ -663,7 +677,9 @@ export async function runSharedAgentTurnStream(
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
-    const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
+    const reply =
+      input.character.templates?.noModelProviderReply?.trim() ||
+      `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),

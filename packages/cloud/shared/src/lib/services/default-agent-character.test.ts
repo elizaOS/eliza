@@ -191,6 +191,7 @@ describe("a newly created cloud agent's character", () => {
     // expected copy is derived from the canonical persona itself so a catalog
     // copy-edit cannot silently invalidate this test.
     expect(capturedSystem).not.toContain("{{name}}");
+    expect(capturedSystem).not.toMatch(/\{\{\s*(?:user|name)\d+\s*\}\}/);
     expect(capturedSystem).toContain(
       buildCloudElizaPersona().system.split("{{name}}").join("Nyx").trim(),
     );

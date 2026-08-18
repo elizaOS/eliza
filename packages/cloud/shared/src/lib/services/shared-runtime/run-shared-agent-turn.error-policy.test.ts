@@ -353,14 +353,18 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     };
 
     const result = await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova." },
+      character: {
+        name: "Nova",
+        system: "You are Nova.",
+        templates: { noModelProviderReply: "Nova cannot reach a model right now." },
+      },
       history: [],
       message: "  hello there  ",
     });
 
     expect(result.degraded).toBe(true);
     expect(result.model).toBe("none");
-    expect(result.reply).toContain("no shared model configured");
+    expect(result.reply).toBe("Nova cannot reach a model right now.");
     expect(result.history).toHaveLength(2);
     expect(result.history[0]).toMatchObject({
       role: "user",
@@ -509,7 +513,11 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     };
 
     const result = await runSharedAgentTurnStream({
-      character: { name: "Nova" },
+      character: {
+        name: "Nova",
+        system: "",
+        templates: { noModelProviderReply: "Nova cannot reach a model right now." },
+      },
       history: [],
       message: " hello ",
     });
@@ -517,12 +525,12 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     expect(result).toMatchObject({
       degraded: true,
       model: "none",
-      reply: "Nova is temporarily unavailable (no shared model configured).",
+      reply: "Nova cannot reach a model right now.",
     });
     if (!("history" in result)) throw new Error("expected degraded history result");
     expect(result.history.map((entry) => entry.content)).toEqual([
       "hello",
-      "Nova is temporarily unavailable (no shared model configured).",
+      "Nova cannot reach a model right now.",
     ]);
   });
 
