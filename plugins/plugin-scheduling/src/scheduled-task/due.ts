@@ -320,36 +320,55 @@ async function relativeAnchorDue(
   };
 }
 
+/**
+ * Expands a named window into its active `[start, end)` minute segments.
+ * `end > start` is a same-day window (one segment). `end < start` wraps past
+ * midnight and splits into `[start, 24:00)` ∪ `[0, end)` — the pattern `night`
+ * has always used — so an 18:00→00:30 evening is active for its real 6.5h
+ * instead of zero minutes (#22053). `end === start` only reaches here for the
+ * DERIVED windows (afternoon = morningEnd→eveningStart, night =
+ * eveningEnd→morningStart), where equal bounds mean the adjacent owner windows
+ * genuinely leave no gap: the derived window is empty, so emit no segments.
+ * Owner-stated equal bounds are rejected upstream by
+ * `resolveOwnerWindowBoundsMinutes`, which substitutes that window's defaults.
+ */
+function windowSegments(
+  name: string,
+  start: number,
+  end: number,
+): Array<{ name: string; start: number; end: number }> {
+  if (end === start) return [];
+  if (end > start) return [{ name, start, end }];
+  return [
+    { name, start, end: 24 * 60 },
+    { name, start: 0, end },
+  ];
+}
+
 function windowBoundsMinutes(
   windowKey: string,
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
   const { morningStart, morningEnd, eveningStart, eveningEnd } =
     resolveOwnerWindowBoundsMinutes(ownerFacts);
-  const afternoonStart = morningEnd;
-  const afternoonEnd = eveningStart;
+  const morning = windowSegments("morning", morningStart, morningEnd);
+  const afternoon = windowSegments("afternoon", morningEnd, eveningStart);
+  const evening = windowSegments("evening", eveningStart, eveningEnd);
+  // Night is the wrap from evening's end to morning's start. When the evening
+  // itself wraps past midnight (eveningEnd < morningStart, both pre-dawn),
+  // this collapses to a single post-midnight segment [eveningEnd, morningStart)
+  // instead of the near-all-day leak the unconditional split produced.
+  const night = windowSegments("night", eveningEnd, morningStart);
   const windows: Record<
     string,
     Array<{ name: string; start: number; end: number }>
   > = {
-    morning: [{ name: "morning", start: morningStart, end: morningEnd }],
-    afternoon: [
-      { name: "afternoon", start: afternoonStart, end: afternoonEnd },
-    ],
-    evening: [{ name: "evening", start: eveningStart, end: eveningEnd }],
-    night: [
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_night: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_evening: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "evening", start: eveningStart, end: eveningEnd },
-    ],
+    morning,
+    afternoon,
+    evening,
+    night,
+    morning_or_night: [...morning, ...night],
+    morning_or_evening: [...morning, ...evening],
   };
   return windows[windowKey] ?? [];
 }

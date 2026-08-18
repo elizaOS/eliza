@@ -25,7 +25,7 @@ const DEFAULT_WINDOW_BOUNDS: OwnerWindowBoundsMinutes = {
 export function resolveOwnerWindowBoundsMinutes(
   ownerFacts: OwnerFactsView,
 ): OwnerWindowBoundsMinutes {
-  return {
+  const bounds = {
     morningStart:
       parseLocalHHMM(ownerFacts.morningWindow?.start) ??
       DEFAULT_WINDOW_BOUNDS.morningStart,
@@ -39,6 +39,20 @@ export function resolveOwnerWindowBoundsMinutes(
       parseLocalHHMM(ownerFacts.eveningWindow?.end) ??
       DEFAULT_WINDOW_BOUNDS.eveningEnd,
   };
+  // An owner window whose end equals its start is invalid: it is ambiguous
+  // between "zero minutes" and "the full 24 hours", and either reading makes
+  // during_window tasks misbehave. Treat it like a malformed value and fall
+  // back to that window's defaults. `end < start` is NOT degenerate — it is a
+  // window wrapping past midnight, split into two segments by the consumers.
+  if (bounds.morningStart === bounds.morningEnd) {
+    bounds.morningStart = DEFAULT_WINDOW_BOUNDS.morningStart;
+    bounds.morningEnd = DEFAULT_WINDOW_BOUNDS.morningEnd;
+  }
+  if (bounds.eveningStart === bounds.eveningEnd) {
+    bounds.eveningStart = DEFAULT_WINDOW_BOUNDS.eveningStart;
+    bounds.eveningEnd = DEFAULT_WINDOW_BOUNDS.eveningEnd;
+  }
+  return bounds;
 }
 
 export function formatLocalHHMM(minuteOfDay: number): string {
