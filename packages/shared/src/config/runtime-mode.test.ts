@@ -1,7 +1,7 @@
 /**
  * Tests for runtime execution mode normalization, configuration reading, and environment resolvers.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isCloudExecutionMode,
   isCloudRuntimeMode,
@@ -88,20 +88,19 @@ describe("deployment target and config resolution", () => {
 });
 
 describe("resolveRuntimeExecutionMode and helpers", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
-    delete process.env.ELIZA_RUNTIME_MODE;
-    delete process.env.RUNTIME_MODE;
-    delete process.env.LOCAL_RUNTIME_MODE;
+    vi.stubEnv("ELIZA_RUNTIME_MODE", undefined);
+    vi.stubEnv("RUNTIME_MODE", undefined);
+    vi.stubEnv("LOCAL_RUNTIME_MODE", undefined);
+    vi.stubEnv("ELIZA_PLATFORM", undefined);
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
   });
 
   it("prioritizes source getSetting over environment variables", () => {
-    process.env.ELIZA_RUNTIME_MODE = "cloud";
+    vi.stubEnv("ELIZA_RUNTIME_MODE", "cloud");
     const source = {
       getSetting: (key: string) =>
         key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
@@ -111,7 +110,7 @@ describe("resolveRuntimeExecutionMode and helpers", () => {
   });
 
   it("falls back to process.env when setting is absent", () => {
-    process.env.ELIZA_RUNTIME_MODE = "cloud";
+    vi.stubEnv("ELIZA_RUNTIME_MODE", "cloud");
     expect(resolveRuntimeExecutionMode(null)).toBe("cloud");
   });
 
@@ -134,6 +133,16 @@ describe("resolveRuntimeExecutionMode and helpers", () => {
 
     expect(isCloudExecutionMode(cloudSource)).toBe(true);
     expect(isCloudExecutionMode(safeSource)).toBe(false);
+  });
+
+  it("clamps local-yolo to local-safe on iOS", () => {
+    vi.stubEnv("ELIZA_PLATFORM", "ios");
+
+    expect(resolveRuntimeExecutionMode(null)).toBe("local-safe");
+    expect(
+      resolveRuntimeExecutionMode({ getSetting: () => "local-yolo" }),
+    ).toBe("local-safe");
+    expect(shouldUseSandboxExecution(null)).toBe(true);
   });
 });
 
