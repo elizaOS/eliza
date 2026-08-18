@@ -21,6 +21,15 @@ class FakeRecognition extends EventTarget {
   }
 }
 
+class ThrowingRecognition extends FakeRecognition {
+  constructor() {
+    super();
+    this.start = vi.fn(() => {
+      throw new Error("recognizer failed to start");
+    });
+  }
+}
+
 class FakeUtterance {
   lang = "";
   rate = 1;
@@ -65,6 +74,39 @@ describe("TalkModeWeb fallback", () => {
     await expect(new TalkModeWeb().requestPermissions()).resolves.toEqual({
       microphone: "prompt",
       speechRecognition: "not_supported",
+    });
+  });
+
+  it("rolls back state when the recognizer fails to start and recovers on a later start", async () => {
+    const synthesis = { cancel: vi.fn(), speak: vi.fn(), speaking: false };
+    const win: Record<string, unknown> = {
+      SpeechRecognition: ThrowingRecognition,
+      speechSynthesis: synthesis,
+    };
+    setWindow(win);
+    setNavigator({});
+    const plugin = new TalkModeWeb();
+
+    // A start that reports failure must leave the plugin fully disabled.
+    await expect(plugin.start()).resolves.toEqual({
+      started: false,
+      error: "recognizer failed to start",
+    });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
+    });
+
+    // The failed start must not wedge the instance: a subsequent working
+    // recognizer should transition cleanly to a listening session.
+    win.SpeechRecognition = FakeRecognition;
+    await expect(plugin.start()).resolves.toEqual({ started: true });
+    expect(FakeRecognition.latest?.start).toHaveBeenCalledTimes(1);
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: true });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "listening",
+      statusText: "Listening",
     });
   });
 

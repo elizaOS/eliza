@@ -116,6 +116,13 @@ export class TalkModeWeb extends WebPlugin {
       return { started: true };
     } catch (error) {
       // error-policy:J1 boundary translates a recognizer start failure into a structured { started:false } result
+      // Roll back the state optimistically set before recognition.start() so a
+      // failed start leaves isEnabled()/getState() reporting the disabled/idle
+      // contract rather than a phantom "listening" session, and drop the dead
+      // recognizer so its onend restart loop cannot fire.
+      this.enabled = false;
+      this.recognition = null;
+      this.setState("idle", "Off");
       const message =
         error instanceof Error ? error.message : "Failed to start";
       return { started: false, error: message };
