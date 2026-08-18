@@ -104,5 +104,29 @@ describe("cloud MCP tool-compatibility zero-valued bounds (#22068)", () => {
       const text = describeOf(reasoning(), { type: "string", minLength: 2, maxLength: 8 });
       expect(text).toBe("IMPORTANT: minimum 2 characters, maximum 8 characters");
     });
+
+    it("renders a uniqueness requirement when uniqueItems is true", () => {
+      expect(describeOf(reasoning(), { type: "array", uniqueItems: true })).toContain(
+        "items must be unique",
+      );
+    });
+
+    it("does not throw when an untrusted schema supplies a non-array enum", () => {
+      const malformed = { type: "string", enum: null } as unknown as JSONSchema7;
+      expect(() => describeOf(reasoning(), malformed)).not.toThrow();
+      expect(describeOf(reasoning(), malformed)).toContain('"enum":null');
+    });
+
+    it("restates and strips object property bounds", () => {
+      const out = reasoning().transformToolSchema({
+        type: "object",
+        minProperties: 0,
+        maxProperties: 2,
+      });
+      expect(out.description).toContain("at least 0 properties");
+      expect(out.description).toContain("at most 2 properties");
+      expect(out.minProperties).toBeUndefined();
+      expect(out.maxProperties).toBeUndefined();
+    });
   });
 });
