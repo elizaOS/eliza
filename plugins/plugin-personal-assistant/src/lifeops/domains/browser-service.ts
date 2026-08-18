@@ -13,8 +13,11 @@ import {
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionConfig,
   type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionPreflightResponse,
   type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionStatus,
+  type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgeKind,
   type BrowserBridgePageContext,
@@ -88,6 +91,25 @@ type BrowserScreenTimeEvent = {
   durationSeconds?: number;
   metadata?: Record<string, unknown>;
 };
+
+function canonicalizeSettingsValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeSettingsValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalizeSettingsValue(entry)]),
+    );
+  }
+  return value;
+}
+
+export function browserBridgeSettingsVersion(
+  settings: BrowserBridgeSettings,
+): string {
+  const canonical = JSON.stringify(canonicalizeSettingsValue(settings));
+  return `bbsv1_${crypto.createHash("sha256").update(canonical).digest("base64url")}`;
+}
 
 /**
  * Base browser helpers and the cross-domain screen-time recorder the browser
@@ -1022,7 +1044,7 @@ export class BrowserDomain {
   async syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse> {
     const companion = await this.requireBrowserCompanion(
       companionId,
@@ -1041,8 +1063,22 @@ export class BrowserDomain {
     if (browser !== companion.browser || profileId !== companion.profileId) {
       fail(403, "browser companion payload does not match the paired profile");
     }
-    const state = await this.syncBrowserState(request);
     const settings = await this.getBrowserSettings();
+    const settingsVersion = browserBridgeSettingsVersion(settings);
+    if (
+      typeof request.settingsVersion !== "string" ||
+      request.settingsVersion !== settingsVersion
+    ) {
+      const error = new Error(
+        "browser companion settings changed; preflight again",
+      );
+      Object.assign(error, {
+        status: 409,
+        code: "browser_bridge_settings_stale",
+      });
+      throw error;
+    }
+    const state = await this.syncBrowserState(request);
     const session =
       settings.enabled &&
       settings.trackingMode !== "off" &&
@@ -1053,7 +1089,38 @@ export class BrowserDomain {
     return {
       ...state,
       settings,
+      settingsVersion,
       session,
+    };
+  }
+
+  async preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    const companion = await this.requireBrowserCompanion(
+      companionId,
+      pairingToken,
+    );
+    const companionInput = requireRecord(request.companion, "companion");
+    const browser = normalizeEnumValue(
+      companionInput.browser,
+      "companion.browser",
+      BROWSER_BRIDGE_KINDS,
+    );
+    const profileId = requireNonEmptyString(
+      companionInput.profileId,
+      "companion.profileId",
+    );
+    if (browser !== companion.browser || profileId !== companion.profileId) {
+      fail(403, "browser companion payload does not match the paired profile");
+    }
+    const settings = await this.getBrowserSettings();
+    return {
+      companion,
+      settings,
+      settingsVersion: browserBridgeSettingsVersion(settings),
     };
   }
 

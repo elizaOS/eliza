@@ -22,6 +22,8 @@ import {
   BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type BrowserBridgeCompanionAuthErrorCode,
+  type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeKind,
   type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
@@ -713,6 +715,35 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/browser-bridge/companions/preflight"
+  ) {
+    if (rateLimitRequest(ctx, "companions:preflight")) return true;
+    return runRoute(ctx, async (service) => {
+      const auth = getBrowserCompanionAuth(ctx);
+      if (!auth) return;
+      const body = await readJsonBody<BrowserBridgeCompanionPreflightRequest>(
+        req,
+        res,
+      );
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
+        return;
+      }
+      json(
+        res,
+        await service.preflightBrowserCompanion(
+          auth.companionId,
+          auth.pairingToken,
+          body,
+          ctx.state.adminEntityId,
+        ),
+      );
+    });
+  }
+
   if (method === "POST" && pathname === "/api/browser-bridge/companions/sync") {
     if (rateLimitRequest(ctx, "companions:sync")) {
       return true;
@@ -722,7 +753,10 @@ export async function handleBrowserBridgeRoutes(
       if (!auth) {
         return;
       }
-      const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
+      const body = await readJsonBody<BrowserBridgeCompanionSyncRequest>(
+        req,
+        res,
+      );
       if (!body) return;
       if (!isBrowserBridgeRouteBodyObject(body)) {
         rejectMalformedBrowserBridgePayload(ctx);

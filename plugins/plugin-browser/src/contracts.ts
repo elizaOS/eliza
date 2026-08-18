@@ -271,11 +271,27 @@ export interface BrowserBridgeCompanionRevokeResponse {
   revokedAt: string;
 }
 
+export interface BrowserBridgeCompanionPreflightRequest {
+  companion: UpsertBrowserBridgeCompanionRequest;
+}
+
+export interface BrowserBridgeCompanionSyncRequest
+  extends SyncBrowserBridgeStateRequest {
+  settingsVersion: string;
+}
+
+export interface BrowserBridgeCompanionPreflightResponse {
+  companion: BrowserBridgeCompanionStatus;
+  settings: BrowserBridgeSettings;
+  settingsVersion: string;
+}
+
 export interface BrowserBridgeCompanionSyncResponse {
   companion: BrowserBridgeCompanionStatus;
   tabs: BrowserBridgeTabSummary[];
   currentPage: BrowserBridgePageContext | null;
   settings: BrowserBridgeSettings;
+  settingsVersion: string;
   session: LifeOpsBrowserSession | null;
 }
 

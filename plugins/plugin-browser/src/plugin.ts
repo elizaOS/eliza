@@ -139,6 +139,13 @@ const STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
   {
     type: "POST",
+    path: "/api/browser-bridge/companions/preflight",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
+  },
+  {
+    type: "POST",
     path: "/api/browser-bridge/companions/sync",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,

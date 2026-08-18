@@ -189,6 +189,42 @@ describe("Browser Bridge companion revoke route", () => {
     expect(readJsonBody).not.toHaveBeenCalled();
   });
 
+  it("authenticates preflight before reading its body and returns no browser data", async () => {
+    const readJsonBody = vi.fn(async () => ({ companion: {} }));
+    const unauthenticated = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/preflight",
+      service: { preflightBrowserCompanion: vi.fn() },
+    });
+    unauthenticated.readJsonBody = readJsonBody;
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+    await handleBrowserBridgeRoutes(unauthenticated);
+    expect(unauthenticated.res.statusCode).toBe(401);
+    expect(readJsonBody).not.toHaveBeenCalled();
+
+    const response = {
+      companion: { id: "companion-1" },
+      settings: { enabled: false },
+      settingsVersion: "bbsv1_hash",
+    };
+    const preflightBrowserCompanion = vi.fn(async () => response as never);
+    const authenticated = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/preflight",
+      headers: {
+        "x-browser-bridge-companion-id": "companion-1",
+        authorization: "Bearer token",
+      },
+      body: { companion: { browser: "chrome", profileId: "profile-1" } },
+      service: { preflightBrowserCompanion },
+    });
+    await handleBrowserBridgeRoutes(authenticated);
+    expect(authenticated.res.body).toEqual(response);
+    expect(authenticated.res.body).not.toHaveProperty("session");
+    expect(authenticated.res.body).not.toHaveProperty("tabs");
+    expect(authenticated.res.body).not.toHaveProperty("currentPage");
+  });
+
   it("rejects malformed JSON bodies before service mutation", async () => {
     const updateBrowserSettings = vi.fn();
     const ctx = createContext({
