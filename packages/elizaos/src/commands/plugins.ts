@@ -12,6 +12,8 @@ import type { Command } from "commander";
 import pc from "picocolors";
 import { removePathRecursive } from "../remove-path-recursive.js";
 
+export const DEFAULT_NPM_REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+
 interface SubmitOptions {
   registry?: string;
   base: string;
@@ -361,6 +363,7 @@ async function validatePublishedPackage(packageName: string): Promise<void> {
   const encoded = packageName.replace(/\//g, "%2f");
   const res = await fetch(`https://registry.npmjs.org/${encoded}`, {
     headers: { accept: "application/vnd.npm.install-v1+json" },
+    signal: AbortSignal.timeout(DEFAULT_NPM_REGISTRY_FETCH_TIMEOUT_MS),
   }).catch((err: unknown) => {
     throw new Error(
       `Failed to reach the npm registry to validate ${packageName}: ${
