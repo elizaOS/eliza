@@ -138,9 +138,18 @@ for (const viewport of VIEWPORTS) {
         body: JSON.stringify({
           ok: true,
           expiresAt: "2099-01-01T00:00:00.000Z",
+          challengeId: "link-only-challenge",
+          pollSecret: "link-only-poll-secret",
         }),
       });
     });
+    await page.route("**/auth/email/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, status: "pending" }),
+      }),
+    );
 
     let optionsMode: "discoverable" | "server-error" = "discoverable";
     await page.route("**/auth/passkey/login/options", (route) => {
@@ -269,8 +278,16 @@ for (const viewport of VIEWPORTS) {
     await page.getByRole("button", { name: /^Passkey$/ }).click();
     await page.getByRole("button", { name: "Use Magic Link" }).click();
     await expect(page.getByText("Check your email")).toBeVisible();
+    await expect(
+      page.getByText("Check your inbox and open the magic link to sign in."),
+    ).toBeVisible();
+    await expect(page.getByLabel("Six-digit code")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Verify code" })).toHaveCount(
+      0,
+    );
     expect(magicLinkSendCount, "explicit Magic Link intent sends once").toBe(1);
     expect(otpSendCount).toBe(1);
+    await screenshot(page, testInfo, `${viewport.name}-4-link-only-email`);
 
     const logPath = testInfo.outputPath(`${viewport.name}-frontend.log`);
     await writeFile(logPath, `${frontendEvents.join("\n")}\n`, "utf8");

@@ -20,6 +20,8 @@ export interface StewardEmailLoginChallenge {
   expiresAt: string | number;
   challengeId?: string;
   pollSecret?: string;
+  /** True only when Steward explicitly confirms that the email contains a code. */
+  codeAvailable: boolean;
 }
 
 interface StewardEmailLoginOptions {
@@ -171,9 +173,10 @@ export async function startStewardEmailLogin(
       502,
     );
   }
-  // challengeId/pollSecret are additive in Steward #242. Their absence keeps
-  // the existing magic-link-only UI working during a rolling deployment.
-  return { expiresAt, challengeId, pollSecret };
+  // Polling credentials do not describe the email's contents. Default to the
+  // link-only contract unless Steward explicitly confirms code delivery.
+  const codeAvailable = data.codeAvailable === true;
+  return { expiresAt, challengeId, pollSecret, codeAvailable };
 }
 
 export async function verifyStewardEmailSignInCode(

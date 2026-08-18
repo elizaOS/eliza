@@ -150,6 +150,13 @@ async function startEmailLogin() {
   await screen.findByLabelText("Six-digit code");
 }
 
+async function submitEmailLogin() {
+  const input = await screen.findByPlaceholderText("you@example.com");
+  fireEvent.change(input, { target: { value: "person@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+  await screen.findByText("Check your email");
+}
+
 describe("StewardLoginSection email magic-link companion code", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -158,6 +165,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-1",
       pollSecret: "poll-secret",
+      codeAvailable: true,
     });
     emailLoginSpies.verify.mockResolvedValue({
       token: "session-token",
@@ -178,14 +186,44 @@ describe("StewardLoginSection email magic-link companion code", () => {
     vi.useRealTimers();
   });
 
-  it("redeems only six digits and establishes the session from the verify response", async () => {
+  it("keeps polling credentials link-only without an explicit code-delivery signal", async () => {
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+      codeAvailable: false,
+    });
+    renderSection();
+    await submitEmailLogin();
+
+    expect(
+      screen.getByText("Check your inbox and open the magic link to sign in."),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Verify code/i })).toBeNull();
+    expect(screen.queryByText(/old code/i)).toBeNull();
+    expect(screen.queryByText("Waiting for the link or code.")).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(emailLoginSpies.poll).toHaveBeenCalledWith(
+      {
+        baseUrl: "https://api.example.test/steward",
+        tenantId: "elizacloud",
+      },
+      "challenge-1",
+      "poll-secret",
+    );
+  });
+
+  it("auto-redeems exactly six digits and establishes the session from the verify response", async () => {
     renderSection();
     await startEmailLogin();
 
     const codeInput = screen.getByLabelText("Six-digit code");
     fireEvent.change(codeInput, { target: { value: "12a345678" } });
     expect((codeInput as HTMLInputElement).value).toBe("123456");
-    fireEvent.click(screen.getByRole("button", { name: /Verify code/i }));
 
     await waitFor(() =>
       expect(emailLoginSpies.verify).toHaveBeenCalledWith(
@@ -273,6 +311,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-2",
       pollSecret: "poll-secret-2",
+      codeAvailable: true,
     });
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "other@example.com" } });
@@ -436,6 +475,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-2",
       pollSecret: "poll-secret-2",
+      codeAvailable: true,
     });
     emailLoginSpies.poll.mockResolvedValueOnce("expired");
     sessionSpies.sync.mockResolvedValue(undefined);

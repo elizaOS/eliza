@@ -30,6 +30,7 @@ describe("steward email sign-in adapter", () => {
           expiresAt: "2026-07-17T12:10:00.000Z",
           challengeId: "challenge-1",
           pollSecret: "poll-secret",
+          codeAvailable: true,
         },
       }),
     );
@@ -47,6 +48,7 @@ describe("steward email sign-in adapter", () => {
       expiresAt: "2026-07-17T12:10:00.000Z",
       challengeId: "challenge-1",
       pollSecret: "poll-secret",
+      codeAvailable: true,
     });
 
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -79,6 +81,32 @@ describe("steward email sign-in adapter", () => {
       expiresAt: "2026-07-17T12:10:00.000Z",
       challengeId: undefined,
       pollSecret: undefined,
+      codeAvailable: false,
+    });
+  });
+
+  it("does not infer code delivery from polling credentials", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: {
+          expiresAt: "2026-07-17T12:10:00.000Z",
+          challengeId: "challenge-1",
+          pollSecret: "poll-secret",
+        },
+      }),
+    );
+
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+      ),
+    ).resolves.toEqual({
+      expiresAt: "2026-07-17T12:10:00.000Z",
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+      codeAvailable: false,
     });
   });
 

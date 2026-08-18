@@ -912,7 +912,9 @@ export default function StewardLoginSection() {
           setError(
             describeEmailLoginError(
               pollError,
-              "Could not check that sign-in email. You can still enter the code.",
+              emailChallenge.codeAvailable
+                ? "Could not check that sign-in email. You can still enter the code."
+                : "Could not check that sign-in email. Open the magic link from the email to continue.",
             ),
           );
         }
@@ -1238,8 +1240,8 @@ export default function StewardLoginSection() {
     setLoading(null);
   }
 
-  async function handleVerifyEmailCode() {
-    const code = sanitizeOneTimeCode(emailCode);
+  async function handleVerifyEmailCode(candidateCode = emailCode) {
+    const code = sanitizeOneTimeCode(candidateCode);
     if (code.length !== 6) {
       setError("Enter the six-digit code from your email.");
       return;
@@ -1520,9 +1522,7 @@ export default function StewardLoginSection() {
     );
   }
   if (step === "email-sent") {
-    const hasCompanionCode = Boolean(
-      emailChallenge?.challengeId && emailChallenge.pollSecret,
-    );
+    const hasCompanionCode = emailChallenge?.codeAvailable === true;
     const resendDisabled = loading !== null || resendRemainingSeconds > 0;
     const checkEmailTitle =
       emailCheckState === "approved"
@@ -1589,9 +1589,17 @@ export default function StewardLoginSection() {
               placeholder="123456"
               aria-describedby="email-sign-in-code-hint"
               value={emailCode}
-              onChange={(e) =>
-                setEmailCode(sanitizeOneTimeCode(e.target.value))
-              }
+              onChange={(e) => {
+                const nextCode = sanitizeOneTimeCode(e.target.value);
+                setEmailCode(nextCode);
+                if (
+                  nextCode.length === 6 &&
+                  loading === null &&
+                  emailCheckState === "pending"
+                ) {
+                  void handleVerifyEmailCode(nextCode);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleVerifyEmailCode();
               }}
@@ -1614,7 +1622,7 @@ export default function StewardLoginSection() {
           <Button
             variant="ghost"
             type="button"
-            onClick={handleVerifyEmailCode}
+            onClick={() => handleVerifyEmailCode()}
             disabled={
               loading !== null ||
               emailCode.length !== 6 ||
