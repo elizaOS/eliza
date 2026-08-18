@@ -21,6 +21,37 @@ import { getScreenCapturePlugin } from "../bridge/native-plugins";
 
 const POLL_INTERVAL_MS = 1500;
 
+/** Independent UI hops — same 15s family as BuildBadge, separate deadlines. */
+export const SCREEN_CAPTURE_POLL_TIMEOUT_MS = 15_000;
+export const SCREEN_FRAME_POST_TIMEOUT_MS = 15_000;
+
+export async function getCaptureRequestsWithFetch(
+  fetchImpl: typeof fetch,
+  timeoutMs: number = SCREEN_CAPTURE_POLL_TIMEOUT_MS,
+): Promise<Response> {
+  return fetchImpl("/api/vision/capture-requests", {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+export async function postScreenFrameWithFetch(
+  body: Record<string, unknown>,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = SCREEN_FRAME_POST_TIMEOUT_MS,
+): Promise<Response> {
+  const response = await fetchImpl("/api/vision/screen-frame", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Screen-frame request failed (${response.status})`);
+  }
+  return response;
+}
+
 /**
  * Once this many polls fail in a row, stop hammering the route every 1500ms and
  * back off exponentially. The common cause is a `404` — the vision plugin isn't
@@ -88,11 +119,7 @@ function isCaptureRequest(value: unknown): value is CaptureRequest {
 }
 
 async function postScreenFrame(body: Record<string, unknown>): Promise<void> {
-  await fetch("/api/vision/screen-frame", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  await postScreenFrameWithFetch(body, globalThis.fetch);
 }
 
 async function serveRequest(request: CaptureRequest): Promise<void> {
@@ -136,7 +163,7 @@ async function serveRequest(request: CaptureRequest): Promise<void> {
 async function poll(): Promise<void> {
   let requests: CaptureRequest[];
   try {
-    const res = await fetch("/api/vision/capture-requests");
+    const res = await getCaptureRequestsWithFetch(globalThis.fetch);
     if (!res.ok) {
       // 404 = the vision route isn't registered in this config; other non-ok is
       // transient. Either way, count toward backoff so we don't spin at 1500ms.
