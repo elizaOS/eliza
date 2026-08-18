@@ -86,9 +86,19 @@ function expectedBasenameLabel(expected: Set<string>): string {
 }
 
 export function resolveNativeLibraryCandidate(
-  candidate: NativeLibraryCandidate,
-  opts: NativeLibraryPolicyOptions,
+  candidate: NativeLibraryCandidate | null | undefined,
+  opts: NativeLibraryPolicyOptions | null | undefined,
 ): string | null {
+  if (
+    !candidate ||
+    typeof candidate !== "object" ||
+    typeof candidate.path !== "string"
+  ) {
+    return null;
+  }
+  if (!opts || typeof opts !== "object") {
+    return null;
+  }
   const rawPath = candidate.path.trim();
   if (!rawPath) return null;
 
