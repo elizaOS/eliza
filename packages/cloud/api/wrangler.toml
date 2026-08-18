@@ -161,6 +161,10 @@ new_sqlite_classes = ["PersonalDeliveryProjection"]
 tag = "personal-telegram-delivery-v1"
 new_sqlite_classes = ["PersonalTelegramDelivery"]
 
+[[migrations]]
+tag = "inference-rate-limit-v2-rollback-floor-v1"
+new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
+
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
 # Durable Objects serialize organization/anonymous quotas, and CACHE_KV serves
