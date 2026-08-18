@@ -449,7 +449,7 @@ function sharedElizaRuntimeExecution(
  * uuids reuse the Todo scope so memory rows line up with the runtime's
  * projected identities.
  */
-function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomKey: string) {
   const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
   const embed =
     sharedRecallEnabled() && embedBase
@@ -464,6 +464,7 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
       organizationId: agent.organization_id,
       userId: agent.user_id,
       agentKey: agent.id,
+      roomKey,
       storage: sharedTodoStorageScope({
         sourceAgentId: agent.id,
         ownerId: agent.user_id,
@@ -1128,7 +1129,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = sharedTurnMemoryStore(agent);
+    const memoryStore = sharedTurnMemoryStore(agent, roomId);
     const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
     const turnStartedAtEpochMs = Date.now();
     let turn: RunSharedAgentTurnResult;
@@ -1327,7 +1328,7 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = sharedTurnMemoryStore(agent);
+    const streamMemoryStore = sharedTurnMemoryStore(agent, roomId);
     const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
     const streamTurnStartedAtEpochMs = Date.now();
     const providerSetupStartedAt = performance.now();

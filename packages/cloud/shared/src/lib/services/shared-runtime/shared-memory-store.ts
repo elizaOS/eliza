@@ -4,9 +4,9 @@
  * is mirrored into the tenant-scoped `shared_agent_memories` table with the
  * SAME storage identities the ephemeral Workerd runtime projects (agent/entity
  * uuids from the Todo storage scope when present, room/world derived from the
- * agent key) — so a later Dedicated cutover or retrieval pass reads rows that
- * line up with what the runtime actually saw. Off (the default), the store is
- * never constructed and the turn path is byte-identical to before.
+ * canonical conversation key) — so public/group recall cannot cross into a
+ * private room and a later Dedicated cutover reads the runtime's exact rows.
+ * Off (the default), the store is never constructed.
  */
 
 import {
@@ -44,6 +44,8 @@ export interface SharedMemoryStoreScope {
   userId: string;
   /** Logical Shared agent id (`agent.id`), the seed for storage identities. */
   agentKey: string;
+  /** Canonical conversation key used by AgentRuntime for room/world isolation. */
+  roomKey?: string;
   /** Storage uuids shared with the runtime's Todo scope, when Todos are wired. */
   storage?: SharedTodoStorageScope;
 }
@@ -86,15 +88,16 @@ export class SharedMemoryStore {
   ) {}
 
   /**
-   * Tenant-scoped vector search over this store's transcript rows (P3 recall's
-   * store leg). Scope pinning mirrors recordTurnPair exactly — the same
-   * organization/user/agent triple — so recall can never read across tenants.
+   * Tenant- and room-scoped vector search over this store's transcript rows.
+   * Scope pinning mirrors recordTurnPair exactly so recall cannot cross either
+   * a tenant boundary or a private/public conversation boundary.
    */
   async searchByEmbedding(
     embedding: number[],
     limit: number,
   ): Promise<SharedAgentMemorySearchHit[]> {
     const agentId = this.scope.storage?.agentId ?? stringToUuid(this.scope.agentKey);
+    const roomId = sharedRuntimeConversationRoomId(this.scope.roomKey ?? this.scope.agentKey);
     return this.reader.searchByEmbedding(
       {
         organizationId: this.scope.organizationId,
@@ -103,6 +106,7 @@ export class SharedMemoryStore {
       },
       embedding,
       limit,
+      roomId,
     );
   }
 
@@ -114,8 +118,9 @@ export class SharedMemoryStore {
   async recordTurnPair(pair: SharedMemoryTurnPair): Promise<void> {
     const agentId = this.scope.storage?.agentId ?? stringToUuid(this.scope.agentKey);
     const entityId = this.scope.storage?.entityId ?? stringToUuid(`${this.scope.agentKey}:owner`);
-    const roomId = sharedRuntimeConversationRoomId(this.scope.agentKey);
-    const worldId = sharedRuntimeWorldId(this.scope.agentKey);
+    const roomKey = this.scope.roomKey ?? this.scope.agentKey;
+    const roomId = sharedRuntimeConversationRoomId(roomKey);
+    const worldId = sharedRuntimeWorldId(roomKey);
     const scope = {
       organizationId: this.scope.organizationId,
       userId: this.scope.userId,

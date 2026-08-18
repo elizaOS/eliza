@@ -273,19 +273,26 @@ export class SharedAgentMemoriesReader {
   }
 
   /**
-   * Exact cosine-distance search over the tenant's most recent embedded rows
-   * (bounded window; see module header). Only rows whose stored vector has the
-   * query's dimensionality participate, so mixed-model histories cannot fail
-   * the whole query.
+   * Exact cosine-distance search over the tenant's most recent embedded rows,
+   * optionally narrowed to one server-resolved room. Only rows whose stored
+   * vector has the query's dimensionality participate, so mixed-model
+   * histories cannot fail the whole query.
    */
   async searchByEmbedding(
     scope: SharedAgentMemoryScope,
     embedding: number[],
     limit: number,
+    roomId?: string,
   ): Promise<SharedAgentMemorySearchHit[]> {
     requiredScope(scope);
     assertLimit(limit);
     assertEmbedding(embedding);
+    if (roomId !== undefined && roomId.trim().length === 0) {
+      throw new ElizaError("Shared agent memory roomId is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "roomId" },
+      });
+    }
     const distance = sql<number>`(${sharedAgentMemories.embedding}::vector <=> ${vectorParam(
       embedding,
     )})`.as("distance");
@@ -309,6 +316,7 @@ export class SharedAgentMemoriesReader {
       .where(
         and(
           ...tenantPins(scope),
+          ...(roomId !== undefined ? [eq(sharedAgentMemories.room_id, roomId)] : []),
           isNotNull(sharedAgentMemories.embedding),
           sql`cardinality(${sharedAgentMemories.embedding}) = ${embedding.length}`,
         ),

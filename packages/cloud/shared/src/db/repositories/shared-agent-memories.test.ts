@@ -155,6 +155,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
         scope,
         [0.25, 0.5, 0.25],
         7,
+        ROOM_A,
       );
       expect(result).toEqual(hits as never);
       expect(capturedWindow).toBe(SHARED_AGENT_MEMORY_SEARCH_WINDOW);
@@ -164,6 +165,8 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       expect(rendered.sql).toContain("embedding");
       expect(rendered.sql).toContain("cardinality");
       expect(rendered.params).toContain(3);
+      expect(rendered.sql).toContain("room_id");
+      expect(rendered.params).toContain(ROOM_A);
       const order = new PgDialect().sqlToQuery(capturedOuterOrder as SQL);
       expect(order.sql).toContain("distance");
       expect(order.sql).toContain("asc");
@@ -181,6 +184,9 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
     );
     await expect(reader.searchByEmbedding(scope, new Array(5000).fill(0.1), 5)).rejects.toThrow(
       "finite vector",
+    );
+    await expect(reader.searchByEmbedding(scope, [1], 5, " ")).rejects.toThrow(
+      "roomId is required",
     );
   });
 });

@@ -10,6 +10,7 @@ import { stringToUuid } from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,
+  SharedAgentMemoriesReader,
   SharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import {
@@ -26,6 +27,7 @@ import {
 const ORG = "5a5c62c4-51b6-4e94-8c4e-a41d62b85e2f";
 const USER = "9a3d9f2e-97ab-46be-a687-3a4f2f6bfa53";
 const AGENT_KEY = "agent-shared-42";
+const ROOM_KEY = "discord:guild-1:channel-7";
 
 function scriptedWriter(behavior?: { failOn?: number }): {
   writer: SharedAgentMemoriesWriter;
@@ -86,7 +88,13 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     const { writer, inserts } = scriptedWriter();
     const storage = sharedTodoStorageScope({ sourceAgentId: AGENT_KEY, ownerId: USER });
     const store = new SharedMemoryStore(
-      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY, storage },
+      {
+        organizationId: ORG,
+        userId: USER,
+        agentKey: AGENT_KEY,
+        roomKey: ROOM_KEY,
+        storage,
+      },
       writer,
     );
     const messageIds = {
@@ -109,8 +117,8 @@ describe("SharedMemoryStore.recordTurnPair", () => {
         userId: USER,
         agentId: storage.agentId,
       });
-      expect(row?.roomId).toBe(sharedRuntimeConversationRoomId(AGENT_KEY));
-      expect(row?.worldId).toBe(sharedRuntimeWorldId(AGENT_KEY));
+      expect(row?.roomId).toBe(sharedRuntimeConversationRoomId(ROOM_KEY));
+      expect(row?.worldId).toBe(sharedRuntimeWorldId(ROOM_KEY));
       expect(row?.type).toBe("messages");
     }
     expect(userRow?.id).toBe(messageIds.user);
@@ -129,6 +137,41 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     });
     expect(userRow?.createdAt).toBeInstanceOf(Date);
     expect(assistantRow?.createdAt?.getTime()).toBe((userRow?.createdAt?.getTime() ?? 0) + 1);
+  });
+
+  test("pins semantic recall to the same conversation room as runtime writes", async () => {
+    const searches: unknown[][] = [];
+    const reader = {
+      searchByEmbedding: async (...args: unknown[]) => {
+        searches.push(args);
+        return [];
+      },
+    } as unknown as SharedAgentMemoriesReader;
+    const store = new SharedMemoryStore(
+      {
+        organizationId: ORG,
+        userId: USER,
+        agentKey: AGENT_KEY,
+        roomKey: ROOM_KEY,
+      },
+      scriptedWriter().writer,
+      reader,
+    );
+
+    await store.searchByEmbedding([1, 0, 0], 5);
+
+    expect(searches).toEqual([
+      [
+        {
+          organizationId: ORG,
+          userId: USER,
+          agentId: stringToUuid(AGENT_KEY),
+        },
+        [1, 0, 0],
+        5,
+        sharedRuntimeConversationRoomId(ROOM_KEY),
+      ],
+    ]);
   });
 
   test("derives deterministic fallback identities without a Todo storage scope", async () => {

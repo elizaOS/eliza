@@ -285,6 +285,13 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       content: { text: "orthogonal" },
       embedding: [0, 1, 0],
     });
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeA,
+      roomId: ROOM_B,
+      type: "messages",
+      content: { text: "other room exact match" },
+      embedding: [1, 0, 0],
+    });
     // Dimension mismatch: must be filtered out, not fail the whole query.
     await sharedAgentMemoriesWriter.insertMemory({
       scope: scopeA,
@@ -302,7 +309,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       embedding: [1, 0, 0],
     });
 
-    const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, [1, 0, 0], 5);
+    const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, [1, 0, 0], 5, ROOM_A);
     expect(hits.map((hit) => hit.content.text)).toEqual([
       "exact match",
       "near match",
