@@ -8,6 +8,11 @@
  *    boot phase) for callers that fail the trusted-local check.
  *  - W1-011: the device-bridge WS path fails closed (HTTP 404) when the
  *    bridge cannot be attached, instead of skipping WS auth unconditionally.
+ *  - W9-AGENT-01: the device-bridge WS path ALSO fails closed (HTTP 404) when
+ *    delegation is expected (bridge enabled + pairing token configured) but
+ *    the deferred bridge attach never landed a listener — an unconditional
+ *    early return would otherwise leave the raw pre-auth socket dangling
+ *    outside the W5-015 bounds.
  *  - W5-015: unauthenticated /ws sockets are bounded — a per-peer cap on
  *    concurrent pre-auth upgrades and a post-open auth grace period that
  *    closes sockets which never authenticate — while the post-open token
@@ -52,6 +57,7 @@ const touchedEnv = [
   "ELIZA_CONFIG_PATH",
   "ELIZA_DEVICE_BRIDGE_ENABLED",
   "ELIZA_DEVICE_BRIDGE_TOKEN",
+  "ELIZA_DEVICE_LOAD_TIMEOUT_MS",
   "ELIZA_DEVICE_PAIRING_TOKEN",
   "ELIZA_PERSIST_CONFIG_PATH",
   "ELIZA_PORT",
@@ -92,6 +98,7 @@ beforeEach(async () => {
   delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
   delete process.env.ELIZA_DEVICE_PAIRING_TOKEN;
   delete process.env.ELIZA_DEVICE_BRIDGE_TOKEN;
+  delete process.env.ELIZA_DEVICE_LOAD_TIMEOUT_MS;
 });
 
 afterEach(async () => {
@@ -224,6 +231,79 @@ describe("device-bridge WS upgrade gate (W1-011)", () => {
       "/api/local-inference/device-bridge",
     );
     expect(raw.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
+  }, 120_000);
+
+  it("rejects the device-bridge upgrade with 404 when delegation is expected but the bridge never attached (W9-AGENT-01)", async () => {
+    // Delegation is expected: the bridge is enabled and a pairing token is
+    // configured. But the deferred attach can never land a listener here —
+    // a malformed activation-time timeout makes attachMobileDeviceBridgeToServer
+    // reject before it registers its upgrade handler, and on bundles without
+    // the capacitor plugin the import itself rejects into the no-op fallback.
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN = "auth-boundary-test-pairing-token";
+    process.env.ELIZA_DEVICE_LOAD_TIMEOUT_MS = "not-a-number";
+    const baseUrl = await bootServer();
+    const port = Number(new URL(baseUrl).port);
+
+    // Before the doomed attach settles the delegation has not landed yet:
+    // the upgrade must be answered with a closed rejection, not left to
+    // dangle outside the W5-015 pending-socket cap and auth grace period.
+    const duringAttach = await wsUpgradeResponse(
+      port,
+      "/api/local-inference/device-bridge",
+    );
+    expect(duringAttach.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
+
+    // After the attach attempt has had time to fail, the path stays failed
+    // closed — the delegation never activates without a real listener.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const afterFailure = await wsUpgradeResponse(
+      port,
+      "/api/local-inference/device-bridge",
+    );
+    expect(afterFailure.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
+  }, 120_000);
+
+  it("delegates the device-bridge upgrade once the bridge listener has actually attached", async () => {
+    // Healthy counterpart to the fail-closed cases: the deferred attach
+    // succeeds here, and the upgrade handler must then keep delegating the
+    // path to the bridge's own listener (pairing-token auth, 4001 close).
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN = "auth-boundary-test-pairing-token";
+    const baseUrl = await bootServer();
+    const port = Number(new URL(baseUrl).port);
+
+    // The attach is deferred past listen (dynamic import): poll with the
+    // correct pairing token until the delegation activates. Fail-closed 404s
+    // answer while the bridge listener is not yet on the server.
+    await vi.waitFor(
+      async () => {
+        const raw = await wsUpgradeResponse(
+          port,
+          "/api/local-inference/device-bridge?token=auth-boundary-test-pairing-token",
+        );
+        expect(raw.startsWith("HTTP/1.1 101")).toBe(true);
+      },
+      { timeout: 30_000, interval: 250 },
+    );
+
+    // The answering handler is the bridge's own, not the API's WS stack: a
+    // wrong pairing token is upgraded and then closed with the bridge's 4001.
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/api/local-inference/device-bridge?token=wrong-token`,
+    );
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("timed out waiting for the bridge 4001 close")),
+        10_000,
+      );
+      ws.once("close", (code: number) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+      ws.once("error", reject);
+    });
+    expect(closeCode).toBe(4001);
   }, 120_000);
 });
 

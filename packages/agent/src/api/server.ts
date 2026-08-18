@@ -3816,6 +3816,14 @@ export async function startApiServer(opts?: {
   });
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
+  // W9-AGENT-01: the WS upgrade handler delegates the device-bridge path to
+  // the capacitor bridge's own upgrade listener, so that delegation is only
+  // safe once such a listener has REALLY attached here. A settled attach
+  // promise is not proof of that: an optional-plugin import rejection resolves
+  // through the no-op fallback API, and the bridge attach itself returns early
+  // when the bridge is disabled for the platform — in both cases nothing is
+  // listening. Track the upgrade-listener delta the attach actually produces.
+  let deviceBridgeUpgradeHandlerAttached = false;
   if (
     isMobilePlatform() ||
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
@@ -3827,6 +3835,7 @@ export async function startApiServer(opts?: {
     // The bridge only needs to attach a WS upgrade handler to the server object,
     // which works fine once the server is already listening.
     setImmediate(() => {
+      const upgradeListenersBeforeAttach = server.listenerCount("upgrade");
       void getOptionalPluginApi<{
         attachMobileDeviceBridgeToServer: (
           server: http.Server,
@@ -3835,6 +3844,10 @@ export async function startApiServer(opts?: {
         .then(({ attachMobileDeviceBridgeToServer }) =>
           attachMobileDeviceBridgeToServer(server),
         )
+        .then(() => {
+          deviceBridgeUpgradeHandlerAttached =
+            server.listenerCount("upgrade") > upgradeListenersBeforeAttach;
+        })
         .catch((err: unknown) => {
           logger.warn(
             "[eliza-api] Failed to attach mobile device bridge:",
@@ -4088,7 +4101,12 @@ export async function startApiServer(opts?: {
   // bridge can actually be attached: the plugin refuses to attach without a
   // pairing token, so with none configured nothing is listening on the path —
   // fall through to the standard upgrade rejection instead of skipping auth
-  // and leaving the socket unanswered (W1-011).
+  // and leaving the socket unanswered (W1-011). The same fail-closed rule
+  // applies when delegation is EXPECTED but the deferred attach never landed
+  // a listener — an import rejection resolves through the no-op fallback API
+  // and a failed attach only logs, so an unconditional early return would
+  // leave the raw pre-auth socket unanswered indefinitely, outside the
+  // W5-015 pending-socket cap and auth grace period (W9-AGENT-01).
   const isDeviceBridgeDelegationExpected = (): boolean => {
     if (
       !isMobilePlatform() &&
@@ -4127,7 +4145,8 @@ export async function startApiServer(opts?: {
       );
       if (
         wsUrl.pathname === "/api/local-inference/device-bridge" &&
-        isDeviceBridgeDelegationExpected()
+        isDeviceBridgeDelegationExpected() &&
+        deviceBridgeUpgradeHandlerAttached
       ) {
         return;
       }
