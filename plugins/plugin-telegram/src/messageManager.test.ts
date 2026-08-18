@@ -107,6 +107,32 @@ describe("MessageManager long message splitting", () => {
     expect(sentMessages.map((message) => message.text).join("")).toBe(text);
   });
 
+  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", async () => {
+    const { manager, sendMessage } = createManager();
+    // "x" * 4095 then a 2-code-unit emoji then more text: a naive slice(0, 4096)
+    // would cut between the emoji's high and low surrogate.
+    const text = `${"x".repeat(4095)}\u{1F600}${"y".repeat(10)}`;
+
+    const sentMessages = await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const sentTexts = sendMessage.mock.calls.map((call) => call[1] as string);
+    for (const chunk of sentTexts) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(sentTexts.join("")).toBe(text);
+    expect(sentMessages.map((message) => message.text).join("")).toBe(text);
+  });
+
   it("prefers newline boundaries when they fit within Telegram's limit", async () => {
     const { manager, sendMessage } = createManager();
     const firstLine = "x".repeat(4094);
