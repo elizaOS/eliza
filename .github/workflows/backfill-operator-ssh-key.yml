@@ -1,0 +1,190 @@
+name: Backfill Operator SSH Key
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected environment owning the target credentials
+        required: true
+        type: choice
+        options: [staging, production]
+      target_class:
+        description: Exact host class to update
+        required: true
+        type: choice
+        options: [control-plane, data-plane, apps]
+      expected_host_count:
+        description: Reviewed exact number of hosts that must be selected
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operator-ssh-backfill-${{ inputs.environment }}-${{ inputs.target_class }}
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill operator key (${{ inputs.environment }} / ${{ inputs.target_class }})
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 15
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_CLASS: ${{ inputs.target_class }}
+      EXPECTED_HOST_COUNT: ${{ inputs.expected_host_count }}
+      OPERATOR_PUBLIC_KEY: ${{ vars.APPS_OPERATOR_SSH_KEY }}
+      OPERATOR_KNOWN_HOSTS: ${{ secrets.ELIZA_OPERATOR_SSH_KNOWN_HOSTS }}
+      PROVISIONING_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      PROVISIONING_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
+      APPS_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY }}
+      HCLOUD_TOKEN: ${{ inputs.target_class == 'apps' && secrets.HCLOUD_APPS_TOKEN || secrets.HCLOUD_TOKEN }}
+    steps:
+      - name: Validate canonical source and protected inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_ref="refs/heads/$([ "$TARGET_ENVIRONMENT" = production ] && echo main || echo develop)"
+          if [ "$GITHUB_REF" != "$expected_ref" ]; then
+            echo "::error::$TARGET_ENVIRONMENT operator access changes must run from $expected_ref"
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_HOST_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::expected_host_count must be a positive integer"
+            exit 1
+          fi
+          case "$TARGET_CLASS:$TARGET_ENVIRONMENT" in
+            control-plane:staging|control-plane:production|data-plane:staging|apps:production) ;;
+            *)
+              echo "::error::Unsupported environment and target-class combination"
+              exit 1
+              ;;
+          esac
+          required=(OPERATOR_PUBLIC_KEY OPERATOR_KNOWN_HOSTS)
+          case "$TARGET_CLASS" in
+            control-plane) required+=(PROVISIONING_HOST PROVISIONING_SSH_KEY) ;;
+            data-plane) required+=(HCLOUD_TOKEN CONTAINERS_SSH_KEY) ;;
+            apps) required+=(HCLOUD_TOKEN APPS_SSH_KEY) ;;
+          esac
+          missing=()
+          for name in "${required[@]}"; do
+            value="${!name:-}"
+            [ -n "${value//[[:space:]]/}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing protected setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          key_type="$(awk '{print $1}' <<<"$OPERATOR_PUBLIC_KEY")"
+          key_blob="$(awk '{print $2}' <<<"$OPERATOR_PUBLIC_KEY")"
+          if [ "$key_type" != ssh-ed25519 ] || ! [[ "$key_blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+            echo "::error::APPS_OPERATOR_SSH_KEY must be one valid ED25519 public key"
+            exit 1
+          fi
+
+      - name: Install ephemeral identities and pinned host inventory
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          key_path="$RUNNER_TEMP/operator-backfill-auth-key"
+          known_hosts_path="$RUNNER_TEMP/operator-backfill-known-hosts"
+          printf '%s\n' "$OPERATOR_KNOWN_HOSTS" > "$known_hosts_path"
+          case "$TARGET_CLASS" in
+            control-plane) printf '%s\n' "$PROVISIONING_SSH_KEY" > "$key_path" ;;
+            data-plane) printf '%s' "$CONTAINERS_SSH_KEY" | base64 --decode > "$key_path" ;;
+            apps) printf '%s\n' "$APPS_SSH_KEY" > "$key_path" ;;
+          esac
+          chmod 0600 "$key_path" "$known_hosts_path"
+          ssh-keygen -y -f "$key_path" >/dev/null
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+          echo "known_hosts_path=$known_hosts_path" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact target inventory
+        id: inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets_path="$RUNNER_TEMP/operator-backfill-targets"
+          case "$TARGET_CLASS" in
+            control-plane)
+              printf '%s\n' "$PROVISIONING_HOST" > "$targets_path"
+              ;;
+            data-plane|apps)
+              response="$({ curl --fail --silent --show-error \
+                -H "Authorization: Bearer $HCLOUD_TOKEN" \
+                'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
+              if [ "$TARGET_CLASS" = data-plane ]; then
+                jq -r --arg env "$TARGET_ENVIRONMENT" \
+                  '.servers[] | select(.status == "running") | select(.name | test("^eliza-core-" + $env + "-[0-9]+$")) | .public_net.ipv4.ip' \
+                  <<<"$response" > "$targets_path"
+              else
+                jq -r \
+                  '.servers[] | select(.status == "running") | . as $server | select(["app-node", "apps-control", "apps-worker", "tenant-db"] | index($server.labels.role)) | .public_net.ipv4.ip' \
+                  <<<"$response" > "$targets_path"
+              fi
+              ;;
+          esac
+          sort -u -o "$targets_path" "$targets_path"
+          actual_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$targets_path")"
+          if [ "$actual_count" != "$EXPECTED_HOST_COUNT" ]; then
+            echo "::error::Resolved host count did not match the reviewed expected_host_count"
+            exit 1
+          fi
+          while IFS= read -r host; do
+            ssh-keygen -F "$host" -f "${{ steps.identity.outputs.known_hosts_path }}" >/dev/null || {
+              echo "::error::Protected known_hosts inventory is incomplete for the selected target set"
+              exit 1
+            }
+          done < "$targets_path"
+          echo "targets_path=$targets_path" >> "$GITHUB_OUTPUT"
+          echo "Resolved and host-key-pinned $actual_count target(s); addresses remain undisclosed."
+
+      - name: Add operator key idempotently
+        shell: bash
+        env:
+          AUTH_KEY_PATH: ${{ steps.identity.outputs.key_path }}
+          KNOWN_HOSTS_PATH: ${{ steps.identity.outputs.known_hosts_path }}
+          TARGETS_PATH: ${{ steps.inventory.outputs.targets_path }}
+        run: |
+          set -euo pipefail
+          case "$TARGET_CLASS" in
+            data-plane) remote_user=root ;;
+            control-plane|apps) remote_user=deploy ;;
+          esac
+          completed=0
+          while IFS= read -r host; do
+            printf '%s\n' "$OPERATOR_PUBLIC_KEY" | ssh \
+              -i "$AUTH_KEY_PATH" \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$KNOWN_HOSTS_PATH" \
+              -o ConnectTimeout=10 \
+              "$remote_user@$host" \
+              'set -euo pipefail; IFS= read -r operator_key; umask 077; mkdir -p "$HOME/.ssh"; chmod 0700 "$HOME/.ssh"; touch "$HOME/.ssh/authorized_keys"; chmod 0600 "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys" || printf "%s\n" "$operator_key" >> "$HOME/.ssh/authorized_keys"; grep -qxF -- "$operator_key" "$HOME/.ssh/authorized_keys"'
+            completed=$((completed + 1))
+          done < "$TARGETS_PATH"
+          if [ "$completed" != "$EXPECTED_HOST_COUNT" ]; then
+            echo "::error::Not every reviewed target completed the additive key convergence"
+            exit 1
+          fi
+          echo "Operator key present on $completed reviewed target(s)."
+
+      - name: Remove ephemeral identities
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            "$RUNNER_TEMP/operator-backfill-auth-key" \
+            "$RUNNER_TEMP/operator-backfill-known-hosts" \
+            "$RUNNER_TEMP/operator-backfill-targets"; do
+            if [ -f "$path" ]; then
+              shred -u "$path" 2>/dev/null || unlink "$path"
+            fi
+          done
