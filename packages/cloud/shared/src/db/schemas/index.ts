@@ -16,6 +16,7 @@ export * from "./admin-users";
 export * from "./affiliate-payout-outbox";
 export * from "./affiliates";
 export * from "./agent-backup-catalog";
+export * from "./agent-backup-restore-history";
 export * from "./agent-budgets";
 export * from "./agent-events";
 export * from "./agent-identities";

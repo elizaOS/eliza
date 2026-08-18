@@ -150,6 +150,17 @@ export const agentVaultKeyBackupBindings = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.organization_id, table.backup_id] }),
+    receipt_authority_unique: unique("agent_vault_key_backup_bindings_receipt_authority_unique").on(
+      table.organization_id,
+      table.agent_id,
+      table.backup_id,
+      table.operation_id,
+      table.source_activation_generation,
+      table.source_lifecycle_revision,
+      table.manifest_sha256,
+      table.vault_key_generation_id,
+      table.vault_key_authority_receipt_digest,
+    ),
     backup_authority_fk: foreignKey({
       name: "agent_vault_key_backup_bindings_backup_authority_fkey",
       columns: [

@@ -1716,6 +1716,41 @@
       "when": 1790280000000,
       "tag": "0245_agent_vault_key_topology_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1790366400000,
+      "tag": "0246_agent_node_incarnation_histories",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1790452800000,
+      "tag": "0247_agent_activation_publications",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1790539200000,
+      "tag": "0248_agent_vault_key_seed_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1790625600000,
+      "tag": "0249_agent_backup_restore_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1790712000000,
+      "tag": "0250_agent_restore_receipt_guards",
+      "breakpoints": true
     }
   ]
 }
