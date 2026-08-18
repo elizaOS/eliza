@@ -65,6 +65,65 @@ export function createBatches(files, batchSize) {
   return batches;
 }
 
+function isFile(filePath) {
+  return statSync(filePath, { throwIfNoEntry: false })?.isFile() === true;
+}
+
+function unquotePath(value) {
+  return value.trim().replace(/^"(.*)"$/u, "$1");
+}
+
+function isDirectlyExecutableBun(filePath, platform) {
+  const name = path.basename(filePath).toLowerCase();
+  return platform === "win32" ? name === "bun.exe" : name === "bun";
+}
+
+/**
+ * Resolve the actual Bun executable rather than the `bunx.cmd` shim that Node
+ * cannot spawn on Windows. `bun run` supplies its own executable through
+ * npm_execpath even when Bun's directory is absent from PATH; direct script
+ * callers retain a PATH fallback.
+ */
+export function resolveBunExecutable(
+  env = process.env,
+  platform = process.platform,
+) {
+  const packageRunner = unquotePath(env.npm_execpath ?? "");
+  if (
+    packageRunner &&
+    isDirectlyExecutableBun(packageRunner, platform) &&
+    isFile(packageRunner)
+  ) {
+    return packageRunner;
+  }
+
+  const pathValue = env.PATH ?? env.Path ?? "";
+  const executableNames =
+    platform === "win32"
+      ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((extension) => extension.trim().toLowerCase())
+          .filter((extension) => extension === ".exe")
+          .map((extension) => `bun${extension}`)
+      : ["bun"];
+  for (const rawDirectory of pathValue.split(path.delimiter)) {
+    const directory = unquotePath(rawDirectory);
+    if (!directory) continue;
+    for (const executableName of executableNames) {
+      const candidate = path.join(directory, executableName);
+      if (isFile(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+export function createVitestInvocation(bunExecutable, batch) {
+  return {
+    command: bunExecutable,
+    args: ["x", "vitest", "run", "--config", "vitest.config.ts", ...batch],
+  };
+}
+
 function terminate(child) {
   if (!child.pid) return;
   if (process.platform === "win32") {
@@ -79,19 +138,16 @@ function terminate(child) {
   }
 }
 
-function runBatch(batch, nodeOptions, active) {
+function runBatch(batch, nodeOptions, active, bunExecutable) {
   return new Promise((resolve) => {
     const startedAt = performance.now();
-    const child = spawn(
-      "bunx",
-      ["vitest", "run", "--config", "vitest.config.ts", ...batch],
-      {
-        cwd: packageRoot,
-        detached: process.platform !== "win32",
-        env: { ...process.env, NODE_OPTIONS: nodeOptions },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const invocation = createVitestInvocation(bunExecutable, batch);
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: packageRoot,
+      detached: process.platform !== "win32",
+      env: { ...process.env, NODE_OPTIONS: nodeOptions },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     active.add(child);
     const stdout = [];
     const stderr = [];
@@ -131,6 +187,12 @@ async function main() {
     "AGENT_TEST_CONCURRENCY",
     Math.min(4, availableParallelism()),
   );
+  const bunExecutable = resolveBunExecutable();
+  if (!bunExecutable) {
+    throw new Error(
+      "Unable to resolve a Bun executable from npm_execpath or PATH.",
+    );
+  }
   const verbose = process.env.AGENT_TEST_VERBOSE === "1";
   const files = roots.flatMap((root) => {
     const out = [];
@@ -162,7 +224,12 @@ async function main() {
     const results = await runPool(
       batches,
       async (batch, index) => {
-        const result = await runBatch(batch, nodeOptions, active);
+        const result = await runBatch(
+          batch,
+          nodeOptions,
+          active,
+          bunExecutable,
+        );
         completed += 1;
         if (verbose || result.status !== 0) {
           const label = `[agent-test] batch ${index + 1}/${batches.length}: ${batch.join(", ")}`;
