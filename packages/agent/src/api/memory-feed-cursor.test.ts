@@ -102,52 +102,57 @@ describe("GET /api/memories/feed cursor", () => {
     },
   );
 
-  test.each([["", "empty"], [" ", "whitespace-only"]])(
+  test.each([
+    ["", "empty"],
+    [" ", "whitespace-only"],
+  ])(
     "treats a blank before value (%j) as no cursor, not junk",
     async (rawCursor) => {
-    // `?before=` templates naturally from clients interpolating an unset
-    // variable, and whitespace trims to the same blank. Both previously
-    // mis-coerced (whitespace became an epoch-0 cursor via Number(" ") === 0,
-    // silently emptying the feed); both now mean "no cursor" — unlike
-    // present junk, which 400s.
-    const response: { value?: unknown } = {};
-    const runtime = {
-      agentId: "11111111-1111-4111-8111-111111111111" as UUID,
-      character: { name: "Eliza" },
-      ensureConnection: vi.fn(async () => undefined),
-      getMemories: vi.fn(async () => [
-        {
-          id: "22222222-2222-4222-8222-222222222222" as UUID,
-          entityId: "33333333-3333-4333-8333-333333333333" as UUID,
-          roomId: "44444444-4444-4444-8444-444444444444" as UUID,
-          content: { text: "still visible without a cursor" },
-          createdAt: 1,
+      // `?before=` templates naturally from clients interpolating an unset
+      // variable, and whitespace trims to the same blank. Both previously
+      // mis-coerced (whitespace became an epoch-0 cursor via Number(" ") === 0,
+      // silently emptying the feed); both now mean "no cursor" — unlike
+      // present junk, which 400s.
+      const response: { value?: unknown } = {};
+      const runtime = {
+        agentId: "11111111-1111-4111-8111-111111111111" as UUID,
+        character: { name: "Eliza" },
+        ensureConnection: vi.fn(async () => undefined),
+        getMemories: vi.fn(async () => [
+          {
+            id: "22222222-2222-4222-8222-222222222222" as UUID,
+            entityId: "33333333-3333-4333-8333-333333333333" as UUID,
+            roomId: "44444444-4444-4444-8444-444444444444" as UUID,
+            content: { text: "still visible without a cursor" },
+            createdAt: 1,
+          },
+        ]),
+      } as unknown as AgentRuntime;
+      const context: MemoryRouteContext = {
+        req: {} as never,
+        res: {} as never,
+        method: "GET",
+        pathname: "/api/memories/feed",
+        url: (() => {
+          const u = new URL(
+            "https://agent.test/api/memories/feed?type=messages",
+          );
+          u.searchParams.set("before", rawCursor);
+          return u;
+        })(),
+        runtime,
+        agentName: "Eliza",
+        json: (_res, value) => {
+          response.value = value;
         },
-      ]),
-    } as unknown as AgentRuntime;
-    const context: MemoryRouteContext = {
-      req: {} as never,
-      res: {} as never,
-      method: "GET",
-      pathname: "/api/memories/feed",
-      url: (() => {
-        const u = new URL("https://agent.test/api/memories/feed?type=messages");
-        u.searchParams.set("before", rawCursor);
-        return u;
-      })(),
-      runtime,
-      agentName: "Eliza",
-      json: (_res, value) => {
-        response.value = value;
-      },
-      error: (_res, message, status) => {
-        throw new Error(`unexpected ${status}: ${message}`);
-      },
-      readJsonBody: async <T extends object>() => ({}) as T,
-    };
+        error: (_res, message, status) => {
+          throw new Error(`unexpected ${status}: ${message}`);
+        },
+        readJsonBody: async <T extends object>() => ({}) as T,
+      };
 
-    expect(await handleMemoryRoutes(context)).toBe(true);
-    expect((response.value as { count: number }).count).toBe(1);
+      expect(await handleMemoryRoutes(context)).toBe(true);
+      expect((response.value as { count: number }).count).toBe(1);
     },
   );
 

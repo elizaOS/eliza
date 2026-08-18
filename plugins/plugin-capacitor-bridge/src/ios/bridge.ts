@@ -27,6 +27,7 @@ import {
 import {
 	buildBrandEnvAliases,
 	getBootConfig,
+	parseCanonicalInteger,
 	readAliasedEnv,
 	setBootConfig,
 } from "@elizaos/shared";
@@ -1256,7 +1257,7 @@ async function fetchMemoriesFromTables(
 	filtered = filtered.filter(hasBrowsableContent);
 
 	const beforeTs = params.before;
-	if (beforeTs) {
+	if (beforeTs !== undefined) {
 		return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
 	}
 	return filtered;
@@ -1271,8 +1272,12 @@ async function handleMemoriesFeedRoute(
 		MEMORY_FEED_DEFAULT_LIMIT,
 	);
 	const limit = Math.min(Math.max(requestedLimit, 1), MEMORY_FEED_MAX_LIMIT);
-	const beforeParam = queryParam(query, "before");
-	const before = beforeParam ? Number(beforeParam) : undefined;
+	const before = parseCanonicalInteger(queryParam(query, "before"));
+	if (before === "invalid") {
+		return jsonResponse(400, {
+			error: "before must be a Unix timestamp in milliseconds",
+		});
+	}
 	const tables = resolveMemoryTableFilter(queryParam(query, "type"));
 
 	const allMemories = await fetchMemoriesFromTables(runtime, {
