@@ -235,6 +235,17 @@ describe("splitMessageForIMessage", () => {
     const result = splitMessageForIMessage("");
     expect(result).toEqual([""]);
   });
+
+  it("keeps surrogate pairs intact at hard break points", () => {
+    const text = "aaaaa\u{1F98A}bbbbb";
+    const result = splitMessageForIMessage(text, 6);
+    expect(result.length).toBeGreaterThan(1);
+    for (const chunk of result) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(6);
+    }
+    expect(result.join("")).toBe(text);
+  });
 });
 
 // ============================================================

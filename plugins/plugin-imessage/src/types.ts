@@ -2,7 +2,7 @@
  * Type definitions for the iMessage plugin.
  */
 
-import type { Service } from "@elizaos/core";
+import { type Service, truncateWellFormed } from "@elizaos/core";
 
 /** Maximum message length for iMessage */
 export const MAX_IMESSAGE_MESSAGE_LENGTH = 4000;
@@ -308,8 +308,11 @@ export function splitMessageForIMessage(
       }
     }
 
-    chunks.push(remaining.slice(0, breakPoint).trimEnd());
-    remaining = remaining.slice(breakPoint).trimStart();
+    const chunkCandidate = truncateWellFormed(remaining, breakPoint);
+    const cutPoint = chunkCandidate.length > 0 ? chunkCandidate.length : breakPoint;
+
+    chunks.push(remaining.slice(0, cutPoint).trimEnd());
+    remaining = remaining.slice(cutPoint).trimStart();
   }
 
   return chunks;
