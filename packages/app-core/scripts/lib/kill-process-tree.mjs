@@ -85,3 +85,28 @@ export function signalSpawnedProcessTree(child, signal) {
   if (pid === undefined || pid === null) return;
   signalProcessTree(pid, signal);
 }
+
+/**
+ * Signal a child that was spawned with `detached: true` as one Unix process
+ * group. Unlike a parent/child walk, the group remains addressable after its
+ * launcher exits and reparents the packaged app to PID 1.
+ *
+ * @param {import("node:child_process").ChildProcess | null | undefined} child
+ * @param {"SIGTERM" | "SIGKILL"} signal
+ */
+export function signalSpawnedProcessGroup(child, signal) {
+  const pid = child?.pid;
+  if (!Number.isFinite(pid) || pid <= 0) return;
+  if (process.platform === "win32") {
+    signalProcessTreeWin32(pid, signal);
+    return;
+  }
+  const sig = signal === "SIGKILL" ? "SIGKILL" : "SIGTERM";
+  try {
+    process.kill(-pid, sig);
+  } catch {
+    // A caller may hand us a non-detached child. Preserve the established
+    // exact-tree fallback without ever matching processes by name.
+    signalProcessTreeUnix(pid, sig);
+  }
+}

@@ -6,7 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { signalSpawnedProcessTree } from "./kill-process-tree.mjs";
+import {
+  signalSpawnedProcessGroup,
+  signalSpawnedProcessTree,
+} from "./kill-process-tree.mjs";
 import {
   DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS,
   drainSpawnedChildren,
@@ -256,6 +259,29 @@ describe.skipIf(process.platform === "win32")(
       expect(warn).toHaveBeenCalledTimes(1);
       expect(isAlive(child.pid)).toBe(false);
     }, 15_000);
+
+    it("terminates a detached launcher and its native-style descendant as one group", async () => {
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          `const { spawn } = require("node:child_process");
+           const app = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+           process.on("SIGTERM", () => process.exit(0));
+           process.stdout.write(String(app.pid));
+           setInterval(() => {}, 1000);`,
+        ],
+        { detached: true, stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const [chunk] = await once(child.stdout, "data");
+      const descendantPid = Number.parseInt(String(chunk), 10);
+      expect(descendantPid).toBeGreaterThan(0);
+
+      signalSpawnedProcessGroup(child, "SIGTERM");
+      await once(child, "exit");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(isAlive(descendantPid)).toBe(false);
+    }, 15_000);
   },
 );
 
@@ -297,7 +323,7 @@ describe("dev-platform supervisor wiring", () => {
       "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
     );
     expect(devPlatformSource).toContain(
-      "signalTree: signalSpawnedProcessTree,",
+      "signalTree: signalSpawnedProcessGroup,",
     );
   });
 
