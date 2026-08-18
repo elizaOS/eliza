@@ -50,10 +50,7 @@ export class ProxyClient {
         });
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter
-            ? Number.parseInt(retryAfter, 10) * 1000
-            : Math.min(1000 * 2 ** attempt, 8000);
+          const delay = retryDelayMs(res.headers.get("Retry-After"), attempt);
           // Consume the response body to release the connection
           await res.text().catch(() => {});
           await sleep(delay);
@@ -173,6 +170,31 @@ export class LoginExpiredError extends Error {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_BACKOFF_MS = 8000;
+
+/**
+ * RFC 7231 §7.1.3 allows Retry-After to be either delay-seconds ("120") or an
+ * HTTP-date ("Wed, 21 Oct 2026 07:28:00 GMT"). `Number.parseInt` on the date
+ * form silently returns NaN, which made `setTimeout` fire almost immediately
+ * instead of honoring the server's backoff. Falls back to the existing
+ * exponential backoff when the header is absent or neither form parses.
+ */
+export function retryDelayMs(
+  retryAfterHeader: string | null,
+  attempt: number,
+): number {
+  const fallback = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+  if (!retryAfterHeader) return fallback;
+
+  const seconds = Number(retryAfterHeader);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+  const dateMs = Date.parse(retryAfterHeader);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+
+  return fallback;
 }
 
 function normalizeProxyUrl(proxyUrl: string): string {
