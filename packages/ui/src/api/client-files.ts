@@ -30,22 +30,40 @@ export interface StoredFile {
   createdAt: number;
 }
 
+/** List GET — existing 10s REST budget, independent hop. */
+export const FILES_LIST_FETCH_TIMEOUT_MS = 10_000;
+/** Delete DELETE — existing 10s REST budget, independent hop. */
+export const FILES_DELETE_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
-    listFiles(): Promise<{ files: StoredFile[]; restricted?: boolean }>;
-    deleteFile(fileName: string): Promise<{ deleted: boolean }>;
+    listFiles(
+      timeoutMs?: number,
+    ): Promise<{ files: StoredFile[]; restricted?: boolean }>;
+    deleteFile(
+      fileName: string,
+      timeoutMs?: number,
+    ): Promise<{ deleted: boolean }>;
   }
 }
 
-ElizaClient.prototype.listFiles = async function (this: ElizaClient) {
-  return this.fetch("/api/files");
+ElizaClient.prototype.listFiles = async function (
+  this: ElizaClient,
+  timeoutMs: number = FILES_LIST_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/files", undefined, { timeoutMs });
 };
 
 ElizaClient.prototype.deleteFile = async function (
   this: ElizaClient,
   fileName: string,
+  timeoutMs: number = FILES_DELETE_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch(`/api/files/${encodeURIComponent(fileName)}`, {
-    method: "DELETE",
-  });
+  return this.fetch(
+    `/api/files/${encodeURIComponent(fileName)}`,
+    {
+      method: "DELETE",
+    },
+    { timeoutMs },
+  );
 };
