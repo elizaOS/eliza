@@ -54,6 +54,13 @@ describe("log-prefix utilities", () => {
     expect(getLogPrefix()).toBe("[worker-node]");
   });
 
+  it("ignores an empty --name= argument and uses the default", async () => {
+    process.argv = ["node", "index.js", "--name=   "];
+
+    const { getLogPrefix } = await import("./log-prefix.js");
+    expect(getLogPrefix()).toBe("[eliza]");
+  });
+
   it("caches the computed prefix on subsequent calls within the module instance", async () => {
     process.env.APP_CLI_NAME = "initial-name";
     const { getLogPrefix } = await import("./log-prefix.js");
