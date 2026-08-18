@@ -76,42 +76,72 @@ export interface VoiceModelsSetPreferencesResponse {
   readonly preferences: NetworkPolicyPreferences;
 }
 
+/** List GET — existing 10s REST budget, independent hop. */
+export const VOICE_MODELS_LIST_FETCH_TIMEOUT_MS = 10_000;
+/** Check GET — existing 10s REST budget, independent hop. */
+export const VOICE_MODELS_CHECK_FETCH_TIMEOUT_MS = 10_000;
+/** Pin POST — existing 10s REST budget, independent hop. */
+export const VOICE_MODELS_PIN_FETCH_TIMEOUT_MS = 10_000;
+/** Preferences GET — existing 10s REST budget, independent hop. */
+export const VOICE_MODELS_GET_PREFERENCES_FETCH_TIMEOUT_MS = 10_000;
+/** Preferences POST — existing 10s REST budget, independent hop. */
+export const VOICE_MODELS_SET_PREFERENCES_FETCH_TIMEOUT_MS = 10_000;
+
 declare module "./client-base" {
   interface ElizaClient {
-    listVoiceModels(): Promise<VoiceModelsListResponse>;
-    checkVoiceModelUpdates(options?: {
-      force?: boolean;
-    }): Promise<VoiceModelsCheckResponse>;
+    listVoiceModels(
+      timeoutMs?: number,
+    ): Promise<VoiceModelsListResponse>;
+    checkVoiceModelUpdates(
+      options?: {
+        force?: boolean;
+      },
+      timeoutMs?: number,
+    ): Promise<VoiceModelsCheckResponse>;
     triggerVoiceModelUpdate(
       id: VoiceModelId,
     ): Promise<VoiceModelsUpdateResponse>;
     pinVoiceModel(
       id: VoiceModelId,
       pinned: boolean,
+      timeoutMs?: number,
     ): Promise<VoiceModelsPinResponse>;
-    getVoiceModelPreferences(): Promise<VoiceModelsPreferencesResponse>;
+    getVoiceModelPreferences(
+      timeoutMs?: number,
+    ): Promise<VoiceModelsPreferencesResponse>;
     setVoiceModelPreferences(
       patch: Partial<NetworkPolicyPreferences>,
+      timeoutMs?: number,
     ): Promise<VoiceModelsSetPreferencesResponse>;
   }
 }
 
-ElizaClient.prototype.listVoiceModels = async function (this: ElizaClient) {
-  return this.fetch("/api/local-inference/voice-models");
+ElizaClient.prototype.listVoiceModels = async function (
+  this: ElizaClient,
+  timeoutMs: number = VOICE_MODELS_LIST_FETCH_TIMEOUT_MS,
+) {
+  return this.fetch("/api/local-inference/voice-models", undefined, {
+    timeoutMs,
+  });
 };
 
 ElizaClient.prototype.checkVoiceModelUpdates = async function (
   this: ElizaClient,
   options,
+  timeoutMs: number = VOICE_MODELS_CHECK_FETCH_TIMEOUT_MS,
 ) {
   const query = options?.force ? "?force=1" : "";
-  return this.fetch(`/api/local-inference/voice-models/check${query}`);
+  return this.fetch(`/api/local-inference/voice-models/check${query}`, undefined, {
+    timeoutMs,
+  });
 };
 
 ElizaClient.prototype.triggerVoiceModelUpdate = async function (
   this: ElizaClient,
   id: VoiceModelId,
 ) {
+  // Model-download stay-off: this hop writes a GGUF/ONNX payload (version,
+  // finalPath, sha256, sizeBytes). Do not attach a 10s REST timeout here.
   return this.fetch(
     `/api/local-inference/voice-models/${encodeURIComponent(id)}/update`,
     { method: "POST", body: JSON.stringify({}) },
@@ -122,25 +152,35 @@ ElizaClient.prototype.pinVoiceModel = async function (
   this: ElizaClient,
   id: VoiceModelId,
   pinned: boolean,
+  timeoutMs: number = VOICE_MODELS_PIN_FETCH_TIMEOUT_MS,
 ) {
   return this.fetch(
     `/api/local-inference/voice-models/${encodeURIComponent(id)}/pin`,
     { method: "POST", body: JSON.stringify({ pinned }) },
+    { timeoutMs },
   );
 };
 
 ElizaClient.prototype.getVoiceModelPreferences = async function (
   this: ElizaClient,
+  timeoutMs: number = VOICE_MODELS_GET_PREFERENCES_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/local-inference/voice-models/preferences");
+  return this.fetch("/api/local-inference/voice-models/preferences", undefined, {
+    timeoutMs,
+  });
 };
 
 ElizaClient.prototype.setVoiceModelPreferences = async function (
   this: ElizaClient,
   patch: Partial<NetworkPolicyPreferences>,
+  timeoutMs: number = VOICE_MODELS_SET_PREFERENCES_FETCH_TIMEOUT_MS,
 ) {
-  return this.fetch("/api/local-inference/voice-models/preferences", {
-    method: "POST",
-    body: JSON.stringify(patch),
-  });
+  return this.fetch(
+    "/api/local-inference/voice-models/preferences",
+    {
+      method: "POST",
+      body: JSON.stringify(patch),
+    },
+    { timeoutMs },
+  );
 };
