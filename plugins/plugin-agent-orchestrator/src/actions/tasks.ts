@@ -35,6 +35,7 @@ import {
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
+import { phraseForUser } from "../voice/phrase-for-user.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import {
   collisionProviderFromWorkspaceService,
@@ -1333,7 +1334,23 @@ async function runCreateLegacy(
   const widgetBlock = threadId
     ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
     : "";
-  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
+  // Model-phrased ack ("on it — spinning up the page build" instead of the
+  // canned "Created task agent.") with the canned string as the deterministic
+  // fallback. The machine widget rides byte-identical below whatever prose
+  // the model wrote — widget parsers depend on the exact block.
+  const createdFallback = `Created task agent${results.length > 1 ? "s" : ""}.`;
+  const { text: createdProse } = await phraseForUser(
+    runtime,
+    {
+      intent: "confirm",
+      facts: {
+        createdCount: results.length,
+        titles: results.map((item) => String(item.label)),
+      },
+    },
+    createdFallback,
+  );
+  const proseText = `${createdProse}${widgetBlock}`;
   await callbackText(callback, proseText);
 
   // The creation ack is the complete answer to a single-operation turn:
