@@ -30,19 +30,14 @@ describe("desktop experience contract — chat-first launch", () => {
     }
   });
 
-  it("gives Cloud-only installs a recoverable full onboarding window by default", () => {
+  it("keeps Cloud-only installs in the bottom-bar host across first run and relaunch", () => {
+    // The chat-overlay renderer owns first-run now: it expands the transparent
+    // native host to full while onboarding is active, then returns it through
+    // half/input to the resting pill. Starting the legacy full dashboard host
+    // makes every later Dock/tray reopen repaint the wallpaper window.
     expect(shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [])).toBe(
-      false,
+      true,
     );
-    expect(
-      shouldStartBottomBar(
-        {
-          ELIZA_DESKTOP_CLOUD_ONLY: "1",
-          ELIZA_DESKTOP_BOTTOM_BAR: "1",
-        },
-        [],
-      ),
-    ).toBe(true);
   });
 
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
