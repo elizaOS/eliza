@@ -68,6 +68,14 @@ describe("handleImageGeneration fail-closed contract (#21985)", () => {
     ]);
   });
 
+  it("falls back to a valid base64 image when url is empty", async () => {
+    const b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+    generateImage.mockResolvedValue({ images: [{ url: "", image: b64 }] });
+    await expect(handleImageGeneration(runtime(), { prompt: "a cat" })).resolves.toEqual([
+      { url: b64 },
+    ]);
+  });
+
   it("rejects a mixed batch rather than returning an empty-url hole", async () => {
     generateImage.mockResolvedValue({
       images: [{}, { url: "https://cdn/ok.png" }],

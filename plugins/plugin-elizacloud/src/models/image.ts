@@ -73,8 +73,11 @@ export async function handleImageGeneration(
       throw new Error("Eliza Cloud image generation returned no images");
     }
     const result = images.map((img: { url?: string; image?: string }) => {
-      const url = img.url ?? img.image;
-      if (typeof url !== "string" || url.trim() === "") {
+      const url = [img.url, img.image].find(
+        (candidate): candidate is string =>
+          typeof candidate === "string" && candidate.trim() !== "",
+      );
+      if (!url) {
         throw new Error("Eliza Cloud image generation returned no image URL");
       }
       return { url };
