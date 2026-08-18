@@ -164,6 +164,26 @@ function parseAmount(
   return null;
 }
 
+// Date.UTC silently rolls an out-of-range month/day into a different date
+// (month 13 becomes January of next year, Feb 31 becomes Mar 2/3) instead of
+// signaling an error. Round-tripping the constructed date's calendar fields
+// catches that instead of trusting Date.UTC's return value.
+function utcMidnightIsoOrNull(
+  year: number,
+  month1based: number,
+  day: number,
+): string | null {
+  const date = new Date(Date.UTC(year, month1based - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month1based - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date.toISOString();
+}
+
 function normalizeDate(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -176,13 +196,11 @@ function normalizeDate(raw: string): string | null {
   // fallback, which is reserved for strings carrying a time component.
   const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
-    return new Date(
-      Date.UTC(
-        Number(isoMatch[1]),
-        Number(isoMatch[2]) - 1,
-        Number(isoMatch[3]),
-      ),
-    ).toISOString();
+    return utcMidnightIsoOrNull(
+      Number(isoMatch[1]),
+      Number(isoMatch[2]),
+      Number(isoMatch[3]),
+    );
   }
   const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (usMatch) {
@@ -190,7 +208,7 @@ function normalizeDate(raw: string): string | null {
     const day = Number(usMatch[2]);
     const rawYear = Number(usMatch[3]);
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+    return utcMidnightIsoOrNull(year, month, day);
   }
   const native = Date.parse(trimmed);
   if (!Number.isFinite(native)) {

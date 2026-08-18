@@ -130,6 +130,33 @@ describe("parseTransactionsCsv", () => {
       );
     });
 
+    it("rejects an out-of-range month/day instead of letting Date.UTC roll it into a different date", () => {
+      // A non-US bank export using DD/MM/YYYY ("13/05/2024" = 13 May) matches
+      // the same digit-group regex as MM/DD/YYYY. Forced into month/day order,
+      // month 13 doesn't exist; Date.UTC(2024, 12, 5) silently rolls that into
+      // 2025-01-05 instead of erroring. Feb 31 (no such day) rolls the same way
+      // into March. Both must be rejected, not silently mis-dated.
+      const r = parseTransactionsCsv(
+        "Date,Amount,Merchant\n13/05/2024,-1,BadMonthSlash\n02/31/2024,-1,BadDaySlash\n2024-13-05,-1,BadMonthIso\n2024-02-31,-1,BadDayIso\n",
+      );
+      expect(r.transactions).toEqual([]);
+      expect(r.errors.filter((e) => /unparseable date/.test(e))).toHaveLength(
+        4,
+      );
+    });
+
+    it("still accepts real calendar-edge dates", () => {
+      const r = parseTransactionsCsv(
+        "Date,Amount,Merchant\n12/31/2024,-1,YearEnd\n2024-02-29,-1,LeapDay\n02/29/2024,-1,LeapDaySlash\n",
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions.map((t) => t.postedAt)).toEqual([
+        utcMidnight(2024, 12, 31),
+        utcMidnight(2024, 2, 29),
+        utcMidnight(2024, 2, 29),
+      ]);
+    });
+
     it("yields a stable transaction-id key for a re-imported row", () => {
       // Mirrors buildTransactionId's hash key recipe (finances-service.ts):
       // postedAt is a hashed component, so determinism here is what keeps
