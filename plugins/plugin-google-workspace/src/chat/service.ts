@@ -23,6 +23,7 @@ import {
   type MessageConnectorUserContext,
   Service,
   type TargetInfo,
+  toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
 import { GoogleAuth } from "google-auth-library";
@@ -51,6 +52,7 @@ import {
   isDirectMessage,
   normalizeSpaceTarget,
   normalizeUserTarget,
+  splitMessageForGoogleChat,
 } from "./types.js";
 
 const CHAT_API_BASE = "https://chat.googleapis.com/v1";
@@ -646,13 +648,39 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   async sendMessage(options: GoogleChatMessageSendOptions): Promise<GoogleChatSendResult> {
-    const state = this.getState(options.accountId);
     if (!options.space) {
       return {
         success: false,
         error: "Space is required",
       };
     }
+
+    const textChunks = options.text ? splitMessageForGoogleChat(options.text) : [undefined];
+    let lastResult: GoogleChatSendResult | undefined;
+
+    // Sequential sends preserve visible chunk order and stop immediately on a
+    // provider failure. Attachments belong to the logical message, so only the
+    // first chunk carries them rather than duplicating uploads on every chunk.
+    for (let index = 0; index < textChunks.length; index += 1) {
+      lastResult = await this.sendSingleMessage({
+        ...options,
+        text: textChunks[index],
+        attachments: index === 0 ? options.attachments : undefined,
+      });
+    }
+
+    return (
+      lastResult ?? {
+        success: false,
+        error: "Google Chat message has no sendable content",
+      }
+    );
+  }
+
+  private async sendSingleMessage(
+    options: GoogleChatMessageSendOptions
+  ): Promise<GoogleChatSendResult> {
+    const state = this.getState(options.accountId);
 
     const body: Record<string, unknown> = {};
 
@@ -711,7 +739,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       url,
       {
         method: "PATCH",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: toWellFormedUnicode(text) }),
       },
       accountId
     );
