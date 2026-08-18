@@ -413,6 +413,7 @@ describe("secret redaction", () => {
 
   afterEach(() => {
     redactLogger().clear();
+    vi.restoreAllMocks();
   });
 
   it("masks top-level credential keys", () => {
@@ -665,6 +666,32 @@ describe("secret redaction", () => {
     const logs = recentLogs();
     expect(logs).not.toContain("sk-proxy-hidden-secret");
     expect(logs).toContain("[REDACTED: redaction failed]");
+  });
+
+  it("drops a bare function context without losing the message", () => {
+    const logger = redactLogger();
+    expect(() =>
+      logger.info(
+        (() => "never-invoked") as unknown as Record<string, unknown>,
+        "fn-context-message-survives",
+      ),
+    ).not.toThrow();
+    const logs = recentLogs();
+    expect(logs).toContain("fn-context-message-survives");
+    expect(logs).not.toContain("never-invoked");
+  });
+
+  it("scrubs credential-shaped namespace bindings", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const nsSecret = "sk-namespace-binding-secret-1234";
+    createLogger({ level: "trace", namespace: nsSecret }).info(
+      "namespace-scrub-entry",
+    );
+    const out = `${recentLogs()} ${infoSpy.mock.calls.flat().join(" ")}`;
+    expect(out).not.toContain(nsSecret);
+    // The scrubbed affix form, not the raw value, tags the line.
+    expect(out).toContain("sk-nam…1234");
+    expect(out).toContain("namespace-scrub-entry");
   });
 });
 

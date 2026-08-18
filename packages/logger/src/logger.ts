@@ -1432,6 +1432,18 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
     base = rest;
   }
 
+  // Namespace bindings bypass the per-call redaction like meta does: Adze
+  // prints the ns tag and invoke() prefixes the ring-buffer message with the
+  // raw value. Scrub credential shapes once here, where both consumers read.
+  if (typeof base.namespace === "string") {
+    base.namespace = redactSensitiveLogText(base.namespace);
+  }
+  if (Array.isArray(base.namespaces)) {
+    base.namespaces = base.namespaces.map((ns) =>
+      typeof ns === "string" ? redactSensitiveLogText(ns) : ns,
+    );
+  }
+
   return { level, base, maxMemoryLogs };
 }
 
@@ -1531,6 +1543,12 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       if (typeof obj === "string") {
         const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
         return [redactSensitiveLogText(obj), ...redactTrailingArgs(rest)];
+      }
+      // A bare function in the context slot collapses like a function-valued
+      // property: drop it and keep the message (see the node path).
+      if (typeof obj === "function") {
+        const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+        return redactTrailingArgs(rest);
       }
       if (obj instanceof Error) {
         const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
@@ -1703,6 +1721,13 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     if (typeof obj === "string") {
       const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
       return [redactSensitiveLogText(obj), ...redactTrailingArgs(rest)];
+    }
+    // A bare function in the context slot collapses like a function-valued
+    // property: drop it and keep the message rather than handing the pretty
+    // formatter the redactor's null stand-in.
+    if (typeof obj === "function") {
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args;
+      return redactTrailingArgs(rest);
     }
     // Error object - the wrapper must be redacted too: error instances can
     // carry credentials on enumerable properties (request config, headers),
