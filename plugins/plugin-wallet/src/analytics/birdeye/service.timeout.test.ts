@@ -97,6 +97,34 @@ describe("BirdeyeService fetch timeout (real server)", () => {
     }
   });
 
+  it("keeps the deadline active while the Birdeye body stalls", async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"data":');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const addr = server.address() as import("node:net").AddressInfo;
+    const service = new BirdeyeService(createRuntime(addr.port));
+    const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation(() => originalTimeout(10));
+
+    try {
+      await expect(
+        service.fetchTokenOverview({
+          address: "So11111111111111111111111111111111111111112",
+        } as never),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS);
+    } finally {
+      timeoutSpy.mockRestore();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("surfaces a provider error from a completed upstream", async () => {
     const server = http.createServer((_req, res) => {
       res.writeHead(503, { "content-type": "text/plain" });
