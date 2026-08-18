@@ -3328,8 +3328,11 @@ export class OrchestratorTaskService extends Service {
             (err) => (err ? reject(err) : resolve()),
           ),
         );
-      await gitIn(["branch", "-f", workspace.branch, "HEAD"]);
-      await gitIn(["checkout", workspace.branch]);
+      // checkout -B: moves (or creates) the registered branch at the child's
+      // HEAD and checks it out in one step — including when the registered
+      // branch IS the currently checked-out branch, where `branch -f` refuses
+      // ("cannot force update the checked-out branch", live 2026-08-18).
+      await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
       await workspaceService.push(workspaceId, { setUpstream: true });
       const title = (doc.task.title || workspace.branch).slice(0, 120);
       const pr = await workspaceService.createPR(workspaceId, {
@@ -3382,11 +3385,16 @@ export class OrchestratorTaskService extends Service {
     } catch (error) {
       // error-policy:J7 auto-submit is fire-and-forget from the event bridge;
       // failure is loud here and the user still gets the completion relay.
-      this.log("warn", "auto-submit of provisioned workspace failed", {
-        taskId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // Flatten newlines: the pretty transport truncates a warn message at
+      // the first newline, which swallowed the diff-gate's reason list.
+      const submitError = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/\s*\n\s*/g, " | ");
+      this.log(
+        "warn",
+        `auto-submit of provisioned workspace failed (task=${taskId} session=${sessionId}): ${submitError}`,
+        { taskId, sessionId, error: submitError },
+      );
       // Re-arm: a failed submit must not permanently claim the once-per-task
       // stamp — a later genuine task_complete (verify re-engage, retry)
       // deserves another attempt.
