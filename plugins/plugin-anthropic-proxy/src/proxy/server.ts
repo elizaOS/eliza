@@ -3,8 +3,15 @@
  * from proxy.js v2.2.3 in a controllable Service-friendly object.
  */
 
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  type ClientRequest,
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { request as httpsRequest } from "node:https";
+import type { Socket } from "node:net";
 import { type LoadResult, loadCredentials } from "../utils/credentials-loader.js";
 import {
   CC_VERSION,
@@ -76,6 +83,9 @@ export class ProxyServer {
   private requestCount = 0;
   private startedAt = 0;
   private listening = false;
+  private lifecycleTail: Promise<void> = Promise.resolve();
+  private readonly inboundSockets = new Set<Socket>();
+  private readonly upstreamRequests = new Set<ClientRequest>();
 
   private readonly port: number;
   private readonly bindHost: string;
@@ -141,7 +151,11 @@ export class ProxyServer {
     };
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.serializeLifecycle(() => this.startOnce());
+  }
+
+  private async startOnce(): Promise<void> {
     if (this.listening) return;
     const result = this.getCreds();
     if (!result.creds) {
@@ -150,31 +164,59 @@ export class ProxyServer {
 
     this.server = createServer((req, res) => this.handleRequest(req, res));
     const server = this.server;
-    this.startedAt = Date.now();
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(this.port, this.bindHost, () => {
-        server.removeListener("error", reject);
-        this.listening = true;
-        this.logger.info(
-          `anthropic-proxy listening on http://${this.bindHost}:${this.port} (cc=${CC_VERSION})`
-        );
-        resolve();
-      });
+    server.on("connection", (socket: Socket) => {
+      this.inboundSockets.add(socket);
+      socket.once("close", () => this.inboundSockets.delete(socket));
     });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(this.port, this.bindHost, () => {
+          server.removeListener("error", reject);
+          this.startedAt = Date.now();
+          this.listening = true;
+          this.logger.info(
+            `anthropic-proxy listening on http://${this.bindHost}:${this.port} (cc=${CC_VERSION})`
+          );
+          resolve();
+        });
+      });
+    } catch (error) {
+      if (this.server === server) this.server = null;
+      this.listening = false;
+      throw error;
+    }
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    return this.serializeLifecycle(() => this.stopOnce());
+  }
+
+  private async stopOnce(): Promise<void> {
     if (!this.server || !this.listening) return;
     const server = this.server;
-    await new Promise<void>((resolve) => {
-      server.close(() => {
+    for (const request of this.upstreamRequests) request.destroy();
+    this.upstreamRequests.clear();
+    for (const socket of this.inboundSockets) socket.destroy();
+    this.inboundSockets.clear();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
         this.listening = false;
-        resolve();
+        if (error) reject(error);
+        else resolve();
       });
       server.closeAllConnections();
     });
     this.server = null;
+  }
+
+  private serializeLifecycle(operation: () => Promise<void>): Promise<void> {
+    const result = this.lifecycleTail.then(operation);
+    // error-policy:J5 unhandled-rejection suppression — callers observe the
+    // same rejection through `result`; only the private queue tail recovers so
+    // a failed lifecycle operation cannot poison every later start or stop.
+    this.lifecycleTail = result.catch(() => undefined);
+    return result;
   }
 
   getUrl(): string {
@@ -339,6 +381,8 @@ export class ProxyServer {
           }
         }
       );
+      this.upstreamRequests.add(upstream);
+      upstream.once("close", () => this.upstreamRequests.delete(upstream));
       upstream.on("error", (e) => {
         this.logger.error(`#${reqNum} upstream error: ${(e as Error).message}`);
         if (!res.headersSent) {

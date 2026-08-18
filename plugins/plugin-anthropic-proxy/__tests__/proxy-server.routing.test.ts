@@ -5,8 +5,8 @@
  */
 
 import { EventEmitter } from "node:events";
-import { get as httpGet } from "node:http";
-import type { ClientRequest, RequestOptions } from "node:https";
+import { type ClientRequest, get as httpGet } from "node:http";
+import type { RequestOptions } from "node:https";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProxyServer } from "../src/proxy/server.js";
 
@@ -14,6 +14,7 @@ const httpsMock = vi.hoisted(() => ({
   request: vi.fn(),
   upstreamBodies: [] as Buffer[],
   upstreamOptions: [] as RequestOptions[],
+  upstreamRequests: [] as ClientRequest[],
 }));
 
 vi.mock("node:https", () => ({
@@ -31,6 +32,11 @@ function installUpstream(statusCode = 200, body = "{}") {
         httpsMock.upstreamBodies.push(Buffer.from(chunk));
         return true;
       };
+      upstream.destroy = vi.fn(() => {
+        upstream.emit("close");
+        return upstream;
+      }) as ClientRequest["destroy"];
+      httpsMock.upstreamRequests.push(upstream);
       upstream.end = (() => {
         const response = new EventEmitter() as EventEmitter & {
           statusCode: number;
@@ -42,12 +48,33 @@ function installUpstream(statusCode = 200, body = "{}") {
         queueMicrotask(() => {
           response.emit("data", Buffer.from(body));
           response.emit("end");
+          upstream.emit("close");
         });
         return upstream;
       }) as ClientRequest["end"];
       return upstream;
     }
   );
+}
+
+function installPendingUpstream() {
+  httpsMock.request.mockImplementation((options: RequestOptions) => {
+    httpsMock.upstreamOptions.push(options);
+    const upstream = new EventEmitter() as ClientRequest & {
+      write: (chunk: Buffer) => void;
+    };
+    upstream.write = (chunk: Buffer) => {
+      httpsMock.upstreamBodies.push(Buffer.from(chunk));
+      return true;
+    };
+    upstream.end = vi.fn() as ClientRequest["end"];
+    upstream.destroy = vi.fn(() => {
+      upstream.emit("close");
+      return upstream;
+    }) as ClientRequest["destroy"];
+    httpsMock.upstreamRequests.push(upstream);
+    return upstream;
+  });
 }
 
 async function getJson(url: string): Promise<unknown> {
@@ -71,6 +98,7 @@ afterEach(() => {
   httpsMock.request.mockReset();
   httpsMock.upstreamBodies.length = 0;
   httpsMock.upstreamOptions.length = 0;
+  httpsMock.upstreamRequests.length = 0;
 });
 
 describe("ProxyServer routing", () => {
@@ -101,4 +129,27 @@ describe("ProxyServer routing", () => {
       await server.stop();
     }
   }, 30_000);
+
+  it("destroys in-flight upstream requests during shutdown", async () => {
+    installPendingUpstream();
+    const server = new ProxyServer({
+      port: 0,
+      bindHost: "127.0.0.1",
+      envToken: "oauth-token",
+    });
+    await server.start();
+
+    const response = getJson(`${server.getUrl()}/v1/messages`);
+    const responseOutcome = response.then(
+      () => "resolved",
+      () => "rejected"
+    );
+    await vi.waitFor(() => expect(httpsMock.request).toHaveBeenCalledOnce(), { timeout: 5_000 });
+
+    await server.stop();
+
+    expect(httpsMock.upstreamRequests).toHaveLength(1);
+    expect(httpsMock.upstreamRequests[0].destroy).toHaveBeenCalledOnce();
+    await expect(responseOutcome).resolves.toBe("rejected");
+  });
 });
