@@ -1,6 +1,6 @@
 /**
- * Behavioral Google Chat deadlines. Runs list, send, and upload under abort —
- * not a source-grep of service.ts.
+ * Exercises Google Chat list, send, and upload request deadlines through the
+ * service's injectable HTTP boundary.
  */
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
