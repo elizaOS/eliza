@@ -1,4 +1,9 @@
-// Exercises playwright test session behavior with deterministic cloud-shared lib fixtures.
+/**
+ * HMAC-signed test-session tokens for the Playwright e2e harness. When
+ * PLAYWRIGHT_TEST_AUTH=true and a >=16-char secret are configured, these
+ * tokens authenticate as an arbitrary user/org ahead of all real auth — so
+ * the gate hard-fails closed in production regardless of the flag.
+ */
 import crypto from "crypto";
 
 export const PLAYWRIGHT_TEST_SESSION_COOKIE_NAME = "eliza-test-session";
@@ -12,11 +17,19 @@ export type PlaywrightTestSessionClaims = {
 
 export type PlaywrightTestAuthEnv = {
   NODE_ENV?: string;
+  ENVIRONMENT?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
 };
 
 export function isPlaywrightTestAuthEnabled(env: PlaywrightTestAuthEnv = process.env): boolean {
+  // Production hard-fail: an operator-set PLAYWRIGHT_TEST_AUTH in a production
+  // deployment would let anyone holding the (in-repo default) secret mint
+  // session cookies for arbitrary user/org pairs, so refuse it there no
+  // matter what the flag says.
+  if (env.NODE_ENV === "production" || env.ENVIRONMENT === "production") {
+    return false;
+  }
   return env.PLAYWRIGHT_TEST_AUTH === "true";
 }
 

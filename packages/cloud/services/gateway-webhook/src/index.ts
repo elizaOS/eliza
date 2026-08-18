@@ -62,6 +62,14 @@ app.get("/ready", (c) => {
 });
 registerForwarderAuthReadinessRoute(app);
 app.post("/drain", (c) => {
+  // Gated on the internal secret like /internal/deliver: this service is the
+  // public webhook ingress, so an unauthenticated drain would let anyone who
+  // reaches it latch every replica into the draining state (/ready 503s until
+  // restart). /health and /ready stay open because probes cannot attach
+  // headers.
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
   draining = true;
   logger.info("Drain requested");
   return c.json({ status: "draining" });

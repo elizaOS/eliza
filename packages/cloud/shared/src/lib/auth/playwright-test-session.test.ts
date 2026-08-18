@@ -96,4 +96,33 @@ describe("playwright test session auth", () => {
       ),
     ).toBeNull();
   });
+
+  it("hard-fails closed in production regardless of the flag and secret (W5-012)", () => {
+    const prodEnvs = [
+      { ...env, NODE_ENV: "production" },
+      { ...env, ENVIRONMENT: "production" },
+      { ...env, NODE_ENV: "production", ENVIRONMENT: "production" },
+    ] satisfies PlaywrightTestAuthEnv[];
+
+    for (const prodEnv of prodEnvs) {
+      expect(isPlaywrightTestAuthEnabled(prodEnv)).toBe(false);
+      expect(() => createPlaywrightTestSessionToken("user-1", "org-1", prodEnv)).toThrow(
+        "Playwright test auth is not enabled",
+      );
+      // A well-formed token minted outside production must not verify in
+      // production either.
+      const token = createPlaywrightTestSessionToken("user-1", "org-1", env);
+      expect(verifyPlaywrightTestSessionToken(token, prodEnv)).toBeNull();
+    }
+  });
+
+  it("stays enabled outside production", () => {
+    for (const devEnv of [
+      { ...env, NODE_ENV: "test" },
+      { ...env, NODE_ENV: "development" },
+      { ...env, ENVIRONMENT: "staging" },
+    ]) {
+      expect(isPlaywrightTestAuthEnabled(devEnv)).toBe(true);
+    }
+  });
 });

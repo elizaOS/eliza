@@ -34,6 +34,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   rateLimit: () => async (_c: unknown, next: () => Promise<unknown>) =>
     await next(),
   getIpKey: () => "test-ip",
+  getRequestIp: () => "192.0.2.55",
   RateLimitPresets: { CRITICAL: { windowMs: 300_000, maxRequests: 5 } },
 }));
 

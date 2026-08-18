@@ -11,6 +11,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
   getIpKey,
+  getRequestIp,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -108,10 +109,10 @@ app.post("/", async (c) => {
     const sessionToken = nanoid(32);
     const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
 
-    const realIp = c.req.header("x-real-ip")?.trim();
-    const forwardedFor = c.req.header("x-forwarded-for");
-    const ipAddress =
-      realIp || forwardedFor?.split(",")[0]?.trim() || undefined;
+    // Persist the edge-verified request IP (cf-connecting-ip first), never a
+    // client-spoofed x-real-ip / x-forwarded-for value — this row is the
+    // abuse-investigation audit trail.
+    const ipAddress = getRequestIp(c);
     const userAgent = c.req.header("user-agent") || undefined;
 
     const { newUser, newSession } = await createAnonymousUserAndSession({

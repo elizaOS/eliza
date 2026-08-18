@@ -211,6 +211,64 @@ describe("agent-tokens route — human-leg tenant binding", () => {
     expect(mintAgentToken).not.toHaveBeenCalled();
   });
 
+  test("a deactivated org admin is denied before the org-ownership leg (W5-009)", async () => {
+    // getCurrentUser performs no is_active screening; deactivation must revoke
+    // the org-admin fallback too, so the sandbox lookup must never run.
+    requireAdminBehavior = async () => {
+      throw new MockApiError(403, "Admin access required");
+    };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      is_active: false,
+    };
+    sandboxForOrg = { id: "agent-xyz", organization_id: "org-1" };
+
+    const res = await post({});
+    expect(res.status).toBe(403);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(mintAgentToken).not.toHaveBeenCalled();
+  });
+
+  test("an org admin whose organization is deactivated is denied (W5-009)", async () => {
+    requireAdminBehavior = async () => {
+      throw new MockApiError(403, "Admin access required");
+    };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      is_active: true,
+      organization: { id: "org-1", is_active: false },
+    };
+    sandboxForOrg = { id: "agent-xyz", organization_id: "org-1" };
+
+    const res = await post({});
+    expect(res.status).toBe(403);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(mintAgentToken).not.toHaveBeenCalled();
+  });
+
+  test("an active org admin with an active org still mints for an owned agent", async () => {
+    requireAdminBehavior = async () => {
+      throw new MockApiError(403, "Admin access required");
+    };
+    currentUser = {
+      id: "user-1",
+      role: "admin",
+      organization_id: "org-1",
+      is_active: true,
+      organization: { id: "org-1", is_active: true },
+    };
+    sandboxForOrg = { id: "agent-xyz", organization_id: "org-1" };
+
+    const res = await post({});
+    expect(res.status).toBe(200);
+    expect(findByIdAndOrg).toHaveBeenCalledWith("agent-xyz", "org-1");
+    expect(mintAgentToken).toHaveBeenCalledTimes(1);
+  });
+
   test("a 5xx platform-admin infrastructure failure is not masked as an auth denial", async () => {
     requireAdminBehavior = async () => {
       throw new MockApiError(
