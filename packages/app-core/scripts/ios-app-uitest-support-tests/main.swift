@@ -105,7 +105,7 @@ private func testRendererReadyBeforeDialogMountStillUsesSkip() {
     expect(waitCount == 2, "the helper must observe late mount and dismissal")
 }
 
-private func testInteractiveRendererWithoutDialogDoesNotWait() {
+private func testInteractiveRendererWithoutDialogUsesOneGracePoll() {
     var tapCount = 0
     var waitCount = 0
     let result = driveFreshInstallPermissionOnboardingAfterRendererReady(
@@ -118,12 +118,41 @@ private func testInteractiveRendererWithoutDialogDoesNotWait() {
 
     expect(result == .absent, "an interactive renderer needs no onboarding action")
     expect(tapCount == 0, "an absent late dialog must not tap another control")
-    expect(waitCount == 0, "an interactive renderer must not incur a grace delay")
+    expect(waitCount == 1, "an interactive renderer needs one late-mount grace poll")
+}
+
+private func testInteractiveRendererBeforeDialogMountStillUsesSkip() {
+    var dialogPresent = false
+    var skipTapped = false
+    var tapCount = 0
+    var waitCount = 0
+    let result = driveFreshInstallPermissionOnboardingAfterRendererReady(
+        dialogIsPresent: { dialogPresent },
+        skipIsHittable: { dialogPresent },
+        interactionIsReady: { true },
+        tapSkip: {
+            tapCount += 1
+            skipTapped = true
+        },
+        waitForNextPoll: {
+            waitCount += 1
+            if waitCount == 1 { dialogPresent = true }
+            if skipTapped { dialogPresent = false }
+        }
+    )
+
+    expect(
+        result == .skipped,
+        "a next-poll permission dialog must outrank early renderer interactivity"
+    )
+    expect(tapCount == 1, "the late genuine Skip control must be tapped once")
+    expect(waitCount == 2, "the helper must observe next-poll mount and dismissal")
 }
 
 testDialogAbsentDoesNothing()
 testDialogPresentUsesSkipAndWaitsForDismissal()
 testDialogDisappearsBeforeSkipBecomesHittable()
 testRendererReadyBeforeDialogMountStillUsesSkip()
-testInteractiveRendererWithoutDialogDoesNotWait()
-print("fresh-install AppUITest helper: 5/5 PASS")
+testInteractiveRendererWithoutDialogUsesOneGracePoll()
+testInteractiveRendererBeforeDialogMountStillUsesSkip()
+print("fresh-install AppUITest helper: 6/6 PASS")
