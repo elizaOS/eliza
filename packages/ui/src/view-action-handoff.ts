@@ -33,6 +33,7 @@ export interface ViewActionHandoff {
   viewId: string;
   viewPath?: string;
   subview?: string;
+  completedActionDelivered?: true;
 }
 
 function readString(value: unknown): string | undefined {
@@ -60,6 +61,9 @@ export function findViewActionHandoff(
         viewId,
         ...(viewPath ? { viewPath } : {}),
         ...(subview ? { subview } : {}),
+        ...(result.values?.completedActionDelivered === true
+          ? { completedActionDelivered: true }
+          : {}),
       };
     }
   }

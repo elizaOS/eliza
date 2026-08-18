@@ -1216,6 +1216,7 @@ export async function handleViewsRoutes(
     // recovers the switch when this best-effort delivery misses).
     const shouldTargetCompletedAction =
       body?.delivery === "completed-action" && Boolean(originatingClientId);
+    let completedActionDelivered = false;
     if (
       reportedSource !== "user" &&
       (!callerOwnedDelivery || shouldTargetCompletedAction)
@@ -1234,10 +1235,26 @@ export async function handleViewsRoutes(
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
       if (originatingClientId) {
-        const delivered = ctx.broadcastWsToClientId?.(
-          originatingClientId,
-          frame,
-        );
+        let delivered: number | undefined;
+        if (shouldTargetCompletedAction) {
+          try {
+            delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+          } catch (err) {
+            // error-policy:J4 the terminal completed-action result remains the
+            // visible, caller-scoped navigation fallback when this optional
+            // early WebSocket optimization fails unexpectedly.
+            logger.warn(
+              { src: "ViewsRoutes", err, viewId: id },
+              "[ViewsRoutes] Early completed-action navigation delivery failed",
+            );
+          }
+        } else {
+          delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+        }
+        completedActionDelivered =
+          shouldTargetCompletedAction &&
+          typeof delivered === "number" &&
+          delivered > 0;
         if (
           !shouldTargetCompletedAction &&
           (delivered === undefined || delivered <= 0)
@@ -1264,6 +1281,7 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
     });
     return true;
   }

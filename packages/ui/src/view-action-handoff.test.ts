@@ -56,6 +56,20 @@ describe("view action handoff", () => {
     ).toEqual({ viewId: "calendar" });
   });
 
+  it("preserves a confirmed originating-renderer delivery marker", () => {
+    expect(
+      findViewActionHandoff([
+        {
+          ...showCalendar,
+          values: {
+            ...showCalendar.values,
+            completedActionDelivered: true,
+          },
+        },
+      ]),
+    ).toEqual({ viewId: "calendar", completedActionDelivered: true });
+  });
+
   it("dispatches the canonical current view when WebSockets are unavailable", async () => {
     const dispatch = vi.fn();
 

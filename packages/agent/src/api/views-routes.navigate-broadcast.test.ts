@@ -195,10 +195,53 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     });
     expect(json).toHaveBeenCalledWith(
       ctx.res,
-      expect.objectContaining({ ok: true, viewId: "calendar" }),
+      expect.objectContaining({
+        ok: true,
+        viewId: "calendar",
+        completedActionDelivered: false,
+      }),
+    );
+  });
+
+  it("reports when the originating renderer accepted completed-action delivery", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
+      clientId: "seeker-rest-client",
+      delivery: "completed-action",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ completedActionDelivered: true }),
     );
     expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
       json.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("keeps the completed-action fallback when targeted delivery throws", async () => {
+    const { ctx, json, error, broadcastWs, broadcastWsToClientId } =
+      makeNavigateCtx("notes", {
+        clientId: "closing-rest-client",
+        delivery: "completed-action",
+      });
+    broadcastWsToClientId.mockImplementation(() => {
+      throw new Error("socket closed during targeted send");
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "notes",
+        completedActionDelivered: false,
+      }),
     );
   });
 

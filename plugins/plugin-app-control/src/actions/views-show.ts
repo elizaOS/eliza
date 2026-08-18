@@ -374,6 +374,8 @@ interface NavigateResult {
 	text: string;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
 	subview?: string;
+	/** The server synchronously accepted delivery to the originating renderer. */
+	completedActionDelivered?: true;
 }
 
 /**
@@ -431,12 +433,20 @@ async function navigateToView(
 		);
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
-		if (resp.ok)
+		if (resp.ok) {
+			const responseBody = (await resp.json().catch(() => null)) as Record<
+				string,
+				unknown
+			> | null;
 			return {
 				ok: true,
 				text: openedText,
 				subview: resolvedSubview,
+				...(responseBody?.completedActionDelivered === true
+					? { completedActionDelivered: true as const }
+					: {}),
 			};
+		}
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
 			return {
@@ -605,6 +615,9 @@ export async function runViewsShow({
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),
+			...(result.completedActionDelivered
+				? { completedActionDelivered: true }
+				: {}),
 		},
 		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
 	};
