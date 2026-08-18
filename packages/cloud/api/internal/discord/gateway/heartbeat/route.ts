@@ -36,7 +36,15 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = heartbeatSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = heartbeatSchema.parse(rawBody);
     const updated = await discordConnectionsRepository.updateHeartbeatBatch(
       body.pod_name,
       body.connection_ids,
