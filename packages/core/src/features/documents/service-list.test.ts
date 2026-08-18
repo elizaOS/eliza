@@ -312,6 +312,29 @@ describe("DocumentService list semantics", () => {
 		expect(getWorld).toHaveBeenCalledTimes(1);
 	});
 
+	it("composes visible pinned documents beyond the recent page without leaking private pins", async () => {
+		const { runtime, service } = await makeHarness();
+		const documents = Array.from({ length: 126 }, (_, index) =>
+			documentMemory(index, { metadata: { pinned: index === 0 } }),
+		);
+		const privatePinned = documentMemory(999, {
+			roomId: ROOM_A,
+			metadata: { pinned: true, scope: "owner-private" },
+		});
+		await seedDocuments(runtime, [...documents, privatePinned]);
+
+		const composed = await service.composeProviderDocuments(userMessage(), {
+			limit: 25,
+		});
+
+		expect(composed.documents).toHaveLength(25);
+		expect(composed.documents).not.toContainEqual(documents[0]);
+		expect(composed.pinnedDocuments.map((document) => document.id)).toEqual([
+			documents[0]?.id,
+		]);
+		expect(composed.pinnedDocuments).not.toContainEqual(privatePinned);
+	});
+
 	it("fails fast for adapters without the exact native capability", async () => {
 		const { adapter, runtime, service } = await makeHarness();
 		await seedDocuments(

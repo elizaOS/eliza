@@ -670,12 +670,16 @@ export class DocumentService extends Service {
 	async composeProviderDocuments(
 		message: Memory,
 		listOptions: DocumentListOptions,
-	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+	): Promise<{
+		relevantFragments: StoredDocument[];
+		documents: Memory[];
+		pinnedDocuments: Memory[];
+	}> {
 		const resolveRequester = createDocumentProviderRequesterResolver(
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, listResult] = await Promise.all([
+		const [relevantFragments, listResult, pinnedDocuments] = await Promise.all([
 			this.searchDocumentsWithRequester(
 				message,
 				undefined,
@@ -685,8 +689,53 @@ export class DocumentService extends Service {
 				resolveRequester,
 			),
 			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+			this.listPinnedDocumentsWithRequester(resolveRequester),
 		]);
-		return { relevantFragments, documents: listResult.documents };
+		return {
+			relevantFragments,
+			documents: listResult.documents,
+			pinnedDocuments,
+		};
+	}
+
+	/** Lists every pinned document visible to the provider's requester. */
+	private async listPinnedDocumentsWithRequester(
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<Memory[]> {
+		const pinnedDocuments: Memory[] = [];
+		let cursor: DocumentListCursor | undefined;
+		do {
+			const page = await this.listDocumentsDetailedWithRequester(
+				{
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					...(cursor ? { cursor } : {}),
+				},
+				resolveRequester,
+			);
+			pinnedDocuments.push(
+				...page.documents.filter((document) => {
+					const metadata = document.metadata as
+						| DocumentMemoryMetadata
+						| undefined;
+					return (
+						metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+					);
+				}),
+			);
+			if (!page.hasMore) break;
+			if (!page.nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: { returnedDocuments: page.documents.length },
+						severity: "fatal",
+					},
+				);
+			}
+			cursor = page.nextCursor;
+		} while (cursor);
+		return pinnedDocuments;
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
@@ -1022,6 +1071,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		pinned = false,
 		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
@@ -1173,6 +1223,7 @@ export class DocumentService extends Service {
 				addedAt: Date.now(),
 				ingestionAttemptId,
 				ingestionState: "pending" as const,
+				pinned,
 			};
 
 			const documentMemory = createDocumentMemory({
