@@ -556,6 +556,25 @@ export async function ensureVolumeVaultPassphrase(
   timeoutMs: number,
   operatorOverride?: string,
 ): Promise<void> {
+  // Validate the raw value before trim or SSH. Shell variables cannot carry
+  // NUL, and the remote create-if-absent step may durably link its stdin file
+  // before raw-file validation runs. No control-bearing candidate may reach
+  // that mutation boundary.
+  if (
+    operatorOverride !== undefined &&
+    Array.from(operatorOverride).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    })
+  ) {
+    throw new ElizaError(
+      `[docker-sandbox] injected vault override is unusable (length ${operatorOverride.length}); refusing to seed ${getVolumeVaultPassphrasePath(volumePath)} with a key the vault would reject`,
+      {
+        code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_UNUSABLE",
+        context: { volumePath, passphraseLength: operatorOverride.length },
+      },
+    );
+  }
   // Empty/whitespace-only override means "not set" — same as the historical
   // `environmentVars.ELIZA_VAULT_PASSPHRASE?.trim() ||` fallthrough.
   const override = operatorOverride?.trim() || undefined;
