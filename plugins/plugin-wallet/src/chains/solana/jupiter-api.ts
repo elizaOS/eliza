@@ -5,6 +5,8 @@
 import { ElizaError } from "@elizaos/core";
 
 export const DEFAULT_JUPITER_API_BASE_URL = "https://lite-api.jup.ag/swap/v1";
+
+export const DEFAULT_JUPITER_FETCH_TIMEOUT_MS = 10_000;
 export const JUPITER_API_BASE_URL_SETTING = "JUPITER_API_BASE_URL";
 
 type RuntimeSettings = { getSetting(key: string): unknown };
@@ -60,7 +62,9 @@ export async function fetchJupiterJson(
 ): Promise<Record<string, unknown>> {
   let response: Response;
   try {
-    response = await fetchFn(url, init);
+    const timeoutSignal = AbortSignal.timeout(DEFAULT_JUPITER_FETCH_TIMEOUT_MS);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+    response = await fetchFn(url, { ...init, signal });
   } catch (cause) {
     // error-policy:J2 Classify DNS/network failures while retaining the fetch cause.
     throw new ElizaError(`Jupiter ${stage} request failed`, {
