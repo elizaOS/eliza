@@ -19,6 +19,11 @@ on:
         required: false
         type: string
         default: ""
+      cleanup_only:
+        description: "Delete only the exact prior dedicated canary; never create a replacement"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   # The shared smoke credential must remain attached to an empty organization.
@@ -110,6 +115,7 @@ jobs:
       CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.eliza.app
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
       CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
+      CLOUD_DEDICATED_CANARY_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
       # Keep this identical to App Live's accepted repository-secret contract.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
     steps:
@@ -160,8 +166,13 @@ jobs:
           const raw =
             process.env.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX ?? "";
           const requested = raw !== "";
+          const cleanupOnly =
+            process.env.CLOUD_DEDICATED_CANARY_CLEANUP_ONLY === "true";
           if (requested && !/^r[1-9]\d{7,19}a[1-9]\d{0,3}$/.test(raw)) {
             throw new Error("Stale-canary recovery input is invalid");
+          }
+          if (cleanupOnly && !requested) {
+            throw new Error("Cleanup-only requires an exact stale-canary suffix");
           }
           appendFileSync(
             process.env.GITHUB_OUTPUT,
@@ -249,6 +260,7 @@ jobs:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
           PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
           EXPECTED_RECOVERY_REQUESTED: ${{ steps.recovery_intent.outputs.requested }}
+          EXPECTED_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
         shell: bash
         run: |
@@ -268,7 +280,22 @@ jobs:
               import { readFileSync } from "node:fs";
               import { validateManagedDedicatedCanaryEvidence } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
               const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
-              const errors = validateManagedDedicatedCanaryEvidence(evidence);
+              const cleanupOnly = process.env.EXPECTED_CLEANUP_ONLY === "true";
+              const errors = cleanupOnly
+                ? [
+                    evidence.verdict === "pass" ? null : "cleanup_only_verdict_not_pass",
+                    evidence.recovery?.requested === true ? null : "cleanup_only_not_requested",
+                    evidence.recovery?.match === "one" ? null : "cleanup_only_match_not_one",
+                    evidence.recovery?.performed === "accepted" ? null : "cleanup_only_not_accepted",
+                    evidence.recovery?.confirmed === true ? null : "cleanup_only_not_confirmed",
+                    evidence.capacity?.createdAgents === 0 ? null : "cleanup_only_created_agent",
+                    evidence.capacity?.chatRequests === 0 ? null : "cleanup_only_chat_request",
+                    evidence.path?.successfulPaths === 0 ? null : "cleanup_only_path_executed",
+                    evidence.cleanup?.status === "passed" ? null : "cleanup_only_cleanup_not_passed",
+                    evidence.cleanup?.possibleOrphan === false ? null : "cleanup_only_orphan_possible",
+                    evidence.failure === null ? null : "cleanup_only_failure_present",
+                  ].filter(Boolean)
+                : validateManagedDedicatedCanaryEvidence(evidence);
               const expectedRecoveryRequested =
                 process.env.EXPECTED_RECOVERY_REQUESTED === "true";
               if (evidence.recovery?.requested !== expectedRecoveryRequested) {
@@ -290,14 +317,16 @@ jobs:
             echo "::error::Staging reported a deploy commit absent from this repository checkout."
             exit 1
           fi
-          expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
-          if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
-            echo "::error::Expected canary source commit is absent from this repository checkout."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
-            echo "::error::Staging deploy does not contain this canary's expected source commit."
-            exit 1
+          if [[ "${EXPECTED_CLEANUP_ONLY:-false}" != "true" ]]; then
+            expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
+            if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
+              echo "::error::Expected canary source commit is absent from this repository checkout."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
+              echo "::error::Staging deploy does not contain this canary's expected source commit."
+              exit 1
+            fi
           fi
 
           bun -e '
@@ -324,7 +353,11 @@ jobs:
             }
           ' >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Managed dedicated canary passed with exact cleanup."
+          if [[ "${EXPECTED_CLEANUP_ONLY:-false}" == "true" ]]; then
+            echo "Exact staging canary cleanup passed without creating a replacement."
+          else
+            echo "Managed dedicated canary passed with exact cleanup."
+          fi
 
   shared-staging-onboarding:
     name: Shared staging onboarding

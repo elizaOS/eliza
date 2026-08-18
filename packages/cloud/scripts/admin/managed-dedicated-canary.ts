@@ -182,6 +182,7 @@ export interface ManagedDedicatedCanaryOptions {
   createRecoveryTimeoutMs?: number;
   createRecoveryPollIntervalMs?: number;
   staleCanarySuffix?: string;
+  cleanupOnly?: boolean;
 }
 
 class CanaryFailure extends Error {
@@ -857,6 +858,7 @@ export async function runManagedDedicatedCanary(
     options.suffix ??
     `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
   const rawStaleCanarySuffix = options.staleCanarySuffix;
+  const cleanupOnly = options.cleanupOnly === true;
   let suffix = "";
   let expectedName = "";
   let staleCanarySuffix: string | null = null;
@@ -1298,7 +1300,10 @@ export async function runManagedDedicatedCanary(
             "possible_orphan_after_ambiguous_create",
           );
         }
-        evidence.cleanup.status = "not-required";
+        evidence.cleanup.status =
+          cleanupOnly && evidence.recovery.confirmed
+            ? "passed"
+            : "not-required";
         evidence.cleanup.possibleOrphan = false;
         return;
       }
@@ -1382,6 +1387,9 @@ export async function runManagedDedicatedCanary(
   try {
     suffix = sanitizeSuffix(rawSuffix);
     staleCanarySuffix = validateStaleCanarySuffix(rawStaleCanarySuffix);
+    if (cleanupOnly && staleCanarySuffix === null) {
+      throw new CanaryFailure("config", "invalid_stale_canary_suffix");
+    }
     evidence.recovery.requested = staleCanarySuffix !== null;
     expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
     if (!apiKey) {
@@ -1436,6 +1444,11 @@ export async function runManagedDedicatedCanary(
       }
       evidence.recovery.confirmed = true;
     });
+
+    if (cleanupOnly) {
+      evidence.verdict = "pass";
+      return evidence;
+    }
 
     const createDone = timedPhase(evidence, "create", now);
     let readinessDeadline = now() + readyTimeoutMs;
@@ -1544,6 +1557,7 @@ async function main(): Promise<void> {
     staleCanarySuffix: workflowEnv(
       "CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX",
     ),
+    cleanupOnly: workflowEnv("CLOUD_DEDICATED_CANARY_CLEANUP_ONLY") === "true",
   });
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, {
     mode: 0o600,

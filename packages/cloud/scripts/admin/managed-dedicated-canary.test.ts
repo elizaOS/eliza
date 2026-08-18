@@ -357,7 +357,10 @@ function createFixture(options: FixtureOptions = {}) {
 
 async function runFixture(
   options: FixtureOptions = {},
-  canaryOptions: { staleCanarySuffix?: string } = {},
+  canaryOptions: {
+    staleCanarySuffix?: string;
+    cleanupOnly?: boolean;
+  } = {},
 ) {
   const fixture = createFixture(options);
   const evidence = await runManagedDedicatedCanary({
@@ -507,6 +510,16 @@ describe("managed dedicated canary", () => {
     expect(fixture.calls).toHaveLength(0);
   });
 
+  test("cleanup-only requires an exact stale-canary suffix before network access", async () => {
+    const { fixture, evidence } = await runFixture({}, { cleanupOnly: true });
+    expect(evidence.failure).toEqual({
+      phase: "config",
+      code: "invalid_stale_canary_suffix",
+    });
+    expect(evidence.verdict).toBe("fail");
+    expect(fixture.calls).toHaveLength(0);
+  });
+
   test("refuses production even when a valid credential is present", async () => {
     const fixture = createFixture();
     const evidence = await runManagedDedicatedCanary({
@@ -609,6 +622,42 @@ describe("managed dedicated canary", () => {
         pathname: `/api/v1/eliza/agents/${AGENT_ID}`,
       },
     ]);
+  });
+
+  test("cleanup-only deletes exactly one verified stale canary without creating a replacement", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: STALE_SUFFIX, cleanupOnly: true },
+    );
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.failure).toBeNull();
+    expect(evidence.capacity.createdAgents).toBe(0);
+    expect(evidence.capacity.chatRequests).toBe(0);
+    expect(evidence.path.successfulPaths).toBe(0);
+    expect(evidence.recovery).toEqual({
+      requested: true,
+      match: "one",
+      performed: "accepted",
+      confirmed: true,
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
+      {
+        method: "DELETE",
+        pathname: `/api/v1/eliza/agents/${STALE_AGENT_ID}`,
+      },
+    ]);
+    expect(fixture.calls.filter((call) => call.method === "POST")).toHaveLength(
+      0,
+    );
   });
 
   test("an explicit recovery suffix fails when its stale canary is absent", async () => {
