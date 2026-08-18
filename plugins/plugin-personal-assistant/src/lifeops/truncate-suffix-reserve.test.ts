@@ -100,4 +100,44 @@ describe("preview suffix reservation", () => {
       redactSensitiveData({ body: source }, { bodyPreview: 10 }).body,
     ).toBe("…");
   });
+
+  it("stays truthful and maximal across omitted-count digit boundaries", () => {
+    for (const sourceLength of [9, 10, 11, 99, 100, 101, 999, 1_000]) {
+      const source = "b".repeat(sourceLength);
+      for (let cap = 0; cap <= 60; cap += 1) {
+        const body = redactSensitiveData(
+          { body: source },
+          { bodyPreview: cap },
+        ).body;
+
+        expect(body.length).toBeLessThanOrEqual(cap);
+        if (sourceLength <= cap) {
+          expect(body).toBe(source);
+          continue;
+        }
+        if (cap === 0) {
+          expect(body).toBe("");
+          continue;
+        }
+
+        const match = body.match(/^(.*)… \[\+(\d+) chars\]$/s);
+        if (!match) {
+          expect(body).toBe("…");
+          expect(`… [+${sourceLength} chars]`.length).toBeGreaterThan(cap);
+          continue;
+        }
+
+        const prefix = match[1] ?? "";
+        const omitted = Number(match[2]);
+        expect(source.startsWith(prefix)).toBe(true);
+        expect(omitted).toBe(sourceLength - prefix.length);
+
+        const nextPrefixLength = prefix.length + 1;
+        if (nextPrefixLength < sourceLength) {
+          const candidate = `${source.slice(0, nextPrefixLength)}… [+${sourceLength - nextPrefixLength} chars]`;
+          expect(candidate.length).toBeGreaterThan(cap);
+        }
+      }
+    }
+  });
 });
