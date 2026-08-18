@@ -5,6 +5,7 @@
  * channel to the renderer.
  */
 import { Capacitor } from "@capacitor/core";
+import { client } from "../api";
 import { getTesseractPlugin } from "../bridge/native-plugins";
 
 const POLL_INTERVAL_MS = 1200;
@@ -13,31 +14,39 @@ const POLL_INTERVAL_MS = 1200;
 export const OCR_REQUESTS_POLL_TIMEOUT_MS = 15_000;
 export const OCR_RESULT_POST_TIMEOUT_MS = 15_000;
 
-export async function getOcrRequestsWithFetch(
-  fetchImpl: typeof fetch,
-  timeoutMs: number = OCR_REQUESTS_POLL_TIMEOUT_MS,
-): Promise<Response> {
-  return fetchImpl("/api/vision/ocr-requests", {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+interface OcrApiClient {
+  fetch<T>(
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ): Promise<T>;
 }
 
-export async function postOcrResultWithFetch(
+interface OcrRequestsResponse {
+  requests?: unknown;
+}
+
+export async function getOcrRequestsWithClient(
+  apiClient: OcrApiClient,
+  timeoutMs: number = OCR_REQUESTS_POLL_TIMEOUT_MS,
+): Promise<OcrRequestsResponse> {
+  return apiClient.fetch<OcrRequestsResponse>(
+    "/api/vision/ocr-requests",
+    undefined,
+    { timeoutMs },
+  );
+}
+
+export async function postOcrResultWithClient(
   body: Record<string, unknown>,
-  fetchImpl: typeof fetch,
+  apiClient: OcrApiClient,
   timeoutMs: number = OCR_RESULT_POST_TIMEOUT_MS,
-): Promise<Response> {
-  const response = await fetchImpl("/api/vision/ocr-result", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`OCR-result request failed (${response.status})`);
-  }
-  return response;
+): Promise<void> {
+  await apiClient.fetch<{ ok: boolean }>(
+    "/api/vision/ocr-result",
+    { method: "POST", body: JSON.stringify(body) },
+    { timeoutMs },
+  );
 }
 
 interface OcrRequest {
@@ -79,7 +88,7 @@ function isOcrRequest(value: unknown): value is OcrRequest {
 }
 
 async function postOcrResult(body: Record<string, unknown>): Promise<void> {
-  await postOcrResultWithFetch(body, globalThis.fetch);
+  await postOcrResultWithClient(body, client);
 }
 
 async function serveRequest(request: OcrRequest): Promise<void> {
@@ -111,9 +120,7 @@ async function serveRequest(request: OcrRequest): Promise<void> {
 async function poll(): Promise<void> {
   let requests: OcrRequest[];
   try {
-    const res = await getOcrRequestsWithFetch(globalThis.fetch);
-    if (!res.ok) return;
-    const data = (await res.json()) as { requests?: unknown };
+    const data = await getOcrRequestsWithClient(client);
     const list = Array.isArray(data.requests) ? data.requests : [];
     requests = list.filter(isOcrRequest);
   } catch {

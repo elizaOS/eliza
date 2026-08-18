@@ -1,38 +1,38 @@
-/** Verifies ocr bridge through the package's configured test harness. */
+/**
+ * Verifies the native OCR poll/result round trip and its deadlines through the
+ * canonical client transport rather than a signal-aware fetch test double.
+ */
 // @vitest-environment jsdom
 
-/**
- * The renderer OCR bridge (`ocr-bridge`): its interval poll of the Tesseract
- * Capacitor plugin and the request/frame round-trip. jsdom with fake timers;
- * the Capacitor core and Tesseract plugin are mocked — no native OCR.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createAndroidNativeAgentTransport } from "../api/android-native-agent-transport";
+import { ElizaClient } from "../api/client-base";
 import {
   __resetOcrBridgeForTests,
+  getOcrRequestsWithClient,
+  initOcrBridge,
   OCR_REQUESTS_POLL_TIMEOUT_MS,
   OCR_RESULT_POST_TIMEOUT_MS,
-  getOcrRequestsWithFetch,
-  initOcrBridge,
-  postOcrResultWithFetch,
+  postOcrResultWithClient,
 } from "./ocr-bridge";
 
-const recognizeMock = vi.fn();
+const clientFetchMock = vi.hoisted(() => vi.fn());
+const recognizeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: {
-    getPlatform: () => "android",
-  },
+  Capacitor: { getPlatform: () => "android" },
 }));
-
+vi.mock("../api", () => ({
+  client: { fetch: clientFetchMock },
+}));
 vi.mock("../bridge/native-plugins", () => ({
-  getTesseractPlugin: () => ({
-    recognize: recognizeMock,
-  }),
+  getTesseractPlugin: () => ({ recognize: recognizeMock }),
 }));
 
-describe("ocr bridge", () => {
+describe("OCR bridge poll and result round trip", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    clientFetchMock.mockReset();
     recognizeMock.mockReset();
     __resetOcrBridgeForTests();
   });
@@ -40,10 +40,9 @@ describe("ocr bridge", () => {
   afterEach(() => {
     __resetOcrBridgeForTests();
     vi.useRealTimers();
-    vi.restoreAllMocks();
   });
 
-  it("polls queued OCR requests and posts recognized words", async () => {
+  it("polls queued requests and posts recognized words", async () => {
     const word = {
       text: "Save",
       left: 1,
@@ -56,156 +55,145 @@ describe("ocr bridge", () => {
       line: 1,
     };
     recognizeMock.mockResolvedValue({ words: [word] });
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            requests: [{ requestId: "ocr-1", imageBase64: "abcd", psm: 11 }],
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    clientFetchMock
+      .mockResolvedValueOnce({
+        requests: [{ requestId: "ocr-1", imageBase64: "abcd", psm: 11 }],
+      })
+      .mockResolvedValueOnce({ ok: true });
 
     initOcrBridge();
     await vi.advanceTimersByTimeAsync(1200);
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
+    expect(clientFetchMock).toHaveBeenNthCalledWith(
       1,
       "/api/vision/ocr-requests",
-      expect.objectContaining({
-        method: "GET",
-        signal: expect.any(AbortSignal),
-      }),
+      undefined,
+      { timeoutMs: OCR_REQUESTS_POLL_TIMEOUT_MS },
     );
     expect(recognizeMock).toHaveBeenCalledWith({ image: "abcd", psm: 11 });
-    expect(fetchMock).toHaveBeenNthCalledWith(
+    expect(clientFetchMock).toHaveBeenNthCalledWith(
       2,
       "/api/vision/ocr-result",
-      expect.objectContaining({
+      {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          requestId: "ocr-1",
-          words: [word],
-        }),
-        signal: expect.any(AbortSignal),
-      }),
+        body: JSON.stringify({ requestId: "ocr-1", words: [word] }),
+      },
+      { timeoutMs: OCR_RESULT_POST_TIMEOUT_MS },
     );
   });
 
   it("posts an error result when native recognition fails", async () => {
     recognizeMock.mockRejectedValue(new Error("missing traineddata"));
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            requests: [{ requestId: "ocr-2", imageBase64: "abcd" }],
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    clientFetchMock
+      .mockResolvedValueOnce({
+        requests: [{ requestId: "ocr-2", imageBase64: "abcd" }],
+      })
+      .mockResolvedValueOnce({ ok: true });
 
     initOcrBridge();
     await vi.advanceTimersByTimeAsync(1200);
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
+    expect(clientFetchMock).toHaveBeenNthCalledWith(
       2,
       "/api/vision/ocr-result",
-      expect.objectContaining({
+      {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           requestId: "ocr-2",
           error: "missing traineddata",
         }),
-        signal: expect.any(AbortSignal),
-      }),
+      },
+      { timeoutMs: OCR_RESULT_POST_TIMEOUT_MS },
     );
   });
 });
 
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected ocr-bridge abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
+interface NativeRequestOptions {
+  method?: string;
+  path: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+  timeoutMs?: number;
 }
 
-describe("ocr-bridge poll GET deadline", () => {
-  it("keeps a documented UI fetch budget", () => {
+interface NativeRequestResult {
+  status: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+}
+
+function clientWithNativeRequest(
+  request: (options: NativeRequestOptions) => Promise<NativeRequestResult>,
+): ElizaClient {
+  const apiClient = new ElizaClient("eliza-local-agent://ipc", "token");
+  apiClient.setRequestTransport(createAndroidNativeAgentTransport({ request }));
+  return apiClient;
+}
+
+describe("OCR bridge native transport deadlines", () => {
+  it("keeps documented independent budgets", () => {
     expect(OCR_REQUESTS_POLL_TIMEOUT_MS).toBe(15_000);
-  });
-
-  it("aborts a stalled ocr-requests GET at the injected deadline", async () => {
-    await expect(
-      getOcrRequestsWithFetch(stallUntilAborted(), 10),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-  });
-
-  it("surfaces a provider error from a completed ocr-requests GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-
-    const response = await getOcrRequestsWithFetch(fetchImpl, 1_000);
-    expect(response.ok).toBe(false);
-    expect(response.status).toBe(503);
-  });
-
-  it("uses the injected fetch for a successful ocr-requests GET", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return new Response(JSON.stringify({ requests: [] }), { status: 200 });
-    };
-
-    const response = await getOcrRequestsWithFetch(fetchImpl, 1_000);
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(response.ok).toBe(true);
-    expect(await response.json()).toEqual({ requests: [] });
-  });
-});
-
-describe("ocr-bridge result POST deadline", () => {
-  it("keeps a documented UI fetch budget", () => {
     expect(OCR_RESULT_POST_TIMEOUT_MS).toBe(15_000);
   });
 
-  it("aborts a stalled ocr-result POST at the injected deadline", async () => {
-    await expect(
-      postOcrResultWithFetch({ requestId: "ocr-1" }, stallUntilAborted(), 10),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-  });
-
-  it("surfaces a provider error from a completed ocr-result POST", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("forwards the poll deadline into the native request", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      statusText: "OK",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requests: [] }),
+    }));
 
     await expect(
-      postOcrResultWithFetch({ requestId: "ocr-1" }, fetchImpl, 1_000),
-    ).rejects.toThrow("503");
-  });
-
-  it("uses the injected fetch for a successful ocr-result POST", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return new Response("ok", { status: 200 });
-    };
-
-    const response = await postOcrResultWithFetch(
-      { requestId: "ocr-1" },
-      fetchImpl,
-      1_000,
+      getOcrRequestsWithClient(clientWithNativeRequest(request), 3210),
+    ).resolves.toEqual({ requests: [] });
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "GET",
+        path: "/api/vision/ocr-requests",
+        timeoutMs: 3210,
+      }),
     );
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(response.ok).toBe(true);
+  });
+
+  it("forwards the result deadline and JSON body into native", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      statusText: "OK",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ok: true }),
+    }));
+
+    await postOcrResultWithClient(
+      { requestId: "ocr-1", words: [] },
+      clientWithNativeRequest(request),
+      4321,
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/api/vision/ocr-result",
+        timeoutMs: 4321,
+        body: JSON.stringify({ requestId: "ocr-1", words: [] }),
+      }),
+    );
+  });
+
+  it("surfaces non-ok result responses", async () => {
+    const request = vi.fn(async () => ({
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "unavailable" }),
+    }));
+
+    await expect(
+      postOcrResultWithClient(
+        { requestId: "ocr-1" },
+        clientWithNativeRequest(request),
+        5000,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
   });
 });
