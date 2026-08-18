@@ -1,6 +1,6 @@
 /**
  * Inbound gate for WeChat messages: deduplicates repeat deliveries within a
- * sliding window and feature-gates group/image messages before handing each
+ * deduplication window and feature-gates group/image messages before handing each
  * message to the `onMessage` callback. Sits between `callback-server` (which
  * normalizes proxy payloads) and the channel's dispatch into the runtime.
  *
@@ -35,6 +35,7 @@ export class Bot {
   private readonly featuresImages: boolean;
   private readonly dedupWindowMs: number;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private stopped = false;
 
   constructor(options: BotOptions) {
     this.onMessage = options.onMessage;
@@ -77,6 +78,15 @@ export class Bot {
     this.inFlight.set(message.id, delivery);
     try {
       await delivery;
+      this.remember(message.id);
+    } catch (error) {
+      // error-policy:J2 preserve the delivery failure for the webhook boundary.
+      // Only a delivery with an already-committed outbound side effect belongs
+      // in the dedup cache; retryable failures must not displace successful ids.
+      if (hasCommittedWechatSideEffect(error)) {
+        this.remember(message.id);
+      }
+      throw error;
     } finally {
       if (this.inFlight.get(message.id) === delivery) {
         this.inFlight.delete(message.id);
@@ -85,26 +95,28 @@ export class Bot {
   }
 
   private async deliver(message: WechatMessageContext): Promise<void> {
-    try {
-      await this.onMessage(message);
-    } catch (error) {
-      // error-policy:J2 preserve the delivery failure for the webhook boundary
-      // after restoring retryability; do not convert it into acknowledged work.
-      // A delivery acknowledged with HTTP 500 must remain retryable. The
-      // request boundary reports this failure after it propagates upward.
-      if (!hasCommittedWechatSideEffect(error)) {
-        this.seen.delete(message.id);
-      }
-      throw error;
-    }
+    await this.onMessage(message);
   }
 
   private isDuplicate(messageId: string): boolean {
     const now = Date.now();
-
-    if (this.seen.has(messageId)) {
+    const seenAt = this.seen.get(messageId);
+    if (seenAt !== undefined && seenAt >= now - this.dedupWindowMs) {
       return true;
     }
+    if (seenAt !== undefined) {
+      this.seen.delete(messageId);
+    }
+
+    return false;
+  }
+
+  /** Commit a completed delivery while preserving the hard cache bound. */
+  private remember(messageId: string): void {
+    if (this.stopped) {
+      return;
+    }
+    const now = Date.now();
 
     // Evict if at capacity. First drop entries older than the dedup window;
     // that alone is insufficient when more than DEDUP_MAX_ENTRIES distinct ids
@@ -113,7 +125,7 @@ export class Bot {
     // the cap. `Map` preserves insertion order, so `keys()` yields oldest-first
     // and the most recent ids — the ones dedup actually protects — are kept.
     if (this.seen.size >= DEDUP_MAX_ENTRIES) {
-      this.cleanup();
+      this.cleanup(now);
       while (this.seen.size >= DEDUP_MAX_ENTRIES) {
         const oldest = this.seen.keys().next();
         if (oldest.done) {
@@ -124,11 +136,10 @@ export class Bot {
     }
 
     this.seen.set(messageId, now);
-    return false;
   }
 
-  private cleanup(): void {
-    const cutoff = Date.now() - this.dedupWindowMs;
+  private cleanup(now = Date.now()): void {
+    const cutoff = now - this.dedupWindowMs;
     for (const [id, ts] of this.seen) {
       if (ts < cutoff) {
         this.seen.delete(id);
@@ -137,6 +148,7 @@ export class Bot {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
