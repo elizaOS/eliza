@@ -334,6 +334,39 @@ describe("device-bridge WS upgrade gate (W1-011)", () => {
     });
     expect(closeCode).toBe(4001);
   }, 120_000);
+
+  it("does not let a skip-listen API instance occupy the process-global device bridge", async () => {
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN = "auth-boundary-test-pairing-token";
+    const ipcApi = await startApiServer({
+      port: 0,
+      skipListen: true,
+      skipDeferredStartupWork: true,
+    });
+    try {
+      // Give the deferred optional-plugin import enough time to expose the
+      // historical race before starting the real listening API instance.
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      const baseUrl = await bootServer();
+      const port = Number(new URL(baseUrl).port);
+      await vi.waitFor(
+        async () => {
+          const raw = await wsUpgradeResponse(
+            port,
+            "/api/local-inference/device-bridge?token=auth-boundary-test-pairing-token",
+          );
+          expect(raw.startsWith("HTTP/1.1 101")).toBe(true);
+        },
+        { timeout: 30_000, interval: 250 },
+      );
+    } finally {
+      await ipcApi.close();
+      const { mobileDeviceBridge } = await import(
+        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+      );
+      await mobileDeviceBridge.close();
+    }
+  }, 120_000);
 });
 
 describe("unauthenticated /ws bounds (W5-015)", () => {

@@ -3825,9 +3825,18 @@ export async function startApiServer(opts?: {
   // listening. Use the bridge's explicit attachment result; listener counts
   // are process-global observations and can be changed by unrelated features.
   let deviceBridgeUpgradeHandlerAttached = false;
+  let deviceBridgeAttachAllowed = !opts?.skipListen;
+  server.once("close", () => {
+    // The optional plugin import is deliberately deferred beyond bind. If the
+    // server closes before it resolves, do not attach the process-global bridge
+    // to a dead server and prevent a replacement API server from acquiring it.
+    deviceBridgeAttachAllowed = false;
+    deviceBridgeUpgradeHandlerAttached = false;
+  });
   if (
-    isMobilePlatform() ||
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+    deviceBridgeAttachAllowed &&
+    (isMobilePlatform() ||
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")
   ) {
     // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
     // device-bridge attach) measured ~15s of blocking on the mobile bundle and
@@ -3841,11 +3850,14 @@ export async function startApiServer(opts?: {
           server: http.Server,
         ) => Promise<boolean>;
       }>("capacitor")
-        .then(({ attachMobileDeviceBridgeToServer }) =>
-          attachMobileDeviceBridgeToServer(server),
-        )
+        .then(({ attachMobileDeviceBridgeToServer }) => {
+          if (!deviceBridgeAttachAllowed) return false;
+          return attachMobileDeviceBridgeToServer(server);
+        })
         .then((attached) => {
-          deviceBridgeUpgradeHandlerAttached = attached === true;
+          if (deviceBridgeAttachAllowed) {
+            deviceBridgeUpgradeHandlerAttached = attached === true;
+          }
         })
         .catch((err: unknown) => {
           logger.warn(
