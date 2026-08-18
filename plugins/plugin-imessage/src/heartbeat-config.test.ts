@@ -4,7 +4,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { IMessageService, resolveHeartbeatIntervalMs } from "./service";
+import { IMessageService, resolveBackfillRows, resolveHeartbeatIntervalMs } from "./service";
 import { IMessageConfigurationError, type IMessageSettings } from "./types";
 
 const originalHeartbeatEnv = process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS;
@@ -71,4 +71,15 @@ describe("resolveHeartbeatIntervalMs", () => {
       }
     }
   );
+});
+
+describe("resolveBackfillRows", () => {
+  it("rejects non-finite values instead of rewinding the cursor to the database origin", () => {
+    expect(resolveBackfillRows("Infinity")).toBe(0);
+    expect(resolveBackfillRows("1e9")).toBe(0);
+  });
+
+  it("accepts a safe non-negative integer", () => {
+    expect(resolveBackfillRows(" 42 ")).toBe(42);
+  });
 });

@@ -109,6 +109,14 @@ export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   return intervalMs;
 }
 
+export function resolveBackfillRows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 0;
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) return 0;
+  const backfill = Number(normalized);
+  return Number.isSafeInteger(backfill) ? backfill : 0;
+}
+
 function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefined {
   const rawAppUrl =
     runtime.getSetting?.("ELIZA_APP_URL") || runtime.getSetting?.("ELIZA_CLOUD_URL");
@@ -541,7 +549,7 @@ export class IMessageService extends Service implements IIMessageService {
       const settingFromEnv = process.env.IMESSAGE_BACKFILL;
       const resolvedRaw =
         (typeof settingFromRuntime === "string" && settingFromRuntime) || settingFromEnv || "";
-      const backfill = Math.max(0, Number(resolvedRaw) || 0);
+      const backfill = resolveBackfillRows(resolvedRaw);
       service.lastRowId = Math.max(0, tip - backfill);
 
       logger.debug(
