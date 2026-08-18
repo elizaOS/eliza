@@ -87,26 +87,24 @@ export interface DocumentsFetchers {
 /** Documents JSON GETs are short UI reads — same 15s family as TodosView / GoalsView. */
 export const DOCUMENTS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getDocumentsJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
+type DocumentsApiClient = {
+  fetch: (
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ) => Promise<unknown>;
+};
+
+export async function getDocumentsJsonWithClient<T>(
+  path: string,
+  apiClient: DocumentsApiClient,
   timeoutMs: number = DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Documents request failed (${response.status}): ${url}`);
-  }
-  return (await response.json()) as T;
+  return apiClient.fetch(path, undefined, { timeoutMs }) as Promise<T>;
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  return getDocumentsJsonWithFetch<T>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-  );
+  return getDocumentsJsonWithClient<T>(path, client);
 }
 
 const DEFAULT_LIST_LIMIT = 100;

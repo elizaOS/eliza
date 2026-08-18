@@ -1,80 +1,72 @@
 /**
  * @vitest-environment jsdom
  *
- * Behavioral DocumentsView documents-JSON deadline. Executes
- * getDocumentsJsonWithFetch under abort — not a source-grep of DocumentsView.tsx.
+ * DocumentsView documents JSON through the canonical ElizaClient seam.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("@elizaos/ui/api", () => ({
-	client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 vi.mock("./DocumentsSpatialView.tsx", () => ({
-	DocumentsSpatialView: () => null,
+  DocumentsSpatialView: () => null,
 }));
 
 import {
-	DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
-	getDocumentsJsonWithFetch,
+  DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
+  getDocumentsJsonWithClient,
 } from "./DocumentsView.js";
 
-const URL = "http://test.local/api/documents/stats";
-
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected documents-view abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
-}
+const PATH = "/api/documents?limit=100&offset=0";
 
 describe("DocumentsView documents JSON deadline", () => {
-	it("keeps a documented UI JSON budget", () => {
-		expect(DOCUMENTS_VIEW_JSON_TIMEOUT_MS).toBe(15_000);
-	});
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-	it("aborts a stalled documents GET at the injected deadline", async () => {
-		await expect(
-			getDocumentsJsonWithFetch(URL, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
+  it("keeps a documented UI JSON budget", () => {
+    expect(DOCUMENTS_VIEW_JSON_TIMEOUT_MS).toBe(15_000);
+  });
 
-	it("surfaces a provider error from a completed documents GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
 
-		await expect(
-			getDocumentsJsonWithFetch(URL, fetchImpl, 1_000),
-		).rejects.toThrow("503");
-	});
+    await expect(
+      getDocumentsJsonWithClient(PATH, { fetch: clientFetch }, 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 10,
+    });
+  });
 
-	it("uses the injected fetch for a successful documents GET", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({
-				documentCount: 0,
-				fragmentCount: 0,
-				agentId: "agent-1",
-			});
-		};
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new Error(`Documents request failed (503): ${PATH}`),
+    );
 
-		const body = await getDocumentsJsonWithFetch<{
-			documentCount: number;
-			fragmentCount: number;
-			agentId: string;
-		}>(URL, fetchImpl, 1_000);
+    await expect(
+      getDocumentsJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).rejects.toThrow("503");
+  });
 
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(body).toEqual({
-			documentCount: 0,
-			fragmentCount: 0,
-			agentId: "agent-1",
-		});
-	});
+  it("uses the bounded client path for a successful documents GET", async () => {
+    clientFetch.mockResolvedValueOnce({ documents: [] });
+
+    await expect(
+      getDocumentsJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).resolves.toEqual({ documents: [] });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 1_000,
+    });
+  });
 });
