@@ -203,18 +203,13 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
 
 const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
   {
-    id: "first-run:greeting-fallback",
-    role: "assistant",
-    source: "first_run",
-    createdAt: 0,
-    content: FIRST_RUN_GREETING,
-  },
-  {
     id: "first-run:cloud-signin-fallback",
     role: "assistant",
     source: "first_run",
-    createdAt: 1,
+    createdAt: 0,
     content: [
+      FIRST_RUN_GREETING,
+      "",
       FIRST_RUN_SIGN_IN_PROMPT,
       "",
       "[CHOICE:first-run id=runtime]",
