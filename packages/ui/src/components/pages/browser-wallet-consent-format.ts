@@ -70,5 +70,6 @@ export function decodeBase64ForPreview(base64: string): string {
 
 export function truncateMessageForDisplay(message: string, max = 240): string {
   if (message.length <= max) return message;
-  return `${message.slice(0, max)}… (${message.length - max} more chars)`;
+  const suffix = `… (${message.length - max} more chars)`;
+  return `${message.slice(0, max - suffix.length)}${suffix}`;
 }
