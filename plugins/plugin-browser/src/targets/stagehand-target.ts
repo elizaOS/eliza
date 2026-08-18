@@ -99,6 +99,55 @@ export async function maybeCreateStagehandTarget(
   };
 }
 
+/** Health GET is a short liveness check — shorter than the Playwright command hop. */
+export const STAGEHAND_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Playwright/command POST can wait on a real browser. Separate from the 5s
+ * probe budget and longer than the 15s Google OAuth sibling — not a shared
+ * hardcoded command bound.
+ */
+export const STAGEHAND_COMMAND_TIMEOUT_MS = 30_000;
+
+export async function probeStagehandWithFetch(
+  healthUrl: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = STAGEHAND_PROBE_TIMEOUT_MS,
+): Promise<boolean> {
+  try {
+    const response = await fetchImpl(healthUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function executeStagehandCommandWithFetch(
+  commandUrl: string,
+  command: BrowserWorkspaceCommand,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = STAGEHAND_COMMAND_TIMEOUT_MS,
+): Promise<BrowserWorkspaceCommandResult> {
+  const response = await fetchImpl(commandUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      body && typeof body === "object" && "error" in body
+        ? String((body as { error?: unknown }).error)
+        : `Stagehand command endpoint returned HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return normalizeStagehandResult(command, body);
+}
+
 function resolveStagehandCommandUrl(env: NodeJS.ProcessEnv): string | null {
   for (const key of STAGEHAND_COMMAND_URL_ENV) {
     const value = normalizeUrl(env[key]);
@@ -117,32 +166,18 @@ async function probeStagehand(
 ): Promise<boolean> {
   const healthUrl = normalizeUrl(env.ELIZA_BROWSER_STAGEHAND_HEALTH_URL);
   if (!healthUrl) return true;
-  try {
-    const response = await fetch(healthUrl, { method: "GET" });
-    return response.ok;
-  } catch {
-    return false;
-  }
+  return probeStagehandWithFetch(healthUrl, globalThis.fetch);
 }
 
 async function executeStagehandCommand(
   commandUrl: string,
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult> {
-  const response = await fetch(commandUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ command }),
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      body && typeof body === "object" && "error" in body
-        ? String((body as { error?: unknown }).error)
-        : `Stagehand command endpoint returned HTTP ${response.status}`;
-    throw new Error(message);
-  }
-  return normalizeStagehandResult(command, body);
+  return executeStagehandCommandWithFetch(
+    commandUrl,
+    command,
+    globalThis.fetch,
+  );
 }
 
 function normalizeStagehandResult(
