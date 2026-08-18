@@ -213,6 +213,58 @@ describe("tileScreenshot — full source coverage (regression #22125)", () => {
   });
 });
 
+describe("tileScreenshot — degenerate axes and extraction bounds", () => {
+  const cases = [
+    { width: 1, height: 65, maxEdge: 64, overlapFraction: 0 },
+    { width: 1, height: 65, maxEdge: 64, overlapFraction: 0.99 },
+    { width: 65, height: 1, maxEdge: 64, overlapFraction: 0 },
+    { width: 65, height: 1, maxEdge: 64, overlapFraction: 0.99 },
+    { width: 65, height: 65, maxEdge: 64, overlapFraction: 0 },
+    { width: 127, height: 193, maxEdge: 64, overlapFraction: 0.37 },
+    { width: 130, height: 257, maxEdge: 64, overlapFraction: 0.12 },
+  ];
+
+  it.each(cases)(
+    "covers and extracts $width x $height at overlap $overlapFraction",
+    async ({ width, height, maxEdge, overlapFraction }) => {
+      const png = await makePng(width, height);
+      const tiles = await tileScreenshot(
+        { displayId: "bounds", width, height, pngBytes: png },
+        { maxEdge, overlapFraction },
+      );
+      const expectedCols = Math.ceil(width / maxEdge);
+      const expectedRows = Math.ceil(height / maxEdge);
+      expect(tiles).toHaveLength(expectedCols * expectedRows);
+
+      const colCovered = new Uint8Array(width);
+      const rowCovered = new Uint8Array(height);
+      for (const tile of tiles) {
+        expect(Number.isInteger(tile.sourceX)).toBe(true);
+        expect(Number.isInteger(tile.sourceY)).toBe(true);
+        expect(Number.isInteger(tile.sourceW)).toBe(true);
+        expect(Number.isInteger(tile.sourceH)).toBe(true);
+        expect(tile.sourceX).toBeGreaterThanOrEqual(0);
+        expect(tile.sourceY).toBeGreaterThanOrEqual(0);
+        expect(tile.sourceW).toBeGreaterThan(0);
+        expect(tile.sourceH).toBeGreaterThan(0);
+        expect(tile.sourceX + tile.sourceW).toBeLessThanOrEqual(width);
+        expect(tile.sourceY + tile.sourceH).toBeLessThanOrEqual(height);
+        expect(tile.sourceW).toBeLessThanOrEqual(maxEdge);
+        expect(tile.sourceH).toBeLessThanOrEqual(maxEdge);
+        await expect(dimsOf(tile.pngBytes)).resolves.toEqual({
+          width: tile.sourceW,
+          height: tile.sourceH,
+        });
+        colCovered.fill(1, tile.sourceX, tile.sourceX + tile.sourceW);
+        rowCovered.fill(1, tile.sourceY, tile.sourceY + tile.sourceH);
+      }
+
+      expect([...colCovered]).not.toContain(0);
+      expect([...rowCovered]).not.toContain(0);
+    },
+  );
+});
+
 describe("tileScreenshot — overlap math", () => {
   it("adjacent tiles in the same row overlap by ~overlapFraction*tileW", async () => {
     const png = await makePng(2400, 1000);
