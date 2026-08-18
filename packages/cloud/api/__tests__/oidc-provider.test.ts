@@ -65,6 +65,8 @@ const STEWARD_AUDIENCE = "eliza-cloud-steward";
 const CONSOLE_CLIENT_ID = "eliza-steward-console";
 const CONSOLE_SECRET = "steward-console-secret-value-0123456789";
 const CONSOLE_REDIRECT = "https://console.elizacloud.test/oidc/callback";
+const MOBILE_CLIENT_ID = "ai.elizaos.app";
+const MOBILE_REDIRECT = "https://eliza.app/auth/callback";
 /** The one registration that opts in to wallet-derived identities. */
 const WALLET_CLIENT_ID = "wallet-forge";
 const WALLET_SECRET = "wallet-forge-client-secret-value-0123456789";
@@ -574,6 +576,23 @@ beforeAll(async () => {
         eliza_agents: false,
       },
     },
+    {
+      client_id: MOBILE_CLIENT_ID,
+      name: "Eliza iOS",
+      token_endpoint_auth_method: "none",
+      redirect_uris: [MOBILE_REDIRECT],
+      allowed_scopes: ["openid", "email", "profile"],
+      resource_audiences: [],
+      require_pkce: true,
+      require_verified_email: true,
+      roles_allowlist: [],
+      claims_policy: {
+        groups: false,
+        roles: false,
+        tenant_id: false,
+        eliza_agents: false,
+      },
+    },
   ]);
 
   ENV = {
@@ -663,6 +682,7 @@ describe("discovery document", () => {
     expect(doc.token_endpoint_auth_methods_supported).toEqual([
       "client_secret_basic",
       "client_secret_post",
+      "none",
     ]);
     // Nothing unimplemented is advertised: a relying party that sees these
     // would build a flow that silently never works.
@@ -1869,6 +1889,131 @@ describe("PKCE", () => {
     );
     const res = await redeem(code, { code_verifier: VERIFIER });
     expect(res.status).toBe(200);
+  });
+});
+
+describe("public-client PKCE", () => {
+  const VERIFIER = "ios-public-client-verifier-0123456789-abcdefghijklmnop";
+
+  async function challengeFor(verifier: string): Promise<string> {
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(verifier),
+    );
+    return Buffer.from(new Uint8Array(digest)).toString("base64url");
+  }
+
+  async function publicCode(stewardUserId: string): Promise<string> {
+    await seedUser({ stewardUserId });
+    return (
+      await getAuthorizationCode(await sessionCookie(stewardUserId), {
+        client_id: MOBILE_CLIENT_ID,
+        redirect_uri: MOBILE_REDIRECT,
+        scope: "openid email profile",
+        code_challenge: await challengeFor(VERIFIER),
+        code_challenge_method: "S256",
+      })
+    ).code;
+  }
+
+  async function redeemPublic(
+    code: string,
+    overrides: Record<string, string> = {},
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    const fields = {
+      grant_type: "authorization_code",
+      client_id: MOBILE_CLIENT_ID,
+      code,
+      redirect_uri: MOBILE_REDIRECT,
+      code_verifier: VERIFIER,
+      ...overrides,
+    };
+    const encoded = form(fields);
+    return call("/api/oidc/token", {
+      method: "POST",
+      body: encoded.body,
+      headers: { ...encoded.headers, ...headers },
+    });
+  }
+
+  test("exchanges a S256-bound code without a deployable client secret", async () => {
+    const code = await publicCode("u-public-ok");
+    const res = await redeemPublic(code);
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as TokenResponse;
+    expect(payload.token_type).toBe("Bearer");
+    expect(payload.scope).toBe("openid email profile");
+    expect(
+      (await verifyLikeConsumer(payload.id_token, MOBILE_CLIENT_ID)).aud,
+    ).toBe(MOBILE_CLIENT_ID);
+  });
+
+  test("cannot start authorization without S256 PKCE", async () => {
+    const res = await call(
+      authorizeUrl({
+        client_id: MOBILE_CLIENT_ID,
+        redirect_uri: MOBILE_REDIRECT,
+        scope: "openid email profile",
+        code_challenge: undefined,
+        code_challenge_method: undefined,
+      }),
+    );
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.origin + location.pathname).toBe(MOBILE_REDIRECT);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+    expect(location.searchParams.get("code")).toBeNull();
+  });
+
+  test("rejects client_secret and Basic credentials without burning the code", async () => {
+    const postSecretCode = await publicCode("u-public-post-secret");
+    const withPostSecret = await redeemPublic(postSecretCode, {
+      client_secret: "native-apps-cannot-keep-this-secret",
+    });
+    expect(withPostSecret.status).toBe(401);
+    expect(((await withPostSecret.json()) as { error: string }).error).toBe(
+      "invalid_client",
+    );
+    expect((await redeemPublic(postSecretCode)).status).toBe(200);
+
+    const basicCode = await publicCode("u-public-basic-secret");
+    const withBasic = await redeemPublic(
+      basicCode,
+      {},
+      {
+        authorization: basicAuth(MOBILE_CLIENT_ID, "not-a-real-secret"),
+      },
+    );
+    expect(withBasic.status).toBe(401);
+    expect((await redeemPublic(basicCode)).status).toBe(200);
+  });
+
+  test("requires the registered client_id before claiming the code", async () => {
+    const code = await publicCode("u-public-client-id");
+    const missing = await redeemPublic(code, { client_id: "" });
+    expect(missing.status).toBe(401);
+    expect(((await missing.json()) as { error: string }).error).toBe(
+      "invalid_client",
+    );
+    expect((await redeemPublic(code)).status).toBe(200);
+  });
+
+  test("burns the code on malformed, mismatched, and replayed verifiers", async () => {
+    for (const [suffix, verifier] of [
+      ["short", "A".repeat(42)],
+      ["long", "A".repeat(129)],
+      ["alphabet", `${"A".repeat(42)}!`],
+      ["mismatch", "B".repeat(43)],
+    ]) {
+      const code = await publicCode(`u-public-${suffix}`);
+      const refused = await redeemPublic(code, { code_verifier: verifier });
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant",
+      );
+      expect((await redeemPublic(code)).status).toBe(400);
+    }
   });
 });
 

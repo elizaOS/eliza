@@ -50,6 +50,7 @@ describe("defaults", () => {
     expect(client.claims_mapping).toEqual({ roles: {}, groups: {}, mode: "extend" });
     expect(client.constant_claims).toEqual({});
     expect(client.resource_audiences).toEqual([]);
+    expect(client.token_endpoint_auth_method).toBe("client_secret_basic");
   });
 
   test("wallet_email_fallback defaults OFF, so no registered client changes behavior", () => {
@@ -63,6 +64,69 @@ describe("defaults", () => {
     expect(
       parseOidcClientEntry(entry({ wallet_email_fallback: "true" })).wallet_email_fallback,
     ).toBe(false);
+  });
+});
+
+describe("public clients", () => {
+  function publicEntry(overrides: Record<string, unknown> = {}) {
+    const value = entry({
+      client_id: "ai.elizaos.app",
+      token_endpoint_auth_method: "none",
+      client_secret_sha256: undefined,
+      redirect_uris: ["https://eliza.app/auth/callback"],
+      allowed_scopes: ["openid", "email", "profile"],
+      require_pkce: true,
+      claims_policy: {
+        groups: false,
+        roles: false,
+        tenant_id: false,
+        eliza_agents: false,
+      },
+      ...overrides,
+    });
+    delete value.client_secret_sha256;
+    if (Object.hasOwn(overrides, "client_secret_sha256")) {
+      value.client_secret_sha256 = overrides.client_secret_sha256;
+    }
+    return value;
+  }
+
+  test("parses only the explicit secretless S256 shape", () => {
+    const client = parseOidcClientEntry(publicEntry());
+    expect(client.token_endpoint_auth_method).toBe("none");
+    expect(client.secret_hashes).toEqual([]);
+    expect(client.require_pkce).toBe(true);
+  });
+
+  test("refuses a secret because native clients cannot keep one confidential", () => {
+    expect(() => parseOidcClientEntry(publicEntry({ client_secret_sha256: SECRET_HASH }))).toThrow(
+      /public.*must not set client_secret_sha256/is,
+    );
+  });
+
+  test("refuses public registrations that make PKCE optional", () => {
+    expect(() => parseOidcClientEntry(publicEntry({ require_pkce: false }))).toThrow(
+      /public.*require_pkce true/is,
+    );
+  });
+
+  test("allows only claimed credential-free HTTPS callbacks", () => {
+    for (const redirectUri of [
+      "ai.elizaos.app:/auth/callback",
+      "http://eliza.app/auth/callback",
+      "https://user:password@eliza.app/auth/callback",
+      "https://eliza.app/auth/callback#fragment",
+    ]) {
+      expect(() => parseOidcClientEntry(publicEntry({ redirect_uris: [redirectUri] }))).toThrow(
+        /public-client redirect_uris.*HTTPS|redirect_uri must not contain a fragment/is,
+      );
+    }
+  });
+
+  test("refuses unknown token endpoint authentication methods", () => {
+    expect(() =>
+      parseOidcClientEntry(publicEntry({ token_endpoint_auth_method: "client_secret_jwt" })),
+    ).toThrow(/token_endpoint_auth_method/);
   });
 });
 

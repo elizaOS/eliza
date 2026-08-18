@@ -2,11 +2,12 @@
  * POST /api/oidc/token — authorization-code redemption.
  *
  * Ordering, and why it differs from the SSO bridge's exchange leg: the CLIENT
- * is authenticated FIRST, and only then is the code claimed. The bridge claims
- * first because its code is the sole credential and burning it on a bad
- * verifier is a feature; here a code is only half the credential, so claiming
- * before client auth would let an unauthenticated caller destroy arbitrary
- * pending authorizations.
+ * is resolved and, when confidential, authenticated FIRST; only then is the
+ * code claimed. A public client has no deployable secret and is admitted by its
+ * registered client id only because every code it can obtain is S256-bound.
+ * The bridge claims first because its code is the sole credential and burning
+ * it on a bad verifier is a feature; here claiming before client resolution
+ * would let an unauthenticated caller destroy arbitrary pending authorizations.
  *
  * After the atomic claim, every binding failure — wrong client, wrong
  * redirect_uri, bad PKCE verifier, deactivated user — returns the SAME
@@ -60,6 +61,9 @@ const NO_STORE = {
   "Cache-Control": "no-store",
   Pragma: "no-cache",
 } as const;
+
+/** RFC 7636 section 4.1: 43-128 characters from the unreserved set. */
+const PKCE_CODE_VERIFIER_RE = /^[A-Za-z0-9._~-]{43,128}$/;
 
 /**
  * Per-client-per-IP where the client is REGISTERED, per-IP otherwise.
@@ -297,27 +301,45 @@ function requireConfig(c: AppContext): OidcConfig | Response {
 }
 
 /**
- * Resolve and authenticate the client from either supported auth method, over
- * every reading of the presented credential (see `readBasicCredentials`).
+ * Resolve the client and enforce the authentication method in its registration.
+ * Confidential clients retain both interoperable secret transports; public
+ * clients must present only `client_id`, never an Authorization header or a
+ * client_secret field that the server might accidentally treat as meaningful.
  */
 async function authenticateClient(
   c: AppContext,
   body: Record<string, unknown>,
 ): Promise<OidcClient | null> {
   const presented = readBasicCredentials(c);
-  if (presented.length === 0) {
-    const clientId = formValue(body, "client_id");
-    const clientSecret = formValue(body, "client_secret");
-    if (!clientId || !clientSecret) return null;
-    presented.push({ clientId, clientSecret });
+  if (presented.length > 0) {
+    for (const candidate of presented) {
+      const client = getOidcClient(candidate.clientId);
+      if (!client || client.token_endpoint_auth_method === "none") continue;
+      if (await verifyOidcClientSecret(client, candidate.clientSecret)) {
+        return client;
+      }
+    }
+    return null;
   }
 
-  for (const candidate of presented) {
-    const client = getOidcClient(candidate.clientId);
-    if (!client) continue;
-    if (await verifyOidcClientSecret(client, candidate.clientSecret)) {
-      return client;
+  const clientId = formValue(body, "client_id");
+  if (!clientId) return null;
+  const client = getOidcClient(clientId);
+  if (!client) return null;
+
+  if (client.token_endpoint_auth_method === "none") {
+    if (
+      c.req.header("authorization") !== undefined ||
+      Object.hasOwn(body, "client_secret")
+    ) {
+      return null;
     }
+    return client;
+  }
+
+  const clientSecret = formValue(body, "client_secret");
+  if (clientSecret && (await verifyOidcClientSecret(client, clientSecret))) {
+    return client;
   }
   return null;
 }
@@ -400,6 +422,9 @@ app.post("/", async (c) => {
       const verifier = formValue(body, "code_verifier");
       if (!verifier) {
         return await refuseGrant(c, "pkce_verifier_missing", bound);
+      }
+      if (!PKCE_CODE_VERIFIER_RE.test(verifier)) {
+        return await refuseGrant(c, "pkce_verifier_invalid", bound);
       }
       if ((await sha256Base64Url(verifier)) !== grant.codeChallenge) {
         return await refuseGrant(c, "pkce_verifier_mismatch", bound);

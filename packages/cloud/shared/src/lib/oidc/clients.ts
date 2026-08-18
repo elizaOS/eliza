@@ -11,10 +11,12 @@
  * CLOSED (503 `oidc_not_configured`) instead of silently serving with an empty
  * or stale registry.
  *
- * Client secrets are stored ONLY as sha256 hex, mirroring `api_keys.key_hash`,
- * and compared with a timing-safe equality. `redirect_uris` are matched by
- * EXACT string — no prefix match, no wildcard, no scheme/host normalization.
- * That single rule is what keeps `/authorize` from becoming a token-exfiltration
+ * Confidential-client secrets are stored ONLY as sha256 hex, mirroring
+ * `api_keys.key_hash`, and compared with a timing-safe equality. A public client
+ * is explicit (`token_endpoint_auth_method: "none"`), carries no secret, and is
+ * accepted only when PKCE is mandatory. `redirect_uris` are matched by EXACT
+ * string — no prefix match, no wildcard, no scheme/host normalization. That
+ * single rule is what keeps `/authorize` from becoming a token-exfiltration
  * primitive against every signed-in user.
  *
  * Parsing is strict in one further direction: an entry whose knobs contradict
@@ -85,6 +87,8 @@ export interface OidcClaimsMapping {
 export interface OidcClient {
   client_id: string;
   name: string;
+  /** RFC 7591 token-endpoint authentication method for this registration. */
+  token_endpoint_auth_method: "client_secret_basic" | "none";
   /** Accepted sha256 hex digests — more than one during a secret rotation. */
   secret_hashes: string[];
   redirect_uris: string[];
@@ -227,8 +231,29 @@ function ttlField(value: unknown): number {
   return Math.min(Math.max(Math.floor(value), MIN_TTL_SECONDS), MAX_TTL_SECONDS);
 }
 
-function parseSecretHashes(raw: Record<string, unknown>, clientId: string): string[] {
+function parseTokenEndpointAuthMethod(
+  value: unknown,
+  clientId: string,
+): OidcClient["token_endpoint_auth_method"] {
+  if (value === undefined) return "client_secret_basic";
+  if (value === "client_secret_basic" || value === "none") return value;
+  throw new Error(
+    `OIDC_CLIENTS[${clientId}].token_endpoint_auth_method must be "client_secret_basic" or "none"`,
+  );
+}
+
+function parseSecretHashes(
+  raw: Record<string, unknown>,
+  clientId: string,
+  authMethod: OidcClient["token_endpoint_auth_method"],
+): string[] {
   const value = raw.client_secret_sha256;
+  if (authMethod === "none") {
+    if (value !== undefined && value !== null) {
+      throw new Error(`OIDC_CLIENTS[${clientId}] is public and must not set client_secret_sha256`);
+    }
+    return [];
+  }
   const list =
     typeof value === "string" ? [value] : stringList(value, "client_secret_sha256", clientId);
   const normalized = list.map((hash) => hash.trim().toLowerCase());
@@ -459,6 +484,27 @@ function assertClientIsCoherent(client: OidcClient): void {
   const groupsScope = client.allowed_scopes.includes("groups");
   const wantsGroupsOrRoles = client.claims_policy.groups || client.claims_policy.roles;
 
+  if (client.token_endpoint_auth_method === "none" && !client.require_pkce) {
+    throw new Error(`OIDC_CLIENTS[${id}] is public and must set require_pkce true`);
+  }
+  if (client.token_endpoint_auth_method === "none") {
+    for (const redirectUri of client.redirect_uris) {
+      const parsed = new URL(redirectUri);
+      if (
+        parsed.protocol !== "https:" ||
+        parsed.href !== redirectUri ||
+        parsed.username ||
+        parsed.password ||
+        parsed.hash ||
+        !parsed.hostname
+      ) {
+        throw new Error(
+          `OIDC_CLIENTS[${id}] public-client redirect_uris must be exact credential-free HTTPS URLs without fragments`,
+        );
+      }
+    }
+  }
+
   if (wantsGroupsOrRoles && !groupsScope) {
     throw new Error(
       `OIDC_CLIENTS[${id}] grants groups/roles in claims_policy but omits the "groups" scope that gates them`,
@@ -570,11 +616,16 @@ function parseClient(raw: unknown, index: number): OidcClient {
   const allowedScopes = stringList(entry.allowed_scopes, "allowed_scopes", clientId);
   const scopes = allowedScopes.length > 0 ? allowedScopes : [...DEFAULT_SCOPES];
   if (!scopes.includes("openid")) scopes.unshift("openid");
+  const tokenEndpointAuthMethod = parseTokenEndpointAuthMethod(
+    entry.token_endpoint_auth_method,
+    clientId,
+  );
 
   const client: OidcClient = {
     client_id: clientId,
     name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : clientId,
-    secret_hashes: parseSecretHashes(entry, clientId),
+    token_endpoint_auth_method: tokenEndpointAuthMethod,
+    secret_hashes: parseSecretHashes(entry, clientId, tokenEndpointAuthMethod),
     redirect_uris: parseRedirectUris(entry, clientId),
     allowed_scopes: scopes,
     resource_audiences: stringList(entry.resource_audiences, "resource_audiences", clientId),

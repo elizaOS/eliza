@@ -54,6 +54,16 @@ describe("id_token_signing_alg_values_supported", () => {
 });
 
 describe("advertised capabilities", () => {
+  test("advertises secretless public-client exchange alongside confidential methods", () => {
+    const document = buildOidcDiscoveryDocument(config, ["RS256"]);
+    expect(document.token_endpoint_auth_methods_supported).toEqual([
+      "client_secret_basic",
+      "client_secret_post",
+      "none",
+    ]);
+    expect(document.code_challenge_methods_supported).toEqual(["S256"]);
+  });
+
   test("prompt_values_supported names only the value the provider honors", () => {
     const document = buildOidcDiscoveryDocument(config, ["RS256"]);
     expect(document.prompt_values_supported).toEqual(["none"]);

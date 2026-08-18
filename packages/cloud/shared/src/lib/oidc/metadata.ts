@@ -162,7 +162,7 @@ export function buildOidcDiscoveryDocument(
     grant_types_supported: ["authorization_code"],
     subject_types_supported: ["public"],
     id_token_signing_alg_values_supported: advertisedSigningAlgorithms(signingAlgorithms),
-    token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
+    token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
     code_challenge_methods_supported: ["S256"],
     prompt_values_supported: [...OIDC_SUPPORTED_PROMPT_VALUES],
     claims_supported: claims,
