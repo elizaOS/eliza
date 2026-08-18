@@ -207,6 +207,173 @@ describe("Signal RPC helpers", () => {
     expect(connects).toBe(1);
   });
 
+  it("cancels stale reconnect timers across stop and restart", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      throw new Error("down");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onError: () => {},
+      reconnectDelayMs: 1000,
+      maxReconnectDelayMs: 30000,
+    });
+
+    stream.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    stream.stop();
+    expect(vi.getTimerCount()).toBe(0);
+    stream.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(1);
+    stream.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("stops an in-flight dial without reporting or scheduling an abort as a failure", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_url: string | URL, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onError = vi.fn();
+
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onError,
+    });
+    stream.start();
+    await vi.advanceTimersByTimeAsync(0);
+    stream.stop();
+    await vi.advanceTimersByTimeAsync(60000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reconnects after an unowned AbortError on the current generation", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException("upstream aborted independently", "AbortError");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onError = vi.fn();
+
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onError,
+      reconnectDelayMs: 1000,
+      maxReconnectDelayMs: 2000,
+    });
+    stream.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    stream.stop();
+  });
+
+  it("suppresses stale events and errors from an abort-resistant prior generation", async () => {
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controllers.push(controller);
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const events: string[] = [];
+    const onError = vi.fn();
+    const onConnect = vi.fn();
+    const onDisconnect = vi.fn();
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: (event) => events.push(event.data ?? ""),
+      onError,
+      onConnect,
+      onDisconnect,
+    });
+
+    stream.start();
+    await flush();
+    expect(onConnect).toHaveBeenCalledTimes(1);
+    stream.stop();
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+
+    stream.start();
+    await flush();
+    expect(onConnect).toHaveBeenCalledTimes(2);
+    expect(controllers).toHaveLength(2);
+
+    controllers[0]?.enqueue(new TextEncoder().encode("data: stale-old-generation\n\n"));
+    controllers[0]?.error(new Error("late old-generation failure"));
+    await flush();
+
+    expect(events).toEqual([]);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    expect(stream.isRunning()).toBe(true);
+
+    stream.stop();
+    expect(onDisconnect).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats non-OK responses as failed dials without announcing a connection", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onConnect = vi.fn();
+    const onDisconnect = vi.fn();
+    const onError = vi.fn();
+
+    const stream = createSignalEventStream({
+      baseUrl: "http://localhost:8080",
+      onEvent: () => {},
+      onConnect,
+      onDisconnect,
+      onError,
+      reconnectDelayMs: 1000,
+      maxReconnectDelayMs: 2000,
+    });
+    stream.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(onDisconnect).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(String(onError.mock.calls[0]?.[0])).toContain("Signal SSE failed (503");
+    expect(vi.getTimerCount()).toBe(1);
+    stream.stop();
+  });
+
   it("reports Signal health failures for non-OK and aborted checks", async () => {
     const fetchMock = vi.fn(async () => new Response("nope", { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
