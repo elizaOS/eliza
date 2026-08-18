@@ -9767,12 +9767,24 @@ export async function runV5MessageRuntimeStage1(args: {
 		// fire and own up (live 2026-08-17: "on it." then silence on a repo
 		// ask). Tool-ful turns keep the stricter early-reply exclusion: their
 		// ack was followed by real result delivery paths.
+		const normalizedEarlyReply =
+			normalizeVisibleTextForDuplicateCheck(earlyReplyText);
+		const earlyReplyWasOnlyVisibleDelivery =
+			deliveredVisibleTexts.size === 0 ||
+			(deliveredVisibleTexts.size === 1 &&
+				normalizedEarlyReply.length > 0 &&
+				deliveredVisibleTexts.has(normalizedEarlyReply));
 		const earlyAckBrokenPromise =
-			earlyReplySent && actionResults.length === 0 && !ambientTurn;
+			earlyReplySent &&
+			actionResults.length === 0 &&
+			!ambientTurn &&
+			PROGRESS_ONLY_ANSWER_REJECT.test(earlyReplyText.trim()) &&
+			earlyReplyWasOnlyVisibleDelivery;
 		if (
 			!shouldSendPlannedText &&
 			(!earlyReplySent || earlyAckBrokenPromise) &&
 			!suppressesPlannerReply &&
+			plannerResult.endedWithDeliberateSilence !== true &&
 			(deliveredVisibleTexts.size === 0 || earlyAckBrokenPromise) &&
 			deliveredMediaUrls.length === 0 &&
 			// Toolless planner deaths on an ADDRESSED turn are the same
@@ -9799,7 +9811,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					)
 					.filter((ownedText) => ownedText.length > 0)
 					.at(-1) ||
-				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+				(actionResults.length === 0
+					? "I couldn't finish that request, so nothing was completed. Please try again."
+					: "I finished working on that but could not compose a clean reply — ask again and I will retry.");
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
@@ -10678,7 +10692,7 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 		return false;
 	}
 	if (
-		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		)
 	) {
@@ -10829,10 +10843,10 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 function looksLikeExplicitDelegationRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	return (
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]code|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		)
 	);

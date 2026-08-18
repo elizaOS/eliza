@@ -3882,6 +3882,129 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("recovers an addressed toolless planner exhaustion with an honest failure", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The addressed request needs planning.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{ text: "", toolCalls: [] },
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "please handle this request",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000010" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't finish that request, so nothing was completed. Please try again.",
+			);
+		}
+	});
+
+	it("follows a stranded early acknowledgement with exactly one honest failure", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Acknowledge before planning.",
+				contexts: ["general"],
+				replyText: "On it.",
+			}),
+			{ text: "", toolCalls: [] },
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000011" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+			deliveredVisibleTexts: new Set(["on it."]),
+		});
+
+		expect(earlyReply).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't finish that request, so nothing was completed. Please try again.",
+			);
+			expect(result.result.responseMessages).toHaveLength(1);
+		}
+	});
+
+	it("does not append a failure when another visible delivery already completed the turn", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Acknowledge before planning.",
+				contexts: ["general"],
+				replyText: "On it.",
+			}),
+			{ text: "", toolCalls: [] },
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000012" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+			deliveredVisibleTexts: new Set(["on it.", "completed elsewhere"]),
+		});
+
+		expect(earlyReply).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
+	it("does not turn a substantive early answer into a second failure bubble", async () => {
+		const answer = "The repository uses Bun 1.3.14.";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The answer is useful before optional planning.",
+				contexts: ["general"],
+				replyText: answer,
+			}),
+			{ text: "", toolCalls: [] },
+		]);
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.plan_after_substantive_answer",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({ requiresTool: true, addContexts: ["general"] }),
+			} satisfies ResponseHandlerEvaluator,
+		];
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000013" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+			deliveredVisibleTexts: new Set([answer.toLowerCase()]),
+		});
+
+		expect(earlyReply).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
 	it("keeps RECENT_ERRORS out of the planner recompose AND its cached rendering on an ambient turn", async () => {
 		// The Stage-1 exclusion alone is not enough: the planner recompose
 		// re-adds every alwaysInResponseState provider, and composeState merges

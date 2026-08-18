@@ -717,6 +717,59 @@ describe("live routing regressions", () => {
 		}
 	});
 
+	it("routes add-family and repository-submission work through TASKS", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"add a one-line description to the readme",
+			"append the release note to the changelog",
+			"rename the repository",
+			"delete the stale commit",
+			"put up a PR for this change",
+			"submit the pull request",
+			"push the branch",
+		]) {
+			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
+				"TASKS",
+			]);
+		}
+	});
+
+	it("keeps add/open/remove requests for app, site, and page surfaces out of coding delegation", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"delete the weather app",
+			"open the company site",
+			"remove this page",
+			"add a reminder to the app",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(actions, text),
+			).not.toContain("TASKS");
+		}
+	});
+
+	it("recognizes the eliza-code agent name without overriding an explicit exclusion", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				actions,
+				"use eliza-code to build the release artifact",
+			),
+		).toEqual(["TASKS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				actions,
+				"do not use eliza-code to build this app",
+			),
+		).not.toContain("TASKS");
+	});
+
 	it("fast-paths a direct shell ask to TERMINAL_SHELL in a lean-chat runtime (follow-up to #12021)", () => {
 		// PR #12021 renamed the terminal action SHELL -> TERMINAL_SHELL. In a
 		// lean-chat deployment (no plugin-coding-tools) TERMINAL_SHELL is the only
