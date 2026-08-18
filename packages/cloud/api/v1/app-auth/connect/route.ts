@@ -21,6 +21,7 @@ import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
 import { appsService } from "@/lib/services/apps";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -35,13 +36,12 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKey(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const parsed = ConnectSchema.safeParse(body);
 
     if (!parsed.success) {

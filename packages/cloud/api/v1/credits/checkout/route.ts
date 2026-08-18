@@ -26,6 +26,7 @@ import {
 import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
 import { requireStripe } from "@/lib/stripe";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -42,13 +43,12 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const validation = CheckoutSchema.safeParse(body);
     if (!validation.success) {
       return c.json(

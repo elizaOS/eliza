@@ -6,7 +6,6 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isJWKSConfigured } from "@/lib/auth/jwks";
@@ -15,6 +14,7 @@ import {
   isShortLivedGatewayService,
   signInternalToken,
 } from "@/lib/auth/jwt-internal";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -40,13 +40,12 @@ app.post("/*", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
       return c.json({ error: "Invalid request body" }, 400);
     }

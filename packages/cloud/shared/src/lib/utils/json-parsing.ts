@@ -1,5 +1,5 @@
 /**
- * Response JSON helpers for cloud service clients.
+ * JSON helpers for Cloud request boundaries and service-client responses.
  *
  * Success responses parse strictly so malformed provider payloads surface as
  * integration failures. Error responses have a separate best-effort parser
@@ -8,6 +8,28 @@
  */
 
 import { extractErrorMessage } from "./error-handling";
+
+export type RequestJsonDecodeResult =
+  | { ok: true; value: unknown }
+  | { ok: false; error: SyntaxError };
+
+/**
+ * Decode an untrusted request body without disguising transport/runtime faults
+ * as malformed caller input. Fetch and Hono surface invalid JSON as a
+ * `SyntaxError`; every other rejection belongs to the route's normal 5xx
+ * boundary and must keep propagating.
+ */
+export async function decodeRequestJson(source: {
+  json(): Promise<unknown>;
+}): Promise<RequestJsonDecodeResult> {
+  try {
+    return { ok: true, value: await source.json() };
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // error-policy:J3 malformed JSON is explicit invalid request input.
+    return { ok: false, error };
+  }
+}
 
 /**
  * Parse a response body as JSON, preserving empty or malformed payloads as

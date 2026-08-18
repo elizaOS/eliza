@@ -1,10 +1,12 @@
 /** Handles character associations for an authenticated cloud application. */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import { charactersService } from "@/lib/services/characters/characters";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -163,16 +165,15 @@ async function __hono_PUT(
       );
     }
 
-    let rawBody: unknown;
-    try {
-      rawBody = await request.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(request);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return Response.json(
         { success: false, error: "Invalid JSON in request body" },
         { status: 400 },
       );
     }
+    const rawBody = decodedRawBody.value;
     const parsedBody = LinkCharactersBody.safeParse(rawBody);
     if (!parsedBody.success) {
       return Response.json(

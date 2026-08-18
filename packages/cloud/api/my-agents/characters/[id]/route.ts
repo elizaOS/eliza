@@ -13,6 +13,7 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { ElizaCharacter } from "@/lib/types";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,13 +40,12 @@ app.put("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
       return c.json({ error: "Invalid request body" }, 400);
     }

@@ -7,7 +7,39 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { parseJsonErrorBody, parseJsonResponse } from "./json-parsing";
+import { decodeRequestJson, parseJsonErrorBody, parseJsonResponse } from "./json-parsing";
+
+describe("decodeRequestJson", () => {
+  test("returns an explicit invalid result for malformed JSON syntax", async () => {
+    const syntaxError = new SyntaxError("Unexpected end of JSON input");
+    await expect(
+      decodeRequestJson({
+        json: async () => {
+          throw syntaxError;
+        },
+      }),
+    ).resolves.toEqual({ ok: false, error: syntaxError });
+  });
+
+  test("rethrows non-syntax decoder failures for the route 5xx boundary", async () => {
+    const streamError = new TypeError("request stream unavailable");
+    await expect(
+      decodeRequestJson({
+        json: async () => {
+          throw streamError;
+        },
+      }),
+    ).rejects.toBe(streamError);
+  });
+
+  test("returns canonical decoded values unchanged", async () => {
+    const value = { query: "elizaOS" };
+    await expect(decodeRequestJson({ json: async () => value })).resolves.toEqual({
+      ok: true,
+      value,
+    });
+  });
+});
 
 describe("parseJsonResponse", () => {
   test("parses non-empty JSON response bodies", async () => {
