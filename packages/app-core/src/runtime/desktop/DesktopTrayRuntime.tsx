@@ -224,7 +224,11 @@ export function DesktopTrayRuntime() {
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":
-            await openDesktopSettingsWindow("desktop");
+            await invokeDesktopBridgeRequest<void>({
+              rpcMethod: "desktopOpenSurfaceWindow",
+              ipcChannel: "desktop:openSurfaceWindow",
+              params: { surface: "app" },
+            });
             return;
           case "tray-open-voice-controls":
             await openDesktopSettingsWindow("voice");

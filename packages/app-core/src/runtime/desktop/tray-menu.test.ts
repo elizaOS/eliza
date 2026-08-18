@@ -68,6 +68,23 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
     expect(audit?.coverage).toBe("automated");
   });
 
+  it("opens the full Workspace surface from the Workspace tray item", () => {
+    const audit = DESKTOP_TRAY_CLICK_AUDIT.find(
+      (entry) => entry.id === "tray-open-desktop-workspace",
+    );
+    expect(audit?.expectedAction).toBe(
+      "Open the full Desktop Workspace app surface.",
+    );
+
+    const source = readFileSync(trayRuntimePath, "utf8");
+    expect(source).toMatch(
+      /case "tray-open-desktop-workspace":\s+await invokeDesktopBridgeRequest<void>\(\{[\s\S]*?rpcMethod: "desktopOpenSurfaceWindow",[\s\S]*?params: \{ surface: "app" \}/,
+    );
+    expect(source).not.toMatch(
+      /case "tray-open-desktop-workspace":\s+await openDesktopSettingsWindow/,
+    );
+  });
+
   it("every audited tray id is a real tray item (drift guard)", () => {
     const menuIds = new Set(DESKTOP_TRAY_MENU_ITEMS.map((item) => item.id));
     for (const audit of DESKTOP_TRAY_CLICK_AUDIT) {
