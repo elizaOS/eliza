@@ -320,6 +320,25 @@ async function relativeAnchorDue(
   };
 }
 
+/**
+ * Bounds for one named window, splitting a wraparound range (`end <= start`,
+ * e.g. an evening of 18:00-00:30) into the same two-segment shape `night`
+ * already used: `[start, 24:00)` and `[0, end)`. A zero-width range
+ * (`start === end`) stays empty rather than wrapping to "active all day".
+ */
+function wrappingRange(
+  name: string,
+  start: number,
+  end: number,
+): Array<{ name: string; start: number; end: number }> {
+  if (start === end) return [];
+  if (start < end) return [{ name, start, end }];
+  return [
+    { name, start, end: 24 * 60 },
+    { name, start: 0, end },
+  ];
+}
+
 function windowBoundsMinutes(
   windowKey: string,
   ownerFacts: OwnerFactsView,
@@ -328,28 +347,23 @@ function windowBoundsMinutes(
     resolveOwnerWindowBoundsMinutes(ownerFacts);
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
+  const morning = wrappingRange("morning", morningStart, morningEnd);
+  const afternoon = wrappingRange("afternoon", afternoonStart, afternoonEnd);
+  const evening = wrappingRange("evening", eveningStart, eveningEnd);
+  // Night is whatever's left between evening's end and morning's start; when
+  // evening itself wraps past midnight (consuming the midnight-crossing
+  // minutes), night no longer needs to, and vice versa.
+  const night = wrappingRange("night", eveningEnd, morningStart);
   const windows: Record<
     string,
     Array<{ name: string; start: number; end: number }>
   > = {
-    morning: [{ name: "morning", start: morningStart, end: morningEnd }],
-    afternoon: [
-      { name: "afternoon", start: afternoonStart, end: afternoonEnd },
-    ],
-    evening: [{ name: "evening", start: eveningStart, end: eveningEnd }],
-    night: [
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_night: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_evening: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "evening", start: eveningStart, end: eveningEnd },
-    ],
+    morning,
+    afternoon,
+    evening,
+    night,
+    morning_or_night: [...morning, ...night],
+    morning_or_evening: [...morning, ...evening],
   };
   return windows[windowKey] ?? [];
 }

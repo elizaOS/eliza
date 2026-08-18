@@ -442,3 +442,109 @@ describe("during_window night wrap-around — no double-fire across midnight (#1
     });
   });
 });
+
+describe("during_window midnight-crossing evening — wrapping windows other than night (#22053)", () => {
+  // Evening runs 18:00-00:30, i.e. `end <= start`. Before the fix,
+  // windowBoundsMinutes modeled evening as the single (empty) range
+  // [18:00, 00:30), so it could never be due, and derived night as
+  // [00:30, 24:00) union [00:00, 06:00) — nearly the entire day.
+  const WRAP_EVENING_FACTS = {
+    timezone: "UTC",
+    morningWindow: { start: "06:00", end: "11:00" },
+    eveningWindow: { start: "18:00", end: "00:30" },
+  };
+  const eveningTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask =>
+    task({
+      trigger: { kind: "during_window", windowKey: "evening" },
+      ...overrides,
+    });
+  const nightTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask =>
+    task({
+      trigger: { kind: "during_window", windowKey: "night" },
+      ...overrides,
+    });
+
+  it("fires a during_window:evening task at 20:00, squarely inside the stated 18:00-00:30 window", async () => {
+    const decision = await isScheduledTaskDue(eveningTask(), {
+      now: new Date("2026-05-10T20:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+
+  it("fires a during_window:evening task at 00:15, the after-midnight tail of the same evening", async () => {
+    const decision = await isScheduledTaskDue(eveningTask(), {
+      now: new Date("2026-05-11T00:15:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+
+  it("does not double-fire evening across the midnight it now wraps", async () => {
+    const preMidnight = eveningTask();
+    const first = await isScheduledTaskDue(preMidnight, {
+      now: new Date("2026-05-10T20:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(first).toMatchObject({ due: true, reason: "window_due" });
+
+    const stamped = markWindowFireIfNeeded(preMidnight, {
+      now: new Date("2026-05-10T20:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(stamped?.lastWindowFireKey).toBe("2026-05-10:evening:evening");
+
+    const afterMidnight = await isScheduledTaskDue(
+      eveningTask({
+        metadata: { lastWindowFireKey: stamped?.lastWindowFireKey as string },
+      }),
+      {
+        now: new Date("2026-05-11T00:15:00.000Z"),
+        ownerFacts: WRAP_EVENING_FACTS,
+      },
+    );
+    expect(afterMidnight).toMatchObject({
+      due: false,
+      reason: "window_already_fired",
+    });
+  });
+
+  it("shrinks night to [eveningEnd, morningStart) instead of invading the daytime", async () => {
+    // Previously night == [00:30, 24:00) union [0, 06:00), so it was
+    // (wrongly) active at 13:00 local.
+    const atNoon = await isScheduledTaskDue(nightTask(), {
+      now: new Date("2026-05-10T13:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(atNoon).toMatchObject({ due: false, reason: "window_inactive" });
+
+    // Night is now the plain (non-wrapping) range 00:30-06:00.
+    const atOneAm = await isScheduledTaskDue(nightTask(), {
+      now: new Date("2026-05-11T01:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(atOneAm).toMatchObject({ due: true, reason: "window_due" });
+
+    // Still inactive during evening's own (wrapped) active minutes.
+    const duringEvening = await isScheduledTaskDue(nightTask(), {
+      now: new Date("2026-05-10T20:00:00.000Z"),
+      ownerFacts: WRAP_EVENING_FACTS,
+    });
+    expect(duringEvening).toMatchObject({
+      due: false,
+      reason: "window_inactive",
+    });
+  });
+
+  it("leaves a non-wrapping evening (end > start) unaffected", async () => {
+    const decision = await isScheduledTaskDue(eveningTask(), {
+      now: new Date("2026-05-10T19:00:00.000Z"),
+      ownerFacts: {
+        timezone: "UTC",
+        morningWindow: { start: "06:00", end: "11:00" },
+        eveningWindow: { start: "18:00", end: "22:00" },
+      },
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+});
