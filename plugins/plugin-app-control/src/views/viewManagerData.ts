@@ -1,7 +1,7 @@
 /**
- * React-free data layer for the View Manager bundle. Read requests use the
- * browser fetch surface, while mutations go through the shell's authenticated
- * API transport so cookie sessions and native hosts share one security path.
+ * React-free data layer for the View Manager bundle. Requests use the shell's
+ * authenticated platform transport so browser sessions and native hosts share
+ * one routing, authorization, and deadline path.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -207,15 +207,23 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 /** View-list GET is a short UI hop — same 15s Fal #21205 family. */
 export const VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS = 15_000;
 
+type ViewListFetcher = (
+	url: string,
+	init?: RequestInit,
+	context?: { timeoutMs?: number },
+) => Promise<Response>;
+
 export async function getViewEntriesWithFetch(
 	viewType: "gui" | "tui" | "xr" | undefined,
-	fetchImpl: typeof fetch,
+	fetchImpl: ViewListFetcher,
 	timeoutMs: number = VIEW_MANAGER_LIST_FETCH_TIMEOUT_MS,
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetchImpl(`/api/views${qs}`, {
-		signal: AbortSignal.timeout(timeoutMs),
-	});
+	const res = await fetchImpl(
+		`/api/views${qs}`,
+		{ signal: AbortSignal.timeout(timeoutMs) },
+		{ timeoutMs },
+	);
 	if (!res.ok) {
 		throw new ElizaError(`GET /api/views returned HTTP ${res.status}`, {
 			code: "VIEW_MANAGER_LIST_HTTP_FAILED",
@@ -226,6 +234,12 @@ export async function getViewEntriesWithFetch(
 	try {
 		data = await res.json();
 	} catch (cause) {
+		if (
+			cause instanceof Error &&
+			(cause.name === "AbortError" || cause.name === "TimeoutError")
+		) {
+			throw cause;
+		}
 		// error-policy:J2 preserve the JSON parser failure while adding the API
 		// boundary and response status needed to diagnose a broken registry payload.
 		return invalidViewListResponse(
@@ -246,7 +260,7 @@ export async function getViewEntriesWithFetch(
 export async function fetchViewEntries(
 	viewType?: "gui" | "tui" | "xr",
 ): Promise<ViewEntry[]> {
-	return getViewEntriesWithFetch(viewType, globalThis.fetch);
+	return getViewEntriesWithFetch(viewType, fetchWithCsrf);
 }
 
 export async function requestViewNavigation(

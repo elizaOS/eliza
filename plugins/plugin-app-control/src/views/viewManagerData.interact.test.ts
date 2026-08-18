@@ -140,15 +140,17 @@ describe("interact() error paths", () => {
 	});
 });
 
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected view-manager abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
+function stallUntilAborted() {
+	return vi.fn(
+		(_input: string, init?: RequestInit) =>
+			new Promise<Response>((_resolve, reject) => {
+				const signal = init?.signal;
+				if (!signal) throw new Error("expected view-manager abort signal");
+				signal.addEventListener("abort", () => reject(signal.reason), {
+					once: true,
+				});
+			}),
+	);
 }
 
 describe("view-manager list request deadline", () => {
@@ -157,13 +159,39 @@ describe("view-manager list request deadline", () => {
 	});
 
 	it("aborts a stalled /api/views GET at the injected deadline", async () => {
+		const fetchImpl = stallUntilAborted();
 		await expect(
-			getViewEntriesWithFetch(undefined, stallUntilAborted(), 10),
+			getViewEntriesWithFetch(undefined, fetchImpl, 10),
+		).rejects.toMatchObject({ name: "TimeoutError" });
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"/api/views",
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+			{ timeoutMs: 10 },
+		);
+	});
+
+	it("keeps the deadline active while the response body stalls", async () => {
+		const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
+			const signal = init?.signal;
+			if (!signal) throw new Error("expected view-manager abort signal");
+			return {
+				ok: true,
+				status: 200,
+				json: () =>
+					new Promise((_resolve, reject) => {
+						signal.addEventListener("abort", () => reject(signal.reason), {
+							once: true,
+						});
+					}),
+			} as Response;
+		});
+		await expect(
+			getViewEntriesWithFetch(undefined, fetchImpl, 10),
 		).rejects.toMatchObject({ name: "TimeoutError" });
 	});
 
 	it("surfaces a provider error from a completed /api/views GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
+		const fetchImpl = async () =>
 			new Response("nope", { status: 503, statusText: "Service Unavailable" });
 		await expect(
 			getViewEntriesWithFetch(undefined, fetchImpl, 1_000),
@@ -175,14 +203,16 @@ describe("view-manager list request deadline", () => {
 
 	it("uses the injected fetch for a successful /api/views GET", async () => {
 		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
+		const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
 			if (init?.signal) signals.push(init.signal);
 			return jsonResponse(viewList);
-		};
+		});
 		const entries = await getViewEntriesWithFetch(undefined, fetchImpl, 1_000);
 		expect(signals).toHaveLength(1);
 		expect(signals[0]?.aborted).toBe(false);
 		expect(entries.map((entry) => entry.id)).toEqual(["wallet", "messages"]);
+		expect(fetchImpl).toHaveBeenCalledWith("/api/views", expect.any(Object), {
+			timeoutMs: 1_000,
+		});
 	});
 });
-
