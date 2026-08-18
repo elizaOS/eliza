@@ -27,7 +27,14 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const rawBody = await c.req.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const parsed = WhatsappConnectBody.safeParse(rawBody);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message || "Invalid request body";
