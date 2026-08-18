@@ -54,6 +54,7 @@ const ORG_ID = "00000000-0000-4000-8000-00000000b101";
 const USER_ID = "00000000-0000-4000-8000-00000000b102";
 const AGENT_ID = "00000000-0000-4000-8000-00000000b103";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000b104";
+const SCHEDULER_REPLAY_OPERATION_ID = "00000000-0000-4000-8000-00000000b108";
 const EXPIRATION_OPERATION_ID = "00000000-0000-4000-8000-00000000b10a";
 const EXPIRATION_VAULT_GENERATION_ID = "00000000-0000-4000-8000-00000000b10b";
 const EXPIRATION_KEY_BUNDLE_GENERATION_ID = "00000000-0000-4000-8000-00000000b10c";
@@ -85,6 +86,9 @@ let closeDatabaseConnectionsForTests:
 let dbWrite: typeof import("./client").dbWrite | undefined;
 let reserveAgentBackupOperation:
   | typeof import("./repositories/agent-backup-catalog").reserveAgentBackupOperation
+  | undefined;
+let lockAgentBackupReservationReplayInTransaction:
+  | typeof import("./repositories/agent-backup-catalog").lockAgentBackupReservationReplayInTransaction
   | undefined;
 let transitionAgentBackupOperation:
   | typeof import("./repositories/agent-backup-catalog").transitionAgentBackupOperation
@@ -195,6 +199,8 @@ if (!postgres) {
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
   reserveAgentBackupOperation = repositoryModule.reserveAgentBackupOperation;
+  lockAgentBackupReservationReplayInTransaction =
+    repositoryModule.lockAgentBackupReservationReplayInTransaction;
   transitionAgentBackupOperation = repositoryModule.transitionAgentBackupOperation;
   agentBackupObjectInventoryDigest = repositoryModule.agentBackupObjectInventoryDigest;
   acquireAgentBackupRestoreLease = leaseModule.acquireAgentBackupRestoreLease;
@@ -394,6 +400,71 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       if (replay) await replay;
       if (acquisition) await acquisition;
       await Promise.allSettled([authorityBlocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("scheduler replay first-lock leaves the sandbox available to a capture holder", async () => {
+    const reserve = reserveAgentBackupOperation;
+    const lockReplay = lockAgentBackupReservationReplayInTransaction;
+    if (!isolatedDsn || !dbWrite || !reserve || !lockReplay) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const input = {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      sandboxRecordId: AGENT_ID,
+      operationId: SCHEDULER_REPLAY_OPERATION_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: "0",
+      snapshotType: "auto" as const,
+      backupKind: "full" as const,
+      sourceProvider: "operator-onboarded" as const,
+      sourceNodeRecordId: NODE_RECORD_ID,
+      sourceNodeId: "robot-node-lock",
+      sourceNodeIncarnation: NODE_INCARNATION,
+      sourceProviderServerId: null,
+      sourceProviderHandle: "container-generation-lock",
+      sourceContainerId: SOURCE_CONTAINER_ID,
+      retentionReason: "schedule" as const,
+      retentionUntil: new Date("2026-09-18T00:00:00.000Z"),
+    };
+    const backup = await reserve(input);
+    const capture = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([capture.connect(), observer.connect()]);
+    let scheduler: Promise<void> | undefined;
+    try {
+      await capture.query("BEGIN");
+      await capture.query("SET LOCAL lock_timeout = '1s'");
+      const capturePid = await capture.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await capture.query("SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE", [
+        backup.id,
+      ]);
+      scheduler = dbWrite.transaction(async (tx) => {
+        await lockReplay(tx, input);
+        await tx
+          .select({ id: agentSandboxes.id })
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, AGENT_ID))
+          .for("update")
+          .limit(1);
+      });
+      await waitUntilBlockedBy(observer, capturePid.rows[0]!.pid);
+
+      // The scheduler is blocked on the operation backup and therefore cannot
+      // already hold the sandbox. A sandbox-first regression times out here or
+      // forms the capture backup -> sandbox / scheduler sandbox -> backup cycle.
+      const sandbox = await capture.query<{ id: string }>(
+        "SELECT id FROM agent_sandboxes WHERE id = $1 FOR UPDATE",
+        [AGENT_ID],
+      );
+      expect(sandbox.rows[0]?.id).toBe(AGENT_ID);
+      await capture.query("COMMIT");
+      await scheduler;
+    } finally {
+      await capture.query("ROLLBACK");
+      if (scheduler) await scheduler;
+      await Promise.allSettled([capture.end(), observer.end()]);
     }
   }, 30_000);
 

@@ -88,27 +88,51 @@ describe("dormant restore API boundary", () => {
     );
   });
 
-  test("locks an existing reservation backup before its catalogue authority", () => {
-    const source = readFileSync(
+  test("locks reservation replay before every sandbox and catalogue authority", () => {
+    const catalogSource = readFileSync(
       join(import.meta.dir, "repositories/agent-backup-catalog.ts"),
       "utf8",
     );
-    const reservation = source.slice(
-      source.indexOf("export async function reserveAgentBackupOperationInTransaction"),
-      source.indexOf("export async function claimDueAgentBackupOperations"),
+    const replayHelper = catalogSource.slice(
+      catalogSource.indexOf("export async function lockAgentBackupReservationReplayInTransaction"),
+      catalogSource.indexOf("export async function reserveAgentBackupOperationInTransaction"),
     );
-    const replayLock = reservation.indexOf("Replay joins the global lock order operation-backup");
-    const replayBackup = reservation.indexOf(".from(agentSandboxBackups)", replayLock);
-    const replayOperation = reservation.indexOf(
+    const replayBackup = replayHelper.indexOf(".from(agentSandboxBackups)");
+    const replayOperation = replayHelper.indexOf(
       "eq(agentSandboxBackups.backup_operation_id",
       replayBackup,
     );
-    const replayForUpdate = reservation.indexOf('.for("update")', replayOperation);
-    const authorityLock = reservation.indexOf("const reservationAuthority");
-    expect(replayLock).toBeGreaterThanOrEqual(0);
-    expect(replayBackup).toBeGreaterThan(replayLock);
+    const replayForUpdate = replayHelper.indexOf('.for("update")', replayOperation);
+    expect(replayBackup).toBeGreaterThanOrEqual(0);
     expect(replayOperation).toBeGreaterThan(replayBackup);
     expect(replayForUpdate).toBeGreaterThan(replayOperation);
-    expect(authorityLock).toBeGreaterThan(replayForUpdate);
+
+    const reservation = catalogSource.slice(
+      catalogSource.indexOf("export async function reserveAgentBackupOperationInTransaction"),
+      catalogSource.indexOf("export async function claimDueAgentBackupOperations"),
+    );
+    const reserveReplay = reservation.indexOf(
+      "await lockAgentBackupReservationReplayInTransaction(tx, input)",
+    );
+    const reserveSandbox = reservation.indexOf(".from(agentSandboxes)", reserveReplay);
+    const authorityLock = reservation.indexOf("const reservationAuthority");
+    expect(reserveReplay).toBeGreaterThanOrEqual(0);
+    expect(reserveSandbox).toBeGreaterThan(reserveReplay);
+    expect(authorityLock).toBeGreaterThan(reserveSandbox);
+
+    const schedulerSource = readFileSync(
+      join(import.meta.dir, "repositories/agent-backup-scheduler.ts"),
+      "utf8",
+    );
+    const scheduleReservation = schedulerSource.slice(
+      schedulerSource.indexOf("export async function reserveClaimedAgentBackupSchedule"),
+      schedulerSource.indexOf("export async function failClaimedAgentBackupSchedule"),
+    );
+    const schedulerReplay = scheduleReservation.indexOf(
+      "await lockAgentBackupReservationReplayInTransaction(tx, claim)",
+    );
+    const schedulerSandbox = scheduleReservation.indexOf("await lockClaimedSandbox(tx, claim)");
+    expect(schedulerReplay).toBeGreaterThanOrEqual(0);
+    expect(schedulerSandbox).toBeGreaterThan(schedulerReplay);
   });
 });

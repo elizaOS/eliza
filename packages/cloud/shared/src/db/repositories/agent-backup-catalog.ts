@@ -456,10 +456,37 @@ export async function reserveAgentBackupOperation(
 }
 
 /**
+ * Join the operation-backup first-lock order before a caller acquires sandbox,
+ * source-node, parent-chain, or catalogue-authority locks. A missing row is
+ * safe because the catalogue authority serializes the later create path.
+ */
+export async function lockAgentBackupReservationReplayInTransaction(
+  tx: DbTransaction,
+  input: { organizationId: string; agentId: string; operationId: string },
+): Promise<void> {
+  const organizationId = requireUuid(input.organizationId, "organizationId");
+  const agentId = requireUuid(input.agentId, "agentId");
+  const operationId = requireUuid(input.operationId, "operationId");
+  await tx
+    .select({ id: agentSandboxBackups.id })
+    .from(agentSandboxBackups)
+    .where(
+      and(
+        eq(agentSandboxBackups.catalog_organization_id, organizationId),
+        eq(agentSandboxBackups.catalog_agent_id, agentId),
+        eq(agentSandboxBackups.backup_operation_id, operationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+}
+
+/**
  * Transaction-aware reservation used by lifecycle authorities that must make
  * the catalogue row and their owning operation visible in one commit. Callers
- * own the outer lock order; this function locks the sandbox source, source
- * node, any parent chain, exact operation backup, then catalogue authority.
+ * must acquire the operation-backup replay lock before any outer lock. This
+ * function establishes operation-backup -> sandbox -> source-node -> parent
+ * chain -> catalogue-authority order for callers without earlier locks.
  */
 export async function reserveAgentBackupOperationInTransaction(
   tx: DbTransaction,
@@ -473,18 +500,7 @@ export async function reserveAgentBackupOperationInTransaction(
   // before sandbox) so a replayed reserve cannot AB-BA a concurrent capture.
   // A missing row is safe: authority locking serializes repository creates
   // before the insert below is attempted.
-  await tx
-    .select({ id: agentSandboxBackups.id })
-    .from(agentSandboxBackups)
-    .where(
-      and(
-        eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
-        eq(agentSandboxBackups.catalog_agent_id, input.agentId),
-        eq(agentSandboxBackups.backup_operation_id, input.operationId),
-      ),
-    )
-    .for("update")
-    .limit(1);
+  await lockAgentBackupReservationReplayInTransaction(tx, input);
 
   const [sandbox] = await tx
     .select({
