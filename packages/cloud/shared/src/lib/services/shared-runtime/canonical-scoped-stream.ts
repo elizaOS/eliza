@@ -5,6 +5,7 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
@@ -12,6 +13,7 @@ import { chatSseFrame } from "../chat-sse-frames";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
+import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
@@ -38,6 +40,8 @@ export interface CanonicalScopedStreamRequest {
   agentKind?: "sandbox" | "personal";
   /** Set only by the authenticated in-process voice adapter for lifecycle turns. */
   trustedMessageRole?: "system";
+  /** Authenticated transport semantics supplied by the route adapter. */
+  channel?: SharedRuntimeChannel;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -116,6 +120,10 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      channel: request.channel ?? {
+        type: ChannelType.DM,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+      },
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

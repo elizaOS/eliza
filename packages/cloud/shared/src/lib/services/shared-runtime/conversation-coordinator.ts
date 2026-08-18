@@ -15,7 +15,7 @@ import type {
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
-import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
@@ -30,6 +30,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedMessageRole?: "system";
   /** Authenticated raw utterance when RPC text also contains server-composed context. */
   trustedUserUtterance?: string;
+  /** Authenticated transport semantics; never accepted from bridge RPC params. */
+  channel?: SharedRuntimeChannel;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -296,6 +298,7 @@ export async function coordinateSharedBridge(
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
+        ...(options.channel ? { channel: options.channel } : {}),
       }),
     });
   await requireCoordinatorResponse(response, "conversation");
@@ -321,6 +324,7 @@ export async function coordinateSharedStream(
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
+        ...(options.channel ? { channel: options.channel } : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });

@@ -1515,6 +1515,7 @@ type ResolvedMessageOptions = {
 	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
@@ -12341,6 +12342,11 @@ export class DefaultMessageService implements IMessageService {
 								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
 							}
 						: {}),
+					...(options?.onInferenceTimingSummary
+						? {
+								onInferenceTimingSummary: options.onInferenceTimingSummary,
+							}
+						: {}),
 				};
 
 				const deliveredVisibleTexts = new Set<string>();
@@ -12625,6 +12631,21 @@ export class DefaultMessageService implements IMessageService {
 						? emitInferenceTiming(inferenceTimer)
 						: null;
 					if (inferenceSummary) {
+						try {
+							opts.onInferenceTimingSummary?.(inferenceSummary);
+						} catch (error) {
+							// error-policy:J7 host timing export must not replace the
+							// user-visible result whose summary it observes.
+							runtime.logger.warn(
+								{ error, turnId: inferenceSummary.turnId },
+								"Inference timing summary callback failed",
+							);
+							runtime.reportError(
+								"MessageService.inferenceTimingSummary",
+								error,
+								{ turnId: inferenceSummary.turnId },
+							);
+						}
 						detachPostDeliverySideEffect(
 							runtime,
 							"persist_inference_timing",

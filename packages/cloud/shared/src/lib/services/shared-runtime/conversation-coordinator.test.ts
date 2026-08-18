@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import { ChannelType } from "@elizaos/core/edge";
 
 const directBridge = mock(() => {
   throw new Error("direct bridge must not run");
@@ -151,6 +152,7 @@ describe("shared conversation coordinator", () => {
       agentKind: "personal",
       trustedMessageRole: "system",
       trustedUserUtterance: "email Bob now",
+      channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
     });
     await coordinateSharedLifecycleEvent(
       agent.id,
@@ -166,6 +168,7 @@ describe("shared conversation coordinator", () => {
         rpc,
         trustedMessageRole: "system",
         trustedUserUtterance: "email Bob now",
+        channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
       },
       {
         operation: "lifecycle",

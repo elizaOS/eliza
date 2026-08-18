@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
@@ -178,6 +179,7 @@ function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
 export interface SharedTurnTerminalResult {
   text: string;
+  responded?: boolean;
   messageId: string;
   userMessageId: string;
   agentName: string;
@@ -225,8 +227,8 @@ export interface SharedRuntimeChatOptions {
   trustedMessageRole?: "system";
   /** Server-authenticated raw utterance when the model message includes connector context. */
   trustedUserUtterance?: string;
-  /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
-  executionEngine?: "direct-model" | "eliza-runtime";
+  /** Server-resolved transport semantics; untrusted RPC params never populate this. */
+  channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"];
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -399,15 +401,20 @@ function sharedElizaRuntimeExecution(
   funding: SharedRuntimeChatOptions["funding"],
   executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
+  channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
+  const runtimeChannel = channel ?? {
+    type: ChannelType.DM,
+    source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
+  };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
   const media = personalShared
     ? personalSharedImagePort(agent, roomId, turnKey, executionCtx)
     : undefined;
   return {
-    engine: "eliza-runtime",
     agentKey: agent.id,
+    channel: runtimeChannel,
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
@@ -1139,19 +1146,16 @@ export class SharedRuntimeChatService {
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         ...(memoryStore ? { memory: memoryStore } : {}),
-        ...(options.executionEngine === "eliza-runtime"
-          ? {
-              execution: sharedElizaRuntimeExecution(
-                agent,
-                roomId,
-                claimKey,
-                params,
-                options.funding,
-                options.executionCtx,
-                options.mobilePushDispatch,
-              ),
-            }
-          : {}),
+        execution: sharedElizaRuntimeExecution(
+          agent,
+          roomId,
+          claimKey,
+          params,
+          options.funding,
+          options.executionCtx,
+          options.mobilePushDispatch,
+          options.channel,
+        ),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -1179,6 +1183,7 @@ export class SharedRuntimeChatService {
       const actionResults = turnActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
+        ...(turn.responded === false ? { responded: false } : {}),
         messageId: messageIds.assistant,
         userMessageId: messageIds.user,
         agentName: character.name,
@@ -1341,19 +1346,16 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
-        ...(options.executionEngine === "eliza-runtime"
-          ? {
-              execution: sharedElizaRuntimeExecution(
-                agent,
-                roomId,
-                claimKey,
-                params,
-                options.funding,
-                options.executionCtx,
-                options.mobilePushDispatch,
-              ),
-            }
-          : {}),
+        execution: sharedElizaRuntimeExecution(
+          agent,
+          roomId,
+          claimKey,
+          params,
+          options.funding,
+          options.executionCtx,
+          options.mobilePushDispatch,
+          options.channel,
+        ),
       });
     } catch (error) {
       detachRequestAbort();
@@ -1459,6 +1461,7 @@ export class SharedRuntimeChatService {
             messageIds,
             messageRole,
             interrupted,
+            channel: options.channel,
           });
         }
         await afterWrite?.();
@@ -1509,6 +1512,43 @@ export class SharedRuntimeChatService {
             if (consumerCanceled) continue;
             finished = true;
             const finalReply = part.text.trim() || streamedReply.trim();
+            if (part.responded === false) {
+              await finalizeMessages("", false, async () => {
+                if (claimKey && options.turnClaims) {
+                  await options.turnClaims.complete(claimKey, {
+                    text: "",
+                    responded: false,
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    agentName: character.name,
+                    channelId: roomId,
+                    model: turn.model,
+                    degraded: false,
+                    runtime: "shared",
+                    transport: "shared-runtime",
+                  });
+                }
+                terminalSettlementStarted = true;
+                if (isProviderFreeTurn(turn)) await billing?.settle(0);
+                else if (billing) {
+                  await settleOffResponsePath(options.executionCtx, () =>
+                    finishBilling(agent, billing, "", text, part.usage),
+                  );
+                }
+              });
+              controller.enqueue(
+                encoder.encode(
+                  chatSseFrame("done", {
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    text: "",
+                    fullText: "",
+                    responded: false,
+                  }),
+                ),
+              );
+              continue;
+            }
             if (!finalReply) {
               // An empty completion is a failed turn: never fabricate, persist,
               // or bill a placeholder reply (repo policy: throw, never fabricate).

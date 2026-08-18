@@ -3,6 +3,7 @@
  * proving Shared fallback and active Dedicated selection.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType } from "@elizaos/core/edge";
 
 let dedicatedTarget: { id: string; status: "running"; bridge_url: string } | null = null;
 const findActivePersonalDedicatedTarget = mock(async () => dedicatedTarget);
@@ -61,6 +62,10 @@ describe("deliverPersonalTextMessage", () => {
       reply: "Shared reply",
     });
     expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend.mock.calls[0]?.[10]).toEqual({
+      type: ChannelType.DM,
+      source: "x",
+    });
     expect(bridge).not.toHaveBeenCalled();
   });
 

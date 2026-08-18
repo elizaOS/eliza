@@ -6,6 +6,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { RateLimitError } from "../../api/errors";
 import * as coordinatorActual from "./conversation-coordinator";
 
@@ -76,7 +77,21 @@ describe("handleCanonicalScopedAgentStream", () => {
       executionCtx: EXECUTION_CTX,
       agentKind: undefined,
       trustedMessageRole: undefined,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
     });
+  });
+
+  test("preserves an authenticated voice channel outside untrusted RPC params", async () => {
+    const channel = { type: ChannelType.VOICE_DM, source: MESSAGE_SOURCE_CLIENT_CHAT };
+    await handleCanonicalScopedAgentStream({ ...BASE, channel });
+
+    const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("channel");
+    expect(options.channel).toEqual(channel);
   });
 
   test("preserves coordinator phase timings beside route timings", async () => {
