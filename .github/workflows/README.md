@@ -27,9 +27,10 @@ core smoke tests. It never publishes packages or creates releases.
 `codeql.yml` runs JavaScript/TypeScript CodeQL analysis only on its weekly
 schedule or by explicit manual dispatch. It deliberately has no `push` or
 `pull_request` trigger, so CodeQL cannot add work or checks to ordinary pull
-request updates. The extraction config excludes generated, vendored, research,
-example, OS-image, and documentation trees that previously exhausted runner
-memory while retaining product runtime, server, cloud, plugin, and script code.
+request updates. The extraction config excludes generated, vendored, test,
+fixture, research, example, OS-image, and documentation trees that previously
+exhausted runner memory or the hosted-job window while retaining product
+runtime, server, cloud, plugin, and operational script code.
 
 ## Specialized pull-request checks
 

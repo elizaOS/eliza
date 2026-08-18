@@ -89,4 +89,24 @@ describe("scheduled CodeQL workflow", () => {
       ]),
     );
   });
+
+  test("scans production code instead of non-shipping test and fixture trees", () => {
+    const config = Bun.YAML.parse(configText) as {
+      "paths-ignore"?: string[];
+    };
+    expect(config["paths-ignore"]).toEqual(
+      expect.arrayContaining([
+        "**/__tests__/**",
+        "**/test/**",
+        "**/tests/**",
+        "**/fixtures/**",
+        "**/mocks/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "packages/test/**",
+      ]),
+    );
+  });
 });
