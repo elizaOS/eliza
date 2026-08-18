@@ -246,6 +246,8 @@ function textContainsUserTag(text: string | undefined): boolean {
 // Utility Functions
 // ============================================================================
 
+export const DEFAULT_BASIC_CAPABILITIES_ATTACHMENT_FETCH_TIMEOUT_MS = 10_000;
+
 type MediaData = {
 	data: Buffer;
 	mediaType: string;
@@ -292,6 +294,11 @@ export async function fetchMediaData(
 export async function processAttachments(
 	attachments: Media[] | null | undefined,
 	runtime: IAgentRuntime,
+	options: {
+		signal?: AbortSignal;
+		fetchImpl?: typeof fetch;
+		timeoutMs?: number;
+	} = {},
 ): Promise<Media[]> {
 	if (!attachments || attachments.length === 0) {
 		return [];
@@ -304,6 +311,12 @@ export async function processAttachments(
 		},
 		"Processing attachments",
 	);
+
+	const {
+		signal: callerSignal,
+		fetchImpl = fetch,
+		timeoutMs = DEFAULT_BASIC_CAPABILITIES_ATTACHMENT_FETCH_TIMEOUT_MS,
+	} = options;
 
 	const processedAttachments: Media[] = [];
 
@@ -328,12 +341,15 @@ export async function processAttachments(
 			let imageUrl = url;
 
 			if (!isRemote) {
-				const res = await fetch(url);
+				const signal = callerSignal
+					? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
+					: AbortSignal.timeout(timeoutMs);
+				const res = await fetchImpl(url, { signal });
 				if (!res.ok) {
 					throw new Error(`Failed to fetch image: ${res.statusText}`);
 				}
 
-				const arrayBuffer = await res.arrayBuffer();
+				const arrayBuffer = await res.arrayBuffer(); // same signal still active
 				const buffer = Buffer.from(arrayBuffer);
 				const contentType =
 					res.headers.get("content-type") || "application/octet-stream";
@@ -375,7 +391,10 @@ export async function processAttachments(
 			attachment.contentType === ContentType.DOCUMENT &&
 			!attachment.text
 		) {
-			const res = await fetch(url);
+			const signal = callerSignal
+				? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
+				: AbortSignal.timeout(timeoutMs);
+			const res = await fetchImpl(url, { signal });
 			if (!res.ok) {
 				throw new Error(`Failed to fetch document: ${res.statusText}`);
 			}
@@ -400,7 +419,7 @@ export async function processAttachments(
 					"Processing text document",
 				);
 
-				const textContent = await res.text();
+				const textContent = await res.text(); // same signal still active
 				processedAttachment.text = textContent;
 				processedAttachment.title = processedAttachment.title || "Text File";
 
@@ -421,7 +440,7 @@ export async function processAttachments(
 				const { convertPdfToTextFromBuffer } = await import(
 					"../documents/utils"
 				);
-				const pdfBuffer = Buffer.from(await res.arrayBuffer());
+				const pdfBuffer = Buffer.from(await res.arrayBuffer()); // same signal still active
 				const textContent = await convertPdfToTextFromBuffer(
 					pdfBuffer,
 					processedAttachment.title ?? undefined,
