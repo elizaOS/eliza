@@ -182,6 +182,34 @@ export interface SkillsServerState {
 
 const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
 
+const SCAFFOLD_FALLBACK_DESCRIPTION = "Describe what this skill does.";
+
+/**
+ * Collapse a user-supplied skill description into a single-line, YAML-safe
+ * scalar for the scaffold's bare `description:` frontmatter field.
+ *
+ * The scaffold scalar is unquoted, so quotes and backslashes round-trip through
+ * `parseFrontmatter`'s subset parser without escaping — the former
+ * `replace(/\\/g,'\\\\').replace(/"/g,'\\"')` step only injected literal
+ * backslashes and corrupted the stored description. Newlines and other control
+ * characters are collapsed to a single space so a multi-line description cannot
+ * smuggle extra frontmatter keys (e.g. `allowed-tools`, `homepage`, or an
+ * overriding `name`) past the parser, which reads only up to the first newline.
+ * An empty result falls back to the scaffold default so the required
+ * `description` field never renders blank.
+ */
+export function sanitizeScaffoldDescription(description: string): string {
+  // Matching control characters (newlines, NUL, etc.) is the deliberate intent:
+  // they are the injection vector this sanitizer neutralizes.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control chars are the vector being stripped
+  const controlChars = /[\u0000-\u001f\u007f]+/g;
+  const collapsed = description
+    .replace(controlChars, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return collapsed || SCAFFOLD_FALLBACK_DESCRIPTION;
+}
+
 function validateSkillId(
   skillId: string,
   res: http.ServerResponse,
@@ -920,13 +948,14 @@ export async function handleSkillsRoutes(
       return true;
     }
 
-    const description = body.description ?? "Describe what this skill does.";
-    const escapedDescription = description
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"');
+    const description = body.description ?? SCAFFOLD_FALLBACK_DESCRIPTION;
+    const safeDescription = sanitizeScaffoldDescription(description);
     const template = skillScaffoldMarkdown
       .replace(/__SLUG__/g, slug)
-      .replace(/__DESCRIPTION__/g, escapedDescription);
+      // Use a function replacer so `$`-sequences in the description (e.g. `$&`,
+      // `$1`) are inserted literally rather than treated as replacement
+      // patterns by String.prototype.replace.
+      .replace(/__DESCRIPTION__/g, () => safeDescription);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
@@ -939,7 +968,12 @@ export async function handleSkillsRoutes(
     const skill = state.skills.find((s) => s.id === slug);
     json(res, {
       ok: true,
-      skill: skill ?? { id: slug, name: slug, description, enabled: true },
+      skill: skill ?? {
+        id: slug,
+        name: slug,
+        description: safeDescription,
+        enabled: true,
+      },
       path: skillDir,
     });
     return true;
