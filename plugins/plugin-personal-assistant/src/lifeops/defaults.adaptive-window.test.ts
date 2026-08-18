@@ -110,7 +110,7 @@ describe("computeAdaptiveWindowPolicy", () => {
     for (
       let typicalWakeHour = 4;
       typicalWakeHour <= 27;
-      typicalWakeHour += 0.5
+      typicalWakeHour += 0.25
     ) {
       const policy = computeAdaptiveWindowPolicy(
         {
@@ -123,7 +123,9 @@ describe("computeAdaptiveWindowPolicy", () => {
       );
 
       for (const [index, window] of policy.windows.entries()) {
-        expect(window.endMinute).toBeGreaterThan(window.startMinute);
+        expect(window.endMinute - window.startMinute).toBeGreaterThanOrEqual(
+          60,
+        );
         if (index > 0) {
           expect(window.startMinute).toBe(policy.windows[index - 1]?.endMinute);
         }
