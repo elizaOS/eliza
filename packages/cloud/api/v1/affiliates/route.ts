@@ -40,7 +40,14 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const validation = MarkupSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
@@ -63,7 +70,14 @@ app.post("/", async (c) => {
 app.put("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const validation = MarkupSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
