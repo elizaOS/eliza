@@ -20,7 +20,7 @@ import type {
   ScheduledTaskStatus,
   ScheduledTaskTrigger,
 } from "./types.js";
-import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
+import { resolveOwnerWindowSegments } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -320,40 +320,6 @@ async function relativeAnchorDue(
   };
 }
 
-function windowBoundsMinutes(
-  windowKey: string,
-  ownerFacts: OwnerFactsView,
-): Array<{ name: string; start: number; end: number }> {
-  const { morningStart, morningEnd, eveningStart, eveningEnd } =
-    resolveOwnerWindowBoundsMinutes(ownerFacts);
-  const afternoonStart = morningEnd;
-  const afternoonEnd = eveningStart;
-  const windows: Record<
-    string,
-    Array<{ name: string; start: number; end: number }>
-  > = {
-    morning: [{ name: "morning", start: morningStart, end: morningEnd }],
-    afternoon: [
-      { name: "afternoon", start: afternoonStart, end: afternoonEnd },
-    ],
-    evening: [{ name: "evening", start: eveningStart, end: eveningEnd }],
-    night: [
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_night: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_evening: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "evening", start: eveningStart, end: eveningEnd },
-    ],
-  };
-  return windows[windowKey] ?? [];
-}
-
 /**
  * Stable per-occurrence key for a `during_window` fire. A window that wraps past
  * midnight — `night` is `[eveningEnd, 24:00)` ∪ `[0, morningStart)` — is ONE
@@ -372,7 +338,7 @@ export function windowOccurrenceKey(
 ): string | null {
   const parts = localParts(at, timeZone);
   const atMinutes = parts.hour * 60 + parts.minute;
-  const windows = windowBoundsMinutes(windowKey, ownerFacts);
+  const windows = resolveOwnerWindowSegments(windowKey, ownerFacts);
   const active = windows.find(
     (window) => atMinutes >= window.start && atMinutes < window.end,
   );

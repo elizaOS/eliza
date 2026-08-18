@@ -29,6 +29,7 @@ import type {
 import {
   formatLocalHHMM,
   resolveOwnerWindowBoundsMinutes,
+  resolveOwnerWindowSegments,
 } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
@@ -64,25 +65,34 @@ function nextWindowStartIso(
   const timeZone = facts.timezone ?? "UTC";
   const { morningStart, morningEnd, eveningStart, eveningEnd } =
     resolveOwnerWindowBoundsMinutes(facts);
+  const activeNames = new Set(
+    resolveOwnerWindowSegments(windowKey, facts).map((segment) => segment.name),
+  );
   let candidateMinutes: number[];
   switch (windowKey) {
     case "morning":
-      candidateMinutes = [morningStart];
+      candidateMinutes = activeNames.has("morning") ? [morningStart] : [];
       break;
     case "afternoon":
-      candidateMinutes = [morningEnd];
+      candidateMinutes = activeNames.has("afternoon") ? [morningEnd] : [];
       break;
     case "evening":
-      candidateMinutes = [eveningStart];
+      candidateMinutes = activeNames.has("evening") ? [eveningStart] : [];
       break;
     case "night":
-      candidateMinutes = [eveningEnd];
+      candidateMinutes = activeNames.has("night") ? [eveningEnd] : [];
       break;
     case "morning_or_night":
-      candidateMinutes = [morningStart, eveningEnd];
+      candidateMinutes = [
+        ...(activeNames.has("morning") ? [morningStart] : []),
+        ...(activeNames.has("night") ? [eveningEnd] : []),
+      ];
       break;
     case "morning_or_evening":
-      candidateMinutes = [morningStart, eveningStart];
+      candidateMinutes = [
+        ...(activeNames.has("morning") ? [morningStart] : []),
+        ...(activeNames.has("evening") ? [eveningStart] : []),
+      ];
       break;
     default:
       return null;
