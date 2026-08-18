@@ -1,3 +1,7 @@
+/**
+ * Exercises the TalkMode browser fallback with deterministic Web Speech and
+ * speech-synthesis doubles, including initialization failure recovery.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TalkModeWeb } from "./web";
@@ -27,6 +31,12 @@ class ThrowingRecognition extends FakeRecognition {
     this.start = vi.fn(() => {
       throw new Error("recognizer failed to start");
     });
+  }
+}
+
+class ThrowingConstructorRecognition {
+  constructor() {
+    throw new Error("recognizer construction failed");
   }
 }
 
@@ -86,6 +96,8 @@ describe("TalkModeWeb fallback", () => {
     setWindow(win);
     setNavigator({});
     const plugin = new TalkModeWeb();
+    const states = vi.fn();
+    await plugin.addListener("stateChange", states);
 
     // A start that reports failure must leave the plugin fully disabled.
     await expect(plugin.start()).resolves.toEqual({
@@ -97,6 +109,9 @@ describe("TalkModeWeb fallback", () => {
       state: "idle",
       statusText: "Off",
     });
+    expect(states).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: "listening" }),
+    );
 
     // The failed start must not wedge the instance: a subsequent working
     // recognizer should transition cleanly to a listening session.
@@ -107,6 +122,22 @@ describe("TalkModeWeb fallback", () => {
     await expect(plugin.getState()).resolves.toEqual({
       state: "listening",
       statusText: "Listening",
+    });
+  });
+
+  it("returns a structured failure when recognizer construction throws", async () => {
+    setWindow({ SpeechRecognition: ThrowingConstructorRecognition });
+    setNavigator({});
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.start()).resolves.toEqual({
+      started: false,
+      error: "recognizer construction failed",
+    });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
     });
   });
 
