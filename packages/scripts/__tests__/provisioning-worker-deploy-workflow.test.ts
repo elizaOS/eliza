@@ -167,9 +167,27 @@ describe("provisioning worker deployment contract", () => {
     }
 
     const migration = deployStep("Run exact-SHA canonical database migrations");
-    expect(Object.keys(migration.env ?? {})).toEqual(["DATABASE_URL"]);
+    expect(Object.keys(migration.env ?? {})).toEqual([
+      "DATABASE_URL",
+      "DATABASE_IDENTITY_GATE_MODE",
+      "DATABASE_IDENTITY_ENVIRONMENT",
+      "DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256",
+      "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256",
+    ]);
     expect(migration.env?.DATABASE_URL).toContain("secrets.DATABASE_URL");
     expect(migration.env?.DATABASE_URL).not.toContain("env.DATABASE_URL");
+    expect(migration.env?.DATABASE_IDENTITY_GATE_MODE).toContain(
+      "vars.DATABASE_IDENTITY_GATE_MODE",
+    );
+    expect(migration.env?.DATABASE_IDENTITY_ENVIRONMENT).toContain(
+      "needs.determine-env.outputs.environment",
+    );
+    expect(migration.env?.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256).toContain(
+      "vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256",
+    );
+    expect(
+      migration.env?.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256,
+    ).toContain("vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256");
 
     const validate = deployStep(
       "Validate canonical deploy configuration and shared secrets",
