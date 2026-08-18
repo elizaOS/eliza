@@ -538,14 +538,14 @@ type CoreStaticPluginRegistration = {
   load: () => Promise<unknown>;
 };
 
-// Blocking-phase loaders. These two plugins each need a bespoke loader (the
-// required SQL adapter with a workspace-source fallback; the local-inference
-// pre-init hook), so they are the only descriptor rows whose `load` is not the
-// generic optional loader. Their membership + required-ness is derived from
-// BLOCKING_CORE_PLUGINS (the single source of truth for the blocking set) rather
-// than re-listed here — buildBlockingStaticRegistrations() below asserts the two
-// stay in lockstep so a change to BLOCKING_CORE_PLUGINS can't silently orphan a
-// loader or register a plugin with no loader.
+// Blocking-phase loaders. These plugins each need an explicit literal loader:
+// SQL has a workspace-source fallback, local-inference installs its pre-init
+// model hooks, and scheduling must be bundled on mobile and register its runner
+// before app-readiness feature services start. Their membership + required-ness
+// is derived from BLOCKING_CORE_PLUGINS (the single source of truth for the
+// blocking set) rather than re-listed here — buildBlockingStaticRegistrations()
+// below asserts the sets stay in lockstep so a change to BLOCKING_CORE_PLUGINS
+// can't silently orphan a loader or register a plugin with no loader.
 const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   Record<string, { required: boolean; load: () => Promise<unknown> }>
 > = {
@@ -553,6 +553,10 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   "@elizaos/plugin-local-inference": {
     required: false,
     load: () => getPluginLocalEmbedding(),
+  },
+  "@elizaos/plugin-scheduling": {
+    required: true,
+    load: () => import("@elizaos/plugin-scheduling"),
   },
 };
 
@@ -5510,17 +5514,26 @@ export async function startEliza(
       // In block-deferred mode the Discord/GitHub plugins register here (not in
       // runDeferredBoot), so join the env-var lookups before this wave.
       await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
-      await preregisterCorePluginsInDependencyWaves({
-        runtime,
-        resolvedPlugins,
-        alreadyPreRegistered: new Set<string>([
-          "@elizaos/plugin-sql",
-          "@elizaos/plugin-local-inference",
-        ]),
-        label: "blocking",
-      });
-      bootTimer.lap("register-core-plugin-waves");
     }
+
+    // Every core plugin selected by the blocking resolver must be registered
+    // before runtime.initialize(). Feature plugins selected by an app manifest
+    // are constructor plugins and may resolve a core service in their start
+    // hook. Keeping this wave behind blockDeferredPluginImports caused normal
+    // two-phase app boots to drop a readiness-promoted core dependency between
+    // phases: it was removed from the runtime constructor by PREREGISTER_PLUGINS
+    // but never registered here, while the deferred resolver correctly
+    // excluded it as already owned by the blocking phase.
+    await preregisterCorePluginsInDependencyWaves({
+      runtime,
+      resolvedPlugins,
+      alreadyPreRegistered: new Set<string>([
+        "@elizaos/plugin-sql",
+        "@elizaos/plugin-local-inference",
+      ]),
+      label: "blocking",
+    });
+    bootTimer.lap("register-core-plugin-waves");
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");

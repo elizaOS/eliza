@@ -6,6 +6,10 @@
   "elizaos": {
     "app": {
       "defaults": {
+        "scheduling": {
+          "enabled": true,
+          "requiredForReady": true
+        },
         "personal-assistant": {
           "enabled": true,
           "requiredForReady": true

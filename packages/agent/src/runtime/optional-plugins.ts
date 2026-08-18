@@ -51,7 +51,6 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   // health still reporting failed:0. The bundle-loadability drift guard in
   // core-plugins-profile-metadata.test.ts pins this invariant.
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-scheduling",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
   "@elizaos/plugin-notes",

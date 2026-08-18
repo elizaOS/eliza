@@ -22,7 +22,6 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
       import("@elizaos/plugin-native-filesystem"),
-    "@elizaos/plugin-scheduling": () => import("@elizaos/plugin-scheduling"),
     "@elizaos/plugin-inbox": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.

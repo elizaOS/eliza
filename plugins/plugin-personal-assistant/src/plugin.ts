@@ -48,6 +48,7 @@ import {
 } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
+import { waitForScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
@@ -1141,6 +1142,7 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "deferred message reconciliation",
         ensure: async () => {
+          await waitForScheduledTaskRunnerService(runtime);
           await reconcileInterruptedMessageDraftDispatches(runtime);
         },
       });
@@ -1174,6 +1176,7 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "default-pack boot seed",
         ensure: async () => {
+          await waitForScheduledTaskRunnerService(runtime);
           const runner = getProductionScheduledTaskRunner(runtime, {
             agentId: runtime.agentId,
           });
@@ -1264,10 +1267,7 @@ export {
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 export { workThreadAction } from "./actions/work-thread.js";
-export type {
-  OverdueDigest,
-  OverdueFollowup,
-} from "./followup/index.js";
+export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
 export {
   computeOverdueFollowups,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
