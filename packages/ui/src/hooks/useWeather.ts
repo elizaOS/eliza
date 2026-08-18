@@ -6,6 +6,7 @@
 
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
@@ -388,6 +389,9 @@ export function useWeather(): WeatherState {
   // hold it until probes are allowed so fresh Cloud onboarding fires no 401
   // (#16242). Re-runs to load real conditions once the gate opens post-sign-in.
   const probesEnabled = useProtectedAgentProbesEnabled();
+  const automaticWeatherSupported = !isLimitedCloudAgentApiBase(
+    client.getBaseUrl(),
+  );
 
   const applyUnavailable = React.useCallback(() => {
     if (!mountedRef.current) return;
@@ -419,9 +423,13 @@ export function useWeather(): WeatherState {
   }, []);
 
   React.useEffect(() => {
+    if (!automaticWeatherSupported) {
+      applyUnavailable();
+      return;
+    }
     if (!probesEnabled) return;
     void revalidate();
-  }, [revalidate, probesEnabled]);
+  }, [applyUnavailable, automaticWeatherSupported, revalidate, probesEnabled]);
 
   // Revalidate while the home stays open — a long-lived session no longer shows
   // a frozen temperature — but only when the document is visible (no background
