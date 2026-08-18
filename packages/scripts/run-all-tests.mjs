@@ -1449,6 +1449,11 @@ let laneMatchedTaskCount = 0;
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
   const relativeDir = path.relative(repoRoot, cwd) || ".";
+  // Filters target forward-slash labels (for example, root `test:core`), while
+  // path.relative() uses backslashes on Windows. Normalize only the public
+  // label; keep relativeDir platform-native for internal path lookups and the
+  // existing shard key.
+  const relativeDirLabel = normalizeRepoPath(relativeDir);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const scripts = packageJson.scripts ?? {};
   const scriptNames = collectScriptsToRun(scripts);
@@ -1457,12 +1462,12 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
-    const label = `${packageJson.name || relativeDir} (${relativeDir})`;
+    const label = `${packageJson.name || relativeDirLabel} (${relativeDirLabel})`;
     // Designed exclusions are recorded in both plan and run modes so the
     // result ledger can distinguish "deliberately not run" from "passed".
     skippedPlanEntries.push({
       label,
-      packageName: packageJson.name || relativeDir,
+      packageName: packageJson.name || relativeDirLabel,
       relativeDir,
       reason: "cloud package skipped by --no-cloud",
     });
@@ -1474,9 +1479,9 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
 
-  const packageName = packageJson.name || relativeDir;
+  const packageName = packageJson.name || relativeDirLabel;
   for (const scriptName of scriptNames) {
-    const label = `${packageName} (${relativeDir})#${scriptName}`;
+    const label = `${packageName} (${relativeDirLabel})#${scriptName}`;
     if (!started) {
       if (label.includes(startAt)) {
         started = true;
