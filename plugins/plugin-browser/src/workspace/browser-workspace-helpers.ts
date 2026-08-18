@@ -229,7 +229,7 @@ export function normalizeBrowserWorkspaceCommand(
       ? "navigate"
       : normalizedSubaction === "read"
         ? "get"
-        : command.subaction;
+        : (normalizedSubaction as BrowserWorkspaceSubaction) || command.subaction;
   const timeoutMs =
     parseBrowserWorkspaceNumberLike(command.timeoutMs) ??
     parseBrowserWorkspaceNumberLike(raw.ms) ??

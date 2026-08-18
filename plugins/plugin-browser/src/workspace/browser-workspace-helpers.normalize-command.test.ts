@@ -69,4 +69,68 @@ describe("normalizeBrowserWorkspaceCommand", () => {
     expect(steps[0].subaction).toBe("navigate");
     expect(steps[1].subaction).toBe("get");
   });
+
+  it("preserves operation alias for non-aliased subactions", () => {
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ operation: "click" })).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ operation: "fill" })).subaction,
+    ).toBe("fill");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ operation: "list" })).subaction,
+    ).toBe("list");
+  });
+
+  it("maps operation read alias through normalization", () => {
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ operation: "read" })).subaction,
+    ).toBe("get");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ operation: "  READ " })).subaction,
+    ).toBe("get");
+  });
+
+  it("normalizes mixed-case and whitespace-padded subactions", () => {
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ subaction: "CLICK" })).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ subaction: " click " })).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ subaction: "  ClIcK  " })).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ subaction: "  GOTO  " })).subaction,
+    ).toBe("navigate");
+    expect(
+      normalizeBrowserWorkspaceCommand(cmd({ subaction: "  READ  " })).subaction,
+    ).toBe("get");
+  });
+
+  it("normalizes nested steps with operation fallback", () => {
+    const out = normalizeBrowserWorkspaceCommand(
+      cmd({
+        subaction: "sequence",
+        steps: [
+          { operation: "click" },
+          { operation: "  GOTO " },
+          { subaction: "  CLICK " },
+        ],
+      }),
+    );
+    const steps = out.steps as BrowserWorkspaceCommand[];
+    expect(steps[0].subaction).toBe("click");
+    expect(steps[1].subaction).toBe("navigate");
+    expect(steps[2].subaction).toBe("click");
+  });
+
+  it("prefers subaction over operation when both present", () => {
+    expect(
+      normalizeBrowserWorkspaceCommand(
+        cmd({ subaction: "click", operation: "goto" }),
+      ).subaction,
+    ).toBe("click");
+  });
 });
