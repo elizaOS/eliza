@@ -14,6 +14,7 @@
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
+  canonicalJson,
   computeSharedMemoryTransferDigest,
   type SealedExportSeal,
   type SealedMemoryExportRow,
@@ -129,11 +130,36 @@ export async function stageSealedBatch(
   await ensureStagingTable(db);
   const base = parsed.batch_index * 500;
   for (const [i, row] of parsed.rows.entries()) {
-    await db.execute(sql`
-      INSERT INTO memory_import_staging (seal_digest, row_id, row_index, payload)
-      VALUES (${parsed.seal.digest}, ${row.id}, ${base + i}, ${JSON.stringify(row)}::jsonb)
-      ON CONFLICT (seal_digest, row_id) DO NOTHING
-    `);
+    // Replays are idempotent ONLY for byte-identical payloads: a conflicting
+    // replay of the same (seal, row) is a typed error, never silently kept
+    // or replaced. canonical_payload is the comparison key.
+    const canonical = canonicalJson(row);
+    const outcome = rowsOf(
+      await db.execute(sql`
+        INSERT INTO memory_import_staging (seal_digest, row_id, row_index, payload)
+        VALUES (${parsed.seal.digest}, ${row.id}, ${base + i}, ${canonical}::jsonb)
+        ON CONFLICT (seal_digest, row_id) DO NOTHING
+        RETURNING row_id
+      `),
+    );
+    if (outcome.length === 0) {
+      const kept = rowsOf(
+        await db.execute(sql`
+          SELECT payload FROM memory_import_staging
+          WHERE seal_digest = ${parsed.seal.digest} AND row_id = ${row.id}
+        `),
+      ) as Array<{ payload: unknown }>;
+      const keptCanonical =
+        typeof kept[0]?.payload === "string"
+          ? canonicalJson(JSON.parse(kept[0].payload as string))
+          : canonicalJson(kept[0]?.payload);
+      if (keptCanonical !== canonical) {
+        throw new ElizaError("A staged row replay conflicts with the kept payload", {
+          code: MEMORY_IMPORT_BATCH_INVALID,
+          context: { row_id: row.id },
+        });
+      }
+    }
   }
   const counted = rowsOf(
     await db.execute(
@@ -207,10 +233,22 @@ export async function finalizeSealedImport(
         ? []
         : (rowsOf(
             await tx.execute(sql`
-              SELECT id::text AS id, content FROM memories
+              SELECT id::text AS id, type, created_at, content, entity_id::text AS entity_id,
+                     room_id::text AS room_id, world_id::text AS world_id, "unique", metadata
+              FROM memories
               WHERE id IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)
             `),
-          ) as Array<{ id: string; content: unknown }>);
+          ) as Array<{
+            id: string;
+            type: string;
+            created_at: string | Date;
+            content: unknown;
+            entity_id: string | null;
+            room_id: string | null;
+            world_id: string | null;
+            unique: boolean;
+            metadata: unknown;
+          }>);
     const existingById = new Map(existing.map((r) => [r.id, r]));
     let skipped = 0;
     const toPublish: SealedMemoryExportRow[] = [];
@@ -220,8 +258,23 @@ export async function finalizeSealedImport(
         toPublish.push(row);
         continue;
       }
+      // Full-row idempotency: EVERY replicated field must match, not just
+      // content — a same-content row in a different room/entity is a conflict.
+      const foundMeta =
+        found.metadata && typeof found.metadata === "object"
+          ? ({ ...(found.metadata as Record<string, unknown>) } as Record<string, unknown>)
+          : {};
+      delete foundMeta.source;
+      delete foundMeta.transfer_epoch;
       const same =
-        JSON.stringify(found.content) === JSON.stringify(row.content);
+        canonicalJson(found.content) === canonicalJson(row.content) &&
+        found.type === row.type &&
+        (found.entity_id ?? null) === (row.entity_id ?? null) &&
+        (found.room_id ?? null) === (row.room_id ?? null) &&
+        (found.world_id ?? null) === (row.world_id ?? null) &&
+        found.unique === row.unique &&
+        canonicalJson(foundMeta) === canonicalJson(row.metadata) &&
+        new Date(found.created_at).toISOString() === row.created_at;
       if (!same) {
         throw new ElizaError("A staged row conflicts with an existing memory", {
           code: MEMORY_IMPORT_ID_CONFLICT,

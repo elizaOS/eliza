@@ -68,7 +68,9 @@ interface ScriptedDb {
   statements: string[];
   transactions: number;
   stagedRows: SealedMemoryExportRow[];
-  existing: Array<{ id: string; content: unknown }>;
+  existing: Array<Record<string, unknown>>;
+  /** When set, staging inserts conflict and this payload is the kept row. */
+  replayKept?: unknown;
 }
 
 function scriptedRuntime(script: Partial<ScriptedDb> = {}) {
@@ -82,6 +84,12 @@ function scriptedRuntime(script: Partial<ScriptedDb> = {}) {
   const exec = async (q: unknown) => {
     const text = JSON.stringify(q);
     state.statements.push(text);
+    if (text.includes("INSERT INTO memory_import_staging")) {
+      return { rows: state.replayKept ? [] : [{ row_id: "x" }] };
+    }
+    if (text.includes("SELECT payload FROM memory_import_staging") && text.includes("row_id =")) {
+      return { rows: [{ payload: state.replayKept }] };
+    }
     if (text.includes("SELECT payload FROM memory_import_staging")) {
       return { rows: state.stagedRows.map((payload) => ({ payload })) };
     }
@@ -160,6 +168,37 @@ describe("stageSealedBatch", () => {
   });
 });
 
+function asExisting(r: SealedMemoryExportRow, overrides: Record<string, unknown> = {}) {
+  return {
+    id: r.id,
+    type: r.type,
+    created_at: r.created_at,
+    content: r.content,
+    entity_id: r.entity_id,
+    room_id: r.room_id,
+    world_id: r.world_id,
+    unique: r.unique,
+    metadata: r.metadata,
+    ...overrides,
+  };
+}
+
+describe("stageSealedBatch conflicting replay", () => {
+  test("byte-identical replay is idempotent; differing payload is a typed error", async () => {
+    const rows = [row(1)];
+    const seal = await sealFor(rows);
+    const kept = scriptedRuntime({ replayKept: JSON.stringify(rows[0]) });
+    await stageSealedBatch(kept.runtime, { seal, batch_index: 0, batch_count: 1, rows });
+    const conflicting = scriptedRuntime({
+      replayKept: JSON.stringify(row(1, { content: { text: "swapped" } })),
+    });
+    await expectCode(
+      stageSealedBatch(conflicting.runtime, { seal, batch_index: 0, batch_count: 1, rows }),
+      MEMORY_IMPORT_BATCH_INVALID,
+    );
+  });
+});
+
 describe("finalizeSealedImport", () => {
   test("refuses an unsupported vector dimension before touching the db", async () => {
     const rows = [row(1)];
@@ -198,7 +237,7 @@ describe("finalizeSealedImport", () => {
     const seal = await sealFor(rows, 384);
     const { runtime } = scriptedRuntime({
       stagedRows: rows,
-      existing: [{ id: row(1).id, content: { text: "different" } }],
+      existing: [asExisting(row(1), { content: { text: "different" } })],
     });
     await expectCode(
       finalizeSealedImport(runtime, { seal }),
@@ -225,12 +264,22 @@ describe("finalizeSealedImport", () => {
     expect(memInserts).toHaveLength(2);
   });
 
+  test("same content in a different room is a conflict, not a skip", async () => {
+    const rows = [row(1)];
+    const seal = await sealFor(rows, 384);
+    const { runtime } = scriptedRuntime({
+      stagedRows: rows,
+      existing: [asExisting(row(1), { room_id: "55000000-0000-4000-8000-000000000099" })],
+    });
+    await expectCode(finalizeSealedImport(runtime, { seal }), MEMORY_IMPORT_ID_CONFLICT);
+  });
+
   test("hash-identical existing rows are skipped, not conflicts", async () => {
     const rows = [row(1), row(2)];
     const seal = await sealFor(rows, 384);
     const { runtime, state } = scriptedRuntime({
       stagedRows: rows,
-      existing: [{ id: row(1).id, content: row(1).content }],
+      existing: [asExisting(row(1))],
     });
     const out = await finalizeSealedImport(runtime, { seal });
     expect(out).toEqual({ published: 1, skipped_existing: 1 });

@@ -111,6 +111,22 @@ export type SealedMemoryTransferError = z.infer<
 
 const encoder = new TextEncoder();
 
+/**
+ * Canonical JSON: object keys sorted recursively at every level, arrays kept
+ * in order, no whitespace. Two semantically identical values always produce
+ * the same bytes, so digests cannot drift on key order.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+}
+
 function toHex(bytes: ArrayBuffer): string {
   return [...new Uint8Array(bytes)]
     .map((b) => b.toString(16).padStart(2, "0"))
