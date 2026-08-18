@@ -125,6 +125,47 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(vm.hasStandaloneWebUi).toBe(false);
   });
 
+  it("renders only Shared Agent and Dedicated Agent product types on desktop and mobile", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          agents={[
+            row({ executionTier: "shared", agentName: "Shared Eliza" }),
+            row({
+              id: "00000000-1111-2222-3333-555555555555",
+              executionTier: "custom",
+              dockerImage: "private-image",
+              agentName: "Dedicated Eliza",
+            }),
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getAllByText("Shared Agent").length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(
+      screen.getAllByText("Dedicated Agent").length,
+    ).toBeGreaterThanOrEqual(2);
+    for (const rejected of [
+      "Sandbox",
+      "Cloud sandbox",
+      "Managed runtime",
+      "Shared runtime",
+      "Docker",
+    ]) {
+      expect(container.textContent).not.toContain(rejected);
+    }
+  });
+
   it("uses active poll jobs as the displayed status and busy state", () => {
     const vm = derive({ status: "pending" }, { active: true });
 

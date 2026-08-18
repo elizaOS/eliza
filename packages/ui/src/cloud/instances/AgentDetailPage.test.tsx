@@ -3,6 +3,7 @@
 
 import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,19 +40,12 @@ vi.mock("./lib/data/eliza-agents", () => ({
 }));
 
 vi.mock("./components/agent-actions", () => ({
-  ElizaAgentActions: () => null,
-}));
-vi.mock("./components/docker-logs-viewer", () => ({
-  DockerLogsViewer: () => null,
-}));
-vi.mock("./components/eliza-agent-backups-panel", () => ({
-  ElizaAgentBackupsPanel: () => null,
-}));
-vi.mock("./components/eliza-agent-logs-viewer", () => ({
-  ElizaAgentLogsViewer: () => null,
+  ElizaAgentActions: () => <div>Lifecycle actions</div>,
 }));
 vi.mock("./components/eliza-agent-tabs", () => ({
-  ElizaAgentTabs: () => null,
+  ElizaAgentTabs: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 vi.mock("./components/eliza-connect-button", () => ({
   ElizaConnectButton: () => null,
@@ -189,5 +183,47 @@ describe("AgentDetailPage date formatting", () => {
         }),
       ),
     ).toBeTruthy();
+  });
+
+  it("presents shared agents without infrastructure or admin panels", () => {
+    const { container } = renderPage({
+      ...baseAgent,
+      adminDetails: {
+        isDockerBacked: true,
+        nodeId: "node-1",
+        containerName: "container-1",
+        dockerImage: "private-image",
+        headscaleIp: "100.64.0.1",
+        bridgePort: 31337,
+        webUiPort: 5173,
+        webUiUrl: "https://private-web-ui.example",
+        sshCommand: "ssh private-host",
+      },
+      bridgeUrl: "https://private-bridge.example",
+    });
+
+    expect(screen.getByText("Shared Agent")).toBeTruthy();
+    expect(screen.getByText("Lifecycle actions")).toBeTruthy();
+    for (const rejected of [
+      "Sandbox",
+      "Managed runtime",
+      "Infrastructure",
+      "SSH Access",
+      "Backups & History",
+      "Agent Logs",
+      "Docker Logs",
+      "Save Snapshot",
+      "private-image",
+      "private-host",
+    ]) {
+      expect(container.textContent).not.toContain(rejected);
+    }
+  });
+
+  it("maps every non-shared hosted tier to Dedicated Agent", () => {
+    renderPage({ ...baseAgent, executionTier: "dedicated-always" });
+
+    expect(screen.getByText("Dedicated Agent")).toBeTruthy();
+    expect(screen.queryByText("Shared Agent")).toBeNull();
   });
 });

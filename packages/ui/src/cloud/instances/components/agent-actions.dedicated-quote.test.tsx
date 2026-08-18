@@ -118,6 +118,27 @@ describe("Dedicated activation quote", () => {
     );
   });
 
+  it("keeps lifecycle controls while removing the manual snapshot action", () => {
+    render(
+      <MemoryRouter>
+        <ElizaAgentActions
+          agentId="dedicated-agent"
+          executionTier="dedicated-always"
+          status="running"
+          webUiUrl="https://agent.example"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Suspend Agent" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Deactivate Agent" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete Agent" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save Snapshot" })).toBeNull();
+  });
+
   it("posts the exact quote and explicit action instead of client-computed terms", async () => {
     apiWithStatus
       .mockResolvedValueOnce({
