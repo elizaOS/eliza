@@ -4,6 +4,9 @@
  */
 import { ElizaClient } from "./client-base";
 
+/** iMessage status GET — existing 10s REST budget, independent hop. */
+export const IMESSAGE_STATUS_FETCH_TIMEOUT_MS = 10_000;
+
 export interface IMessageApiStatus {
   available: boolean;
   connected: boolean;
@@ -93,7 +96,7 @@ interface LifeOpsIMessageSendResponse {
 
 declare module "./client-base" {
   interface ElizaClient {
-    getIMessageStatus(): Promise<IMessageApiStatus>;
+    getIMessageStatus(timeoutMs?: number): Promise<IMessageApiStatus>;
     getIMessageMessages(
       options?: GetIMessageMessagesOptions,
     ): Promise<{ messages: IMessageApiMessage[]; count: number }>;
@@ -107,9 +110,14 @@ function buildQuery(params: URLSearchParams): string {
   return query.length > 0 ? `?${query}` : "";
 }
 
-ElizaClient.prototype.getIMessageStatus = async function (this: ElizaClient) {
+ElizaClient.prototype.getIMessageStatus = async function (
+  this: ElizaClient,
+  timeoutMs: number = IMESSAGE_STATUS_FETCH_TIMEOUT_MS,
+) {
   return this.fetch<LifeOpsIMessageStatusResponse>(
     "/api/lifeops/connectors/imessage/status",
+    undefined,
+    { timeoutMs },
   );
 };
 
