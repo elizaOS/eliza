@@ -3455,10 +3455,29 @@ export class OrchestratorTaskService extends Service {
       // ("cannot force update the checked-out branch", live 2026-08-18).
       await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
       await workspaceService.push(workspaceId, { setUpstream: true });
-      const title = (doc.task.title || workspace.branch).slice(0, 120);
+      // PR title/body must not carry the chat connector envelope — the raw
+      // originalRequest embeds "[Discord #channel | server] @user (ts):" plus
+      // platform mention ids, and a PR on a public repo publishes it (live
+      // 2026-08-18, sandbox PR #4). Use the planner-authored goal/title,
+      // stripped of any envelope prefix, mention tokens, and the trailing
+      // "and open a PR"-style instruction.
+      const scrubChatEnvelope = (value: string): string =>
+        value
+          .replace(/^\[[^\]\n]{0,120}\]\s*@?[\w.-]*\s*\([^)\n]{0,60}\)\s*:\s*/u, "")
+          .replace(/<@!?\d+>/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      const rawTitle = doc.task.title || doc.task.goal || workspace.branch;
+      const title = scrubChatEnvelope(rawTitle)
+        .replace(/[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu, "")
+        .trim()
+        .slice(0, 120) || workspace.branch;
+      const bodySummary = scrubChatEnvelope(
+        doc.task.goal?.slice(0, 800) ?? rawTitle,
+      );
       const pr = await workspaceService.createPR(workspaceId, {
         title,
-        body: `${doc.task.originalRequest?.slice(0, 800) ?? doc.task.goal?.slice(0, 800) ?? title}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
+        body: `${bodySummary}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
       });
       await this.store.updateTask(taskId, {
         metadata: {
