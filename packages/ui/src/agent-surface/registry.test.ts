@@ -193,11 +193,13 @@ describe("ViewAgentRegistry", () => {
     expect(registry.getFocusedId()).toBe("field");
   });
 
-  it("notifies subscribers on mutation and highlight toggles", () => {
+  it("defers lifecycle registration notifications but keeps explicit highlight changes synchronous", async () => {
     const registry = makeRegistry();
     const listener = vi.fn();
     registry.subscribe(listener);
     registry.register({ id: "x", label: "X" }, () => null);
+    expect(listener).not.toHaveBeenCalled();
+    await Promise.resolve();
     expect(listener).toHaveBeenCalledTimes(1);
     registry.setHighlight(true);
     expect(listener).toHaveBeenCalledTimes(2);
@@ -205,13 +207,11 @@ describe("ViewAgentRegistry", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
-  // #20728: React runs a deleted subtree's passive cleanups parent-first, so the
-  // owning provider's `retainViewRegistry` disposer seals the registry *before*
-  // any descendant `useAgentElement` disposer's delete/bump. Once sealed, a
-  // teardown mutation must advance internal state WITHOUT notifying a subscriber
-  // (the overlay's `useSyncExternalStore`) that is already committed for deletion
-  // — otherwise `forceStoreRerender` fires on an unmounting fiber (React #185).
-  it("stops notifying subscribers once the last provider retainer is released", () => {
+  // #20728/#20974: cleanup order is not a safe lifecycle boundary. Once sealed,
+  // a teardown mutation must advance internal state WITHOUT notifying a
+  // subscriber already committed for deletion; an unregister that wins the
+  // cleanup race queues delivery so the later seal can still cancel it.
+  it("stops notifying subscribers once the last provider retainer is released", async () => {
     const registry = getOrCreateViewRegistry("test-view", "gui");
     const listener = vi.fn();
     registry.subscribe(listener);
@@ -224,6 +224,7 @@ describe("ViewAgentRegistry", () => {
       { id: "live", label: "Live" },
       () => null,
     );
+    await Promise.resolve();
     expect(listener).toHaveBeenCalledTimes(1);
     const versionAfterRegister = registry.getVersion();
 
@@ -269,6 +270,63 @@ describe("ViewAgentRegistry", () => {
     registry.touch();
     expect(listener).toHaveBeenCalledTimes(2);
     releaseReplay();
+  });
+
+  it("cancels an unregister notification when provider teardown runs afterward", async () => {
+    const registry = getOrCreateViewRegistry("test-view", "gui");
+    const listener = vi.fn();
+    registry.subscribe(listener);
+    const release = retainViewRegistry(registry);
+    const unregister = registry.register(
+      { id: "racing-child", label: "Racing child" },
+      () => null,
+    );
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // Mirror the browser ordering from #20974: descendant cleanup first,
+    // provider cleanup second, then the queued notification gets a turn.
+    unregister();
+    expect(listener).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.resolve();
+
+    expect(registry.size()).toBe(0);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("still notifies a live view after an element unregisters", async () => {
+    const registry = getOrCreateViewRegistry("test-view", "gui");
+    const listener = vi.fn();
+    registry.subscribe(listener);
+    const release = retainViewRegistry(registry);
+    const unregister = registry.register(
+      { id: "conditional-child", label: "Conditional child" },
+      () => null,
+    );
+    await Promise.resolve();
+    listener.mockClear();
+
+    unregister();
+    expect(listener).not.toHaveBeenCalled();
+    await Promise.resolve();
+
+    expect(listener).toHaveBeenCalledOnce();
+    release();
+  });
+
+  it("coalesces registration and descriptor lifecycle notifications after passive effects", async () => {
+    const registry = makeRegistry();
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.register({ id: "field", label: "Field" }, () => null);
+    registry.touchDeferred();
+
+    expect(listener).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(registry.getVersion()).toBe(2);
   });
 });
 

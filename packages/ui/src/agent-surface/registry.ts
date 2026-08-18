@@ -81,6 +81,7 @@ export class ViewAgentRegistry {
   private readonly elements = new Map<string, ElementRecord>();
   private readonly listeners = new Set<() => void>();
   private version = 0;
+  private notificationEpoch = 0;
   private highlight = false;
   // When false the store still advances its version on mutation but never
   // notifies subscribers. Set false by `seal()` the moment the owning provider
@@ -106,14 +107,22 @@ export class ViewAgentRegistry {
       getElement,
       registeredAt: this.version,
     });
-    this.bump();
+    // Registration happens from `useAgentElement`'s passive mount effect.
+    // Deliver after the passive-effect flush so an already-mounted overlay is
+    // never forced to render while React is still committing its sibling tree.
+    this.bumpDeferred();
     return () => {
       const record = this.elements.get(descriptor.id);
       // Only delete if this is still the same registration (guards against a
       // remount registering before the prior unmount cleanup runs).
       if (record && record.getElement === getElement) {
         this.elements.delete(descriptor.id);
-        this.bump();
+        // React does not guarantee that a descendant cleanup runs after this
+        // registry's provider/overlay cleanups. Defer removal notification by
+        // one microtask so deleted-tree teardown can seal or unsubscribe first;
+        // a still-mounted view continues to observe the removal immediately
+        // after the passive-effect flush.
+        this.bumpDeferred();
       }
     };
   }
@@ -141,16 +150,27 @@ export class ViewAgentRegistry {
   }
 
   /**
-   * Stop notifying `useSyncExternalStore` subscribers. React runs a deleted
-   * subtree's passive cleanups parent-first, so the owning provider's teardown
-   * (its `retainViewRegistry` disposer) seals the registry *before* any
-   * descendant `useAgentElement` disposer's `delete`/`bump` runs — turning
-   * those teardown mutations into internal-state updates that never reach a
-   * subscriber committed for deletion (#20728). The version still advances so a
+   * Advance the snapshot after fields read by live descriptor getters change.
+   * `useAgentElement` calls this from a passive effect, so subscriber delivery
+   * waits until React finishes that effect flush. Explicit agent actions may
+   * continue to use the synchronous `touch()` boundary.
+   */
+  touchDeferred(): void {
+    this.bumpDeferred();
+  }
+
+  /**
+   * Stop notifying `useSyncExternalStore` subscribers. Deleted-tree passive
+   * cleanup order is not stable across renderer paths: a descendant unregister
+   * may run before this provider teardown. Removal delivery is deferred so this
+   * seal can invalidate it in either order. The version still advances so a
    * late introspection read stays consistent.
    */
   seal(): void {
     this.notifying = false;
+    // Invalidate any removal notification queued before teardown reached the
+    // provider. Its version already advanced; only subscriber delivery stops.
+    this.notificationEpoch += 1;
   }
 
   /**
@@ -169,7 +189,21 @@ export class ViewAgentRegistry {
 
   private bump(): void {
     this.version += 1;
+    this.notificationEpoch += 1;
     if (!this.notifying) return;
+    this.notifyListeners();
+  }
+
+  private bumpDeferred(): void {
+    this.version += 1;
+    const epoch = ++this.notificationEpoch;
+    queueMicrotask(() => {
+      if (!this.notifying || epoch !== this.notificationEpoch) return;
+      this.notifyListeners();
+    });
+  }
+
+  private notifyListeners(): void {
     // Snapshot listeners so a subscriber that unsubscribes while being notified
     // cannot corrupt the live iteration.
     for (const listener of [...this.listeners]) listener();
@@ -403,10 +437,10 @@ export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
     }
 
     viewRegistryMountCounts.delete(registry);
-    // Last provider retainer released: the owning tree is tearing down. Seal now
-    // — before descendant `useAgentElement` disposers mutate the store during
-    // the same deleted-tree passive phase — so no `bump()` reaches a subscriber
-    // committed for deletion (#20728).
+    // Last provider retainer released: the owning tree is tearing down. Any
+    // descendant unregister that already ran queued its notification for a
+    // microtask; sealing invalidates that delivery. Later unregisters are
+    // silent immediately, so cleanup order cannot reach a deleted subscriber.
     registry.seal();
     if (viewRegistries.get(registryKey) === registry) {
       viewRegistries.delete(registryKey);
