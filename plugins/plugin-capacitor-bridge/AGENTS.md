@@ -16,7 +16,7 @@ The plugin owns service lifecycle; its bootstrap registers model handlers direct
 |---|---|
 | `mobileDeviceBridgePlugin` | Registers the canonical `MobileDeviceBridgeService`; the pre-initialize bootstrap installs this same plugin so later plugin registration remains idempotent. |
 | `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers the canonical `MobileDeviceBridgeService` before initialization, then registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` handlers only after a bionic host or real device can serve them. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
-| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the canonical singleton's WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. The server close boundary removes the hook, closes clients, cancels pending calls, and clears heartbeat timers; runtime stop releases only that runtime's subscription. |
+| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the canonical singleton's WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server` and returns whether that exact server owns the active handler. The server close boundary removes the hook, closes clients, cancels pending calls, and clears heartbeat timers; runtime stop releases only that runtime's subscription. |
 | `getMobileDeviceBridgeStatus()` | Returns `MobileDeviceBridgeStatus`: enabled, connected devices, loaded model path, pending request counts. |
 | `loadMobileDeviceBridgeModel(modelPath, modelId?)` | Imperatively load a GGUF into the connected Android device. |
 | `unloadMobileDeviceBridgeModel()` | Unload the current model from the connected Android device. |

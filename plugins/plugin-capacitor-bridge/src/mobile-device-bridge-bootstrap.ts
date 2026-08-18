@@ -423,13 +423,16 @@ class MobileDeviceBridge {
 		};
 	}
 
-	async attachToHttpServer(server: HttpServer): Promise<void> {
-		if (!SERVICE_ENABLED || this.wss) return;
+	async attachToHttpServer(server: HttpServer): Promise<boolean> {
+		if (!SERVICE_ENABLED) return false;
+		if (this.wss) {
+			return this.attachedServer === server && this.upgradeHandler !== null;
+		}
 		if (!this.expectedPairingToken) {
 			logger.warn(
 				"[mobile-device-bridge] Disabled: ELIZA_DEVICE_PAIRING_TOKEN is required when ELIZA_DEVICE_BRIDGE_ENABLED=1",
 			);
-			return;
+			return false;
 		}
 		// Resolve and validate every device-bridge timeout once, here at the
 		// real activation boundary, before any transport or device state is
@@ -471,7 +474,7 @@ class MobileDeviceBridge {
 		}
 		if (generation !== this.lifecycleGeneration || this.wss) {
 			server.off("close", serverCloseHandler);
-			return;
+			return this.attachedServer === server && this.upgradeHandler !== null;
 		}
 		if (!isWsModule(wsModule)) {
 			server.off("close", serverCloseHandler);
@@ -503,6 +506,7 @@ class MobileDeviceBridge {
 		logger.info(
 			`[mobile-device-bridge] Listening for Capacitor device bridge at ${DEVICE_BRIDGE_PATH}`,
 		);
+		return true;
 	}
 
 	private handleConnection(
@@ -2175,8 +2179,8 @@ export const mobileDeviceBridgePlugin: Plugin = {
 
 export async function attachMobileDeviceBridgeToServer(
 	server: HttpServer,
-): Promise<void> {
-	await mobileDeviceBridge.attachToHttpServer(server);
+): Promise<boolean> {
+	return mobileDeviceBridge.attachToHttpServer(server);
 }
 
 /**

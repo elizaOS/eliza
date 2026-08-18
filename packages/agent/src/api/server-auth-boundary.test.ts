@@ -113,8 +113,16 @@ afterEach(async () => {
   restoreEnvironment();
 });
 
-async function bootServer(): Promise<string> {
-  api = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+async function bootServer(
+  configureServer?: NonNullable<
+    Parameters<typeof startApiServer>[0]
+  >["configureServer"],
+): Promise<string> {
+  api = await startApiServer({
+    port: 0,
+    skipDeferredStartupWork: true,
+    configureServer,
+  });
   process.env.ELIZA_PORT = String(api.port);
   process.env.ELIZA_API_PORT = String(api.port);
   return `http://127.0.0.1:${api.port}`;
@@ -262,6 +270,27 @@ describe("device-bridge WS upgrade gate (W1-011)", () => {
       "/api/local-inference/device-bridge",
     );
     expect(afterFailure.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
+  }, 120_000);
+
+  it("does not mistake an unrelated concurrent upgrade listener for the bridge", async () => {
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN = "auth-boundary-test-pairing-token";
+    process.env.ELIZA_DEVICE_LOAD_TIMEOUT_MS = "not-a-number";
+    const baseUrl = await bootServer((server) => {
+      // Land a listener while the deferred plugin import/attach is in flight.
+      // A process-global listener-count delta cannot prove who registered it.
+      setImmediate(() => {
+        setImmediate(() => server.on("upgrade", () => undefined));
+      });
+    });
+    const port = Number(new URL(baseUrl).port);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+
+    const raw = await wsUpgradeResponse(
+      port,
+      "/api/local-inference/device-bridge",
+    );
+    expect(raw.startsWith("HTTP/1.1 404 Not Found")).toBe(true);
   }, 120_000);
 
   it("delegates the device-bridge upgrade once the bridge listener has actually attached", async () => {

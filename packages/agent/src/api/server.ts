@@ -3822,7 +3822,8 @@ export async function startApiServer(opts?: {
   // promise is not proof of that: an optional-plugin import rejection resolves
   // through the no-op fallback API, and the bridge attach itself returns early
   // when the bridge is disabled for the platform — in both cases nothing is
-  // listening. Track the upgrade-listener delta the attach actually produces.
+  // listening. Use the bridge's explicit attachment result; listener counts
+  // are process-global observations and can be changed by unrelated features.
   let deviceBridgeUpgradeHandlerAttached = false;
   if (
     isMobilePlatform() ||
@@ -3835,18 +3836,16 @@ export async function startApiServer(opts?: {
     // The bridge only needs to attach a WS upgrade handler to the server object,
     // which works fine once the server is already listening.
     setImmediate(() => {
-      const upgradeListenersBeforeAttach = server.listenerCount("upgrade");
       void getOptionalPluginApi<{
         attachMobileDeviceBridgeToServer: (
           server: http.Server,
-        ) => Promise<void>;
+        ) => Promise<boolean>;
       }>("capacitor")
         .then(({ attachMobileDeviceBridgeToServer }) =>
           attachMobileDeviceBridgeToServer(server),
         )
-        .then(() => {
-          deviceBridgeUpgradeHandlerAttached =
-            server.listenerCount("upgrade") > upgradeListenersBeforeAttach;
+        .then((attached) => {
+          deviceBridgeUpgradeHandlerAttached = attached === true;
         })
         .catch((err: unknown) => {
           logger.warn(
