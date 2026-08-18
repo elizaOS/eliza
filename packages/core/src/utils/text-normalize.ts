@@ -13,6 +13,7 @@
  * - Arrays are recursively flattened
  * - Empty/nullish values are dropped
  * - Strings are trimmed
+ * - Dates become deterministic ISO-8601 strings
  * - Objects become `key: value` fragments
  * - Scalars are stringified
  */
@@ -48,6 +49,15 @@ function flattenTextValuesWithAncestors(
 	}
 
 	if (typeof value === "object") {
+		const dateTimestamp = getDateTimestamp(value);
+		if (dateTimestamp !== undefined) {
+			return Number.isNaN(dateTimestamp)
+				? [Date.prototype.toString.call(value)]
+				: [Date.prototype.toISOString.call(value)];
+		}
+	}
+
+	if (typeof value === "object") {
 		if (ancestors.has(value)) {
 			return [];
 		}
@@ -68,6 +78,21 @@ function flattenTextValuesWithAncestors(
 	}
 
 	return [String(value)];
+}
+
+function getDateTimestamp(value: object): number | undefined {
+	try {
+		if (
+			!(value instanceof Date) &&
+			Object.prototype.toString.call(value) !== "[object Date]"
+		) {
+			return undefined;
+		}
+		return Date.prototype.getTime.call(value);
+	} catch {
+		// error-policy:J3 Reject spoofed or otherwise non-Date objects.
+		return undefined;
+	}
 }
 
 /**

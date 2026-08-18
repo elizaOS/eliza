@@ -1,4 +1,7 @@
-// Exercises safe fetch behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises safe-fetch DNS, redirect, cancellation, and socket-pinning behavior
+ * with deterministic cloud-shared fixtures.
+ */
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
 
@@ -173,6 +176,26 @@ describe("safeFetch fail-closed", () => {
     await expect(safeFetch("https://rebind.example/internal")).rejects.toThrow(
       "Endpoint resolves to a private or reserved IP address",
     );
+  });
+
+  test("does not connect when DNS resolves after the request is aborted", async () => {
+    let finishLookup: ((records: Array<{ address: string; family: number }>) => void) | undefined;
+    lookupMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("deadline expired");
+    const pending = safeFetch("https://slow-dns.example/image", {
+      signal: controller.signal,
+    });
+
+    controller.abort(reason);
+    finishLookup?.([{ address: "93.184.216.34", family: 4 }]);
+
+    await expect(pending).rejects.toBe(reason);
+    expect(requestMock).not.toHaveBeenCalled();
   });
 
   test("rejects credential-bearing and non-http targets before any lookup", async () => {

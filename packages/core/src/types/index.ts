@@ -65,7 +65,6 @@ export * from "./prompt-optimization-hooks";
 export * from "./prompt-optimization-score-card";
 export * from "./prompt-optimization-trace";
 export * from "./prompts";
-export * from "./provider-integrations";
 export * from "./runtime";
 export * from "./schema";
 export * from "./schema-builder";
