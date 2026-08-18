@@ -24,6 +24,7 @@ import {
   SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
@@ -995,6 +996,22 @@ export class SwarmCoordinatorService
       // also refreshes the enrichment cache for downstream reads this turn).
       const fresh = await this.getFreshSessionMetadata(sessionId);
       if (readString(fresh, HANDED_OFF_SUCCESSOR_META_KEY)) {
+        return;
+      }
+      // Administrative stop (task archive/delete/pause, user stop, API stop):
+      // the lifecycle itself caused this teardown, so "stopped before
+      // completion" is noise the user already knows about. Suppress WITHOUT
+      // claiming the synthesizedCompletionSessions slot (same no-slot-claim
+      // contract as the handoff skip above) so a later genuine lineage
+      // completion still posts. Only `stopped` is gated — `cancelled` maps to
+      // no synthesis status at all (completionStatusForEvent) — and an
+      // UNMARKED stop (crash, subprocess death) still synthesizes: the
+      // #11689 never-silent-terminal invariant is the regression line.
+      const adminStop = readString(fresh, ADMIN_STOP_META_KEY);
+      if (adminStop) {
+        logger.debug(
+          `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+        );
         return;
       }
       // Handoff decided but successor spawn not yet settled: the stop is

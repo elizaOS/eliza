@@ -187,7 +187,10 @@ describe("TASKS:create durable-task widget emission", () => {
     expect(acp.spawnSession).not.toHaveBeenCalled();
     expect(acp.sendPrompt).not.toHaveBeenCalled();
     expect(acp.stopSession).not.toHaveBeenCalled();
-    expect(cb).toHaveBeenCalledTimes(1);
+    // Planner-facing refusal: no canned chat callback — the planner phrases
+    // the failure from the truth-critical text + {nothingStarted} fact.
+    expect(cb).not.toHaveBeenCalled();
+    expect(result?.data).toMatchObject({ nothingStarted: true });
   });
 
   it("preserves a durable-link failure when unprompted-session teardown also fails", async () => {
@@ -233,8 +236,18 @@ describe("TASKS:create durable-task widget emission", () => {
     }
 
     expect(result?.success).toBe(false);
-    expect(result?.text).toContain("durable store offline");
+    // The visible launch-failure message is now composed from structured
+    // facts; the authoritative durable-link error rides in data.agents (and
+    // logs), never as raw prose — and the secondary teardown error must not
+    // displace it there.
+    expect(result?.text).toContain("failed");
     expect(result?.text).not.toContain("stop transport failed");
+    const failedAgents = (
+      result?.data as { agents?: Array<{ error?: string }> }
+    )?.agents?.filter((agent) => typeof agent.error === "string");
+    expect(failedAgents).toHaveLength(1);
+    expect(failedAgents?.[0]?.error).toContain("durable store offline");
+    expect(failedAgents?.[0]?.error).not.toContain("stop transport failed");
     expect(attachSession).toHaveBeenCalledTimes(1);
     expect(acp.stopSession).toHaveBeenCalledTimes(1);
     expect(acp.sendPrompt).not.toHaveBeenCalled();

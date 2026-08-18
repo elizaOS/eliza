@@ -17,7 +17,8 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
-  it("rejects a history operation alias on the promoted create tool", async () => {
+  it("executes a declared history alias on the promoted create tool instead of stranding", async () => {
+    // New virtual-pin contract: explicit declared discriminators execute.
     const create = promoteSubactionsToActions(createTaskAction).find(
       (action) => action.name === "TASKS_CREATE",
     );
@@ -32,10 +33,7 @@ describe("TASKS:create", () => {
       callback(),
     );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Call TASKS_HISTORY"),
-    });
+    expect((result as { success?: boolean }).success).toBe(true);
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
@@ -169,6 +167,99 @@ describe("TASKS:create", () => {
     );
     expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
+  it("stamps a distinct requestVoicePart per part on a multi-part fan-out, none on a single-part create", async () => {
+    // Fan-out voice scoping: genuinely parallel parts spawned from ONE user
+    // message each get their own request-voice slot (part:<index>), so the
+    // first part's terminal cannot gag the siblings' genuine results. A
+    // single-part create keeps the bare request key — retries/cascades of a
+    // single task still share one voice.
+    const svc = serviceMock();
+    const workdir = os.tmpdir();
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          agents: "build the API | build the UI",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    const parts = svc.spawnSession.mock.calls
+      .map(
+        (call) =>
+          (call[0] as { metadata?: Record<string, unknown> }).metadata
+            ?.requestVoicePart,
+      )
+      .sort();
+    expect(parts).toEqual(["part:0", "part:1"]);
+
+    const single = serviceMock();
+    const singleResult = await createTaskAction.handler(
+      runtimeWith(single),
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "fix bug",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(singleResult?.success).toBe(true);
+    expect(
+      (
+        single.spawnSession.mock.calls[0]?.[0] as
+          | { metadata?: Record<string, unknown> }
+          | undefined
+      )?.metadata?.requestVoicePart,
+    ).toBeUndefined();
+  });
+
+  it("an inherited requestVoicePart (lane respawn) overrides the per-part mint", async () => {
+    // Respawn-shares-key per lane: a synthetic respawn inbound carries its
+    // predecessor's part in content.metadata — the create must inherit it
+    // verbatim instead of minting a fresh one, or the respawned lane would
+    // claim a different voice slot and double-post.
+    const svc = serviceMock();
+    const workdir = os.tmpdir();
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({
+        text: "continue the lane",
+        metadata: {
+          subAgent: true,
+          spawnRootMessageId: "root-1",
+          requestVoicePart: "lane:w1:a",
+        },
+      }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "continue the lane",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    const spawnCall = svc.spawnSession.mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(spawnCall?.metadata?.requestVoicePart).toBe("lane:w1:a");
+    expect(spawnCall?.metadata?.spawnRootMessageId).toBe("root-1");
+  });
+
   it("handles missing service, auth error, generic failure", async () => {
     expect(
       (

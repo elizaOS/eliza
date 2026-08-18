@@ -2,7 +2,7 @@
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
- * Client Protocol, exactly like the opencode / codex / claude ACP agents.
+ * Client Protocol, exactly like the codex / claude ACP agents.
  *
  * The orchestrator resolves the `elizaos` agent type to the command in
  * `ELIZA_ELIZAOS_ACP_COMMAND` and spawns it as a long-lived ACP JSON-RPC server
@@ -46,7 +46,7 @@ import {
   getMainRoomElizaId,
   type SessionIdentity,
 } from "./lib/identity.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
+import { applyElizaCodeProviderEnv } from "./lib/model-provider.js";
 import type { ChatRoom } from "./types.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
@@ -84,12 +84,11 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
       process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
-    // Drop-in for the opencode coding sub-agent: when the host configured
-    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
-    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
-    // same backend with zero extra setup. The orchestrator forwards the parent
-    // env to this spawned process.
-    applyOpencodeProviderEnv(process.env);
+    // When the host configured a coding provider (ELIZA_CODE_* — e.g. a
+    // Cerebras key/url/models) but no explicit OPENAI_*, inherit that provider
+    // config so eliza-code runs on the configured backend with zero extra
+    // setup. The orchestrator forwards the parent env to this spawned process.
+    applyElizaCodeProviderEnv(process.env);
     // Isolated, ephemeral database for this coding sub-agent. PGlite is
     // single-process: the parent bot (and any other concurrently-spawned
     // eliza-code sub-agent) holds the PGlite dir under ELIZA_STATE_DIR, so a
@@ -163,7 +162,7 @@ const sessions = new Map<string, AcpSession>();
 /**
  * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
  * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
- * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
+ * coding sub-agent, the relay contract"). claude/codex auto-read these
  * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
  * read them explicitly from the build workspace and inject them so the sub-agent
  * gets the same orientation as the other backends.
@@ -274,7 +273,7 @@ const _connection = new AgentSideConnection(
       if (!text) return { stopReason: "end_turn" };
       // Inject the orchestrator's scaffolded operating manual on the first prompt
       // of the session so eliza-code gets the same "you are a non-interactive Eliza
-      // coding sub-agent + relay contract" orientation as claude/codex/opencode.
+      // coding sub-agent + relay contract" orientation as claude/codex.
       if (!session.manualInjected) {
         session.manualInjected = true;
         const preamble: string[] = [];

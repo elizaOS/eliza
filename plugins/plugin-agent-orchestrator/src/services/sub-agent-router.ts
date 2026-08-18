@@ -32,6 +32,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
@@ -66,6 +67,7 @@ import {
 import {
   createRouterLoopState,
   type RouterLoopState,
+  requestVoiceKeyForMeta,
   routerLoopTransition,
 } from "./router-loop-guard.js";
 import {
@@ -99,6 +101,23 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 };
 
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
+
+/**
+ * Sources that are internal routing markers, never registered connector send
+ * handlers. A session spawned from a SYNTHETIC sub-agent turn can inherit one
+ * of these as its origin source when the tasks.ts one-level unwrap misses (the
+ * triggering synthetic memory carried no `originSource` — observed live: the
+ * app-control flow's "fix … deployment" follow-up spawn delivered its
+ * completion with source=sub_agent, the dashboard fallback handler rightly
+ * refused ambient delivery, and the user never saw the result). Delivery-time
+ * resolution through the room row (which knows its creating connector) is the
+ * catch-all for every spawn path.
+ */
+const INTERNAL_MARKER_SOURCES = new Set<string>([
+  MESSAGE_SOURCE_SUB_AGENT,
+  "sub_agent_complete",
+  "orchestrator",
+]);
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Display name of the ONE shared entity every router post is attributed to.
 // The name is frozen at first creation per DB (adapter-side
@@ -785,6 +804,94 @@ export class SubAgentRouter extends Service {
     return this.loopState.roundTripCap;
   }
 
+  // ---- request-voice ledger ------------------------------------------------
+  // ONE user coding request (stable requestKey, across sessions AND respawns)
+  // gets at most one spawn ack and one user-facing terminal, with a single
+  // sanctioned provisional-result → parked supersede. The task service and
+  // coordinator consume these STRUCTURALLY via
+  // runtime.getService("ACPX_SUB_AGENT_ROUTER") + per-method typeof checks and
+  // fail open when the router is absent — the ledger can only ever REMOVE
+  // messages, never introduce a silent-drop mode of its own.
+
+  /**
+   * Claim the single spawn-ack slot for `requestKey`. True ⇒ this caller may
+   * post the ack; false ⇒ an ack already went out for this request.
+   */
+  claimRequestAck(requestKey: string, sessionId: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_ack",
+      requestKey,
+      sessionId,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "ack_granted";
+  }
+
+  /**
+   * Claim the single user-facing terminal slot for `requestKey`. `granted`
+   * false ⇒ suppress the post (`holderKind` says what already holds the
+   * voice); `superseded` true ⇒ a sanctioned correction replaced the holder
+   * (park notice over a provisional result, or a genuine result over the
+   * failure narration that invited the retry).
+   */
+  claimRequestTerminal(
+    requestKey: string,
+    sessionId: string,
+    kind: "result" | "parked" | "failure",
+    provisional: boolean,
+  ): { granted: boolean; superseded?: boolean; holderKind?: string } {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_terminal",
+      requestKey,
+      sessionId,
+      kind,
+      provisional,
+    });
+    this.loopState = t.state;
+    switch (t.decision.kind) {
+      case "terminal_granted":
+        return { granted: true };
+      case "terminal_granted_supersede":
+        return { granted: true, superseded: true };
+      case "terminal_denied":
+        return { granted: false, holderKind: t.decision.holderKind };
+      default:
+        // Unreachable: the two claim events only produce the three decisions
+        // above. Fail open (post) rather than invent a new silent-drop mode.
+        return { granted: true };
+    }
+  }
+
+  /** Whether `requestKey`'s terminal slot is settled (nothing may post after it). */
+  isRequestTerminalFinalized(requestKey: string): boolean {
+    return (
+      this.loopState.requestVoice.get(requestKey)?.terminal?.finalized === true
+    );
+  }
+
+  /**
+   * A NEW spawn was admitted for `requestKey` (verify-driven or planner-driven
+   * retry, via the TASKS spawn paths). Clears a `failure` terminal held by an
+   * earlier generation so the retry regains the request's voice — without this
+   * the error narration that INVITED the retry kept the key finalized: the
+   * retry's progress and questions were muted and its genuine completion was
+   * terminal_denied (live defect). Result/parked holders and the ack slot are
+   * untouched. True ⇒ a failure terminal was cleared.
+   */
+  noteRespawnAdmitted(requestKey: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "respawn_admitted",
+      requestKey,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "voice_reset";
+  }
+
+  /** Thin re-export of the canonical request-key ladder (router-loop-guard.ts). */
+  requestKeyForMeta(meta: Record<string, unknown> | undefined): string | null {
+    return requestVoiceKeyForMeta(meta);
+  }
+
   /**
    * Is the router bound to the ACP session-event stream and therefore actually
    * going to post completions for origin-routed sessions?
@@ -1103,6 +1210,24 @@ export class SubAgentRouter extends Service {
         type: "task_complete_progress",
         lineageKey: respawnLineageKey(session, origin),
       }).state;
+      // A completion that is a VERIFY RE-ENGAGE response must not reach the
+      // user: each auto-verify correction prompt makes the session run another
+      // turn ending in task_complete, and relaying every one produced 4
+      // contradictory "done"/"failed"/"stuck" messages for a single request
+      // (live: tide-lines, 6 bot messages for one prompt). The task-service
+      // event bridge subscribes to AcpService independently, so verification
+      // still consumes this event; only the user-facing post is suppressed.
+      // Keyed on autoVerifyAttempts (persisted BEFORE each correction prompt),
+      // so the FIRST completion always relays regardless of subscriber order,
+      // and lookup failure fails open (relay as before).
+      const suppressReason = await this.verifyChurnSuppression(sessionId);
+      if (suppressReason) {
+        this.log("info", "suppressing verify-churn completion relay", {
+          sessionId,
+          reason: suppressReason,
+        });
+        return;
+      }
     }
 
     // The ACP session/prompt stopReason for a task_complete tells us whether the
@@ -1612,6 +1737,80 @@ export class SubAgentRouter extends Service {
         return;
       }
     }
+    // Request-voice terminal claim: ONE user-facing terminal per user coding
+    // request, across sessions AND respawns. Broader than the per-lineage
+    // claim above — a task-service respawn mints a new session and a new
+    // lineage, so each generation's re-engage completion passed the lineage
+    // claim and relayed (~12 messages for one request, live defect). Placed
+    // BEFORE the verified-URL handling so a denial also suppresses the OS
+    // notification and screenshot delivery downstream. requestKey null ⇒ no
+    // stable per-request id ⇒ fail open (no gating).
+    const routingKind = routingKindForEvent(event, data, capExceeded);
+    const requestKey = requestVoiceKeyForMeta(
+      session.metadata as Record<string, unknown> | undefined,
+    );
+    if (routingKind === QUESTION_FOR_TASK_CREATOR) {
+      // Questions never claim the terminal slot — but a session still asking
+      // after its request reached a FINAL terminal (parked/failed) is noise:
+      // the user was already told the request is over. A merely-provisional
+      // result does not gag questions.
+      if (requestKey && this.isRequestTerminalFinalized(requestKey)) {
+        this.log(
+          "info",
+          "suppressing sub-agent question after finalized request terminal",
+          { sessionId, event, requestKey },
+        );
+        rollbackRoundTrip();
+        return;
+      }
+    } else {
+      // Failure conditions FIRST: when capExceeded/stateLostExhausted forced a
+      // terminal narration, that narration is what posts (baseText above) even
+      // if the underlying event was a task_complete — claim it as the failure
+      // it reads as, not a supersedable provisional result.
+      const terminalKind: "result" | "failure" | null =
+        capExceeded || stateLostExhausted || event === "error"
+          ? "failure"
+          : event === "task_complete"
+            ? "result"
+            : null;
+      if (terminalKind && requestKey) {
+        // task_complete claims provisional ALWAYS: whether verification will
+        // re-engage is unknowable here (router vs task-service event-bridge
+        // subscriber order is unspecified), and provisionality is consumed
+        // only by the one sanctioned parked supersede.
+        const claim = this.claimRequestTerminal(
+          requestKey,
+          sessionId,
+          terminalKind,
+          terminalKind === "result",
+        );
+        if (!claim.granted) {
+          this.log(
+            "info",
+            "suppressing duplicate request terminal; request voice already held",
+            {
+              sessionId,
+              event,
+              requestKey,
+              terminalKind,
+              holderKind: claim.holderKind,
+            },
+          );
+          if (event === "task_complete") {
+            this.captureOriginResultForCompletion(
+              origin,
+              session,
+              text,
+              deliverable,
+              deadUrls,
+            );
+          }
+          rollbackRoundTrip();
+          return;
+        }
+      }
+    }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
       // A built app was fire-and-forget before this: the verified live URL
@@ -1706,7 +1905,6 @@ export class SubAgentRouter extends Service {
         );
       }
     }
-    const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
     // User-facing leg of a blocked sub-agent's question: with per-task GROUP
     // rooms on by default the task room maps to no live connector channel, so
@@ -1844,6 +2042,12 @@ export class SubAgentRouter extends Service {
             ...(origin.spawnRootMessageId
               ? { spawnRootMessageId: origin.spawnRootMessageId }
               : {}),
+            // Re-stamp the fan-out part so a respawn of this lane inherits its
+            // predecessor's request-voice key instead of minting a new one
+            // (respawn-shares-key per lane; see requestVoiceKeyForMeta).
+            ...(origin.requestVoicePart
+              ? { requestVoicePart: origin.requestVoicePart }
+              : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
             ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
             ...(sessionRoute ? { workdirRoute: sessionRoute } : {}),
@@ -1939,16 +2143,23 @@ export class SubAgentRouter extends Service {
     const body = stripSubAgentHeaderLine(text).trim() || text.trim();
     const originReplyTarget =
       origin.parentConnectorMessageId ?? origin.parentMessageId;
+    const questionSource =
+      (await this.resolveDeliverySource(origin)) ?? origin.source;
     try {
       requireConfirmedSendHandlerDelivery(
         await sendToTarget(
-          { source: origin.source, roomId: origin.roomId },
+          { source: questionSource, roomId: origin.roomId },
           {
             text: `❓ [${origin.label}] ${body}`,
             // Same source the router stamps on its posts: the mid-task forward
             // handler skips it (echo-loop guard), so the question is never fed
             // back into the asking session as a prompt.
             source: ACPX_ROUTER_SOURCE,
+            // The body is the sub-agent's OWN model prose — rewriting it risks
+            // corrupting the question, and the core transport voice gate would
+            // also strip the `❓ [label]` marker. Stamp it as already voiced so
+            // the gate passes it through verbatim.
+            ...AGENT_VOICED_METADATA,
             ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
           },
         ),
@@ -1963,6 +2174,99 @@ export class SubAgentRouter extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Per-room memo of resolved connector sources (FIFO-bounded). */
+  private readonly roomSourceMemo = new Map<string, string>();
+
+  /**
+   * Whether this session's task_complete is verify-churn that must not relay
+   * to the user: the durable task is mid-validation with at least one
+   * re-engage already issued (`autoVerifyAttempts >= 1`), or already parked
+   * with the escalation notice sent. Returns the suppress reason, or null to
+   * relay. Every failure path returns null — an unreadable task store must
+   * never silence a genuine completion.
+   */
+  private async verifyChurnSuppression(
+    sessionId: string,
+  ): Promise<string | null> {
+    try {
+      // Resolve via the task service's per-SESSION mapping (store.findSession),
+      // not listTasks().latestSessionId: a verify-driven respawn creates a
+      // second session and moves latestSessionId to it, so the ORIGINAL
+      // session's re-engage completions resolved no task and relayed anyway
+      // (the stated live insufficiency of this gate).
+      const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+        | {
+            getTaskForSession?: (sessionId: string) => Promise<{
+              status: string;
+              metadata?: Record<string, unknown>;
+            } | null>;
+          }
+        | undefined;
+      if (typeof tasks?.getTaskForSession !== "function") return null;
+      const task = await tasks.getTaskForSession(sessionId);
+      if (!task) return null;
+      const attempts = Number(task.metadata?.autoVerifyAttempts) || 0;
+      if (task.status === "validating" && attempts >= 1) {
+        return `re-engage response (attempt ${attempts}, task validating)`;
+      }
+      if (
+        task.status === "waiting_on_user" &&
+        task.metadata?.verifyEscalationNotifiedAt
+      ) {
+        return "task already parked and escalation notice delivered";
+      }
+      return null;
+    } catch (err) {
+      // error-policy:J7 churn gating is advisory; an unreadable task store must not suppress a real completion
+      this.log("debug", "verify-churn lookup failed; relaying", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Resolve the source a delivery should actually use. A real connector source
+   * passes through untouched; an internal marker (or a missing source) is
+   * re-resolved through the room row, which records the connector that created
+   * it — the same fallback `getTaskOriginTarget` uses. Falls back to the
+   * original value so a failed lookup degrades to the prior loud delivery
+   * failure, never a silent drop.
+   */
+  private async resolveDeliverySource(
+    origin: Pick<OriginInfo, "roomId" | "source">,
+  ): Promise<string | undefined> {
+    const source = origin.source;
+    if (source && !INTERNAL_MARKER_SOURCES.has(source)) return source;
+    const memo = this.roomSourceMemo.get(origin.roomId);
+    if (memo) return memo;
+    try {
+      const room = await this.runtime.getRoom?.(origin.roomId);
+      const roomSource =
+        typeof room?.source === "string" && room.source.trim()
+          ? room.source.trim()
+          : undefined;
+      if (roomSource && !INTERNAL_MARKER_SOURCES.has(roomSource)) {
+        this.roomSourceMemo.set(origin.roomId, roomSource);
+        while (this.roomSourceMemo.size > 1024) {
+          const oldest = this.roomSourceMemo.keys().next().value;
+          if (!oldest) break;
+          this.roomSourceMemo.delete(oldest);
+        }
+        return roomSource;
+      }
+    } catch (err) {
+      // error-policy:J7 source resolution is best-effort routing repair; a room
+      // lookup failure falls back to the original (possibly failing) source.
+      this.log("debug", "room-source resolution failed", {
+        roomId: origin.roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return source;
   }
 
   private buildReplyCallback(
@@ -2029,9 +2333,11 @@ export class SubAgentRouter extends Service {
             inReplyTo: originReplyTarget,
           }
         : { ...response, source: "sub_agent_complete" };
+      const deliverySource =
+        (await this.resolveDeliverySource(origin)) ?? source;
       const delivered = await sendToTarget(
         {
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
         },
         threadedResponse,
@@ -2040,7 +2346,7 @@ export class SubAgentRouter extends Service {
         // delivered list on failure (honest "0 delivered").
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
           targetRoomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
@@ -2869,6 +3175,11 @@ interface OriginInfo {
   /** Stable per-request root id for the per-origin spawn cap; present on every
    * transport (connector message id, else the origin user message id). (#8875) */
   spawnRootMessageId?: string;
+  /** Fan-out part suffix for the request-voice key (`requestVoiceKeyForMeta`):
+   * minted once per lane/part on a deliberate multi-part create and inherited
+   * verbatim by every respawn of that lane, so parallel lanes own distinct
+   * voice slots while a respawn still shares its predecessor's key. */
+  requestVoicePart?: string;
   label: string;
   source?: string;
 }
@@ -2934,6 +3245,7 @@ export function readOrigin(session: SessionInfo): OriginInfo | null {
     parentMessageId: pickUuid(meta.messageId),
     parentConnectorMessageId: pickPlainString(meta.originConnectorMessageId),
     spawnRootMessageId: spawnRootIdFromMeta(meta),
+    requestVoicePart: pickPlainString(meta.requestVoicePart),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };

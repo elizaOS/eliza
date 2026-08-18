@@ -34,17 +34,26 @@ const LINK_SHARE_TEXT = [
 ].join("\n");
 
 function makeFakeAcp() {
-  const spawnSession = vi.fn(async (opts: Record<string, unknown>) => ({
-    sessionId: "session-1",
-    agentType: (opts.agentType as string) ?? "codex",
-    workdir: (opts.workdir as string) ?? "/tmp/spawn-test",
-    status: "running",
-  }));
+  const sessions = new Map<string, Record<string, unknown>>();
+  const spawnSession = vi.fn(async (opts: Record<string, unknown>) => {
+    const record = {
+      sessionId: "session-1",
+      agentType: (opts.agentType as string) ?? "codex",
+      workdir: (opts.workdir as string) ?? "/tmp/spawn-test",
+      status: "running",
+    };
+    sessions.set(record.sessionId, record);
+    return record;
+  });
   const service = {
     spawnSession,
-    getSession: vi.fn(async () => undefined),
-    getSessions: vi.fn(async () => []),
-    listSessions: vi.fn(async () => []),
+    // Mirror the real AcpService contract: a spawned session has a live
+    // record. The post-spawn liveness receipt in runSpawnAgent reads it —
+    // an always-undefined getSession models a black-holed launch, which is
+    // exactly what the receipt exists to fail loudly on.
+    getSession: vi.fn(async (id: string) => sessions.get(id)),
+    getSessions: vi.fn(async () => [...sessions.values()]),
+    listSessions: vi.fn(async () => [...sessions.values()]),
     stopSession: vi.fn(async () => undefined),
     resolveAgentType: vi.fn(async () => "codex"),
     onSessionEvent: vi.fn(() => () => undefined),

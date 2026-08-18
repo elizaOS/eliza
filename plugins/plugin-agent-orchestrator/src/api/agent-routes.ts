@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { markSessionAdministrativelyStopped } from "../services/admin-stop-marker.js";
 import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
@@ -310,11 +311,7 @@ export async function handleAgentRoutes(
     }
     const rawAgentType = authMatch[1];
 
-    const SUPPORTED_AGENTS: ReadonlyArray<string> = [
-      "claude",
-      "codex",
-      "opencode",
-    ];
+    const SUPPORTED_AGENTS: ReadonlyArray<string> = ["claude", "codex"];
     if (!SUPPORTED_AGENTS.includes(rawAgentType)) {
       sendError(res, `Unsupported agent type: ${rawAgentType}`, 400);
       return true;
@@ -435,7 +432,7 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, codex, opencode)",
+          "agentType query parameter required (claude, codex, elizaos)",
           400,
         );
         return true;
@@ -814,6 +811,14 @@ export async function handleAgentRoutes(
 
     try {
       const sessionId = stopMatch[1];
+      // A dashboard/API stop is administrative: this route already answers its
+      // caller with success JSON, so the terminal relay must not also post
+      // "<label> — stopped before completion." into the Discord origin room.
+      await markSessionAdministrativelyStopped(
+        ctx.acpService,
+        sessionId,
+        "api_stop",
+      );
       await ctx.acpService.stopSession(sessionId);
       sendJson(res, { success: true, sessionId });
     } catch (error) {

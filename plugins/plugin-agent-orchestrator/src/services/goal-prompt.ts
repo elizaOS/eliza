@@ -6,8 +6,8 @@
  * `/api/orchestrator/*` route — must pass its raw text through one of these
  * builders. Centralising the envelope is what makes worker behaviour
  * consistent: the same goal, acceptance criteria, room wiring, capability
- * fence, and completion contract reach Claude, Codex, OpenCode, ElizaOS, and
- * Pi Agent regardless of entry point. The wording is the formalised version of
+ * fence, and completion contract reach Claude, Codex, ElizaOS, and Pi Agent
+ * regardless of entry point. The wording is the formalised version of
  * the swarm-coordination block that `TASKS_SPAWN_AGENT` already emits.
  *
  * @module services/goal-prompt

@@ -1,8 +1,7 @@
 # Multi-account coding-agent orchestration
 
 Goal: an Eliza orchestrator agent that runs **multiple Claude Code + Codex
-subscriptions** (and rotates OpenCode across pooled Cerebras accounts), picks
-the **least-used** account for each new
+subscriptions**, picks the **least-used** account for each new
 sub-agent, tracks per-account **session + weekly usage**, manages those
 sub-agents in a **shared task room**, and decides **when to interrupt** a
 running sub-agent vs. let it keep working.
@@ -41,7 +40,7 @@ bridge**.
 
 ### P0 — Keystone: account selection on spawn (round-robin / least-used)
 - [x] `coding-account-bridge.ts` (app-core): install the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
-- [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json` + minimal `config.toml`; opencode → `CEREBRAS_API_KEY` (pooled Cerebras); direct API providers → their env key.
+- [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json` + minimal `config.toml`; direct API providers → their env key.
 - [x] Wire into `AcpService.spawnSession`: select before transport branch, merge `envPatch` into `customCredentials`, stamp `session.metadata.account*`, surface on `SpawnResult.metadata`.
 - [x] `buildEnv`: when `CLAUDE_CODE_OAUTH_TOKEN` is injected for claude, drop `ANTHROPIC_API_KEY` so the selected subscription wins.
 - [x] `OrchestratorTaskSession` carries `accountProviderId` / `accountId` / `accountLabel`; populate from `result.metadata`.
@@ -66,8 +65,7 @@ bridge**.
 - [x] The connect-accounts window (Settings → Accounts: `AddAccountDialog` OAuth / API-key / coding-plan-key flows, `AccountList`, `RotationStrategyPicker`) pre-exists and is the surface for linking multiple accounts of each type.
 
 ## Known constraints / follow-ups
-- **OpenCode pool-rotates across Cerebras accounts only.** OpenCode resolves a pooled key for exactly one backend — Cerebras (`CEREBRAS_API_KEY`, see `buildOpencodeSpawnConfig`) — so `opencode` is a multi-account selector type mapped to `cerebras-api`: it least-used-rotates across linked Cerebras accounts (the bridge injects the selected `CEREBRAS_API_KEY`, which OpenCode's config reads) and no-ops when none are linked (Eliza Cloud / single-key setups are unchanged). OpenCode's other backends (Eliza Cloud, local, user-configured opencode.json) are not pooled. Precedence: a `CEREBRAS_API_KEY` runtime **setting** still wins over a pooled injection — pooling is authoritative only when no single key is configured.
-- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`) and OpenCode's provider config — there is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
+- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`) — there is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
 
 ## Quality bar
 - No regression when zero accounts are linked (bridge returns null → today's behavior).

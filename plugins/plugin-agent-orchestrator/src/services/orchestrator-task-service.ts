@@ -43,6 +43,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  AGENT_VOICED_METADATA,
+  phraseForUser,
+} from "../voice/phrase-for-user.js";
+import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
   isNonTrivialGoal,
@@ -50,6 +54,7 @@ import {
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
 import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
+import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 import {
   type AdmissionRecord,
   orderQueue,
@@ -198,6 +203,7 @@ import {
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
+import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -307,7 +313,7 @@ function configuredDefaultAgentType(runtime: {
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
   // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
+  // the default elizaos adapter. This mirrors the env
   // resolution the spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
@@ -578,6 +584,76 @@ function isAdmissionRecord(value: unknown): value is AdmissionRecord {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Non-empty plain string or undefined. Mirrors the router's metadata reads so
+ * the request-voice key carried through task metadata is shape-compatible. */
+function pickPlainString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+/**
+ * Sub-agent-router serviceType, mirrored as a literal (not imported from
+ * sub-agent-router.ts) so this module keeps no dependency edge on the router
+ * module. Kept in sync with `SubAgentRouter.serviceType`.
+ */
+const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER";
+
+/**
+ * Structural view of the router's request-voice ledger. Resolved via
+ * `runtime.getService` and typeof-guarded per method so this service compiles
+ * and behaves identically whether or not the router (or its ledger API) is
+ * present — absence always fails OPEN to today's behavior.
+ */
+type RequestVoiceLedgerRouter = {
+  claimRequestTerminal?: (
+    key: string,
+    sessionId: string,
+    kind: string,
+    provisional: boolean,
+  ) => unknown;
+};
+
+/**
+ * Interpret a `claimRequestTerminal` result. Only an EXPLICIT denial
+ * suppresses the park notice; every other shape (granted, superseded, or an
+ * unrecognized return) sends as today so a ledger drift can only ever cost the
+ * dedupe, never silence the notice.
+ */
+function terminalClaimDenied(result: unknown): boolean {
+  if (result === false || result === "denied") return true;
+  if (isRecord(result)) {
+    return result.granted === false && result.superseded !== true;
+  }
+  return false;
+}
+
+/**
+ * FALLBACK notice for an auto-verify give-up — used verbatim only when the
+ * model-phrased line (see `notifyVerifyEscalation`) is unavailable, so it must
+ * carry every fact the phrased path is given. Deliberately honest about the
+ * split state: the WORK may be fine (it often is — the live regression was a
+ * served, working page) while VERIFICATION could not confirm it. Never leaks
+ * internal ids; caps the missing list so a long verifier dump stays readable.
+ * Sentence case: this is Eliza's voice, not nubilio's lowercase register.
+ */
+export function composeVerifyEscalationNotice(
+  title: string,
+  details: { attempts: number; summary: string; missing: string[] },
+): string {
+  const label = title.trim() || "the coding task";
+  const missing = details.missing
+    .filter((item) => item.trim().length > 0)
+    .slice(0, 3);
+  const missingLine =
+    missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "";
+  return (
+    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so I've parked it for you. ` +
+    `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}${missingLine} ` +
+    `The work itself may still be fine — check the result, then tell me to accept it or what to fix.`
+  );
 }
 
 /** Parse a positive-integer setting value, falling back to `fallback` when the
@@ -1777,6 +1853,13 @@ export class OrchestratorTaskService extends Service {
           summary ?? "",
           completionBundle,
         );
+        // Auto-submit for provisioned-repo tasks: children run behind the
+        // isolated git wrapper and cannot push, BY DESIGN — the orchestrator
+        // owns credentials. Without this, every "…and open a PR" repo ask
+        // ended with committed-but-unpushed work and a human had to finish
+        // the last leg (live 2026-08-17: two hello-validation runs). Push +
+        // PR fire-and-forget; verification proceeds independently.
+        void this.autoSubmitProvisionedWorkspace(taskId, sessionId);
         break;
       }
       case "error": {
@@ -3254,6 +3337,286 @@ export class OrchestratorTaskService extends Service {
    * read from the task record metadata stamped at create time. Returns null when
    * the task has no origin room (e.g. an API-created task with no chat).
    */
+  /**
+   * PR-intent gate for {@link autoSubmitProvisionedWorkspace}: submit only
+   * when the user actually asked for a pull/merge request. A repo task
+   * without PR intent ("fix the bug in <repo>") keeps its commits local for
+   * the user to review. Matched against the durable goal + original request.
+   */
+  static wantsPullRequest(text: string): boolean {
+    return /\b(?:pull[- ]request|merge[- ]request|\bpr\b|open (?:a |the )?pr\b)/i.test(
+      text,
+    );
+  }
+
+  /**
+   * Push a provisioned-repo session's committed branch and open the PR the
+   * request asked for. Children commit behind the isolated git wrapper and
+   * cannot push (by design — the orchestrator owns credentials), so this is
+   * the completion leg of every "…and open a PR" repo task. Fire-and-forget
+   * from the task_complete bridge; every failure is loud in the log but never
+   * breaks the event path. The `autoSubmittedAt` metadata stamp makes it
+   * once-per-task (a verify re-engage's second task_complete must not race a
+   * second PR).
+   */
+  private async autoSubmitProvisionedWorkspace(
+    taskId: string,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc || doc.task.metadata?.autoSubmittedAt) return;
+      const session = doc.sessions.find((s) => s.sessionId === sessionId);
+      const acp = this.acp();
+      const liveMeta = acp
+        ? (await acp.getSession(sessionId))?.metadata
+        : undefined;
+      const workspaceId =
+        (typeof liveMeta?.provisionedWorkspaceId === "string"
+          ? liveMeta.provisionedWorkspaceId
+          : undefined) ??
+        (typeof session?.metadata?.provisionedWorkspaceId === "string"
+          ? (session.metadata.provisionedWorkspaceId as string)
+          : undefined);
+      if (!workspaceId) return;
+      const intentText = `${doc.task.goal ?? ""} ${doc.task.originalRequest ?? ""}`;
+      if (!OrchestratorTaskService.wantsPullRequest(intentText)) return;
+      const workspaceService = getCodingWorkspaceService(this.runtime);
+      if (!workspaceService) return;
+      const workspace = workspaceService.getWorkspace(workspaceId);
+      if (!workspace) return;
+      // Claim before the slow work so a redelivered task_complete cannot race
+      // a duplicate submit.
+      await this.store.updateTask(taskId, {
+        metadata: { ...doc.task.metadata, autoSubmittedAt: nowIso() },
+      });
+      // The ACP git wrapper commits on its own exec branch; the workspace
+      // service pushes/PRs its REGISTERED branch. Point the registered branch
+      // at the child's actual work first, or the PR is opened from a branch
+      // with no commits (live: push landed the exec branch, createPR 422'd).
+      const { execFile } = await import("node:child_process");
+      const gitIn = (args: string[]) =>
+        new Promise<void>((resolve, reject) =>
+          execFile(
+            "git",
+            ["-C", workspace.path, ...args],
+            { timeout: 30_000 },
+            (err) => (err ? reject(err) : resolve()),
+          ),
+        );
+      await gitIn(["branch", "-f", workspace.branch, "HEAD"]);
+      await gitIn(["checkout", workspace.branch]);
+      await workspaceService.push(workspaceId, { setUpstream: true });
+      const title = (doc.task.title || workspace.branch).slice(0, 120);
+      const pr = await workspaceService.createPR(workspaceId, {
+        title,
+        body: `${doc.task.originalRequest?.slice(0, 800) ?? doc.task.goal?.slice(0, 800) ?? title}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
+      });
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...(((await this.store.getTask(taskId))?.task.metadata ??
+            {}) as Record<string, unknown>),
+          autoSubmittedPrUrl: pr.url,
+        },
+      });
+      this.log("info", "auto-submitted provisioned workspace", {
+        taskId,
+        sessionId,
+        workspaceId,
+        prUrl: pr.url,
+      });
+      // Tell the user where their PR is — model-phrased, factual fallback.
+      const origin = await this.getTaskOriginTarget(taskId);
+      const send = (
+        this.runtime as IAgentRuntime & {
+          sendMessageToTarget?: (
+            target: { source: string; roomId?: UUID },
+            content: { text: string; source: string },
+          ) => Promise<unknown>;
+        }
+      ).sendMessageToTarget;
+      if (origin && typeof send === "function") {
+        const { text } = await phraseForUser(
+          this.runtime,
+          {
+            intent: "notify",
+            facts: {
+              what: "branch pushed and pull request opened",
+              branch: workspace.branch,
+              prUrl: pr.url,
+            },
+            mustInclude: [pr.url],
+            mustNotClaim: ["merged", "reviewed"],
+          },
+          `pushed ${workspace.branch} and opened the pull request: ${pr.url}`,
+        );
+        await send(
+          { source: origin.source, roomId: origin.roomId as UUID },
+          { text, source: origin.source, ...AGENT_VOICED_METADATA },
+        );
+      }
+    } catch (error) {
+      // error-policy:J7 auto-submit is fire-and-forget from the event bridge;
+      // failure is loud here and the user still gets the completion relay.
+      this.log("warn", "auto-submit of provisioned workspace failed", {
+        taskId,
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Re-arm: a failed submit must not permanently claim the once-per-task
+      // stamp — a later genuine task_complete (verify re-engage, retry)
+      // deserves another attempt.
+      try {
+        const latest = await this.store.getTask(taskId);
+        if (latest?.task.metadata?.autoSubmittedAt) {
+          const { autoSubmittedAt: _dropped, ...rest } =
+            latest.task.metadata as Record<string, unknown>;
+          await this.store.updateTask(taskId, { metadata: rest });
+        }
+      } catch {
+        // error-policy:J6 best-effort re-arm; the warn above already reported the submit failure
+      }
+    }
+  }
+
+  /**
+   * Post the one-time "verification gave up, task parked for you" notice to
+   * the task's origin room. Best-effort at every step (no origin, no send
+   * handler, or a delivery failure must never break the escalation itself —
+   * the park already happened); the `verifyEscalationNotifiedAt` metadata
+   * stamp makes the notice once-per-task.
+   */
+  private async notifyVerifyEscalation(
+    taskId: string,
+    details: {
+      attempts: number;
+      summary: string;
+      missing: string[];
+      sessionId?: string;
+    },
+  ): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc || doc.task.metadata?.verifyEscalationNotifiedAt) return;
+      const origin = await this.getTaskOriginTarget(taskId);
+      if (!origin) return;
+      const send = (
+        this.runtime as IAgentRuntime & {
+          sendMessageToTarget?: (
+            target: { source: string; roomId?: UUID },
+            content: { text: string; source: string; agentVoiced?: boolean },
+          ) => Promise<unknown>;
+        }
+      ).sendMessageToTarget;
+      if (typeof send !== "function") return;
+      // Request-level dedupe: a verify-driven respawn can double the TASK
+      // record for one user request lineage, so the once-per-task
+      // verifyEscalationNotifiedAt stamp alone still allowed two park notices.
+      // Claim the request's terminal slot on the router's voice ledger, keyed
+      // by the SAME canonical ladder the router keys its session terminal
+      // claims with (requestVoiceKeyForMeta: spawnRootMessageId ??
+      // originConnectorMessageId ?? messageId ?? task:<id>, plus the fan-out
+      // part suffix). The parking session's OWN metadata is preferred — it is
+      // exactly what the router keyed that session's claims on, so the park
+      // supersedes its provisional result and lane-scoped parts resolve; the
+      // task-level projection covers restart parks whose session is already
+      // gone. Denied → a sibling task already parked this request lineage:
+      // stamp (so this task never re-tries) but do not send. Router
+      // absent/disabled/no method → send as today (fail-open; the per-task
+      // stamp remains the durable backstop).
+      let suppressed = false;
+      const router = this.runtime.getService?.(
+        SUB_AGENT_ROUTER_SERVICE_TYPE,
+      ) as RequestVoiceLedgerRouter | null;
+      if (typeof router?.claimRequestTerminal === "function") {
+        let sessionVoiceMeta: Record<string, unknown> | undefined;
+        if (details.sessionId) {
+          try {
+            const live = await this.acp()?.getSession(details.sessionId);
+            sessionVoiceMeta = live?.metadata as
+              | Record<string, unknown>
+              | undefined;
+          } catch {
+            // error-policy:J4 session metadata lookup failure degrades to the
+            // task-level key projection below (today's behavior).
+            sessionVoiceMeta = undefined;
+          }
+        }
+        const requestKey =
+          requestVoiceKeyForMeta({
+            ...(doc.task.metadata ?? {}),
+            ...(sessionVoiceMeta ?? {}),
+            taskId,
+          }) ?? `task:${taskId}`;
+        try {
+          suppressed = terminalClaimDenied(
+            router.claimRequestTerminal(
+              requestKey,
+              details.sessionId ?? taskId,
+              "parked",
+              false,
+            ),
+          );
+        } catch (claimErr) {
+          // error-policy:J4 ledger claim failure degrades to sending the
+          // notice (fail-open) — the dedupe is lost, never the notice.
+          this.log("warn", "verify-escalation ledger claim failed", {
+            taskId,
+            error:
+              claimErr instanceof Error ? claimErr.message : String(claimErr),
+          });
+          suppressed = false;
+        }
+      }
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          verifyEscalationNotifiedAt: nowIso(),
+        },
+      });
+      if (suppressed) return;
+      // Model-phrased park notice (owner directive: user-facing text is
+      // LLM-written). Runs AFTER the terminal claim + stamp above
+      // (claim-before-phrase), so model latency cannot double the notice.
+      // composeVerifyEscalationNotice remains the factual fallback.
+      const label = doc.task.title.trim() || "the coding task";
+      const missing = details.missing
+        .filter((item) => item.trim().length > 0)
+        .slice(0, 3);
+      const { text } = await phraseForUser(
+        this.runtime,
+        {
+          intent: "warn",
+          facts: {
+            title: label,
+            attempts: details.attempts,
+            summary: details.summary,
+            ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
+            parked: true,
+            workMayStillBeFine: true,
+            userShouldCheckThenAcceptOrSayWhatToFix: true,
+          },
+          mustInclude: [label],
+          mustNotClaim: [
+            "the work was confirmed good",
+            "the task was abandoned",
+          ],
+        },
+        composeVerifyEscalationNotice(doc.task.title, details),
+      );
+      await send(
+        { source: origin.source, roomId: origin.roomId as UUID },
+        { text, source: origin.source, ...AGENT_VOICED_METADATA },
+      );
+    } catch (err) {
+      // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
+      this.log("warn", "verify-escalation notice delivery failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async getTaskOriginTarget(
     taskId: string,
   ): Promise<{ roomId: string; source: string; worldId?: string } | null> {
@@ -4388,6 +4751,26 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.advanceTaskStatus(taskId, "awaiting_user");
+      // Stamp the park time as durable task metadata. The forwarder's
+      // waiting_on_user gate discriminates VERIFY parks (drop forwards; the
+      // worker is done listening) from question/login parks (keep forwarding
+      // so the user's answer reaches the blocked session) on this stamp —
+      // verifyEscalationNotifiedAt alone is unreliable because
+      // notifyVerifyEscalation early-returns before stamping when the task
+      // has no origin room or no send handler.
+      await this.stampVerifyParkedAt(taskId);
+      // The park must be VISIBLE: the completion relay already promised the
+      // user "I'll flag if verification fails" — parking silently breaks that
+      // promise and strands the task (live: canon-clock sat waiting_on_user
+      // with a served, working page and the user never heard why). One notice
+      // per task (metadata-stamped) so a redelivered task_complete at the
+      // attempt cap cannot re-spam the room.
+      await this.notifyVerifyEscalation(taskId, {
+        attempts: attempt,
+        summary,
+        missing,
+        sessionId,
+      });
       this.emitChange(taskId);
       return;
     }
@@ -4463,8 +4846,35 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.advanceTaskStatus(taskId, "awaiting_user");
+      // Same forwarder discriminator as the at-cap park above: this branch
+      // parks too (the corrective send failed), so it must carry the stamp.
+      await this.stampVerifyParkedAt(taskId);
     }
     this.emitChange(taskId);
+  }
+
+  /** Merge `verifyParkedAt` into the task metadata (re-read then write, same
+   * pattern as the attempt-counter persist above, so concurrent metadata
+   * writes in this pass are preserved). Best-effort: a failed stamp costs the
+   * forwarder gate's discriminator, never the park itself. */
+  private async stampVerifyParkedAt(taskId: string): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          verifyParkedAt: nowIso(),
+        },
+      });
+    } catch (err) {
+      // error-policy:J6 best-effort park-time stamp; the park (status write)
+      // already stands and the forwarder fails open without the stamp.
+      this.log("warn", "verifyParkedAt stamp failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -4550,7 +4960,7 @@ export class OrchestratorTaskService extends Service {
         : 0;
     const spawn = await acp.spawnSession({
       // Undefined defers to acp-service's defaultAgent (eliza-code on the
-      // native transport); opencode is opt-in via explicit settings only.
+      // native transport).
       agentType: configuredDefaultAgentType(this.runtime),
       workdir,
       initialTask: prompt,
@@ -4693,7 +5103,7 @@ export class OrchestratorTaskService extends Service {
     } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
-      // the default framework (opencode + Cerebras) into a per-task workdir.
+      // the default framework (eliza-code) into a per-task workdir.
       try {
         await this.spawnAgentForTask(taskId, {
           task: content,
@@ -5312,8 +5722,7 @@ export class OrchestratorTaskService extends Service {
         // undefined and spawnSession resolves acp-service's `defaultAgent`
         // (eliza-code under the native transport) — the single source of
         // truth, so an unconfigured host dogfoods eliza-code rather than a
-        // vendored CLI. opencode remains available only as an explicit
-        // selection (settings/routing/request).
+        // vendored CLI.
         agentType: framework,
         workdir,
         initialTask: goalPrompt,
@@ -5347,6 +5756,28 @@ export class OrchestratorTaskService extends Service {
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
+          // Carry the originating request's voice key onto EVERY (re)spawn for
+          // this task — verify re-engage fresh workers and queue-head dispatch
+          // included — so the router's request-level ack/terminal ledger sees
+          // one key per user request across the whole session lineage. Stamped
+          // into task metadata at create time; absent for pre-stamp tasks
+          // (degraded mode: per-session dedupe only).
+          ...(pickPlainString(doc.task.metadata?.spawnRootMessageId)
+            ? {
+                spawnRootMessageId: pickPlainString(
+                  doc.task.metadata?.spawnRootMessageId,
+                ),
+              }
+            : {}),
+          // Carry the fan-out part with it: a lane task's respawns must keep
+          // claiming the SAME per-lane voice slot, never the whole request's.
+          ...(pickPlainString(doc.task.metadata?.requestVoicePart)
+            ? {
+                requestVoicePart: pickPlainString(
+                  doc.task.metadata?.requestVoicePart,
+                ),
+              }
+            : {}),
         },
       });
     } catch (err) {
@@ -5985,9 +6416,9 @@ export class OrchestratorTaskService extends Service {
     const active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
-    if (active.length === 0) return;
     const acp = this.acp();
     if (!acp) {
+      if (active.length === 0) return;
       await Promise.all(
         active.map((session) =>
           this.store.updateSession(session.sessionId, {
@@ -6000,9 +6431,48 @@ export class OrchestratorTaskService extends Service {
         "ACP service unavailable; cannot stop active sessions",
       );
     }
+    // ACP-truth widening: the event bridge marks the task-side row
+    // `completed` on task_complete while the keepAliveAfterComplete ACP
+    // session sits `ready` — so a task-row-only scan skipped the stop and the
+    // session survived archive/delete still room-bound, absorbing later live
+    // room messages under the dead task's label (the contamination survivor).
+    // Also stop any of this task's sessions that are still LIVE at the ACP
+    // layer, even when the row is already terminal.
+    let liveAcpSessionIds: ReadonlySet<string> = new Set<string>();
+    try {
+      const acpSessions = await Promise.resolve(acp.listSessions());
+      liveAcpSessionIds = new Set(
+        acpSessions
+          .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status))
+          .map((s) => s.id),
+      );
+    } catch (err) {
+      // error-policy:J4 listSessions unavailable degrades to the task-row-only
+      // scan (today's behavior) — never blocks the lifecycle stop.
+      this.log("warn", "stopActiveSessions listSessions failed", {
+        taskId: doc.task.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const toStop = doc.sessions.filter(
+      (s) =>
+        !TERMINAL_TASK_SESSION_STATUSES.has(s.status) ||
+        liveAcpSessionIds.has(s.sessionId),
+    );
+    if (toStop.length === 0) return;
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
-      active.map(async (session) => {
+      toStop.map(async (session) => {
+        // Mark the stop as administrative BEFORE stopping, so the swarm
+        // coordinator's `stopped` synthesis recognizes it as lifecycle
+        // plumbing and does not post "stopped before completion" for a stop
+        // the lifecycle itself caused.
+        await markSessionAdministrativelyStopped(
+          acp,
+          session.sessionId,
+          "task_lifecycle",
+          (msg) => this.log("warn", msg, { taskId: doc.task.id }),
+        );
         try {
           await acp.stopSession(session.sessionId);
         } catch (err) {
@@ -6010,15 +6480,22 @@ export class OrchestratorTaskService extends Service {
           // structured RecoveryConflictError afterward when any session failed.
           const error = err instanceof Error ? err.message : String(err);
           failures.push({ sessionId: session.sessionId, error });
-          await this.store.updateSession(session.sessionId, {
-            status: "stop_failed",
-          });
+          if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+            await this.store.updateSession(session.sessionId, {
+              status: "stop_failed",
+            });
+          }
           return;
         }
-        await this.store.updateSession(session.sessionId, {
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        // A row already terminal on the task side (`completed` — delivered)
+        // keeps its status: rewriting it to `stopped` would erase the
+        // delivered outcome the UI shows.
+        if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+          await this.store.updateSession(session.sessionId, {
+            status: "stopped",
+            stoppedAt: Date.now(),
+          });
+        }
       }),
     );
     if (failures.length > 0) {

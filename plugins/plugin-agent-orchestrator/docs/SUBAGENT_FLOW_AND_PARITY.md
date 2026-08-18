@@ -18,7 +18,7 @@ user msg → planner → TASKS_CREATE ─────────────►
                          │   acceptance criteria     source, label, worldId, userId}
                          ▼
                    ACP subprocess (native JSON-RPC over stdio)
-                   elizaos | codex | claude | opencode | pi-agent
+                   elizaos | codex | claude | pi-agent
                          │   session/new → session/prompt(goal)
                          ▼
                    events: ready · tool_running · message · reasoning · plan ·
@@ -85,7 +85,7 @@ router de-dupes concurrent `task_complete` so only the first posts to the user.
 
 All run as ACP subprocesses over the native JSON-RPC transport
 (`acp-native-transport.ts`); spawn command per framework is env-overridable
-(`ELIZA_{ELIZAOS,CODEX,CLAUDE,OPENCODE,PI_AGENT}_ACP_COMMAND`; Codex/Claude default
+(`ELIZA_{ELIZAOS,CODEX,CLAUDE,PI_AGENT}_ACP_COMMAND`; Codex/Claude default
 to pinned `npx` ACP shims). The orchestrator implements the ACP client side of:
 `session/new`, `session/prompt`, `session/cancel`, `session/update` (streaming
 `agent_message_chunk` / `agent_thought_chunk` / `tool_call` / `plan`),
@@ -103,7 +103,7 @@ plan/reasoning/tool streaming; approval gates; real git-diff capture & surfacing
 (`coding-session-changes.ts`); token usage; orphaned-session recovery on restart;
 durable task store + task view; per-task threads on connectors.
 
-**Partial:** plan/todo events are emitted by OpenCode but not uniformly by
+**Partial:** plan/todo events are not emitted uniformly by
 Codex/Claude; diff surfacing truncates (20 files / 50 lines) with no inline
 per-line review UI; sub-agents run `--no-terminal` (event-driven, no interactive
 TUI — correct for orchestration, but differs from a human at the CLI).

@@ -15,7 +15,6 @@ export const KNOWN_ADAPTER_TYPES = new Set([
   "pi-agent",
   "claude",
   "codex",
-  "opencode",
 ]);
 
 export function normalizeTaskAgentAdapter(
@@ -27,15 +26,18 @@ export function normalizeTaskAgentAdapter(
     case "elizaos":
     case "eliza-os":
     case "eliza":
+    case "eliza-code":
+    case "eliza code":
+    // "opencode" is a retired backend name; requests naming it route to the
+    // eliza-code (elizaos) adapter.
+    case "opencode":
+    case "open-code":
+    case "open code":
       return "elizaos";
     case "pi-agent":
     case "pi agent":
     case "pi":
       return "pi-agent";
-    case "opencode":
-    case "open-code":
-    case "open code":
-      return "opencode";
     case "claude":
     case "claude-code":
     case "claude code":

@@ -348,7 +348,7 @@ function makeRuntime(agent) {
 
 function normalizeAgent(value) {
   const agent = String(value).trim().toLowerCase();
-  if (["codex", "claude", "opencode"].includes(agent)) return agent;
+  if (["codex", "claude"].includes(agent)) return agent;
   throw new SkippedSmoke(
     `unsupported LIVE_NATIVE_ACP_AGENT=${JSON.stringify(value)}`,
   );
@@ -470,7 +470,6 @@ function killNewAgentPids(agent, before, signal) {
 function agentProcessPattern(agent) {
   if (agent === "codex") return /codex-acp/i;
   if (agent === "claude") return /claude-agent-acp/i;
-  if (agent === "opencode") return /opencode.*\bacp\b/i;
   return undefined;
 }
 

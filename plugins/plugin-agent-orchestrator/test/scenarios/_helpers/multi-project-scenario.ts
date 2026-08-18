@@ -89,7 +89,7 @@ export class MultiProjectAcp {
     const session: SessionInfo = {
       id,
       name: opts.name ?? id,
-      agentType: opts.agentType ?? "opencode",
+      agentType: opts.agentType ?? "codex",
       workdir: opts.workdir ?? "/tmp/multi-project",
       status: "ready",
       approvalPreset: opts.approvalPreset ?? "standard",

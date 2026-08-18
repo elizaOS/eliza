@@ -323,7 +323,6 @@ export type ModelsConfigTarget = "small" | "large" | "coding";
 export type ModelsConfigCodingBackend =
   | "codex"
   | "claude"
-  | "opencode"
   | "eliza-code";
 
 /** Which config seam won for a key reported by `GET /api/models/config`. */

@@ -14,7 +14,12 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
+import type {
+  OrchestratorTaskRecord,
+  OrchestratorTaskStatus,
+} from "./orchestrator-task-types.js";
 import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
@@ -42,6 +47,73 @@ export function isSessionBusy(status: string): boolean {
 }
 
 const SRC = "@elizaos/plugin-agent-orchestrator";
+
+/** Structural view of ORCHESTRATOR_TASK_SERVICE for the forward gate. Looked
+ * up per event and typeof-guarded so the forwarder behaves identically (fails
+ * OPEN: forward) when the service is absent or its surface drifts. */
+type DurableTaskLookup = {
+  getTaskForSession?: (
+    sessionId: string,
+  ) => Promise<OrchestratorTaskRecord | null>;
+};
+
+const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
+
+/** Task statuses whose sessions must never receive live room forwards. */
+const FORWARD_DROP_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
+  new Set<OrchestratorTaskStatus>(["archived", "failed"]);
+
+/**
+ * Should a live-room user message still be forwarded to this session, given
+ * its durable task record? The contamination defect: sessions SURVIVE their
+ * task being parked/archived (keepAliveAfterComplete workers sit `ready`), and
+ * without this gate an old session absorbed a NEW request and built the wrong
+ * artifact under the dead task's label.
+ *
+ * Rules (fail-open — only a POSITIVE terminal signal drops):
+ *  - no record → forward (sessions without durable tasks are legitimate);
+ *  - archived flag or archived/failed status → drop;
+ *  - done → drop unless the session opted into completed-session follow-ups
+ *    (its own `keepAliveAfterComplete` metadata — the deliberate feature);
+ *  - waiting_on_user → drop for verify parks: the new stamps (verifyParkedAt /
+ *    verifyEscalationNotifiedAt) or, for tasks parked BEFORE the stamps
+ *    existed, a persisted `autoVerifyAttempts` counter — both park branches
+ *    write that counter before parking, so every pre-stamp verify park
+ *    carries it. Question/login parks keep forwarding so the user's answer
+ *    still reaches the blocked session;
+ *  - open/active/blocked/validating/interrupted → forward.
+ */
+export function shouldForwardForTask(
+  task: OrchestratorTaskRecord | null,
+  sessionMeta: Record<string, unknown> | undefined,
+): boolean {
+  if (!task) return true;
+  if (task.archived === true) return false;
+  const status = task.status;
+  if (FORWARD_DROP_STATUSES.has(status)) return false;
+  if (status === "done") {
+    return sessionMeta?.keepAliveAfterComplete === true;
+  }
+  if (status === "waiting_on_user") {
+    const meta = task.metadata ?? {};
+    // Tradeoff, deliberate: `autoVerifyAttempts >= 1` also matches the narrow
+    // case of a login/question park that happens AFTER a failed verify
+    // attempt on a row without the new stamps — that user answer is muted
+    // too. Accepted: the alternative left every pre-stamp verify-parked
+    // session absorbing NEW room messages forever (the live contamination
+    // defect), and post-stamp verify parks always carry verifyParkedAt so
+    // the ambiguity only spans rows parked before the stamps deployed.
+    // Unstamped waiting_on_user WITHOUT any verify signal keeps forwarding —
+    // muting it would break every live login/question park.
+    const verifyParked = Boolean(
+      meta.verifyParkedAt ||
+        meta.verifyEscalationNotifiedAt ||
+        Number(meta.autoVerifyAttempts) >= 1,
+    );
+    return !verifyParked;
+  }
+  return true;
+}
 
 /**
  * Build the MESSAGE_RECEIVED handler that forwards mid-task user messages to
@@ -97,6 +169,78 @@ export function createActiveSessionForwardHandler(
       };
       const bound = sessions.filter(boundToRoom);
       if (bound.length === 0) return;
+      // Belt (sync): a session stamped administratively stopped is dead to
+      // the room even when the actual ACP stop failed/raced — never forward
+      // into it.
+      const unstopped = bound.filter((s) => {
+        const meta = s.metadata as Record<string, unknown> | undefined;
+        const adminStopped =
+          typeof meta?.[ADMIN_STOP_META_KEY] === "string" &&
+          (meta[ADMIN_STOP_META_KEY] as string).length > 0;
+        if (adminStopped) {
+          runtime.logger?.debug?.(
+            { src: SRC, sessionId: s.id, reason: meta?.[ADMIN_STOP_META_KEY] },
+            "active-session forward suppressed: administratively stopped",
+          );
+        }
+        return !adminStopped;
+      });
+      if (unstopped.length === 0) return;
+      // Durable-task gate (async): a session whose task is archived, failed,
+      // done (without the deliberate keep-alive follow-up opt-in), or
+      // verify-parked must not absorb live room traffic — that contamination
+      // built the wrong artifact under a dead task's label. Fail-open at
+      // every step: no service, no record, or a lookup error keeps
+      // forwarding.
+      const taskSvc = runtime.getService(
+        ORCHESTRATOR_TASK_SERVICE_TYPE,
+      ) as DurableTaskLookup | null;
+      const hasTaskLookup = typeof taskSvc?.getTaskForSession === "function";
+      const gated: SessionInfo[] = [];
+      for (const s of unstopped) {
+        if (!hasTaskLookup) {
+          gated.push(s);
+          continue;
+        }
+        let task: OrchestratorTaskRecord | null = null;
+        let lookupFailed = false;
+        try {
+          task = (await taskSvc?.getTaskForSession?.(s.id)) ?? null;
+        } catch (err) {
+          // error-policy:J4 task lookup unavailable degrades to forwarding
+          // (today's behavior); the failure is warned so a broken gate is
+          // observable instead of silently dropping user messages.
+          lookupFailed = true;
+          runtime.logger?.warn?.(
+            {
+              src: SRC,
+              sessionId: s.id,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "active-session forward task lookup failed; forwarding",
+          );
+        }
+        if (
+          lookupFailed ||
+          shouldForwardForTask(
+            task,
+            s.metadata as Record<string, unknown> | undefined,
+          )
+        ) {
+          gated.push(s);
+        } else {
+          runtime.logger?.debug?.(
+            {
+              src: SRC,
+              sessionId: s.id,
+              taskId: task?.id,
+              taskStatus: task?.status,
+            },
+            "active-session forward suppressed: task no longer accepts room forwards",
+          );
+        }
+      }
+      if (gated.length === 0) return;
       const text =
         typeof (message.content as { text?: unknown })?.text === "string"
           ? ((message.content as { text: string }).text ?? "").trim()
@@ -109,12 +253,14 @@ export function createActiveSessionForwardHandler(
       const access = await requireTaskAgentAccess(runtime, message, "interact");
       if (!access.allowed) return;
 
-      // "Crowded room": more than one live sub-agent bound to this room.
-      const multiParty = bound.length > 1;
+      // "Crowded room": more than one live sub-agent bound to this room —
+      // computed from the POST-gate list so suppressed sessions don't inflate
+      // the classifier's crowd signal.
+      const multiParty = gated.length > 1;
       // Every bound live session gets its own interruption decision and its
       // own delivery/queue — a room with several live sub-agents must not
       // quietly forward the user's text to only the first in list order.
-      for (const active of bound) {
+      for (const active of gated) {
         const label =
           typeof active.metadata?.label === "string"
             ? active.metadata.label

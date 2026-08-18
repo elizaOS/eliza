@@ -22,14 +22,12 @@ ELIZA_CODING_WORKSPACE=/workspace
 ```
 
 The image includes `git`, `ripgrep`, `python3`, `openssh-client`, Codex CLI,
-Claude Code, and opencode by default. Disable individual CLI installs at build
-time:
+and Claude Code by default. Disable individual CLI installs at build time:
 
 ```bash
 docker build \
   --build-arg INSTALL_CODEX=false \
   --build-arg INSTALL_CLAUDE_CODE=false \
-  --build-arg INSTALL_OPENCODE=false \
   -t ghcr.io/elizaos/coding-remote-runner:local \
   packages/cloud/services/coding-remote-runner
 ```

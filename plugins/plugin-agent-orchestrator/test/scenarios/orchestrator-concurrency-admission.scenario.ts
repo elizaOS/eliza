@@ -139,7 +139,7 @@ class ConcurrencyAcp {
     const session: SessionInfo = {
       id,
       name: opts.name ?? id,
-      agentType: opts.agentType ?? "opencode",
+      agentType: opts.agentType ?? "codex",
       workdir: opts.workdir ?? "/tmp/concurrency",
       status: "ready",
       approvalPreset: opts.approvalPreset ?? "standard",

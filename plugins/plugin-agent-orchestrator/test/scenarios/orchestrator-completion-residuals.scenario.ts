@@ -131,7 +131,7 @@ async function runResidualsCheck(
       id: "row-1",
       taskId,
       sessionId,
-      framework: "opencode",
+      framework: "codex",
       label: "Ada",
       originalTask: "implement the widget",
       workdir: work,

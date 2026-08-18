@@ -7,7 +7,7 @@ Date: 2026-05-10
 Make Eliza's default task workers self-sufficient:
 
 - They should receive editable, repo-owned default skills for Eliza, elizaOS plugin/app development, Eliza Cloud APIs, and monetization.
-- Claude, Codex, and OpenCode workers should receive those defaults through the ACP agent orchestrator.
+- Claude and Codex workers should receive those defaults through the ACP agent orchestrator.
 - Applications should be able to override defaults without forking the shipped skill package.
 - Workers should be able to ask the running parent Eliza agent for context or actions that only the parent can perform.
 - Paid, private, or destructive operations should remain mediated by the parent agent and its confirmation flow.
@@ -94,7 +94,7 @@ Sensitive broker access is session allow-listed. The orchestrator includes `pare
 
 ### Worker manifest
 
-`SKILLS.md` now tells workers to emit a standalone `USE_SKILL <slug> <json_args>` line. The orchestrator writes this manifest into the workspace and sets `ELIZA_SKILLS_MANIFEST`, so Codex/Claude/OpenCode workers can discover skill protocol without hardcoding.
+`SKILLS.md` now tells workers to emit a standalone `USE_SKILL <slug> <json_args>` line. The orchestrator writes this manifest into the workspace and sets `ELIZA_SKILLS_MANIFEST`, so Codex/Claude workers can discover skill protocol without hardcoding.
 
 The injected parent runtime memory also now explains:
 
@@ -112,7 +112,6 @@ The orchestrator-managed gitignore block now includes common generated agent fil
 - `.claude/`
 - `AGENTS.md`
 - `.codex/`
-- `.opencode/`
 - `SKILLS.md`
 
 Tracked repo files with the same names still need care; ignore rules only prevent new untracked files from being committed.
@@ -176,9 +175,8 @@ Review focus:
 - Session allow-list behavior for virtual brokers.
 - Whether all ACP agent types can see `SKILLS.md` and parent memory text.
 - Whether tracked `AGENTS.md` repos need a safer memory-file strategy than writing in the workspace root.
-- Whether OpenCode's vendored ACP path has enough smoke coverage against Cerebras.
 
-Status: partially implemented. The first three are covered by code/tests; live OpenCode/Cerebras validation remains credential-gated.
+Status: partially implemented. The first three are covered by code/tests.
 
 ### Pass 5: Testing, Verification, Validation
 
@@ -193,8 +191,7 @@ Minimum local tests:
 Live validation:
 
 - Start a parent Eliza runtime with agent skills and orchestrator loaded.
-- Spawn Codex, Claude, and OpenCode workers and verify they read `SKILLS.md`.
-- Spawn OpenCode through ACP using the vendored OpenCode shim with Cerebras `gpt-oss-120b` and verify it can emit `USE_SKILL parent-agent ...`.
+- Spawn Codex and Claude workers and verify they read `SKILLS.md`.
 - Simulate:
   - action listing
   - parent memory search
@@ -204,12 +201,11 @@ Live validation:
   - task continuation after a returned parent result
 - Run existing SWE/orchestrator benchmarks with and without the broker skill hint.
 
-Status: local unit/type/skills tests are implemented and passing. Live OpenCode/Cerebras/SWE benchmarking requires running services and credentials, so it remains follow-up unless the environment already has them active.
+Status: local unit/type/skills tests are implemented and passing. Live SWE benchmarking requires running services and credentials, so it remains follow-up unless the environment already has them active.
 
 ## Remaining Gaps
 
 - Writing adapter memory files named `AGENTS.md` can collide with repos that already track `AGENTS.md`. A safer strategy is needed for Codex memory injection in tracked-repo workspaces.
-- Live agent benchmarking against OpenCode + Eliza Cloud + Cerebras requires credentials and running infrastructure.
 - The parent-agent broker currently asks through the normal parent message pipeline. Direct action invocation APIs could be added later, but the message path is more flexible and preserves confirmation behavior.
 
 ## AGI-Level Direction
