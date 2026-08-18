@@ -1,8 +1,10 @@
 /**
  * Public hosted-frontend serve route — real route handler + real
- * AppFrontendHostingService (R2 shim). Resolves the app from the request host
- * (system suffix slug, or verified/active custom domain) and serves the active
- * deployment; fails closed to 404 otherwise. Data seams mocked:
+ * AppFrontendHostingService (R2 shim). Resolves the app from the ACTUAL
+ * request host (system suffix slug, or verified/active custom domain) and
+ * serves the active deployment; fails closed to 404 otherwise. Client-supplied
+ * `?host=` queries and `x-forwarded-host` headers are never consulted.
+ * Data seams mocked:
  *   - `@/lib/services/apps` (getBySlug/getById/trackPageView)
  *   - `@/lib/services/managed-domains` (getDomainByName)
  *   - `@/db/repositories/app-frontend-deployments` (getActive)
@@ -167,7 +169,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -184,7 +186,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       {
         headers: {
           cookie:
@@ -216,7 +218,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       { headers: { cookie: "eliza_visitor_id=%E0%A4%A" } },
       ENV,
     );
@@ -238,7 +240,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve/robots.txt?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve/robots.txt",
       {},
       ENV,
     );
@@ -253,7 +255,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve/sitemap.xml?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve/sitemap.xml",
       {},
       ENV,
     );
@@ -272,7 +274,7 @@ describe("public hosted-frontend serve", () => {
     getByIdImpl = async (id) => (id === "app_1" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=mycool.site",
+      "https://mycool.site/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -285,7 +287,7 @@ describe("public hosted-frontend serve", () => {
       slug === "cool" ? { ...APP, is_approved: false } : undefined;
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -294,7 +296,7 @@ describe("public hosted-frontend serve", () => {
 
   test("404 for an unknown host (fails closed)", async () => {
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=nobody.example.com",
+      "https://nobody.example.com/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -308,7 +310,7 @@ describe("public hosted-frontend serve", () => {
       status: "active",
     });
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=unverified.site",
+      "https://unverified.site/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -319,7 +321,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async () => APP;
     getActiveImpl = async () => undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
@@ -330,11 +332,68 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async () => ({ ...APP, is_approved: false });
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
       {},
       ENV,
     );
     expect(res.status).toBe(404);
     expect(trackPageView).not.toHaveBeenCalled();
+  });
+});
+
+describe("hosted-frontend serve host resolution (anti same-origin-serve)", () => {
+  let app: Hono<AppEnv>;
+  beforeEach(() => {
+    app = buildApp();
+    process.env.ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app";
+    getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
+    getByIdImpl = async (id) => (id === "app_1" ? APP : undefined);
+    getDomainByNameImpl = async () => undefined;
+    getActiveImpl = async () => activeDeployment;
+    trackPageView.mockClear();
+  });
+
+  test("ignores a `?host=` query override on the API host — 404, nothing served", async () => {
+    // The W9-CLOUD-1 contract: the query string must never turn the API origin
+    // into a serving host for a deployment's content.
+    const res = await app.request(
+      "https://api.eliza.app/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(404);
+    expect(trackPageView).not.toHaveBeenCalled();
+  });
+
+  test("ignores a client-supplied x-forwarded-host header on the API host", async () => {
+    const res = await app.request(
+      "https://api.eliza.app/api/v1/hosted-frontend/serve",
+      { headers: { "x-forwarded-host": "cool.sites.eliza.app" } },
+      ENV,
+    );
+    expect(res.status).toBe(404);
+    expect(trackPageView).not.toHaveBeenCalled();
+  });
+
+  test("a forged x-forwarded-host on a system-host request does not switch apps", async () => {
+    // Only "cool" resolves; the forged header names "other.sites.eliza.app".
+    // The response must be cool's own deployment, served from its own host.
+    const res = await app.request(
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve",
+      { headers: { "x-forwarded-host": "other.sites.eliza.app" } },
+      ENV,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>Cool Site</title>");
+  });
+
+  test("a `?host=` query on a system-host request does not switch apps", async () => {
+    const res = await app.request(
+      "https://cool.sites.eliza.app/api/v1/hosted-frontend/serve?host=other.sites.eliza.app",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>Cool Site</title>");
   });
 });

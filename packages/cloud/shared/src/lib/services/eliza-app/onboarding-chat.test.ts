@@ -94,6 +94,7 @@ mock.module("./user-service", () => ({
 const {
   inspectOnboardingContinuation,
   inspectTelegramPersonalAccountContinuation,
+  previewTelegramPersonalAccountClaimContinuation,
   runOnboardingChat,
   validateTelegramOnboardingContinuation,
 } = await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
@@ -224,9 +225,52 @@ describe("runOnboardingChat", () => {
       telegramId: "123456789",
       userId: "telegram-user-1",
       organizationId: "telegram-org-1",
+      platformDisplayName: "Nubs",
     });
     expect(claim.session.history).toEqual([]);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("previews a Telegram account-claim continuation without binding or mutating it", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const claim = await runOnboardingChat({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+      authenticatedUser: {
+        userId: "telegram-user-1",
+        organizationId: "telegram-org-1",
+        telegramId: "123456789",
+      },
+      statusOnly: true,
+    });
+    const token = continuationToken(claim);
+
+    // The confirmation landing learns only the Telegram identity it names —
+    // never the bound account ids — and the session stays unclaimed.
+    await expect(previewTelegramPersonalAccountClaimContinuation(token)).resolves.toEqual({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      returnUrl: null,
+    });
+    await expect(inspectTelegramPersonalAccountContinuation(token)).resolves.toMatchObject({
+      userId: "telegram-user-1",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    await expect(
+      previewTelegramPersonalAccountClaimContinuation("unknown-opaque-continuation"),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
   });
 
   test("rejects an unbound Telegram continuation as account-claim authority", async () => {

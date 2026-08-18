@@ -35,7 +35,16 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const bodyResult = extractRequestSchema.safeParse(await c.req.json());
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch (error) {
+      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
+      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
+      if (!(error instanceof SyntaxError)) throw error;
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const bodyResult = extractRequestSchema.safeParse(body);
 
     if (!bodyResult.success) {
       return c.json(

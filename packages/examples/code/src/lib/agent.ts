@@ -1,5 +1,4 @@
-// Provides shared support logic for the Code example.
-import "dotenv/config";
+/** Provides shared runtime assembly for interactive and ACP Code agents. */
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import {
   applyOpencodeProviderEnv,
@@ -67,6 +66,8 @@ The current working directory is dynamically provided.`,
  * Initialize the Eliza runtime with coding capabilities
  */
 export interface InitializeAgentOptions {
+  /** Load the interactive entrypoint's repository-local `.env` (default true). */
+  loadDotenv?: boolean;
   /**
    * Load `@elizaos/plugin-agent-orchestrator` (default true). Set false when
    * eliza-code itself runs AS a coding sub-agent (e.g. the ACP server) so it
@@ -85,6 +86,7 @@ export interface InitializeAgentOptions {
 export async function initializeAgent(
   options: InitializeAgentOptions = {},
 ): Promise<AgentRuntime> {
+  if (options.loadDotenv !== false) await import("dotenv/config");
   const includeOrchestrator = options.includeOrchestrator !== false;
   applyOpencodeProviderEnv(process.env);
   const provider = resolveModelProvider(process.env);

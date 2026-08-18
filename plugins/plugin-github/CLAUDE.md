@@ -45,7 +45,7 @@ Registered at plugin init on the agent's HTTP server:
 
 ### Connector account provider
 
-Registers with `ConnectorAccountManager` at init to expose GitHub accounts (PAT and OAuth) through the generic connector CRUD + OAuth flow surfaces. OAuth requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_REDIRECT_URI`.
+Registers with `ConnectorAccountManager` at init to expose GitHub accounts (PAT and OAuth) through the generic connector CRUD + OAuth flow surfaces. OAuth requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_REDIRECT_URI`; authorization codes are bound to one-time S256 PKCE verifiers and exchanged under a finite request deadline.
 
 ## Layout
 
@@ -124,6 +124,7 @@ Add an entry to `githubRoutes` in `src/index.ts` and a handler in `src/routes/gi
 - **No test harness for route auth.** `handleGitHubRoutes` is a pure dispatcher with no auth. The agent's server layer is expected to authenticate before calling the route handler.
 - **Rate limits surface cleanly.** `inspectRateLimit` in `rate-limit.ts` detects GitHub rate-limit responses (HTTP 403 with `x-ratelimit-remaining: 0`); `formatRateLimitMessage` renders a human-readable message with the reset time from `x-ratelimit-reset`.
 - **PAT storage is local-first.** `<state-dir>/credentials/github.json` (mode 0600). Written atomically via a tmp-rename. The token is never returned to the browser via the GET route.
+- **OAuth provider origins are pinned.** Production token and user requests use the fixed GitHub endpoints. The exported contract-test factory is disabled outside `NODE_ENV=test` and rejects every non-loopback endpoint before credentials can be sent.
 - **`GitHubOctokitClient` is a structural interface**, not the full Octokit class — tests can inject a mock without depending on the real Octokit.
 - **`tsup` builds two entry points:** `src/index.ts` and `src/register-routes.ts`. `register-routes.ts` is an app-route plugin loader that calls `registerAppRoutePluginLoader("@elizaos/plugin-github", ...)` — it registers the full `githubPlugin`, it is not a route-only subset.
 

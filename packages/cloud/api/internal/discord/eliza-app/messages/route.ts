@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -35,13 +36,12 @@ app.post("/", async (c) => {
     const authMs = performance.now() - authStartedAt;
 
     const validationStartedAt = performance.now();
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const body = messageSchema.parse(rawBody);
     const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {

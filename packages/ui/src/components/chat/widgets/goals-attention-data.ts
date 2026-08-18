@@ -96,12 +96,14 @@ export function parseGoals(payload: unknown): AttentionGoal[] {
   return goals;
 }
 
+/** Goals-attention GET is a short UI read. */
+export const GOALS_ATTENTION_JSON_TIMEOUT_MS = 15_000;
+
 export async function fetchGoals(): Promise<AttentionGoal[]> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/goals`);
-  if (!response.ok) {
-    throw new Error(`Goals request failed (${response.status})`);
-  }
-  return parseGoals(await response.json());
+  const body = await client.fetch<unknown>("/api/lifeops/goals", undefined, {
+    timeoutMs: GOALS_ATTENTION_JSON_TIMEOUT_MS,
+  });
+  return parseGoals(body);
 }
 
 /** Goals that belong on a glance surface: live (non-archived, non-satisfied). */

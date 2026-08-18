@@ -3816,9 +3816,27 @@ export async function startApiServer(opts?: {
   });
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
+  // W9-AGENT-01: the WS upgrade handler delegates the device-bridge path to
+  // the capacitor bridge's own upgrade listener, so that delegation is only
+  // safe once such a listener has REALLY attached here. A settled attach
+  // promise is not proof of that: an optional-plugin import rejection resolves
+  // through the no-op fallback API, and the bridge attach itself returns early
+  // when the bridge is disabled for the platform — in both cases nothing is
+  // listening. Use the bridge's explicit attachment result; listener counts
+  // are process-global observations and can be changed by unrelated features.
+  let deviceBridgeUpgradeHandlerAttached = false;
+  let deviceBridgeAttachAllowed = !opts?.skipListen;
+  server.once("close", () => {
+    // The optional plugin import is deliberately deferred beyond bind. If the
+    // server closes before it resolves, do not attach the process-global bridge
+    // to a dead server and prevent a replacement API server from acquiring it.
+    deviceBridgeAttachAllowed = false;
+    deviceBridgeUpgradeHandlerAttached = false;
+  });
   if (
-    isMobilePlatform() ||
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+    deviceBridgeAttachAllowed &&
+    (isMobilePlatform() ||
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")
   ) {
     // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
     // device-bridge attach) measured ~15s of blocking on the mobile bundle and
@@ -3830,11 +3848,17 @@ export async function startApiServer(opts?: {
       void getOptionalPluginApi<{
         attachMobileDeviceBridgeToServer: (
           server: http.Server,
-        ) => Promise<void>;
+        ) => Promise<boolean>;
       }>("capacitor")
-        .then(({ attachMobileDeviceBridgeToServer }) =>
-          attachMobileDeviceBridgeToServer(server),
-        )
+        .then(({ attachMobileDeviceBridgeToServer }) => {
+          if (!deviceBridgeAttachAllowed) return false;
+          return attachMobileDeviceBridgeToServer(server);
+        })
+        .then((attached) => {
+          if (deviceBridgeAttachAllowed) {
+            deviceBridgeUpgradeHandlerAttached = attached === true;
+          }
+        })
         .catch((err: unknown) => {
           logger.warn(
             "[eliza-api] Failed to attach mobile device bridge:",
@@ -4088,7 +4112,12 @@ export async function startApiServer(opts?: {
   // bridge can actually be attached: the plugin refuses to attach without a
   // pairing token, so with none configured nothing is listening on the path —
   // fall through to the standard upgrade rejection instead of skipping auth
-  // and leaving the socket unanswered (W1-011).
+  // and leaving the socket unanswered (W1-011). The same fail-closed rule
+  // applies when delegation is EXPECTED but the deferred attach never landed
+  // a listener — an import rejection resolves through the no-op fallback API
+  // and a failed attach only logs, so an unconditional early return would
+  // leave the raw pre-auth socket unanswered indefinitely, outside the
+  // W5-015 pending-socket cap and auth grace period (W9-AGENT-01).
   const isDeviceBridgeDelegationExpected = (): boolean => {
     if (
       !isMobilePlatform() &&
@@ -4127,7 +4156,8 @@ export async function startApiServer(opts?: {
       );
       if (
         wsUrl.pathname === "/api/local-inference/device-bridge" &&
-        isDeviceBridgeDelegationExpected()
+        isDeviceBridgeDelegationExpected() &&
+        deviceBridgeUpgradeHandlerAttached
       ) {
         return;
       }

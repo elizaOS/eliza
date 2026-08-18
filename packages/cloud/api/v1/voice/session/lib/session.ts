@@ -44,6 +44,7 @@ import type {
 import { logger } from "@/lib/utils/logger";
 import {
   ElizaSseBridgeError,
+  type ElizaSseBridgeResponseHeaders,
   streamElizaConversation,
 } from "@/lib/voice-session/eliza-sse-bridge";
 import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
@@ -877,6 +878,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const responseStartedAt = this.now();
     let firstModelTextAt: number | null = null;
+    let upstreamHeadersMs: number | null = null;
+    let upstreamServerTiming: string | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
@@ -909,6 +912,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               firstModelTextAt === null
                 ? null
                 : firstAudioAt - firstModelTextAt,
+            upstreamHeadersMs,
+            upstreamServerTiming,
           });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
@@ -972,6 +977,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         traceId,
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
+        onResponseHeaders: (headers: ElizaSseBridgeResponseHeaders) => {
+          upstreamHeadersMs = headers.elapsedMs;
+          upstreamServerTiming = headers.serverTiming;
+          logger.info("[voice-session] Eliza response headers", {
+            traceId,
+            elapsedMs: headers.elapsedMs,
+            serverTiming: headers.serverTiming,
+          });
+        },
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
@@ -1175,6 +1189,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.ttsStream.cancel(`interrupted:${reason}`);
       this.ttsStream = null;
     }
+    // Context completion and barge-in intentionally keep the call-scoped
+    // Cartesia transport warm; only session teardown closes the shared socket.
+    this.cartesiaAdapter.close(`session:${reason}`);
     // 3. Abort the Eliza SSE fetch — cancels the upstream provider stream.
     if (this.llmAbort) {
       this.llmAbort.abort();

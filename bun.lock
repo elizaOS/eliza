@@ -767,10 +767,15 @@
       },
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "hono": "4.13.1",
       },
       "devDependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/plugin-github": "workspace:*",
+        "@elizaos/plugin-whatsapp": "workspace:*",
+        "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "*",
       },
     },
@@ -3220,6 +3225,7 @@
         "@biomejs/biome": "2.5.7",
         "@types/node": "^25.0.3",
         "@types/qrcode": "^1.5.5",
+        "@types/qrcode-terminal": "0.12.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -6138,6 +6144,8 @@
     "@types/prompts": ["@types/prompts@2.4.9", "", { "dependencies": { "@types/node": "*", "kleur": "^3.0.3" } }, "sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA=="],
 
     "@types/qrcode": ["@types/qrcode@1.5.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw=="],
+
+    "@types/qrcode-terminal": ["@types/qrcode-terminal@0.12.2", "", {}, "sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q=="],
 
     "@types/qs": ["@types/qs@6.15.1", "", {}, "sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw=="],
 

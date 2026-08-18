@@ -64,10 +64,10 @@ describe("POST /api/v1/domains/search validation", () => {
     expect(searchDomains).toHaveBeenCalledWith("example", 7);
   });
 
-  test("preserves malformed JSON failure handling without calling the registrar", async () => {
+  test("rejects malformed JSON with a typed 400 without calling the registrar", async () => {
     const response = await search("{");
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ success: false });
     expect(searchDomains).not.toHaveBeenCalled();
   });

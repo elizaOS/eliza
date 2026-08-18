@@ -239,14 +239,19 @@ async function resolveCoords(): Promise<ResolvedCoords> {
   return fetchApproximateCoords();
 }
 
+/** Open-Meteo current-conditions GET is a short UI read. */
+const WEATHER_JSON_TIMEOUT_MS = 15_000;
+
 async function fetchWeatherAt(
   coords: Coords,
   approximate: boolean,
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`);
-  const data = (await res.json()) as {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`open-meteo ${response.status}`);
+  const data = (await response.json()) as {
     current?: { temperature_2m?: number; weather_code?: number };
   };
   const tempRaw = data.current?.temperature_2m;

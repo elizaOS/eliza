@@ -1,5 +1,10 @@
-/** Exercises malformed request input with deterministic route collaborators. */
-import { describe, expect, mock, test } from "bun:test";
+/**
+ * Exercises malformed request input with deterministic route collaborators,
+ * plus the cookie-mutation CSRF guard: connect requests riding the ambient
+ * Steward session cookie need a first-party Origin + non-simple marker, while
+ * header-credential (Bearer/API-key) callers are unaffected.
+ */
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const APP_ID = "00000000-0000-4000-8000-0000000000aa";
 const connectUser = mock(async () => "created");
@@ -36,6 +41,7 @@ mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: () => undefined,
     error: () => undefined,
+    warn: () => undefined,
   },
 }));
 
@@ -60,6 +66,57 @@ describe("POST /api/v1/app-auth/connect malformed JSON", () => {
     const response = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      body: JSON.stringify({ appId: APP_ID }),
+    });
+    expect(response.status).toBe(200);
+    expect(issueAppAuthCode).toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v1/app-auth/connect cookie-mutation guard", () => {
+  const COOKIE = "steward-token=session-1";
+
+  beforeEach(() => {
+    connectUser.mockClear();
+    issueAppAuthCode.mockClear();
+  });
+
+  test("cookie-authed connect with no Origin/Referer → 403, never connects", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: COOKIE },
+      body: JSON.stringify({ appId: APP_ID }),
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "forbidden_origin",
+    });
+    expect(connectUser).not.toHaveBeenCalled();
+    expect(issueAppAuthCode).not.toHaveBeenCalled();
+  });
+
+  test("cookie-authed connect from a hosted-content origin → 403", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: COOKIE,
+        origin: "https://evil.sites.eliza.app",
+      },
+      body: JSON.stringify({ appId: APP_ID }),
+    });
+    expect(response.status).toBe(403);
+    expect(connectUser).not.toHaveBeenCalled();
+  });
+
+  test("cookie-authed connect from the Eliza app origin with a JSON marker → 200", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: COOKIE,
+        origin: "https://cloud.eliza.app",
+      },
       body: JSON.stringify({ appId: APP_ID }),
     });
     expect(response.status).toBe(200);

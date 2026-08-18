@@ -14,6 +14,10 @@ const DENY_ENV_PATTERNS = [
   // hand a child process a credential that re-authorizes arbitrary host command
   // execution with zero legitimate use for it.
   /TERMINAL_RUN_TOKEN/i,
+  // One-time authenticator for a session-less warm ACP child. Only the pool
+  // bootstrap may inject it; host or caller forwarding would defeat the claim
+  // boundary and could make a cold child accept session metadata.
+  /^ELIZA_ACP_WARM_CLAIM_TOKEN$/i,
   // Repo-scoped GitHub host credentials must not be injected into sub-agents,
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.

@@ -14,6 +14,8 @@ import { logger, Service } from "@elizaos/core";
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
 const KAMINO_LIQUIDITY_PROGRAM_ID = "kamino-rest-api";
 
+export const DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS = 10_000;
+
 const KNOWN_TOKENS: Record<string, string> = {
   HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC: "AI16Z Token",
   ai16z: "AI16Z Token (Symbol)",
@@ -230,30 +232,28 @@ export class KaminoLiquidityService extends Service {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<T> {
-    try {
-      const url = `${this.apiBaseUrl}${endpoint}`;
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...options.headers,
-        },
-      });
+    const url = `${this.apiBaseUrl}${endpoint}`;
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+      signal: options.signal
+        ? AbortSignal.any([
+            options.signal,
+            AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
+          ])
+        : AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
+    });
 
-      if (!response.ok) {
-        throw new Error(
-          `API request failed: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return await response.json();
-    } catch (error) {
-      logger.error(
-        `API request failed for ${endpoint}:`,
-        formatLogError(error),
+    if (!response.ok) {
+      throw new Error(
+        `API request failed: ${response.status} ${response.statusText}`,
       );
-      throw error;
     }
+
+    return await response.json();
   }
 
   async resolveTokenWithBirdeye(

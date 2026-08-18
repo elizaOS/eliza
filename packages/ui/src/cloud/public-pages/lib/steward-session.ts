@@ -67,11 +67,21 @@ async function readSessionError(response: Response): Promise<{
 /**
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
  * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
+ *
+ * A pending Telegram account claim rides this sync only on an explicit
+ * gesture: an explicit `telegramContinuation`, or the pending continuation
+ * peeked for a sign-in ceremony. Passive page-load callers (session recovery)
+ * must pass `skipPendingTelegramClaim` so a stored claim can never fire
+ * without the /get-started confirmation (W9-001).
  */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
-  options?: { verifiedPhone?: string; telegramContinuation?: string },
+  options?: {
+    verifiedPhone?: string;
+    telegramContinuation?: string;
+    skipPendingTelegramClaim?: boolean;
+  },
 ): Promise<void> {
   const explicitTelegramContinuation = sanitizeTelegramAccountClaimContinuation(
     options?.telegramContinuation,
@@ -84,7 +94,9 @@ export async function syncStewardSessionCookie(
   }
   const telegramContinuation =
     explicitTelegramContinuation ??
-    peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    (options?.skipPendingTelegramClaim
+      ? null
+      : peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE));
   const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
     token,
     ...(refreshToken ? { refreshToken } : {}),

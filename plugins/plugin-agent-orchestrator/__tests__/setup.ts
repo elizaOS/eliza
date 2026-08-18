@@ -5,6 +5,19 @@
  * production defaults remain enabled through shouldUseSmithersTaskRunner.
  */
 import { tmpdir } from "node:os";
+import { delimiter, isAbsolute } from "node:path";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+
+// Production entrypoints capture PATH before runtime configuration. Mirror
+// that boundary in tests while excluding ambient shell shorthand such as `~`,
+// which is not an executable-search authority accepted by the host contract.
+const ambientPath = process.env.PATH;
+process.env.PATH = ambientPath
+  ?.split(delimiter)
+  .filter((entry) => isAbsolute(entry))
+  .join(delimiter);
+captureHostExecutionBaseline();
+process.env.PATH = ambientPath;
 
 if (process.env.ELIZA_ORCHESTRATOR_SMITHERS === undefined) {
   process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";

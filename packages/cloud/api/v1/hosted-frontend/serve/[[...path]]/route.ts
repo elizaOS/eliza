@@ -1,21 +1,28 @@
 /**
  * Public hosted-frontend serve path.
  *
- * GET /api/v1/hosted-frontend/serve/*?host=<hostname>
+ * GET /api/v1/hosted-frontend/serve/*
  *
  * Serves an app's ACTIVE managed frontend deployment from R2 for public
- * visitors, resolving the app from the requesting host:
+ * visitors, resolving the app from the ACTUAL request host:
  *   - `<slug>.<ELIZA_FRONTEND_HOST_SUFFIX>`  → app by slug (system host), or
  *   - a verified, active managed custom domain → its bound app (mirrors the
  *     reviewed predicate in `/api/v1/domains/resolve`).
+ *
+ * The request host is the ONLY host source. A client-supplied `?host=` query
+ * or `x-forwarded-host` header is never consulted: honouring either would let
+ * anyone serve a deployment's arbitrary HTML from this API's own origin,
+ * turning the route into a same-origin content-serve primitive against every
+ * cookie-scoped API session.
  *
  * SEO + a page-view beacon are injected into the document at response time and
  * the page view is recorded server-side (no secret embedded). Fails CLOSED:
  * any unresolved host or missing deployment → 404. Public + read-only.
  *
- * The Worker entry rewrites system-frontend-host traffic to this route (see
- * `getHostedFrontendServeRewrite` in `src/index.ts`); custom domains reach it
- * once their DNS points at the Worker.
+ * The Worker entry rewrites system-frontend-host traffic to this route with
+ * the hostname preserved (see `getHostedFrontendServeRewrite` in
+ * `src/index.ts`); custom domains reach it once their DNS points at the
+ * Worker.
  */
 
 import { Hono } from "hono";
@@ -99,9 +106,9 @@ const app = new Hono<AppEnv>();
 app.get("*", async (c) => {
   try {
     const url = new URL(c.req.url);
-    const host = normalizeHost(
-      c.req.query("host") ?? c.req.header("x-forwarded-host") ?? url.hostname,
-    );
+    // The actual request host is the only trusted host source — never a
+    // client `?host=` query or `x-forwarded-host` header (see file header).
+    const host = normalizeHost(url.hostname);
     if (!host) return c.text("Not Found", 404);
 
     const appRow = await resolveAppForHost(host);

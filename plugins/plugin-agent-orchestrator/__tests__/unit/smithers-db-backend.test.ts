@@ -4,12 +4,14 @@
  * timeout parsing, and the subprocess layer selection without a live worker.
  */
 
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildSmithersWorkerEnv,
   resolveSmithersDbConfig,
   resolveSmithersTimeoutMs,
   resolveTaskDbPath,
+  resolveTaskPgliteDataDir,
 } from "../../src/services/smithers-task-runner";
 
 // ---------------------------------------------------------------------------
@@ -110,6 +112,48 @@ describe("resolveTaskDbPath", () => {
     expect(() => resolveTaskDbPath("   ", "task")).toThrow(
       "tenant id is required",
     );
+  });
+});
+
+describe("resolveTaskPgliteDataDir", () => {
+  const root = "/tmp/smithers-pglite";
+
+  it("is stable for a durable run and isolates concurrent subprocesses", () => {
+    const first = resolveTaskPgliteDataDir(root, "tenant-a", "task-a", "run-a");
+    expect(resolveTaskPgliteDataDir(root, "tenant-a", "task-a", "run-a")).toBe(
+      first,
+    );
+    expect(
+      resolveTaskPgliteDataDir(root, "tenant-b", "task-a", "run-a"),
+    ).not.toBe(first);
+    expect(
+      resolveTaskPgliteDataDir(root, "tenant-a", "task-b", "run-a"),
+    ).not.toBe(first);
+    expect(
+      resolveTaskPgliteDataDir(root, "tenant-a", "task-a", "run-b"),
+    ).not.toBe(first);
+  });
+
+  it("contains traversal-shaped identifiers beneath the configured root", () => {
+    const dataDir = resolveTaskPgliteDataDir(
+      root,
+      "../../tenant",
+      "../../task",
+      "../../run",
+    );
+    const relativePath = relative(resolve(root), dataDir);
+    expect(isAbsolute(relativePath)).toBe(false);
+    expect(relativePath.split(sep)[0]).not.toBe("..");
+  });
+
+  it.each([
+    ["tenant", "", "task", "run"],
+    ["task", "tenant", "", "run"],
+    ["run", "tenant", "task", ""],
+  ])("rejects an absent %s boundary", (_name, tenantId, taskId, runId) => {
+    expect(() =>
+      resolveTaskPgliteDataDir(root, tenantId, taskId, runId),
+    ).toThrow("is required");
   });
 });
 

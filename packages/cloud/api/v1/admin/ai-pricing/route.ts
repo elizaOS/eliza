@@ -24,6 +24,7 @@ import {
   PRICING_BILLING_SOURCES,
   PRICING_PRODUCT_FAMILIES,
 } from "@/lib/services/ai-pricing-definitions";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -159,13 +160,12 @@ app.post("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const rawBody = decodedRawBody.value;
     const body = RefreshSchema.parse(rawBody);
     const refresh = await refreshPricingCatalog(body.sources);
     return c.json(refresh, refresh.success ? 200 : 207);
@@ -178,13 +178,12 @@ app.put("/", async (c) => {
   try {
     const { user } = await requireAdmin(c);
 
-    let overrideBody: unknown;
-    try {
-      overrideBody = await c.req.json();
-    } catch {
+    const decodedOverrideBody = await decodeRequestJson(c.req);
+    if (!decodedOverrideBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ error: "Invalid JSON body" }, 400);
     }
+    const overrideBody = decodedOverrideBody.value;
     const body = OverrideSchema.parse(overrideBody);
     const dimensions = normalizePricingDimensions(body.dimensions);
     const dimensionKey = buildDimensionKey(dimensions);

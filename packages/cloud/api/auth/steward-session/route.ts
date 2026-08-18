@@ -25,6 +25,7 @@ import {
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
+  getRequestIp,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -193,8 +194,7 @@ app.post("/", async (c) => {
           action: "auth.login.failed",
           result: "failure",
           resource: null,
-          ip:
-            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          ip: getRequestIp(c),
           user_agent: c.req.header("user-agent") ?? undefined,
           request_id: c.get("requestId"),
           metadata: { provider: "steward", reason: "invalid_token" },
@@ -417,7 +417,7 @@ app.post("/", async (c) => {
         result: "success",
         resource: null,
         org_id: cloudUser.organization_id ?? undefined,
-        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: getRequestIp(c),
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: { provider: "steward", method: "session_exchange" },

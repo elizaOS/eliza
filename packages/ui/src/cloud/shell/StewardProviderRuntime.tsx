@@ -36,11 +36,6 @@ import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import {
-  clearPendingOnboardingSession,
-  peekPendingOnboardingSession,
-  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-} from "../join/lib/onboarding-continuation";
-import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
   configuredRefreshEndpoint,
@@ -122,22 +117,21 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
       lastSyncedToken.current = token;
       wasAuthenticated.current = true;
-      const telegramContinuation = peekPendingOnboardingSession(
-        TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-      );
 
+      // A pending Telegram account claim is deliberately NOT attached to this
+      // passive mirror. The claim merges the DM-created account, so it must
+      // fire only on an explicit gesture: the /get-started confirmation, or a
+      // sign-in ceremony (nonce exchange, session sync, SSO exchange), each of
+      // which attaches the pending continuation itself. A clicked claim link
+      // landing on an authenticated session must never execute on page load.
       fetch(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          ...(telegramContinuation ? { telegramContinuation } : {}),
-        }),
+        body: JSON.stringify({ token }),
       })
         .then(async (res) => {
           if (res.ok) {
-            if (telegramContinuation) clearPendingOnboardingSession();
             dispatchStewardSessionChange("present");
             window.dispatchEvent(
               new CustomEvent("steward-token-sync", {

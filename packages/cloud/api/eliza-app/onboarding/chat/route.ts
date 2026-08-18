@@ -20,7 +20,9 @@ import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
   inspectOnboardingContinuation,
+  type OnboardingContinuationPreview,
   type OnboardingPlatform,
+  previewTelegramPersonalAccountClaimContinuation,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
 import { publicElizaAppProvisioningPayload } from "@/lib/services/eliza-app/provisioning";
@@ -72,10 +74,26 @@ app.get("/", async (c) => {
     if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
       throw ForbiddenError("Browser authentication required");
     }
-    const preview = await inspectOnboardingContinuation(
-      token,
-      caller.authenticatedUser,
-    );
+    let preview: OnboardingContinuationPreview;
+    try {
+      preview = await inspectOnboardingContinuation(
+        token,
+        caller.authenticatedUser,
+      );
+    } catch (error) {
+      // A Telegram account-claim session is bound to the DM-created account
+      // it lets the caller claim, so the account-bound preview rejects it.
+      // Fall back to the read-only claim preview so the landing can name the
+      // Telegram identity before the user confirms; any other failure — or an
+      // invalid claim continuation — keeps the original fail-closed response.
+      if (
+        !isElizaError(error) ||
+        error.code !== "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+      ) {
+        throw error;
+      }
+      preview = await previewTelegramPersonalAccountClaimContinuation(token);
+    }
     return c.json({ success: true, data: preview });
   } catch (error) {
     if (

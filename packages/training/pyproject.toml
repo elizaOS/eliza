@@ -21,9 +21,10 @@ dependencies = [
   "anthropic>=0.40.0",
   "tiktoken>=0.8.0",
   "argostranslate>=1.11.0",
-  # Argos Translate 1.11.0 requires this exact Stanza release. Declaring the
-  # transitive pin keeps uv/Dependabot from proposing an unsatisfiable upgrade.
-  "stanza==1.10.1",
+  # Argos Translate 1.11.0 still declares stanza==1.10.1, but that release's
+  # model loaders can fall back to unsafe pickle deserialization. The uv
+  # override below moves the compatible loader API to the fail-closed fix.
+  "stanza>=1.12.2,<1.13",
   "httpx>=0.27.0",
   # PolarQuant's Lloyd-Max centroid generation imports scipy.stats.norm
   # directly; keep it in the base training environment so smoke tests and
@@ -37,11 +38,10 @@ dependencies = [
 
 [project.optional-dependencies]
 train = [
-  # torch>=2.5,<2.12 — uv picks the wheel matching whatever vllm 0.20.x
-  # resolves to (torch 2.11+cu130 in practice) when --extra serve is
-  # also selected (smoke), and 2.10+cu126 when train is alone (Vast
-  # SFT path). Both wheels run on Vast Blackwell driver 570.x.
-  "torch>=2.5.0,<2.13",
+  # Keep the training wheel compatible with the current vLLM serving line.
+  # vLLM 0.27.x resolves Torch 2.13, the first release outside the
+  # torch.jit.script memory-corruption advisory range.
+  "torch>=2.13.0,<2.14",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",
@@ -104,14 +104,19 @@ rl = [
   # FSDP+Megatron training backends, and verifiable-reward registry. Stage 2
   # of RL_STRATEGY.md uses the python-callable reward path
   # (`custom_reward_function`) to invoke scripts/eliza_reward_fn.py:compute_score
-  # per rollout. Keep the RL stack on the 0.8 line so the rollout server can
-  # move past the old vLLM 0.7.2 / torch 2.5.1 lock pair.
-  "verl>=0.8.0,<0.9.0",
+  # per rollout. verl 0.9 moves its runtime to NumPy 2 and supports current
+  # vLLM rollout engines; keep the project pin above the security-fixed 0.26
+  # line.
+  "verl>=0.9.0,<0.10.0",
   # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
-  # without serving don't have to install the full `serve` extra (which has
-  # an incompatible torch ABI). vLLM 0.8.5 is the latest 0.8-series wheel and
-  # avoids the older 0.7.2 / torch 2.5.1 pair flagged by dependency scanning.
-  "vllm>=0.8.5,<0.9.0",
+  # without serving don't have to install the full `serve` extra. The 0.27
+  # line includes the auth, request-fanout, ReDoS, and media-input fixes that
+  # are absent from the old 0.8 rollout server.
+  "vllm>=0.27.1,<0.28.0",
+  # verl's dashboard dependency otherwise floats to historical Ray releases.
+  # Keep the resolved dashboard past the published RCE and unauthenticated
+  # destructive-endpoint advisory ranges.
+  "ray[default]>=2.57.0,<2.58.0",
   # Atropos — continuous RL environment server. Drives the GRPO loop in
   # scripts/rl/atropos_trainer.py against eliza-native trajectory JSONL
   # exports under $ELIZA_STATE_DIR/trajectories. Config:
@@ -146,13 +151,13 @@ reward = [
 # resolution graph; install with `uv tool install vastai` and
 # `pip install heretic-llm` on the abliteration box.
 serve = [
-  # vLLM 0.21+ ships EAGLE-3 speculative decoding (PR #38280 era), the
+  # vLLM 0.27+ ships EAGLE-3 speculative decoding (PR #38280 era), the
   # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
   # on sm_90, and continuous batching needed by the Gemma-era serve harness.
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.21.0,<0.22.0",
+  "vllm>=0.27.1,<0.28.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
@@ -178,13 +183,16 @@ markers = [
 
 [tool.uv]
 package = false
-# `rl` (verl) pulls a vllm whose torch pin window conflicts with both
-# `train` and `serve`, so keep `rl` isolated. `train` and `serve` are
-# NOT declared as conflicting — they share a single torch 2.11+cu130
-# wheel in practice (vllm 0.20.x ships that, train deps float to it).
-# The local end-to-end smoke (smoke_full_stack.sh) needs both extras
-# in one venv; declaring them conflicting breaks that. The Vast SFT
-# path installs only `--extra train` and is unaffected.
+# Argos Translate has not refreshed its exact Stanza dependency even though
+# the compatible 1.12.2 patch removes unsafe model-file deserialization.
+override-dependencies = [
+  "stanza>=1.12.2,<1.13",
+]
+# `rl` remains isolated from `train` and `serve` because verl owns its full
+# distributed-training environment. `train` and `serve` intentionally share
+# the Torch 2.13 wheel selected by vLLM 0.27.x so the local full-stack smoke can
+# install both extras in one environment. The Vast SFT path installs only
+# `--extra train` and is unaffected.
 conflicts = [
   [
     { extra = "train" },

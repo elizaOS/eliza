@@ -1,14 +1,15 @@
 #!/usr/bin/env node
+
 /**
  * Evidence expectation matrix for active LifeOps MVP project issues. The board
  * can show that a row is human-gated, but closeout still needs a concrete proof contract
  * per issue so screenshots, videos, logs, trajectories, and domain artifacts do
  * not collapse into a vague "needs review" bucket.
  */
-
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_REPO = "elizaOS/eliza";
@@ -610,7 +611,10 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     process.stderr.write(
       `[audit-mvp-evidence-matrix] ${error instanceof Error ? error.message : String(error)}\n`,

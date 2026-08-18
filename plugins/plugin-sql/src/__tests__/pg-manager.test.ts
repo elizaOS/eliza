@@ -81,6 +81,22 @@ describe("PostgresConnectionManager", () => {
     expect(pool.config.application_name).toBe("0123456789abcdef");
   });
 
+  it("rejects non-positive POSTGRES_POOL_MAX (falls back to the documented 20, not pg-pool's silent 10) but keeps 0 valid for min", () => {
+    process.env.POSTGRES_POOL_MAX = "0";
+    process.env.POSTGRES_POOL_MIN = "0";
+    new PostgresConnectionManager(CONN);
+    let pool = lastPool();
+
+    expect(pool.config.max).toBe(20);
+    expect(pool.config.min).toBe(0);
+
+    process.env.POSTGRES_POOL_MAX = "-3";
+    new PostgresConnectionManager(CONN);
+    pool = lastPool();
+
+    expect(pool.config.max).toBe(20);
+  });
+
   it("sets hnsw.iterative_scan = strict_order on every new connection", async () => {
     new PostgresConnectionManager(CONN);
     const pool = lastPool();

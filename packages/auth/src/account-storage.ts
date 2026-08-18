@@ -412,7 +412,23 @@ function acquireStorageLock(
       }
       return { lockDir, ownerFile, policy, token };
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+      const errorCode = (cause as NodeJS.ErrnoException).code;
+      if (errorCode === "ENOENT") {
+        // error-policy:J2 The auth root vanished between lock creation and
+        // the generation check — a concurrent full reset removed it. The
+        // fence held (nothing was written); surface the typed generation
+        // error the reset contract promises instead of the raw ENOENT.
+        throw storageError(
+          "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
+          "Credential storage policy predates the latest reset",
+          {
+            operation,
+            policyGeneration: policy[ACCOUNT_STORAGE_ROOT_IDENTITY].generation,
+          },
+          cause,
+        );
+      }
+      if (errorCode !== "EEXIST") throw cause;
       if (removeStaleLock(policy, lockDir)) continue;
       if (Date.now() - startedAt >= STORAGE_LOCK_TIMEOUT_MS) {
         throw storageError(

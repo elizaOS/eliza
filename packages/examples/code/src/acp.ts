@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
@@ -24,13 +25,12 @@
  * @module example-code/acp
  */
 
-// FIRST import: captures this process's executable-search authority before any
-// runtime/plugin module body can mutate process.env. Without it the sub-agent's
-// baseline stays empty, plugin-coding-tools resolves ZERO authority
-// directories, and every SHELL command (builtins included) dies with exit -1
-// "No boot-authorized shell was detected" — the exact live failure observed in
-// spawned eliza-code sessions on 2026-08-16 while FILE tools kept working.
-import "./host-baseline.js";
+// FIRST import: removes the warm authenticator before any runtime/plugin module
+// can inspect process.env. Cold children also capture their launch PATH here;
+// warm children defer capture until the authenticated claim installs the
+// per-session Git wrapper.
+// biome-ignore assist/source/organizeImports: dependency evaluation order is the credential boundary.
+import { consumeWarmClaimToken } from "./acp-bootstrap.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AgentRuntime } from "@elizaos/core";
@@ -38,7 +38,9 @@ import {
   SandboxService,
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import {
@@ -63,6 +65,7 @@ function log(message: string, extra?: unknown): void {
 // Lazily-initialized shared runtime (one per ACP server process).
 let runtimePromise: Promise<AgentRuntime> | null = null;
 let identity: SessionIdentity | null = null;
+const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
   if (!runtimePromise) {
@@ -118,7 +121,10 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
       // Headless coding sub-agent: only sql + provider + shell + coding-tools.
       // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
-      const runtime = await initializeAgent({ codingOnly: true });
+      const runtime = await initializeAgent({
+        codingOnly: true,
+        loadDotenv: false,
+      });
       // Mark the session user as OWNER via the RUNTIME SETTING the role resolver
       // actually reads (getConfiguredOwnerEntityIds → runtime.getSetting), not just
       // process.env — otherwise the sender stays GUEST and FILE/SHELL are gated off.
@@ -229,7 +235,12 @@ const _connection = new AgentSideConnection(
     async authenticate() {
       return {};
     },
-    async newSession(params: { cwd?: string }) {
+    async newSession(params: {
+      cwd?: string;
+      _meta?: Record<string, unknown> | null;
+    }) {
+      warmSessionClaim.apply(params._meta);
+      captureHostExecutionBaseline();
       const runtime = await ensureRuntime(params.cwd);
       const id = randomUUID();
       const session = identity as SessionIdentity;
@@ -349,6 +360,13 @@ const _connection = new AgentSideConnection(
     async closeSession(params: { sessionId?: string }) {
       const sessionId = params?.sessionId;
       if (sessionId) sessions.delete(sessionId);
+      if (warmSessionClaim.wasConsumed) {
+        warmSessionClaim.clear();
+        // A warm child is single-claim by design. Runtime/provider instances
+        // may retain derived credentials even after process.env is cleared, so
+        // true cross-session isolation requires process disposal, not reuse.
+        setTimeout(() => process.exit(0), 0).unref?.();
+      }
       log("session closed", { sessionId });
       return {};
     },

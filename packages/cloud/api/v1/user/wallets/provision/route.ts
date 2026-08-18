@@ -50,7 +50,15 @@ app.post("/", async (c) => {
 
   try {
     user = await requireUserOrApiKey(c);
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch (error) {
+      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
+      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
+      if (!(error instanceof SyntaxError)) throw error;
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
     validated = provisionWalletSchema.parse(body);
     const clientAddress = validated.clientAddress.toLowerCase();
 

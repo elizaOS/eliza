@@ -12,6 +12,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invitesService } from "@/lib/services/invites";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createInviteSchema = z.object({
@@ -31,13 +32,12 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       );
     }
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     const validated = createInviteSchema.parse(body);
 
     const result = await invitesService.createInvite({

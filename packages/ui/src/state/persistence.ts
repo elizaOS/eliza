@@ -11,6 +11,7 @@ import {
   isPlausibleFragmentSource,
   normalizeUniforms,
 } from "../backgrounds/shader-schema";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
 
 // Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
@@ -982,7 +983,7 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
     const search = typeof window === "undefined" ? "" : window.location.search;
-    return resolveContinuousChatMode(stored, search);
+    return resolveContinuousChatMode(stored, search, isElectrobunRuntime());
   }, "off");
 }
 

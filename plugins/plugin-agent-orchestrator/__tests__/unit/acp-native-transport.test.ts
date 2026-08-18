@@ -166,6 +166,57 @@ afterEach(() => {
 });
 
 describe("NativeAcpClient JSON-RPC lifecycle", () => {
+  it("hands off a warm session claim without exposing values to observers", async () => {
+    const events: unknown[] = [];
+    const { client, p } = await startClient({
+      onEvent: (event) => events.push(event),
+    });
+    client.configureClaimedSession({
+      cwd: "/tmp/native-acp/claimed",
+      approvalPreset: "verifier",
+      env: {
+        ORCHESTRATOR_SESSION_ID: "session-a",
+        PATH: "/tmp/native-acp/git-bin:/usr/bin",
+      },
+      onEvent: (event) => events.push(event),
+    });
+    const created = client.createSession("/tmp/native-acp/claimed", {
+      token: "single-use-claim",
+      env: {
+        ORCHESTRATOR_SESSION_ID: "session-a",
+        OPENAI_API_KEY: "lease-secret-a",
+      },
+      executionPath: "/tmp/native-acp/git-bin:/usr/bin",
+    });
+    await waitForWrites(p, 2);
+    expect(writeAt(p, 1)).toMatchObject({
+      method: "session/new",
+      params: {
+        cwd: "/tmp/native-acp/claimed",
+        _meta: {
+          elizaSessionClaim: {
+            token: "single-use-claim",
+            env: { OPENAI_API_KEY: "lease-secret-a" },
+          },
+        },
+      },
+    });
+    const observed = JSON.stringify(events);
+    expect(observed).not.toContain("single-use-claim");
+    expect(observed).not.toContain("lease-secret-a");
+    expect(observed).toContain("[REDACTED]");
+    expect(observed).toContain("OPENAI_API_KEY");
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: 2,
+      result: { sessionId: "claimed-protocol-session" },
+    });
+    await expect(created).resolves.toEqual({
+      sessionId: "claimed-protocol-session",
+      agentSessionId: undefined,
+    });
+  });
+
   it("sends JSON-RPC requests and resolves responses", async () => {
     const events: unknown[] = [];
     const p = queueProc();

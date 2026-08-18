@@ -49,7 +49,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const bodyResult = createSessionSchema.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch (error) {
+      // error-policy:J3 SyntaxError is caller garbage. Stream/decoder
+      // failures stay 500 — do not reprint leftover-tax #21685/#21690.
+      if (!(error instanceof SyntaxError)) throw error;
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const bodyResult = createSessionSchema.safeParse(rawBody);
     if (!bodyResult.success) {
       return c.json(
         {

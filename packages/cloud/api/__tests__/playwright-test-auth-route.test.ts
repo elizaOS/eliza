@@ -34,7 +34,7 @@ test.each([{ NODE_ENV: "production" }, { ENVIRONMENT: "production" }])(
       {
         ...productionEnv,
         PLAYWRIGHT_TEST_AUTH: "true",
-        PLAYWRIGHT_TEST_AUTH_SECRET: "0123456789abcdef",
+        PLAYWRIGHT_TEST_AUTH_SECRET: "0123456789abcdef", // gitleaks:allow synthetic HMAC fixture
       },
     );
 

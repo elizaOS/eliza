@@ -78,4 +78,34 @@ describe("@elizaos/core runtime barrel", () => {
 			/export\s+\*\s+from\s+["']\.\/features\/basic-capabilities\/index["']/,
 		);
 	});
+
+	it("keeps the document parser graph out of the edge artifact (#21327)", () => {
+		// `mammoth`/`unpdf` are already external for this target, but external only
+		// leaves a bare specifier in the artifact — it does not remove the parser
+		// entry points. The edge build aliases the one module that imports them to
+		// a throwing stub, so the shipped artifact carries neither specifier.
+		const buildScript = readFileSync(resolve(packageRoot, "build.ts"), "utf8");
+		expect(buildScript).toMatch(
+			/filter:\s*\/\^\\\.\\\/parsers\(\?:\\\.ts\|\\\.js\)\?\$\//,
+		);
+		expect(buildScript).toContain("src/features/documents/parsers.edge.ts");
+
+		// utils.ts must reach the parsers through ./parsers so the importer-scoped
+		// alias covers every consumer; the pure helpers beside them stay live on
+		// edge and must NOT move into the stubbed module.
+		const utils = readFileSync(
+			resolve(sourceRoot, "features/documents/utils.ts"),
+			"utf8",
+		);
+		expect(utils).toMatch(
+			/export\s*\{[^}]*convertPdfToTextFromBuffer[^}]*\}\s*from\s*["']\.\/parsers\.ts["']/s,
+		);
+		expect(utils).toContain("export function normalizeDocumentContentType");
+
+		const artifact = resolve(packageRoot, "dist/edge/index.edge.js");
+		if (!existsSync(artifact)) return;
+		const edgeBundle = readFileSync(artifact, "utf8");
+		expect(edgeBundle).not.toContain('import("unpdf")');
+		expect(edgeBundle).not.toContain('import("mammoth")');
+	});
 });

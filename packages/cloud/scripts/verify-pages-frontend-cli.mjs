@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * CLI for the Cloudflare Pages frontend freshness verifier.
  *
@@ -15,6 +16,7 @@
  *     --require-text "Signing in to your agent"
  */
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 
 import { verifyPagesFrontendOnce } from "./verify-pages-frontend.mjs";
 
@@ -133,7 +135,10 @@ async function main() {
   process.exit(report.ok ? 0 : 1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((err) => {
     // error-policy:J1 boundary translation - verifier crashes must fail the
     // deployment gate instead of letting a stale frontend read as healthy.

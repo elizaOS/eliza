@@ -19,6 +19,7 @@ import {
   resolveApk,
   resolveSerial,
 } from "../../scripts/lib/android-device.mjs";
+import { parsePort } from "../../scripts/lib/host-agent.mjs";
 
 const HEALTH_POLL_MS = Number(
   process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000,
@@ -26,6 +27,13 @@ const HEALTH_POLL_MS = Number(
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 const CLEAR_APP_DATA = process.env.ELIZA_ANDROID_CLEAR_APP_DATA === "1";
+const HOST_AGENT_PORT =
+  BACKEND === "host"
+    ? parsePort(
+        process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? AGENT_API_PORT,
+        "ELIZA_ANDROID_HOST_AGENT_PORT",
+      )
+    : AGENT_API_PORT;
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -91,12 +99,13 @@ export default async function globalSetup() {
     adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
   }
 
-  // host backend: route the device's loopback :31337 to the host agent.
+  // Host backend: preserve the device's canonical loopback API while routing
+  // it to the exact kernel-assigned host-agent port selected by the parent.
   if (BACKEND === "host") {
     adbTry(adb, ["-s", serial, "shell", "am", "force-stop", APP_ID]);
-    adbReverse(adb, serial, AGENT_API_PORT, AGENT_API_PORT);
+    adbReverse(adb, serial, AGENT_API_PORT, HOST_AGENT_PORT);
     console.log(
-      `[android-e2e] host backend: adb reverse tcp:${AGENT_API_PORT} -> host:${AGENT_API_PORT}`,
+      `[android-e2e] host backend: adb reverse tcp:${AGENT_API_PORT} -> host:${HOST_AGENT_PORT}`,
     );
   }
 
@@ -119,7 +128,7 @@ export default async function globalSetup() {
   // and poll that — avoids colliding with anything already bound to host :31337.
   const pollPort =
     BACKEND === "host"
-      ? AGENT_API_PORT
+      ? HOST_AGENT_PORT
       : Number(
           adbTry(adb, [
             "-s",
@@ -143,7 +152,7 @@ export default async function globalSetup() {
     throw new Error(
       `[android-e2e] ${where} never became healthy within ${HEALTH_POLL_MS}ms — the ${BACKEND} runtime failed to start. ` +
         (BACKEND === "host"
-          ? "Start a host agent on :31337 (bun run dev) first. "
+          ? `Start a host agent on :${HOST_AGENT_PORT} first. `
           : "Run the local bring-up first (bun run --cwd packages/app test:sim:local-chat:android:live) ") +
         `or set ELIZA_ANDROID_REQUIRE_AGENT=0. ` +
         `Logcat: ${logPath}. Last health: ${JSON.stringify((health as { last?: unknown }).last)}`,

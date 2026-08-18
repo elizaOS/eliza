@@ -1,7 +1,7 @@
 /**
- * Parser for the `ELIZA_ALLOWED_HOSTS` env var into structured host patterns
- * (bare host or URL, with optional subdomain wildcards). Feeds the network
- * allow-list used to gate outbound/SSRF-sensitive requests.
+ * Parses `ELIZA_ALLOWED_HOSTS` into canonical host patterns consumed by Vite
+ * host checks and Capacitor navigation configuration. Inputs may be bare
+ * hosts or HTTP(S) origins, with optional subdomain wildcards.
  */
 export type AllowedHostPattern = {
   readonly host: string;
@@ -9,11 +9,22 @@ export type AllowedHostPattern = {
 };
 
 function parseHostPattern(rawValue: string): AllowedHostPattern {
-  let value = rawValue.trim();
+  const value = rawValue.trim();
   if (!value) {
     throw new Error("ELIZA_ALLOWED_HOSTS contains an empty host entry");
   }
+  if (
+    [...value].some((character) => {
+      const codePoint = character.charCodeAt(0);
+      return codePoint <= 0x20 || codePoint === 0x7f;
+    })
+  ) {
+    throw new Error(
+      `ELIZA_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
+    );
+  }
 
+  let hostValue = value;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -21,19 +32,60 @@ function parseHostPattern(rawValue: string): AllowedHostPattern {
         `ELIZA_ALLOWED_HOSTS entry has unsupported protocol: ${rawValue}`,
       );
     }
-    if (url.pathname !== "/" || url.search || url.hash) {
+    if (url.pathname !== "/" || value.includes("?") || value.includes("#")) {
       throw new Error(
         `ELIZA_ALLOWED_HOSTS entry must be a host, not a URL path: ${rawValue}`,
       );
     }
-    value = url.hostname;
+    if (url.username || url.password || value.includes("@")) {
+      throw new Error(
+        `ELIZA_ALLOWED_HOSTS entry must not contain credentials: ${rawValue}`,
+      );
+    }
+    hostValue = url.hostname;
   }
 
-  const includeSubdomains = value.startsWith("*.") || value.startsWith(".");
-  const host = (
-    includeSubdomains ? value.replace(/^(\*\.)|\./, "") : value
-  ).toLowerCase();
-  if (!host || host.includes("/") || host.includes("*")) {
+  const includeSubdomains =
+    hostValue.startsWith("*.") || hostValue.startsWith(".");
+  const candidate = includeSubdomains
+    ? hostValue.replace(/^(\*\.)|\./, "")
+    : hostValue;
+  const candidateForUrl =
+    candidate.indexOf(":") !== candidate.lastIndexOf(":") &&
+    !candidate.startsWith("[")
+      ? `[${candidate}]`
+      : candidate;
+
+  let parsedHost: URL;
+  try {
+    parsedHost = new URL(`http://${candidateForUrl}`);
+  } catch {
+    // error-policy:J3 Invalid configuration is rejected at its parsing boundary.
+    throw new Error(
+      `ELIZA_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
+    );
+  }
+  if (
+    parsedHost.username ||
+    parsedHost.password ||
+    candidate.includes("@") ||
+    parsedHost.pathname !== "/" ||
+    parsedHost.search ||
+    parsedHost.hash
+  ) {
+    throw new Error(
+      `ELIZA_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
+    );
+  }
+
+  const host = parsedHost.hostname.toLowerCase().replace(/\.$/, "");
+  const isIpLiteral = host.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(host);
+  if (
+    !host ||
+    host.endsWith(".") ||
+    host.includes("*") ||
+    (includeSubdomains && isIpLiteral)
+  ) {
     throw new Error(
       `ELIZA_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
     );
@@ -43,11 +95,12 @@ function parseHostPattern(rawValue: string): AllowedHostPattern {
 }
 
 export function parseAllowedHostEnv(
-  value: string | undefined,
+  value: string | undefined | null,
 ): AllowedHostPattern[] {
+  if (value == null) return [];
   const seen = new Set<string>();
   const entries: AllowedHostPattern[] = [];
-  for (const raw of (value ?? "").split(",")) {
+  for (const raw of value.split(",")) {
     if (!raw.trim()) continue;
     const entry = parseHostPattern(raw);
     const key = `${entry.includeSubdomains ? "*." : ""}${entry.host}`;

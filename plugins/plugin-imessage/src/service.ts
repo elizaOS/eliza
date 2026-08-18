@@ -109,6 +109,25 @@ export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   return intervalMs;
 }
 
+export function resolveBackfillRows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 0;
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new IMessageConfigurationError(
+      "IMESSAGE_BACKFILL must be a non-negative integer",
+      "IMESSAGE_BACKFILL"
+    );
+  }
+  const backfill = Number(normalized);
+  if (!Number.isSafeInteger(backfill)) {
+    throw new IMessageConfigurationError(
+      `IMESSAGE_BACKFILL must be between 0 and ${Number.MAX_SAFE_INTEGER}`,
+      "IMESSAGE_BACKFILL"
+    );
+  }
+  return backfill;
+}
+
 function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefined {
   const rawAppUrl =
     runtime.getSetting?.("ELIZA_APP_URL") || runtime.getSetting?.("ELIZA_CLOUD_URL");
@@ -520,6 +539,17 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Load settings
     service.settings = service.loadSettings();
+    const settingFromRuntime =
+      typeof service.runtime.getSetting === "function"
+        ? service.runtime.getSetting("IMESSAGE_BACKFILL")
+        : undefined;
+    const resolvedBackfillRaw =
+      (typeof settingFromRuntime === "string" && settingFromRuntime) ||
+      process.env.IMESSAGE_BACKFILL ||
+      "";
+    // Parse all operator configuration before validation opens or probes any
+    // external resource. A typo must fail startup, not silently alter replay.
+    const backfill = resolveBackfillRows(resolvedBackfillRaw);
     await service.validateSettings();
 
     // Open chat.db for inbound polling. A null return here is non-fatal —
@@ -531,21 +561,10 @@ export class IMessageService extends Service implements IIMessageService {
     if (service.chatDb) {
       const tip = service.chatDb.getLatestRowId();
 
-      // Resolve IMESSAGE_BACKFILL from every plausible source — character
-      // settings (runtime.getSetting), the raw process env, and the
-      // character's settings object. Whichever arrives first wins.
-      const settingFromRuntime =
-        typeof service.runtime.getSetting === "function"
-          ? service.runtime.getSetting("IMESSAGE_BACKFILL")
-          : undefined;
-      const settingFromEnv = process.env.IMESSAGE_BACKFILL;
-      const resolvedRaw =
-        (typeof settingFromRuntime === "string" && settingFromRuntime) || settingFromEnv || "";
-      const backfill = Math.max(0, Number(resolvedRaw) || 0);
       service.lastRowId = Math.max(0, tip - backfill);
 
       logger.debug(
-        `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
+        `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedBackfillRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
       );
 
       logger.info(

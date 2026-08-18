@@ -169,6 +169,57 @@ describe("TaskmarketClient", () => {
     expect(page.nextCursor).not.toContain("\n");
   });
 
+  it.each([
+    {
+      label: "astral code point",
+      description: `${"a".repeat(179)}😀tail`,
+      expected: `${"a".repeat(179)}😀`,
+    },
+    {
+      label: "combining sequence",
+      description: `${"a".repeat(179)}e\u0301tail`,
+      expected: "a".repeat(179),
+    },
+    {
+      label: "ZWJ emoji sequence",
+      description: `${"a".repeat(174)}👨‍👩‍👧‍👦tail`,
+      expected: "a".repeat(174),
+    },
+    {
+      label: "many astral code points",
+      description: "😀".repeat(181),
+      expected: "😀".repeat(180),
+    },
+    {
+      label: "unpaired input surrogate",
+      description: "safe\ud83dtext",
+      expected: "safe\uFFFDtext",
+    },
+  ])(
+    "preserves a $label at the planner-visible cap",
+    async ({ description, expected }) => {
+      const fetcher = vi.fn(async () =>
+        response({
+          tasks: [{ ...validTask, description }],
+          hasMore: false,
+          nextCursor: null,
+        }),
+      );
+
+      const page = await new TaskmarketClient(
+        "https://example.test",
+        fetcher as typeof fetch,
+      ).listTasks();
+
+      const actual = page.tasks[0].description;
+      expect(actual).toBe(expected);
+      expect(new TextDecoder().decode(new TextEncoder().encode(actual))).toBe(
+        actual,
+      );
+      expect(Array.from(actual).length).toBeLessThanOrEqual(180);
+    },
+  );
+
   it("blocks redirects to private metadata addresses", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(null, {

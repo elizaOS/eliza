@@ -17,14 +17,13 @@ function isLikelyPath(value: string): boolean {
   );
 }
 
-export function isSafeExecutableValue(
-  value: string | null | undefined,
-): boolean {
-  const trimmed = value?.trim();
+export function isSafeExecutableValue(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  if (UNSAFE_CHARS.test(value)) return false;
+  const trimmed = value.trim();
   if (!trimmed) return false;
-  if (UNSAFE_CHARS.test(trimmed)) return false;
   if (PATH_WITH_ARGS.test(trimmed)) return false;
-  if (isLikelyPath(trimmed)) return true;
   if (trimmed.startsWith("-")) return false;
+  if (isLikelyPath(trimmed)) return true;
   return BARE_NAME.test(trimmed);
 }

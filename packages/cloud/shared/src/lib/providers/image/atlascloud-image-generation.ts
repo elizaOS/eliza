@@ -1,4 +1,4 @@
-// Defines cloud shared atlascloud image generation behavior for backend service consumers.
+/** Implements Atlas Cloud's asynchronous image submit, poll, and download protocol. */
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
@@ -6,9 +6,16 @@ import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 // OpenAI chat-completions surface). Submit returns a prediction id; poll the
 // prediction until status === "completed", then download outputs[0].
 const ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS = 30_000;
+const ATLAS_IMAGE_SUBMIT_TIMEOUT_MS = 30_000;
 const ATLAS_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const ATLAS_POLL_INTERVAL_MS = 2_000;
 const ATLAS_POLL_TIMEOUT_MS = 120_000;
+
+interface AtlasImageTimingOptions {
+  pollIntervalMs?: number;
+  pollTimeoutMs?: number;
+  pollRequestTimeoutMs?: number;
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -58,8 +65,12 @@ async function readImageWithLimit(response: Response): Promise<Uint8Array> {
   return bytes;
 }
 
-async function imageUrlToGeneratedImage(url: string, text = ""): Promise<GeneratedImage> {
-  const response = await fetch(url, {
+async function imageUrlToGeneratedImage(
+  url: string,
+  text = "",
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<GeneratedImage> {
+  const response = await fetchImpl(url, {
     signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -112,7 +123,13 @@ function firstOutputUrl(outputs: unknown): string | undefined {
 const TERMINAL_OK = new Set(["completed", "succeeded", "success"]);
 const TERMINAL_FAIL = new Set(["failed", "error", "canceled", "cancelled"]);
 
-export async function generateAtlasCloudImage(request: ImageGenRequest): Promise<GeneratedImage> {
+/** Runs Atlas submit/poll/download through an injected fetch with per-request deadlines. */
+export async function generateAtlasCloudImageWithFetch(
+  request: ImageGenRequest,
+  fetchImpl: typeof fetch,
+  submitTimeoutMs = ATLAS_IMAGE_SUBMIT_TIMEOUT_MS,
+  timing: AtlasImageTimingOptions = {},
+): Promise<GeneratedImage> {
   const apiKey = request.apiKeys.ATLASCLOUD_API_KEY;
   if (!apiKey) {
     throw new Error(getAiProviderConfigurationError());
@@ -141,10 +158,11 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
     body.ratio = request.aspectRatio;
   }
 
-  const submitResponse = await fetch(`${baseUrl}/api/v1/model/generateImage`, {
+  const submitResponse = await fetchImpl(`${baseUrl}/api/v1/model/generateImage`, {
     method: "POST",
     headers: { ...authHeader, "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(submitTimeoutMs),
   });
 
   const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
@@ -161,7 +179,7 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
   // Some models may return the image inline on submit; short-circuit if so.
   const inlineUrl = firstOutputUrl(submitted.outputs);
   if (inlineUrl) {
-    return await imageUrlToGeneratedImage(inlineUrl);
+    return await imageUrlToGeneratedImage(inlineUrl, "", fetchImpl);
   }
 
   const predictionId = submitted.id;
@@ -170,12 +188,24 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
   }
   const pollUrl = submitted.urls?.get ?? `${baseUrl}/api/v1/model/prediction/${predictionId}`;
 
-  // 2. Poll the prediction until it terminates.
-  const deadline = Date.now() + ATLAS_POLL_TIMEOUT_MS;
+  // 2. Poll the prediction until it terminates. The loop deadline only
+  //    gates successful iterations; each poll fetch must also abort or a
+  //    stalled Atlas GET hangs past ATLAS_POLL_TIMEOUT_MS.
+  const pollIntervalMs = timing.pollIntervalMs ?? ATLAS_POLL_INTERVAL_MS;
+  const pollTimeoutMs = timing.pollTimeoutMs ?? ATLAS_POLL_TIMEOUT_MS;
+  const pollRequestTimeoutMs = timing.pollRequestTimeoutMs ?? ATLAS_IMAGE_SUBMIT_TIMEOUT_MS;
+  const deadline = Date.now() + pollTimeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
+    const sleepMs = Math.min(Math.max(0, pollIntervalMs), Math.max(0, deadline - Date.now()));
+    await new Promise((resolve) => setTimeout(resolve, sleepMs));
 
-    const pollResponse = await fetch(pollUrl, { headers: authHeader });
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+
+    const pollResponse = await fetchImpl(pollUrl, {
+      headers: authHeader,
+      signal: AbortSignal.timeout(Math.max(1, Math.min(pollRequestTimeoutMs, remainingMs))),
+    });
     const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!pollResponse.ok) {
       throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
@@ -195,11 +225,15 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
       if (!url) {
         throw new Error("Atlas image provider completed without an output image");
       }
-      return await imageUrlToGeneratedImage(url);
+      return await imageUrlToGeneratedImage(url, "", fetchImpl);
     }
   }
 
   throw new Error("Atlas image generation timed out");
+}
+
+export async function generateAtlasCloudImage(request: ImageGenRequest): Promise<GeneratedImage> {
+  return generateAtlasCloudImageWithFetch(request, globalThis.fetch);
 }
 
 export const atlasCloudImageProvider: ImageProvider = {

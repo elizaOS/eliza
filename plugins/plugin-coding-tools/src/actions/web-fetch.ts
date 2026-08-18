@@ -42,13 +42,18 @@ function decodeHtmlEntity(entity: string): string {
     nbsp: " ",
     quot: '"',
   };
-  if (entity.startsWith("#x")) {
-    const code = Number.parseInt(entity.slice(2), 16);
-    return Number.isFinite(code) ? String.fromCodePoint(code) : `&${entity};`;
-  }
   if (entity.startsWith("#")) {
-    const code = Number.parseInt(entity.slice(1), 10);
-    return Number.isFinite(code) ? String.fromCodePoint(code) : `&${entity};`;
+    const code = entity.startsWith("#x")
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number.parseInt(entity.slice(1), 10);
+    // Exclude the UTF-16 surrogate range as well as values outside Unicode.
+    // Once this scalar-value guard passes, String.fromCodePoint cannot throw.
+    const isUnicodeScalarValue =
+      Number.isInteger(code) &&
+      code >= 0 &&
+      code <= 0x10ffff &&
+      (code < 0xd800 || code > 0xdfff);
+    return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
   }
   return named[entity] ?? `&${entity};`;
 }

@@ -74,6 +74,30 @@ describe("Steward Telegram account claim handoff", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("never attaches the pending claim on a passive session recovery", async () => {
+    // The login page's stored-token recovery runs on page load with no user
+    // gesture. It must skip the pending claim entirely: not sent, not consumed.
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncStewardSessionCookie("steward-token", null, {
+      skipPendingTelegramClaim: true,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      token: "steward-token",
+    });
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      TOKEN,
+    );
+  });
+
   it("keeps the claim for an idempotent retry when Cloud rejects the sync", async () => {
     storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
     vi.stubGlobal(

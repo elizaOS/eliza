@@ -78,6 +78,44 @@ afterEach(() => {
 });
 
 describe("Fitbit connector — recorded real API contract", () => {
+  it.each([
+    { label: "negative", seconds: -1800 },
+    { label: "zero", seconds: 0 },
+  ])("drops a $label-duration sleep stage", async ({ seconds }) => {
+    const malformedSleep = structuredClone(recorded.sleep);
+    const sleep = malformedSleep.sleep as Array<Record<string, unknown>>;
+    const levels = sleep[0]?.levels as Record<string, unknown>;
+    const data = levels?.data as Array<Record<string, unknown>>;
+    data[0] = { ...data[0], seconds };
+
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/sleep/date/")) return jsonResponse(malformedSleep);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    expect(payload.sleepEpisodes[0]?.stageSamples).toHaveLength(3);
+    expect(
+      payload.sleepEpisodes[0]?.stageSamples.every(
+        (sample) => Date.parse(sample.endAt) > Date.parse(sample.startAt),
+      ),
+    ).toBe(true);
+  });
+
   it("normalizes the real Fitbit per-date shapes into a contract-shaped payload", async () => {
     const payload = await syncHealthConnectorData({
       token,

@@ -5,12 +5,15 @@
  * real AgentRuntime + real app-core HTTP API with a deterministic model plugin,
  * then stays alive until the surrounding workflow sends SIGTERM. Android
  * WebView tests reach it through adb reverse as a "remote" first-run target.
+ * When the parent requests an ephemeral port, this process advertises the
+ * already-bound listener through the shared atomic port-file handshake.
  */
 
 import { readFile } from "node:fs/promises";
 import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
+import { advertisePort } from "../../scripts/e2e-ports.mjs";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -147,9 +150,15 @@ async function installGeneratedRegistryFixture(): Promise<() => void> {
 
 function resolvePort(): number {
   const raw = process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337";
-  const port = Number.parseInt(raw, 10);
-  if (!Number.isFinite(port) || port <= 0) {
+  const port = /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
+  const allowsEphemeral = Boolean(process.env.ELIZA_E2E_PORT_FILE?.trim());
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`Invalid ELIZA_API_PORT/ELIZA_PORT: ${raw}`);
+  }
+  if (port === 0 && !allowsEphemeral) {
+    throw new Error(
+      "ELIZA_API_PORT=0 requires ELIZA_E2E_PORT_FILE so the parent can discover the bound port.",
+    );
   }
   return port;
 }
@@ -256,6 +265,9 @@ async function main(): Promise<void> {
     runtime: runtimeResult.runtime,
     skipDeferredStartupWork: true,
   });
+
+  const portFile = process.env.ELIZA_E2E_PORT_FILE?.trim();
+  if (portFile) advertisePort(portFile, server.port);
 
   console.log(
     `[device-e2e-host-agent] real API up on :${server.port} in ${Date.now() - t0}ms`,

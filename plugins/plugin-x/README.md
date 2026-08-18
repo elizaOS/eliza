@@ -48,6 +48,7 @@ TWITTER_ACCESS_TOKEN_SECRET=...
 TWITTER_ENABLE_POST=false         # autonomous posting loop
 TWITTER_ENABLE_REPLIES=true       # mention/reply handling
 TWITTER_ENABLE_DMS=true           # poll inbound DMs and reply through the agent
+TWITTER_DM_POLICY=pairing         # DM access gate: open|pairing|allowlist|disabled; unknown values fail closed to pairing
 TWITTER_ENABLE_ACTIONS=false      # timeline likes/retweets/quotes
 TWITTER_ENABLE_DISCOVERY=         # defaults to true when ACTIONS=true, unless set false
 

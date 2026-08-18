@@ -1,14 +1,15 @@
 #!/usr/bin/env node
+
 /**
  * Read-only audit for the LifeOps MVP project board. The GitHub Project is the
  * live kanban, but closeout work needs a compact stale-state report instead of
  * a raw project dump: closed issues that are not Done, open issues still
  * active, and the subset that is explicitly human-gated.
  */
-
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_OWNER = "elizaOS";
@@ -438,7 +439,10 @@ async function main() {
   writeSummary(summary, args);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     process.stderr.write(
       `[audit-mvp-project-board] ${error instanceof Error ? error.message : String(error)}\n`,

@@ -397,7 +397,6 @@ list. Regenerate this document after changing the registered action surface.
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
-- `ELIZAOS` — `plugins/plugin-agent-orchestrator/src/actions/os-capability.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
