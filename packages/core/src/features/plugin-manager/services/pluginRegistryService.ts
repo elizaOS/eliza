@@ -22,6 +22,7 @@ import type { PluginMetadata } from "../types.ts";
 
 const GENERATED_REGISTRY_URL =
 	"https://plugins.eliza.app/generated-registry.json";
+export const DEFAULT_PLUGIN_REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 const CACHE_DURATION = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------
@@ -356,14 +357,28 @@ async function scanLocalPlugins(): Promise<Map<string, RegistryPlugin>> {
 	return plugins;
 }
 
-async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
-	const response = await fetch(GENERATED_REGISTRY_URL);
+export async function fetchGeneratedRegistry(
+	options: {
+		fetchImpl?: typeof fetch;
+		signal?: AbortSignal;
+		timeoutMs?: number;
+	} = {},
+): Promise<Map<string, RegistryPlugin>> {
+	const {
+		fetchImpl = fetch,
+		signal: callerSignal,
+		timeoutMs = DEFAULT_PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
+	} = options;
+	const signal = callerSignal
+		? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
+		: AbortSignal.timeout(timeoutMs);
+	const response = await fetchImpl(GENERATED_REGISTRY_URL, { signal });
 	if (!response.ok) {
 		throw new Error(
 			`generated-registry.json: ${response.status} ${response.statusText}`,
 		);
 	}
-	const data = (await response.json()) as GeneratedRegistryFile;
+	const data = (await response.json()) as GeneratedRegistryFile; // same signal still active
 	const plugins = new Map<string, RegistryPlugin>();
 	for (const [name, entry] of Object.entries(data.registry)) {
 		plugins.set(name, entryToPlugin(name, entry));
