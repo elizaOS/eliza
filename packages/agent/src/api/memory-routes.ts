@@ -107,27 +107,49 @@ function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
 async function ensureMemoryConnection(
   runtime: AgentRuntime,
   agentName: string,
-): Promise<{ roomId: UUID; entityId: UUID }> {
+): Promise<{ scope: HashMemoryScope; entityId: UUID }> {
   const entityId = runtime.agentId as UUID;
-  const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
-  const worldId = stringToUuid(`${agentName}-hash-memory-world`) as UUID;
+  const scope = hashMemoryScope(runtime, agentName);
+  const worldId = stringToUuid(
+    `${HASH_MEMORY_SOURCE}:${entityId}:world:v2`,
+  ) as UUID;
   const messageServerId = stringToUuid(
-    `${agentName}-hash-memory-server`,
+    `${HASH_MEMORY_SOURCE}:${entityId}:server:v2`,
   ) as UUID;
 
   await runtime.ensureConnection({
     entityId,
-    roomId,
+    roomId: scope.roomId,
     worldId,
     userName: "User",
     source: MESSAGE_SOURCE_CLIENT_CHAT,
-    channelId: `${agentName}-hash-memory`,
+    channelId: `${HASH_MEMORY_SOURCE}:${entityId}`,
     type: ChannelType.DM,
     messageServerId,
     metadata: { ownership: { ownerId: entityId } },
   });
 
-  return { roomId, entityId };
+  return { scope, entityId };
+}
+
+type HashMemoryScope = {
+  /** Stable tenant-owned room for all new hash-memory writes. */
+  roomId: UUID;
+  /** Name-derived room used by releases before the tenant-scoped v2 IDs. */
+  legacyRoomId: UUID;
+  agentId: UUID;
+};
+
+function hashMemoryScope(
+  runtime: AgentRuntime,
+  agentName: string,
+): HashMemoryScope {
+  const agentId = runtime.agentId as UUID;
+  return {
+    roomId: stringToUuid(`${HASH_MEMORY_SOURCE}:${agentId}:room:v2`) as UUID,
+    legacyRoomId: stringToUuid(`${agentName}-hash-memory-room`) as UUID,
+    agentId,
+  };
 }
 
 /**
@@ -210,12 +232,13 @@ type MemorySearchCorpus = {
   candidates: MemorySearchCandidate[];
   /** BM25 index whose doc order matches `candidates` by array index. */
   bm25: BM25;
-  /** Room message-row count observed when this corpus was built. */
-  rowCount: number;
+  /** Per-room message counts observed when this corpus was built. */
+  rowCounts: readonly number[];
   builtAt: number;
 };
 
 type MemorySearchCacheSlot = {
+  scope: HashMemoryScope;
   generation: number;
   corpus?: MemorySearchCorpus;
   inFlight?: Promise<MemorySearchCorpusBuild>;
@@ -226,8 +249,8 @@ type MemorySearchCacheSlot = {
 type MemorySearchCorpusBuild = {
   corpus: MemorySearchCorpus;
   disposition: "cacheable" | "uncached" | "obsolete";
-  countBefore: number | null;
-  countAfter: number | null;
+  countBefore: readonly number[] | null;
+  countAfter: readonly number[] | null;
 };
 
 type MemorySearchBuildRetryBudget = {
@@ -289,8 +312,11 @@ export function invalidateMemorySearchCache(
   const cache = memorySearchCorpusCaches.get(runtime);
   if (!cache) return;
   if (roomId) {
-    const slot = cache.get(roomId);
-    if (slot) invalidateMemorySearchCacheSlot(slot);
+    for (const slot of cache.values()) {
+      if (slot.scope.roomId === roomId || slot.scope.legacyRoomId === roomId) {
+        invalidateMemorySearchCacheSlot(slot);
+      }
+    }
     return;
   }
   for (const slot of cache.values()) invalidateMemorySearchCacheSlot(slot);
@@ -299,12 +325,14 @@ export function invalidateMemorySearchCache(
 async function countRoomMessages(
   runtime: AgentRuntime,
   roomId: UUID,
+  ownerFilter: { agentId?: UUID; entityId?: UUID },
 ): Promise<number | null> {
   if (typeof runtime.countMemories !== "function") return null;
   try {
     return await runtime.countMemories({
       roomId,
       tableName: "messages",
+      ...ownerFilter,
     });
   } catch (error) {
     // error-policy:J7 A freshness-probe failure is reported but cannot turn a
@@ -314,6 +342,53 @@ async function countRoomMessages(
     });
     return null;
   }
+}
+
+function memorySearchRooms(scope: HashMemoryScope): readonly UUID[] {
+  return scope.roomId === scope.legacyRoomId
+    ? [scope.roomId]
+    : [scope.roomId, scope.legacyRoomId];
+}
+
+function memorySearchOwnerFilter(
+  scope: HashMemoryScope,
+  roomId: UUID,
+): { agentId?: UUID; entityId?: UUID } {
+  return roomId === scope.roomId
+    ? { agentId: scope.agentId }
+    : { entityId: scope.agentId };
+}
+
+function memorySearchScopeKey(scope: HashMemoryScope): string {
+  return `${scope.roomId}:${scope.legacyRoomId}`;
+}
+
+function sameMemorySearchCounts(
+  left: readonly number[] | null,
+  right: readonly number[] | null,
+): boolean {
+  return (
+    left !== null &&
+    right !== null &&
+    left.length === right.length &&
+    left.every((count, index) => count === right[index])
+  );
+}
+
+async function countMemorySearchScope(
+  runtime: AgentRuntime,
+  scope: HashMemoryScope,
+): Promise<readonly number[] | null> {
+  const counts = await Promise.all(
+    memorySearchRooms(scope).map((roomId) =>
+      countRoomMessages(
+        runtime,
+        roomId,
+        memorySearchOwnerFilter(scope, roomId),
+      ),
+    ),
+  );
+  return counts.some((count) => count === null) ? null : (counts as number[]);
 }
 
 function runtimeMemorySearchCache(
@@ -329,37 +404,39 @@ function runtimeMemorySearchCache(
 
 function retainMemorySearchCacheSlot(
   cache: Map<string, MemorySearchCacheSlot>,
-  roomId: string,
+  scopeKey: string,
   slot: MemorySearchCacheSlot,
 ): void {
   // Map insertion order is the LRU order.
-  cache.delete(roomId);
-  cache.set(roomId, slot);
+  cache.delete(scopeKey);
+  cache.set(scopeKey, slot);
 }
 
 async function acquireMemorySearchCacheSlot(
   runtime: AgentRuntime,
-  roomId: string,
+  scope: HashMemoryScope,
 ): Promise<{
   cache: Map<string, MemorySearchCacheSlot>;
   slot: MemorySearchCacheSlot;
 }> {
   const cache = runtimeMemorySearchCache(runtime);
+  const scopeKey = memorySearchScopeKey(scope);
   while (true) {
-    const existing = cache.get(roomId);
+    const existing = cache.get(scopeKey);
     if (existing) {
-      retainMemorySearchCacheSlot(cache, roomId, existing);
+      retainMemorySearchCacheSlot(cache, scopeKey, existing);
       existing.leases++;
       return { cache, slot: existing };
     }
 
     if (cache.size < MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
       const slot: MemorySearchCacheSlot = {
+        scope,
         generation: 0,
         builds: new Set(),
         leases: 1,
       };
-      retainMemorySearchCacheSlot(cache, roomId, slot);
+      retainMemorySearchCacheSlot(cache, scopeKey, slot);
       return { cache, slot };
     }
 
@@ -434,33 +511,54 @@ async function withMemorySearchBuildPermit<T>(
 
 async function buildMemorySearchCorpus(
   runtime: AgentRuntime,
-  roomId: UUID,
+  scope: HashMemoryScope,
 ): Promise<MemorySearchCorpusBuild> {
   // The two counts form a lightweight seqlock around the scan. A create/delete
   // interleaving with getMemories makes the counts disagree, so that mixed
   // snapshot is marked obsolete and retried instead of being returned or
   // published for later reuse.
-  const countBefore = await countRoomMessages(runtime, roomId);
-  const memories = await runtime.getMemories({
-    roomId,
-    tableName: "messages",
-    limit: MEMORY_SEARCH_SCAN_LIMIT,
-    includeEmbedding: false, // only reads content.text
-  });
+  const countBefore = await countMemorySearchScope(runtime, scope);
+  const memoriesByRoom: Memory[][] = [];
+  // Keep each admitted corpus build to one active adapter scan at a time. The
+  // build permit bounds backend concurrency only if the migration reads are
+  // sequential within that permit.
+  for (const roomId of memorySearchRooms(scope)) {
+    memoriesByRoom.push(
+      await runtime.getMemories({
+        roomId,
+        tableName: "messages",
+        limit: MEMORY_SEARCH_SCAN_LIMIT,
+        includeEmbedding: false, // only reads content.text
+        ...memorySearchOwnerFilter(scope, roomId),
+      }),
+    );
+  }
+  const memories = memoriesByRoom
+    .flat()
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .slice(0, MEMORY_SEARCH_SCAN_LIMIT);
   const countAfter =
-    countBefore === null ? null : await countRoomMessages(runtime, roomId);
+    countBefore === null ? null : await countMemorySearchScope(runtime, scope);
 
   const candidates: MemorySearchCandidate[] = [];
   const textEncoder = new TextEncoder();
   let retainedTextBytes = 0;
+  const seenIds = new Set<UUID>();
   for (const memory of memories) {
+    const belongsToScope =
+      memory.roomId === scope.roomId
+        ? memory.agentId === scope.agentId
+        : memory.roomId === scope.legacyRoomId &&
+          memory.entityId === scope.agentId;
+    if (!belongsToScope || !memory.id || seenIds.has(memory.id)) continue;
+    seenIds.add(memory.id);
     const text = (
       memory.content as { text?: string } | undefined
     )?.text?.trim();
     if (!text) continue;
     const source = (memory.content as { source?: string } | undefined)?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
-    if (!memory.id || typeof memory.createdAt !== "number") continue;
+    if (typeof memory.createdAt !== "number") continue;
     retainedTextBytes += textEncoder.encode(text).byteLength;
     candidates.push({
       id: memory.id,
@@ -469,8 +567,7 @@ async function buildMemorySearchCorpus(
     });
   }
 
-  const countsMatch =
-    countBefore !== null && countAfter !== null && countBefore === countAfter;
+  const countsMatch = sameMemorySearchCounts(countBefore, countAfter);
   return {
     corpus: {
       candidates,
@@ -478,7 +575,7 @@ async function buildMemorySearchCorpus(
         candidates.map((candidate) => ({ content: candidate.text })),
         { stemming: true },
       ),
-      rowCount: countAfter ?? memories.length,
+      rowCounts: countAfter ?? [memories.length],
       builtAt: Date.now(),
     },
     disposition:
@@ -494,13 +591,13 @@ async function buildMemorySearchCorpus(
 
 function startMemorySearchCorpusBuild(
   runtime: AgentRuntime,
-  roomId: UUID,
+  scope: HashMemoryScope,
   slot: MemorySearchCacheSlot,
 ): Promise<MemorySearchCorpusBuild> {
   if (slot.inFlight) return slot.inFlight;
   const generation = slot.generation;
   const build = withMemorySearchBuildPermit(runtime, async () =>
-    buildMemorySearchCorpus(runtime, roomId),
+    buildMemorySearchCorpus(runtime, scope),
   ).then((result) => {
     if (slot.generation === generation) {
       slot.corpus =
@@ -522,7 +619,10 @@ function startMemorySearchCorpusBuild(
       slot.builds.delete(build);
       if (slot.inFlight === build) slot.inFlight = undefined;
       signalMemorySearchSlotAvailability(runtime);
-      runtime.reportError("MemorySearchCache.refresh", error, { roomId });
+      runtime.reportError("MemorySearchCache.refresh", error, {
+        roomId: scope.roomId,
+        legacyRoomId: scope.legacyRoomId,
+      });
     },
   );
   return build;
@@ -530,32 +630,32 @@ function startMemorySearchCorpusBuild(
 
 async function awaitCurrentMemorySearchCorpusBuild(
   runtime: AgentRuntime,
-  roomId: UUID,
+  scope: HashMemoryScope,
   cache: Map<string, MemorySearchCacheSlot>,
   slot: MemorySearchCacheSlot,
   retryBudget: MemorySearchBuildRetryBudget,
 ): Promise<MemorySearchCorpus> {
   while (true) {
     const generation = slot.generation;
-    const result = await startMemorySearchCorpusBuild(runtime, roomId, slot);
+    const result = await startMemorySearchCorpusBuild(runtime, scope, slot);
     // The slot may have been replaced while its scan was pending. Re-enter via
     // the bounded canonical map so a mutation cannot be missed by an orphaned
     // in-flight request.
     if (
       memorySearchCorpusCaches.get(runtime) !== cache ||
-      cache.get(roomId) !== slot
+      cache.get(memorySearchScopeKey(scope)) !== slot
     ) {
-      consumeMemorySearchRetryBudget(retryBudget, roomId, "map_identity", {
+      consumeMemorySearchRetryBudget(retryBudget, scope, "map_identity", {
         countBefore: result.countBefore,
         countAfter: result.countAfter,
       });
-      return await getMemorySearchCorpus(runtime, roomId, retryBudget);
+      return await getMemorySearchCorpus(runtime, scope, retryBudget);
     }
     // Invalidation already prevents this build from publishing. It must also
     // prevent a request awaiting the old generation from returning that stale
     // snapshot after the mutation has completed.
     if (slot.generation !== generation) {
-      consumeMemorySearchRetryBudget(retryBudget, roomId, "generation", {
+      consumeMemorySearchRetryBudget(retryBudget, scope, "generation", {
         countBefore: result.countBefore,
         countAfter: result.countAfter,
       });
@@ -564,7 +664,7 @@ async function awaitCurrentMemorySearchCorpusBuild(
     if (result.disposition !== "obsolete") return result.corpus;
 
     invalidateMemorySearchCacheSlot(slot);
-    consumeMemorySearchRetryBudget(retryBudget, roomId, "count_mismatch", {
+    consumeMemorySearchRetryBudget(retryBudget, scope, "count_mismatch", {
       countBefore: result.countBefore,
       countAfter: result.countAfter,
     });
@@ -573,9 +673,12 @@ async function awaitCurrentMemorySearchCorpusBuild(
 
 function consumeMemorySearchRetryBudget(
   retryBudget: MemorySearchBuildRetryBudget,
-  roomId: UUID,
+  scope: HashMemoryScope,
   reason: "count_mismatch" | "generation" | "map_identity",
-  context: { countBefore?: number | null; countAfter?: number | null } = {},
+  context: {
+    countBefore?: readonly number[] | null;
+    countAfter?: readonly number[] | null;
+  } = {},
 ): void {
   retryBudget.unstableAttempts++;
   if (
@@ -588,7 +691,8 @@ function consumeMemorySearchRetryBudget(
     {
       code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
       context: {
-        roomId,
+        roomId: scope.roomId,
+        legacyRoomId: scope.legacyRoomId,
         attempts: retryBudget.unstableAttempts,
         reason,
         ...context,
@@ -599,46 +703,47 @@ function consumeMemorySearchRetryBudget(
 
 async function getMemorySearchCorpus(
   runtime: AgentRuntime,
-  roomId: UUID,
+  scope: HashMemoryScope,
   retryBudget: MemorySearchBuildRetryBudget = { unstableAttempts: 0 },
 ): Promise<MemorySearchCorpus> {
-  const { cache, slot } = await acquireMemorySearchCacheSlot(runtime, roomId);
+  const scopeKey = memorySearchScopeKey(scope);
+  const { cache, slot } = await acquireMemorySearchCacheSlot(runtime, scope);
   try {
     const cached = slot.corpus;
     if (cached) {
-      const rowCount = await countRoomMessages(runtime, roomId);
+      const rowCounts = await countMemorySearchScope(runtime, scope);
 
       // A process/test cache reset may replace this runtime's canonical map while
       // COUNT is pending. Re-enter through that map with the shared retry budget.
       if (
         memorySearchCorpusCaches.get(runtime) !== cache ||
-        cache.get(roomId) !== slot
+        cache.get(scopeKey) !== slot
       ) {
-        consumeMemorySearchRetryBudget(retryBudget, roomId, "map_identity");
-        return await getMemorySearchCorpus(runtime, roomId, retryBudget);
+        consumeMemorySearchRetryBudget(retryBudget, scope, "map_identity");
+        return await getMemorySearchCorpus(runtime, scope, retryBudget);
       }
 
       // A module-local mutation may have invalidated this slot while COUNT was
       // pending. Never return the snapshot captured before that mutation.
       if (slot.corpus !== cached) {
-        consumeMemorySearchRetryBudget(retryBudget, roomId, "generation");
+        consumeMemorySearchRetryBudget(retryBudget, scope, "generation");
         return await awaitCurrentMemorySearchCorpusBuild(
           runtime,
-          roomId,
+          scope,
           cache,
           slot,
           retryBudget,
         );
       }
 
-      if (rowCount !== null && rowCount === cached.rowCount) {
+      if (sameMemorySearchCounts(rowCounts, cached.rowCounts)) {
         const age = Date.now() - cached.builtAt;
         if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
         if (age <= MEMORY_SEARCH_CACHE_MAX_STALE_MS) {
           // Keep the first post-TTL request warm while one shared refresh runs.
           // The absolute max-stale boundary below prevents persistent failures
           // from extending this stale-while-revalidate window indefinitely.
-          startMemorySearchCorpusBuild(runtime, roomId, slot);
+          startMemorySearchCorpusBuild(runtime, scope, slot);
           return cached;
         }
       } else {
@@ -651,7 +756,7 @@ async function getMemorySearchCorpus(
     }
     return await awaitCurrentMemorySearchCorpusBuild(
       runtime,
-      roomId,
+      scope,
       cache,
       slot,
       retryBudget,
@@ -664,11 +769,11 @@ async function getMemorySearchCorpus(
 
 async function searchMemoryNotes(
   runtime: AgentRuntime,
-  roomId: UUID,
+  scope: HashMemoryScope,
   query: string,
   limit: number,
 ): Promise<MemorySearchHit[]> {
-  const corpus = await getMemorySearchCorpus(runtime, roomId);
+  const corpus = await getMemorySearchCorpus(runtime, scope);
 
   const hits: MemorySearchHit[] = rankWithIndex(
     query,
@@ -914,7 +1019,7 @@ export async function handleMemoryRoutes(
   }
 
   const resolvedAgentName = resolveAgentName(runtime, agentName);
-  const { roomId, entityId } = await ensureMemoryConnection(
+  const { scope, entityId } = await ensureMemoryConnection(
     runtime,
     resolvedAgentName,
   );
@@ -950,7 +1055,8 @@ export async function handleMemoryRoutes(
     const message = createMessageMemory({
       id: memoryId,
       entityId,
-      roomId,
+      agentId: runtime.agentId as UUID,
+      roomId: scope.roomId,
       content: {
         text,
         source: HASH_MEMORY_SOURCE,
@@ -958,7 +1064,7 @@ export async function handleMemoryRoutes(
       },
     });
     await runtime.createMemory(message, "messages");
-    invalidateMemorySearchCache(runtime, roomId);
+    invalidateMemorySearchCache(runtime, scope.roomId);
     json(res, {
       ok: true,
       id: message.id,
@@ -983,7 +1089,7 @@ export async function handleMemoryRoutes(
       Math.max(requestedLimit, 1),
       MEMORY_SEARCH_MAX_LIMIT,
     );
-    const results = await searchMemoryNotes(runtime, roomId, query, limit);
+    const results = await searchMemoryNotes(runtime, scope, query, limit);
     json(res, {
       query,
       results,
@@ -1009,7 +1115,7 @@ export async function handleMemoryRoutes(
     );
 
     const [memories, documents] = await Promise.all([
-      searchMemoryNotes(runtime, roomId, query, limit),
+      searchMemoryNotes(runtime, scope, query, limit),
       searchDocuments(runtime, query, limit),
     ]);
 

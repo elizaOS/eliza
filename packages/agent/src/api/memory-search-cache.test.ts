@@ -23,6 +23,9 @@ import {
 } from "./memory-routes.ts";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111" as UUID;
+const STABLE_ROOM_ID = stringToUuid(
+  `${HASH_MEMORY_SOURCE}:${AGENT_ID}:room:v2`,
+) as UUID;
 
 type Store = { rows: Memory[] };
 
@@ -43,7 +46,9 @@ function note(
 }
 
 function makeRuntime(store: Store) {
-  const getMemories = vi.fn(async () => [...store.rows]);
+  const getMemories = vi.fn(async (_params: { roomId?: UUID }) => [
+    ...store.rows,
+  ]);
   const countMemories = vi.fn(
     async (_params: { roomId?: UUID }) => store.rows.length,
   );
@@ -51,8 +56,12 @@ function makeRuntime(store: Store) {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
     ensureConnection: vi.fn(async () => undefined),
-    getMemories,
-    countMemories,
+    getMemories: vi.fn(async (params: { roomId?: UUID }) =>
+      params.roomId === STABLE_ROOM_ID ? [] : getMemories(params),
+    ),
+    countMemories: vi.fn(async (params: { roomId?: UUID }) =>
+      params.roomId === STABLE_ROOM_ID ? 0 : countMemories(params),
+    ),
     getMemoryById: vi.fn(
       async (id: UUID) => store.rows.find((row) => row.id === id) ?? null,
     ),
@@ -87,10 +96,17 @@ async function makeAdapterRuntime() {
         adapter.getMemories(params),
     ),
     countMemories: vi.fn(
-      async (params: { roomId?: UUID; tableName?: string }) =>
+      async (params: {
+        roomId?: UUID;
+        tableName?: string;
+        entityId?: UUID;
+        agentId?: UUID;
+      }) =>
         adapter.countMemories({
           roomIds: params.roomId ? [params.roomId] : undefined,
           tableName: params.tableName,
+          entityId: params.entityId,
+          agentId: params.agentId,
         }),
     ),
     getMemoryById: vi.fn(
@@ -198,10 +214,16 @@ describe("GET /api/memory/search corpus cache", () => {
       expect.objectContaining({ text: "quartz deadline moved to Friday" }),
     ]);
     expect(runtime.getMemories).toHaveBeenCalledWith(
-      expect.not.objectContaining({ agentId: expect.anything() }),
+      expect.objectContaining({ roomId: STABLE_ROOM_ID, agentId: AGENT_ID }),
+    );
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: AGENT_ID }),
     );
     expect(runtime.countMemories).toHaveBeenCalledWith(
-      expect.not.objectContaining({ agentId: expect.anything() }),
+      expect.objectContaining({ roomId: STABLE_ROOM_ID, agentId: AGENT_ID }),
+    );
+    expect(runtime.countMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: AGENT_ID }),
     );
   });
 
@@ -535,7 +557,7 @@ describe("GET /api/memory/search corpus cache", () => {
         text: "corrected wording about the gyroscope",
       }),
     ]);
-    expect(getMemories).toHaveBeenCalledTimes(9);
+    expect(getMemories).toHaveBeenCalledTimes(18);
   });
 
   test("retains an in-flight room slot instead of starting orphaned replacement work", async () => {
@@ -588,7 +610,7 @@ describe("GET /api/memory/search corpus cache", () => {
     releaseFirstA();
     await expect(firstA).resolves.toHaveLength(1);
     await expect(secondA).resolves.toHaveLength(1);
-    expect(getMemories).toHaveBeenCalledTimes(5);
+    expect(getMemories).toHaveBeenCalledTimes(10);
   });
 
   test("caps peak active corpus builds across concurrent room churn", async () => {
@@ -632,7 +654,7 @@ describe("GET /api/memory/search corpus cache", () => {
       ),
     ).toEqual([]);
     expect(settled).toHaveLength(12);
-    expect(getMemories).toHaveBeenCalledTimes(12);
+    expect(getMemories).toHaveBeenCalledTimes(24);
     expect(activeBuilds).toBe(0);
     expect(peakActiveBuilds).toBe(4);
   });
@@ -934,8 +956,8 @@ describe("GET /api/memory/search corpus cache", () => {
       code: "MEMORY_SEARCH_UNSTABLE_SNAPSHOT",
       context: {
         attempts: 3,
-        countBefore: 5,
-        countAfter: 6,
+        countBefore: [0, 5],
+        countAfter: [0, 6],
       },
     });
     expect(getMemories).toHaveBeenCalledTimes(3);
