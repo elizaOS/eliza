@@ -234,6 +234,9 @@ export class KaminoLiquidityService extends Service {
       const url = `${this.apiBaseUrl}${endpoint}`;
       const response = await fetch(url, {
         ...options,
+        signal: options.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
         headers: {
           "Content-Type": "application/json",
           ...options.headers,

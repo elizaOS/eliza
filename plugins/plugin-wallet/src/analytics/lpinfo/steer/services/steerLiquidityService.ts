@@ -19,6 +19,9 @@ import {
   SteerClient,
   VaultClient,
 } from "@steerprotocol/sdk";
+
+const DEFAULT_STEER_FETCH_TIMEOUT_MS = 15_000;
+
 import { createPublicClient, createWalletClient, http } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
@@ -1152,6 +1155,7 @@ export class SteerLiquidityService extends Service {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(DEFAULT_STEER_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -1630,6 +1634,7 @@ export class SteerLiquidityService extends Service {
           query,
           variables,
         }),
+        signal: AbortSignal.timeout(DEFAULT_STEER_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
