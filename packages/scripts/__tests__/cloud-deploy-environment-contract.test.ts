@@ -137,17 +137,13 @@ describe("canonical cloud deployment environment contract", () => {
     expect(deploy.with?.envs).toContain("TARGET_SHA");
     expect(deploy.with?.script).toContain("apps-worker-deployed-sha");
     expect(deploy.with?.script).toContain("skipping redundant queued build");
-    expect(deploy.with?.script).toContain(
-      'deployed_head" = "$TARGET_SHA"',
-    );
+    expect(deploy.with?.script).toContain('deployed_head" = "$TARGET_SHA"');
     expect(deploy.with?.script).toContain('origin "$TARGET_SHA"');
     expect(health.with?.envs).toContain("TARGET_SHA");
     expect(health.with?.script).toContain(
       "sudo tee /var/lib/eliza/apps-worker-deployed-sha",
     );
-    expect(health.with?.script).toContain(
-      'deployed_head" != "$TARGET_SHA"',
-    );
+    expect(health.with?.script).toContain('deployed_head" != "$TARGET_SHA"');
   });
 
   test("does not retain the retired Shared runtime transition gate", () => {
