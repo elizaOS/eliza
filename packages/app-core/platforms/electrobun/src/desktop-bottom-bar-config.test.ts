@@ -21,20 +21,20 @@ import {
 
 describe("desktop bottom-bar config", () => {
   describe("shouldStartBottomBar", () => {
-    it("is ON by default (#10350: bottom bar is the resting desktop surface)", () => {
-      expect(shouldStartBottomBar({}, [])).toBe(true);
+    it("is OFF by default so the normal full app is the desktop surface", () => {
+      expect(shouldStartBottomBar({}, [])).toBe(false);
     });
 
-    it("stays ON for unset / empty / truthy values", () => {
-      for (const value of ["1", "true", "yes", "on", " TRUE ", ""]) {
+    it("opts in through explicit truthy values", () => {
+      for (const value of ["1", "true", "yes", "on", " TRUE "]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(true);
       }
     });
 
-    it("opts out via explicit falsy ELIZA_DESKTOP_BOTTOM_BAR (the kill switch)", () => {
-      for (const value of ["0", "false", "no", "off", " OFF "]) {
+    it("keeps the full app for unset, empty, and falsy values", () => {
+      for (const value of [undefined, "", "0", "false", "no", "off", " OFF "]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(false);
@@ -218,51 +218,51 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("keeps the bottom-bar host transparent on every desktop platform", () => {
+    it("defaults every desktop platform to an opaque full application window", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
-        transparent: true,
-        nativeShadow: false,
-      });
-      expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
-        transparent: true,
-        nativeShadow: false,
-      });
-      expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
-        transparent: true,
-        nativeShadow: false,
-      });
-    });
-
-    it("reports the legacy full-window presentation when opted out (=0)", () => {
-      expect(
-        resolveDesktopShellWindowPresentation(
-          { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
-          [],
-          "win32",
-        ),
-      ).toEqual({
         mode: "default",
         titleBarStyle: "default",
         transparent: false,
         nativeShadow: true,
       });
-      expect(
-        resolveDesktopShellWindowPresentation(
-          { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
-          [],
-          "darwin",
-        ),
-      ).toEqual({
+      expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "default",
         titleBarStyle: "hiddenInset",
         transparent: false,
         nativeShadow: true,
+      });
+      expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
+        mode: "default",
+        titleBarStyle: "default",
+        transparent: false,
+        nativeShadow: true,
+      });
+    });
+
+    it("reports the optional bottom-bar presentation when explicitly enabled", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "win32",
+        ),
+      ).toEqual({
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
+      });
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "darwin",
+        ),
+      ).toEqual({
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
       });
     });
 

@@ -2716,11 +2716,9 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  // Dockless (tray-first) mode is the macOS default (#12184): the resting
-  // experience is the pill + menu-bar icon with NO Dock icon. Unlike the old
-  // tray-first behavior we STILL create the pill window at boot — the pill is
-  // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
-  // icon hidden until a full window (dashboard/surface/settings/app) opens.
+  // Accessory builds can opt into dockless mode. The normal application keeps
+  // its Dock presence and full main window, while a dockless pill still checks
+  // the macOS status-item regression before hiding the Dock icon.
   const docklessRequested = shouldStartTrayFirst();
   const hasBrokenStatusItemScene = hasKnownMacosStatusItemSceneRegression(
     process.platform,

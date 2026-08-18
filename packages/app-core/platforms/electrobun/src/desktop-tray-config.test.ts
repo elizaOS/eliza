@@ -49,15 +49,15 @@ describe("desktop tray config", () => {
 });
 
 describe("shouldStartTrayFirst", () => {
-  it("defaults ON (dockless) for macOS (#12184)", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
+  it("defaults OFF so the normal macOS application keeps its Dock presence", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
   });
 
-  it("honors the ELIZA_DESKTOP_TRAY_FIRST=0 kill switch on macOS", () => {
-    for (const off of ["0", "false", "no"]) {
+  it("requires an explicit truthy tray-first value on macOS", () => {
+    for (const off of [undefined, "", "0", "false", "no"]) {
       expect(
         shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: off }, "darwin", []),
       ).toBe(false);
