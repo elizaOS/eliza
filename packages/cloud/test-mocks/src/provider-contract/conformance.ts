@@ -5,31 +5,48 @@ import {
   PROVIDER_CONTRACT_SCENARIOS,
   type ProviderContractCapability,
   type ProviderContractObservation,
+  type ProviderContractProfile,
   type ProviderContractScenario,
 } from "./types.js";
 
-const ALWAYS_REQUIRED: readonly ProviderContractScenario[] = [
-  "success",
-  "designed-empty",
-  "invalid-input",
-  "rate-limit-retry-metadata",
-  "malformed-json",
-  "schema-drift",
-  "timeout",
-  "connection-reset",
-  "provider-4xx",
-  "provider-5xx",
-  "opaque-connection-id",
-  "secret-redaction",
-  "read-policy",
-];
+const PROFILE_SCENARIOS: Record<
+  ProviderContractProfile,
+  readonly ProviderContractScenario[]
+> = {
+  "outbound-http": [
+    "success",
+    "designed-empty",
+    "invalid-input",
+    "rate-limit-retry-metadata",
+    "malformed-json",
+    "schema-drift",
+    "timeout",
+    "connection-reset",
+    "provider-4xx",
+    "provider-5xx",
+    "opaque-connection-id",
+    "secret-redaction",
+    "read-policy",
+  ],
+  "inbound-webhook": [
+    "success",
+    "designed-empty",
+    "invalid-input",
+    "malformed-json",
+    "schema-drift",
+    "provider-4xx",
+    "provider-5xx",
+    "secret-redaction",
+    "read-policy",
+  ],
+};
 
 const CAPABILITY_SCENARIOS: Record<
   ProviderContractCapability,
   readonly ProviderContractScenario[]
 > = {
-  oauth: [
-    "oauth-state-pkce",
+  oauth: ["oauth-state-pkce"],
+  "oauth-credential-lifecycle": [
     "oauth-refresh-rotation",
     "oauth-revoked-credential",
     "oauth-expired-credential",
@@ -48,6 +65,7 @@ const CAPABILITY_SCENARIOS: Record<
 
 export interface ProviderAdapterConformanceOptions {
   adapterName: string;
+  profile?: ProviderContractProfile;
   capabilities: readonly ProviderContractCapability[];
   /** Additional adapter-owned scenarios beyond its mandatory capability profile. */
   requiredScenarios?: readonly ProviderContractScenario[];
@@ -58,6 +76,7 @@ export interface ProviderAdapterConformanceOptions {
 
 export interface ProviderAdapterConformanceReport {
   adapterName: string;
+  profile: ProviderContractProfile;
   capabilities: readonly ProviderContractCapability[];
   observations: ProviderContractObservation[];
 }
@@ -69,10 +88,11 @@ export const PROVIDER_CONTRACT_REPORT_NONCE_ENV =
 
 export function requiredProviderContractScenarios(
   capabilities: readonly ProviderContractCapability[],
+  profile: ProviderContractProfile = "outbound-http",
 ): ProviderContractScenario[] {
   return [
     ...new Set([
-      ...ALWAYS_REQUIRED,
+      ...PROFILE_SCENARIOS[profile],
       ...capabilities.flatMap((capability) => CAPABILITY_SCENARIOS[capability]),
     ]),
   ];
@@ -81,9 +101,10 @@ export function requiredProviderContractScenarios(
 export async function runProviderAdapterConformance(
   options: ProviderAdapterConformanceOptions,
 ): Promise<ProviderAdapterConformanceReport> {
+  const profile = options.profile ?? "outbound-http";
   const required = [
     ...new Set([
-      ...requiredProviderContractScenarios(options.capabilities),
+      ...requiredProviderContractScenarios(options.capabilities, profile),
       ...(options.requiredScenarios ?? []),
     ]),
   ];
@@ -128,6 +149,7 @@ export async function runProviderAdapterConformance(
 
   const report = {
     adapterName: options.adapterName,
+    profile,
     capabilities: options.capabilities,
     observations,
   };
@@ -151,6 +173,7 @@ function recordExecutedReport(
       version: 1,
       nonce,
       adapterName: report.adapterName,
+      profile: report.profile,
       capabilities: report.capabilities,
       requiredScenarios,
       executedObservations: report.observations.map(

@@ -21,10 +21,16 @@ export {
   startFakeProvider,
 } from "./fake-provider.js";
 export type {
+  FakeProviderAccount,
+  FakeProviderOAuthClient,
+  ProviderActionPolicy,
   ProviderActionReceipt,
+  ProviderCapabilityRiskLevel,
   ProviderContractCapability,
   ProviderContractObservation,
+  ProviderContractProfile,
   ProviderContractScenario,
+  ProviderExecutedEffect,
   ProviderProtocolFault,
   ProviderProtocolFixture,
   RecordedProviderRequest,

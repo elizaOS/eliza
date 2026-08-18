@@ -25,8 +25,9 @@ import type {
 // names from `hetzner-cloud-api` keep resolving after the seam extraction.
 export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./compute-provider";
 
-const HCLOUD_API_BASE = process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
+const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 
 export type HetznerCloudErrorCode =
   | "missing_token"
@@ -169,18 +170,36 @@ export class HetznerCloudClient implements ComputeProvider {
     return new HetznerCloudClient(token);
   }
 
-  /** Construct a client with an explicit token (tests, multi-tenant). */
-  static withToken(
+  /** Construct a client with an explicit token pinned to the configured Hetzner origin. */
+  static withToken(token: string, options: { requestTimeoutMs?: number } = {}): HetznerCloudClient {
+    validateToken(token);
+    validateRequestTimeout(options.requestTimeoutMs);
+    return new HetznerCloudClient(token, HCLOUD_API_BASE, options.requestTimeoutMs);
+  }
+
+  /**
+   * Construct a loopback-only client for protocol contract tests.
+   *
+   * This seam is disabled outside the test runtime and cannot redirect a
+   * production credential to a caller-selected network origin.
+   */
+  static withTestTransport(
     token: string,
-    options: { apiBaseUrl?: string; requestTimeoutMs?: number } = {},
+    options: { apiBaseUrl: string; requestTimeoutMs?: number },
   ): HetznerCloudClient {
-    if (!token) {
-      throw new HetznerCloudError("missing_token", "Token must be a non-empty string");
+    validateToken(token);
+    validateRequestTimeout(options.requestTimeoutMs);
+    if (process.env.NODE_ENV !== "test") {
+      throw new HetznerCloudError(
+        "invalid_input",
+        "Hetzner test transport is available only while NODE_ENV=test",
+      );
     }
-    if (options.requestTimeoutMs !== undefined && options.requestTimeoutMs <= 0) {
-      throw new HetznerCloudError("invalid_input", "requestTimeoutMs must be greater than zero");
-    }
-    return new HetznerCloudClient(token, options.apiBaseUrl, options.requestTimeoutMs);
+    return new HetznerCloudClient(
+      token,
+      validateLoopbackTestApiBaseUrl(options.apiBaseUrl),
+      options.requestTimeoutMs,
+    );
   }
 
   // ----------------------------------------------------------------------
@@ -470,6 +489,8 @@ export class HetznerCloudClient implements ComputeProvider {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const HCLOUD_API_BASE = resolveConfiguredApiBaseUrl(process.env.HCLOUD_API_BASE_URL);
+
 function mapStatusToCode(status: number, apiCode?: string): HetznerCloudErrorCode {
   // Explicit quota/limit apiCodes win over auth-status fallback: Hetzner
   // returns HTTP 403 with body code `limit_reached` (or
@@ -511,6 +532,67 @@ function parseNonNegativeNumber(value: string | null): number | undefined {
   if (value === null || value.trim() === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function validateToken(token: string): void {
+  if (!token) {
+    throw new HetznerCloudError("missing_token", "Token must be a non-empty string");
+  }
+}
+
+function validateRequestTimeout(value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_REQUEST_TIMEOUT_MS) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      `requestTimeoutMs must be a positive safe integer no greater than ${MAX_REQUEST_TIMEOUT_MS}`,
+    );
+  }
+}
+
+function resolveConfiguredApiBaseUrl(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") return OFFICIAL_HCLOUD_API_BASE;
+  if (process.env.NODE_ENV === "production") {
+    throw new HetznerCloudError(
+      "invalid_input",
+      "HCLOUD_API_BASE_URL cannot override the pinned Hetzner origin in production",
+    );
+  }
+  return validateLoopbackTestApiBaseUrl(value);
+}
+
+function validateLoopbackTestApiBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch (cause) {
+    // error-policy:J3 Reject an untrusted test transport origin explicitly.
+    throw new HetznerCloudError(
+      "invalid_input",
+      "Hetzner test API base must be a valid loopback URL",
+      undefined,
+      cause,
+    );
+  }
+  const isLoopbackHost =
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "[::1]" ||
+    parsed.hostname === "::1";
+  if (
+    !isLoopbackHost ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      "Hetzner test API base must be an uncredentialed HTTP(S) loopback origin without query or fragment",
+    );
+  }
+  return parsed.toString().replace(/\/+$/, "");
 }
 
 function encodeLabelSelector(labels: Record<string, string>): string {

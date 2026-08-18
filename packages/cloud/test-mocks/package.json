@@ -24,12 +24,16 @@
     "format:check": "bunx @biomejs/biome format package.json src test bin"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "hono": "4.13.1"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-whatsapp": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "*"
   },
   "elizaos": {

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "integrationIds": [
+    "eliza-cloud-api",
+    "hetzner-cloud",
+    "github-connector-oauth",
+    "whatsapp-cloud-webhook"
+  ]
+}

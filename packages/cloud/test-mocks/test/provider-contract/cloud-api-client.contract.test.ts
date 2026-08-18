@@ -12,11 +12,27 @@ let provider: RunningFakeProvider;
 
 beforeAll(async () => {
   provider = await startFakeProvider({
+    accounts: [
+      {
+        accountId: "acct-cloud",
+        tenantId: "org-cloud",
+        capabilities: ["cloud.models.read", "cloud.writes.create"],
+        apiCredential: "cloud-secret",
+      },
+    ],
     fixtures: [
       {
         id: "models",
         method: "GET",
         path: "/api/v1/models",
+        action: {
+          operation: "cloud.models.list",
+          capabilityId: "cloud.models.read",
+          effect: "read",
+          riskLevel: "R0",
+          decision: "allow",
+          confirmation: { state: "not_required" },
+        },
         response: { status: 200, body: { models: [{ id: "model-1" }] } },
       },
       {
@@ -50,6 +66,14 @@ beforeAll(async () => {
         id: "write",
         method: "POST",
         path: "/api/v1/writes",
+        action: {
+          operation: "cloud.writes.create",
+          capabilityId: "cloud.writes.create",
+          effect: "write",
+          riskLevel: "R1",
+          decision: "allow",
+          confirmation: { state: "not_required" },
+        },
         response: { status: 201, body: { id: "write-1" } },
       },
     ],
@@ -65,6 +89,7 @@ describe("CloudApiClient provider contract", () => {
     const client = new CloudApiClient(`${provider.url}/api/v1`, "cloud-secret");
     const report = await runProviderAdapterConformance({
       adapterName: "CloudApiClient",
+      profile: "outbound-http",
       capabilities: ["http-read", "http-write"],
       scenarios: {
         success: async () => {
@@ -233,11 +258,20 @@ describe("CloudApiClient provider contract", () => {
           };
         },
         "read-policy": async () => {
-          await client.get("/models");
-          const receipt = provider.recordAction("list-models", "read", true);
+          await client.get("/models", {
+            headers: { "x-provider-request-id": "cloud-read-policy" },
+          });
+          const receipt = provider.receipts.find(
+            (candidate) => candidate.request.id === "cloud-read-policy",
+          );
           expect(receipt).toMatchObject({
-            effect: "read",
+            tenantId: "org-cloud",
+            accountId: "acct-cloud",
+            effectKind: "read",
             outcome: "succeeded",
+            policy: { outcome: "allowed", riskLevel: "R0" },
+            executedEffect: { performed: true },
+            effect: { outcome: "applied" },
           });
           return {
             scenario: "read-policy",
@@ -247,16 +281,36 @@ describe("CloudApiClient provider contract", () => {
         },
         "write-policy-receipt": async () => {
           expect(
-            await client.post<{ id: string }>("/writes", { value: 1 }),
+            await client.post<{ id: string }>(
+              "/writes",
+              { value: 1 },
+              {
+                headers: {
+                  "x-provider-request-id": "cloud-create-write",
+                  "idempotency-key": "cloud-create-write-1",
+                },
+              },
+            ),
           ).toEqual({
             id: "write-1",
           });
-          const receipt = provider.recordAction("create-write", "write", true);
+          const receipt = provider.receipts.find(
+            (candidate) => candidate.request.id === "cloud-create-write",
+          );
+          expect(receipt).toMatchObject({
+            capabilityId: "cloud.writes.create",
+            outcome: "succeeded",
+            providerResult: { status: "accepted", resultId: "write-1" },
+            effect: {
+              outcome: "applied",
+              idempotency: { key: "cloud-create-write-1", replayed: false },
+            },
+          });
           return {
             scenario: "write-policy-receipt",
             status: "passed",
             detail: "real write completed and emitted an auditable receipt",
-            receiptId: receipt.id,
+            receiptId: receipt?.id,
           };
         },
       },

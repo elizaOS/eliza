@@ -133,6 +133,7 @@ describe("HetznerCloudClient public surface", () => {
   test("static constructors and module accessors exist", () => {
     expect(typeof HetznerCloudClient.fromEnv).toBe("function");
     expect(typeof HetznerCloudClient.withToken).toBe("function");
+    expect(typeof HetznerCloudClient.withTestTransport).toBe("function");
     expect(typeof getHetznerCloudClient).toBe("function");
     expect(typeof isHetznerCloudConfigured).toBe("function");
   });
@@ -144,6 +145,62 @@ describe("HetznerCloudClient public surface", () => {
     } catch (err) {
       expect((err as HetznerCloudError).code).toBe("missing_token");
     }
+  });
+
+  test("withToken ignores a caller-injected origin and keeps credentials pinned", async () => {
+    queueJson({ servers: [] });
+    const clientWithRogueOptions = HetznerCloudClient.withToken(TOKEN, {
+      apiBaseUrl: "https://attacker.example/v1",
+    } as unknown as {
+      requestTimeoutMs?: number;
+    });
+
+    await clientWithRogueOptions.listServers();
+
+    expect(lastRequest().url).toBe(`${API_BASE}/servers`);
+    expect(lastRequest().headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test("rejects invalid request deadlines before any credential-bearing request", () => {
+    const invalidValues = [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      1.5,
+      2_147_483_648,
+      "1000" as unknown as number,
+    ];
+
+    for (const requestTimeoutMs of invalidValues) {
+      expect(() => HetznerCloudClient.withToken(TOKEN, { requestTimeoutMs })).toThrow(
+        HetznerCloudError,
+      );
+    }
+    expect(recorded).toHaveLength(0);
+  });
+
+  test("test transport rejects external origins and is disabled in production", () => {
+    expect(() =>
+      HetznerCloudClient.withTestTransport(TOKEN, {
+        apiBaseUrl: "https://attacker.example/v1",
+      }),
+    ).toThrow(HetznerCloudError);
+
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() =>
+        HetznerCloudClient.withTestTransport(TOKEN, {
+          apiBaseUrl: "http://127.0.0.1:4567/v1",
+        }),
+      ).toThrow(HetznerCloudError);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+    expect(recorded).toHaveLength(0);
   });
 });
 

@@ -10,6 +10,19 @@ Code + state + PKCE, rotating refresh credentials, revoked/expired credentials,
 fixture responses, deterministic faults, signed webhook delivery, redacted
 request inspection, and policy receipts.
 
+Suites declare an `outbound-http` or `inbound-webhook` profile. The audit binds
+that profile and the capability list to the executed nonce report, so a caller
+cannot omit mandatory scenarios or claim OAuth credential lifecycle behavior
+when it only implements the callback/state/PKCE boundary.
+
+Action fixtures declare provider-owned account grants and policy decisions.
+The upstream authenticates and authorizes the request, performs or rejects the
+effect, and emits a canonical `EffectReceipt` in one boundary operation. Tests
+can inspect returned receipt/effect snapshots, but cannot mint receipts. Every
+receipt binds the tenant, account, opaque connection, capability, policy and
+confirmation result, request/idempotency identity, provider result, and actual
+effect; replay and denial are explicit non-applied outcomes.
+
 ```ts
 import {
   runProviderAdapterConformance,
@@ -21,6 +34,7 @@ const adapter = new RealProviderAdapter({ baseUrl: upstream.url });
 
 await runProviderAdapterConformance({
   adapterName: "RealProviderAdapter",
+  profile: "outbound-http",
   capabilities: ["http-read", "pagination"],
   scenarios: {
     success: async () => {
@@ -40,9 +54,12 @@ await upstream.stop();
 ```
 
 See `fixtures/provider-contract/README.md` and
-`provider-contract-inventory.json`. `bun run audit:provider-contracts` rejects
+`provider-contract-inventory.json`. Every inventory ID must also appear in the
+append-only `provider-contract-protected-integrations.json` ledger. The
+`audit:provider-contracts` command rejects
 missing suites, undeclared promotions, focused/skipped suites, unknown
-capabilities, removal of protected integration IDs, or a mismatch between
+or duplicate capabilities, removal of any integration ID visible in reachable
+repository history, ledger/inventory drift, or a mismatch between
 declared capabilities and nonce-bound observations emitted by the executed
 suite. Normal CI is fully offline and credential-free; live/sandbox lanes
 remain optional.

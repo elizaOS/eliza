@@ -29,7 +29,6 @@ async function authorize(provider: RunningFakeProvider) {
     state: "csrf-state",
     code_challenge: challenge,
     code_challenge_method: "S256",
-    organization_id: "org-1",
   }).toString();
   const response = await fetch(authorize, { redirect: "manual" });
   expect(response.status).toBe(302);
@@ -109,6 +108,7 @@ describe("fake provider OAuth and tenant boundary", () => {
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: first.refresh_token,
+        client_id: "contract-client",
       }),
     });
     const rotated = (await rotatedResponse.json()) as {
@@ -124,6 +124,7 @@ describe("fake provider OAuth and tenant boundary", () => {
           body: new URLSearchParams({
             grant_type: "refresh_token",
             refresh_token: first.refresh_token,
+            client_id: "contract-client",
           }),
         })
       ).status,
@@ -138,6 +139,7 @@ describe("fake provider OAuth and tenant boundary", () => {
           body: new URLSearchParams({
             grant_type: "refresh_token",
             refresh_token: rotated.refresh_token,
+            client_id: "contract-client",
           }),
         })
       ).status,
@@ -327,9 +329,33 @@ describe("webhooks, policies, receipts, and redaction", () => {
     running.push(provider);
     const target = `http://${receiver.hostname}:${receiver.port}/webhook`;
     const events = [
-      { id: "event-2", sequence: 2, type: "updated", data: {} },
-      { id: "event-1", sequence: 1, type: "created", data: {} },
-      { id: "event-2", sequence: 2, type: "updated", data: {} },
+      {
+        id: "event-2",
+        sequence: 2,
+        type: "updated",
+        tenantId: "org-1",
+        accountId: "acct-contract",
+        connectionId: "conn_contract",
+        data: {},
+      },
+      {
+        id: "event-1",
+        sequence: 1,
+        type: "created",
+        tenantId: "org-1",
+        accountId: "acct-contract",
+        connectionId: "conn_contract",
+        data: {},
+      },
+      {
+        id: "event-2",
+        sequence: 2,
+        type: "updated",
+        tenantId: "org-1",
+        accountId: "acct-contract",
+        connectionId: "conn_contract",
+        data: {},
+      },
     ];
     const responses = await provider.deliverWebhooks(
       target,
@@ -340,16 +366,8 @@ describe("webhooks, policies, receipts, and redaction", () => {
     expect(order).toEqual([2, 1]);
     expect(effects.size).toBe(2);
 
-    const read = provider.recordAction("list-items", "read", true);
-    const write = provider.recordAction("create-item", "write", true);
-    const irreversible = provider.recordAction(
-      "delete-item",
-      "irreversible",
-      false,
-    );
-    expect(read.effect).toBe("read");
-    expect(write.id).toMatch(/^receipt_/);
-    expect(irreversible.outcome).toBe("denied");
+    expect(provider.receipts).toEqual([]);
+    expect(provider.effects).toEqual([]);
     expect(provider.createConnectionId()).toMatch(/^conn_[A-Za-z0-9_-]{16,}$/);
     const diagnostic = redactProviderDiagnostics(
       { authorization: "Bearer access-secret", nested: "refresh-secret" },

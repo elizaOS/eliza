@@ -3,7 +3,10 @@
 import { createHash, createHmac } from "node:crypto";
 import { startFetchServer } from "../fetch-server.js";
 import type {
+  FakeProviderAccount,
+  FakeProviderOAuthClient,
   ProviderActionReceipt,
+  ProviderExecutedEffect,
   ProviderProtocolFault,
   ProviderProtocolFixture,
   RecordedProviderRequest,
@@ -13,21 +16,42 @@ interface AuthorizationCode {
   clientId: string;
   redirectUri: string;
   challenge: string;
-  organizationId: string;
+  accountId: string;
+  tenantId: string;
+  connectionId: string;
+  capabilities: readonly string[];
   used: boolean;
 }
 
 interface Credential {
+  clientId: string;
   accessToken: string;
   refreshToken: string;
-  organizationId: string;
+  accountId: string;
+  tenantId: string;
+  connectionId: string;
+  capabilities: readonly string[];
   expiresAt: number;
   active: boolean;
+}
+
+interface ActionPrincipal {
+  accountId: string;
+  tenantId: string;
+  connectionId: string;
+  capabilities: readonly string[];
+}
+
+interface CompletedAction {
+  identityDigest: string;
+  receipt: ProviderActionReceipt;
 }
 
 export interface FakeProviderOptions {
   fixtures?: readonly ProviderProtocolFixture[];
   clientId?: string;
+  accounts?: readonly FakeProviderAccount[];
+  oauthClients?: readonly FakeProviderOAuthClient[];
   now?: () => number;
   tokenLifetimeMs?: number;
   seed?: string;
@@ -37,6 +61,9 @@ export interface FakeWebhookEvent {
   id: string;
   sequence: number;
   type: string;
+  tenantId: string;
+  accountId: string;
+  connectionId: string;
   data: unknown;
 }
 
@@ -45,7 +72,8 @@ export interface RunningFakeProvider {
   oauthAuthorizeUrl: string;
   oauthTokenUrl: string;
   requests: RecordedProviderRequest[];
-  receipts: ProviderActionReceipt[];
+  readonly receipts: readonly ProviderActionReceipt[];
+  readonly effects: readonly ProviderExecutedEffect[];
   createConnectionId(): string;
   enqueueFault(
     method: string,
@@ -59,11 +87,6 @@ export interface RunningFakeProvider {
     events: readonly FakeWebhookEvent[],
     secret: string,
   ): Promise<Response[]>;
-  recordAction(
-    action: string,
-    effect: ProviderActionReceipt["effect"],
-    allowed: boolean,
-  ): ProviderActionReceipt;
   /** Abruptly closes the upstream so the real adapter observes a network fault. */
   resetConnections(): Promise<void>;
   stop(): Promise<void>;
@@ -88,7 +111,63 @@ export async function startFakeProvider(
   const faults = new Map<string, ProviderProtocolFault[]>();
   const requests: RecordedProviderRequest[] = [];
   const receipts: ProviderActionReceipt[] = [];
+  const effects: ProviderExecutedEffect[] = [];
+  const completedActions = new Map<string, CompletedAction>();
   let sequence = 0;
+  const accountSeeds =
+    options.accounts ??
+    ([
+      {
+        accountId: "acct-contract",
+        tenantId: "org-1",
+        capabilities: ["provider.read", "provider.write", "provider.delete"],
+      },
+    ] satisfies readonly FakeProviderAccount[]);
+  const accounts = new Map(
+    accountSeeds.map((account) => [account.accountId, account]),
+  );
+  if (accounts.size !== accountSeeds.length) {
+    throw new Error("fake provider account IDs must be unique");
+  }
+  const oauthClients = new Map(
+    (
+      options.oauthClients ?? [
+        {
+          clientId,
+          redirectUris: ["https://adapter.test/callback"],
+          accountIds: accountSeeds[0] ? [accountSeeds[0].accountId] : [],
+        },
+      ]
+    ).map((client) => [client.clientId, client]),
+  );
+  const configuredOAuthClients = [...oauthClients.values()];
+  if (configuredOAuthClients.length !== (options.oauthClients?.length ?? 1)) {
+    throw new Error("fake provider OAuth client IDs must be unique");
+  }
+  for (const registration of configuredOAuthClients) {
+    if (
+      registration.redirectUris.length === 0 ||
+      registration.accountIds.length === 0 ||
+      registration.accountIds.some((accountId) => !accounts.has(accountId))
+    ) {
+      throw new Error(
+        `fake provider OAuth client ${registration.clientId} has an invalid provider-owned grant`,
+      );
+    }
+  }
+  const apiCredentials = new Map<string, ActionPrincipal>();
+  for (const account of accountSeeds) {
+    if (!account.apiCredential) continue;
+    if (apiCredentials.has(account.apiCredential)) {
+      throw new Error("fake provider API credentials must be unique");
+    }
+    apiCredentials.set(account.apiCredential, {
+      accountId: account.accountId,
+      tenantId: account.tenantId,
+      connectionId: opaque("conn", seed, ++sequence),
+      capabilities: account.capabilities,
+    });
+  }
 
   const server = await startFetchServer(async (request) => {
     const url = new URL(request.url);
@@ -116,10 +195,22 @@ export async function startFakeProvider(
       const state = url.searchParams.get("state");
       const challenge = url.searchParams.get("code_challenge");
       const challengeMethod = url.searchParams.get("code_challenge_method");
+      const registration = requestedClientId
+        ? oauthClients.get(requestedClientId)
+        : undefined;
+      const requestedAccountId = registration?.accountIds[0];
+      const account = requestedAccountId
+        ? accounts.get(requestedAccountId)
+        : undefined;
       if (
         responseType !== "code" ||
-        requestedClientId !== clientId ||
+        !registration ||
         !redirectUri ||
+        !registration.redirectUris.includes(redirectUri) ||
+        url.searchParams.has("account_id") ||
+        url.searchParams.has("organization_id") ||
+        !account ||
+        !registration.accountIds.includes(account.accountId) ||
         !state ||
         !challenge ||
         challengeMethod !== "S256"
@@ -128,10 +219,13 @@ export async function startFakeProvider(
       }
       const code = opaque("code", seed, ++sequence);
       authorizationCodes.set(code, {
-        clientId,
+        clientId: registration.clientId,
         redirectUri,
         challenge,
-        organizationId: url.searchParams.get("organization_id") ?? "org-1",
+        accountId: account.accountId,
+        tenantId: account.tenantId,
+        connectionId: opaque("conn", seed, ++sequence),
+        capabilities: account.capabilities,
         used: false,
       });
       const callback = new URL(redirectUri);
@@ -158,7 +252,7 @@ export async function startFakeProvider(
         }
         entry.used = true;
         const credential = issueCredential(
-          entry.organizationId,
+          entry,
           seed,
           ++sequence,
           now() + tokenLifetimeMs,
@@ -175,12 +269,17 @@ export async function startFakeProvider(
         if (prior === undefined) {
           return oauthError("invalid_grant", 400);
         }
-        if (!prior.active || prior.expiresAt <= now()) {
+        if (
+          !prior.active ||
+          prior.expiresAt <= now() ||
+          form.get("client_id") !== prior.clientId ||
+          !oauthClients.has(prior.clientId)
+        ) {
           return oauthError("invalid_grant", 400);
         }
         prior.active = false;
         const credential = issueCredential(
-          prior.organizationId,
+          prior,
           seed,
           ++sequence,
           now() + tokenLifetimeMs,
@@ -226,7 +325,7 @@ export async function startFakeProvider(
         const organizationId = request.headers.get("x-organization-id");
         if (
           !organizationId ||
-          organizationId !== credential.organizationId ||
+          organizationId !== credential.tenantId ||
           (fixture.expectedOrganizationId &&
             organizationId !== fixture.expectedOrganizationId)
         ) {
@@ -234,14 +333,26 @@ export async function startFakeProvider(
         }
       }
     }
-    const response = fixture.response;
-    if (response.rawBody !== undefined) {
-      return new Response(response.rawBody, {
-        status: response.status,
-        headers: response.headers,
+    if (fixture.action) {
+      return handleProviderAction({
+        request,
+        body,
+        fixture,
+        principal: resolvePrincipal(
+          request,
+          credentialsByAccess,
+          apiCredentials,
+          now(),
+        ),
+        now,
+        seed,
+        nextSequence: () => ++sequence,
+        receipts,
+        effects,
+        completedActions,
       });
     }
-    return json(response.body, response.status, response.headers);
+    return fixtureResponse(fixture);
   });
 
   const url = `http://${server.hostname}:${server.port}`;
@@ -250,7 +361,12 @@ export async function startFakeProvider(
     oauthAuthorizeUrl: `${url}/oauth/authorize`,
     oauthTokenUrl: `${url}/oauth/token`,
     requests,
-    receipts,
+    get receipts() {
+      return receipts.map((receipt) => structuredClone(receipt));
+    },
+    get effects() {
+      return effects.map((effect) => structuredClone(effect));
+    },
     createConnectionId() {
       return opaque("conn", seed, ++sequence);
     },
@@ -289,17 +405,6 @@ export async function startFakeProvider(
       }
       return responses;
     },
-    recordAction(action, effect, allowed) {
-      const receipt: ProviderActionReceipt = {
-        id: opaque("receipt", seed, ++sequence),
-        action,
-        effect,
-        outcome: allowed ? "succeeded" : "denied",
-        createdAt: new Date(now()).toISOString(),
-      };
-      receipts.push(receipt);
-      return receipt;
-    },
     resetConnections: server.stop,
     stop: server.stop,
   };
@@ -335,8 +440,362 @@ export function redactProviderDiagnostics(
   return visit(value);
 }
 
+function resolvePrincipal(
+  request: Request,
+  credentialsByAccess: ReadonlyMap<string, Credential>,
+  apiCredentials: ReadonlyMap<string, ActionPrincipal>,
+  currentTime: number,
+): ActionPrincipal | null {
+  const token = bearerToken(request.headers.get("authorization"));
+  if (!token) return null;
+  const credential = credentialsByAccess.get(token);
+  if (credential?.active && credential.expiresAt > currentTime) {
+    return credential;
+  }
+  return apiCredentials.get(token) ?? null;
+}
+
+interface ProviderActionContext {
+  request: Request;
+  body: string | null;
+  fixture: ProviderProtocolFixture;
+  principal: ActionPrincipal | null;
+  now: () => number;
+  seed: string;
+  nextSequence: () => number;
+  receipts: ProviderActionReceipt[];
+  effects: ProviderExecutedEffect[];
+  completedActions: Map<string, CompletedAction>;
+}
+
+function handleProviderAction(context: ProviderActionContext): Response {
+  const { fixture, principal, request } = context;
+  const policy = fixture.action;
+  if (!policy) return fixtureResponse(fixture);
+  if (!principal) {
+    return json({ error: { code: "invalid_token" } }, 401, {
+      "www-authenticate": 'Bearer error="invalid_token"',
+    });
+  }
+
+  const requestId =
+    request.headers.get("x-provider-request-id") ??
+    opaque("request", context.seed, context.nextSequence());
+  const idempotencyKey = request.headers.get("idempotency-key");
+  const identityDigest = createHash("sha256")
+    .update(
+      `${request.method}:${new URL(request.url).pathname}:${context.body ?? ""}`,
+    )
+    .digest("hex");
+  const tenantHeader = request.headers.get("x-organization-id");
+  const accountHeader = request.headers.get("x-provider-account-id");
+  const confirmationHeader = request.headers.get("x-provider-confirmation-id");
+  const confirmation =
+    policy.confirmation.state === "required"
+      ? confirmationHeader === policy.confirmation.confirmationId
+        ? "confirmed"
+        : "missing"
+      : policy.confirmation.state;
+  const denialReason =
+    tenantHeader && tenantHeader !== principal.tenantId
+      ? "cross_tenant"
+      : accountHeader && accountHeader !== principal.accountId
+        ? "cross_account"
+        : !principal.capabilities.includes(policy.capabilityId)
+          ? "capability_not_granted"
+          : policy.decision === "deny"
+            ? "policy_denied"
+            : confirmation === "missing"
+              ? "confirmation_required"
+              : null;
+  if (denialReason) {
+    const receipt = deniedActionReceipt(context, {
+      principal,
+      requestId,
+      idempotencyKey,
+      confirmation,
+      reasonCode: denialReason,
+      statusCode: denialReason === "confirmation_required" ? 409 : 403,
+    });
+    context.receipts.push(receipt);
+    return json(
+      { error: { code: denialReason }, receipt_id: receipt.id },
+      receipt.providerResult.statusCode,
+      { "x-provider-receipt-id": receipt.id },
+    );
+  }
+
+  const replayKey = idempotencyKey
+    ? `${principal.accountId}:${principal.connectionId}:${policy.capabilityId}:${idempotencyKey}`
+    : null;
+  const completed = replayKey
+    ? context.completedActions.get(replayKey)
+    : undefined;
+  if (completed) {
+    if (completed.identityDigest !== identityDigest) {
+      const receipt = deniedActionReceipt(context, {
+        principal,
+        requestId,
+        idempotencyKey,
+        confirmation,
+        reasonCode: "idempotency_conflict",
+        statusCode: 409,
+      });
+      context.receipts.push(receipt);
+      return json(
+        { error: { code: "idempotency_conflict" }, receipt_id: receipt.id },
+        409,
+        { "x-provider-receipt-id": receipt.id },
+      );
+    }
+    const receiptId = opaque("receipt", context.seed, context.nextSequence());
+    const policyDecisionId = opaque(
+      "decision",
+      context.seed,
+      context.nextSequence(),
+    );
+    const receipt: ProviderActionReceipt = {
+      ...completed.receipt,
+      id: receiptId,
+      outcome: "replayed",
+      request: {
+        id: requestId,
+        idempotencyKey,
+        replayOfReceiptId: completed.receipt.id,
+      },
+      policy: {
+        ...completed.receipt.policy,
+        decisionId: policyDecisionId,
+      },
+      policyDecisionId,
+      executedEffect: { performed: false, effectId: null },
+      effect: {
+        receiptId,
+        operation: policy.operation,
+        resource: {
+          kind: policy.capabilityId,
+          id: completed.receipt.providerResult.resultId ?? requestId,
+        },
+        artifacts: [],
+        idempotency: { key: idempotencyKey, replayed: true },
+        observedAt: new Date(context.now()).toISOString(),
+        outcome: "noop",
+        reason: "provider idempotency contract replayed the accepted result",
+      },
+      createdAt: new Date(context.now()).toISOString(),
+    };
+    context.receipts.push(receipt);
+    return fixtureResponse(fixture, { "x-provider-receipt-id": receipt.id });
+  }
+
+  const response = fixture.response;
+  const resultRepresentation =
+    response.rawBody ?? JSON.stringify(response.body ?? null);
+  const resultId =
+    providerResultId(response.body) ??
+    opaque("result", context.seed, context.nextSequence());
+  const providerAccepted = response.status >= 200 && response.status < 300;
+  const effectId = providerAccepted
+    ? opaque("effect", context.seed, context.nextSequence())
+    : null;
+  const receiptId = opaque("receipt", context.seed, context.nextSequence());
+  const policyDecisionId = opaque(
+    "decision",
+    context.seed,
+    context.nextSequence(),
+  );
+  const observedAt = new Date(context.now()).toISOString();
+  const receipt: ProviderActionReceipt = {
+    id: receiptId,
+    tenantId: principal.tenantId,
+    accountId: principal.accountId,
+    connectionId: principal.connectionId,
+    capabilityId: policy.capabilityId,
+    operation: policy.operation,
+    effectKind: policy.effect,
+    outcome: providerAccepted ? "succeeded" : "failed",
+    request: { id: requestId, idempotencyKey, replayOfReceiptId: null },
+    policy: {
+      decisionId: policyDecisionId,
+      riskLevel: policy.riskLevel,
+      outcome: "allowed",
+      confirmation,
+      confirmationId:
+        policy.confirmation.state === "required"
+          ? policy.confirmation.confirmationId
+          : null,
+      reasonCode: null,
+    },
+    policyDecisionId,
+    providerResult: {
+      status: providerAccepted ? "accepted" : "rejected",
+      statusCode: response.status,
+      resultId: providerAccepted ? resultId : null,
+      digest: createHash("sha256")
+        .update(`${response.status}:${resultRepresentation}`)
+        .digest("hex"),
+    },
+    executedEffect: { performed: providerAccepted, effectId },
+    effect: providerAccepted
+      ? {
+          receiptId,
+          operation: policy.operation,
+          resource: { kind: policy.capabilityId, id: resultId },
+          artifacts: [],
+          idempotency: { key: idempotencyKey, replayed: false },
+          observedAt,
+          outcome: "applied",
+          commit: {
+            kind: "provider_accepted",
+            id: resultId,
+            committedAt: observedAt,
+          },
+        }
+      : {
+          receiptId,
+          operation: policy.operation,
+          resource: { kind: policy.capabilityId, id: requestId },
+          artifacts: [],
+          idempotency: { key: idempotencyKey, replayed: false },
+          observedAt,
+          outcome: "failed",
+          failure: {
+            code: `provider_http_${response.status}`,
+            retryable: response.status >= 500,
+            acceptance: "rejected",
+          },
+        },
+    createdAt: observedAt,
+  };
+  if (providerAccepted && effectId) {
+    context.effects.push({
+      id: effectId,
+      tenantId: principal.tenantId,
+      accountId: principal.accountId,
+      connectionId: principal.connectionId,
+      capabilityId: policy.capabilityId,
+      operation: policy.operation,
+      requestId,
+      idempotencyKey,
+      providerResultId: resultId,
+      performedAt: receipt.createdAt,
+    });
+  }
+  context.receipts.push(receipt);
+  if (replayKey && providerAccepted) {
+    context.completedActions.set(replayKey, { identityDigest, receipt });
+  }
+  return fixtureResponse(fixture, { "x-provider-receipt-id": receipt.id });
+}
+
+function deniedActionReceipt(
+  context: ProviderActionContext,
+  input: {
+    principal: ActionPrincipal;
+    requestId: string;
+    idempotencyKey: string | null;
+    confirmation: "not_required" | "already_granted" | "confirmed" | "missing";
+    reasonCode: string;
+    statusCode: number;
+  },
+): ProviderActionReceipt {
+  const policy = context.fixture.action;
+  if (!policy) throw new Error("provider action receipt requires policy");
+  const receiptId = opaque("receipt", context.seed, context.nextSequence());
+  const policyDecisionId = opaque(
+    "decision",
+    context.seed,
+    context.nextSequence(),
+  );
+  const observedAt = new Date(context.now()).toISOString();
+  return {
+    id: receiptId,
+    tenantId: input.principal.tenantId,
+    accountId: input.principal.accountId,
+    connectionId: input.principal.connectionId,
+    capabilityId: policy.capabilityId,
+    operation: policy.operation,
+    effectKind: policy.effect,
+    outcome: "denied",
+    request: {
+      id: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      replayOfReceiptId: null,
+    },
+    policy: {
+      decisionId: policyDecisionId,
+      riskLevel: policy.riskLevel,
+      outcome: "denied",
+      confirmation: input.confirmation,
+      confirmationId:
+        policy.confirmation.state === "required"
+          ? policy.confirmation.confirmationId
+          : null,
+      reasonCode: input.reasonCode,
+    },
+    policyDecisionId,
+    providerResult: {
+      status: "not_sent",
+      statusCode: input.statusCode,
+      resultId: null,
+      digest: null,
+    },
+    executedEffect: { performed: false, effectId: null },
+    effect: {
+      receiptId,
+      operation: policy.operation,
+      resource: { kind: policy.capabilityId, id: input.requestId },
+      artifacts: [],
+      idempotency: {
+        key: input.idempotencyKey,
+        replayed: false,
+      },
+      observedAt,
+      outcome: "failed",
+      failure: {
+        code: input.reasonCode,
+        retryable: false,
+        acceptance: "rejected",
+      },
+    },
+    createdAt: observedAt,
+  };
+}
+
+function providerResultId(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  if (typeof record.id === "string" || typeof record.id === "number") {
+    return String(record.id);
+  }
+  if (record.server && typeof record.server === "object") {
+    const serverId = (record.server as Record<string, unknown>).id;
+    if (typeof serverId === "string" || typeof serverId === "number") {
+      return String(serverId);
+    }
+  }
+  return null;
+}
+
+function fixtureResponse(
+  fixture: ProviderProtocolFixture,
+  extraHeaders: Record<string, string> = {},
+): Response {
+  const response = fixture.response;
+  if (response.rawBody !== undefined) {
+    return new Response(response.rawBody, {
+      status: response.status,
+      headers: { ...response.headers, ...extraHeaders },
+    });
+  }
+  return json(response.body, response.status, {
+    ...response.headers,
+    ...extraHeaders,
+  });
+}
+
 function issueCredential(
-  organizationId: string,
+  principal: ActionPrincipal & { clientId: string },
   seed: string,
   sequence: number,
   expiresAt: number,
@@ -344,7 +803,11 @@ function issueCredential(
   return {
     accessToken: opaque("access", seed, sequence),
     refreshToken: opaque("refresh", seed, sequence),
-    organizationId,
+    clientId: principal.clientId,
+    accountId: principal.accountId,
+    tenantId: principal.tenantId,
+    connectionId: principal.connectionId,
+    capabilities: principal.capabilities,
     expiresAt,
     active: true,
   };

@@ -16,11 +16,31 @@ let provider: RunningFakeProvider;
 
 beforeAll(async () => {
   provider = await startFakeProvider({
+    accounts: [
+      {
+        accountId: "acct-hetzner",
+        tenantId: "org-hetzner",
+        capabilities: [
+          "hetzner.servers.read",
+          "hetzner.servers.create",
+          "hetzner.servers.delete",
+        ],
+        apiCredential: "contract-secret",
+      },
+    ],
     fixtures: [
       {
         id: "hetzner-list-servers",
         method: "GET",
         path: "/v1/servers",
+        action: {
+          operation: "hetzner.servers.list",
+          capabilityId: "hetzner.servers.read",
+          effect: "read",
+          riskLevel: "R0",
+          decision: "allow",
+          confirmation: { state: "not_required" },
+        },
         response: {
           status: 200,
           body: { servers: [{ id: 7, name: "node-a" }] },
@@ -30,6 +50,14 @@ beforeAll(async () => {
         id: "hetzner-create-server",
         method: "POST",
         path: "/v1/servers",
+        action: {
+          operation: "hetzner.servers.create",
+          capabilityId: "hetzner.servers.create",
+          effect: "write",
+          riskLevel: "R2",
+          decision: "allow",
+          confirmation: { state: "already_granted" },
+        },
         response: {
           status: 201,
           body: {
@@ -42,6 +70,14 @@ beforeAll(async () => {
         id: "hetzner-delete-server",
         method: "DELETE",
         path: "/v1/servers/7",
+        action: {
+          operation: "hetzner.servers.delete",
+          capabilityId: "hetzner.servers.delete",
+          effect: "irreversible",
+          riskLevel: "R3",
+          decision: "allow",
+          confirmation: { state: "already_granted" },
+        },
         response: { status: 204 },
       },
     ],
@@ -54,12 +90,13 @@ afterAll(async () => {
 
 describe("HetznerCloudClient provider contract", () => {
   test("exercises success, empty, invalid, rate-limit, malformed, and provider failures over HTTP", async () => {
-    const client = HetznerCloudClient.withToken("contract-secret", {
+    const client = HetznerCloudClient.withTestTransport("contract-secret", {
       apiBaseUrl: `${provider.url}/v1`,
-      requestTimeoutMs: 20,
+      requestTimeoutMs: 1_000,
     });
     const report = await runProviderAdapterConformance({
       adapterName: "HetznerCloudClient",
+      profile: "outbound-http",
       capabilities: ["http-read", "http-write", "irreversible-write"],
       scenarios: {
         success: async () => {
@@ -156,7 +193,14 @@ describe("HetznerCloudClient provider contract", () => {
             type: "delay",
             durationMs: 100,
           });
-          await expect(client.listServers()).rejects.toMatchObject({
+          const timeoutClient = HetznerCloudClient.withTestTransport(
+            "timeout-secret",
+            {
+              apiBaseUrl: `${provider.url}/v1`,
+              requestTimeoutMs: 20,
+            },
+          );
+          await expect(timeoutClient.listServers()).rejects.toMatchObject({
             code: "transport_error",
           });
           return {
@@ -176,10 +220,13 @@ describe("HetznerCloudClient provider contract", () => {
               },
             ],
           });
-          const resetClient = HetznerCloudClient.withToken("reset-secret", {
-            apiBaseUrl: `${resetProvider.url}/v1`,
-            requestTimeoutMs: 20,
-          });
+          const resetClient = HetznerCloudClient.withTestTransport(
+            "reset-secret",
+            {
+              apiBaseUrl: `${resetProvider.url}/v1`,
+              requestTimeoutMs: 20,
+            },
+          );
           await resetProvider.resetConnections();
           await expect(resetClient.listServers()).rejects.toMatchObject({
             code: "transport_error",
@@ -253,10 +300,15 @@ describe("HetznerCloudClient provider contract", () => {
         },
         "read-policy": async () => {
           await client.listServers();
-          const receipt = provider.recordAction("list-servers", "read", true);
+          const receipt = provider.receipts.find(
+            (candidate) => candidate.operation === "hetzner.servers.list",
+          );
           expect(receipt).toMatchObject({
-            effect: "read",
+            tenantId: "org-hetzner",
+            accountId: "acct-hetzner",
+            effectKind: "read",
             outcome: "succeeded",
+            effect: { outcome: "applied" },
           });
           return {
             scenario: "read-policy",
@@ -274,27 +326,50 @@ describe("HetznerCloudClient provider contract", () => {
             userData: "#!/bin/sh",
           });
           expect(created.server.id).toBe(8);
-          const receipt = provider.recordAction("create-server", "write", true);
+          const receipt = provider.receipts.find(
+            (candidate) => candidate.operation === "hetzner.servers.create",
+          );
+          expect(receipt).toMatchObject({
+            policy: {
+              riskLevel: "R2",
+              outcome: "allowed",
+              confirmation: "already_granted",
+            },
+            providerResult: { status: "accepted", resultId: "8" },
+            executedEffect: { performed: true },
+            effect: { outcome: "applied" },
+          });
           return {
             scenario: "write-policy-receipt",
             status: "passed",
             detail: "real create request completed and emitted a write receipt",
-            receiptId: receipt.id,
+            receiptId: receipt?.id,
           };
         },
         "irreversible-policy-receipt": async () => {
           await client.deleteServer(7);
-          const receipt = provider.recordAction(
-            "delete-server",
-            "irreversible",
-            true,
+          const receipt = provider.receipts.find(
+            (candidate) => candidate.operation === "hetzner.servers.delete",
           );
+          expect(receipt).toMatchObject({
+            effectKind: "irreversible",
+            policy: {
+              riskLevel: "R3",
+              outcome: "allowed",
+              confirmation: "already_granted",
+            },
+            executedEffect: { performed: true },
+            effect: {
+              outcome: "applied",
+              commit: { kind: "provider_accepted" },
+            },
+          });
           return {
             scenario: "irreversible-policy-receipt",
             status: "passed",
             detail:
               "real delete request completed with an irreversible receipt",
-            receiptId: receipt.id,
+            receiptId: receipt?.id,
           };
         },
       },

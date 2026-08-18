@@ -28,11 +28,17 @@ exits.
   otherwise.
 - `src/provider-contract/` (export `./provider-contract`) — deterministic
   OAuth 2.0 Authorization Code + PKCE and refresh-rotation upstream, fixture
-  HTTP/fault server, signed webhook sender, secret redaction, action receipts,
-  and capability-aware adapter conformance runner.
+  HTTP/fault server, signed webhook sender, secret redaction, atomic
+  policy/effect receipts aligned with core `EffectReceipt`, and
+  capability-aware adapter conformance runner. OAuth clients, redirect URIs,
+  accounts, tenant grants, and API credentials are provider-owned seeds;
+  callers cannot select a tenant or mint a receipt after an effect.
 - `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
 - `provider-contract-inventory.json` — promoted managed-integration ratchet;
   audited by `bun run audit:provider-contracts` and the cloud CI workflow.
+- `provider-contract-protected-integrations.json` — append-only integration ID
+  ledger; it must exactly match the inventory and may never remove an ID that
+  appears in reachable repository history.
 - `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts` — standalone runnable
   entrypoints (bin names `hetzner-mock`, `control-plane-mock`).
 - `mockoon/*.json` — **stateless** Mockoon environments for read-only endpoints
@@ -95,6 +101,13 @@ scenario catalog, including OAuth state/PKCE and credential rotation, response
 and transport faults, webhook ordering/idempotency, tenant denial, redaction,
 and policy receipts.
 
+Choose `outbound-http` for adapters that initiate provider requests and
+`inbound-webhook` for provider-authenticated delivery routes. Profiles are
+additive mandatory scenario sets, are bound into the nonce report, and cannot
+be narrowed by a suite. OAuth callback/state/PKCE and refresh-token lifecycle
+are separate capabilities so an adapter never claims a credential consumer it
+does not implement.
+
 To promote another managed integration:
 
 1. Add deterministic synthetic fixture data under
@@ -104,7 +117,9 @@ To promote another managed integration:
 3. Add the package declaration
    `elizaos.managedIntegration = { promoted: true, contractId: "..." }`.
 4. Add the matching inventory entry with the exact adapter name and capabilities.
-5. Run the suite and `bun run audit:provider-contracts`; the audit executes the
+5. Append its ID to `provider-contract-protected-integrations.json`; never
+   remove or rename an existing ledger ID.
+6. Run the suite and `bun run audit:provider-contracts`; the audit executes the
    suite and verifies its nonce-bound observation report.
 
 Do not put provider credentials or production captures in fixtures. Sandbox
