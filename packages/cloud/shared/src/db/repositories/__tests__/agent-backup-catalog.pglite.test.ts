@@ -61,6 +61,7 @@ import {
   transitionAgentBackupOperation,
 } from "../agent-backup-catalog";
 import {
+  adoptAgentBackupGcObservedLocator,
   claimAgentBackupGc,
   enqueueAgentBackupDeletion,
   failAgentBackupGc,
@@ -2351,5 +2352,41 @@ describe("agent backup catalogue on primary PGlite", () => {
     expect(poisonedObject?.state).toBe("quarantined");
     expect(poisonedIntent?.state).toBe("quarantined");
     expect(poisonedIntent?.last_error_code).toBe("GC_LOCATOR_CHANGED");
+  });
+
+  test("refuses exact-replay adoption once the execution lease has expired", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    const [claim] = await claimAgentBackupGc({
+      ownerId: "adopt-expiry-worker",
+      limit: 1,
+      leaseMs: 40,
+    });
+    expect(claim).toBeDefined();
+    await Bun.sleep(80);
+    const before = await dbWrite
+      .select()
+      .from(agentBackupObjects)
+      .where(eq(agentBackupObjects.id, claim!.object.id));
+    await expect(
+      adoptAgentBackupGcObservedLocator({
+        outboxId: claim!.outbox.id,
+        ownerId: "adopt-expiry-worker",
+        generation: claim!.outbox.claim_generation as string,
+        providerVersionId: claim!.object.provider_version_id,
+        providerEtag: claim!.object.provider_etag,
+        providerChecksum: claim!.object.provider_checksum,
+        uploadReceiptDigest: claim!.object.upload_receipt_digest as string,
+      }),
+    ).rejects.toThrow("GC execution lease expired");
+    const after = await dbWrite
+      .select()
+      .from(agentBackupObjects)
+      .where(eq(agentBackupObjects.id, claim!.object.id));
+    expect(after).toEqual(before);
   });
 });
