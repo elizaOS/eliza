@@ -33,6 +33,10 @@ import {
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import {
+  type ContinuousChatModeValue,
+  resolveContinuousChatMode,
+} from "./continuous-chat-mode";
+import {
   type BackgroundConfig,
   DEFAULT_ACCENT_ID,
   DEFAULT_BACKGROUND_COLOR,
@@ -973,21 +977,13 @@ export function saveWalletEnabled(value: boolean): void {
 
 /* ── Continuous chat mode persistence ───────────────────────────────────── */
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
-type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
-
-function normalizeContinuousChatMode(value: unknown): ContinuousChatModeValue {
-  if (value === "vad-gated" || value === "always-on") return value;
-  return "off";
-}
 
 export function loadContinuousChatMode(): ContinuousChatModeValue {
-  return tryLocalStorage(
-    () =>
-      normalizeContinuousChatMode(
-        localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY),
-      ),
-    "off",
-  );
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
+    const search = typeof window === "undefined" ? "" : window.location.search;
+    return resolveContinuousChatMode(stored, search);
+  }, "off");
 }
 
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {

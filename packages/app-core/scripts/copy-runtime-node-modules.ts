@@ -731,6 +731,20 @@ export function shouldKeepPackageRelativePath(
     }
   }
 
+  if (packageName === "hermes-compiler") {
+    const hermesPlatformMatch = normalizedPath.match(
+      /^hermesc\/(linux64|osx|win64)-bin(?:\/|$)/,
+    );
+    if (hermesPlatformMatch) {
+      const platform = hermesPlatformMatch[1];
+      return (
+        (targetOS === "linux" && platform === "linux64") ||
+        (targetOS === "darwin" && platform === "osx") ||
+        (targetOS === "win32" && platform === "win64")
+      );
+    }
+  }
+
   if (packageName === "node-llama-cpp") {
     if (
       normalizedPath === "llama" ||
@@ -2588,15 +2602,15 @@ function main(): void {
 
     const copiedDestinations = new Set<string>();
     const copiedNames = new Set<string>();
-    const missingAlwaysBundled = new Set<string>();
-    const missingDiscovered = new Set<string>();
+    const missingRequired = new Set<string>();
+    const missingOptional = new Set<string>();
     const topLevelVersions = new Map<string, string | null>();
 
     while (queue.length > 0) {
       const request = queue.shift();
       if (!request) continue;
 
-      const { name, spec, requesterDir, requesterDestDir } = request;
+      const { name, spec, optional, requesterDir, requesterDestDir } = request;
       if (
         !name ||
         DEP_SKIP.has(name) ||
@@ -2607,17 +2621,13 @@ function main(): void {
 
       const resolved = resolvePackage(name, spec, requesterDir);
       if (!resolved) {
-        if (alwaysBundled.has(name)) {
-          missingAlwaysBundled.add(name);
-        } else {
-          missingDiscovered.add(name);
-        }
+        (optional ? missingOptional : missingRequired).add(name);
         continue;
       }
 
       if (!isPackageCompatibleWithCurrentPlatform(resolved.packageJsonPath)) {
-        missingAlwaysBundled.delete(name);
-        missingDiscovered.delete(name);
+        missingRequired.delete(name);
+        missingOptional.delete(name);
         continue;
       }
 
@@ -2641,8 +2651,8 @@ function main(): void {
       const destination = packagePath(name, copyTargetNodeModules);
 
       if (copiedDestinations.has(destination)) {
-        missingAlwaysBundled.delete(name);
-        missingDiscovered.delete(name);
+        missingRequired.delete(name);
+        missingOptional.delete(name);
         copiedNames.add(name);
         continue;
       }
@@ -2663,16 +2673,12 @@ function main(): void {
           targetDist,
         )
       ) {
-        if (alwaysBundled.has(name)) {
-          missingAlwaysBundled.add(name);
-        } else {
-          missingDiscovered.add(name);
-        }
+        (optional ? missingOptional : missingRequired).add(name);
         continue;
       }
 
-      missingAlwaysBundled.delete(name);
-      missingDiscovered.delete(name);
+      missingRequired.delete(name);
+      missingOptional.delete(name);
       copiedDestinations.add(destination);
       copiedNames.add(name);
       if (copyTargetNodeModules === targetNodeModules) {
@@ -2726,15 +2732,15 @@ function main(): void {
       console.log(`  copied ${name}`);
     }
 
-    if (missingAlwaysBundled.size > 0) {
+    if (missingRequired.size > 0) {
       throw new Error(
-        `[runtime-copy] missing installed runtime package(s): ${[...missingAlwaysBundled].sort().join(", ")}`,
+        `[runtime-copy] missing required installed runtime package(s): ${[...missingRequired].sort().join(", ")}`,
       );
     }
 
-    if (missingDiscovered.size > 0) {
+    if (missingOptional.size > 0) {
       console.warn(
-        `[runtime-copy] skipped unresolved optional package(s): ${[...missingDiscovered].sort().join(", ")}`,
+        `[runtime-copy] skipped unresolved optional package(s): ${[...missingOptional].sort().join(", ")}`,
       );
     }
 
