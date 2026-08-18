@@ -89,6 +89,28 @@ describe("VoiceLiveActivityController", () => {
     expect(plugin.start).not.toHaveBeenCalled();
   });
 
+  it("rechecks mutable authorization and recovers after Settings enables it", async () => {
+    const isSupported = vi
+      .fn()
+      .mockResolvedValueOnce({ supported: true, enabled: false })
+      .mockResolvedValueOnce({ supported: true, enabled: true });
+    const plugin = fakePlugin({ isSupported });
+    const controller = new VoiceLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+
+    await controller.sync({ active: true, phase: "ready" });
+    expect(plugin.start).not.toHaveBeenCalled();
+
+    await controller.sync({ active: true, phase: "listening" });
+    expect(isSupported).toHaveBeenCalledTimes(2);
+    expect(plugin.start).toHaveBeenCalledWith({
+      sessionTitle: "",
+      phase: "listening",
+    });
+  });
+
   it("pushes only real phase transitions", async () => {
     const plugin = fakePlugin();
     const controller = new VoiceLiveActivityController({

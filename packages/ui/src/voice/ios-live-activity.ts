@@ -57,7 +57,6 @@ export class VoiceLiveActivityController {
   private readonly reportError: (error: unknown) => void;
 
   private queue: Promise<void> = Promise.resolve();
-  private supported: boolean | null = null;
   private activityId: string | null = null;
   private starting = false;
   private lastPhase: DictationActivityPhase | null = null;
@@ -108,14 +107,15 @@ export class VoiceLiveActivityController {
   }
 
   private async ensureSupported(): Promise<boolean> {
-    if (this.supported !== null) return this.supported;
     if (typeof this.plugin.isSupported !== "function") {
-      this.supported = false;
       return false;
     }
     const result = await this.plugin.isSupported();
-    this.supported = Boolean(result?.supported && result?.enabled);
-    return this.supported;
+    // Live Activity authorization is mutable in Settings while the app is
+    // running. Re-read it for each attempted start so enabling the feature can
+    // recover without an app relaunch and revocation never relies on a stale
+    // renderer-side grant; the native request remains the final authority.
+    return Boolean(result?.supported && result?.enabled);
   }
 
   private async beginActive(phase: DictationActivityPhase): Promise<void> {
