@@ -21,11 +21,31 @@ function getOverlayRegistry(): Map<string, OverlayApp> {
 
 /** Register an overlay app. Call at module scope. */
 export function registerOverlayApp(app: OverlayApp): void {
+  if (
+    !app ||
+    typeof app !== "object" ||
+    typeof app.name !== "string" ||
+    !app.name.trim()
+  ) {
+    return;
+  }
   getOverlayRegistry().set(app.name, app);
+}
+
+/** Unregister an overlay app by name. */
+export function unregisterOverlayApp(name: string): boolean {
+  if (typeof name !== "string") return false;
+  return getOverlayRegistry().delete(name);
+}
+
+/** Clear all registered overlay apps. */
+export function clearOverlayAppRegistry(): void {
+  getOverlayRegistry().clear();
 }
 
 /** Look up a registered overlay app by name. */
 export function getOverlayApp(name: string): OverlayApp | undefined {
+  if (typeof name !== "string") return undefined;
   return getOverlayRegistry().get(name);
 }
 
@@ -135,27 +155,28 @@ export function isAospAndroid(
 
 /** Check if an app name belongs to a registered overlay app. */
 export function isOverlayApp(name: string): boolean {
+  if (typeof name !== "string") return false;
   return getOverlayRegistry().has(name);
 }
 
 /** Convert an OverlayApp to a RegistryAppInfo for the apps catalog. */
 export function overlayAppToRegistryInfo(app: OverlayApp): RegistryAppInfo {
   return {
-    name: app.name,
-    displayName: app.displayName,
-    description: app.description,
-    category: app.category,
+    name: app?.name ?? "",
+    displayName: app?.displayName ?? app?.name ?? "",
+    description: app?.description ?? "",
+    category: app?.category ?? "tools",
     launchType: "overlay",
     launchUrl: null,
-    icon: app.icon,
-    heroImage: app.heroImage ?? null,
+    icon: app?.icon ?? "app",
+    heroImage: app?.heroImage ?? null,
     capabilities: [],
     stars: 0,
     repository: "",
     latestVersion: null,
     supports: { v0: false, v1: false, v2: true },
     npm: {
-      package: app.name,
+      package: app?.name ?? "",
       v0Version: null,
       v1Version: null,
       v2Version: null,
