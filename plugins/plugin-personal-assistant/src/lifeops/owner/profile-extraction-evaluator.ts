@@ -233,9 +233,26 @@ const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 function parseLocalDate(value: string): number | null {
   const isoMatch = ISO_DATE_ONLY.exec(value);
   if (isoMatch) {
-    const [, year, month, day] = isoMatch;
-    const local = new Date(Number(year), Number(month) - 1, Number(day));
-    return Number.isNaN(local.getTime()) ? null : local.getTime();
+    const [, yearStr, monthStr, dayStr] = isoMatch;
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const day = Number(dayStr);
+    // `new Date(y, m, d)` silently rolls an impossible calendar date into a
+    // real one (Feb 29 on a non-leap year, month 13, day 0) instead of
+    // rejecting it -- round-trip the constructed date's local fields against
+    // the parsed input and reject on any mismatch. This also rejects a
+    // 4-digit-but-under-100 year like "0099", which the Date constructor's
+    // legacy two-digit-year rule (0-99 -> 1900-1999) would otherwise remap.
+    const local = new Date(year, month - 1, day);
+    if (
+      Number.isNaN(local.getTime()) ||
+      local.getFullYear() !== year ||
+      local.getMonth() !== month - 1 ||
+      local.getDate() !== day
+    ) {
+      return null;
+    }
+    return local.getTime();
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;

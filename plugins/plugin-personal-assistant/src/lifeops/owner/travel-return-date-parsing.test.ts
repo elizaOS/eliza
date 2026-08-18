@@ -16,6 +16,11 @@
  *      intended calendar day could land a day earlier depending on which
  *      literal form the user (or an upstream LLM) happened to use, in any
  *      timezone west of UTC.
+ *   3. `new Date(year, month - 1, day)` normalizes an impossible calendar
+ *      date (Feb 29 on a non-leap year, month 13, day 0) into a real one
+ *      instead of rejecting it, and remaps a 4-digit year under 100 to
+ *      1900-1999 (legacy two-digit-year behavior) -- both silently persist
+ *      a fabricated travel end date instead of failing.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { extractProfileDetails } from "./profile-extraction-evaluator.ts";
@@ -92,5 +97,70 @@ describe("parseTravelReturnIso — unaffected cases stay unaffected", () => {
     const now = new Date("2026-06-01T12:00:00.000Z");
     const travel = extractProfileDetails("I'm traveling", now).travel;
     expect(travel).toEqual({ kind: "set" });
+  });
+});
+
+describe("parseTravelReturnIso — impossible calendar dates are rejected, not normalized", () => {
+  it("Feb 29 on a non-leap year is rejected", () => {
+    process.env.TZ = "UTC";
+    const now = new Date("2025-02-10T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2025-02-29", now)).toBeUndefined();
+  });
+
+  it("control: a real nearby date through the same phrase shape still resolves (proves the pipeline itself works)", () => {
+    process.env.TZ = "UTC";
+    const now = new Date("2025-02-10T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2025-03-01", now)).toBe(
+      "2025-03-01T00:00:00.000Z",
+    );
+  });
+
+  it("Feb 29 on an actual leap year is accepted", () => {
+    process.env.TZ = "UTC";
+    const now = new Date("2024-02-10T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2024-02-29", now)).toBe(
+      "2024-02-29T00:00:00.000Z",
+    );
+  });
+
+  it("April 31 (April has 30 days) is rejected", () => {
+    process.env.TZ = "UTC";
+    const now = new Date("2026-04-10T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2026-04-31", now)).toBeUndefined();
+  });
+
+  it("month 13 is rejected, not rolled into January of the next year", () => {
+    process.env.TZ = "UTC";
+    // `new Date(2026, 12, 1)` would silently roll to 2027-01-01 -- pick `now`
+    // close enough to that wrong date that the 30-day horizon cap can't
+    // coincidentally produce the same `undefined` result for the wrong
+    // reason (masking a missing calendar-validity check).
+    const now = new Date("2026-12-15T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2026-13-01", now)).toBeUndefined();
+  });
+
+  it("month 00 is rejected, not rolled into December of the prior year", () => {
+    process.env.TZ = "UTC";
+    // `new Date(2026, -1, 15)` would silently roll to 2025-12-15.
+    const now = new Date("2025-12-01T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2026-00-15", now)).toBeUndefined();
+  });
+
+  it("day 00 is rejected", () => {
+    process.env.TZ = "UTC";
+    // `new Date(2026, 5, 0)` would silently roll to 2026-05-31 (day 0 of
+    // June = last day of May).
+    const now = new Date("2026-05-15T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 2026-06-00", now)).toBeUndefined();
+  });
+
+  it("a 4-digit year under 100 is rejected instead of being remapped to 19xx by the Date constructor's legacy two-digit-year rule", () => {
+    process.env.TZ = "UTC";
+    // `new Date(99, 5, 15)` remaps to local 1999-06-15 under the legacy
+    // 0-99 -> 1900-1999 rule -- pick `now` near that wrong year so the
+    // "past date, try next year" branch can't independently absorb this
+    // instead of the round-trip check.
+    const now = new Date("1999-06-01T12:00:00.000Z");
+    expect(travelEndIso("I'm traveling until 0099-06-15", now)).toBeUndefined();
   });
 });
