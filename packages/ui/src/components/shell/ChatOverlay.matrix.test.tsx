@@ -619,6 +619,87 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     expect(detent()).toBe("full");
   });
 
+  it("commits full to half when pointercancel beats the coalesced drag frame", () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.pointerDown(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 53,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(g, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 53,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    // XCUITest can terminate the fast track before requestAnimationFrame flushes
+    // the coalesced onDrag value into the sheet's consumer ref.
+    fireEvent.pointerCancel(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 53,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+
+    expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
+  });
+
+  it("ignores descendant capture loss and preserves the true terminal track", () => {
+    const impacts = armHaptics();
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    const child = g.querySelector("span");
+    expect(child).not.toBeNull();
+    fireEvent.pointerDown(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 54,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(g, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 54,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    // A descendant's implicit-capture handoff bubbles through the grabber but
+    // is not terminal for the grabber's own active capture.
+    fireEvent.lostPointerCapture(child as HTMLElement, {
+      pointerId: 54,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    expect(detent()).toBe("full");
+    expect(impacts.length).toBe(2);
+
+    fireEvent.pointerCancel(g, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 54,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    expect(detent()).toBe("half");
+    expect(impacts.length).toBe(3);
+  });
+
   it("steps full to half from the terminal touch track when WebKit loses the pointer release", async () => {
     const impacts = armHaptics();
     render(<ChatOverlay controller={makeController()} />);

@@ -58,6 +58,7 @@ import {
 } from "../../events";
 import {
   HORIZONTAL_DOMINANCE_RATIO,
+  isRealCaptureLoss,
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
@@ -970,6 +971,11 @@ function SheetGrabber({
   const disabled = pilled || locked;
   const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const touchLastRef = React.useRef<{ x: number; y: number } | null>(null);
+  const pointerTrackRef = React.useRef<{
+    id: number;
+    start: { x: number; y: number };
+    last: { x: number; y: number };
+  } | null>(null);
   const terminalFallbackCommittedRef = React.useRef(false);
   const terminalFallbackFrameRef = React.useRef<number | null>(null);
   const cancelTerminalFallback = React.useCallback(() => {
@@ -982,6 +988,17 @@ function SheetGrabber({
     touchStartRef.current = null;
     touchLastRef.current = null;
   }, []);
+  const isCompletedVerticalPullDown = React.useCallback(
+    (start: { x: number; y: number }, end: { x: number; y: number }) => {
+      const travelX = Math.abs(end.x - start.x);
+      const travelY = end.y - start.y;
+      return (
+        travelY >= INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX &&
+        travelX < Math.abs(travelY) * HORIZONTAL_DOMINANCE_RATIO
+      );
+    },
+    [],
+  );
   React.useEffect(() => cancelTerminalFallback, [cancelTerminalFallback]);
   return (
     <motion.button
@@ -1054,12 +1071,7 @@ function SheetGrabber({
           : (touchLastRef.current ?? start);
         resetTouchTrack();
         if (!start || !end) return;
-        const travelX = Math.abs(end.x - start.x);
-        const travelY = end.y - start.y;
-        if (
-          travelY >= INTERRUPTED_FULL_STEP_MIN_TRAVEL_PX &&
-          travelX < Math.abs(travelY) * HORIZONTAL_DOMINANCE_RATIO
-        ) {
+        if (isCompletedVerticalPullDown(start, end)) {
           // WKWebView/XCUITest can preserve the terminal TouchEvent after its
           // captured pointer release was lost. Reconcile one frame later so a
           // co-delivered pointer terminal remains primary regardless of which
@@ -1085,17 +1097,59 @@ function SheetGrabber({
         e.stopPropagation();
         cancelTerminalFallback();
         terminalFallbackCommittedRef.current = false;
+        pointerTrackRef.current =
+          e.pointerType === "touch" && e.isPrimary !== false
+            ? {
+                id: e.pointerId,
+                start: { x: e.clientX, y: e.clientY },
+                last: { x: e.clientX, y: e.clientY },
+              }
+            : null;
         binding.onPointerDown(e);
       }}
+      onPointerMove={(e) => {
+        const track = pointerTrackRef.current;
+        if (track?.id === e.pointerId) {
+          track.last = { x: e.clientX, y: e.clientY };
+        }
+        binding.onPointerMove(e);
+      }}
       onPointerUp={(e) => {
+        pointerTrackRef.current = null;
         if (terminalFallbackCommittedRef.current) binding.onPointerCancel(e);
         else binding.onPointerUp(e);
       }}
       onPointerCancel={(e) => {
+        const track = pointerTrackRef.current;
+        pointerTrackRef.current = null;
         binding.onPointerCancel(e);
+        // XCUITest/WebKit can cancel a completed fast flick before the gesture
+        // hook's rAF-coalesced onDrag reaches the sheet consumer. The wrapper
+        // owns the synchronous pointer samples, so it can recover that exact
+        // terminal track without making small or horizontal cancellations act
+        // like a release. If the hook already stepped, the live-mode guard in
+        // onTerminalTouchPullDown makes this a no-op.
+        if (
+          track?.id === e.pointerId &&
+          isCompletedVerticalPullDown(track.start, track.last)
+        ) {
+          terminalFallbackCommittedRef.current = onTerminalTouchPullDown();
+        }
       }}
       onLostPointerCapture={(e) => {
+        if (!isRealCaptureLoss(e)) {
+          binding.onLostPointerCapture(e);
+          return;
+        }
+        const track = pointerTrackRef.current;
+        pointerTrackRef.current = null;
         binding.onLostPointerCapture(e);
+        if (
+          track?.id === e.pointerId &&
+          isCompletedVerticalPullDown(track.start, track.last)
+        ) {
+          terminalFallbackCommittedRef.current = onTerminalTouchPullDown();
+        }
       }}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
