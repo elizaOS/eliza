@@ -4,9 +4,44 @@
  * `DISCORD_API_TOKEN`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { parseBooleanFromText } from "@elizaos/core";
+import { logger, parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";
-import type { DiscordSettings } from "./types";
+import type { DiscordDmPolicy, DiscordSettings } from "./types";
+
+/** DM gating modes accepted by `DISCORD_DM_POLICY`. */
+const DISCORD_DM_POLICIES: readonly DiscordDmPolicy[] = [
+	"open",
+	"allowlist",
+	"pairing",
+	"disabled",
+];
+
+/** Unset or invalid `DISCORD_DM_POLICY` values fail closed to this policy. */
+export const DEFAULT_DISCORD_DM_POLICY: DiscordDmPolicy = "pairing";
+
+/**
+ * Parse a raw `DISCORD_DM_POLICY` value. Blank or absent input yields the
+ * default; unrecognized values (e.g. a typo like `pariing`) are warned about
+ * and fail closed to the literal default rather than falling through the DM
+ * access gate as an implicit `open`.
+ */
+export function resolveDiscordDmPolicy(raw: unknown): DiscordDmPolicy {
+	if (raw === undefined || raw === null) {
+		return DEFAULT_DISCORD_DM_POLICY;
+	}
+	const normalized = String(raw).trim().toLowerCase();
+	if (!normalized) {
+		return DEFAULT_DISCORD_DM_POLICY;
+	}
+	if ((DISCORD_DM_POLICIES as readonly string[]).includes(normalized)) {
+		return normalized as DiscordDmPolicy;
+	}
+	logger.warn(
+		{ src: "plugin:discord", policy: normalized },
+		"Unrecognized DISCORD_DM_POLICY value; failing closed to the default pairing policy",
+	);
+	return DEFAULT_DISCORD_DM_POLICY;
+}
 
 function getEnvBoolean(name: string, fallback: boolean): boolean {
 	const value = process.env?.[name];
@@ -46,11 +81,7 @@ export const DISCORD_DEFAULTS = {
 		false,
 	),
 	ALLOWED_CHANNEL_IDS: getEnvArray("CHANNEL_IDS", []),
-	DM_POLICY: (process.env?.DISCORD_DM_POLICY || "pairing") as
-		| "open"
-		| "allowlist"
-		| "pairing"
-		| "disabled",
+	DM_POLICY: resolveDiscordDmPolicy(process.env?.DISCORD_DM_POLICY),
 	ALLOW_FROM: getEnvArray("DISCORD_ALLOW_FROM", []),
 	SYNC_PROFILE: getEnvBoolean("DISCORD_SYNC_PROFILE", true),
 } as const;
@@ -148,13 +179,7 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
 			"DISCORD_DM_POLICY",
 			characterSettings.dmPolicy,
 			DISCORD_DEFAULTS.DM_POLICY,
-			(value: string) => {
-				const normalized = value.toLowerCase().trim();
-				if (["open", "allowlist", "pairing", "disabled"].includes(normalized)) {
-					return normalized as "open" | "allowlist" | "pairing" | "disabled";
-				}
-				return DISCORD_DEFAULTS.DM_POLICY;
-			},
+			(value: string) => resolveDiscordDmPolicy(value),
 		),
 
 		allowFrom: resolveSetting<string[]>(
