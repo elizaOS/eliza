@@ -18,13 +18,15 @@ const WORLD_ID = "f4310000-0000-4000-8000-000000000002" as UUID;
 const ROOM_ID = "f4310000-0000-4000-8000-000000000003" as UUID;
 
 let runtime: AgentRuntime;
-let cleanup: () => Promise<void>;
+let cleanup: (() => Promise<void>) | undefined;
 let service: DocumentService;
 
 beforeAll(async () => {
-	({ runtime, cleanup } = await createTestRuntime({
+	const created = await createTestRuntime({
 		characterName: "DocumentScopeIdPgliteTest",
-	}));
+	});
+	runtime = created.runtime;
+	cleanup = created.cleanup;
 	await runtime.ensureConnection({
 		entityId: USER_ID,
 		roomId: ROOM_ID,
@@ -39,8 +41,24 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-	await cleanup();
+	await cleanup?.();
 }, 120_000);
+
+async function rowCounts(): Promise<{ documents: number; fragments: number }> {
+	const [documents, fragments] = await Promise.all([
+		runtime.getMemories({
+			tableName: "documents",
+			agentId: runtime.agentId,
+			count: 100,
+		}),
+		runtime.getMemories({
+			tableName: "document_fragments",
+			agentId: runtime.agentId,
+			count: 100,
+		}),
+	]);
+	return { documents: documents.length, fragments: fragments.length };
+}
 
 function baseOptions(
 	overrides: Partial<AddDocumentOptions>,
@@ -74,12 +92,21 @@ describe("DocumentService.addDocument scope id validation against real PGLite", 
 	it.each(["worldId", "roomId", "entityId"] as const)(
 		"rejects an explicit empty %s before it ever reaches the real uuid column",
 		async (field) => {
+			const before = await rowCounts();
+
 			await expect(
-				service.addDocument(baseOptions({ [field]: "" as UUID })),
+				service.addDocument(
+					baseOptions({
+						[field]: "" as UUID,
+						originalFilename: `pglite-reject-${field}.txt`,
+					}),
+				),
 			).rejects.toMatchObject({
 				code: "DOCUMENT_SCOPE_ID_INVALID",
 				context: { field },
 			});
+
+			expect(await rowCounts()).toEqual(before);
 		},
 	);
 });

@@ -1249,9 +1249,8 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
-						// roomId must satisfy readDocumentMutationSnapshot's isUuid gate
-						// (database/document-list-query.ts) to stay readable, so "" is
-						// coerced like a missing value; worldId has no such gate.
+						// requireDocumentScopeUuid above already validated roomId, so
+						// it's always a real UUID here; || vs ?? is moot.
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
 						worldId: worldId ?? agentId,

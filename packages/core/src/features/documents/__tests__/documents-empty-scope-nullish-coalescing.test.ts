@@ -1,22 +1,13 @@
 /**
- * Regression coverage for document scope ids (worldId/roomId/entityId).
+ * Coverage for document scope id validation (worldId/roomId/entityId).
  *
- * `x || agentId` silently converted an explicitly invalid scope value (most
- * realistically an empty string) into the agent's own tenant, masking the
- * caller's mistake. The initial fix here switched some of these to
- * `x ?? agentId`, intending to preserve an explicit "" as a meaningful scope
- * value distinct from omission. Independent review (see PR #22100) found
- * that premise wrong for all three fields: worldId/roomId/entityId are
- * UUID-typed Postgres columns (`plugins/plugin-sql/src/schema/memory.ts`),
- * so "" is never a representable value in production — only the in-memory
- * test adapter tolerated it, proving divergence from production rather than
- * a safe end-to-end behavior.
- *
- * The corrected contract, verified below against a real
- * `DocumentService.addDocument` call: only a truly omitted (undefined)
- * value defaults to agentId; an explicitly provided empty or malformed
- * value is rejected with a typed `DOCUMENT_SCOPE_ID_INVALID` error before
- * any memory write, for all three fields alike.
+ * worldId/roomId/entityId are UUID-typed Postgres columns
+ * (`plugins/plugin-sql/src/schema/memory.ts`), so an explicit "" is never a
+ * representable value; only a truly omitted (undefined) value legitimately
+ * defaults to agentId. `DocumentService.addDocument` rejects an explicitly
+ * provided empty or malformed value with a typed `DOCUMENT_SCOPE_ID_INVALID`
+ * error before any memory write, for all three fields alike, verified below
+ * against a real `addDocument` call.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../database/inMemoryAdapter";
@@ -85,6 +76,24 @@ async function fragmentsFor(
 	);
 }
 
+async function rowCounts(
+	runtime: AgentRuntime,
+): Promise<{ documents: number; fragments: number }> {
+	const [documents, fragments] = await Promise.all([
+		runtime.getMemories({
+			tableName: "documents",
+			agentId: AGENT_ID,
+			count: 50,
+		}),
+		runtime.getMemories({
+			tableName: "document_fragments",
+			agentId: AGENT_ID,
+			count: 50,
+		}),
+	]);
+	return { documents: documents.length, fragments: fragments.length };
+}
+
 describe("DocumentService.addDocument scope id validation", () => {
 	it("valid worldId/roomId/entityId survive persistence unchanged", async () => {
 		const { runtime, service } = await makeHarness();
@@ -111,25 +120,22 @@ describe("DocumentService.addDocument scope id validation", () => {
 				context: { field },
 			});
 
-			const fragments = await runtime.getMemories({
-				tableName: "document_fragments",
-				agentId: AGENT_ID,
-				count: 50,
-			});
-			expect(fragments).toHaveLength(0);
+			expect(await rowCounts(runtime)).toEqual({ documents: 0, fragments: 0 });
 		},
 	);
 
 	it.each(["worldId", "roomId", "entityId"] as const)(
 		"rejects a malformed %s with a typed error before any write",
 		async (field) => {
-			const { service } = await makeHarness();
+			const { runtime, service } = await makeHarness();
 			await expect(
 				service.addDocument(baseOptions({ [field]: "not-a-uuid" as UUID })),
 			).rejects.toMatchObject({
 				code: "DOCUMENT_SCOPE_ID_INVALID",
 				context: { field },
 			});
+
+			expect(await rowCounts(runtime)).toEqual({ documents: 0, fragments: 0 });
 		},
 	);
 });

@@ -231,9 +231,8 @@ export async function processFragmentsSynchronously({
 		contentType,
 		agentId,
 		// service.ts's addDocument (this function's only caller) already
-		// rejects an explicit "" for roomId/entityId via
-		// requireDocumentScopeUuid, so || vs ?? is moot here in practice.
-		// worldId has no such gate and keeps "" verbatim.
+		// validates worldId/roomId/entityId via requireDocumentScopeUuid, so
+		// each argument here is always a real UUID and || vs ?? is moot.
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
 		worldId: worldId ?? agentId,
