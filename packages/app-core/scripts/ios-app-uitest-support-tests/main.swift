@@ -51,6 +51,29 @@ private func testDialogPresentUsesSkipAndWaitsForDismissal() {
     expect(waitCount == 1, "the helper must wait for asynchronous dismissal")
 }
 
+private func testDialogDisappearsBeforeSkipBecomesHittable() {
+    var dialogPresent = true
+    var tapCount = 0
+    var waitCount = 0
+    let result = driveFreshInstallPermissionOnboarding(
+        dialogIsPresent: { dialogPresent },
+        skipIsHittable: { false },
+        tapSkip: { tapCount += 1 },
+        waitForNextPoll: {
+            waitCount += 1
+            dialogPresent = false
+        }
+    )
+
+    expect(
+        result == .skipped,
+        "a dialog dismissed before Skip becomes hittable must continue readiness"
+    )
+    expect(tapCount == 0, "a vanished dialog must not tap a stale control")
+    expect(waitCount == 1, "the helper must observe the asynchronous dismissal")
+}
+
 testDialogAbsentDoesNothing()
 testDialogPresentUsesSkipAndWaitsForDismissal()
-print("fresh-install AppUITest helper: 2/2 PASS")
+testDialogDisappearsBeforeSkipBecomesHittable()
+print("fresh-install AppUITest helper: 3/3 PASS")
