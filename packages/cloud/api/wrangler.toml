@@ -591,9 +591,11 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-# auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
-# Explicit "redis" / "redis-rest" overrides remain compatibility options.
+# CacheClient prefers CACHE_KV in Workerd.
 CACHE_BACKEND = "auto"
+# Auth nonces, rate limits, and other direct Redis consumers use the same Redis
+# through its HTTP proxy; raw Railway TCP from Workerd is not reliable.
+DIRECT_REDIS_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "true"
 # Enables post-provider billing for cache-only Worker admission. Worker cache
 # misses warm and retry instead of joining an authoritative database fallback.

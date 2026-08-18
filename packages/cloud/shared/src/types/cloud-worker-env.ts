@@ -475,6 +475,7 @@ export interface Bindings {
   REDIS_RATE_LIMITING?: string;
   CACHE_ENABLED?: string;
   CACHE_BACKEND?: string;
+  DIRECT_REDIS_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
   // Inference hot path (#9899). The auth+moderation single-read cache is the
