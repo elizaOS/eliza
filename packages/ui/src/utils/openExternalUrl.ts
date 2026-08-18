@@ -21,6 +21,11 @@ interface CapacitorBrowserPlugin {
   close?: () => Promise<void>;
 }
 
+export interface OpenExternalUrlOptions {
+  /** Explicit, caller-owned protocol allowlist for trusted OS deep links. */
+  extraSchemes?: readonly string[];
+}
+
 let registeredCapacitorBrowser: CapacitorBrowserPlugin | null = null;
 
 type CapacitorGlobal = {
@@ -51,8 +56,11 @@ function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
  * in this environment. Callers handling wire-supplied URLs should surface
  * their existing visible error state on `false`.
  */
-export async function openExternalUrl(url: string): Promise<boolean> {
-  if (!isSafeNavigationUrl(url)) return false;
+export async function openExternalUrl(
+  url: string,
+  options: OpenExternalUrlOptions = {},
+): Promise<boolean> {
+  if (!isSafeNavigationUrl(url, options.extraSchemes)) return false;
 
   // Capacitor native (iOS WKWebView / Android WebView): use the Browser
   // plugin. Avoids `window.open` which loses user-gesture context across
