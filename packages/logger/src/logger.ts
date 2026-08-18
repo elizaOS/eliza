@@ -20,6 +20,12 @@
 export const __loggerTestHooks = {
   clearEnvCacheForTests: () => {},
   stripAnsi: (str: string): string => stripAnsi(str),
+  // Core owns the model/tool redactor while this leaf package owns the log
+  // sink. Expose a copy only to the cross-package contract test so duplicated
+  // credential shapes cannot silently drift between those two boundaries.
+  getSensitiveTextPatternsForTests: (): string[] => [
+    ...SENSITIVE_TEXT_PATTERNS,
+  ],
 };
 
 import adze, {
