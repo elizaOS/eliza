@@ -86,8 +86,16 @@ export async function hashFile(path: string): Promise<string> {
  * the freshly computed hash so the caller can persist it to the registry.
  */
 export async function verifyInstalledModel(
-  model: InstalledModel,
+  model: InstalledModel | null | undefined,
 ): Promise<VerifyResult> {
+  if (!model || typeof model !== "object" || typeof model.path !== "string") {
+    return {
+      state: "missing",
+      currentSha256: null,
+      expectedSha256: null,
+      currentBytes: null,
+    };
+  }
   if (!(await fileExists(model.path))) {
     return {
       state: "missing",
