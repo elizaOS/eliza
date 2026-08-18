@@ -10,7 +10,7 @@ Once installed and paired, the extension:
 
 - Syncs open tabs and the current page's text/links/forms to the Eliza agent every 30 seconds and on every tab change.
 - Executes agent-directed browser actions: open a URL, navigate, click an element, type into a field, submit a form, scroll history, or focus a tab.
-- Injects a wallet shim into allowlisted pages so dapp interactions can be routed through the agent's wallet.
+- Builds the wallet shim artifact for an explicit, origin-scoped injection flow. It is not registered as a static content script.
 - Enforces an agent-configured website blocklist using the browser's `declarativeNetRequest` API.
 
 ## Supported browsers
@@ -31,7 +31,10 @@ The extension ships with a scoped host allowlist instead of a blanket `<all_urls
 - `https://eliza.how/*` and subdomains
 - `https://eliza.dev/*` and subdomains
 
-Content scripts and the wallet shim auto-inject only on these origins.
+The page-capture content script auto-injects only on these origins. The wallet
+shim is deliberately absent from `content_scripts`: a signing token must never
+be injected into every loopback port or child frame. Wallet injection remains
+disabled until an explicit top-frame origin grant is wired end to end.
 
 **Optional hosts**
 

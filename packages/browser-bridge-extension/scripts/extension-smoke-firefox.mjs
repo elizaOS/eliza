@@ -33,6 +33,12 @@ assert.equal(
   manifest.content_security_policy.extension_pages,
   "script-src 'self'; object-src 'self'",
 );
+assert.ok(
+  manifest.content_scripts.every(
+    (entry) => !entry.js?.includes("wallet-shim.js"),
+  ),
+  "wallet shim must not be statically injected into every allowlisted page",
+);
 for (const asset of [
   "background.js",
   "content.js",

@@ -78,6 +78,7 @@ import {
   requireNonEmptyString,
 } from "../service-normalize.js";
 import { normalizeBrowserActionInput } from "../service-normalize-task.js";
+import { selectBrowserSessionForCompanion } from "./browser-session-claim.js";
 
 type BrowserScreenTimeEvent = {
   source: "app" | "website";
@@ -316,26 +317,15 @@ export class BrowserDomain {
   public async claimQueuedBrowserSession(
     companion: BrowserBridgeCompanionStatus,
   ): Promise<LifeOpsBrowserSession | null> {
-    const claimable = (await this.listBrowserSessions())
-      .filter(
-        (session) =>
-          session.status === "queued" &&
-          browserSessionMatchesCompanion(session, companion),
-      )
-      .sort((left, right) => {
-        const leftMs = Date.parse(left.createdAt);
-        const rightMs = Date.parse(right.createdAt);
-        if (
-          Number.isFinite(leftMs) &&
-          Number.isFinite(rightMs) &&
-          leftMs !== rightMs
-        ) {
-          return leftMs - rightMs;
-        }
-        return left.createdAt.localeCompare(right.createdAt);
-      })[0];
+    const claimable = selectBrowserSessionForCompanion(
+      await this.listBrowserSessions(),
+      companion,
+    );
     if (!claimable) {
       return null;
+    }
+    if (claimable.status === "running") {
+      return claimable;
     }
     const nowIso = new Date().toISOString();
     const nextSession: LifeOpsBrowserSession = {

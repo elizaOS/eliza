@@ -80,6 +80,18 @@ async function ensureChromeBuild() {
       cwd: extensionRoot,
     },
   );
+  const manifest = JSON.parse(
+    await fsp.readFile(path.join(chromeDistDir, "manifest.json"), "utf8"),
+  );
+  if (
+    manifest.content_scripts.some((entry) =>
+      entry.js?.includes("wallet-shim.js"),
+    )
+  ) {
+    throw new Error(
+      "wallet-shim.js must not be statically injected into manifest hosts",
+    );
+  }
 }
 
 async function loadPlaywright() {
@@ -215,7 +227,6 @@ function createMockCompanion(origin, requestBody) {
 
 async function startMockAgentServer() {
   const requests = [];
-  let deliveredSession = false;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     let body = "";
@@ -335,30 +346,27 @@ async function startMockAgentServer() {
             metadata: {},
             updatedAt: nowIso(),
           },
-          session: deliveredSession
-            ? null
-            : {
-                id: "session-smoke-test",
-                title: "Open smoke target",
-                browser: companion.browser,
-                profileId: companion.profileId,
-                tabId: null,
-                status: "running",
-                currentActionIndex: 0,
-                actions: [
-                  {
-                    id: "open-smoke-target",
-                    kind: "open",
-                    url: `${origin}/action-target`,
-                  },
-                ],
-                metadata: {},
-                createdAt: nowIso(),
-                updatedAt: nowIso(),
+          session: {
+            id: "session-smoke-test",
+            title: "Open smoke target",
+            browser: companion.browser,
+            profileId: companion.profileId,
+            tabId: null,
+            status: "running",
+            currentActionIndex: 0,
+            actions: [
+              {
+                id: "open-smoke-target",
+                kind: "open",
+                url: `${origin}/action-target`,
               },
+            ],
+            metadata: {},
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+          },
         }),
       );
-      deliveredSession = true;
       return;
     }
 

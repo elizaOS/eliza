@@ -164,12 +164,6 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
         js: ["content.js"],
         run_at: "document_idle",
       },
-      {
-        matches: BROWSER_BRIDGE_HOST_ALLOWLIST,
-        js: ["wallet-shim.js"],
-        run_at: "document_start",
-        all_frames: true,
-      },
     ],
     icons: {
       16: "icon16.png",

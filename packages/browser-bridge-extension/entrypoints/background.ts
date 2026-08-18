@@ -8,6 +8,8 @@
  * Under MV3 the worker can be evicted between events, so durable state lives in
  * chrome.storage.local via src/storage.ts rather than in module scope.
  */
+
+import { browserActionAuthorizationError } from "../src/action-authorization";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BrowserBridgeAction,
@@ -629,10 +631,51 @@ async function runContentAction(
 }
 
 async function executeAction(
+  client: BrowserBridgeRelayClient,
+  config: CompanionConfig,
   session: CompanionSession,
   action: BrowserBridgeAction,
   currentTabId: number | null,
 ): Promise<{ currentTabId: number | null; result: Record<string, unknown> }> {
+  const freshSync = await client.sync(await buildSyncRequest(config));
+  backgroundState.settings = freshSync.settings;
+  const resolvedTabId = await resolveTargetTab(action, session, currentTabId);
+  const openTabs = await queryTabs({});
+  const focusedTab =
+    (await queryTabs({ active: true, lastFocusedWindow: true }))[0] ?? null;
+  const existingTarget =
+    resolvedTabId === null
+      ? null
+      : (openTabs.find((tab) => tab.id === resolvedTabId) ?? null);
+  const targetUrl =
+    action.kind === "open" || action.kind === "navigate"
+      ? action.url
+      : existingTarget?.url;
+  if (!targetUrl) {
+    throw new Error(`${action.kind} requires an authorized target URL`);
+  }
+  const authorizationError = browserActionAuthorizationError({
+    settings: freshSync.settings,
+    target: {
+      url: targetUrl,
+      incognito: existingTarget?.incognito === true,
+      focusedActive:
+        existingTarget !== null &&
+        existingTarget.id === focusedTab?.id &&
+        existingTarget.active === true,
+    },
+    grantedOrigins: await getGrantedOrigins(),
+    currentFocusedUrl: focusedTab?.url ?? null,
+  });
+  if (authorizationError) {
+    throw new Error(authorizationError);
+  }
+  if (freshSync.session?.id !== session.id) {
+    throw new Error(
+      "The browser session is no longer the active session for this companion.",
+    );
+  }
+
   switch (action.kind) {
     case "open": {
       if (!action.url) {
@@ -652,7 +695,7 @@ async function executeAction(
       if (!action.url) {
         throw new Error("navigate requires url");
       }
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         const tab = await createTab({ url: action.url, active: true });
         return {
@@ -677,7 +720,7 @@ async function executeAction(
       };
     }
     case "focus_tab": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("focus_tab requires a target tab");
       }
@@ -693,7 +736,7 @@ async function executeAction(
       };
     }
     case "reload": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("reload requires a target tab");
       }
@@ -706,7 +749,7 @@ async function executeAction(
       };
     }
     case "back": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("back requires a target tab");
       }
@@ -716,7 +759,7 @@ async function executeAction(
       };
     }
     case "forward": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error("forward requires a target tab");
       }
@@ -728,7 +771,7 @@ async function executeAction(
     case "click":
     case "type":
     case "submit": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error(`${action.kind} requires a target tab`);
       }
@@ -744,7 +787,7 @@ async function executeAction(
     case "read_page":
     case "extract_links":
     case "extract_forms": {
-      const tabId = await resolveTargetTab(action, session, currentTabId);
+      const tabId = resolvedTabId;
       if (tabId === null) {
         throw new Error(`${action.kind} requires a target tab`);
       }
@@ -802,7 +845,17 @@ async function executeSession(
       index += 1
     ) {
       const action = session.actions[index];
-      const outcome = await executeAction(session, action, currentTabId);
+      const config = await readConfig();
+      if (!config) {
+        throw new Error("Browser companion configuration is unavailable.");
+      }
+      const outcome = await executeAction(
+        client,
+        config,
+        session,
+        action,
+        currentTabId,
+      );
       currentTabId = outcome.currentTabId;
       actionResults[action.id] = outcome.result;
       await client.updateSessionProgress(session.id, {
