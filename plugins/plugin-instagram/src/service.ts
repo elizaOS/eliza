@@ -12,6 +12,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type Entity,
   type IAgentRuntime,
   logger,
@@ -989,6 +990,13 @@ export class InstagramService extends Service {
  * Split a message into chunks
  */
 export function splitMessage(content: string, maxLength: number): string[] {
+  if (!Number.isInteger(maxLength) || maxLength <= 0) {
+    throw new ElizaError(`splitMessage: maxLength must be a positive integer, got ${maxLength}`, {
+      code: "INSTAGRAM_SPLIT_LIMIT_INVALID",
+      context: { maxLength },
+    });
+  }
+
   if (content.length <= maxLength) {
     return [content];
   }
@@ -1021,10 +1029,19 @@ export function splitMessage(content: string, maxLength: number): string[] {
               // A raw slice() can land between the two UTF-16 code units of a
               // surrogate pair (most emoji), leaving a lone surrogate at the
               // chunk boundary. truncateWellFormed backs the cut off by one
-              // unit instead.
+              // unit instead — which returns "" when maxLength is too small
+              // to fit even one well-formed unit (e.g. maxLength: 1 on a
+              // pair-leading word). Throw instead of pushing an empty chunk,
+              // which would otherwise loop forever making no progress.
               let remainingWord = word;
               while (remainingWord.length > 0) {
                 const chunk = truncateWellFormed(remainingWord, maxLength);
+                if (!chunk) {
+                  throw new ElizaError(
+                    `splitMessage: maxLength ${maxLength} is too small to fit a single well-formed character`,
+                    { code: "INSTAGRAM_SPLIT_LIMIT_TOO_SMALL", context: { maxLength } }
+                  );
+                }
                 parts.push(chunk);
                 remainingWord = remainingWord.slice(chunk.length);
               }
