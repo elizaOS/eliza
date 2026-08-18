@@ -88,22 +88,39 @@ export interface RelationshipsFetchers {
   fetchRelationships: () => Promise<RelationshipsWire>;
 }
 
-async function getEntities(): Promise<EntitiesWire> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/entities`);
+/** Graph JSON GETs are short UI reads — same 15s family as DocumentsView / TodosView. */
+export const RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getRelationshipsJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
+  failedLabel: string = "Relationships",
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
-    throw new Error(`Entities request failed (${response.status})`);
+    throw new Error(`${failedLabel} request failed (${response.status})`);
   }
-  return (await response.json()) as EntitiesWire;
+  return (await response.json()) as T;
+}
+
+async function getEntities(): Promise<EntitiesWire> {
+  return getRelationshipsJsonWithFetch<EntitiesWire>(
+    `${client.getBaseUrl()}/api/lifeops/entities`,
+    globalThis.fetch,
+    RELATIONSHIPS_VIEW_JSON_TIMEOUT_MS,
+    "Entities",
+  );
 }
 
 async function getRelationships(): Promise<RelationshipsWire> {
-  const response = await fetch(
+  return getRelationshipsJsonWithFetch<RelationshipsWire>(
     `${client.getBaseUrl()}/api/lifeops/relationships`,
+    globalThis.fetch,
   );
-  if (!response.ok) {
-    throw new Error(`Relationships request failed (${response.status})`);
-  }
-  return (await response.json()) as RelationshipsWire;
 }
 
 const defaultFetchers: RelationshipsFetchers = {
