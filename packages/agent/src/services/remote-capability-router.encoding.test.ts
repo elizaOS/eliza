@@ -1,6 +1,7 @@
 /** Exercises malformed request input with deterministic route collaborators. */
-import { describe, expect, mock, test } from "bun:test";
+
 import { UnavailableCapabilityRouter } from "@elizaos/core";
+import { describe, expect, test, vi } from "vitest";
 import { createRemoteCapabilityFetchHandler } from "./remote-capability-router.ts";
 
 describe("remote capability asset path encoding", () => {
@@ -24,7 +25,7 @@ describe("remote capability asset path encoding", () => {
 
   test("passes the decoded module id and asset path to the router", async () => {
     const router = new UnavailableCapabilityRouter("server");
-    const getAsset = mock(async () => ({
+    const getAsset = vi.fn(async () => ({
       path: "/views/demo.js",
       contentType: "text/javascript",
       bodyBase64: Buffer.from("asset bytes").toString("base64"),
