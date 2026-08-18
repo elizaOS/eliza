@@ -95,9 +95,6 @@ export function windowPolicyMatchesDefaults(
 const ADAPTIVE_MORNING_FLOOR_MINUTES = 4 * 60;
 /** Ceiling value for the morning window end (2:00 PM in minutes). */
 const ADAPTIVE_MORNING_END_CAP_MINUTES = 14 * 60;
-/** Latest morning start that preserves a one-hour window before the end cap. */
-const ADAPTIVE_MORNING_START_CAP_MINUTES =
-  ADAPTIVE_MORNING_END_CAP_MINUTES - 60;
 /** Ceiling value for the afternoon window end (8:00 PM in minutes). */
 const ADAPTIVE_AFTERNOON_END_CAP_MINUTES = 20 * 60;
 /** Ceiling value for the evening window end (4:00 AM next day in minutes). */
@@ -106,6 +103,8 @@ const ADAPTIVE_EVENING_END_CAP_MINUTES = 28 * 60;
 const ADAPTIVE_LEAD_HOURS = 0.5;
 /** Standard span of the morning and afternoon windows. */
 const ADAPTIVE_WINDOW_SPAN_HOURS = 5;
+/** Minimum positive span retained when a rhythm falls beyond a daypart cap. */
+const ADAPTIVE_MIN_WINDOW_MINUTES = 60;
 /** How long after typical last active to end the evening window. */
 const ADAPTIVE_LAST_ACTIVE_LAG_HOURS = 1;
 
@@ -138,23 +137,26 @@ export function computeAdaptiveWindowPolicy(
     };
   }
 
-  const morningStartMinute = Math.min(
-    Math.max(
-      Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
-      ADAPTIVE_MORNING_FLOOR_MINUTES,
-    ),
-    ADAPTIVE_MORNING_START_CAP_MINUTES,
+  const morningStartMinute = Math.max(
+    Math.round((wakeSource - ADAPTIVE_LEAD_HOURS) * 60),
+    ADAPTIVE_MORNING_FLOOR_MINUTES,
   );
 
-  const morningEndMinute = Math.min(
-    morningStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
-    ADAPTIVE_MORNING_END_CAP_MINUTES,
+  const morningEndMinute = Math.max(
+    morningStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    Math.min(
+      morningStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
+      ADAPTIVE_MORNING_END_CAP_MINUTES,
+    ),
   );
 
   const afternoonStartMinute = morningEndMinute;
-  const afternoonEndMinute = Math.min(
-    afternoonStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
-    ADAPTIVE_AFTERNOON_END_CAP_MINUTES,
+  const afternoonEndMinute = Math.max(
+    afternoonStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    Math.min(
+      afternoonStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
+      ADAPTIVE_AFTERNOON_END_CAP_MINUTES,
+    ),
   );
 
   const eveningStartMinute = afternoonEndMinute;
@@ -187,14 +189,18 @@ export function computeAdaptiveWindowPolicy(
     eveningEndMinute = defaultEveningWindow.endMinute;
   }
 
-  // Guard: evening end must be strictly after evening start.
-  if (eveningEndMinute <= eveningStartMinute) {
-    eveningEndMinute = eveningStartMinute + 60;
-  }
+  const nightEndMinute = morningStartMinute + 24 * 60;
+  // Preserve at least one hour for both evening and the following night.
+  eveningEndMinute = Math.min(
+    Math.max(
+      eveningEndMinute,
+      eveningStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    ),
+    nightEndMinute - ADAPTIVE_MIN_WINDOW_MINUTES,
+  );
 
   // Night wraps from evening end to morning start + 24.
   const nightStartMinute = eveningEndMinute;
-  const nightEndMinute = morningStartMinute + 24 * 60;
 
   return {
     timezone: tz,
