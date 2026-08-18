@@ -20,7 +20,7 @@ const CHARACTER_FIELD_TEXT_LIMIT = 4000;
 
 function truncateText(value: string, limit = CHARACTER_FIELD_TEXT_LIMIT): string {
   if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}...`;
+  return `${value.slice(0, limit - 3)}...`;
 }
 
 function getExampleMessages(example: MessageExampleGroup | MessageExample[]): MessageExample[] {
