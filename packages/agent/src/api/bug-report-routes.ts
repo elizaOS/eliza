@@ -15,6 +15,8 @@ export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";
 const BUG_REPORT_REPO_FALLBACK_ENV_KEY = "BUG_REPORT_REPO";
 
+export const DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS = 10_000;
+
 function sanitizeRepoName(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -185,7 +187,7 @@ function getRemoteBugReportToken(): string | undefined {
   return process.env.ELIZA_BUG_REPORT_API_TOKEN;
 }
 
-async function submitToRemoteBugIntake(body: BugReportBody) {
+export async function submitToRemoteBugIntake(body: BugReportBody) {
   const remoteBugReportUrl = getRemoteBugReportUrl();
   if (!remoteBugReportUrl) return null;
   const payload = {
@@ -241,6 +243,7 @@ async function submitToRemoteBugIntake(body: BugReportBody) {
         : {}),
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -344,6 +347,7 @@ export async function handleBugReportRoutes(
           body: issueBody,
           labels: ["bug", "triage", "user-reported"],
         }),
+        signal: AbortSignal.timeout(DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS),
       });
 
       if (!issueRes.ok) {
