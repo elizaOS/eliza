@@ -22,16 +22,30 @@ export class RemoteSessionsRepository {
     return row;
   }
 
-  async findByIdAndOrg(id: string, orgId: string): Promise<RemoteSession | undefined> {
+  async findByIdAndOwner(
+    id: string,
+    orgId: string,
+    userId: string,
+  ): Promise<RemoteSession | undefined> {
     const [row] = await dbRead
       .select()
       .from(remoteSessions)
-      .where(and(eq(remoteSessions.id, id), eq(remoteSessions.organization_id, orgId)))
+      .where(
+        and(
+          eq(remoteSessions.id, id),
+          eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
+        ),
+      )
       .limit(1);
     return row;
   }
 
-  async listActiveByAgent(agentId: string, orgId: string): Promise<RemoteSession[]> {
+  async listActiveByAgent(
+    agentId: string,
+    orgId: string,
+    userId: string,
+  ): Promise<RemoteSession[]> {
     const rows = await dbRead
       .select()
       .from(remoteSessions)
@@ -39,6 +53,7 @@ export class RemoteSessionsRepository {
         and(
           eq(remoteSessions.agent_id, agentId),
           eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
           inArray(remoteSessions.status, ACTIVE_STATUSES),
         ),
       )
@@ -49,7 +64,7 @@ export class RemoteSessionsRepository {
     );
   }
 
-  async revoke(id: string, orgId: string): Promise<RemoteSession | undefined> {
+  async revoke(id: string, orgId: string, userId: string): Promise<RemoteSession | undefined> {
     const now = new Date();
     const [row] = await dbWrite
       .update(remoteSessions)
@@ -58,6 +73,7 @@ export class RemoteSessionsRepository {
         and(
           eq(remoteSessions.id, id),
           eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
           inArray(remoteSessions.status, ACTIVE_STATUSES),
         ),
       )

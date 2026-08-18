@@ -61,7 +61,10 @@ describe("remote pairing route", () => {
     requireUserOrApiKeyWithOrg.mockClear();
     findByIdAndOrg.mockReset();
     create.mockReset();
-    findByIdAndOrg.mockResolvedValue({ id: agentId });
+    findByIdAndOrg.mockResolvedValue({
+      id: agentId,
+      user_id: "11111111-1111-4111-8111-111111111111",
+    });
     create.mockImplementation(async (data) => ({
       ...data,
       created_at: new Date(),
@@ -112,7 +115,10 @@ describe("remote pairing route", () => {
         new Date(body.data.expiresAt),
       ),
     );
-    expect(persisted.pairing_token_hash).not.toContain(body.data.code);
+    expect(persisted.pairing_token_hash).toMatch(
+      /^hmac-sha256-v1:\d{13}:[0-9a-f]{64}$/,
+    );
+    expect(persisted.pairing_token_hash).not.toBe(body.data.code);
   });
 
   test("binds the verifier to both the session id and dedicated secret", async () => {
@@ -186,6 +192,24 @@ describe("remote pairing route", () => {
         expiry,
       ),
     ).toBe(false);
+    expect(
+      await verifyRemotePairingCodeVerifier(
+        secret,
+        "44444444-4444-4444-8444-444444444444",
+        "123456",
+        first,
+        new Date(Number.NaN),
+      ),
+    ).toBe(false);
+    await expect(
+      verifyRemotePairingCodeVerifier(
+        "too-short",
+        "44444444-4444-4444-8444-444444444444",
+        "123456",
+        first,
+        new Date(expiry.getTime() - 1),
+      ),
+    ).rejects.toThrow("REMOTE_PAIRING_HMAC_SECRET");
   });
 
   test("fails closed before creating state when the dedicated secret is absent", async () => {
@@ -209,6 +233,18 @@ describe("remote pairing route", () => {
 
   test("does not create a pairing session for another organization agent", async () => {
     findByIdAndOrg.mockResolvedValue(undefined);
+
+    const response = await postPair(JSON.stringify({ agentId }));
+
+    expect(response.status).toBe(404);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("does not create a pairing session for another user in the organization", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: agentId,
+      user_id: "66666666-6666-4666-8666-666666666666",
+    });
 
     const response = await postPair(JSON.stringify({ agentId }));
 

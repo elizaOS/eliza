@@ -84,7 +84,7 @@ app.post("/", async (c) => {
       agentId,
       user.organization_id,
     );
-    if (!sandbox) {
+    if (!sandbox || sandbox.user_id !== user.id) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 

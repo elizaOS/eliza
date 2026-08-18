@@ -119,18 +119,21 @@ export async function verifyRemotePairingCodeVerifier(
   const match = VERIFIER_PATTERN.exec(verifier);
   if (!match?.[1] || !match[2]) return false;
   const expiresAtMs = Number(match[1]);
-  if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= now.getTime()) return false;
+  const nowMs = now.getTime();
+  if (!Number.isSafeInteger(nowMs) || !Number.isSafeInteger(expiresAtMs) || expiresAtMs <= nowMs) {
+    return false;
+  }
   try {
     assertInputs(sessionId, code, expiresAtMs);
-    const key = await importHmacKey(secret, "verify");
-    return crypto.subtle.verify(
-      "HMAC",
-      key,
-      hexToBuffer(match[2]),
-      signingPayload(sessionId, code, expiresAtMs),
-    );
   } catch {
     // error-policy:J3 untrusted pairing material is an explicit invalid result.
     return false;
   }
+  const key = await importHmacKey(secret, "verify");
+  return crypto.subtle.verify(
+    "HMAC",
+    key,
+    hexToBuffer(match[2]),
+    signingPayload(sessionId, code, expiresAtMs),
+  );
 }
