@@ -396,22 +396,33 @@ function ChatOverlayShell() {
   ]);
   const reportWindowMaterialSize = useCallback(
     (size: ChatOverlayMaterialSize): void => {
-      reportNativeInteractiveSize(size);
-      if (
-        controller?.authGate.gated ||
-        windowSizeClassRef.current !== "input"
-      ) {
+      if (controller?.authGate.gated) {
+        return;
+      }
+      if (windowSizeClassRef.current === "resting") {
+        reportNativeInteractiveSize({
+          width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+          height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+        });
+        return;
+      }
+      if (windowSizeClassRef.current === "sheet") {
+        reportNativeInteractiveSize(size);
         return;
       }
       const inputWidth = Math.max(
         CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
         stageSize.width - 24,
       );
-      if (size.width < inputWidth) return;
-      reportNativeWindowSize({
+      // The composer fills a fixed-width native frame. A ResizeObserver entry
+      // queued by the preceding resting pill can therefore contribute height,
+      // but it cannot shrink the live input hit region back to pill width.
+      const inputSize = {
         width: inputWidth,
         height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, size.height),
-      });
+      };
+      reportNativeInteractiveSize(inputSize);
+      reportNativeWindowSize(inputSize);
     },
     [
       controller?.authGate.gated,

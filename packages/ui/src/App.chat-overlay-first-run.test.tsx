@@ -448,6 +448,29 @@ describe("App chat-overlay first-run composition", () => {
     const staleInputMeasurement = overlayHarness.materialSize;
     desktopBridgeMock.request.mockClear();
 
+    act(() => staleInputMeasurement?.({ width: 500, height: 72 }));
+    await waitFor(() => {
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarSize",
+          params: { width: 576, height: 72 },
+        }),
+      );
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarInteractiveSize",
+          params: { width: 576, height: 72 },
+        }),
+      );
+      expect(desktopBridgeMock.request).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarInteractiveSize",
+          params: { width: 500, height: 72 },
+        }),
+      );
+    });
+    desktopBridgeMock.request.mockClear();
+
     act(() => overlayHarness.sizeClass?.("sheet"));
     await waitFor(() =>
       expect(desktopBridgeMock.request).toHaveBeenCalledWith(
