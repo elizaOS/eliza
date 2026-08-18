@@ -1293,12 +1293,19 @@ declare global {
 }
 
 export function setBrowserTabsRendererImpl(
-  impl: BrowserTabsRendererImpl | null,
+  impl: BrowserTabsRendererImpl | null | undefined,
 ): void {
   if (typeof window === "undefined") return;
-  if (impl) {
+  if (impl && typeof impl === "object") {
     window[REGISTRY_KEY] = impl;
   } else {
     delete window[REGISTRY_KEY];
   }
+}
+
+export function getBrowserTabsRendererImpl():
+  | BrowserTabsRendererImpl
+  | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window[REGISTRY_KEY];
 }
