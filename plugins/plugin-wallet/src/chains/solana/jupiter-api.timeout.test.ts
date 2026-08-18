@@ -73,11 +73,10 @@ describe("Jupiter API request deadline", () => {
       );
       expect(failure).toEqual(
         expect.objectContaining({
+          code: "JUPITER_SWAP_TRANSPORT_FAILED",
           cause: expect.objectContaining({ name: "TimeoutError" }),
+          severity: "ephemeral",
         })
-      );
-      expect(["JUPITER_SWAP_TRANSPORT_FAILED", "JUPITER_SWAP_INVALID_RESPONSE"]).toContain(
-        (failure as { code?: unknown }).code
       );
     } finally {
       await server.close();
@@ -105,8 +104,9 @@ describe("Jupiter API request deadline", () => {
 
     await expect(fetchJupiterJson(fetchFn, "https://jupiter.test/swap", "swap")).rejects.toEqual(
       expect.objectContaining({
-        code: "JUPITER_SWAP_INVALID_RESPONSE",
+        code: "JUPITER_SWAP_TRANSPORT_FAILED",
         cause: expect.objectContaining({ name: "TimeoutError" }),
+        severity: "ephemeral",
       })
     );
   });

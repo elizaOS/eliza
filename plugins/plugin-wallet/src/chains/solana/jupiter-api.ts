@@ -15,6 +15,10 @@ function stageCode(stage: JupiterStage, suffix: string): string {
   return `JUPITER_${stage.toUpperCase()}_${suffix}`;
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+}
+
 export function resolveJupiterApiBaseUrl(runtime: RuntimeSettings): string {
   const configured = runtime.getSetting(JUPITER_API_BASE_URL_SETTING);
   const configuredUrl = typeof configured === "string" ? configured.trim() : undefined;
@@ -86,6 +90,17 @@ export async function fetchJupiterJson(
   try {
     payload = await response.json();
   } catch (cause) {
+    if (signal.aborted || isAbortLikeError(cause)) {
+      // error-policy:J2 A deadline or caller cancellation can occur after the
+      // response headers arrive. It remains an ephemeral transport failure,
+      // not a fatal malformed-provider-response verdict.
+      throw new ElizaError(`Jupiter ${stage} response body was interrupted`, {
+        code: stageCode(stage, "TRANSPORT_FAILED"),
+        cause,
+        context: { url, status: response.status },
+        severity: "ephemeral",
+      });
+    }
     // error-policy:J2 The response boundary adds endpoint context to malformed JSON.
     throw new ElizaError(`Jupiter ${stage} response was not valid JSON`, {
       code: stageCode(stage, "INVALID_RESPONSE"),
