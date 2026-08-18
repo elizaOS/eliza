@@ -70,6 +70,7 @@ describe("default agent character seed", () => {
     expect(seed.topics).toEqual(preset.topics);
     expect(seed.style).toEqual(preset.style);
     expect(seed.postExamples).toEqual(preset.postExamples);
+    expect(seed.templates).toEqual(preset.templates);
     // Flat keys only: the container env loader, the warm-claim push, and the
     // first-boot bootstrap agent all read agent_config at the top level.
     expect(Object.keys(seed).sort()).toEqual([
@@ -79,6 +80,7 @@ describe("default agent character seed", () => {
       "postExamples",
       "style",
       "system",
+      "templates",
       "topics",
     ]);
   });
@@ -169,6 +171,11 @@ describe("a newly created cloud agent's character", () => {
     expect(character.name).toBe("Nyx");
     expect(character.system).toBe(buildCloudElizaPersona().system);
     expect(character.bio?.length).toBeGreaterThan(0);
+    expect(character.adjectives).toEqual(buildCloudElizaPersona().adjectives);
+    expect(character.topics).toEqual(buildCloudElizaPersona().topics);
+    expect(character.style).toEqual(buildCloudElizaPersona().style);
+    expect(character.messageExamples?.length).toBeGreaterThan(0);
+    expect(character.templates).toEqual(buildCloudElizaPersona().templates);
     expect(character.system).not.toBe("You are Nyx, a helpful assistant.");
 
     const result = await runSharedAgentTurn({
@@ -187,6 +194,9 @@ describe("a newly created cloud agent's character", () => {
     expect(capturedSystem).toContain(
       buildCloudElizaPersona().system.split("{{name}}").join("Nyx").trim(),
     );
+    expect(capturedSystem).toContain("# Message Directions for Nyx");
+    expect(capturedSystem).toContain("# Example Conversations for Nyx");
+    expect(capturedSystem).toContain("Nyx is informed about:");
     expect(capturedSystem).not.toBe("You are Nyx, a helpful assistant.");
   });
 

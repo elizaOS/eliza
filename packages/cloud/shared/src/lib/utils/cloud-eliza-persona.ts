@@ -13,9 +13,9 @@
  */
 import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
 
-/** Leads the bio: it is the promise the rest of the persona is read against. */
+/** Leads the bio without promising recall the runtime did not actually surface. */
 export const CLOUD_MEMORY_BIO =
-  "Remembers what people care about, and months later she'll bring up the project, the worry, the trip.";
+  "Uses stored memories when they are available in context, and says plainly when they are not.";
 
 /**
  * Scoped to "in your context" and "stored memories" rather than to the current

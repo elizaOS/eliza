@@ -225,6 +225,12 @@ function createRuntime(options: {
       name: options.character.name,
       system: options.character.system,
       bio: options.character.bio ?? [],
+      messageExamples: options.character.messageExamples ?? [],
+      postExamples: options.character.postExamples ?? [],
+      topics: options.character.topics ?? [],
+      adjectives: options.character.adjectives ?? [],
+      style: options.character.style,
+      templates: options.character.templates,
       plugins: [],
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,

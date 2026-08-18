@@ -10,8 +10,8 @@ import { getDefaultElizaCharacterData } from "./default-eliza-character";
  * The default Eliza character is what every new cloud signup gets. Its persona
  * promises (bio), behavioral rules (system), examples, and settings must stay
  * coherent with each other and with what the agent loader actually wires up —
- * a bio that promises months-later memory next to a rule that forbids recalling
- * anything outside the current conversation ships a self-contradicting agent,
+ * a bio that promises memory next to a rule that forbids recalling anything
+ * outside the current conversation ships a self-contradicting agent,
  * and a settings key that loads a plugin whose service can never start ships
  * an error on every runtime creation.
  */
@@ -20,9 +20,9 @@ describe("getDefaultElizaCharacterData", () => {
   const character = getDefaultElizaCharacterData();
 
   test("memory honesty rule is scoped to context, not just the current conversation", () => {
-    // bio[0] promises long-term memory; the honesty rule must allow recall from
-    // stored memories visible in context, not restrict it to "this conversation".
-    expect(character.bio[0]).toMatch(/months later/);
+    // The memory promise is explicitly gated on what recall surfaced into
+    // context, rather than claiming perfect or automatic long-term recall.
+    expect(character.bio[0]).toContain("when they are available in context");
     expect(character.system).toContain("in your context");
     expect(character.system).toContain("stored memories");
     expect(character.system).not.toContain("something a tool gave you this turn");
@@ -87,6 +87,9 @@ describe("getDefaultElizaCharacterData", () => {
     expect(defaultAgent.character.adjectives).toEqual(character.adjectives);
     expect(defaultAgent.character.style).toEqual(character.style);
     expect(defaultAgent.character.postExamples).toEqual(character.post_examples);
+    expect(defaultAgent.character.templates).toEqual(
+      (character.character_data as { templates?: unknown }).templates,
+    );
 
     expect(defaultAgent.character.messageExamples).toEqual(character.message_examples);
     expect(defaultAgent.character.messageExamples[0]?.[0]?.name).toBe("{{name1}}");
@@ -155,11 +158,11 @@ describe("default Eliza voice", () => {
     }
   });
 
-  test("credits the people who actually built it", () => {
+  test("carries the current Eliza Research identity", () => {
     const identity = `${character.system}\n${character.bio.join("\n")}`.toLowerCase();
-    for (const name of ["shaw", "nubs", "shad0w", "elizaos"]) {
-      expect(identity).toContain(name);
-    }
+    expect(identity).toContain("eliza research");
+    expect(identity).toContain("san francisco");
+    expect(identity).toContain("elizaos");
     expect(identity).toContain("github.com/elizaos/eliza");
   });
 

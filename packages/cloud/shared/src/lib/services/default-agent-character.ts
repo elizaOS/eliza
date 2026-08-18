@@ -73,6 +73,7 @@ export function buildDefaultAgentCharacterConfig(): Record<string, unknown> {
     messageExamples: preset.messageExamples.map((group) => ({
       examples: group.map((turn) => ({ name: turn.user, content: { ...turn.content } })),
     })),
+    ...(preset.templates ? { templates: { ...preset.templates } } : {}),
   };
 }
 

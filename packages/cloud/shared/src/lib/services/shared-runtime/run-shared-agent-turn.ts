@@ -22,8 +22,11 @@
 
 import {
   type ActionResult,
+  buildCanonicalSystemPrompt,
+  buildCharacterStyleDirections,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
+  type MessageExampleGroup,
   replaceNameTokens,
   type UUID,
 } from "@elizaos/core/edge";
@@ -64,6 +67,17 @@ export interface SharedAgentCharacter {
   system: string;
   /** Optional bio/lore bullets folded into the system prompt. */
   bio?: string[];
+  /** Few-shot chat examples consumed by the canonical CHARACTER provider. */
+  messageExamples?: MessageExampleGroup[];
+  /** Post examples retained for parity with the canonical character contract. */
+  postExamples?: string[];
+  /** Subjects and traits consumed by the canonical CHARACTER provider. */
+  topics?: string[];
+  adjectives?: string[];
+  /** Chat/post voice rules consumed by the canonical prompt pipeline. */
+  style?: { all?: string[]; chat?: string[]; post?: string[] };
+  /** Character-owned response templates. Tool/plugin selection remains server-owned. */
+  templates?: Record<string, string>;
   /** Optional model id override; otherwise the shared default is used. */
   model?: string;
 }
@@ -269,22 +283,42 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
  * directly, so it is the only renderer on this side.
  */
-function buildSystemPrompt(
-  character: SharedAgentCharacter,
+function renderMessageExamples(character: SharedAgentCharacter): string {
+  const name = character.name;
+  const groups = character.messageExamples ?? [];
+  const rendered = groups
+    .slice(0, 5)
+    .map((group) =>
+      group.examples
+        .map((message) => {
+          const speaker = replaceNameTokens(message.name, name);
+          const text = replaceNameTokens(message.content.text ?? "", name).trim();
+          return text ? `${speaker}: ${text}` : "";
+        })
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean);
+  return rendered.length ? `# Example Conversations for ${name}\n${rendered.join("\n\n")}` : "";
+}
+
+function renderCharacterInterests(character: SharedAgentCharacter): string {
+  const name = character.name;
+  const adjectives = (character.adjectives ?? []).map((value) => replaceNameTokens(value, name));
+  const topics = (character.topics ?? []).map((value) => replaceNameTokens(value, name));
+  return [
+    adjectives.length ? `${name} is ${adjectives.join(", ")}.` : "",
+    topics.length ? `${name} is informed about: ${topics.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildSharedRuntimeContext(
   capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
 ): string {
   const parts: string[] = [];
-  const system = replaceNameTokens(character.system ?? "", character.name).trim();
-  if (system) parts.push(system);
-  if (character.bio?.length) {
-    parts.push(
-      `About you:\n- ${character.bio
-        .map((b) => replaceNameTokens(b, character.name).trim())
-        .filter(Boolean)
-        .join("\n- ")}`,
-    );
-  }
   parts.push(
     "Shared runtime boundaries:\n" +
       (capabilities.webSearch
@@ -305,7 +339,37 @@ function buildSystemPrompt(
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
   if (recallContext?.trim()) parts.push(recallContext.trim());
+  return parts.join("\n\n");
+}
+
+export function buildSharedSystemPrompt(
+  character: SharedAgentCharacter,
+  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  recallContext?: string,
+): string {
+  const parts = [
+    buildCanonicalSystemPrompt({ character }),
+    buildCharacterStyleDirections({ character }),
+    renderCharacterInterests(character),
+    renderMessageExamples(character),
+    buildSharedRuntimeContext(capabilities, recallContext),
+  ].filter(Boolean);
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
+}
+
+/**
+ * The genuine AgentRuntime renders bio, style, traits, topics, and examples
+ * through its own canonical providers. Only append Shared's capability and
+ * recall context here, otherwise every persona field appears twice.
+ */
+function buildSharedRuntimeSystem(
+  character: SharedAgentCharacter,
+  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  recallContext?: string,
+): string {
+  return [character.system.trim(), buildSharedRuntimeContext(capabilities, recallContext)]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function appendSharedTurn(
@@ -473,7 +537,7 @@ export async function runSharedAgentTurn(
       ...input,
       character: {
         ...input.character,
-        system: buildSystemPrompt(
+        system: buildSharedRuntimeSystem(
           input.character,
           {
             webSearch: actionsEnabled,
@@ -495,7 +559,7 @@ export async function runSharedAgentTurn(
   let turn: RunSharedAgentTurnResult;
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(
+    const system = buildSharedSystemPrompt(
       input.character,
       {
         webSearch: actionsEnabled,
@@ -615,7 +679,7 @@ export async function runSharedAgentTurnStream(
         ...input,
         character: {
           ...input.character,
-          system: buildSystemPrompt(
+          system: buildSharedRuntimeSystem(
             input.character,
             {
               webSearch: actionsEnabled,
@@ -635,7 +699,7 @@ export async function runSharedAgentTurnStream(
 
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(
+    const system = buildSharedSystemPrompt(
       input.character,
       {
         webSearch: actionsEnabled,
