@@ -204,4 +204,25 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
     );
     expect(contents).toEqual([]);
   });
+
+  it("reads modern JavaScript and TypeScript module sources for coding-task judgment", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "module-content-"));
+    try {
+      const files = ["stats.mjs", "handler.ts", "view.tsx"];
+      for (const file of files) {
+        fs.writeFileSync(
+          path.join(workdir, file),
+          `// evidence from ${file}\n`,
+        );
+      }
+
+      const contents = readFsVerifiedContents(workdir, files);
+      expect(contents.map((entry) => entry.path)).toEqual(files);
+      expect(contents.map((entry) => entry.content)).toEqual(
+        files.map((file) => `// evidence from ${file}\n`),
+      );
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
 });

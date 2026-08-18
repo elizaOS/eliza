@@ -181,6 +181,38 @@ export interface CompletionResidualsInput {
   orchestratorOwnedArtifacts?: readonly OrchestratorOwnedArtifact[];
 }
 
+/**
+ * Render only machine-proven completion facts for the downstream text judge.
+ * A clean residual snapshot is already an enforced gate, but without this
+ * section the judge has to guess whether spawn-time sentinels and Git history
+ * were preserved from the worker's prose. Keep claims conditional on the exact
+ * baseline inputs that made those checks meaningful.
+ */
+export function renderCompletionResidualEvidence(
+  result: CompletionResidualsResult,
+  input: CompletionResidualsInput,
+): string | undefined {
+  if (result.status !== "clean") return undefined;
+  const lines = [
+    "## DETERMINISTIC COMPLETION RESIDUALS (direct git/filesystem inspection — not worker prose)",
+    "- CLEAN: no completion residuals were found.",
+  ];
+  for (const fingerprint of input.baselinePathFingerprints ?? []) {
+    lines.push(`- ${fingerprint.path}: spawn-time fingerprint unchanged`);
+  }
+  if (input.baselineSha && input.gitDeliveryPolicy === "leave_uncommitted") {
+    lines.push(
+      "- Git HEAD unchanged from the spawn baseline; no commit was created.",
+    );
+  }
+  if (input.gitDeliveryPolicy === "leave_uncommitted") {
+    lines.push(
+      "- leave_uncommitted delivery policy verified: only the session-scoped change-set paths remain dirty; unrelated and protected baseline paths are unchanged.",
+    );
+  }
+  return lines.join("\n");
+}
+
 interface GitProbe {
   ok: boolean;
   stdout: string;

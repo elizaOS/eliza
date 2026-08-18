@@ -237,7 +237,7 @@ const MAX_CONTENT_FILES = 3;
 // judged content lived (velvet-moth live park). 8KB covers the class whole.
 const MAX_CONTENT_CHARS = 8_000;
 /** Text-asset extensions worth showing the judge verbatim. */
-const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
+const TEXT_CONTENT_RE = /\.(?:html?|css|[cm]?[jt]sx?|svg|md|txt|json)$/i;
 
 /**
  * Read the (capped) contents of small fs-verified text files so content

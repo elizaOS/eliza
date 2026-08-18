@@ -95,6 +95,7 @@ import {
   type CompletionResidualsInput,
   type CompletionResidualsResult,
   collectCompletionResiduals,
+  renderCompletionResidualEvidence,
   residualDetails,
   residualsCorrection,
   residualsGateEnabled,
@@ -4986,6 +4987,7 @@ export class OrchestratorTaskService extends Service {
       if (doc.task.status !== "validating") return;
       const attempts = num(doc.task.metadata?.autoVerifyAttempts);
       const parse = parseCompletionEnvelope(rawCompletion);
+      let deterministicResidualEvidence: string | undefined;
 
       // 0. Deterministic residuals gate — BEFORE the criteria check and any
       // model spend, so even a criteria-free task with a git workspace cannot
@@ -5003,7 +5005,7 @@ export class OrchestratorTaskService extends Service {
           ? (await this.resolveCompletionChangeSet(sessionId, doc))
               ?.changedFiles
           : undefined;
-        const residuals = await collectCompletionResiduals({
+        const residualInput: CompletionResidualsInput = {
           workdir: reportingSession?.workdir,
           repoExpected: residualsRepoExpected(doc, reportingSession),
           orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
@@ -5023,7 +5025,8 @@ export class OrchestratorTaskService extends Service {
                 residualRisks: parse.envelope.residualRisks,
               }
             : {}),
-        });
+        };
+        const residuals = await collectCompletionResiduals(residualInput);
         await this.store.updateTask(taskId, {
           metadata: {
             ...doc.task.metadata,
@@ -5083,6 +5086,10 @@ export class OrchestratorTaskService extends Service {
           });
           return;
         }
+        deterministicResidualEvidence = renderCompletionResidualEvidence(
+          residuals,
+          residualInput,
+        );
       }
 
       // 1. Deterministic remote ground-truth verifier. This uses the PR URL in
@@ -5091,6 +5098,12 @@ export class OrchestratorTaskService extends Service {
       // It always persists a structured verdict when enabled. API failures are
       // explicitly inconclusive and never become a false hard failure.
       let evidence = completionEvidence;
+      if (deterministicResidualEvidence) {
+        evidence = appendCompletionEvidenceSection(
+          evidence,
+          deterministicResidualEvidence,
+        );
+      }
       const includeGroundTruth = shouldIncludeGroundTruthEvidence((key) =>
         this.runtime.getSetting(key),
       );

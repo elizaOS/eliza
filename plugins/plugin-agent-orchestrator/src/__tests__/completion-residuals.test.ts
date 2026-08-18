@@ -20,6 +20,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   collectCompletionResiduals,
   MAX_RESIDUAL_PATHS,
+  renderCompletionResidualEvidence,
   residualDetails,
   residualsCorrection,
   residualsGateEnabled,
@@ -73,6 +74,46 @@ function makeRepo(opts: { withUpstream?: boolean } = {}): {
   }
   return { workdir };
 }
+
+describe("renderCompletionResidualEvidence", () => {
+  it("renders only clean machine-proven baseline and delivery facts", () => {
+    const evidence = renderCompletionResidualEvidence(
+      { status: "clean", residuals: [], checkedAt: 1 },
+      {
+        repoExpected: true,
+        baselineSha: "spawn-head",
+        baselinePathFingerprints: [
+          {
+            path: "preserve-untracked.txt",
+            kind: "file",
+            mode: 0o644,
+            sha256: "a".repeat(64),
+          },
+        ],
+        gitDeliveryPolicy: "leave_uncommitted",
+      },
+    );
+    expect(evidence).toContain("DETERMINISTIC COMPLETION RESIDUALS");
+    expect(evidence).toContain(
+      "preserve-untracked.txt: spawn-time fingerprint unchanged",
+    );
+    expect(evidence).toContain("Git HEAD unchanged from the spawn baseline");
+    expect(evidence).toContain("leave_uncommitted delivery policy verified");
+
+    expect(
+      renderCompletionResidualEvidence(
+        {
+          status: "residuals",
+          residuals: [
+            { kind: "uncommitted_changes", detail: "unexpected path" },
+          ],
+          checkedAt: 1,
+        },
+        { repoExpected: true },
+      ),
+    ).toBeUndefined();
+  });
+});
 
 describe("collectCompletionResiduals — real git legs", () => {
   it("passes a clean, fully-pushed workspace", async () => {

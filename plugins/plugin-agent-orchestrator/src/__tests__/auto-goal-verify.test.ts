@@ -1320,6 +1320,51 @@ describe("deterministic completion-residuals gate", () => {
     expect(snapshot?.status).toBe("clean");
   });
 
+  it("gives the text judge deterministic clean-workspace and delivery-policy evidence", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId, workdir } = await seedTaskWithSession(store, [
+      "workspace preservation evidence is available",
+    ]);
+    const doc = await store.getTask(taskId);
+    const session = doc?.sessions.find((row) => row.sessionId === sessionId);
+    await store.updateSession(
+      sessionId,
+      {
+        metadata: {
+          ...(session?.metadata ?? {}),
+          completionGitPolicy: "leave_uncommitted",
+          codingBaselineSha: execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: workdir,
+            encoding: "utf8",
+          }).trim(),
+        },
+      },
+      taskId,
+    );
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done" });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    const judgePrompt = useModel.mock.calls[0]?.[1] as
+      | { prompt?: string }
+      | undefined;
+    expect(judgePrompt?.prompt).toContain("DETERMINISTIC COMPLETION RESIDUALS");
+    expect(judgePrompt?.prompt).toContain(
+      "Git HEAD unchanged from the spawn baseline",
+    );
+    expect(judgePrompt?.prompt).toContain(
+      "leave_uncommitted delivery policy verified",
+    );
+  });
+
   it("a MISSING workspace on a repo-bound task is unverifiable: stays validating WITHOUT burning an attempt (fail closed, F5a)", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
