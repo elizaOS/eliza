@@ -85,6 +85,13 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
 
 const EMAIL_SOURCE_LABEL = "Email bills";
 const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
+const PLAID_SYNC_PAGE_LIMIT = 20;
+const PLAID_SYNC_MUTATION_RESTART_LIMIT = 3;
+const PLAID_RELINK_CODES = new Set([
+  "ITEM_LOGIN_REQUIRED",
+  "INVALID_ACCESS_TOKEN",
+  "ITEM_NOT_FOUND",
+]);
 
 /** Optional construction options (mirrors the LifeOps service shape). */
 export type FinancesServiceOptions = {
@@ -162,6 +169,23 @@ function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
     delete metadata.connectionId;
   }
   return metadata;
+}
+
+function hasLegacyPlaidAccessToken(
+  metadata: PlaidPaymentMetadata | null,
+): boolean {
+  return metadata !== null && Object.hasOwn(metadata, "accessToken");
+}
+
+function withoutLegacyPlaidAccessToken(
+  metadata: PlaidPaymentMetadata,
+): PlaidPaymentMetadata {
+  const sanitized = { ...metadata };
+  delete sanitized.accessToken;
+  return {
+    ...sanitized,
+    migrationStatus: "relink_required",
+  };
 }
 
 function readPaypalPaymentMetadata(
@@ -405,7 +429,31 @@ export class FinancesService {
 
   async listPaymentSources(): Promise<LifeOpsPaymentSource[]> {
     const sources = await this.repository.listPaymentSources(this.agentId());
-    return sources.map((source) => sanitizePaymentSourceForClient(source));
+    const migrated: LifeOpsPaymentSource[] = [];
+    for (const source of sources) {
+      migrated.push(await this.scrubLegacyPlaidSource(source));
+    }
+    return migrated.map((source) => sanitizePaymentSourceForClient(source));
+  }
+
+  private async scrubLegacyPlaidSource(
+    source: LifeOpsPaymentSource,
+  ): Promise<LifeOpsPaymentSource> {
+    if (source.kind !== "plaid") return source;
+    const plaid = readPlaidPaymentMetadata(source.metadata.plaid);
+    if (!plaid || !hasLegacyPlaidAccessToken(plaid)) return source;
+    const now = new Date().toISOString();
+    const migrated: LifeOpsPaymentSource = {
+      ...source,
+      status: "needs_attention",
+      metadata: {
+        ...source.metadata,
+        plaid: withoutLegacyPlaidAccessToken(plaid),
+      },
+      updatedAt: now,
+    };
+    await this.repository.upsertPaymentSource(migrated);
+    return migrated;
   }
 
   async addPaymentSource(
@@ -454,7 +502,7 @@ export class FinancesService {
           });
         } catch (error) {
           if (error instanceof PlaidManagedClientError) {
-            fail(error.status, error.message);
+            fail(error.status, error.message, error.code ?? undefined);
           }
           throw error;
         }
@@ -943,7 +991,7 @@ export class FinancesService {
       return await this.getPlaidManagedClient().createLinkToken();
     } catch (error) {
       if (error instanceof PlaidManagedClientError) {
-        fail(error.status, error.message);
+        fail(error.status, error.message, error.code ?? undefined);
       }
       throw error;
     }
@@ -966,7 +1014,7 @@ export class FinancesService {
       });
     } catch (error) {
       if (error instanceof PlaidManagedClientError) {
-        fail(error.status, error.message);
+        fail(error.status, error.message, error.code ?? undefined);
       }
       throw error;
     }
@@ -1031,97 +1079,126 @@ export class FinancesService {
     sourceId: string;
   }): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
     const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
-    const source = await this.repository.getPaymentSource(
+    const storedSource = await this.repository.getPaymentSource(
       this.agentId(),
       sourceId,
     );
-    if (!source) {
+    if (!storedSource) {
       fail(404, `Payment source ${sourceId} not found.`);
     }
-    if (source.kind !== "plaid") {
+    if (storedSource.kind !== "plaid") {
       fail(409, `Source ${sourceId} is not a Plaid source.`);
     }
+    const hadLegacyToken = hasLegacyPlaidAccessToken(
+      readPlaidPaymentMetadata(storedSource.metadata.plaid),
+    );
+    const source = await this.scrubLegacyPlaidSource(storedSource);
     const plaidMetadata = readPlaidPaymentMetadata(source.metadata.plaid);
     const connectionId = plaidMetadata?.connectionId;
     if (!connectionId) {
       fail(
         409,
-        plaidMetadata?.accessToken
+        hadLegacyToken
           ? "This Plaid source uses retired local token storage. Re-link the account."
           : "Plaid source is missing a Cloud connection. Re-link the account.",
       );
     }
     const cursor = plaidMetadata?.cursor ?? "";
 
-    let cumulativeInserted = 0;
-    let cumulativeSkipped = 0;
     let pageCursor = cursor;
-    let hasMore = true;
-    let pageGuard = 0;
-    while (hasMore && pageGuard < 20) {
-      let delta: PlaidSyncResponse;
-      try {
-        delta = await this.getPlaidManagedClient().syncTransactions({
-          connectionId,
-          cursor: pageCursor,
-        });
-      } catch (error) {
-        if (error instanceof PlaidManagedClientError) {
-          fail(error.status, error.message);
+    let added: PlaidTransactionDto[] = [];
+    let modified: PlaidTransactionDto[] = [];
+    let removedExternalIds: string[] = [];
+    let completed = false;
+    for (
+      let restart = 0;
+      restart < PLAID_SYNC_MUTATION_RESTART_LIMIT;
+      restart += 1
+    ) {
+      pageCursor = cursor;
+      added = [];
+      modified = [];
+      removedExternalIds = [];
+      let hasMore = true;
+      let pageGuard = 0;
+      let restartRequired = false;
+      while (hasMore && pageGuard < PLAID_SYNC_PAGE_LIMIT) {
+        let delta: PlaidSyncResponse;
+        try {
+          delta = await this.getPlaidManagedClient().syncTransactions({
+            connectionId,
+            cursor: pageCursor,
+          });
+        } catch (error) {
+          if (!(error instanceof PlaidManagedClientError)) throw error;
+          if (error.code === "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION") {
+            restartRequired = true;
+            break;
+          }
+          if (error.code && PLAID_RELINK_CODES.has(error.code)) {
+            await this.repository.upsertPaymentSource({
+              ...source,
+              status: "needs_attention",
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          fail(error.status, error.message, error.code ?? undefined);
         }
-        throw error;
+        added.push(...delta.added);
+        modified.push(...delta.modified);
+        removedExternalIds.push(
+          ...delta.removed.map((transaction) => transaction.transaction_id),
+        );
+        pageCursor = delta.nextCursor;
+        hasMore = delta.hasMore;
+        pageGuard += 1;
       }
-      for (const transaction of delta.added) {
-        const inserted = await this.upsertPlaidTransaction({
-          sourceId,
-          transaction,
-        });
-        if (inserted) {
-          cumulativeInserted += 1;
-        } else {
-          cumulativeSkipped += 1;
-        }
+      if (restartRequired) continue;
+      if (hasMore) {
+        fail(
+          502,
+          "Plaid sync exceeded the 20-page safety limit; retry from the stored cursor.",
+        );
       }
-      for (const transaction of delta.modified) {
-        await this.upsertPlaidTransaction({
-          sourceId,
-          transaction,
-        });
-      }
-      pageCursor = delta.nextCursor;
-      hasMore = delta.hasMore;
-      pageGuard += 1;
+      completed = true;
+      break;
     }
-    if (hasMore) {
+    if (!completed) {
       fail(
-        502,
-        "Plaid sync exceeded the 20-page safety limit; retry from the stored cursor.",
+        409,
+        "Plaid transactions changed repeatedly during pagination; retry the sync.",
       );
     }
-    const newCount = await this.repository.countPaymentTransactionsForSource(
-      this.agentId(),
-      sourceId,
-    );
-    await this.repository.upsertPaymentSource({
-      ...source,
-      status: "active",
-      lastSyncedAt: new Date().toISOString(),
-      transactionCount: newCount,
-      metadata: {
-        ...source.metadata,
-        plaid: {
-          connectionId,
-          environment: plaidMetadata?.environment,
-          institutionId: plaidMetadata?.institutionId,
-          accounts: plaidMetadata?.accounts,
-          cursor: pageCursor,
+
+    const now = new Date().toISOString();
+    const applied = await this.repository.applyPlaidSync({
+      source: {
+        ...source,
+        status: "active",
+        lastSyncedAt: now,
+        metadata: {
+          ...source.metadata,
+          plaid: {
+            connectionId,
+            environment: plaidMetadata?.environment,
+            institutionId: plaidMetadata?.institutionId,
+            accounts: plaidMetadata?.accounts,
+            cursor: pageCursor,
+          },
         },
+        updatedAt: now,
       },
-      updatedAt: new Date().toISOString(),
+      added: added.map((transaction) =>
+        this.buildPlaidTransaction({ sourceId, transaction }),
+      ),
+      modified: modified.map((transaction) =>
+        this.buildPlaidTransaction({ sourceId, transaction }),
+      ),
+      removedExternalIds,
     });
     return {
-      inserted: cumulativeInserted,
-      skipped: cumulativeSkipped,
+      inserted: applied.inserted,
+      skipped: applied.skipped,
       nextCursor: pageCursor,
     };
   }
@@ -1456,6 +1533,15 @@ export class FinancesService {
     sourceId: string;
     transaction: PlaidTransactionDto;
   }): Promise<boolean> {
+    return this.repository.insertPaymentTransaction(
+      this.buildPlaidTransaction(args),
+    );
+  }
+
+  private buildPlaidTransaction(args: {
+    sourceId: string;
+    transaction: PlaidTransactionDto;
+  }): LifeOpsPaymentTransaction {
     const txn = args.transaction;
     // Plaid `amount` convention: positive = money OUT (debit), negative =
     // money IN (credit/refund). Our schema stores the absolute USD amount
@@ -1468,7 +1554,7 @@ export class FinancesService {
       txn.personal_finance_category?.primary ??
       txn.category?.[0] ??
       null;
-    const record: LifeOpsPaymentTransaction = {
+    return {
       id: crypto.randomUUID(),
       agentId: this.agentId(),
       sourceId: args.sourceId,
@@ -1490,6 +1576,5 @@ export class FinancesService {
       },
       createdAt: new Date().toISOString(),
     };
-    return this.repository.insertPaymentTransaction(record);
   }
 }

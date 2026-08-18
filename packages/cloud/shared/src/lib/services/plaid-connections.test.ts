@@ -192,5 +192,30 @@ describe("PlaidConnectionService", () => {
       "org-a",
       "plaid",
     );
+
+    const invalid = harness();
+    invalid.protocol.remove.mockRejectedValueOnce(
+      new AgentPlaidConnectorError(400, "Token invalid", "INVALID_ACCESS_TOKEN"),
+    );
+    await expect(
+      invalid.service.revoke({
+        organizationId: "org-a",
+        connectionId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).resolves.toEqual({ revoked: true });
+    expect(invalid.store.deleteActiveByIdForOrganization).toHaveBeenCalled();
+  });
+
+  test("revokes against the stored environment even after an environment switch", async () => {
+    const { service, protocol } = harness();
+    protocol.environment.mockReturnValue("production");
+
+    await expect(
+      service.revoke({
+        organizationId: "org-a",
+        connectionId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).resolves.toEqual({ revoked: true });
+    expect(protocol.remove).toHaveBeenCalledWith("plaid-secret-token", "sandbox");
   });
 });

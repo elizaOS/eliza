@@ -8,6 +8,7 @@ import {
   AgentPlaidConnectorError,
   exchangePlaidPublicToken,
   getPlaidEnvironment,
+  removePlaidItem,
 } from "./agent-plaid-connector";
 
 const originalEnvironment = process.env.PLAID_ENV;
@@ -49,6 +50,22 @@ describe("agent Plaid connector protocol boundary", () => {
       accessToken: "access-sandbox-1",
       itemId: "item-1",
     });
+  });
+
+  test("removes an Item from its stored environment after the process environment changes", async () => {
+    configurePlaid("production");
+    let requestedUrl = "";
+    globalThis.fetch = mock(async (input) => {
+      requestedUrl = String(input);
+      return Response.json({ request_id: "request-1" });
+    }) as typeof fetch;
+
+    await removePlaidItem({
+      accessToken: "access-sandbox-1",
+      environment: "sandbox",
+    });
+
+    expect(requestedUrl).toBe("https://sandbox.plaid.com/item/remove");
   });
 
   test("fails closed on malformed successful upstream data", async () => {

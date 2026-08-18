@@ -51,6 +51,7 @@ export class PlaidManagedClientError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code: string | null = null,
   ) {
     super(message);
     this.name = "PlaidManagedClientError";
@@ -74,19 +75,22 @@ async function readPlaidJson<T>(
 ): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`.trim();
+    let code: string | null = null;
     const text = await response.text();
     if (text.trim().length > 0) {
       try {
         const parsed = JSON.parse(text) as {
+          code?: string | null;
           error?: string;
           message?: string;
         };
         detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        code = typeof parsed.code === "string" ? parsed.code : null;
       } catch {
         detail = text.slice(0, 240);
       }
     }
-    throw new PlaidManagedClientError(response.status, detail);
+    throw new PlaidManagedClientError(response.status, detail, code);
   }
   let payload: unknown;
   try {

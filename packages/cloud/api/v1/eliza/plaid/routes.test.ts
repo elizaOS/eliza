@@ -44,6 +44,7 @@ class AgentPlaidConnectorError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code: string | null = null,
   ) {
     super(message);
   }
@@ -129,6 +130,28 @@ describe("Plaid credential-opaque routes", () => {
     expect(revoke).toHaveBeenCalledWith({
       organizationId: ORGANIZATION_ID,
       connectionId: CONNECTION_ID,
+    });
+  });
+
+  test("preserves provider lifecycle codes for managed clients", async () => {
+    sync.mockRejectedValueOnce(
+      new AgentPlaidConnectorError(
+        400,
+        "The Item requires login.",
+        "ITEM_LOGIN_REQUIRED",
+      ),
+    );
+
+    const response = await syncRoute.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId: CONNECTION_ID }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "The Item requires login.",
+      code: "ITEM_LOGIN_REQUIRED",
     });
   });
 });

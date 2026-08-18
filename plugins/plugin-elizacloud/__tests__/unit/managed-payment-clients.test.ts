@@ -113,7 +113,10 @@ describe("managed payment clients", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async () =>
-        Response.json({ message: "Plaid unavailable" }, { status: 503 })
+        Response.json(
+          { message: "Plaid unavailable", code: "ITEM_LOGIN_REQUIRED" },
+          { status: 503 }
+        )
       )
     );
 
@@ -128,6 +131,7 @@ describe("managed payment clients", () => {
     await expect(client.createLinkToken()).rejects.toMatchObject({
       status: 503,
       message: "Plaid unavailable",
+      code: "ITEM_LOGIN_REQUIRED",
     });
   });
 

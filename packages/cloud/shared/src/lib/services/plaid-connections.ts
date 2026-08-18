@@ -55,7 +55,7 @@ interface PlaidProtocol {
     cursor?: string;
     count?: number;
   }): Promise<PlaidTransactionDelta>;
-  remove(accessToken: string): Promise<void>;
+  remove(accessToken: string, environment?: PlaidEnvironment): Promise<void>;
   environment(): PlaidEnvironment;
 }
 
@@ -73,7 +73,7 @@ const defaultProtocol: PlaidProtocol = {
   exchange: (publicToken) => exchangePlaidPublicToken({ publicToken }),
   itemInfo: (accessToken) => getPlaidItemInfo({ accessToken }),
   sync: (args) => syncPlaidTransactions(args),
-  remove: (accessToken) => removePlaidItem({ accessToken }),
+  remove: (accessToken, environment) => removePlaidItem({ accessToken, environment }),
   environment: getPlaidEnvironment,
 };
 
@@ -147,12 +147,15 @@ export class PlaidConnectionService {
     if (!connection) {
       return { revoked: true };
     }
-    this.requireCurrentEnvironment(connection);
     const accessToken = await this.store.getOrgBoundAccessToken(connection);
+    const storedEnvironment = this.requireStoredEnvironment(connection);
     try {
-      await this.protocol.remove(accessToken);
+      await this.protocol.remove(accessToken, storedEnvironment);
     } catch (error) {
-      if (!(error instanceof AgentPlaidConnectorError) || error.code !== "ITEM_NOT_FOUND") {
+      if (
+        !(error instanceof AgentPlaidConnectorError) ||
+        (error.code !== "ITEM_NOT_FOUND" && error.code !== "INVALID_ACCESS_TOKEN")
+      ) {
         throw error;
       }
       // error-policy:J1 Plaid already removed the Item; local deletion is the
@@ -183,6 +186,16 @@ export class PlaidConnectionService {
   }
 
   private requireCurrentEnvironment(connection: VendorConnection): void {
+    const storedEnvironment = this.requireStoredEnvironment(connection);
+    if (storedEnvironment !== this.protocol.environment()) {
+      throw new PlaidConnectionError(
+        409,
+        "This Plaid connection belongs to a different environment. Re-link the account.",
+      );
+    }
+  }
+
+  private requireStoredEnvironment(connection: VendorConnection): PlaidEnvironment {
     const storedEnvironment = connection.connection_metadata.plaid_environment;
     if (
       connection.connection_metadata.encryption_context !== "org_bound_v1" ||
@@ -193,12 +206,7 @@ export class PlaidConnectionService {
         "This Plaid connection predates Cloud credential storage. Re-link the account.",
       );
     }
-    if (storedEnvironment !== this.protocol.environment()) {
-      throw new PlaidConnectionError(
-        409,
-        "This Plaid connection belongs to a different environment. Re-link the account.",
-      );
-    }
+    return storedEnvironment;
   }
 }
 

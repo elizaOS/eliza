@@ -22,7 +22,10 @@ app.get("/", async (c) => {
     return c.json({ configured: isPlaidConfigured() });
   } catch (error) {
     if (error instanceof AgentPlaidConnectorError) {
-      return c.json({ error: error.message }, error.status as 503);
+      return c.json(
+        { error: error.message, code: error.code },
+        error.status as 503,
+      );
     }
     return failureResponse(c, error);
   }

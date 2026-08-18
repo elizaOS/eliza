@@ -29,6 +29,7 @@ import type {
 } from "../subscriptions-types.ts";
 import {
   executeRawSql,
+  executeRawSqlTx,
   parseJsonArray,
   parseJsonRecord,
   sqlBoolean,
@@ -40,6 +41,7 @@ import {
   toBoolean,
   toNumber,
   toText,
+  withTransaction,
 } from "./sql.ts";
 
 const FINANCE_SCHEMA = "app_finances";
@@ -53,6 +55,61 @@ const FINANCE_TABLES = {
 
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+function paymentSourceUpsertSql(source: LifeOpsPaymentSource): string {
+  return `INSERT INTO ${FINANCE_TABLES.paymentSources} (
+        id, agent_id, kind, label, institution, account_mask, status,
+        last_synced_at, transaction_count, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(source.id)},
+        ${sqlQuote(source.agentId)},
+        ${sqlQuote(source.kind)},
+        ${sqlQuote(source.label)},
+        ${sqlText(source.institution)},
+        ${sqlText(source.accountMask)},
+        ${sqlQuote(source.status)},
+        ${sqlText(source.lastSyncedAt)},
+        ${sqlInteger(source.transactionCount)},
+        ${sqlJson(source.metadata)},
+        ${sqlQuote(source.createdAt)},
+        ${sqlQuote(source.updatedAt)}
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        kind = excluded.kind,
+        label = excluded.label,
+        institution = excluded.institution,
+        account_mask = excluded.account_mask,
+        status = excluded.status,
+        last_synced_at = excluded.last_synced_at,
+        transaction_count = excluded.transaction_count,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`;
+}
+
+function paymentTransactionInsertSql(
+  transaction: LifeOpsPaymentTransaction,
+): string {
+  return `INSERT INTO ${FINANCE_TABLES.paymentTransactions} (
+        id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
+        merchant_raw, merchant_normalized, description, category, currency,
+        metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(transaction.id)},
+        ${sqlQuote(transaction.agentId)},
+        ${sqlQuote(transaction.sourceId)},
+        ${sqlText(transaction.externalId)},
+        ${sqlQuote(transaction.postedAt)},
+        ${sqlNumber(transaction.amountUsd)},
+        ${sqlQuote(transaction.direction)},
+        ${sqlQuote(transaction.merchantRaw)},
+        ${sqlQuote(transaction.merchantNormalized)},
+        ${sqlText(transaction.description)},
+        ${sqlText(transaction.category)},
+        ${sqlQuote(transaction.currency)},
+        ${sqlJson(transaction.metadata)},
+        ${sqlQuote(transaction.createdAt)}
+      )`;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,36 +548,7 @@ export class FinancesRepository {
   }
 
   async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO ${FINANCE_TABLES.paymentSources} (
-        id, agent_id, kind, label, institution, account_mask, status,
-        last_synced_at, transaction_count, metadata_json, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(source.id)},
-        ${sqlQuote(source.agentId)},
-        ${sqlQuote(source.kind)},
-        ${sqlQuote(source.label)},
-        ${sqlText(source.institution)},
-        ${sqlText(source.accountMask)},
-        ${sqlQuote(source.status)},
-        ${sqlText(source.lastSyncedAt)},
-        ${sqlInteger(source.transactionCount)},
-        ${sqlJson(source.metadata)},
-        ${sqlQuote(source.createdAt)},
-        ${sqlQuote(source.updatedAt)}
-      )
-      ON CONFLICT(id) DO UPDATE SET
-        kind = excluded.kind,
-        label = excluded.label,
-        institution = excluded.institution,
-        account_mask = excluded.account_mask,
-        status = excluded.status,
-        last_synced_at = excluded.last_synced_at,
-        transaction_count = excluded.transaction_count,
-        metadata_json = excluded.metadata_json,
-        updated_at = excluded.updated_at`,
-    );
+    await executeRawSql(this.runtime, paymentSourceUpsertSql(source));
   }
 
   async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {
@@ -582,30 +610,77 @@ export class FinancesRepository {
   ): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO ${FINANCE_TABLES.paymentTransactions} (
-        id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
-        merchant_raw, merchant_normalized, description, category, currency,
-        metadata_json, created_at
-      ) VALUES (
-        ${sqlQuote(transaction.id)},
-        ${sqlQuote(transaction.agentId)},
-        ${sqlQuote(transaction.sourceId)},
-        ${sqlText(transaction.externalId)},
-        ${sqlQuote(transaction.postedAt)},
-        ${sqlNumber(transaction.amountUsd)},
-        ${sqlQuote(transaction.direction)},
-        ${sqlQuote(transaction.merchantRaw)},
-        ${sqlQuote(transaction.merchantNormalized)},
-        ${sqlText(transaction.description)},
-        ${sqlText(transaction.category)},
-        ${sqlQuote(transaction.currency)},
-        ${sqlJson(transaction.metadata)},
-        ${sqlQuote(transaction.createdAt)}
-      )
+      `${paymentTransactionInsertSql(transaction)}
       ON CONFLICT DO NOTHING
       RETURNING id`,
     );
     return rows.length > 0;
+  }
+
+  /**
+   * Apply a complete Plaid cursor window atomically. Provider pages are
+   * collected before this boundary; a failed statement rolls back transaction
+   * rows, removals, source metadata, and the cursor together.
+   */
+  async applyPlaidSync(args: {
+    source: LifeOpsPaymentSource;
+    added: LifeOpsPaymentTransaction[];
+    modified: LifeOpsPaymentTransaction[];
+    removedExternalIds: string[];
+  }): Promise<{ inserted: number; skipped: number; transactionCount: number }> {
+    return withTransaction(this.runtime, async (tx) => {
+      let inserted = 0;
+      let skipped = 0;
+      // Plaid may replace a transaction with a new id while retaining the
+      // same local uniqueness tuple. Remove tombstoned rows first so their
+      // replacements can be inserted in this same atomic cursor window.
+      for (const externalId of new Set(args.removedExternalIds)) {
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND source_id = ${sqlQuote(args.source.id)}
+              AND external_id = ${sqlQuote(externalId)}`,
+        );
+      }
+      for (const transaction of [...args.added, ...args.modified]) {
+        if (!transaction.externalId) {
+          throw new Error("Plaid transaction is missing its external id.");
+        }
+        const existing = await executeRawSqlTx(
+          tx,
+          `SELECT id FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(transaction.agentId)}
+              AND source_id = ${sqlQuote(transaction.sourceId)}
+              AND external_id = ${sqlQuote(transaction.externalId)}
+            LIMIT 1`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(transaction.agentId)}
+              AND source_id = ${sqlQuote(transaction.sourceId)}
+              AND external_id = ${sqlQuote(transaction.externalId)}`,
+        );
+        await executeRawSqlTx(tx, paymentTransactionInsertSql(transaction));
+        if (args.added.includes(transaction)) {
+          if (existing.length === 0) inserted += 1;
+          else skipped += 1;
+        }
+      }
+      const countRows = await executeRawSqlTx(
+        tx,
+        `SELECT COUNT(*) AS count FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND source_id = ${sqlQuote(args.source.id)}`,
+      );
+      const transactionCount = toNumber(countRows[0]?.count);
+      await executeRawSqlTx(
+        tx,
+        paymentSourceUpsertSql({ ...args.source, transactionCount }),
+      );
+      return { inserted, skipped, transactionCount };
+    });
   }
 
   async listPaymentTransactions(

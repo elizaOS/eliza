@@ -119,13 +119,13 @@ function redactPlaidErrorMessage(
   return sanitized;
 }
 
-function readPlaidConfig(): PlaidConfig | null {
+function readPlaidConfig(environmentOverride?: PlaidConfig["environment"]): PlaidConfig | null {
   const clientId = process.env.PLAID_CLIENT_ID?.trim();
   const secret = process.env.PLAID_SECRET?.trim();
   if (!clientId || !secret) {
     return null;
   }
-  const env = (process.env.PLAID_ENV ?? "sandbox").trim().toLowerCase();
+  const env = environmentOverride ?? (process.env.PLAID_ENV ?? "sandbox").trim().toLowerCase();
   if (env !== "sandbox" && env !== "development" && env !== "production") {
     throw new AgentPlaidConnectorError(
       503,
@@ -142,8 +142,8 @@ function readPlaidConfig(): PlaidConfig | null {
   return { clientId, secret, host, environment };
 }
 
-function requireConfig(): PlaidConfig {
-  const config = readPlaidConfig();
+function requireConfig(environmentOverride?: PlaidConfig["environment"]): PlaidConfig {
+  const config = readPlaidConfig(environmentOverride);
   if (!config) {
     throw new AgentPlaidConnectorError(
       503,
@@ -294,8 +294,11 @@ export function getPlaidEnvironment(): PlaidConfig["environment"] {
   return requireConfig().environment;
 }
 
-export async function removePlaidItem(args: { accessToken: string }): Promise<void> {
-  const config = requireConfig();
+export async function removePlaidItem(args: {
+  accessToken: string;
+  environment?: PlaidConfig["environment"];
+}): Promise<void> {
+  const config = requireConfig(args.environment);
   await plaidPost(config, "/item/remove", { access_token: args.accessToken }, removeResponseSchema);
 }
 
