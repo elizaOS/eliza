@@ -241,6 +241,9 @@ export default function CliLoginPage() {
     if (lastSessionId.current === sessionId) return;
     lastSessionId.current = sessionId;
     completionFiredRef.current = false;
+    // Consent is for one presentation of one session link. Clear it on every
+    // transition so an A -> B -> A URL swap cannot reuse the earlier gesture.
+    setConfirmedSessionId(null);
     setCompletion({ status: "idle" });
   }, [sessionId]);
 

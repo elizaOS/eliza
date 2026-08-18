@@ -206,6 +206,39 @@ describe("CliLoginPage", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
+  it("requires fresh confirmation after a session link changes away and back", async () => {
+    const user = userEvent.setup();
+    authenticate();
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+
+    const { rerender } = render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+
+    searchParamsRef.current = new URLSearchParams("session=sess-2");
+    rerender(<CliLoginPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+      ).toBeTruthy(),
+    );
+
+    searchParamsRef.current = new URLSearchParams("session=sess-1");
+    rerender(<CliLoginPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+      ).toBeTruthy(),
+    );
+    await Promise.resolve();
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+  });
+
   it("Cancel abandons the flow with no POST and a distinct cancelled state", async () => {
     const user = userEvent.setup();
     authenticate();
