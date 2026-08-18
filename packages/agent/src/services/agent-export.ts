@@ -39,6 +39,7 @@ import { logger } from "@elizaos/core";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,
+  MEDIA_URL_IN_TEXT_RE,
   mediaFileNameFromUrl,
   readStoredMediaBytes,
   storedMediaContentMatchesName,
@@ -401,8 +402,6 @@ function toAgentExportPayload(
 // ---------------------------------------------------------------------------
 // Media (content-addressed store) capture / restore
 // ---------------------------------------------------------------------------
-
-const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
 
 /**
  * The set of `<sha256>.<ext>` media file names referenced by the exported

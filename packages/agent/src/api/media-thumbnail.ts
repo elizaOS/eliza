@@ -32,30 +32,48 @@ interface ImageDimensions {
   height: number;
 }
 
-/** Dimensions from the PNG signature + IHDR header (BE u32 at bytes 16/20). */
+/**
+ * Dimensions from the PNG signature + IHDR header (BE u32 at bytes 16/20).
+ * Fails closed on Adam7-interlaced inputs (IHDR byte 12, file offset 28):
+ * pngjs bounds its inflate with a dimension-derived `maxLength` only on the
+ * non-interlaced branch — the interlaced branch inflates with no output cap,
+ * so a small IHDR attached to a huge IDAT decompresses unbounded. Skipping
+ * the thumbnail is graceful: callers serve the original bytes instead.
+ */
 function readPngDimensions(source: Buffer): ImageDimensions | null {
-  if (source.length < 24) return null;
+  if (source.length < 29) return null;
   if (source.readUInt32BE(0) !== 0x89504e47) return null;
   if (source.readUInt32BE(4) !== 0x0d0a1a0a) return null;
   if (source.toString("ascii", 12, 16) !== "IHDR") return null;
+  if (source[28] !== 0) return null;
   return { width: source.readUInt32BE(16), height: source.readUInt32BE(20) };
 }
 
 /**
- * Dimensions from the first JPEG SOFn segment. Walks the marker stream from
- * the SOI: every segment is `FF <marker> <u16 length>` except the standalone
- * markers (SOI/RSTn/TEM) that carry no length.
+ * Dimensions from the JPEG SOFn segment. Walks the marker stream from the SOI:
+ * every segment is `FF <marker> <u16 length>` except the standalone markers
+ * (SOI/RSTn/TEM) that carry no length. Fails closed on a second SOFn: jpeg-js
+ * eagerly allocates every declared frame's MCU blocks at SOF parse and only
+ * afterwards throws on multi-frame input, so a small first SOF followed by a
+ * bomb SOF must be rejected here, before decode. Multi-frame streams can never
+ * decode successfully anyway, so no thumbnailable input is lost.
  */
 function readJpegDimensions(source: Buffer): ImageDimensions | null {
   if (source.length < 4 || source[0] !== 0xff || source[1] !== 0xd8) {
     return null;
   }
+  let dimensions: ImageDimensions | null = null;
   let offset = 2;
   while (offset + 4 <= source.length) {
     if (source[offset] !== 0xff) return null;
     const marker = source[offset + 1];
+    // SOS opens entropy-coded scan data, which is not length-delimited — the
+    // header walk ends here (a second SOF after scan data is caught by the
+    // decode-time memory bound instead).
+    if (marker === 0xda) break;
     if (
       marker === 0xd8 ||
+      marker === 0xd9 ||
       marker === 0x01 ||
       (marker >= 0xd0 && marker <= 0xd7)
     ) {
@@ -75,14 +93,15 @@ function readJpegDimensions(source: Buffer): ImageDimensions | null {
       marker !== 0xcc
     ) {
       if (segmentLength < 7) return null;
-      return {
+      if (dimensions !== null) return null;
+      dimensions = {
         height: source.readUInt16BE(offset + 5),
         width: source.readUInt16BE(offset + 7),
       };
     }
     offset += 2 + segmentLength;
   }
-  return null;
+  return dimensions;
 }
 
 /** True when the declared dimensions stay within the decode-time bounds. */
@@ -110,7 +129,12 @@ interface PngStatic {
 interface JpegStatic {
   decode: (
     buf: Buffer,
-    opts?: { useTArray?: boolean; formatAsRGBA?: boolean },
+    opts?: {
+      useTArray?: boolean;
+      formatAsRGBA?: boolean;
+      maxResolutionInMP?: number;
+      maxMemoryUsageInMB?: number;
+    },
   ) => RawImage;
   encode: (img: RawImage, quality?: number) => { data: Buffer };
 }
@@ -208,7 +232,15 @@ export async function generateThumbnailBytes(
     if (!dimensions || !withinDecodeBounds(dimensions)) return null;
     const decoded: RawImage = isPng
       ? loaded.png.sync.read(source)
-      : loaded.jpeg.decode(source, { useTArray: true, formatAsRGBA: true });
+      : // Back the header pre-check with jpeg-js's own per-SOF pixel cap and
+        // cumulative allocation budget (64 MiB matches the RGBA bound above):
+        // a second SOF hiding behind scan data still can't inflate memory.
+        loaded.jpeg.decode(source, {
+          useTArray: true,
+          formatAsRGBA: true,
+          maxResolutionInMP: MAX_DECODE_PIXELS / 1_000_000,
+          maxMemoryUsageInMB: (MAX_DECODE_PIXELS * 4) / (1024 * 1024),
+        });
     const { width, height, data } = decoded;
     const longest = Math.max(width, height);
     if (!longest || longest <= THUMBNAIL_MAX_DIM) return null;
