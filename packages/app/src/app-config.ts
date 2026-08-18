@@ -16,3 +16,25 @@ export const APP_NAMESPACE =
   APP_CONFIG.namespace?.trim() || APP_CONFIG.cliName.trim();
 export const APP_URL_SCHEME =
   APP_CONFIG.desktop?.urlScheme?.trim() || APP_CONFIG.cliName.trim();
+
+/**
+ * Resolve the pre-React API-base signal used by desktop branding.
+ *
+ * Electrobun injects the canonical boot config before the renderer module
+ * runs. Legacy host globals remain fallbacks for older embedders, but must not
+ * be the only signals: otherwise a packaged local desktop points at its local
+ * API while still rendering the cloud-only sign-in pill.
+ */
+export function resolveInjectedAppApiBase(input: {
+  legacyApiBase?: string;
+  brandedApiBase?: unknown;
+  bootConfigApiBase?: string;
+}): string | undefined {
+  return (
+    input.bootConfigApiBase ??
+    input.legacyApiBase ??
+    (typeof input.brandedApiBase === "string"
+      ? input.brandedApiBase
+      : undefined)
+  );
+}

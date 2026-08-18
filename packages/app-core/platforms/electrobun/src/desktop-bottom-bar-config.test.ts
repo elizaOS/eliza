@@ -111,12 +111,12 @@ describe("desktop bottom-bar config", () => {
       expect(frame.y).toBe(800 - 100 - 20);
     });
 
-    it("clamps to a sane minimum height", () => {
+    it("allows a native hit box to match a very small painted surface", () => {
       const frame = computeBottomBarFrame(
         { x: 0, y: 0, width: 1000, height: 800 },
         { height: 1 },
       );
-      expect(frame.height).toBe(48);
+      expect(frame.height).toBe(1);
     });
 
     it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {
@@ -214,18 +214,21 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
     });
 
@@ -241,6 +244,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "default",
         transparent: false,
         nativeShadow: true,
+        nativeInteractiveChrome: true,
       });
       expect(
         resolveDesktopShellWindowPresentation(
@@ -253,6 +257,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hiddenInset",
         transparent: false,
         nativeShadow: true,
+        nativeInteractiveChrome: true,
       });
     });
 
@@ -271,6 +276,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: false,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
     });
   });

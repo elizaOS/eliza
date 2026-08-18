@@ -181,6 +181,7 @@ import {
   APP_LOG_PREFIX,
   APP_NAMESPACE,
   APP_URL_SCHEME,
+  resolveInjectedAppApiBase,
 } from "./app-config";
 import { cachedDynamicImport } from "./app-module-cache";
 import { renderBootFailure } from "./boot-failure";
@@ -379,10 +380,11 @@ function getInjectedAppApiBase(): string | undefined {
     window,
     BRANDED_WINDOW_KEYS.apiBase,
   );
-  return (
-    window.__ELIZA_APP_API_BASE__ ??
-    (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
-  );
+  return resolveInjectedAppApiBase({
+    bootConfigApiBase: getBootConfig().apiBase,
+    legacyApiBase: window.__ELIZA_APP_API_BASE__,
+    brandedApiBase,
+  });
 }
 
 // Resolve the desktop "cloud-only" runtime-mode signal from whichever path is

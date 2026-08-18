@@ -1795,12 +1795,28 @@ function ShellFoundationMount({
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
+  const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
+  // A fresh detached desktop window owns onboarding inside ChatOverlay. The
+  // controller intentionally starts closed, so treating only `isOpen` as the
+  // mount authority leaves the forced-open onboarding DOM clipped inside the
+  // 64x32 resting native host. Mount the overlay while first-run owns it; its
+  // surface-state callback then sizes the host to the painted OPEN surface on
+  // the first committed frame.
+  const onboardingOwnsOverlay = useWebChatPanel && firstRunComplete === false;
+  const chatOverlayPresented = shellIsOpen || onboardingOwnsOverlay;
   const shellPhase = controller?.phase;
   const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
     "pill" | "input" | "half" | "full"
   >(shellIsOpen ? "input" : "pill");
+  useEffect(() => {
+    if (!shellIsOpen) return;
+    // HomePill unmounts while chat is open. Never let its temporary wide hover
+    // host survive that swap and strand a tiny pill in a 600px native window.
+    setShellPreviewHovered(false);
+    setShellPreviewHostReady(false);
+  }, [shellIsOpen]);
   const setActionNotice = useAppSelector((state) => state.setActionNotice);
   const handleWindowBoundsFailure = useCallback((): void => {
     if (shellIsOpen) controller?.close();
@@ -1909,7 +1925,7 @@ function ShellFoundationMount({
     // While the shared mobile sheet is open, its five-state callback owns the
     // exact native frame (including full work-area maximization). The legacy
     // expanded/hover RPC remains the compatibility path for the resting pill.
-    if (useWebChatPanel && shellIsOpen) return undefined;
+    if (useWebChatPanel && chatOverlayPresented) return undefined;
     let cancelled = false;
     setShellPreviewHostReady(false);
 
@@ -1947,6 +1963,7 @@ function ShellFoundationMount({
   }, [
     hasController,
     shellHostDetent,
+    chatOverlayPresented,
     shellIsOpen,
     shellPhase,
     shellPreviewHovered,
@@ -1974,7 +1991,7 @@ function ShellFoundationMount({
   );
   if (!controller) return null;
 
-  if (useWebChatPanel && shellIsOpen) {
+  if (useWebChatPanel && chatOverlayPresented) {
     return (
       <ChatOverlayMount
         releaseFirstRunToHalf={false}
@@ -2022,6 +2039,7 @@ function ShellFoundationMount({
           useWebChatPanel ? setShellPreviewHovered : undefined
         }
         previewHostReady={!useWebChatPanel || shellPreviewHostReady}
+        tightNativeHitbox={useWebChatPanel}
       />
       {!useWebChatPanel ? (
         <AssistantOverlay
