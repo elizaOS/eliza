@@ -101,6 +101,7 @@ const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
  * land, while keeping the total first-turn penalty bounded below eight seconds.
  */
 const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+const MAX_RECORDED_UPSTREAM_ATTEMPTS = 8;
 /** Replace a failed realtime recognizer without dropping the live phone call. */
 const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000, 2_000, 5_000] as const;
 /** Consecutive revoke-store failures tolerated before the session fails closed. */
@@ -878,7 +879,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const responseStartedAt = this.now();
     let firstModelTextAt: number | null = null;
-    let upstreamHeadersMs: number | null = null;
+    const upstreamAttempts: Array<{
+      attempt: number;
+      status: number;
+      attemptHeadersMs: number;
+      turnHeadersOffsetMs: number;
+    }> = [];
+    let upstreamAttemptCount = 0;
+    let activeUpstreamAttempt = 0;
+    let upstreamSuccessfulHeadersOffsetMs: number | null = null;
     let upstreamServerTiming: string | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
@@ -912,7 +921,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               firstModelTextAt === null
                 ? null
                 : firstAudioAt - firstModelTextAt,
-            upstreamHeadersMs,
+            upstreamAttemptCount,
+            upstreamAttempts,
+            upstreamSuccessfulHeadersOffsetMs,
             upstreamServerTiming,
           });
           this.state = "speaking";
@@ -978,11 +989,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
         onResponseHeaders: (headers: ElizaSseBridgeResponseHeaders) => {
-          upstreamHeadersMs = headers.elapsedMs;
-          upstreamServerTiming = headers.serverTiming;
+          const turnHeadersOffsetMs = this.now() - responseStartedAt;
+          upstreamAttemptCount += 1;
+          if (upstreamAttempts.length < MAX_RECORDED_UPSTREAM_ATTEMPTS) {
+            upstreamAttempts.push({
+              attempt: activeUpstreamAttempt,
+              status: headers.status,
+              attemptHeadersMs: headers.elapsedMs,
+              turnHeadersOffsetMs,
+            });
+          }
+          if (headers.status >= 200 && headers.status < 300) {
+            upstreamSuccessfulHeadersOffsetMs = turnHeadersOffsetMs;
+            upstreamServerTiming = headers.serverTiming;
+          }
           logger.info("[voice-session] Eliza response headers", {
             traceId,
-            elapsedMs: headers.elapsedMs,
+            attempt: activeUpstreamAttempt,
+            status: headers.status,
+            attemptHeadersMs: headers.elapsedMs,
+            turnHeadersOffsetMs,
             serverTiming: headers.serverTiming,
           });
         },
@@ -1020,6 +1046,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
       let result: Awaited<ReturnType<typeof streamElizaConversation>>;
       for (let attempt = 0; ; attempt += 1) {
+        activeUpstreamAttempt = attempt + 1;
         try {
           result = await streamElizaConversation(request, onDelta);
           break;

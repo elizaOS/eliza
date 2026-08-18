@@ -96,6 +96,7 @@ describe("shared conversation coordinator", () => {
       await (
         await coordinateSharedStream(agent, rpc, {
           abortSignal: abortController.signal,
+          traceId: "trace-coordinator-stream",
           namespace,
           executionCtx,
         })
@@ -114,6 +115,7 @@ describe("shared conversation coordinator", () => {
       "history",
     ]);
     expect(signals).toEqual([undefined, abortController.signal, undefined, undefined]);
+    expect(envelopes[1]).toMatchObject({ traceId: "trace-coordinator-stream" });
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
     expect(directHistory).not.toHaveBeenCalled();

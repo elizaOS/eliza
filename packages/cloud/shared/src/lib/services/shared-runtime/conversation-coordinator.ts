@@ -21,6 +21,8 @@ import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 
 export interface SharedConversationCoordinatorOptions {
+  /** Standard request correlation identity; never accepted from RPC params. */
+  traceId?: string;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -294,6 +296,7 @@ export async function coordinateSharedBridge(
         operation: options.agentKind === "personal" ? "personal-bridge" : "bridge",
         agent,
         rpc,
+        ...(options.traceId ? { traceId: options.traceId } : {}),
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
@@ -320,6 +323,7 @@ export async function coordinateSharedStream(
         operation: options.agentKind === "personal" ? "personal-stream" : "stream",
         agent,
         rpc,
+        ...(options.traceId ? { traceId: options.traceId } : {}),
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }

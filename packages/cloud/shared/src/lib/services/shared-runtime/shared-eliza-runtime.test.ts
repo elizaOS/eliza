@@ -307,6 +307,10 @@ describe("Shared Eliza Workerd runtime", () => {
       onProviderDispatch: async () => {
         dispatches += 1;
       },
+      traceId: "trace-observer-nonfatal",
+      onRuntimeTiming: () => {
+        throw new Error("diagnostics sink unavailable");
+      },
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
@@ -335,6 +339,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
   test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {
     const providerStarted = Promise.withResolvers<AbortSignal>();
+    const timingOutcomes: string[] = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       const signal = init?.signal;
       if (!signal) throw new Error("Expected the runtime provider abort signal");
@@ -362,6 +367,8 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       history: [],
       message: "do not finish this turn",
+      traceId: "trace-aborted-runtime",
+      onRuntimeTiming: (receipt) => timingOutcomes.push(`${receipt.traceId}:${receipt.outcome}`),
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
@@ -380,6 +387,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
     expect(providerSignal.aborted).toBe(true);
     await expect(nextPart).rejects.toThrow();
+    expect(timingOutcomes).toContain("trace-aborted-runtime:aborted");
   });
 
   test("runs HANDLE_RESPONSE through AgentRuntime and preserves native usage", async () => {

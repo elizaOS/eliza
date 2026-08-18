@@ -40,6 +40,7 @@ import {
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 export type { SharedRuntimeChannel } from "./shared-runtime-channel";
 export {
@@ -107,6 +108,10 @@ export interface RunSharedAgentTurnInput {
   originClientMessageId?: string;
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
+  /** Non-authoritative diagnostics observer; runtime failures never depend on it. */
+  onRuntimeTiming?: (receipt: SharedRuntimeTimingReceipt) => void;
+  /** Request correlation identity propagated from the HTTP ingress. */
+  traceId?: string;
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
   /**
