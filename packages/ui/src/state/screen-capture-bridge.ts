@@ -4,6 +4,7 @@
  * agent→renderer push channel. See the block below for the full protocol.
  */
 import { Capacitor } from "@capacitor/core";
+import { client } from "../api";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 
 /**
@@ -11,45 +12,55 @@ import { getScreenCapturePlugin } from "../bridge/native-plugins";
  *
  * On Android the agent (musl bun) has no Capacitor and there is no
  * agent->renderer push channel, so capture is renderer-PULLED: this module
- * interval-polls `GET /api/vision/capture-requests` (routed to the agent by the
- * installed Android fetch bridge), and for each queued request captures a frame
+ * interval-polls `GET /api/vision/capture-requests` through the canonical
+ * client's native-agent transport, and for each queued request captures a frame
  * via the Capacitor ScreenCapture plugin (MediaProjection) and POSTs the PNG
  * back to `POST /api/vision/screen-frame`. A short interval (not long-poll)
- * keeps the agent's 30s capture timeout decoupled from the 10s JNI
- * fetch-timeout.
+ * keeps the agent's 30s capture timeout decoupled from each request deadline.
  */
 
 const POLL_INTERVAL_MS = 1500;
 
-/** Independent UI hops — same 15s family as BuildBadge, separate deadlines. */
+/** Independent UI hops with separate native-transport deadlines. */
 export const SCREEN_CAPTURE_POLL_TIMEOUT_MS = 15_000;
 export const SCREEN_FRAME_POST_TIMEOUT_MS = 15_000;
 
-export async function getCaptureRequestsWithFetch(
-  fetchImpl: typeof fetch,
-  timeoutMs: number = SCREEN_CAPTURE_POLL_TIMEOUT_MS,
-): Promise<Response> {
-  return fetchImpl("/api/vision/capture-requests", {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+interface ScreenCaptureApiClient {
+  fetch<T>(
+    path: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number },
+  ): Promise<T>;
 }
 
-export async function postScreenFrameWithFetch(
+interface CaptureRequestsResponse {
+  requests?: unknown;
+}
+
+export async function getCaptureRequestsWithClient(
+  apiClient: ScreenCaptureApiClient,
+  timeoutMs: number = SCREEN_CAPTURE_POLL_TIMEOUT_MS,
+): Promise<CaptureRequestsResponse> {
+  return apiClient.fetch<CaptureRequestsResponse>(
+    "/api/vision/capture-requests",
+    undefined,
+    { timeoutMs },
+  );
+}
+
+export async function postScreenFrameWithClient(
   body: Record<string, unknown>,
-  fetchImpl: typeof fetch,
+  apiClient: ScreenCaptureApiClient,
   timeoutMs: number = SCREEN_FRAME_POST_TIMEOUT_MS,
-): Promise<Response> {
-  const response = await fetchImpl("/api/vision/screen-frame", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Screen-frame request failed (${response.status})`);
-  }
-  return response;
+): Promise<void> {
+  await apiClient.fetch<{ ok: boolean }>(
+    "/api/vision/screen-frame",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { timeoutMs },
+  );
 }
 
 /**
@@ -119,7 +130,7 @@ function isCaptureRequest(value: unknown): value is CaptureRequest {
 }
 
 async function postScreenFrame(body: Record<string, unknown>): Promise<void> {
-  await postScreenFrameWithFetch(body, globalThis.fetch);
+  await postScreenFrameWithClient(body, client);
 }
 
 async function serveRequest(request: CaptureRequest): Promise<void> {
@@ -163,15 +174,8 @@ async function serveRequest(request: CaptureRequest): Promise<void> {
 async function poll(): Promise<void> {
   let requests: CaptureRequest[];
   try {
-    const res = await getCaptureRequestsWithFetch(globalThis.fetch);
-    if (!res.ok) {
-      // 404 = the vision route isn't registered in this config; other non-ok is
-      // transient. Either way, count toward backoff so we don't spin at 1500ms.
-      consecutiveFailures += 1;
-      return;
-    }
+    const data = await getCaptureRequestsWithClient(client);
     consecutiveFailures = 0;
-    const data = (await res.json()) as { requests?: unknown };
     const list = Array.isArray(data.requests) ? data.requests : [];
     requests = list.filter(isCaptureRequest);
   } catch {

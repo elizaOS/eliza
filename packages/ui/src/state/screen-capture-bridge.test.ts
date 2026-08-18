@@ -4,12 +4,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const clientFetchMock = vi.hoisted(() => vi.fn());
+
 // Make isNativeMobile() true and the capture plugin present so the poller runs.
 vi.mock("@capacitor/core", () => ({
   Capacitor: { getPlatform: () => "android" },
 }));
 vi.mock("../bridge/native-plugins", () => ({
   getScreenCapturePlugin: () => ({}),
+}));
+vi.mock("../api", () => ({
+  client: { fetch: clientFetchMock },
 }));
 
 import {
@@ -39,22 +44,18 @@ describe("computePollDelayMs — vision-poll backoff curve", () => {
 });
 
 describe("screen-capture bridge poller — a 404 route is not hammered forever", () => {
-  const fetchMock = vi.fn();
-
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockReset();
+    clientFetchMock.mockReset();
     __resetScreenCaptureBridgeForTests();
   });
   afterEach(() => {
     __resetScreenCaptureBridgeForTests();
     vi.useRealTimers();
-    vi.unstubAllGlobals();
   });
 
   it("backs off under sustained 404s instead of polling every 1500ms", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 404 });
+    clientFetchMock.mockRejectedValue(new Error("HTTP 404"));
     initScreenCaptureBridge();
 
     // Over a 120s horizon, a fixed 1500ms poller would fire ~80 times. With the
@@ -62,17 +63,17 @@ describe("screen-capture bridge poller — a 404 route is not hammered forever",
     // an order of magnitude less.
     await vi.advanceTimersByTimeAsync(120_000);
 
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
-    expect(fetchMock.mock.calls.length).toBeLessThan(20);
+    expect(clientFetchMock.mock.calls.length).toBeGreaterThan(0);
+    expect(clientFetchMock.mock.calls.length).toBeLessThan(20);
   });
 
   it("does not schedule further polls after reset (no leaked timer)", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 404 });
+    clientFetchMock.mockRejectedValue(new Error("HTTP 404"));
     initScreenCaptureBridge();
     await vi.advanceTimersByTimeAsync(5000);
     __resetScreenCaptureBridgeForTests();
-    const callsAtReset = fetchMock.mock.calls.length;
+    const callsAtReset = clientFetchMock.mock.calls.length;
     await vi.advanceTimersByTimeAsync(120_000);
-    expect(fetchMock.mock.calls.length).toBe(callsAtReset);
+    expect(clientFetchMock.mock.calls.length).toBe(callsAtReset);
   });
 });
