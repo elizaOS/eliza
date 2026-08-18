@@ -62,7 +62,6 @@ func driveFreshInstallPermissionOnboardingAfterRendererReady(
     }
 
     for _ in 0..<max(1, maxMountPolls) {
-        if interactionIsReady() { return .absent }
         waitForNextPoll()
         if dialogIsPresent() {
             return driveFreshInstallPermissionOnboarding(
@@ -73,6 +72,7 @@ func driveFreshInstallPermissionOnboardingAfterRendererReady(
                 maxPolls: maxDismissPolls
             )
         }
+        if interactionIsReady() { return .absent }
     }
 
     return .absent
