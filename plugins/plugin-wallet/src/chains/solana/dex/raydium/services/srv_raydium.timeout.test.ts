@@ -13,7 +13,7 @@ describe("RaydiumService fetch timeout", () => {
   it("aborts a stalled getQuote at the deadline", async () => {
     const svc = new RaydiumService();
     const orig = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
     const spy = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
         const sig = init?.signal as AbortSignal | undefined;
@@ -36,6 +36,7 @@ describe("RaydiumService fetch timeout", () => {
         expect.stringContaining("api.raydium.io"),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS);
     } finally {
       globalThis.fetch = prev;
       vi.restoreAllMocks();
@@ -45,7 +46,7 @@ describe("RaydiumService fetch timeout", () => {
   it("aborts stalled pair/prices/swap routes", async () => {
     const svc = new RaydiumService();
     const orig = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => orig(10));
     const spy = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
         const sig = init?.signal as AbortSignal | undefined;
@@ -76,6 +77,8 @@ describe("RaydiumService fetch timeout", () => {
         })
       ).rejects.toMatchObject({ name: "TimeoutError" });
       expect(spy).toHaveBeenCalledTimes(3);
+      expect(timeoutSpy).toHaveBeenCalledTimes(3);
+      expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS);
     } finally {
       globalThis.fetch = prev;
       vi.restoreAllMocks();
