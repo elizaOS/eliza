@@ -1092,6 +1092,12 @@ export class FinancesService {
       hasMore = delta.hasMore;
       pageGuard += 1;
     }
+    if (hasMore) {
+      fail(
+        502,
+        "Plaid sync exceeded the 20-page safety limit; retry from the stored cursor.",
+      );
+    }
     const newCount = await this.repository.countPaymentTransactionsForSource(
       this.agentId(),
       sourceId,

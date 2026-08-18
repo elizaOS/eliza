@@ -20,6 +20,7 @@
 import { z } from "zod";
 
 const PLAID_DEFAULT_HOST = "https://sandbox.plaid.com";
+const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 
 export class AgentPlaidConnectorError extends Error {
   readonly status: number;
@@ -94,6 +95,30 @@ const accountsResponseSchema = z.object({
 
 const removeResponseSchema = z.object({ request_id: z.string().min(1) });
 
+const plaidErrorResponseSchema = z.object({
+  error_code: z.string().optional(),
+  error_message: z.string().optional(),
+  display_message: z.string().nullable().optional(),
+});
+
+function redactPlaidErrorMessage(
+  message: string,
+  config: PlaidConfig,
+  body: Record<string, unknown>,
+): string {
+  let sanitized = message.slice(0, 500);
+  const secrets = [config.clientId, config.secret];
+  for (const value of Object.values(body)) {
+    if (typeof value === "string" && value.length > 0) {
+      secrets.push(value);
+    }
+  }
+  for (const secret of secrets) {
+    sanitized = sanitized.replaceAll(secret, "[REDACTED]");
+  }
+  return sanitized;
+}
+
 function readPlaidConfig(): PlaidConfig | null {
   const clientId = process.env.PLAID_CLIENT_ID?.trim();
   const secret = process.env.PLAID_SECRET?.trim();
@@ -134,32 +159,48 @@ async function plaidPost<TSchema extends z.ZodType>(
   body: Record<string, unknown>,
   responseSchema: TSchema,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(`${config.host}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: config.clientId,
-      secret: config.secret,
-      ...body,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${config.host}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: config.clientId,
+        secret: config.secret,
+        ...body,
+      }),
+      signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // error-policy:J1 the provider transport boundary exposes a stable status
+    // without serializing request credentials or fetch implementation details.
+    const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+    throw new AgentPlaidConnectorError(
+      timedOut ? 504 : 502,
+      timedOut ? `Plaid ${path} timed out.` : `Plaid ${path} was unreachable.`,
+      timedOut ? "UPSTREAM_TIMEOUT" : "UPSTREAM_UNAVAILABLE",
+    );
+  }
   if (!response.ok) {
     let errorMessage = `Plaid ${path} failed with ${response.status}`;
     let errorCode: string | null = null;
     try {
-      const data = (await response.json()) as {
-        error_code?: string;
-        error_message?: string;
-        display_message?: string;
-      };
-      errorMessage =
-        data.display_message ?? data.error_message ?? `${data.error_code ?? errorMessage}`;
-      errorCode = data.error_code ?? null;
+      const parsed = plaidErrorResponseSchema.safeParse(await response.json());
+      if (parsed.success) {
+        const data = parsed.data;
+        errorMessage =
+          data.display_message ?? data.error_message ?? `${data.error_code ?? errorMessage}`;
+        errorCode = data.error_code ?? null;
+      }
     } catch {
       // error-policy:J3 malformed upstream error bodies become a bounded,
       // non-secret status message rather than fabricated structured data.
     }
-    throw new AgentPlaidConnectorError(response.status, errorMessage, errorCode);
+    throw new AgentPlaidConnectorError(
+      response.status,
+      redactPlaidErrorMessage(errorMessage, config, body),
+      errorCode,
+    );
   }
   let payload: unknown;
   try {

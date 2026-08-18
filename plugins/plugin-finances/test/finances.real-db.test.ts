@@ -112,7 +112,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       service.plaidManagedClientCache = new PlaidManagedClient(() => ({
         configured: true,
         apiKey: "eliza_test",
-        apiBaseUrl: "https://cloud.example/api",
+        apiBaseUrl: "https://cloud.example/api/v1",
         siteUrl: "https://cloud.example",
       }));
       const source = await service.completePlaidLink({
@@ -190,7 +190,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       service.plaidManagedClientCache = new PlaidManagedClient(() => ({
         configured: true,
         apiKey: "eliza_test",
-        apiBaseUrl: "https://cloud.example/api",
+        apiBaseUrl: "https://cloud.example/api/v1",
         siteUrl: "https://cloud.example",
       }));
       await expect(
@@ -202,6 +202,61 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       ]);
     } finally {
       persistSpy.mockRestore();
+      fetchSpy.mockRestore();
+      service.plaidManagedClientCache = null;
+    }
+  });
+
+  it("fails without advancing the stored cursor when Plaid pagination exceeds the guard", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/exchange")) {
+          return Response.json({
+            connectionId: "33333333-3333-4333-8333-333333333333",
+            environment: "sandbox",
+            institution: {
+              institutionId: "ins-3",
+              institutionName: "Pagination Bank",
+              primaryAccountMask: null,
+              accounts: [],
+            },
+          });
+        }
+        if (url.endsWith("/sync")) {
+          return Response.json({
+            added: [],
+            modified: [],
+            removed: [],
+            nextCursor: crypto.randomUUID(),
+            hasMore: true,
+          });
+        }
+        return Response.json({ error: "unexpected route" }, { status: 500 });
+      });
+
+    try {
+      service.plaidManagedClientCache = new PlaidManagedClient(() => ({
+        configured: true,
+        apiKey: "eliza_test",
+        apiBaseUrl: "https://cloud.example/api/v1",
+        siteUrl: "https://cloud.example",
+      }));
+      const source = await service.completePlaidLink({
+        publicToken: "public-token",
+      });
+
+      await expect(
+        service.syncPlaidTransactions({ sourceId: source.id }),
+      ).rejects.toThrow("Plaid sync exceeded the 20-page safety limit");
+
+      const stored = await repository.getPaymentSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(stored?.metadata.plaid).toMatchObject({ cursor: "" });
+    } finally {
       fetchSpy.mockRestore();
       service.plaidManagedClientCache = null;
     }

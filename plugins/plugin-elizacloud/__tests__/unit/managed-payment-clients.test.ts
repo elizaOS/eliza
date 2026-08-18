@@ -1,3 +1,8 @@
+/**
+ * Verifies managed payment clients use generated Cloud routes, keep Plaid
+ * credentials opaque, and reject malformed Cloud responses.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PaypalManagedClient,
@@ -42,22 +47,17 @@ describe("managed payment clients", () => {
     const client = new PlaidManagedClient(() => ({
       configured: true,
       apiKey: "eliza_test",
-      apiBaseUrl: "https://cloud.example/api",
+      apiBaseUrl: "https://cloud.example/api/v1",
       siteUrl: "https://cloud.example",
     }));
 
     await expect(client.createLinkToken()).resolves.toMatchObject({
       linkToken: "link-token",
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://cloud.example/api/v1/eliza/plaid/link-token",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer eliza_test",
-        }),
-      })
-    );
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://cloud.example/api/v1/eliza/plaid/link-token");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer eliza_test");
   });
 
   it("uses opaque Plaid connection ids without transporting access tokens", async () => {
@@ -87,7 +87,7 @@ describe("managed payment clients", () => {
     const client = new PlaidManagedClient(() => ({
       configured: true,
       apiKey: "eliza_test",
-      apiBaseUrl: "https://cloud.example/api",
+      apiBaseUrl: "https://cloud.example/api/v1",
       siteUrl: "https://cloud.example",
     }));
 
@@ -120,7 +120,7 @@ describe("managed payment clients", () => {
     const client = new PlaidManagedClient(() => ({
       configured: true,
       apiKey: "eliza_test",
-      apiBaseUrl: "https://cloud.example/api",
+      apiBaseUrl: "https://cloud.example/api/v1",
       siteUrl: "https://cloud.example",
     }));
 
@@ -129,6 +129,32 @@ describe("managed payment clients", () => {
       status: 503,
       message: "Plaid unavailable",
     });
+  });
+
+  it("rejects malformed successful Plaid responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          connectionId: "not-an-opaque-uuid",
+          accessToken: "must-not-enter-runtime-data",
+        })
+      )
+    );
+
+    const client = new PlaidManagedClient(() => ({
+      configured: true,
+      apiKey: "eliza_test",
+      apiBaseUrl: "https://cloud.example/api/v1",
+      siteUrl: "https://cloud.example",
+    }));
+
+    await expect(client.exchangePublicToken({ publicToken: "public-token" })).rejects.toMatchObject(
+      {
+        status: 502,
+        message: "Eliza Cloud returned malformed Plaid data.",
+      } satisfies Partial<PlaidManagedClientError>
+    );
   });
 
   it("preserves PayPal csv fallback hints on merchant API failures", async () => {

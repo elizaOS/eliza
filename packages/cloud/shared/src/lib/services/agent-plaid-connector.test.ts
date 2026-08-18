@@ -90,6 +90,45 @@ describe("agent Plaid connector protocol boundary", () => {
     expect(JSON.stringify(caught)).not.toContain("public-sandbox-1");
   });
 
+  test("redacts request credentials echoed by an upstream error", async () => {
+    configurePlaid();
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          error_code: "INVALID_INPUT",
+          error_message: "public-sandbox-1 server-secret client-id must not cross the boundary",
+        },
+        { status: 400 },
+      ),
+    ) as typeof fetch;
+
+    let caught: unknown;
+    try {
+      await exchangePlaidPublicToken({ publicToken: "public-sandbox-1" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    expect(JSON.stringify(caught)).not.toContain("public-sandbox-1");
+    expect(JSON.stringify(caught)).not.toContain("server-secret");
+    expect(JSON.stringify(caught)).not.toContain("client-id");
+  });
+
+  test("translates provider transport failures without exposing fetch details", async () => {
+    configurePlaid();
+    globalThis.fetch = mock(async () => {
+      throw new TypeError("request with public-sandbox-1 and server-secret failed");
+    }) as typeof fetch;
+
+    await expect(
+      exchangePlaidPublicToken({ publicToken: "public-sandbox-1" }),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "UPSTREAM_UNAVAILABLE",
+      message: "Plaid /item/public_token/exchange was unreachable.",
+    } satisfies Partial<AgentPlaidConnectorError>);
+  });
+
   test("preserves revoked-auth errors without exposing the Item token", async () => {
     configurePlaid();
     globalThis.fetch = mock(async () =>
