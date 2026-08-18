@@ -1,10 +1,12 @@
 /**
  * Tests for skill zip extraction hardening — the sinks for W5-007 (zip-slip:
  * backslash, absolute, and `..` entry names escaping the skill directory on
- * extraction) and W5-031 (zip-bomb: uncompressed expansion previously bounded
- * only by the 10 MB compressed download cap). Uses real fflate-produced
- * archives, a real tmpdir-backed FileSystemSkillStore, and forged
- * central-directory sizes. No mocks beyond the shared @elizaos/core double.
+ * extraction), its Windows residual (segments Win32 canonicalizes at write
+ * time — trailing dots/spaces per component, colons, reserved device names),
+ * and W5-031 (zip-bomb: uncompressed expansion previously bounded only by the
+ * 10 MB compressed download cap). Uses real fflate-produced archives, a real
+ * tmpdir-backed FileSystemSkillStore, and forged central-directory sizes. No
+ * mocks beyond the shared @elizaos/core double.
  */
 
 import fs from "node:fs";
@@ -72,6 +74,31 @@ const traversalEntries: Array<[label: string, entryName: string]> = [
 	["backslash-only parent", "..\\escape.txt"],
 ];
 
+// Win32 canonicalizes every path component at write time: trailing dots and
+// spaces are stripped (`.. ` becomes `..`, `...` collapses to nothing), a
+// colon addresses an NTFS alternate data stream, and reserved device stems
+// resolve to devices rather than files. Each of these passes an exact-`..`
+// check, so every class must be rejected by name validation.
+const windowsCanonicalizationEntries: Array<[label: string, entryName: string]> =
+	[
+		["trailing-space parent segment", ".. /escape.txt"],
+		["trailing-space parent segment mid-path", "sub/.. /escape.txt"],
+		["parent segment with mixed trailing dots and spaces", "sub/.. ./escape.txt"],
+		["parent segment with multiple trailing spaces", "sub/..  /escape.txt"],
+		["dots-only segment", ".../escape.txt"],
+		["dots-and-spaces-only segment", "sub/ . /escape.txt"],
+		["space-only segment", "sub/ /escape.txt"],
+		["trailing-dot file name", "escape.txt."],
+		["trailing-space directory segment", "sub /escape.txt"],
+		["NTFS alternate data stream", "escape.txt:payload"],
+		["NTFS stream type on nested entry", "sub/escape.txt:$DATA"],
+		["reserved device name CON", "CON"],
+		["reserved device name with extension", "NUL.txt"],
+		["lowercase reserved device stem", "nul.md"],
+		["reserved device name as directory segment", "com1/escape.txt"],
+		["reserved device name LPT", "lpt9/escape.txt"],
+	];
+
 describe("zip entry path validation", () => {
 	let basePath: string;
 	let fsStore: FileSystemSkillStore;
@@ -99,7 +126,10 @@ describe("zip entry path validation", () => {
 		},
 	];
 
-	for (const [label, entryName] of traversalEntries) {
+	for (const [label, entryName] of [
+		...traversalEntries,
+		...windowsCanonicalizationEntries,
+	]) {
 		it(`rejects ${label} entries in both stores`, async () => {
 			const zip = makeZip({ "SKILL.md": "# demo", [entryName]: "payload" });
 			for (const store of stores()) {
@@ -155,6 +185,33 @@ describe("zip entry path validation", () => {
 		expect(
 			fs.existsSync(path.join(basePath, "demo", "scripts", "run.sh")),
 		).toBe(true);
+	});
+
+	it("keeps skipping conventional no-op segments", async () => {
+		const zip = makeZip({ "./SKILL.md": "# demo" });
+		await fsStore.saveFromZip("demo", zip);
+		expect(await fsStore.loadSkillContent("demo")).toBe("# demo");
+	});
+
+	it("accepts names with leading dots and internal spaces or dots", async () => {
+		const zip = makeZip({
+			"SKILL.md": "# demo",
+			".gitignore": "node_modules",
+			"my notes/v1.2 draft.md": "docs",
+		});
+		await fsStore.saveFromZip("demo", zip);
+		expect(fs.existsSync(path.join(basePath, "demo", ".gitignore"))).toBe(true);
+		expect(
+			fs.readFileSync(
+				path.join(basePath, "demo", "my notes", "v1.2 draft.md"),
+				"utf-8",
+			),
+		).toBe("docs");
+
+		await memStore.loadFromZip("demo", zip);
+		expect(await memStore.loadFile("demo", "my notes/v1.2 draft.md")).toBe(
+			"docs",
+		);
 	});
 });
 
