@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
+import { resolveNpmCliInvocation } from "./scripts/npm-cli";
 
 const execFileAsync = promisify(execFile);
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
@@ -1323,11 +1324,17 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		join(tmpdir(), "eliza-core-edge-package-"),
 	);
 	try {
-		const { stdout } = await execFileAsync(
-			"npm",
-			["pack", "--json", "--pack-destination", contractRoot, process.cwd()],
-			{ cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 },
-		);
+		const npmPack = resolveNpmCliInvocation([
+			"pack",
+			"--json",
+			"--pack-destination",
+			contractRoot,
+			process.cwd(),
+		]);
+		const { stdout } = await execFileAsync(npmPack.command, npmPack.args, {
+			cwd: process.cwd(),
+			maxBuffer: 10 * 1024 * 1024,
+		});
 		const packed = JSON.parse(stdout) as Array<{ filename?: unknown }>;
 		const filename = packed[0]?.filename;
 		if (typeof filename !== "string") {
