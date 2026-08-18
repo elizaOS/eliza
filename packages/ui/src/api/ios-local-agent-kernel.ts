@@ -836,7 +836,8 @@ function handleLocalMemoriesRoute(
     const entityId = decodePathSegment(
       pathname.slice("/api/memories/by-entity/".length),
     );
-    if (entityId === null) return json({ error: "malformed URL encoding" }, 400);
+    if (entityId === null)
+      return json({ error: "malformed URL encoding" }, 400);
     if (!entityId) return json({ error: "Missing entity identifier." }, 400);
     const limit = Math.min(
       Math.max(
