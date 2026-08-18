@@ -156,6 +156,16 @@ describe("isRemoteAddressInCidrList", () => {
     expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/-1")).toBe(
       false,
     );
+    // A trailing slash must not parse as prefix 0 — that would silently
+    // widen the malformed entry into a /0 admit-all for the whole family.
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/")).toBe(false);
+    expect(isRemoteAddressInCidrList("203.0.113.9", "172.17.0.0/")).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/0x10")).toBe(
+      false,
+    );
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/+16")).toBe(
+      false,
+    );
     expect(
       isRemoteAddressInCidrList("172.17.0.1", "nonsense,172.17.0.0/16"),
     ).toBe(true);

@@ -262,11 +262,15 @@ export function isRemoteAddressInCidrList(
       added += 1;
       continue;
     }
-    const prefix = Number(entry.slice(slash + 1));
+    // Require a plain decimal prefix: Number("") parses a trailing slash as
+    // 0, which would turn a malformed entry into a /0 admit-all, and Number
+    // also accepts spellings like "0x10" or "+16" that operators did not
+    // mean. Malformed entries must admit nothing.
+    const prefixText = entry.slice(slash + 1);
+    if (!/^\d+$/.test(prefixText)) continue;
+    const prefix = Number(prefixText);
     const maxPrefix = family === 4 ? 32 : 128;
-    if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) {
-      continue;
-    }
+    if (prefix > maxPrefix) continue;
     try {
       blockList.addSubnet(ip, prefix, type);
       added += 1;
