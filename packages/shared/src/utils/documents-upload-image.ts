@@ -128,11 +128,17 @@ function cloneUploadFile(
 }
 
 export function isDocumentImageFile(
-  file: Pick<File, "name" | "type">,
+  file?: Pick<File, "name" | "type"> | null,
 ): boolean {
-  if (file.type.startsWith("image/")) return true;
-  const lowerName = file.name.toLowerCase();
-  return IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+  if (!file || typeof file !== "object") return false;
+  if (typeof file.type === "string" && file.type.startsWith("image/")) {
+    return true;
+  }
+  if (typeof file.name === "string") {
+    const lowerName = file.name.toLowerCase();
+    return IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+  }
+  return false;
 }
 
 export async function maybeCompressDocumentUploadImage(
@@ -145,70 +151,78 @@ export async function maybeCompressDocumentUploadImage(
   optimizedSize: number;
 }> {
   if (
+    !file ||
+    typeof file !== "object" ||
+    typeof file.size !== "number" ||
     !isDocumentImageFile(file) ||
     file.size <= MAX_DOCUMENT_IMAGE_PROCESSING_BYTES ||
-    !platform.isAvailable()
+    !platform?.isAvailable?.()
   ) {
+    const size = typeof file?.size === "number" ? file.size : 0;
     return {
       file,
       optimized: false,
-      originalSize: file.size,
-      optimizedSize: file.size,
+      originalSize: size,
+      optimizedSize: size,
     };
   }
 
-  const image = await platform.loadImageSource(file);
-  let { width, height } = clampDimensions(
-    image.width,
-    image.height,
-    IMAGE_MAX_DIMENSION,
-  );
-  let bestBlob: Blob | null = null;
+  try {
+    const image = await platform.loadImageSource(file);
+    let { width, height } = clampDimensions(
+      image.width,
+      image.height,
+      IMAGE_MAX_DIMENSION,
+    );
+    let bestBlob: Blob | null = null;
 
-  while (true) {
-    for (const quality of IMAGE_QUALITY_STEPS) {
-      const blob = await platform.renderBlob({
-        source: image.source,
-        width,
-        height,
-        outputType: IMAGE_OUTPUT_TYPE,
-        quality,
-      });
+    while (true) {
+      for (const quality of IMAGE_QUALITY_STEPS) {
+        const blob = await platform.renderBlob({
+          source: image.source,
+          width,
+          height,
+          outputType: IMAGE_OUTPUT_TYPE,
+          quality,
+        });
 
-      if (!bestBlob || blob.size < bestBlob.size) {
-        bestBlob = blob;
+        if (!bestBlob || blob.size < bestBlob.size) {
+          bestBlob = blob;
+        }
+
+        if (blob.size <= TARGET_DOCUMENT_IMAGE_BYTES) {
+          return {
+            file: cloneUploadFile(file, blob),
+            optimized: true,
+            originalSize: file.size,
+            optimizedSize: blob.size,
+          };
+        }
       }
 
-      if (blob.size <= TARGET_DOCUMENT_IMAGE_BYTES) {
-        return {
-          file: cloneUploadFile(file, blob),
-          optimized: true,
-          originalSize: file.size,
-          optimizedSize: blob.size,
-        };
-      }
+      const largestEdge = Math.max(width, height);
+      if (largestEdge <= IMAGE_MIN_DIMENSION) break;
+
+      const nextScale = Math.max(
+        IMAGE_MIN_DIMENSION / largestEdge,
+        IMAGE_SCALE_STEP,
+      );
+      if (nextScale >= 1) break;
+
+      width = Math.max(1, Math.round(width * nextScale));
+      height = Math.max(1, Math.round(height * nextScale));
     }
 
-    const largestEdge = Math.max(width, height);
-    if (largestEdge <= IMAGE_MIN_DIMENSION) break;
-
-    const nextScale = Math.max(
-      IMAGE_MIN_DIMENSION / largestEdge,
-      IMAGE_SCALE_STEP,
-    );
-    if (nextScale >= 1) break;
-
-    width = Math.max(1, Math.round(width * nextScale));
-    height = Math.max(1, Math.round(height * nextScale));
-  }
-
-  if (bestBlob && bestBlob.size < file.size) {
-    return {
-      file: cloneUploadFile(file, bestBlob),
-      optimized: true,
-      originalSize: file.size,
-      optimizedSize: bestBlob.size,
-    };
+    if (bestBlob && bestBlob.size < file.size) {
+      return {
+        file: cloneUploadFile(file, bestBlob),
+        optimized: true,
+        originalSize: file.size,
+        optimizedSize: bestBlob.size,
+      };
+    }
+  } catch {
+    // error-policy:J4 gracefully degrade to uncompressed file if canvas processing fails
   }
 
   return {

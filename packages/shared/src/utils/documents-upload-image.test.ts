@@ -45,7 +45,7 @@ describe("documents-upload-image utilities", () => {
       );
     });
 
-    it("returns false for non-image files", () => {
+    it("returns false for non-image files and nullish/invalid inputs", () => {
       expect(
         isDocumentImageFile({
           name: "contract.pdf",
@@ -67,6 +67,9 @@ describe("documents-upload-image utilities", () => {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
       ).toBe(false);
+      expect(isDocumentImageFile(null)).toBe(false);
+      expect(isDocumentImageFile(undefined)).toBe(false);
+      expect(isDocumentImageFile({} as unknown as File)).toBe(false);
     });
   });
 
@@ -87,6 +90,15 @@ describe("documents-upload-image utilities", () => {
       expect(result.file).toBe(nonImageFile);
       expect(result.originalSize).toBe(nonImageFile.size);
       expect(result.optimizedSize).toBe(nonImageFile.size);
+    });
+
+    it("handles nullish/invalid file inputs safely", async () => {
+      const result = await maybeCompressDocumentUploadImage(
+        null as unknown as DocumentImageUploadFile,
+      );
+      expect(result.optimized).toBe(false);
+      expect(result.originalSize).toBe(0);
+      expect(result.optimizedSize).toBe(0);
     });
 
     it("skips images within size threshold", async () => {
@@ -114,6 +126,60 @@ describe("documents-upload-image utilities", () => {
         MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1024,
       );
       const largeImageFile = new File([largeImageBytes], "large.jpg", {
+        type: "image/jpeg",
+      }) as DocumentImageUploadFile;
+
+      const result = await maybeCompressDocumentUploadImage(
+        largeImageFile,
+        mockPlatform,
+      );
+      expect(result.optimized).toBe(false);
+      expect(result.file).toBe(largeImageFile);
+    });
+
+    it("compresses large image successfully when platform is available", async () => {
+      const compressedBlob = new Blob([new Uint8Array(1024 * 1024)], {
+        type: "image/jpeg",
+      });
+      const mockPlatform: DocumentImageCompressionPlatform = {
+        isAvailable: () => true,
+        loadImageSource: async () => ({
+          source: {} as CanvasImageSource,
+          width: 3000,
+          height: 2000,
+        }),
+        renderBlob: async () => compressedBlob,
+      };
+
+      const largeImageBytes = new Uint8Array(
+        MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1024,
+      );
+      const largeImageFile = new File([largeImageBytes], "large.jpg", {
+        type: "image/jpeg",
+      }) as DocumentImageUploadFile;
+
+      const result = await maybeCompressDocumentUploadImage(
+        largeImageFile,
+        mockPlatform,
+      );
+      expect(result.optimized).toBe(true);
+      expect(result.originalSize).toBe(largeImageFile.size);
+      expect(result.optimizedSize).toBe(compressedBlob.size);
+    });
+
+    it("falls back to original file if loadImageSource throws", async () => {
+      const mockPlatform: DocumentImageCompressionPlatform = {
+        isAvailable: () => true,
+        loadImageSource: async () => {
+          throw new Error("Corrupted image file");
+        },
+        renderBlob: async () => new Blob([""]),
+      };
+
+      const largeImageBytes = new Uint8Array(
+        MAX_DOCUMENT_IMAGE_PROCESSING_BYTES + 1024,
+      );
+      const largeImageFile = new File([largeImageBytes], "corrupted.jpg", {
         type: "image/jpeg",
       }) as DocumentImageUploadFile;
 
