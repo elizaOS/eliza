@@ -13,6 +13,9 @@
 
 import { ElizaClient } from "./client-base";
 
+/** Saved-login list GET — existing 10s REST budget, independent hop. */
+export const VAULT_LIST_FETCH_TIMEOUT_MS = 10_000;
+
 export type SavedLoginSource = "in-house" | "1password" | "bitwarden";
 
 export interface SavedLoginListRecord {
@@ -40,7 +43,10 @@ export interface SavedLoginRevealRecord {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listSavedLogins(domain?: string): Promise<{
+    listSavedLogins(
+      domain?: string,
+      timeoutMs?: number,
+    ): Promise<{
       logins: readonly SavedLoginListRecord[];
       failures: readonly SavedLoginListFailure[];
     }>;
@@ -64,6 +70,7 @@ declare module "./client-base" {
 ElizaClient.prototype.listSavedLogins = async function (
   this: ElizaClient,
   domain,
+  timeoutMs: number = VAULT_LIST_FETCH_TIMEOUT_MS,
 ) {
   const path = domain
     ? `/api/secrets/logins?domain=${encodeURIComponent(domain)}`
@@ -72,7 +79,7 @@ ElizaClient.prototype.listSavedLogins = async function (
     ok: boolean;
     logins: readonly SavedLoginListRecord[];
     failures: readonly SavedLoginListFailure[];
-  }>(path);
+  }>(path, undefined, { timeoutMs });
   return { logins: res.logins, failures: res.failures };
 };
 
