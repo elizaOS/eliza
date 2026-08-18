@@ -56,15 +56,18 @@ describe("POST /api/v1/app-credits/checkout malformed JSON", () => {
   });
 
   test("returns 400 instead of 500 and never creates a session", async () => {
+    const secret = "checkout-secret-must-not-leak";
     const response = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{",
+      body: `{"token":"${secret}`,
     });
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
       error: "Invalid JSON body",
     });
+    expect(JSON.stringify(responseBody)).not.toContain(secret);
     expect(createSession).not.toHaveBeenCalled();
   });
 
@@ -76,6 +79,22 @@ describe("POST /api/v1/app-credits/checkout malformed JSON", () => {
     });
     request.text = async () => {
       throw new TypeError("request stream unavailable");
+    };
+
+    const response = await app.fetch(request);
+
+    expect(response.status).toBe(500);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  test("preserves an internal decoder SyntaxError as a server error", async () => {
+    const request = new Request("http://localhost/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    request.text = async () => {
+      throw new SyntaxError("internal decoder invariant failed");
     };
 
     const response = await app.fetch(request);

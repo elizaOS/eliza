@@ -9,25 +9,28 @@
 
 import { extractErrorMessage } from "./error-handling";
 
-export type RequestJsonDecodeResult =
-  | { ok: true; value: unknown }
-  | { ok: false; error: SyntaxError };
+export type RequestJsonDecodeResult = { ok: true; value: unknown } | { ok: false };
 
 /**
  * Decode an untrusted request body without disguising transport/runtime faults
- * as malformed caller input. Fetch and Hono surface invalid JSON as a
- * `SyntaxError`; every other rejection belongs to the route's normal 5xx
- * boundary and must keep propagating.
+ * as malformed caller input. Body acquisition completes before the narrow
+ * `JSON.parse` boundary, so stream, abort, and decoder failures propagate to
+ * the route's normal 5xx handler. Syntax details are discarded because engine
+ * diagnostics can quote sensitive request content.
  */
 export async function decodeRequestJson(source: {
-  json(): Promise<unknown>;
+  text(): Promise<string>;
 }): Promise<RequestJsonDecodeResult> {
+  const text = await source.text();
+  if (typeof text !== "string") {
+    throw new TypeError("Request body decoder returned a non-string value");
+  }
   try {
-    return { ok: true, value: await source.json() };
+    return { ok: true, value: JSON.parse(text) as unknown };
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
     // error-policy:J3 malformed JSON is explicit invalid request input.
-    return { ok: false, error };
+    return { ok: false };
   }
 }
 
