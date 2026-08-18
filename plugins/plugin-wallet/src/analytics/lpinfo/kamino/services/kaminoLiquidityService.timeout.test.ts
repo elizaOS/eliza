@@ -42,6 +42,41 @@ describe("KaminoLiquidityService fetch timeout", () => {
     }
   });
 
+  it("keeps the deadline active while the response body stalls", async () => {
+    const svc = new KaminoLiquidityService();
+    const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() =>
+      originalTimeout(10),
+    );
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("signal missing Kamino response body");
+      return {
+        ok: true,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      } as Response;
+    });
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      await expect(
+        (
+          svc as unknown as {
+            makeApiRequest: (endpoint: string) => Promise<unknown>;
+          }
+        ).makeApiRequest("/v2/staking-yields"),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      globalThis.fetch = previousFetch;
+      vi.restoreAllMocks();
+    }
+  });
+
   it("merges a caller signal via AbortSignal.any", async () => {
     const svc = new KaminoLiquidityService();
     const origTimeout = AbortSignal.timeout.bind(AbortSignal);

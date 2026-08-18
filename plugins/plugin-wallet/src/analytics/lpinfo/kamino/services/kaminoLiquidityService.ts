@@ -232,36 +232,28 @@ export class KaminoLiquidityService extends Service {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<T> {
-    try {
-      const url = `${this.apiBaseUrl}${endpoint}`;
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...options.headers,
-        },
-        signal: options.signal
-          ? AbortSignal.any([
-              options.signal,
-              AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
-            ])
-          : AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
-      });
+    const url = `${this.apiBaseUrl}${endpoint}`;
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+      signal: options.signal
+        ? AbortSignal.any([
+            options.signal,
+            AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
+          ])
+        : AbortSignal.timeout(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS),
+    });
 
-      if (!response.ok) {
-        throw new Error(
-          `API request failed: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return await response.json();
-    } catch (error) {
-      logger.error(
-        `API request failed for ${endpoint}:`,
-        formatLogError(error),
+    if (!response.ok) {
+      throw new Error(
+        `API request failed: ${response.status} ${response.statusText}`,
       );
-      throw error;
     }
+
+    return await response.json();
   }
 
   async resolveTokenWithBirdeye(
