@@ -149,10 +149,24 @@ describe("Google GenAI config", () => {
     // gemini-embedding-2 window accepts 8,192. Unmapped overrides must fall back
     // to the safe default (2,048), never the larger window.
     expect(getEmbeddingInputTokenLimit("gemini-embedding-001")).toBe(2_048);
+    expect(getEmbeddingInputTokenLimit("models/gemini-embedding-001")).toBe(
+      2_048,
+    );
     expect(getEmbeddingInputTokenLimit("gemini-embedding-2")).toBe(8_192);
+    expect(getEmbeddingInputTokenLimit("models/gemini-embedding-2")).toBe(
+      8_192,
+    );
     expect(getEmbeddingInputTokenLimit("some-unknown-model")).toBe(
       DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
     );
+    expect(getEmbeddingInputTokenLimit("models/some-unknown-model")).toBe(
+      DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
+    );
+    expect(
+      getEmbeddingInputTokenLimit(
+        "publishers/google/models/gemini-embedding-2",
+      ),
+    ).toBe(DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT);
     expect(DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT).toBe(2_048);
     // The default model's limit must equal the safe fallback so an unknown id is
     // never truncated to a window wider than the shipped default supports.
