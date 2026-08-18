@@ -664,14 +664,14 @@ export function InstallSheet({
       setError(null);
       setDone(false);
       try {
-        const res = await rawRequestVaultOverviewInstall(backendId, method);
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(body.error ?? `HTTP ${res.status}`);
-        }
-        const { jobId } = (await res.json()) as { jobId: string };
+        const { jobId } = await client.fetch<{ jobId: string }>(
+          "/api/secrets/manager/install",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ backendId, method }),
+          },
+        );
 
         // EventSource cannot carry the client's Authorization header (browser
         // limitation), but it must at least target the configured apiBase —
