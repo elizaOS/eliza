@@ -356,6 +356,12 @@ const RESTORE_UNMAX_SLOP_PX = 8;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
+// WebKit can end a captured touch track with `pointercancel` after the finger
+// has already driven the sheet (observed through the real XCUITest pipeline).
+// Only the FULL→HALF recovery uses the completed track: a cancellation below
+// the shared pull-distance floor remains a normal snap-back, as do every other
+// detent and direction.
+const CANCELED_FULL_STEP_MIN_TRAVEL_PX = 56;
 // Over-pull past the FULL detent morphs the inset sheet to edge-to-edge
 // full-bleed across the REAL pixel gap between the two solved heights
 // (`fullPanelMaxH - insetPanelMaxH`, see maxOverPull) — 1:1 with the finger,
@@ -1870,6 +1876,10 @@ export function ChatOverlay({
     maxPullRawRef.current = 0;
     maximizeReversedRef.current = false;
     fullscreenCrossContRef.current = null;
+    // The cancel recovery reads only samples from THIS press. A cancellation
+    // that arrives before the first rAF-delivered move must never inherit the
+    // previous gesture's terminal offset.
+    dragLastOffsetRef.current = 0;
   }, []);
   // At rest the collapsed composer should not carry hidden transcript/header
   // DOM. During an upward pull, though, the sheet needs a mounted body so the
@@ -5275,6 +5285,25 @@ export function ChatOverlay({
       }
       // INPUT → PILL: collapse the input away into a pill at the bottom.
       collapseToPill();
+    },
+    onCancel: () => {
+      // A real iOS touch track can be canceled by WebKit after its committed
+      // vertical samples already moved the sheet. The generic gesture hook
+      // correctly resets canceled gestures, but FULL has one unambiguous safe
+      // recovery: a completed downward track steps exactly one detent to HALF,
+      // matching the ordinary pointerup path. Keep small/other cancellations
+      // inert so collapsed, half, keyboard, and horizontal behavior do not
+      // change.
+      if (
+        !pinnedOpen &&
+        !pilled &&
+        !pillCommittedMidDragRef.current &&
+        modeRef.current === "full" &&
+        dragLastOffsetRef.current <= -CANCELED_FULL_STEP_MIN_TRAVEL_PX
+      ) {
+        inputRef.current?.blur();
+        goToDetent("half");
+      }
     },
     // A tap (no drag) on the handle. A tap on the PILL brings the input back —
     // one step only: no thread detent, no keyboard (openFromPill).

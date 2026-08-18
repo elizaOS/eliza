@@ -544,6 +544,80 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     expect(detent()).toBe("half");
     expect(impacts.length).toBe(3);
   });
+
+  it("commits a full-to-half touch flick when WebKit cancels after the vertical track", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    openToHalf();
+    flick(grabber(), 400, 300); // half → full
+    expect(detent()).toBe("full");
+
+    const g = grabber();
+    fireEvent.pointerDown(g, {
+      clientY: 300,
+      pointerId: 49,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(g, {
+      clientY: 560,
+      pointerId: 49,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await frame();
+    // Real WKWebView/XCUITest can terminate a captured touch track with
+    // pointercancel even though the committed vertical samples already drove
+    // the sheet. That completed downward flick still steps one detent.
+    fireEvent.pointerCancel(g, {
+      clientY: 560,
+      pointerId: 49,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+
+    expect(detent()).toBe("half");
+
+    // Preserve the normal cancel contract everywhere outside the exact
+    // completed FULL→HALF recovery: a small canceled wobble still snaps back.
+    flick(grabber(), 400, 300, 50); // half → full
+    const fullGrabber = grabber();
+    fireEvent.pointerDown(fullGrabber, {
+      clientY: 300,
+      pointerId: 51,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(fullGrabber, {
+      clientY: 330,
+      pointerId: 51,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await frame();
+    fireEvent.pointerCancel(fullGrabber, {
+      clientY: 330,
+      pointerId: 51,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    expect(detent()).toBe("full");
+
+    // A later cancel before the first delivered move must not inherit the
+    // completed track above and accidentally step the sheet.
+    fireEvent.pointerDown(fullGrabber, {
+      clientY: 300,
+      pointerId: 52,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    fireEvent.pointerCancel(fullGrabber, {
+      clientY: 300,
+      pointerId: 52,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    expect(detent()).toBe("full");
+  });
 });
 
 describe("thread-less grabber tap (matrix: INPUT tap row)", () => {
