@@ -507,11 +507,6 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
     const existing = window.__ELIZA_ELECTROBUN_RPC__;
     window.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
-        // This fixture advertises an Electrobun runtime, so it must satisfy the
-        // native startup handshake before any routed view can mount.
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
         ...(existing?.request ?? {}),
         // Injecting __ELIZA_ELECTROBUN_RPC__ makes isElectrobunRuntime() →
         // isDesktopPlatform() true, so the /desktop deep link and desktop

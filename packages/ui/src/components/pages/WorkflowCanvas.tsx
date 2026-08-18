@@ -143,7 +143,7 @@ export function WorkflowCanvas({
           <Controls
             showInteractive={false}
             position="top-left"
-            className="!overflow-hidden !rounded-lg !border-0 !bg-card/90 !shadow-sm [@media(orientation:landscape)_and_(max-height:520px)]:!hidden [&_button]:!border-0 [&_button]:!bg-card/90 [&_button]:!fill-foreground [&_button:hover]:!bg-primary/15"
+            className="!overflow-hidden !rounded-lg !border-0 !bg-card/90 !shadow-sm [&_button]:!border-0 [&_button]:!bg-card/90 [&_button]:!fill-foreground [&_button:hover]:!bg-primary/15"
           />
         </ReactFlow>
       ) : (
@@ -159,7 +159,7 @@ export function WorkflowCanvas({
       <Button
         variant="ghost"
         size="icon-sm"
-        className="absolute right-3 top-3 z-10 rounded-full bg-card/90 shadow-sm hover:bg-primary/15 [@media(orientation:landscape)_and_(max-height:520px)]:!hidden"
+        className="absolute right-3 top-3 z-10 rounded-full bg-card/90 shadow-sm hover:bg-primary/15"
         onClick={onAddStep}
         aria-label="Add step with Eliza"
         title="Add step"
