@@ -1,10 +1,11 @@
-name: Stage real voice assets
+name: Stage voice compatibility assets
 description: >-
-  Self-provision the real-voice asset set on a runner: verify the fused
+  Self-provision the pre-Gemma component-compatibility asset set on a runner: verify the fused
   libelizainference build (downloaded as a workflow artifact) and stage the
   pinned eliza-1-2b voice bundle regions from Hugging Face into the canonical
   $HOME/.eliza/local-inference/models/eliza-1-2b.bundle cache. Every file is
-  sha256-pinned; a present-and-matching file is never re-downloaded, so the
+  sha256-pinned; these assets are not product-runtime ASR evidence. A
+  present-and-matching file is never re-downloaded, so the
   first run per host pays ~2.5 GB once and later runs download nothing. Multiple
   runner slots share one host $HOME, so the whole staging section runs under an
   flock. Exports the ELIZA_* env the real-voice suites consume. Any missing or
@@ -45,7 +46,7 @@ runs:
         echo "fused lib OK: $LIB"
         file "$LIB" || true
 
-    - name: Stage pinned eliza-1-2b voice bundle (sha256-verified, host-cached)
+    - name: Stage pinned pre-Gemma compatibility bundle (sha256-verified, host-cached)
       shell: bash
       run: |
         set -euo pipefail
@@ -90,7 +91,8 @@ runs:
         exec 9>"$LOCK"
         flock 9
 
-        # Fused ASR (decoder head + audio projector — asr-real-smoke contract).
+        # Retired pre-Gemma ASR compatibility pair. The workflow's separate
+        # product-release preflight intentionally rejects these as product proof.
         stage asr/eliza-1-asr.gguf          bundles/e2b/asr/eliza-1-asr.gguf          bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971
         stage asr/eliza-1-asr-mmproj.gguf   bundles/e2b/asr/eliza-1-asr-mmproj.gguf   41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d
         # VAD (fused vad_open loads the GGUF; the ggml.bin is the legacy

@@ -1,16 +1,18 @@
 name: Voice Live E2E
 
 # Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
-# (silent-WAV TTS, shimmed STT transcript), so genuinely-real voice coverage —
-# real speech synthesis + real transcription with real models — lives in this
-# self-hosted model-heavy nightly / workflow_dispatch lane.
+# (silent-WAV TTS, shimmed STT transcript), so live service coverage and native
+# component compatibility evidence live in this model-heavy nightly /
+# workflow_dispatch lane. Product-runtime ASR proof additionally requires the
+# Gemma release-authority job below to pass.
 #
 # What it proves (no mocks at any stage):
 #   - Live Railway voice contract: the free-cloud Kokoro TTS + Whisper STT
 #     services (packages/cloud/services/voice-*) satisfy the exact request shapes
 #     the cloud-api voice routes send, so a dead/drifted service is a red run.
-#   - Real fused ASR: the provisioned libelizainference + ASR bundle
-#     transcribes real speech.
+#   - Pre-Gemma fused ASR compatibility: the provisioned libelizainference +
+#     retired compatibility bundle transcribes real speech at the FFI boundary.
+#     This is explicitly not product-runtime ASR evidence.
 #   - Real fused Kokoro TTS: the provisioned libelizainference loads the
 #     published Kokoro GGUF + voice .bin and synthesizes audible PCM.
 #   - Optional mixed round-trip: when cloud voice/LLM keys are present, real
@@ -111,6 +113,29 @@ env:
   BUN_VERSION: "1.3.14"
   NODE_OPTIONS: "--experimental-sqlite"
 jobs:
+  # Product truth boundary (#17477): the native component smokes below still
+  # exercise retired pre-Gemma assets directly through bun:ffi. They remain
+  # useful ABI compatibility evidence, but the workflow must be red until the
+  # active release publishes an immutable Gemma model/projector pair that the
+  # product runtime can accept. This job never falls back to an older release.
+  voice-product-asr-release:
+    name: Product runtime Gemma ASR release authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Require immutable Gemma ASR model and projector
+        run: bun packages/scripts/verify-voice-product-asr-release.mjs --github-annotations
+
   voice-platform-matrix-index:
     name: Canonical voice matrix index
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -357,7 +382,7 @@ jobs:
           if-no-files-found: error
 
   voice-roundtrip:
-    name: Real fused ASR + optional mixed round-trip (self-hosted)
+    name: Pre-Gemma ASR compatibility FFI + optional mixed round-trip (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
@@ -365,8 +390,9 @@ jobs:
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-    # Hard live lane: the fused ASR smoke always runs against self-provisioned
-    # assets — a staging or transcription failure is a red job, never a skip.
+    # Hard component lane: the fused ASR smoke always runs against the pinned
+    # pre-Gemma compatibility assets. The independent product-release job keeps
+    # the workflow red until the supported Gemma pair exists.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -401,12 +427,12 @@ jobs:
           name: voice-fused-lib-linux-x64-cpu
           path: ${{ runner.temp }}/fused-lib
 
-      - name: Stage real voice assets (fused lib + pinned bundle)
+      - name: Stage voice compatibility assets (fused lib + pinned bundle)
         uses: ./.github/actions/stage-voice-real-assets
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
 
-      - name: Real fused ASR smoke (bun:ffi)
+      - name: Pre-Gemma ASR compatibility FFI smoke (bun:ffi)
         run: bun run --cwd plugins/plugin-local-inference test:asr:real
 
       # Designed key-gated step: the mixed round-trip crosses two external
@@ -419,10 +445,10 @@ jobs:
       - name: Note skipped mixed round-trip (keys absent)
         if: env.ELEVENLABS_API_KEY == '' || env.CEREBRAS_API_KEY == ''
         run: |
-          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → local-ASR → cloud-LLM round-trip step did not run. The fused ASR smoke above still ran against real models."
+          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → compatibility-ASR → cloud-LLM round-trip step did not run. The pre-Gemma FFI component smoke above is not product-runtime ASR proof."
 
   voice-acoustic-matrix:
-    name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
+    name: Real acoustic components + pre-Gemma ASR compatibility matrix (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
@@ -496,7 +522,7 @@ jobs:
           name: voice-fused-lib-linux-x64-cpu
           path: ${{ runner.temp }}/fused-lib
 
-      - name: Stage real voice assets (fused lib + pinned bundle)
+      - name: Stage voice compatibility assets (fused lib + pinned bundle)
         uses: ./.github/actions/stage-voice-real-assets
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
@@ -548,8 +574,9 @@ jobs:
 
       # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
       # workers make every one of them skip — a green-skip lie this lane bans.
-      # Under `bun test` all 12 tests execute against the staged fused lib.
-      - name: Real fused FFI test lanes (bun:ffi)
+      # Under `bun test` all 12 tests execute against the staged fused lib. The
+      # ASR row is compatibility-only until the product release gate is green.
+      - name: Fused component compatibility FFI test lanes (bun:ffi)
         run: |
           set -euo pipefail
           bun test \
@@ -563,7 +590,7 @@ jobs:
           # a green-skip lie as a full-lane skip, so it fails the same way.
           if grep -Eq "(^| )0 pass" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log" \
             || grep -Eq "(^| )[1-9][0-9]* skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
-            echo "::error title=Fused FFI lanes skipped::one or more real FFI suite cells did not execute — staging or bun:ffi is broken"
+            echo "::error title=Fused FFI lanes skipped::one or more compatibility FFI suite cells did not execute — staging or bun:ffi is broken"
             exit 1
           fi
 
