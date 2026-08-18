@@ -4,12 +4,13 @@
 // occurrence-complete write. Deterministic — `now` is injected, fetch is stubbed.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { getBaseUrlMock } = vi.hoisted(() => ({
+const { clientFetchMock, getBaseUrlMock } = vi.hoisted(() => ({
+  clientFetchMock: vi.fn(),
   getBaseUrlMock: vi.fn(() => "http://localhost"),
 }));
 
 vi.mock("../../../api", () => ({
-  client: { getBaseUrl: getBaseUrlMock },
+  client: { fetch: clientFetchMock, getBaseUrl: getBaseUrlMock },
 }));
 
 import {
@@ -42,6 +43,7 @@ function todo(over: Partial<TodayTodo> & { id: string }): TodayTodo {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clientFetchMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
 });
 
@@ -135,33 +137,23 @@ describe("isOverdue / overdueCount", () => {
 });
 
 describe("fetchTodayTodos", () => {
-  it("GETs the owner-todos route and parses the response", async () => {
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            todos: [
-              { id: "a", title: "A", status: "pending", dueDate: TOMORROW },
-            ],
-          }),
-          { status: 200 },
-        ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("uses the authenticated client deadline and parses the response", async () => {
+    clientFetchMock.mockResolvedValue({
+      todos: [{ id: "a", title: "A", status: "pending", dueDate: TOMORROW }],
+    });
     const todos = await fetchTodayTodos();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/lifeops/todos",
+    expect(clientFetchMock).toHaveBeenCalledWith(
+      "/api/lifeops/todos",
+      undefined,
+      { timeoutMs: 15_000 },
     );
     expect(todos).toEqual([
       { id: "a", title: "A", status: "pending", dueDate: TOMORROW },
     ]);
   });
 
-  it("throws on a non-2xx response so the caller can degrade (J4)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("nope", { status: 500 })),
-    );
+  it("preserves client failures so the caller can degrade (J4)", async () => {
+    clientFetchMock.mockRejectedValue(new Error("Todos request failed (500)"));
     await expect(fetchTodayTodos()).rejects.toThrow(
       "Todos request failed (500)",
     );
@@ -207,28 +199,14 @@ describe("loadTodayTodosForGlance", () => {
   });
 
   it("returns null on a fetch failure so the caller keeps last-good (J4)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("boom", { status: 503 })),
-    );
+    clientFetchMock.mockRejectedValue(new Error("service unavailable"));
     expect(await loadTodayTodosForGlance(true)).toBeNull();
   });
 
   it("returns the parsed todos when authenticated on a full app base", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              todos: [
-                { id: "a", title: "A", status: "pending", dueDate: TOMORROW },
-              ],
-            }),
-            { status: 200 },
-          ),
-      ),
-    );
+    clientFetchMock.mockResolvedValue({
+      todos: [{ id: "a", title: "A", status: "pending", dueDate: TOMORROW }],
+    });
     expect(await loadTodayTodosForGlance(true)).toEqual([
       { id: "a", title: "A", status: "pending", dueDate: TOMORROW },
     ]);

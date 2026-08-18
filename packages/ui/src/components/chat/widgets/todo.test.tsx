@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   authMock,
+  clientFetchMock,
   getBaseUrlMock,
   listWorkbenchTodosMock,
   mockState,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   // Auth gate (#11084) - mutable so tests can flip the session state.
   authMock: { authenticated: true },
+  clientFetchMock: vi.fn(),
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   listWorkbenchTodosMock: vi.fn(
     async (): Promise<{
@@ -71,6 +73,11 @@ function stubLifeopsFetch(todos: unknown[], goals: unknown[] = []) {
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
+  clientFetchMock.mockImplementation(async (path: string) => {
+    const response = await fetchMock(`${getBaseUrlMock()}${path}`);
+    if (!response.ok) throw new Error(`Request failed (${response.status})`);
+    return response.json();
+  });
   return fetchMock;
 }
 
@@ -89,6 +96,7 @@ function ownerTodo(over: {
 
 vi.mock("../../../api", () => ({
   client: {
+    fetch: clientFetchMock,
     getBaseUrl: getBaseUrlMock,
     listWorkbenchTodos: listWorkbenchTodosMock,
   },
@@ -127,6 +135,7 @@ if (!TodoWidget) {
 }
 
 beforeEach(() => {
+  clientFetchMock.mockReset();
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
   listWorkbenchTodosMock.mockClear();

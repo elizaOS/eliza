@@ -113,29 +113,13 @@ export function overdueCount(todos: TodayTodo[], now: number): number {
     .length;
 }
 
-/** Today-card todos GET is a short UI read — same 15s family as TodosView. */
+/** Today-card todos GET is a short authenticated UI read. */
 export const TODAY_TODOS_JSON_TIMEOUT_MS = 15_000;
 
-export async function getTodayTodosJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = TODAY_TODOS_JSON_TIMEOUT_MS,
-): Promise<T> {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Todos request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
 export async function fetchTodayTodos(): Promise<TodayTodo[]> {
-  const body = await getTodayTodosJsonWithFetch<unknown>(
-    `${client.getBaseUrl()}/api/lifeops/todos`,
-    globalThis.fetch,
-  );
+  const body = await client.fetch<unknown>("/api/lifeops/todos", undefined, {
+    timeoutMs: TODAY_TODOS_JSON_TIMEOUT_MS,
+  });
   return parseTodayTodos(body);
 }
 
