@@ -220,18 +220,47 @@ const TRAVEL_UNTIL_PATTERN =
  * ("July 20", "2026-07-20", "Aug 3"); the current year is assumed when the
  * parsed date lands in the past (a bare month/day for a future trip).
  */
+const HAS_EXPLICIT_YEAR = /\b\d{4}\b/;
+const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * `Date.parse` reads a bare `YYYY-MM-DD` string as UTC midnight but a
+ * `Month Day[, Year]` string as LOCAL midnight (ECMA-262 Date Time String
+ * Format) -- read the ISO date-only form as a local calendar date too, so
+ * "back on 2026-07-20" and "back on July 20, 2026" always land on the same
+ * day regardless of the caller's UTC offset. Never NaN; unparseable => null.
+ */
+function parseLocalDate(value: string): number | null {
+  const isoMatch = ISO_DATE_ONLY.exec(value);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    const local = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(local.getTime()) ? null : local.getTime();
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function parseTravelReturnIso(phrase: string, now: Date): string | null {
   const trimmed = phrase.trim().replace(/[.,]+$/u, "");
   if (trimmed.length === 0) return null;
-  let parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) {
-    parsed = Date.parse(`${trimmed} ${now.getFullYear()}`);
-  }
-  if (Number.isNaN(parsed)) return null;
+
+  // A bare "Month Day" string never fails to parse: absent a year,
+  // `Date.parse` silently substitutes a fixed placeholder year instead of
+  // returning NaN, so detecting "no year given" from the parse result never
+  // fires. Detect it from the text instead and only then append the current
+  // year, so a date still upcoming this year isn't skipped straight to next
+  // year -- which usually lands outside MAX_TRAVEL_HORIZON_MS and silently
+  // discards the user's stated return date entirely.
+  const candidate = HAS_EXPLICIT_YEAR.test(trimmed)
+    ? trimmed
+    : `${trimmed} ${now.getFullYear()}`;
+  let parsed = parseLocalDate(candidate);
+  if (parsed === null) return null;
   // A month/day that resolves to the past almost always means next year.
   if (parsed < now.getTime()) {
-    const nextYear = Date.parse(`${trimmed} ${now.getFullYear() + 1}`);
-    if (Number.isNaN(nextYear) || nextYear < now.getTime()) return null;
+    const nextYear = parseLocalDate(`${trimmed} ${now.getFullYear() + 1}`);
+    if (nextYear === null || nextYear < now.getTime()) return null;
     parsed = nextYear;
   }
   if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) return null;
@@ -250,7 +279,10 @@ function detectTravelSignal(text: string, now: Date): TravelSignal | null {
   return null;
 }
 
-function extractProfileDetails(text: string, now: Date): ProfileExtraction {
+export function extractProfileDetails(
+  text: string,
+  now: Date,
+): ProfileExtraction {
   const facts: OwnerFactsPatch = {};
   collectFactHints(text, facts);
   collectTravelPreferenceHints(text, facts);
