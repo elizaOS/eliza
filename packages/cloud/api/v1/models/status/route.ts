@@ -62,7 +62,15 @@ app.post("/", async (c) => {
   try {
     await getCurrentUser(c).catch(() => null);
 
-    const body = (await c.req.json()) as { modelIds?: unknown };
+    let body: { modelIds?: unknown };
+    try {
+      body = (await c.req.json()) as { modelIds?: unknown };
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
     const modelIds = body.modelIds;
 
     if (!Array.isArray(modelIds) || modelIds.length === 0) {
