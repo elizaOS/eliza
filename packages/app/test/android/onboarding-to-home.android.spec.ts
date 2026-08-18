@@ -169,6 +169,7 @@ test.describe
         } else {
           const stubReply = await sendChatAndReadReply(page, {
             label: "android-onboarding",
+            challengeToken: "STREAM_E2E_OK",
           });
           expect(
             stubReply,

@@ -29,6 +29,21 @@ const androidHarness = fs.readFileSync(
   ),
   "utf8",
 );
+const androidGlobalSetup = fs.readFileSync(
+  path.join(repoRoot, "packages", "app", "test", "android", "global-setup.ts"),
+  "utf8",
+);
+const onboardingSpec = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "packages",
+    "app",
+    "test",
+    "android",
+    "onboarding-to-home.android.spec.ts",
+  ),
+  "utf8",
+);
 const workflow = fs.readFileSync(
   path.join(repoRoot, ".github", "workflows", "device-e2e.yml"),
   "utf8",
@@ -124,6 +139,16 @@ describe("Android device-e2e host-agent contract", () => {
     expect(androidHarness).not.toContain(
       'window.history.pushState({}, "", path)',
     );
+  });
+
+  it("pre-grants feature permissions so native prompts cannot mask route results", () => {
+    expect(androidGlobalSetup).toContain("android.permission.READ_CALL_LOG");
+    expect(androidGlobalSetup).toContain("android.permission.READ_CONTACTS");
+    expect(androidGlobalSetup).toContain("android.permission.READ_SMS");
+  });
+
+  it("waits for the deterministic reply instead of accepting a late greeting", () => {
+    expect(onboardingSpec).toContain('challengeToken: "STREAM_E2E_OK"');
   });
 
   it("owns the image decoder imported by the Android route suite", () => {
