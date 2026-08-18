@@ -44,6 +44,7 @@ function makeService(
   const pairingService = {
     isAllowed: vi.fn(async () => options.pairingAllowed ?? false),
     upsertRequest: vi.fn(async () => ({ code: "PAIRCODE1", created: true })),
+    claimPairingReply: vi.fn(() => true),
   };
   const runtime = {
     agentId: "agent-1" as UUID,

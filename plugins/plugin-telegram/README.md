@@ -61,7 +61,8 @@ The plugin reads the token from the runtime setting `TELEGRAM_BOT_TOKEN` or `pro
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes (default account) | Bot token from @BotFather |
 | `TELEGRAM_API_ROOT` | No | Override Bot API base URL (e.g. local Bot API server). Default: `https://api.telegram.org` |
-| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings the bot will respond to. If absent, all chats are allowed. Example: `["-100123456789"]` |
+| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings the bot will respond to; authoritative for every chat type when set. Example: `["-100123456789"]` |
+| `TELEGRAM_DM_POLICY` | No | `open` / `pairing` / `allowlist` / `disabled` — gates private chats when no allowlist is configured. Default `pairing`: unknown senders get a one-time pairing code (core PairingService handshake) instead of full bot access, so an unconfigured bot is never default-open. Group chats are unaffected; a bot only sees groups it was invited to. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by the live smoke-test suite |
 
 ## Enabling the plugin

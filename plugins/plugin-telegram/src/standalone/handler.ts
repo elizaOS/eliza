@@ -13,6 +13,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "../dm-policy";
 import { resolveTelegramRuntimeEntityId } from "../identity";
 
 function formatError(err: unknown): string {
@@ -158,6 +159,28 @@ export async function handleTelegramStandaloneMessage(
     );
     if (allowedChats && !allowedChats.has(chatId)) {
       return;
+    }
+
+    // With no allowlist configured, private DMs fall to the TELEGRAM_DM_POLICY
+    // gate — fail-closed pairing by default, so an unconfigured standalone bot
+    // is never default-open to arbitrary Telegram users. Non-private chats
+    // stay open; the bot only sees groups it was invited to.
+    if (!allowedChats && chat.type === "private") {
+      const policy = resolveTelegramDmPolicy(
+        runtime.getSetting("TELEGRAM_DM_POLICY") ??
+          process.env.TELEGRAM_DM_POLICY,
+      );
+      const access = await checkTelegramDmAccess(runtime, {
+        policy,
+        senderId: telegramUserId,
+        username: from?.username,
+      });
+      if (!access.allowed) {
+        if (access.replyMessage) {
+          await ctx.reply(access.replyMessage);
+        }
+        return;
+      }
     }
 
     logger.info(
