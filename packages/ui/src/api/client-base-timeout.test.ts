@@ -106,6 +106,29 @@ describe("ElizaClient request timeout policy", () => {
     await rejection;
   });
 
+  it("settles a stalled response body when the caller aborts after headers", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+    });
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async () => new Response(body, { status: 200 }),
+    );
+    const client = new ElizaClient("http://agent.example:2138", "token");
+    client.setRequestTransport({ request });
+    const controller = new AbortController();
+
+    const pending = client.fetch("/api/status", {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      kind: "network",
+      message: "Request aborted",
+    });
+  });
+
   it("coalesces concurrent local inference hub reads with a longer timeout", async () => {
     const response = makeDeferredResponse();
     const request = vi.fn<AgentRequestTransport["request"]>(
