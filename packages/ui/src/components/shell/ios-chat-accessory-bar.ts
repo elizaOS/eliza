@@ -30,13 +30,20 @@ export function createChatAccessoryBarController({
 }): ChatAccessoryBarController {
   let update = Promise.resolve();
   let chatComposerHidden = false;
+  let appliedHidden: boolean | undefined;
 
-  const enqueueVisibility = (hidden: boolean): Promise<void> => {
+  const enqueueReconciliation = (): Promise<void> => {
     if (!enabled) return Promise.resolve();
     update = update
       .then(async () => {
         const Keyboard = await loadKeyboard();
-        await Keyboard.setAccessoryBarVisible({ isVisible: !hidden });
+        // Loading the bridge can outlive the focus that requested this turn.
+        // Read the desired state only after that await so an already-blurred
+        // composer cannot transiently hide the accessory for the next field.
+        const targetHidden = chatComposerHidden;
+        if (appliedHidden === targetHidden) return;
+        await Keyboard.setAccessoryBarVisible({ isVisible: !targetHidden });
+        appliedHidden = targetHidden;
       })
       .catch((error) => {
         // error-policy:J4 the optional native keyboard bridge can be absent or
@@ -50,11 +57,11 @@ export function createChatAccessoryBarController({
     initializeBaseline(): Promise<void> {
       // Boot can finish after React mounts and the composer takes focus. Apply
       // the current owner state instead of blindly restoring the global bar.
-      return enqueueVisibility(chatComposerHidden);
+      return enqueueReconciliation();
     },
     setChatComposerHidden(hidden: boolean): Promise<void> {
       chatComposerHidden = hidden;
-      return enqueueVisibility(hidden);
+      return enqueueReconciliation();
     },
   };
 }

@@ -94,4 +94,18 @@ describe("ChatOverlay iOS accessory bar", () => {
     );
     expect(document.activeElement).toBe(settingsField);
   });
+
+  it("restores the global accessory when a focused chat unmounts", async () => {
+    const { unmount } = render(<ChatOverlay controller={makeController()} />);
+    const composer = screen.getByLabelText("message");
+
+    act(() => composer.focus());
+    await waitFor(() =>
+      expect(accessoryMock.setHidden).toHaveBeenLastCalledWith(true),
+    );
+
+    unmount();
+
+    expect(accessoryMock.setHidden).toHaveBeenLastCalledWith(false);
+  });
 });
