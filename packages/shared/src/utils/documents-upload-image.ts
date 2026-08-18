@@ -7,13 +7,6 @@ export type DocumentImageUploadFile = File & {
   webkitRelativePath?: string;
 };
 
-export class DocumentImageCompressionUnavailableError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "DocumentImageCompressionUnavailableError";
-  }
-}
-
 export type DocumentImageCompressionPlatform = {
   isAvailable: () => boolean;
   loadImageSource: (file: File) => Promise<{
@@ -56,11 +49,7 @@ function browserCompressionPlatform(): DocumentImageCompressionPlatform {
           const nextImage = new Image();
           nextImage.onload = () => resolve(nextImage);
           nextImage.onerror = () =>
-            reject(
-              new DocumentImageCompressionUnavailableError(
-                `Failed to load image "${file.name}"`,
-              ),
-            );
+            reject(new Error(`Failed to load image "${file.name}"`));
           nextImage.src = objectUrl;
         });
         return {
@@ -77,34 +66,19 @@ function browserCompressionPlatform(): DocumentImageCompressionPlatform {
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d");
-      if (!context) {
-        throw new DocumentImageCompressionUnavailableError(
-          "Canvas 2D context is unavailable",
-        );
-      }
+      if (!context) throw new Error("Canvas 2D context is unavailable");
 
       if (outputType === IMAGE_OUTPUT_TYPE) {
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, width, height);
       }
-      try {
-        context.drawImage(source, 0, 0, width, height);
-      } catch (error) {
-        throw new DocumentImageCompressionUnavailableError(
-          "Canvas could not draw the source image",
-          { cause: error },
-        );
-      }
+      context.drawImage(source, 0, 0, width, height);
 
       return new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              reject(
-                new DocumentImageCompressionUnavailableError(
-                  "Failed to encode optimized image",
-                ),
-              );
+              reject(new Error("Failed to encode optimized image"));
               return;
             }
             resolve(blob);
@@ -153,20 +127,6 @@ function cloneUploadFile(
   return cloned;
 }
 
-function originalUploadResult(file: DocumentImageUploadFile): {
-  file: DocumentImageUploadFile;
-  optimized: false;
-  originalSize: number;
-  optimizedSize: number;
-} {
-  return {
-    file,
-    optimized: false,
-    originalSize: file.size,
-    optimizedSize: file.size,
-  };
-}
-
 export function isDocumentImageFile(
   file: Pick<File, "name" | "type">,
 ): boolean {
@@ -189,22 +149,15 @@ export async function maybeCompressDocumentUploadImage(
     file.size <= MAX_DOCUMENT_IMAGE_PROCESSING_BYTES ||
     !platform.isAvailable()
   ) {
-    return originalUploadResult(file);
+    return {
+      file,
+      optimized: false,
+      originalSize: file.size,
+      optimizedSize: file.size,
+    };
   }
 
-  let image: Awaited<
-    ReturnType<DocumentImageCompressionPlatform["loadImageSource"]>
-  >;
-  try {
-    image = await platform.loadImageSource(file);
-  } catch (error) {
-    if (error instanceof DocumentImageCompressionUnavailableError) {
-      // error-policy:J4 optional image optimization is visibly rechecked by
-      // DocumentsView before the original file is uploaded.
-      return originalUploadResult(file);
-    }
-    throw error;
-  }
+  const image = await platform.loadImageSource(file);
   let { width, height } = clampDimensions(
     image.width,
     image.height,
@@ -214,23 +167,13 @@ export async function maybeCompressDocumentUploadImage(
 
   while (true) {
     for (const quality of IMAGE_QUALITY_STEPS) {
-      let blob: Blob;
-      try {
-        blob = await platform.renderBlob({
-          source: image.source,
-          width,
-          height,
-          outputType: IMAGE_OUTPUT_TYPE,
-          quality,
-        });
-      } catch (error) {
-        if (error instanceof DocumentImageCompressionUnavailableError) {
-          // error-policy:J4 optional image optimization is visibly rechecked
-          // by DocumentsView before the original file is uploaded.
-          return originalUploadResult(file);
-        }
-        throw error;
-      }
+      const blob = await platform.renderBlob({
+        source: image.source,
+        width,
+        height,
+        outputType: IMAGE_OUTPUT_TYPE,
+        quality,
+      });
 
       if (!bestBlob || blob.size < bestBlob.size) {
         bestBlob = blob;
@@ -268,5 +211,10 @@ export async function maybeCompressDocumentUploadImage(
     };
   }
 
-  return originalUploadResult(file);
+  return {
+    file,
+    optimized: false,
+    originalSize: file.size,
+    optimizedSize: file.size,
+  };
 }
