@@ -38,7 +38,7 @@ vi.mock("@elizaos/core", async (importActual) => {
 	};
 });
 
-import { imageUrlToBase64 } from "./mobile-device-bridge-bootstrap";
+import { imageUrlToBase64 } from "./image-url-to-base64";
 
 afterEach(() => {
 	mediaMocks.useRealFetchRemoteMedia = false;
