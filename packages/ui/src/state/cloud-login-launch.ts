@@ -81,6 +81,10 @@ export function hasSameOriginStewardLogin(): boolean {
  * a popup/tab the flow would immediately abandon.
  */
 export function preOpenCloudLoginWindow(): Window | null {
+  // Electrobun must not create a renderer popup: `window.open` is hosted by
+  // the app WebView, not the system browser. The eventual login URL goes
+  // through desktopOpenExternal instead (see useCloudState).
+  if (isElectrobunRuntime()) return null;
   if (
     isPlainWebPlatform() &&
     hasSameOriginStewardLogin() &&

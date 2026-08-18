@@ -178,6 +178,14 @@ describe("buildSameTabCloudLoginPath", () => {
 });
 
 describe("preOpenCloudLoginWindow", () => {
+  it("skips renderer popups in Electrobun so desktop RPC can open the system browser", () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const openSpy = vi.spyOn(window, "open");
+
+    expect(preOpenCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("skips the popup attempt on touch-primary hosted web (redirect-first)", () => {
     stubMatchMedia(true);
     const openSpy = vi.spyOn(window, "open");

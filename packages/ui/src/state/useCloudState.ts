@@ -923,7 +923,18 @@ export function useCloudState({
         // open without crashing but never surface a usable window.
         if (resp.browserUrl && isSafeNavigationUrl(resp.browserUrl)) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
-          if (prePoppedWindow) {
+          // Electrobun's `window.open` is another renderer/WebView surface,
+          // not the user's browser. Sending Cloud authentication there makes a
+          // click appear to activate Eliza while no system login window opens.
+          // Desktop owns external navigation through its native RPC instead.
+          if (isElectrobunRuntime()) {
+            const opened = await openExternalUrl(resp.browserUrl);
+            if (!opened) {
+              setElizaCloudLoginError(
+                `Couldn't open the sign-in browser. Open this link to log in: ${resp.browserUrl}`,
+              );
+            }
+          } else if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
               preserveOpener: true,
             });
