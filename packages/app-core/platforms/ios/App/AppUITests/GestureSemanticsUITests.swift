@@ -688,6 +688,24 @@ final class GestureSemanticsUITests: XCTestCase {
             }
             if markerValue(Self.detentPrefix, in: app) != nil {
                 completeFirstRunIfPresent(in: app)
+                let postProbePermission = completePermissionSetupIfPresent(
+                    in: app, waitForLateMount: true)
+                if postProbePermission == .blocked {
+                    XCTFail(
+                        "the fresh-install 'Set up Eliza' dialog mounted after "
+                            + "renderer readiness but its real 'Skip for now' "
+                            + "control could not close it"
+                    )
+                    throw XCTSkip(
+                        "permission onboarding blocked post-renderer readiness — "
+                            + "see firstrun-permissions-blocked artifacts"
+                    )
+                }
+                if postProbePermission == .skipped {
+                    // The placement question can mount only after permissions
+                    // release the shell. Reconcile that real user flow once.
+                    completeFirstRunIfPresent(in: app)
+                }
                 return
             }
             Thread.sleep(forTimeInterval: 1.0)
@@ -720,7 +738,8 @@ final class GestureSemanticsUITests: XCTestCase {
     /// real Skip control; the dialog label prevents this helper from consuming
     /// the later placement or tutorial onboarding choices.
     private func completePermissionSetupIfPresent(
-        in app: XCUIApplication
+        in app: XCUIApplication,
+        waitForLateMount: Bool = false
     ) -> FreshInstallPermissionOnboardingResult {
         let dialog = app.descendants(matching: .any).matching(
             NSPredicate(format: "label BEGINSWITH[c] 'Set up Eliza'")
@@ -729,15 +748,39 @@ final class GestureSemanticsUITests: XCTestCase {
             NSPredicate(format: "label == 'Skip for now'")
         ).firstMatch
 
-        let result = driveFreshInstallPermissionOnboarding(
-            dialogIsPresent: { dialog.exists },
-            skipIsHittable: { skip.exists && skip.isHittable },
-            tapSkip: {
-                self.attachScreenshot(named: "firstrun-permissions-present")
-                skip.tap()
-            },
-            waitForNextPoll: { Thread.sleep(forTimeInterval: 1.0) }
-        )
+        let dialogIsPresent = { dialog.exists }
+        let skipIsHittable = { skip.exists && skip.isHittable }
+        let tapSkip = {
+            self.attachScreenshot(named: "firstrun-permissions-present")
+            skip.tap()
+        }
+        let waitForNextPoll = { Thread.sleep(forTimeInterval: 1.0) }
+        let result: FreshInstallPermissionOnboardingResult
+        if waitForLateMount {
+            let webView = app.webViews.firstMatch
+            let composerCandidates = [
+                webView.textViews.firstMatch,
+                webView.textFields.firstMatch,
+                app.textViews.firstMatch,
+                app.textFields.firstMatch,
+            ]
+            result = driveFreshInstallPermissionOnboardingAfterRendererReady(
+                dialogIsPresent: dialogIsPresent,
+                skipIsHittable: skipIsHittable,
+                interactionIsReady: {
+                    composerCandidates.contains { $0.exists && $0.isHittable }
+                },
+                tapSkip: tapSkip,
+                waitForNextPoll: waitForNextPoll
+            )
+        } else {
+            result = driveFreshInstallPermissionOnboarding(
+                dialogIsPresent: dialogIsPresent,
+                skipIsHittable: skipIsHittable,
+                tapSkip: tapSkip,
+                waitForNextPoll: waitForNextPoll
+            )
+        }
 
         switch result {
         case .skipped:

@@ -73,7 +73,57 @@ private func testDialogDisappearsBeforeSkipBecomesHittable() {
     expect(waitCount == 1, "the helper must observe the asynchronous dismissal")
 }
 
+private func testRendererReadyBeforeDialogMountStillUsesSkip() {
+    var dialogPresent = false
+    var interactionReady = false
+    var skipTapped = false
+    var tapCount = 0
+    var waitCount = 0
+    let result = driveFreshInstallPermissionOnboardingAfterRendererReady(
+        dialogIsPresent: { dialogPresent },
+        skipIsHittable: { dialogPresent },
+        interactionIsReady: { interactionReady },
+        tapSkip: {
+            tapCount += 1
+            skipTapped = true
+        },
+        waitForNextPoll: {
+            waitCount += 1
+            if waitCount == 1 { dialogPresent = true }
+            if skipTapped {
+                dialogPresent = false
+                interactionReady = true
+            }
+        }
+    )
+
+    expect(
+        result == .skipped,
+        "a permission dialog mounted after renderer readiness must still be skipped"
+    )
+    expect(tapCount == 1, "the late genuine Skip control must be tapped once")
+    expect(waitCount == 2, "the helper must observe late mount and dismissal")
+}
+
+private func testInteractiveRendererWithoutDialogDoesNotWait() {
+    var tapCount = 0
+    var waitCount = 0
+    let result = driveFreshInstallPermissionOnboardingAfterRendererReady(
+        dialogIsPresent: { false },
+        skipIsHittable: { false },
+        interactionIsReady: { true },
+        tapSkip: { tapCount += 1 },
+        waitForNextPoll: { waitCount += 1 }
+    )
+
+    expect(result == .absent, "an interactive renderer needs no onboarding action")
+    expect(tapCount == 0, "an absent late dialog must not tap another control")
+    expect(waitCount == 0, "an interactive renderer must not incur a grace delay")
+}
+
 testDialogAbsentDoesNothing()
 testDialogPresentUsesSkipAndWaitsForDismissal()
 testDialogDisappearsBeforeSkipBecomesHittable()
-print("fresh-install AppUITest helper: 3/3 PASS")
+testRendererReadyBeforeDialogMountStillUsesSkip()
+testInteractiveRendererWithoutDialogDoesNotWait()
+print("fresh-install AppUITest helper: 5/5 PASS")
