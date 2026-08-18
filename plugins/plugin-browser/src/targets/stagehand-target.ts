@@ -108,6 +108,26 @@ export const STAGEHAND_PROBE_TIMEOUT_MS = 5_000;
  * hardcoded command bound.
  */
 export const STAGEHAND_COMMAND_TIMEOUT_MS = 30_000;
+export const STAGEHAND_COMMAND_TIMEOUT_GRACE_MS = 5_000;
+
+/** Keeps the transport alive long enough for commands with their own longer deadline. */
+export function resolveStagehandCommandTimeoutMs(
+  command: BrowserWorkspaceCommand,
+  defaultTimeoutMs: number = STAGEHAND_COMMAND_TIMEOUT_MS,
+): number {
+  const requestedTimeoutMs = command.timeoutMs;
+  if (
+    typeof requestedTimeoutMs !== "number" ||
+    !Number.isFinite(requestedTimeoutMs) ||
+    requestedTimeoutMs < 0
+  ) {
+    return defaultTimeoutMs;
+  }
+  return Math.max(
+    defaultTimeoutMs,
+    requestedTimeoutMs + STAGEHAND_COMMAND_TIMEOUT_GRACE_MS,
+  );
+}
 
 export async function probeStagehandWithFetch(
   healthUrl: string,
@@ -135,7 +155,9 @@ export async function executeStagehandCommandWithFetch(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command }),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(
+      resolveStagehandCommandTimeoutMs(command, timeoutMs),
+    ),
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {

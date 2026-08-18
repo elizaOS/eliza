@@ -2,12 +2,19 @@
  * Behavioral Stagehand probe vs command deadlines. Executes health GET and
  * command POST under abort — not a source-grep of stagehand-target.ts.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", () => ({
+  logger: { debug: vi.fn(), info: vi.fn() },
+}));
+
 import {
-  STAGEHAND_COMMAND_TIMEOUT_MS,
-  STAGEHAND_PROBE_TIMEOUT_MS,
   executeStagehandCommandWithFetch,
   probeStagehandWithFetch,
+  resolveStagehandCommandTimeoutMs,
+  STAGEHAND_COMMAND_TIMEOUT_GRACE_MS,
+  STAGEHAND_COMMAND_TIMEOUT_MS,
+  STAGEHAND_PROBE_TIMEOUT_MS,
 } from "./stagehand-target.js";
 
 const HEALTH_URL = "https://stagehand.example/health";
@@ -30,6 +37,18 @@ describe("Stagehand probe vs command deadlines", () => {
     expect(STAGEHAND_PROBE_TIMEOUT_MS).toBe(5_000);
     expect(STAGEHAND_COMMAND_TIMEOUT_MS).toBe(30_000);
     expect(STAGEHAND_PROBE_TIMEOUT_MS).toBeLessThan(
+      STAGEHAND_COMMAND_TIMEOUT_MS,
+    );
+  });
+
+  it("extends the transport deadline for a command with a longer timeout", () => {
+    expect(
+      resolveStagehandCommandTimeoutMs({
+        subaction: "wait",
+        timeoutMs: 60_000,
+      }),
+    ).toBe(60_000 + STAGEHAND_COMMAND_TIMEOUT_GRACE_MS);
+    expect(resolveStagehandCommandTimeoutMs(COMMAND)).toBe(
       STAGEHAND_COMMAND_TIMEOUT_MS,
     );
   });
