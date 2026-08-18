@@ -136,6 +136,24 @@ describe("Google GenAI embedding usage accounting on billed-but-failing calls (#
     expect(mocks.emitModelUsageEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("still reports usage when a component is non-finite", async () => {
+    const values = Array(768).fill(0.5);
+    values[41] = Number.NaN;
+    mocks.embedContent.mockResolvedValue({ embeddings: [{ values }] });
+    const runtime = createRuntime();
+
+    await expect(handleTextEmbedding(runtime, "hello")).rejects.toMatchObject({
+      code: "EMBEDDING_NON_FINITE",
+    });
+    expect(mocks.emitModelUsageEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.emitModelUsageEvent).toHaveBeenCalledWith(
+      runtime,
+      "TEXT_EMBEDDING",
+      "hello",
+      EXPECTED_USAGE,
+    );
+  });
+
   it("reports usage exactly once on a failing call", async () => {
     mocks.embedContent.mockResolvedValue({ embeddings: [{ values: [] }] });
 
@@ -150,6 +168,18 @@ describe("Google GenAI embedding usage accounting on billed-but-failing calls (#
 
     await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
       /network exploded/,
+    );
+    expect(mocks.emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not meter an aborted provider call (AbortError)", async () => {
+    const abortError = Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    });
+    mocks.embedContent.mockRejectedValue(abortError);
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      /aborted/,
     );
     expect(mocks.emitModelUsageEvent).not.toHaveBeenCalled();
   });
