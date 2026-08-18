@@ -18,6 +18,7 @@
  * drivable + observable on a real device.
  */
 
+import { ElizaClient } from "../api";
 import { getTalkModePlugin } from "../bridge/native-plugins";
 import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import { AudioFramePump } from "./audio-frame-pump";
@@ -29,6 +30,10 @@ declare global {
 }
 
 const STATUS_PATH = "/api/voice/audio-frames/status";
+
+/** Diarization status GET is a short local-agent diagnostic hop. */
+const DIARIZATION_STATUS_TIMEOUT_MS = 15_000;
+const localAgentClient = new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
 
 export interface DiarizationPumpControl {
   start(): Promise<{
@@ -50,11 +55,11 @@ function getPump(): AudioFramePump {
 }
 
 async function fetchStatus(): Promise<unknown> {
-  const res = await fetch(`${MOBILE_LOCAL_AGENT_API_BASE}${STATUS_PATH}`, {
-    method: "GET",
-    headers: { accept: "application/json" },
-  });
-  return res.json();
+  return localAgentClient.fetch(
+    STATUS_PATH,
+    { method: "GET", headers: { accept: "application/json" } },
+    { timeoutMs: DIARIZATION_STATUS_TIMEOUT_MS },
+  );
 }
 
 /**
