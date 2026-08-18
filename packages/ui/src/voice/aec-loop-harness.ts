@@ -42,6 +42,16 @@ const FRAME_SAMPLES = 320; // 20 ms @ 16 kHz — the device wire frame size
 const SHIP_INTERVAL_MS = 200;
 const RESULT_FILENAME = "eliza-aec-loop-result.json";
 
+/** Independent UI hops — same 15s Fal #21205 family, separate deadlines. */
+export const AEC_LOOP_STATUS_GET_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_AEC_CAPTURE_GET_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_AEC_CAPTURE_POST_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_PLAYBACK_FRAMES_POST_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_AUDIO_FRAMES_POST_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_AUDIO_URL_GET_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_TTS_POST_TIMEOUT_MS = 15_000;
+export const AEC_LOOP_NEAR_END_AUDIO_GET_TIMEOUT_MS = 15_000;
+
 export interface AecLoopRunOptions {
   /** Text synthesized by the on-device TTS and played from the speaker. */
   ttsText?: string;
@@ -232,11 +242,15 @@ class WireFramer {
   }
 }
 
-async function postJson(path: string, body: unknown): Promise<unknown> {
-  const res = await fetch(resolveApiUrl(path), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+export async function getAecLoopJsonWithFetch(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  failPath: string,
+): Promise<unknown> {
+  const res = await fetchImpl(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   // error-policy:J3 body parse is best-effort context for the thrown error;
   // non-2xx always throws below with the status either way
@@ -244,14 +258,23 @@ async function postJson(path: string, body: unknown): Promise<unknown> {
   // HTTP status is the real signal (thrown below), the body is only diagnostic.
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(`${path} -> ${res.status} ${JSON.stringify(json)}`);
+    throw new Error(`${failPath} -> ${res.status} ${JSON.stringify(json)}`);
   }
   return json;
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const res = await fetch(resolveApiUrl(path), {
-    headers: { accept: "application/json" },
+export async function postAecLoopJsonWithFetch(
+  url: string,
+  body: unknown,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  failPath: string,
+): Promise<unknown> {
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   // error-policy:J3 body parse is best-effort context for the thrown error;
   // non-2xx always throws below with the status either way
@@ -259,9 +282,72 @@ async function getJson(path: string): Promise<unknown> {
   // HTTP status is the real signal (thrown below), the body is only diagnostic.
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(`${path} -> ${res.status} ${JSON.stringify(json)}`);
+    throw new Error(`${failPath} -> ${res.status} ${JSON.stringify(json)}`);
   }
   return json;
+}
+
+export async function getAecLoopAudioUrlWithFetch(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = AEC_LOOP_AUDIO_URL_GET_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  const res = await fetchImpl(url, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`audioUrl -> ${res.status}`);
+  return res.arrayBuffer();
+}
+
+export async function postAecLoopTtsWithFetch(
+  url: string,
+  body: { text: string },
+  fetchImpl: typeof fetch,
+  timeoutMs: number = AEC_LOOP_TTS_POST_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`tts -> ${res.status}`);
+  return res.arrayBuffer();
+}
+
+export async function getAecLoopNearEndAudioWithFetch(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = AEC_LOOP_NEAR_END_AUDIO_GET_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  const res = await fetchImpl(url, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`nearEndAudioUrl -> ${res.status}`);
+  return res.arrayBuffer();
+}
+
+async function postJson(
+  path: string,
+  body: unknown,
+  timeoutMs: number,
+): Promise<unknown> {
+  return postAecLoopJsonWithFetch(
+    resolveApiUrl(path),
+    body,
+    globalThis.fetch,
+    timeoutMs,
+    path,
+  );
+}
+
+async function getJson(path: string, timeoutMs: number): Promise<unknown> {
+  return getAecLoopJsonWithFetch(
+    resolveApiUrl(path),
+    globalThis.fetch,
+    timeoutMs,
+    path,
+  );
 }
 
 /** Best-effort native Documents sink (Capacitor Filesystem when present). */
@@ -332,7 +418,10 @@ async function runAecLoop(
     const bootDeadline = Date.now() + 300_000;
     for (;;) {
       try {
-        statusBefore = await getJson("/api/voice/audio-frames/status");
+        statusBefore = await getJson(
+          "/api/voice/audio-frames/status",
+          AEC_LOOP_STATUS_GET_TIMEOUT_MS,
+        );
         break;
       } catch (err) {
         // error-policy:J4 boot poll — retry until the deadline, then rethrow
@@ -343,7 +432,11 @@ async function runAecLoop(
     }
 
     log("arm aec-capture");
-    await postJson("/api/voice/aec-capture", { arm: true, maxSeconds });
+    await postJson(
+      "/api/voice/aec-capture",
+      { arm: true, maxSeconds },
+      AEC_LOOP_AEC_CAPTURE_POST_TIMEOUT_MS,
+    );
 
     log("getUserMedia (OS AEC disabled)");
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -382,18 +475,17 @@ async function runAecLoop(
     let ttsBytes: ArrayBuffer;
     if (options.audioUrl) {
       log(`fetch far-end audio from ${options.audioUrl}`);
-      const audioRes = await fetch(options.audioUrl);
-      if (!audioRes.ok) throw new Error(`audioUrl -> ${audioRes.status}`);
-      ttsBytes = await audioRes.arrayBuffer();
+      ttsBytes = await getAecLoopAudioUrlWithFetch(
+        options.audioUrl,
+        globalThis.fetch,
+      );
     } else {
       log("fetch TTS");
-      const ttsRes = await fetch(resolveApiUrl("/api/tts/local-inference"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: ttsText }),
-      });
-      if (!ttsRes.ok) throw new Error(`tts -> ${ttsRes.status}`);
-      ttsBytes = await ttsRes.arrayBuffer();
+      ttsBytes = await postAecLoopTtsWithFetch(
+        resolveApiUrl("/api/tts/local-inference"),
+        { text: ttsText },
+        globalThis.fetch,
+      );
     }
     const ttsBuffer = await ctx.decodeAudioData(ttsBytes.slice(0));
     log(
@@ -425,9 +517,11 @@ async function runAecLoop(
     let nearEndDurationMs: number | null = null;
     if (options.nearEndAudioUrl) {
       log(`fetch near-end audio from ${options.nearEndAudioUrl.slice(0, 64)}`);
-      const nearRes = await fetch(options.nearEndAudioUrl);
-      if (!nearRes.ok) throw new Error(`nearEndAudioUrl -> ${nearRes.status}`);
-      const nearBuffer = await ctx.decodeAudioData(await nearRes.arrayBuffer());
+      const nearBytes = await getAecLoopNearEndAudioWithFetch(
+        options.nearEndAudioUrl,
+        globalThis.fetch,
+      );
+      const nearBuffer = await ctx.decodeAudioData(nearBytes.slice(0));
       nearEndDurationMs = Math.round(nearBuffer.duration * 1000);
       nearSource = ctx.createBufferSource();
       nearSource.buffer = nearBuffer;
@@ -443,11 +537,19 @@ async function runAecLoop(
       const micFrames = micFramer.take();
       try {
         if (playFrames.length) {
-          await postJson("/api/voice/playback-frames", { frames: playFrames });
+          await postJson(
+            "/api/voice/playback-frames",
+            { frames: playFrames },
+            AEC_LOOP_PLAYBACK_FRAMES_POST_TIMEOUT_MS,
+          );
           playPosts += 1;
         }
         if (micFrames.length) {
-          await postJson("/api/voice/audio-frames", { frames: micFrames });
+          await postJson(
+            "/api/voice/audio-frames",
+            { frames: micFrames },
+            AEC_LOOP_AUDIO_FRAMES_POST_TIMEOUT_MS,
+          );
           micPosts += 1;
         }
       } catch (err) {
@@ -484,10 +586,24 @@ async function runAecLoop(
     clearInterval(shipTimer);
     await ship();
     log("final flush");
-    await postJson("/api/voice/audio-frames", { frames: [], flush: true });
-    const statusAfter = await getJson("/api/voice/audio-frames/status");
-    await postJson("/api/voice/aec-capture", { disarm: true });
-    const aecCapture = await getJson("/api/voice/aec-capture");
+    await postJson(
+      "/api/voice/audio-frames",
+      { frames: [], flush: true },
+      AEC_LOOP_AUDIO_FRAMES_POST_TIMEOUT_MS,
+    );
+    const statusAfter = await getJson(
+      "/api/voice/audio-frames/status",
+      AEC_LOOP_STATUS_GET_TIMEOUT_MS,
+    );
+    await postJson(
+      "/api/voice/aec-capture",
+      { disarm: true },
+      AEC_LOOP_AEC_CAPTURE_POST_TIMEOUT_MS,
+    );
+    const aecCapture = await getJson(
+      "/api/voice/aec-capture",
+      AEC_LOOP_AEC_CAPTURE_GET_TIMEOUT_MS,
+    );
 
     track?.stop();
     micTap.disconnect();
