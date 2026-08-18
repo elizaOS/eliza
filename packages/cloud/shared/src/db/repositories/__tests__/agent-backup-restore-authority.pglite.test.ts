@@ -17,7 +17,7 @@ import {
   computeAgentBackupChunkAadDigest,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -858,6 +858,46 @@ describe("strict restore catalogue authority", () => {
       .set({ state: "quarantined" })
       .where(eq(agentBackupObjects.copy_role, "secondary"));
     await expect(loadAgentBackupRestoreSourceV3(secondaryAuthority)).rejects.toThrow("coverage");
+  });
+
+  test("surfaces a cross-backup attempt replay as an explicit authority mismatch", async () => {
+    await insertSource("protected");
+    const BACKUP_B = "00000000-0000-4000-8000-00000000d0b2";
+    const OPERATION_B = "00000000-0000-4000-8000-00000000d0b4";
+    await dbWrite.execute(
+      sql.raw(`INSERT INTO agent_sandbox_backups
+        SELECT (jsonb_populate_record(b,
+          '{"id": "${BACKUP_B}", "backup_operation_id": "${OPERATION_B}",
+             "operation_key_bundle_ref": "backup-key-bundle:${OPERATION_B}"}'::jsonb)).*
+        FROM agent_sandbox_backups AS b WHERE b.id = '${BACKUP_ID}'`),
+    );
+    await dbWrite.execute(
+      sql.raw(`INSERT INTO agent_vault_key_backup_bindings
+        SELECT (jsonb_populate_record(v,
+          '{"backup_id": "${BACKUP_B}", "operation_id": "${OPERATION_B}"}'::jsonb)).*
+        FROM agent_vault_key_backup_bindings AS v WHERE v.backup_id = '${BACKUP_ID}'`),
+    );
+    const acquireInput = {
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: SHA,
+      copyRole: "primary",
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d0b3",
+      ownerId: "restore-worker",
+      leaseMs: 60_000,
+    } as const;
+    const first = await acquireAgentBackupRestoreLease(acquireInput);
+    expect(first.status).toBe("acquired");
+    await expect(
+      acquireAgentBackupRestoreLease({
+        ...acquireInput,
+        backupId: BACKUP_B,
+        operationId: OPERATION_B,
+      }),
+    ).rejects.toThrow("Restore attempt replay authority mismatch");
   });
 
   test("returns exact DB-clock authority across acquire and renewal response loss", async () => {

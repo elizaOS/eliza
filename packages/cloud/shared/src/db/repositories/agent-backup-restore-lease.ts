@@ -69,8 +69,10 @@ function leaseAuthorityReceipt(
 }
 
 function requireUuid(value: string, field: string): string {
-  if (!isValidUUID(value)) throw new Error(`${field} must be a canonical UUID`);
-  return value.toLowerCase();
+  if (!isValidUUID(value) || value !== value.toLowerCase()) {
+    throw new Error(`${field} must be a canonical lowercase UUID`);
+  }
+  return value;
 }
 
 function requireCanonicalUint64(value: string, field: string): bigint {
@@ -200,7 +202,6 @@ export async function acquireAgentBackupRestoreLease(params: {
         and(
           eq(agentBackupRestoreLeases.organization_id, params.organizationId),
           eq(agentBackupRestoreLeases.restore_attempt_id, params.restoreAttemptId),
-          eq(agentBackupRestoreLeases.backup_id, params.backupId),
         ),
       )
       .for("update")
