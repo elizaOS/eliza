@@ -14,6 +14,7 @@ describe("operator SSH backfill workflow", () => {
     expect(workflow).toContain('actual_count" != "$EXPECTED_HOST_COUNT"');
     expect(workflow).toContain("Unsupported environment and target-class combination");
     expect(workflow).toContain("apps-host-key-inspection:production");
+    expect(workflow).toContain('select(.public_net.ipv4.ip != $control_host)');
   });
 
   test("requires independently pinned host keys and never weakens verification", () => {

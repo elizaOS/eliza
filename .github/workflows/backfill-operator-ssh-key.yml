@@ -68,7 +68,7 @@ jobs:
           required=(OPERATOR_PUBLIC_KEY OPERATOR_KNOWN_HOSTS)
           case "$TARGET_CLASS" in
             control-plane) required+=(PROVISIONING_HOST PROVISIONING_SSH_KEY) ;;
-            data-plane) required+=(HCLOUD_TOKEN CONTAINERS_SSH_KEY) ;;
+            data-plane) required+=(HCLOUD_TOKEN CONTAINERS_SSH_KEY PROVISIONING_HOST) ;;
             apps-host-key-inspection) required+=(HCLOUD_TOKEN APPS_SSH_KEY APPS_CONTROL_HOST PIN_ARTIFACT_KEY) ;;
             apps) required+=(HCLOUD_TOKEN APPS_SSH_KEY APPS_CONTROL_HOST) ;;
           esac
@@ -122,8 +122,8 @@ jobs:
                 -H "Authorization: Bearer $HCLOUD_TOKEN" \
                 'https://api.hetzner.cloud/v1/servers?per_page=50'; } 2>/dev/null)"
               if [ "$TARGET_CLASS" = data-plane ]; then
-                jq -r --arg env "$TARGET_ENVIRONMENT" \
-                  '.servers[] | select(.status == "running") | select(.name | test("^eliza-core-" + $env + "-[0-9]+$")) | [.public_net.ipv4.ip, "direct"] | @tsv' \
+                jq -r --arg control_host "$PROVISIONING_HOST" \
+                  '.servers[] | select(.status == "running") | select(.public_net.ipv4.ip != $control_host) | [.public_net.ipv4.ip, "direct"] | @tsv' \
                   <<<"$response" > "$targets_path"
               elif [ "$TARGET_CLASS" = apps-host-key-inspection ]; then
                 jq -r \
