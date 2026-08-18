@@ -131,6 +131,32 @@ describe("managed payment clients", () => {
     });
   });
 
+  it("rejects malformed successful Plaid responses before they reach local storage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          connectionId: undefined,
+          environment: "sandbox",
+          institution: { institutionId: "ins-1", institutionName: "Bank", accounts: [] },
+        })
+      )
+    );
+    const client = new PlaidManagedClient(() => ({
+      configured: true,
+      apiKey: "eliza_test",
+      apiBaseUrl: "https://cloud.example/api",
+      siteUrl: "https://cloud.example",
+    }));
+
+    await expect(client.exchangePublicToken({ publicToken: "public-token" })).rejects.toMatchObject(
+      {
+        status: 502,
+        message: "Eliza Cloud returned an invalid Plaid response.",
+      } satisfies Partial<PlaidManagedClientError>
+    );
+  });
+
   it("preserves PayPal csv fallback hints on merchant API failures", async () => {
     vi.stubGlobal(
       "fetch",

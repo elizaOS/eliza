@@ -34,6 +34,11 @@ interface PlaidConnectionStore {
     scopes: string[];
     metadata: VendorConnectionMetadata;
   }): Promise<VendorConnection>;
+  findByVendorLabel(
+    organizationId: string,
+    vendor: string,
+    label: string | null,
+  ): Promise<VendorConnection | null>;
   findActiveByIdForOrganization(
     id: string,
     organizationId: string,
@@ -107,6 +112,31 @@ export class PlaidConnectionService {
       });
       return { connectionId: connection.id, institution, environment };
     } catch (error) {
+      // A duplicate exchange or failed update can refer to an Item already
+      // owned by this organization. Revoking that Item would invalidate the
+      // authoritative stored connection, so compensate only when no matching
+      // connection was adopted by this or a concurrent request.
+      let safeToRevoke = false;
+      try {
+        safeToRevoke =
+          (await this.store.findByVendorLabel(
+            args.organizationId,
+            PLAID_VENDOR,
+            exchanged.itemId,
+          )) === null;
+      } catch (lookupError) {
+        // error-policy:J6 cleanup eligibility is best-effort; an ambiguous
+        // lookup must preserve a potentially authoritative upstream Item.
+        logger.warn(
+          "[PlaidConnectionService] Could not verify whether failed exchange was adopted",
+          {
+            error: lookupError instanceof Error ? lookupError.message : "unknown lookup failure",
+          },
+        );
+      }
+      if (!safeToRevoke) {
+        throw error;
+      }
       try {
         await this.protocol.remove(exchanged.accessToken);
       } catch (cleanupError) {

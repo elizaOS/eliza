@@ -54,6 +54,7 @@ function connection(overrides: Partial<VendorConnection> = {}): VendorConnection
 function harness(existing: VendorConnection | null = connection()) {
   const store = {
     upsertOrgBoundAccessToken: mock(async () => connection()),
+    findByVendorLabel: mock(async () => null as VendorConnection | null),
     findActiveByIdForOrganization: mock(async () => existing),
     getOrgBoundAccessToken: mock(async () => "plaid-secret-token"),
     deleteActiveByIdForOrganization: mock(async () => true),
@@ -117,6 +118,17 @@ describe("PlaidConnectionService", () => {
       service.exchange({ organizationId: "org-a", publicToken: "public-token" }),
     ).rejects.toThrow("storage unavailable");
     expect(protocol.remove).toHaveBeenCalledWith("plaid-secret-token");
+  });
+
+  test("does not revoke an Item already adopted by an authoritative connection", async () => {
+    const { service, store, protocol } = harness();
+    store.upsertOrgBoundAccessToken.mockRejectedValueOnce(new Error("storage unavailable"));
+    store.findByVendorLabel.mockResolvedValueOnce(connection());
+
+    await expect(
+      service.exchange({ organizationId: "org-a", publicToken: "public-token" }),
+    ).rejects.toThrow("storage unavailable");
+    expect(protocol.remove).not.toHaveBeenCalled();
   });
 
   test("fails cross-organization lookup without decrypting or calling Plaid", async () => {

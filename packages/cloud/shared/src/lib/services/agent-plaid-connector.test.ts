@@ -90,6 +90,41 @@ describe("agent Plaid connector protocol boundary", () => {
     expect(JSON.stringify(caught)).not.toContain("public-sandbox-1");
   });
 
+  test("redacts credentials echoed by an upstream error", async () => {
+    configurePlaid();
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          error_code: "INVALID_REQUEST",
+          error_message: "server-secret public-sandbox-1 must not escape",
+        },
+        { status: 400 },
+      ),
+    ) as typeof fetch;
+
+    await expect(
+      exchangePlaidPublicToken({ publicToken: "public-sandbox-1" }),
+    ).rejects.toMatchObject({
+      message: "[REDACTED] [REDACTED] must not escape",
+    });
+  });
+
+  test("bounds upstream fetch duration and translates timeout failures", async () => {
+    configurePlaid();
+    globalThis.fetch = mock(async (_input, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("provider-controlled detail", "TimeoutError");
+    }) as typeof fetch;
+
+    await expect(
+      exchangePlaidPublicToken({ publicToken: "public-sandbox-1" }),
+    ).rejects.toMatchObject({
+      status: 504,
+      code: "UPSTREAM_TIMEOUT",
+      message: "Plaid /item/public_token/exchange timed out.",
+    });
+  });
+
   test("preserves revoked-auth errors without exposing the Item token", async () => {
     configurePlaid();
     globalThis.fetch = mock(async () =>

@@ -20,6 +20,7 @@
 import { z } from "zod";
 
 const PLAID_DEFAULT_HOST = "https://sandbox.plaid.com";
+const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 
 export class AgentPlaidConnectorError extends Error {
   readonly status: number;
@@ -134,15 +135,29 @@ async function plaidPost<TSchema extends z.ZodType>(
   body: Record<string, unknown>,
   responseSchema: TSchema,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(`${config.host}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: config.clientId,
-      secret: config.secret,
-      ...body,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${config.host}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: config.clientId,
+        secret: config.secret,
+        ...body,
+      }),
+      signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // error-policy:J1 network failures are translated without reflecting
+    // request bodies, credentials, or provider-controlled exception text.
+    const timedOut =
+      error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+    throw new AgentPlaidConnectorError(
+      timedOut ? 504 : 502,
+      timedOut ? `Plaid ${path} timed out.` : `Plaid ${path} request failed.`,
+      timedOut ? "UPSTREAM_TIMEOUT" : "UPSTREAM_NETWORK_ERROR",
+    );
+  }
   if (!response.ok) {
     let errorMessage = `Plaid ${path} failed with ${response.status}`;
     let errorCode: string | null = null;
@@ -152,9 +167,22 @@ async function plaidPost<TSchema extends z.ZodType>(
         error_message?: string;
         display_message?: string;
       };
-      errorMessage =
-        data.display_message ?? data.error_message ?? `${data.error_code ?? errorMessage}`;
-      errorCode = data.error_code ?? null;
+      const providerMessage = data.display_message ?? data.error_message;
+      if (typeof providerMessage === "string") {
+        errorMessage = providerMessage.slice(0, 240);
+        for (const secret of [
+          config.clientId,
+          config.secret,
+          ...Object.values(body).filter(
+            (value): value is string => typeof value === "string" && value.length > 0,
+          ),
+        ]) {
+          errorMessage = errorMessage.replaceAll(secret, "[REDACTED]");
+        }
+      } else if (typeof data.error_code === "string") {
+        errorMessage = data.error_code.slice(0, 120);
+      }
+      errorCode = typeof data.error_code === "string" ? data.error_code.slice(0, 120) : null;
     } catch {
       // error-policy:J3 malformed upstream error bodies become a bounded,
       // non-secret status message rather than fabricated structured data.

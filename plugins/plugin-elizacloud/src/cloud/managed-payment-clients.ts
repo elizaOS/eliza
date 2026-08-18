@@ -60,7 +60,10 @@ export class PaypalManagedClientError extends Error {
   }
 }
 
-async function readPlaidJson<T>(response: Response): Promise<T> {
+async function readPlaidJson<T>(
+  response: Response,
+  validate: (value: unknown) => value is T,
+): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`.trim();
     const text = await response.text();
@@ -77,7 +80,105 @@ async function readPlaidJson<T>(response: Response): Promise<T> {
     }
     throw new PlaidManagedClientError(response.status, detail);
   }
-  return (await response.json()) as T;
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    // error-policy:J1 malformed Cloud responses become a typed client failure.
+    throw new PlaidManagedClientError(502, "Eliza Cloud returned invalid Plaid JSON.");
+  }
+  if (!validate(value)) {
+    throw new PlaidManagedClientError(502, "Eliza Cloud returned an invalid Plaid response.");
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPlaidEnvironment(value: unknown): value is PlaidLinkTokenResponse["environment"] {
+  return value === "sandbox" || value === "development" || value === "production";
+}
+
+function isPlaidLinkTokenResponse(value: unknown): value is PlaidLinkTokenResponse {
+  return (
+    isRecord(value) &&
+    typeof value.linkToken === "string" &&
+    value.linkToken.length > 0 &&
+    typeof value.expiration === "string" &&
+    isPlaidEnvironment(value.environment)
+  );
+}
+
+function isPlaidExchangeResponse(value: unknown): value is PlaidExchangeResponse {
+  if (!isRecord(value) || !isPlaidEnvironment(value.environment) || !isRecord(value.institution)) {
+    return false;
+  }
+  const institution = value.institution;
+  return (
+    typeof value.connectionId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.connectionId,
+    ) &&
+    typeof institution.institutionId === "string" &&
+    typeof institution.institutionName === "string" &&
+    (institution.primaryAccountMask === null || typeof institution.primaryAccountMask === "string") &&
+    Array.isArray(institution.accounts) &&
+    institution.accounts.every(
+      (account) =>
+        isRecord(account) &&
+        typeof account.accountId === "string" &&
+        typeof account.name === "string" &&
+        (account.mask === null || typeof account.mask === "string") &&
+        typeof account.type === "string" &&
+        (account.subtype === null || typeof account.subtype === "string"),
+    )
+  );
+}
+
+function isPlaidTransaction(value: unknown): value is PlaidTransactionDto {
+  return (
+    isRecord(value) &&
+    typeof value.transaction_id === "string" &&
+    typeof value.account_id === "string" &&
+    typeof value.amount === "number" &&
+    Number.isFinite(value.amount) &&
+    (value.iso_currency_code === null || typeof value.iso_currency_code === "string") &&
+    (value.unofficial_currency_code === null ||
+      typeof value.unofficial_currency_code === "string") &&
+    typeof value.date === "string" &&
+    (value.authorized_date === null || typeof value.authorized_date === "string") &&
+    typeof value.name === "string" &&
+    (value.merchant_name === null || typeof value.merchant_name === "string") &&
+    typeof value.pending === "boolean" &&
+    (value.category === null ||
+      (Array.isArray(value.category) && value.category.every((entry) => typeof entry === "string"))) &&
+    (value.personal_finance_category === null ||
+      (isRecord(value.personal_finance_category) &&
+        typeof value.personal_finance_category.primary === "string" &&
+        typeof value.personal_finance_category.detailed === "string"))
+  );
+}
+
+function isPlaidSyncResponse(value: unknown): value is PlaidSyncResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.added) &&
+    value.added.every(isPlaidTransaction) &&
+    Array.isArray(value.modified) &&
+    value.modified.every(isPlaidTransaction) &&
+    Array.isArray(value.removed) &&
+    value.removed.every(
+      (entry) => isRecord(entry) && typeof entry.transaction_id === "string",
+    ) &&
+    typeof value.nextCursor === "string" &&
+    typeof value.hasMore === "boolean"
+  );
+}
+
+function isPlaidRevokeResponse(value: unknown): value is { revoked: true } {
+  return isRecord(value) && value.revoked === true;
 }
 
 async function readPaypalJson<T>(response: Response): Promise<T> {
@@ -184,7 +285,7 @@ export class PlaidManagedClient {
         signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
       },
     );
-    return readPlaidJson<PlaidLinkTokenResponse>(response);
+    return readPlaidJson(response, isPlaidLinkTokenResponse);
   }
 
   async exchangePublicToken(args: {
@@ -203,7 +304,7 @@ export class PlaidManagedClient {
         signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
       },
     );
-    return readPlaidJson<PlaidExchangeResponse>(response);
+    return readPlaidJson(response, isPlaidExchangeResponse);
   }
 
   async syncTransactions(args: {
@@ -225,7 +326,7 @@ export class PlaidManagedClient {
       }),
       signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS * 2),
     });
-    return readPlaidJson<PlaidSyncResponse>(response);
+    return readPlaidJson(response, isPlaidSyncResponse);
   }
 
   async revokeConnection(args: {
@@ -241,7 +342,7 @@ export class PlaidManagedClient {
       body: JSON.stringify({ connectionId: args.connectionId }),
       signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
     });
-    return readPlaidJson<{ revoked: true }>(response);
+    return readPlaidJson(response, isPlaidRevokeResponse);
   }
 }
 
