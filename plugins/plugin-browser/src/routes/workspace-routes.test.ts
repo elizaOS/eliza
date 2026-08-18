@@ -98,6 +98,40 @@ describe("browser workspace HTTP routes", () => {
     expect(res.body).toEqual({ error: "subaction is required" });
   });
 
+  it("normalizes an operation-only command past subaction validation", async () => {
+    // Regression (#22194): the route validated `subaction` before
+    // normalization, so a documented `operation` alias with no `subaction`
+    // was rejected with 400 instead of resolving and reaching the executor.
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: { operation: "navigate", url: "about:blank" },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    // No current tab exists, so the normalized `navigate` reaches the executor
+    // and surfaces the target-missing contract rather than a 400.
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      code: "target_missing",
+      error: expect.stringContaining("requires a current tab"),
+    });
+  });
+
+  it("rejects a whitespace-only subaction with 400", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: { subaction: "   " },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: "subaction is required" });
+  });
+
   it("rejects non-object command payloads", async () => {
     const { ctx, res } = buildCtx({
       method: "POST",

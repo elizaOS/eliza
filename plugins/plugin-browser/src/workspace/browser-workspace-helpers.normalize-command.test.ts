@@ -63,6 +63,37 @@ describe("normalizeBrowserWorkspaceCommand", () => {
     ).toBe("list");
   });
 
+  it("treats a whitespace-only subaction as absent and honors operation", () => {
+    // Regression (#22194): a trimmed-empty `subaction` must not mask a valid
+    // `operation`; it previously restored the raw whitespace and hit the
+    // router's Unsupported branch.
+    expect(
+      normalizeBrowserWorkspaceCommand(
+        cmd({ subaction: "   ", operation: "click" }),
+      ).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(
+        cmd({ subaction: "\t\n", operation: " GOTO " }),
+      ).subaction,
+    ).toBe("navigate");
+  });
+
+  it("lets a non-empty subaction take precedence over operation", () => {
+    // Pin the collision/precedence contract: when both fields are present and
+    // non-empty, `subaction` wins and is still canonicalized.
+    expect(
+      normalizeBrowserWorkspaceCommand(
+        cmd({ subaction: "CLICK", operation: "fill" }),
+      ).subaction,
+    ).toBe("click");
+    expect(
+      normalizeBrowserWorkspaceCommand(
+        cmd({ subaction: 42, operation: " FILL " }),
+      ).subaction,
+    ).toBe("fill");
+  });
+
   it("canonicalizes case and whitespace for a non-alias subaction", () => {
     // Regression (#22194): a non-lowercase/untrimmed subaction was passed
     // through raw, so the router's lowercase switch cases missed it.

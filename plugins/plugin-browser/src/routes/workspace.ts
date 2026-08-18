@@ -13,7 +13,10 @@ import {
   createBrowserWorkspaceError,
   isBrowserWorkspaceError,
 } from "../workspace/browser-workspace-errors.js";
-import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
+import {
+  assertBrowserWorkspaceUserScriptAllowed,
+  normalizeBrowserWorkspaceCommand,
+} from "../workspace/browser-workspace-helpers.js";
 import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
@@ -242,16 +245,23 @@ export async function handleBrowserWorkspaceRoutes(
       if (!isBrowserWorkspaceRouteBodyObject(body)) {
         return rejectMalformedBrowserWorkspacePayload(ctx);
       }
-      if (!body?.subaction) {
+      // Normalize once at the boundary so `operation` aliases and
+      // case/whitespace variants resolve before subaction validation and
+      // account-gating, matching the action path's canonicalization.
+      const command = normalizeBrowserWorkspaceCommand(body);
+      if (
+        typeof command.subaction !== "string" ||
+        command.subaction.trim().length === 0
+      ) {
         json(res, { error: "subaction is required" }, 400);
         return true;
       }
       await assertBrowserWorkspaceCommandConnectorAccountGate({
         runtime: ctx.state?.runtime ?? null,
-        command: body,
+        command,
         operation: "browser workspace command",
       });
-      json(res, await executeBrowserWorkspaceCommand(body));
+      json(res, await executeBrowserWorkspaceCommand(command));
       return true;
     }
 
