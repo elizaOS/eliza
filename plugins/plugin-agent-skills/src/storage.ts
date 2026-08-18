@@ -16,7 +16,7 @@
  * directory.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { unzipSync } from "fflate";
 import { parseFrontmatter, validateFrontmatter } from "./parser";
 import type { Skill } from "./types";
@@ -329,15 +329,42 @@ export class FileSystemSkillStore implements ISkillStorage {
 	async listSkills(): Promise<string[]> {
 		if (!this.fs || !this.path) await this.initialize();
 		const { fs, path } = this.requireNodeModules();
+		const resolvedBase = path.resolve(this.basePath);
 		const entries = fs.readdirSync(this.basePath, {
 			withFileTypes: true,
 		});
-		return entries
-			.filter((e) => e.isDirectory() && !e.name.startsWith("."))
-			.filter((e) =>
-				fs.existsSync(path.join(this.basePath, e.name, "SKILL.md")),
-			)
-			.map((e) => e.name);
+		const slugs: string[] = [];
+		for (const entry of entries) {
+			if (
+				!entry.isDirectory() ||
+				entry.name.startsWith(".") ||
+				!isPortableSkillStorageSlug(entry.name)
+			) {
+				continue;
+			}
+			const skillDir = resolveSkillDirectory(path, resolvedBase, entry.name);
+			const skillPath = path.join(skillDir, "SKILL.md");
+			if (!fs.existsSync(skillPath)) continue;
+			try {
+				assertSkillTargetRealPathContained(
+					fs,
+					path,
+					resolvedBase,
+					skillDir,
+					skillPath,
+					entry.name,
+				);
+			} catch (error) {
+				// error-policy:J3 A stored entry that crosses its skill boundary is
+				// explicitly invalid and omitted; unrelated valid skills remain usable.
+				if (error instanceof ElizaError && error.code === "SKILL_PATH_TRAVERSAL") {
+					continue;
+				}
+				throw error;
+			}
+			slugs.push(entry.name);
+		}
+		return slugs;
 	}
 
 	async hasSkill(slug: string): Promise<boolean> {
@@ -351,7 +378,14 @@ export class FileSystemSkillStore implements ISkillStorage {
 			path.join(skillDir, "SKILL.md"),
 			"SKILL.md",
 		);
-		assertExistingRealPathContained(fs, path, resolvedBase, skillPath, slug);
+		assertSkillTargetRealPathContained(
+			fs,
+			path,
+			resolvedBase,
+			skillDir,
+			skillPath,
+			slug,
+		);
 		return fs.existsSync(skillPath);
 	}
 
@@ -367,7 +401,14 @@ export class FileSystemSkillStore implements ISkillStorage {
 			"SKILL.md",
 		);
 		if (!fs.existsSync(skillPath)) return null;
-		assertExistingRealPathContained(fs, path, resolvedBase, skillPath, slug);
+		assertSkillTargetRealPathContained(
+			fs,
+			path,
+			resolvedBase,
+			skillDir,
+			skillPath,
+			slug,
+		);
 
 		return fs.readFileSync(skillPath, "utf-8");
 	}
@@ -389,10 +430,11 @@ export class FileSystemSkillStore implements ISkillStorage {
 		);
 
 		if (!fs.existsSync(fullPath)) return null;
-		assertExistingRealPathContained(
+		assertSkillTargetRealPathContained(
 			fs,
 			path,
 			resolvedBase,
+			skillDir,
 			fullPath,
 			relativePath,
 		);
@@ -420,7 +462,14 @@ export class FileSystemSkillStore implements ISkillStorage {
 			: skillDir;
 
 		if (!fs.existsSync(dirPath)) return [];
-		assertExistingRealPathContained(fs, path, resolvedBase, dirPath, subdir ?? slug);
+		assertSkillTargetRealPathContained(
+			fs,
+			path,
+			resolvedBase,
+			skillDir,
+			dirPath,
+			subdir ?? slug,
+		);
 
 		return fs.readdirSync(dirPath).filter((f) => !f.startsWith("."));
 	}
@@ -479,16 +528,46 @@ export class FileSystemSkillStore implements ISkillStorage {
 			fs.renameSync(stagingDir, skillDir);
 			installed = true;
 			if (movedExisting) {
-				fs.rmSync(backupDir, { recursive: true, force: true });
+				try {
+					fs.rmSync(backupDir, { recursive: true, force: true });
+				} catch (cause) {
+					// error-policy:J6 The validated replacement is already live. Old
+					// backup cleanup is best-effort and must not report installation failure.
+					logger.warn(
+						`[FileSystemSkillStore] Failed to remove replaced skill backup: ${cause instanceof Error ? cause.message : String(cause)}`,
+					);
+				}
 			}
 		} catch (error) {
+			// error-policy:J2 A rollback failure is wrapped with both causes; after a
+			// successful rollback, the authoritative staging/swap failure propagates.
 			if (movedExisting && !installed && !fs.existsSync(skillDir)) {
-				fs.renameSync(backupDir, skillDir);
+				try {
+					fs.renameSync(backupDir, skillDir);
+				} catch (rollbackCause) {
+					throw new ElizaError("Failed to restore skill after replacement failure", {
+						code: "SKILL_STORAGE_ROLLBACK_FAILED",
+						context: { slug: pkg.slug },
+						severity: "fatal",
+						cause: new AggregateError(
+							[error, rollbackCause],
+							"Skill replacement and rollback both failed",
+						),
+					});
+				}
 			}
 			throw error;
 		} finally {
 			if (!installed) {
-				fs.rmSync(stagingDir, { recursive: true, force: true });
+				try {
+					fs.rmSync(stagingDir, { recursive: true, force: true });
+				} catch (cause) {
+					// error-policy:J6 A failed install is already being propagated; staging
+					// cleanup is best-effort and must not mask the authoritative failure.
+					logger.warn(
+						`[FileSystemSkillStore] Failed to remove skill staging directory: ${cause instanceof Error ? cause.message : String(cause)}`,
+					);
+				}
 			}
 		}
 	}
@@ -755,20 +834,31 @@ function resolveContainedPath(
 /**
  * Keep the storage key to one portable directory component. Domain-level
  * skill-name validation is intentionally stricter and remains owned by the
- * service boundary; this lower-level guard only prevents filesystem escape.
+ * service boundary; this lower-level guard prevents escape and cross-platform
+ * aliases such as reserved Win32 device stems.
  */
 function assertSkillStorageSlug(slug: string): void {
+	if (!isPortableSkillStorageSlug(slug)) {
+		throwSkillPathTraversal(slug);
+	}
+}
+
+/** Whether a storage key names the same single directory on every platform. */
+function isPortableSkillStorageSlug(slug: string): boolean {
 	if (
 		!slug ||
 		slug === "." ||
 		slug === ".." ||
 		slug.includes("/") ||
 		slug.includes("\\") ||
+		slug.includes(":") ||
 		slug.includes("\0") ||
-		/^[A-Za-z]:/.test(slug)
+		/[. ]$/.test(slug)
 	) {
-		throwSkillPathTraversal(slug);
+		return false;
 	}
+	const stem = slug.split(".", 1)[0].toUpperCase();
+	return !WINDOWS_RESERVED_STEMS.has(stem);
 }
 
 /** Resolve a portable skill slug beneath the configured storage root. */
@@ -785,7 +875,9 @@ function resolveSkillDirectory(
  * Reject an existing target whose real path escapes through a symlink. Lexical
  * containment alone is insufficient for public read/write helpers because an
  * otherwise safe child directory can be replaced with a link to arbitrary
- * host files.
+ * host files. This rejects stored links at operation time; it cannot close the
+ * check/use race against a same-host actor who can mutate the storage root, so
+ * filesystem ownership remains the trust boundary for that stronger threat.
  */
 function assertExistingRealPathContained(
 	fs: typeof import("fs"),
@@ -800,6 +892,19 @@ function assertExistingRealPathContained(
 	if (realTarget !== realBase && !realTarget.startsWith(realBase + path.sep)) {
 		throwSkillPathTraversal(label);
 	}
+}
+
+/** Enforce both the storage-root boundary and the selected skill boundary. */
+function assertSkillTargetRealPathContained(
+	fs: typeof import("fs"),
+	path: typeof import("path"),
+	resolvedBase: string,
+	skillDir: string,
+	target: string,
+	label: string,
+): void {
+	assertExistingRealPathContained(fs, path, resolvedBase, skillDir, label);
+	assertExistingRealPathContained(fs, path, skillDir, target, label);
 }
 
 function throwSkillPathTraversal(label: string): never {
