@@ -36,6 +36,7 @@ const { getBaseUrlMock, publishMock, listConnectorAccountsMock, fetchMock } =
 // Mock the client: getBaseUrl resolves without booting the real ElizaClient,
 // and listConnectorAccounts is the connection probe driven per-test.
 vi.mock("../../../api", () => ({
+  ElizaClient: class {},
   client: {
     getBaseUrl: getBaseUrlMock,
     listConnectorAccounts: listConnectorAccountsMock,

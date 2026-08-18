@@ -83,10 +83,12 @@ describe("ElizaClient request timeout policy", () => {
   it("keeps the ordinary REST budget active while decoding JSON", async () => {
     vi.useFakeTimers();
     const request = vi.fn<AgentRequestTransport["request"]>(async () => {
-      return {
-        ok: true,
-        text: () => new Promise<string>(() => {}),
-      } as Response;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start() {},
+        }),
+        { status: 200 },
+      );
     });
     const client = new ElizaClient("http://agent.example:2138", "token");
     client.setRequestTransport({ request });
