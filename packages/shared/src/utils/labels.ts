@@ -22,12 +22,18 @@ export const ENV_KEY_ACRONYMS: Set<string> = new Set([
 ]);
 
 export function autoLabel(key: string, pluginId: string): string {
-  const prefixes = [
-    `${pluginId.toUpperCase().replace(/-/g, "_")}_`,
-    `${pluginId.toUpperCase().replace(/-/g, "")}_`,
-  ];
+  if (typeof key !== "string" || key.trim() === "") {
+    return "";
+  }
+  const cleanPluginId = typeof pluginId === "string" ? pluginId.trim() : "";
+  const prefixes = cleanPluginId
+    ? [
+        `${cleanPluginId.toUpperCase().replace(/-/g, "_")}_`,
+        `${cleanPluginId.toUpperCase().replace(/-/g, "")}_`,
+      ]
+    : [];
 
-  let remainder = key;
+  let remainder = key.trim();
   for (const prefix of prefixes) {
     if (
       remainder.toUpperCase().startsWith(prefix) &&

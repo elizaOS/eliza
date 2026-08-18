@@ -34,4 +34,16 @@ describe("autoLabel", () => {
     expect(autoLabel("plugin_rpc_url", "plugin")).toBe("RPC URL");
     expect(autoLabel("custom_client_secret", "custom")).toBe("Client Secret");
   });
+
+  it("handles nullish, non-string, empty, and whitespace-only inputs safely", () => {
+    expect(autoLabel("", "plugin")).toBe("");
+    expect(autoLabel("   ", "plugin")).toBe("");
+    expect(autoLabel(null as unknown as string, "plugin")).toBe("");
+    expect(autoLabel(undefined as unknown as string, "plugin")).toBe("");
+    expect(autoLabel(123 as unknown as string, "plugin")).toBe("");
+    expect(autoLabel("API_KEY", null as unknown as string)).toBe("API Key");
+    expect(autoLabel("API_KEY", undefined as unknown as string)).toBe(
+      "API Key",
+    );
+  });
 });
